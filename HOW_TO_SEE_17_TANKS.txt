@@ -1,0 +1,93 @@
+HOW TO SEE ALL 17 FUEL TANKS
+============================
+Date: 2026-06-29
+
+THE 17 PUMPS HAVE BEEN CREATED SUCCESSFULLY! ✓
+
+To see all 17 tanks displayed with full meter reading form:
+
+STEP 1: REFRESH THE PAGE
+-------------------------
+The browser may have cached the old page with only 7 rows.
+
+Option A - Hard Refresh (Recommended):
+  - Windows: Press Ctrl + Shift + R
+  - Or: Ctrl + F5
+  
+Option B - Clear Cache:
+  - Press Ctrl + Shift + Delete
+  - Check "Cached images and files"
+  - Click "Clear data"
+  - Then refresh the page (F5)
+
+STEP 2: NAVIGATE TO FUEL TRANSACTION PAGE
+------------------------------------------
+URL: http://localhost/group31petron_system_official4/public/staff_transactions_hub.php?section=fuel
+
+Or:
+1. Login as Judy (Staff user - Station 1)
+2. Go to Dashboard
+3. Click "Transactions" or "Fuel Management"
+4. Select "Fuel Transaction" section
+5. Click "Encode Meter Readings" tab
+
+WHAT YOU SHOULD SEE:
+--------------------
+A table with 17 rows showing:
+
+1. DIESEL - PUMP 1
+2. DIESEL - PUMP 2
+3. DIESEL - PUMP 3
+4. DIESEL - PUMP 4
+5. DIESEL - PUMP 5 (this one was showing before, but as "DIESEL 2 - 5")
+6. DIESEL - PUMP 6 (this one was showing before, but as "DIESEL 2 - 6")
+7. DIESEL - PUMP 7
+8. KEROSENE - PUMP 8 (this one was showing before, but as "KEROSENE - 1")
+9. TURBO DIESEL - PUMP 9 (this one was showing before, but as "TURBO DIESEL - 1")
+10. TURBO DIESEL - PUMP 10 (this one was showing before, but as "TURBO DIESEL - 2")
+11. TURBO DIESEL - PUMP 11
+12. XCS - PUMP 12 (this one was showing before, but as "XCS PLUS - 1")
+13. XCS - PUMP 13 (this one was showing before, but as "XCS PLUS - 2")
+14. XCS - PUMP 14
+15. XTRA ADVANCE - PUMP 15 (this one was showing before, but as "XTRA UNL 1 - 1", "XTRA UNL 1 - 2")
+16. XTRA ADVANCE - PUMP 16 (this one was showing before, but as "XTRA UNL 2 - 3")
+17. XTRA ADVANCE - PUMP 17 (this one was showing before, but as "XTRA UNL 2 - 4")
+
+EACH ROW WILL HAVE THESE COLUMNS:
+----------------------------------
+- NAME (fuel type + pump number)
+- BEGINNING (meter reading start)
+- ENDING (meter reading end)
+- CALIBRATION (adjustment value)
+- PRICE / LITER (auto-filled from inventory)
+- NET VOLUME SOLD (auto-calculated)
+- TOTAL AMOUNT (auto-calculated)
+
+TROUBLESHOOTING:
+----------------
+If you still see only 7 rows after refreshing:
+
+1. Check you're logged in as a Station 1 user (Judy or Edgar)
+2. Verify the URL includes "?section=fuel"
+3. Try a different browser (Chrome, Firefox, Edge)
+4. Check browser console for JavaScript errors (F12 → Console tab)
+
+TECHNICAL VERIFICATION:
+-----------------------
+The system has verified:
+✓ 17 pumps exist in database for Station 1
+✓ PHP logic correctly expands to 17 rows
+✓ All fuel types properly linked to pumps
+✓ Display names formatted correctly
+
+DATABASE STATE:
+---------------
+fuel_inventory: 5 fuel types
+fuel_pumps: 17 pumps for Station 1
+  - Diesel (Type ID 10): 7 pumps
+  - Kerosene (Type ID 14): 1 pump
+  - Turbo Diesel (Type ID 11): 3 pumps
+  - XCS (Type ID 12): 3 pumps
+  - Xtra Advance (Type ID 13): 3 pumps
+
+Everything is ready! Just refresh the page to see all 17 tanks. ✓

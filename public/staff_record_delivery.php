@@ -171,10 +171,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recei
 
 /* ══════════════════════════════════════════════════════════
    POST — Record Delivery (Manual / Old Flow)
-   UPDATED: Now supports linking to expected deliveries
 ══════════════════════════════════════════════════════════ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'record_delivery') {
-    $linked_delivery_id = (int)($_POST['linked_delivery_id'] ?? 0);
     $supplier_name   = trim($_POST['supplier_name']   ?? '');
     $delivery_date   = trim($_POST['delivery_date']   ?? date('Y-m-d'));
     $dr_number       = trim($_POST['dr_number']       ?? '') ?: null;
@@ -196,131 +194,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
         $msg = 'At least one item must be added.'; $msg_type = 'error';
     } else {
         try {
-            $pdo->beginTransaction();
+            $batch_prefix = 'MBATCH-' . date('Ymd', strtotime($delivery_date)) . '-';
+            $stmt = $pdo->prepare("
+                SELECT batch_id FROM deliveries_oversight
+                WHERE batch_id LIKE ? AND station_id = ? AND DATE(delivery_date) = ? AND delivery_type = 'merchandise'
+                LIMIT 1
+            ");
+            $stmt->execute([$batch_prefix . '%', $station_id, $delivery_date]);
+            $existing_batch = $stmt->fetchColumn();
 
-            // ═══ NEW: Check if linking to an expected delivery ═══
-            if ($linked_delivery_id > 0) {
-                // LINKED MODE: Update existing expected delivery record
-                $stmt = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE id = ? AND station_id = ? AND status = 'Expected Delivery' AND delivery_type = 'merchandise'");
-                $stmt->execute([$linked_delivery_id, $station_id]);
-                $expected_del = $stmt->fetch(PDO::FETCH_ASSOC);
-
-                if (!$expected_del) {
-                    throw new Exception("Expected delivery not found or already processed.");
-                }
-
-                // Get the single item data (since linking, only one item)
-                $category    = trim($categories[0]   ?? '');
-                $item_name   = trim($item_names[0]   ?? '');
-                $actual_qty  = (float)($quantities[0]  ?? 0);
-                $unit        = trim($units[0]         ?? 'pcs');
-                $unit_cost   = ($unit_costs[0] ?? '') !== '' ? (float)$unit_costs[0] : null;
-                $expiry_date = trim($expiry_dates[0] ?? '') ?: null;
-
-                if ($actual_qty <= 0) {
-                    throw new Exception("Quantity must be greater than 0.");
-                }
-
-                $expected_qty = (float)$expected_del['quantity'];
-                
-                // Variance detection
-                $status = 'Pending Manager Approval';  // Changed from 'Pending Verification' to match Manager's expected status
-                $admin_notes = null;
-                $diff = abs($actual_qty - $expected_qty);
-                
-                if ($diff > 0.001) {
-                    $status = 'Discrepancy';
-                    $admin_notes = "System Flag: Expected " . number_format($expected_qty, 2) . " {$expected_del['unit']}, but received " . number_format($actual_qty, 2) . " {$unit}. Variance: " . number_format($actual_qty - $expected_qty, 2) . " {$unit}.";
-                }
-
-                // Update the existing expected delivery record
-                $pdo->prepare("
-                    UPDATE deliveries_oversight 
-                    SET quantity = ?, unit = ?, delivery_date = ?, dr_number = ?, remarks = ?, 
-                        encoded_by = ?, status = ?, admin_notes = ?, 
-                        unit_cost = ?, expiry_date = ?, received_by_name = ?, category = ?,
-                        updated_at = NOW()
-                    WHERE id = ?
-                ")->execute([
-                    $actual_qty, $unit, $delivery_date, $dr_number, $remarks,
-                    $me['id'], $status, $admin_notes,
-                    $unit_cost, $expiry_date, $received_by_name, $category,
-                    $linked_delivery_id
-                ]);
-
-                log_activity($pdo, $me['id'], 'Staff Linked PO Delivery', "PO: {$expected_del['source_ref']} | Product: {$item_name} | Expected: {$expected_qty} | Actual: {$actual_qty}");
-                
-                $pdo->commit();
-
-                if ($status === 'Discrepancy') {
-                    header('Location: staff_delivery_history.php?msg=discrepancy&type=warning');
-                } else {
-                    header('Location: staff_delivery_history.php?msg=linked&type=success');
-                }
-                exit;
-
+            if ($existing_batch) {
+                $batch_id = $existing_batch;
             } else {
-                // MANUAL MODE: Create new delivery records (original flow)
-                $batch_prefix = 'MBATCH-' . date('Ymd', strtotime($delivery_date)) . '-';
-                $stmt = $pdo->prepare("
-                    SELECT batch_id FROM deliveries_oversight
-                    WHERE batch_id LIKE ? AND station_id = ? AND DATE(delivery_date) = ? AND delivery_type = 'merchandise'
-                    LIMIT 1
-                ");
-                $stmt->execute([$batch_prefix . '%', $station_id, $delivery_date]);
-                $existing_batch = $stmt->fetchColumn();
+                $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(batch_id,'-',-1) AS UNSIGNED)) FROM deliveries_oversight WHERE batch_id LIKE ?");
+                $stmt->execute([$batch_prefix . '%']);
+                $batch_id = $batch_prefix . str_pad((int)$stmt->fetchColumn() + 1, 3, '0', STR_PAD_LEFT);
+            }
 
-                if ($existing_batch) {
-                    $batch_id = $existing_batch;
-                } else {
-                    $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(batch_id,'-',-1) AS UNSIGNED)) FROM deliveries_oversight WHERE batch_id LIKE ?");
-                    $stmt->execute([$batch_prefix . '%']);
-                    $batch_id = $batch_prefix . str_pad((int)$stmt->fetchColumn() + 1, 3, '0', STR_PAD_LEFT);
-                }
+            $date_prefix = 'MDR-' . date('Ymd', strtotime($delivery_date)) . '-';
+            $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(delivery_ref,'-',-1) AS UNSIGNED)) FROM deliveries_oversight WHERE delivery_ref LIKE ?");
+            $stmt->execute([$date_prefix . '%']);
+            $max_num = (int)$stmt->fetchColumn();
 
-                $date_prefix = 'MDR-' . date('Ymd', strtotime($delivery_date)) . '-';
-                $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(delivery_ref,'-',-1) AS UNSIGNED)) FROM deliveries_oversight WHERE delivery_ref LIKE ?");
-                $stmt->execute([$date_prefix . '%']);
-                $max_num = (int)$stmt->fetchColumn();
+            $pdo->beginTransaction();
+            $success_count = 0;
 
-                $success_count = 0;
+            for ($i = 0; $i < count($item_names); $i++) {
+                $category    = trim($categories[$i]   ?? '');
+                $item_name   = trim($item_names[$i]   ?? '');
+                $quantity    = (float)($quantities[$i]  ?? 0);
+                $unit        = trim($units[$i]         ?? 'pcs');
+                $unit_cost   = ($unit_costs[$i] ?? '') !== '' ? (float)$unit_costs[$i] : null;
+                $expiry_date = trim($expiry_dates[$i] ?? '') ?: null;
 
-                for ($i = 0; $i < count($item_names); $i++) {
-                    $category    = trim($categories[$i]   ?? '');
-                    $item_name   = trim($item_names[$i]   ?? '');
-                    $quantity    = (float)($quantities[$i]  ?? 0);
-                    $unit        = trim($units[$i]         ?? 'pcs');
-                    $unit_cost   = ($unit_costs[$i] ?? '') !== '' ? (float)$unit_costs[$i] : null;
-                    $expiry_date = trim($expiry_dates[$i] ?? '') ?: null;
+                if ($category === 'Fuel' || $item_name === '' || $category === '' || $quantity <= 0) continue;
 
-                    if ($category === 'Fuel' || $item_name === '' || $category === '' || $quantity <= 0) continue;
+                $max_num++;
+                $delivery_ref = $date_prefix . str_pad($max_num, 4, '0', STR_PAD_LEFT);
 
-                    $max_num++;
-                    $delivery_ref = $date_prefix . str_pad($max_num, 4, '0', STR_PAD_LEFT);
+                $pdo->prepare("
+                    INSERT INTO deliveries_oversight
+                        (delivery_type, delivery_ref, batch_id, supplier, product, quantity, unit,
+                         delivery_date, dr_number, encoded_by, station_id, status, remarks,
+                         unit_cost, expiry_date, received_by_name, category, created_at, updated_at)
+                    VALUES ('merchandise', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Verification', ?, ?, ?, ?, ?, NOW(), NOW())
+                ")->execute([
+                    $delivery_ref, $batch_id, $supplier_name, $item_name,
+                    $quantity, $unit, $delivery_date, $dr_number,
+                    $me['id'], $station_id, $remarks,
+                    $unit_cost, $expiry_date, $received_by_name, $category
+                ]);
+                $success_count++;
+            }
 
-                    $pdo->prepare("
-                        INSERT INTO deliveries_oversight
-                            (delivery_type, delivery_ref, batch_id, supplier, product, quantity, unit,
-                             delivery_date, dr_number, encoded_by, station_id, status, remarks,
-                             unit_cost, expiry_date, received_by_name, category, created_at, updated_at)
-                        VALUES ('merchandise', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Manager Approval', ?, ?, ?, ?, ?, NOW(), NOW())
-                    ")->execute([
-                        $delivery_ref, $batch_id, $supplier_name, $item_name,
-                        $quantity, $unit, $delivery_date, $dr_number,
-                        $me['id'], $station_id, $remarks,
-                        $unit_cost, $expiry_date, $received_by_name, $category
-                    ]);
-                    $success_count++;
-                }
-
-                $pdo->commit();
-                if ($success_count > 0) {
-                    log_activity($pdo, $me['id'], 'Staff Manual Delivery', "Batch: {$batch_id} | Items: {$success_count}");
-                    header('Location: staff_delivery_history.php?msg=manual_saved&type=success');
-                    exit;
-                } else {
-                    $msg = 'No valid items provided.'; $msg_type = 'error';
-                }
+            $pdo->commit();
+            if ($success_count > 0) {
+                log_activity($pdo, $me['id'], 'Staff Manual Delivery', "Batch: {$batch_id} | Items: {$success_count}");
+                header('Location: staff_delivery_history.php?msg=manual_saved&type=success');
+                exit;
+            } else {
+                $msg = 'No valid items provided.'; $msg_type = 'error';
             }
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
@@ -445,7 +378,7 @@ include __DIR__ . '/../partials/header.php';
 <style>
 /* ── Layout & Cards ── */
 .layout-grid { display: grid; grid-template-columns: 1fr; gap: 24px; margin-bottom: 30px; }
-@media (min-width: 1100px) { .layout-grid { grid-template-columns: 1.3fr 1fr; } }
+@media () { .layout-grid { grid-template-columns: 1fr 1fr; } }
 
 .del-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06); border: 1px solid #e9ecef; height: 100%; display: flex; flex-direction: column; }
 .del-card-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #e9ecef; }
@@ -583,7 +516,98 @@ textarea.form-control { resize: vertical; font-family: inherit; }
 <?php endif; ?>
 
 <div class="layout-grid">
-    <!-- LEFT: Manual Encode Delivery (Staff encodes actual receipt details) -->
+    <!-- LEFT: Expected Delivery Details (VIEW-ONLY - Reference for Staff) -->
+    <div class="del-card">
+        <div class="del-card-head">
+            <div class="del-card-title">
+                <i class="fas fa-clipboard-check"></i> <?php echo $selected_po ? 'Expected Delivery Details' : 'Expected Deliveries'; ?>
+            </div>
+            <?php if ($selected_po): ?>
+                <span style="font-size:12px;color:#6c757d;">Reference Only - Use Manual Encode →</span>
+            <?php else: ?>
+                <span style="font-size:12px;color:#6c757d;">Based on Finalized POs</span>
+            <?php endif; ?>
+        </div>
+        <div class="del-card-body">
+            <?php if ($selected_po): ?>
+                <!-- VIEW-ONLY: PO Order Details for Reference -->
+                <div style="background:#e8f4fd;border:1px solid #b8d4f0;border-radius:8px;padding:20px;">
+                    <h4 style="margin:0 0 16px 0;color:#002F70;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;">
+                        <i class="fas fa-file-invoice"></i> Purchase Order Details
+                    </h4>
+                    
+                    <div style="display:grid;gap:12px;font-size:14px;">
+                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
+                            <span style="color:#6c757d;font-weight:500;">PO Number:</span>
+                            <strong style="color:#002F70;font-family:monospace;font-size:15px;"><?php echo htmlspecialchars($selected_po['source_ref'] ?? 'N/A'); ?></strong>
+                        </div>
+                        
+                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
+                            <span style="color:#6c757d;font-weight:500;">Product:</span>
+                            <strong style="color:#212529;"><?php echo htmlspecialchars($selected_po['product']); ?></strong>
+                        </div>
+                        
+                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
+                            <span style="color:#6c757d;font-weight:500;">Supplier:</span>
+                            <strong style="color:#212529;"><?php echo htmlspecialchars($selected_po['supplier']); ?></strong>
+                        </div>
+                        
+                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
+                            <span style="color:#6c757d;font-weight:500;">Expected Quantity:</span>
+                            <strong style="color:#002F70;font-size:16px;"><?php echo number_format($selected_po['quantity'], 2); ?> <span style="font-size:14px;color:#6c757d;"><?php echo htmlspecialchars($selected_po['unit']); ?></span></strong>
+                        </div>
+                        
+                        <?php if (!empty($selected_po['remarks'])): ?>
+                        <div style="padding:10px 0;">
+                            <span style="color:#6c757d;font-weight:500;display:block;margin-bottom:6px;">Notes:</span>
+                            <p style="margin:0;padding:10px;background:#fff;border-radius:6px;font-size:13px;color:#495057;"><?php echo htmlspecialchars($selected_po['remarks']); ?></p>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:14px;margin-top:20px;display:flex;align-items:flex-start;gap:10px;">
+                    <i class="fas fa-info-circle" style="color:#856404;margin-top:2px;font-size:18px;flex-shrink:0;"></i>
+                    <div style="font-size:13px;color:#856404;line-height:1.5;">
+                        <strong>Instructions:</strong> Use the <strong>"Manual Encode Delivery"</strong> form on the right to record the actual delivery receipt. Fill in the actual quantity received, DR number, and any remarks.
+                    </div>
+                </div>
+
+                <div style="margin-top:20px;text-align:center;">
+                    <a href="staff_expected_deliveries.php" style="background:#6c757d;color:#fff;border:none;padding:10px 20px;border-radius:6px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:background .2s;">
+                        <i class="fas fa-arrow-left"></i> Back to Expected Deliveries
+                    </a>
+                </div>
+
+            <?php elseif (empty($expected_deliveries)): ?>
+                <div style="text-align:center;padding:40px;color:#adb5bd;">
+                    <i class="fas fa-box-open" style="font-size:3em;margin-bottom:15px;display:block;"></i>
+                    <p style="margin-bottom:16px;">No expected merchandise deliveries at the moment.</p>
+                    <a href="staff_expected_deliveries.php" style="color:#002F70;text-decoration:none;font-weight:600;">
+                        <i class="fas fa-arrow-left"></i> View Expected Deliveries
+                    </a>
+                </div>
+            <?php else: ?>
+                <?php foreach ($expected_deliveries as $ed): ?>
+                <div class="expected-item">
+                    <div class="expected-info">
+                        <h4><?php echo htmlspecialchars($ed['product']); ?></h4>
+                        <div class="expected-meta">
+                            <span><i class="fas fa-hashtag"></i> PO: <span class="po-badge"><?php echo htmlspecialchars($ed['source_ref'] ?? 'N/A'); ?></span></span>
+                            <span><i class="fas fa-box"></i> Exp: <strong><?php echo number_format($ed['quantity'], 2) . ' ' . $ed['unit']; ?></strong></span>
+                            <span><i class="fas fa-building"></i> <?php echo htmlspecialchars($ed['supplier']); ?></span>
+                        </div>
+                    </div>
+                    <button class="btn-receive" onclick="window.location.href='staff_record_delivery.php?po_id=<?php echo $ed['id']; ?>'">
+                        <i class="fas fa-eye"></i> View Details
+                    </button>
+                </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- RIGHT: Manual Encode Delivery (Staff encodes actual receipt details) -->
     <div class="del-card">
         <div class="del-card-head">
             <div class="del-card-title">
@@ -593,48 +617,11 @@ textarea.form-control { resize: vertical; font-family: inherit; }
         <div class="del-card-body">
             <form method="POST" id="manualForm">
                 <input type="hidden" name="action" value="record_delivery">
-                <input type="hidden" name="linked_delivery_id" id="linkedDeliveryId" value="">
-
-                <!-- ══ Link to Expected Delivery (NEW) ══ -->
-                <?php if (!empty($expected_deliveries)): ?>
-                <div style="background:#e8f4fd;border:1px solid #b8d4f0;border-radius:8px;padding:16px 18px;margin-bottom:16px;">
-                    <div style="font-size:11px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;display:flex;align-items:center;gap:7px;">
-                        <i class="fas fa-link"></i> Link to Expected Delivery
-                    </div>
-                    
-                    <div class="form-group" style="margin-bottom:8px;">
-                        <label class="form-label">Select Expected Delivery (Optional)</label>
-                        <select id="expectedDeliverySelect" class="form-select" style="background:#fff;border-color:#002F70;">
-                            <option value="">-- None - Manual Entry --</option>
-                            <?php foreach ($expected_deliveries as $ed): ?>
-                            <option value="<?php echo $ed['id']; ?>"
-                                    data-po="<?php echo htmlspecialchars($ed['source_ref'] ?? 'N/A'); ?>"
-                                    data-product="<?php echo htmlspecialchars($ed['product']); ?>"
-                                    data-supplier="<?php echo htmlspecialchars($ed['supplier']); ?>"
-                                    data-category="<?php echo htmlspecialchars($ed['category'] ?? ''); ?>"
-                                    data-qty="<?php echo $ed['quantity']; ?>"
-                                    data-unit="<?php echo htmlspecialchars($ed['unit']); ?>">
-                                <?php echo htmlspecialchars($ed['source_ref'] ?? 'N/A'); ?> - <?php echo htmlspecialchars($ed['product']); ?> (<?php echo number_format($ed['quantity'], 2) . ' ' . $ed['unit']; ?>)
-                            </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <div style="font-size:12px;color:#495057;display:flex;align-items:flex-start;gap:8px;">
-                        <i class="fas fa-info-circle" style="color:#002F70;margin-top:2px;flex-shrink:0;"></i>
-                        <div>
-                            <strong>How it works:</strong> Select an expected delivery to auto-fill the form below. 
-                            When saved, the system will update that PO record and remove it from expected deliveries. 
-                            If you don't select one, a new manual entry will be created.
-                        </div>
-                    </div>
-                </div>
-                <?php endif; ?>
 
                 <!-- ── Supplier ── -->
                 <div class="form-group">
                     <label class="form-label">Supplier Name <span style="color:red;">*</span></label>
-                    <input type="text" name="supplier_name" id="supplierName" class="form-control"
+                    <input type="text" name="supplier_name" class="form-control"
                            value="<?php echo $selected_po ? htmlspecialchars($selected_po['supplier']) : 'Petron Corporation'; ?>"
                            readonly style="background:#e9ecef;cursor:not-allowed;font-weight:600;">
                 </div>
@@ -695,7 +682,7 @@ textarea.form-control { resize: vertical; font-family: inherit; }
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
                         <div class="form-group" style="margin-bottom:0;">
                             <label class="form-label">Item Name <span style="color:red;">*</span></label>
-                            <input type="text" name="item_name[]" id="itemName" class="form-control item-name-input"
+                            <input type="text" name="item_name[]" class="form-control item-name-input"
                                    list="productList"
                                    value="<?php echo $selected_po ? htmlspecialchars($selected_po['product']) : ''; ?>"
                                    placeholder="Type or select item" required>
@@ -705,11 +692,11 @@ textarea.form-control { resize: vertical; font-family: inherit; }
                         </div>
                         <div class="form-group" style="margin-bottom:0;">
                             <label class="form-label">Category <span style="color:red;">*</span></label>
-                            <input type="text" id="categoryDisplay" class="form-control category-display" readonly
+                            <input type="text" class="form-control category-display" readonly
                                    value="<?php echo $selected_po && !empty($selected_po['category']) ? htmlspecialchars($selected_po['category']) : ''; ?>"
                                    placeholder="Auto-filled from product"
                                    style="background:<?php echo $selected_po && !empty($selected_po['category']) ? '#e8f4fd' : '#f8f9fa'; ?>;cursor:not-allowed;<?php echo $selected_po && !empty($selected_po['category']) ? 'color:#002F70;font-weight:600;' : ''; ?>">
-                            <input type="hidden" name="category[]" id="categoryHidden" class="category-hidden" 
+                            <input type="hidden" name="category[]" class="category-hidden" 
                                    value="<?php echo $selected_po && !empty($selected_po['category']) ? htmlspecialchars($selected_po['category']) : ''; ?>" required>
                             <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">
                                 <i class="fas fa-info-circle"></i> Auto-fills when product is selected
@@ -720,7 +707,7 @@ textarea.form-control { resize: vertical; font-family: inherit; }
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;">
                         <div class="form-group" style="margin-bottom:0;">
                             <label class="form-label">Unit <span style="color:red;">*</span></label>
-                            <select name="unit[]" id="unitSelect" class="form-select">
+                            <select name="unit[]" class="form-select">
                                 <option value="pcs"    <?php echo ($selected_po && $selected_po['unit']==='pcs')    ? 'selected':''; ?>>pcs</option>
                                 <option value="kg"     <?php echo ($selected_po && $selected_po['unit']==='kg')     ? 'selected':''; ?>>kg</option>
                                 <option value="box"    <?php echo ($selected_po && $selected_po['unit']==='box')    ? 'selected':''; ?>>box</option>
@@ -732,12 +719,14 @@ textarea.form-control { resize: vertical; font-family: inherit; }
                         </div>
                         <div class="form-group" style="margin-bottom:0;">
                             <label class="form-label">Quantity Delivered <span style="color:red;">*</span></label>
-                            <input type="number" step="0.01" min="0.01" name="quantity[]" id="quantityInput" class="form-control"
+                            <input type="number" step="0.01" min="0.01" name="quantity[]" class="form-control"
                                    value="<?php echo $selected_po ? $selected_po['quantity'] : ''; ?>"
                                    placeholder="Enter quantity" required>
-                            <small id="expectedQtyInfo" style="color:#6c757d;font-size:11px;display:<?php echo $selected_po ? 'block' : 'none'; ?>;margin-top:4px;">
-                                <?php if ($selected_po): ?>Expected: <?php echo number_format($selected_po['quantity'], 2) . ' ' . $selected_po['unit']; ?><?php endif; ?>
+                            <?php if ($selected_po): ?>
+                            <small style="color:#6c757d;font-size:11px;display:block;margin-top:4px;">
+                                Expected: <?php echo number_format($selected_po['quantity'], 2) . ' ' . $selected_po['unit']; ?>
                             </small>
+                            <?php endif; ?>
                         </div>
                     </div>
 
@@ -769,16 +758,6 @@ textarea.form-control { resize: vertical; font-family: inherit; }
                     <div><strong>Save Flow:</strong> Staff saves → Status = <strong>Pending Verification</strong> → Manager Verifies → Inventory Stock-In</div>
                 </div>
 
-                <!-- Variance Warning (shown when actual qty differs from expected) -->
-                <div id="manualVarianceWarning" class="variance-warning" style="display:none;margin-bottom:16px;">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <div>
-                        <strong>Variance Detected!</strong><br>
-                        <span id="varianceMessage"></span>
-                        This will be flagged for Manager review as a <strong>Discrepancy</strong>.
-                    </div>
-                </div>
-
                 <div style="display:flex;justify-content:flex-end;gap:10px;">
                     <button type="button" onclick="resetDeliveryForm()" class="txn-btn secondary">
                         <i class="fas fa-redo"></i> Reset
@@ -788,97 +767,6 @@ textarea.form-control { resize: vertical; font-family: inherit; }
                     </button>
                 </div>
             </form>
-        </div>
-    </div>
-
-    <!-- RIGHT: Expected Delivery Details (VIEW-ONLY - Reference for Staff) -->
-    <div class="del-card">
-        <div class="del-card-head">
-            <div class="del-card-title">
-                <i class="fas fa-clipboard-check"></i> <?php echo $selected_po ? 'Expected Delivery Details' : 'Expected Deliveries'; ?>
-            </div>
-            <?php if ($selected_po): ?>
-                <span style="font-size:12px;color:#6c757d;">Reference Only - Use Manual Encode ←</span>
-            <?php else: ?>
-                <span style="font-size:12px;color:#6c757d;">Based on Finalized POs</span>
-            <?php endif; ?>
-        </div>
-        <div class="del-card-body">
-            <?php if ($selected_po): ?>
-                <!-- VIEW-ONLY: PO Order Details for Reference -->
-                <div style="background:#e8f4fd;border:1px solid #b8d4f0;border-radius:8px;padding:20px;">
-                    <h4 style="margin:0 0 16px 0;color:#002F70;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;">
-                        <i class="fas fa-file-invoice"></i> Purchase Order Details
-                    </h4>
-                    
-                    <div style="display:grid;gap:12px;font-size:14px;">
-                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
-                            <span style="color:#6c757d;font-weight:500;">PO Number:</span>
-                            <strong style="color:#002F70;font-family:monospace;font-size:15px;"><?php echo htmlspecialchars($selected_po['source_ref'] ?? 'N/A'); ?></strong>
-                        </div>
-                        
-                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
-                            <span style="color:#6c757d;font-weight:500;">Product:</span>
-                            <strong style="color:#212529;"><?php echo htmlspecialchars($selected_po['product']); ?></strong>
-                        </div>
-                        
-                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
-                            <span style="color:#6c757d;font-weight:500;">Supplier:</span>
-                            <strong style="color:#212529;"><?php echo htmlspecialchars($selected_po['supplier']); ?></strong>
-                        </div>
-                        
-                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
-                            <span style="color:#6c757d;font-weight:500;">Expected Quantity:</span>
-                            <strong style="color:#002F70;font-size:16px;"><?php echo number_format($selected_po['quantity'], 2); ?> <span style="font-size:14px;color:#6c757d;"><?php echo htmlspecialchars($selected_po['unit']); ?></span></strong>
-                        </div>
-                        
-                        <?php if (!empty($selected_po['remarks'])): ?>
-                        <div style="padding:10px 0;">
-                            <span style="color:#6c757d;font-weight:500;display:block;margin-bottom:6px;">Notes:</span>
-                            <p style="margin:0;padding:10px;background:#fff;border-radius:6px;font-size:13px;color:#495057;"><?php echo htmlspecialchars($selected_po['remarks']); ?></p>
-                        </div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:14px;margin-top:20px;display:flex;align-items:flex-start;gap:10px;">
-                    <i class="fas fa-info-circle" style="color:#856404;margin-top:2px;font-size:18px;flex-shrink:0;"></i>
-                    <div style="font-size:13px;color:#856404;line-height:1.5;">
-                        <strong>Instructions:</strong> Use the <strong>"Manual Encode Delivery"</strong> form on the left to record the actual delivery receipt. Fill in the actual quantity received, DR number, and any remarks.
-                    </div>
-                </div>
-
-                <div style="margin-top:20px;text-align:center;">
-                    <a href="staff_expected_deliveries.php" style="background:#6c757d;color:#fff;border:none;padding:10px 20px;border-radius:6px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:background .2s;">
-                        <i class="fas fa-arrow-left"></i> Back to Expected Deliveries
-                    </a>
-                </div>
-
-            <?php elseif (empty($expected_deliveries)): ?>
-                <div style="text-align:center;padding:40px;color:#adb5bd;">
-                    <i class="fas fa-box-open" style="font-size:3em;margin-bottom:15px;display:block;"></i>
-                    <p style="margin-bottom:16px;">No expected merchandise deliveries at the moment.</p>
-                    <a href="staff_expected_deliveries.php" style="color:#002F70;text-decoration:none;font-weight:600;">
-                        <i class="fas fa-arrow-left"></i> View Expected Deliveries
-                    </a>
-                </div>
-            <?php else: ?>
-                <?php foreach ($expected_deliveries as $ed): ?>
-                <div class="expected-item">
-                    <div class="expected-info">
-                        <h4><?php echo htmlspecialchars($ed['product']); ?></h4>
-                        <div class="expected-meta">
-                            <span><i class="fas fa-hashtag"></i> PO: <span class="po-badge"><?php echo htmlspecialchars($ed['source_ref'] ?? 'N/A'); ?></span></span>
-                            <span><i class="fas fa-box"></i> Exp: <strong><?php echo number_format($ed['quantity'], 2) . ' ' . $ed['unit']; ?></strong></span>
-                            <span><i class="fas fa-building"></i> <?php echo htmlspecialchars($ed['supplier']); ?></span>
-                        </div>
-                    </div>
-                    <button class="btn-receive" onclick="window.location.href='staff_record_delivery.php?po_id=<?php echo $ed['id']; ?>'">
-                        <i class="fas fa-eye"></i> View Details
-                    </button>
-                </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
         </div>
     </div>
 </div>
@@ -959,140 +847,6 @@ textarea.form-control { resize: vertical; font-family: inherit; }
 <script>
 const productCategoryMap = <?php echo json_encode($merch_products_map); ?>;
 
-// ═══════════════════════════════════════════════════════════
-// EXPECTED DELIVERY DROPDOWN HANDLER (NEW)
-// ═══════════════════════════════════════════════════════════
-let selectedExpectedQty = 0;
-let selectedExpectedUnit = '';
-
-document.addEventListener('DOMContentLoaded', function() {
-    const expectedDropdown = document.getElementById('expectedDeliverySelect');
-    
-    if (expectedDropdown) {
-        expectedDropdown.addEventListener('change', function() {
-            const selectedOption = this.options[this.selectedIndex];
-            
-            if (this.value) {
-                // Expected delivery selected - auto-fill form
-                const deliveryId = this.value;
-                const po = selectedOption.dataset.po || '';
-                const product = selectedOption.dataset.product || '';
-                const supplier = selectedOption.dataset.supplier || '';
-                const category = selectedOption.dataset.category || '';
-                const qty = parseFloat(selectedOption.dataset.qty) || 0;
-                const unit = selectedOption.dataset.unit || 'pcs';
-                
-                // Store expected values for variance check
-                selectedExpectedQty = qty;
-                selectedExpectedUnit = unit;
-                
-                // Set hidden field to link this delivery
-                document.getElementById('linkedDeliveryId').value = deliveryId;
-                
-                // Auto-fill form fields
-                document.getElementById('supplierName').value = supplier;
-                document.getElementById('itemName').value = product;
-                document.getElementById('categoryDisplay').value = category;
-                document.getElementById('categoryHidden').value = category;
-                document.getElementById('unitSelect').value = unit;
-                document.getElementById('quantityInput').value = qty;
-                
-                // Update category display styling
-                const categoryDisplay = document.getElementById('categoryDisplay');
-                if (category) {
-                    categoryDisplay.style.background = '#e8f4fd';
-                    categoryDisplay.style.color = '#002F70';
-                    categoryDisplay.style.fontWeight = '600';
-                } else {
-                    categoryDisplay.style.background = '#f8f9fa';
-                    categoryDisplay.style.color = '';
-                }
-                
-                // Show expected quantity info
-                const expectedInfo = document.getElementById('expectedQtyInfo');
-                expectedInfo.textContent = 'Expected: ' + qty.toFixed(2) + ' ' + unit + ' (from PO: ' + po + ')';
-                expectedInfo.style.display = 'block';
-                expectedInfo.style.color = '#002F70';
-                expectedInfo.style.fontWeight = '600';
-                
-                // Check variance immediately
-                checkManualVariance();
-                
-                console.log('Auto-filled from Expected Delivery:', {deliveryId, product, supplier, qty, unit, po});
-            } else {
-                // Reset to manual entry
-                resetToManualEntry();
-            }
-        });
-    }
-    
-    // Variance detection when quantity changes
-    const quantityInput = document.getElementById('quantityInput');
-    if (quantityInput) {
-        quantityInput.addEventListener('input', checkManualVariance);
-    }
-});
-
-function checkManualVariance() {
-    const linkedId = document.getElementById('linkedDeliveryId').value;
-    
-    if (!linkedId) {
-        // No expected delivery linked - hide variance warning
-        document.getElementById('manualVarianceWarning').style.display = 'none';
-        return;
-    }
-    
-    const actualQty = parseFloat(document.getElementById('quantityInput').value) || 0;
-    const varianceWarning = document.getElementById('manualVarianceWarning');
-    const varianceMessage = document.getElementById('varianceMessage');
-    
-    // Check if variance exists (tolerance of 0.001 for floating point)
-    const diff = actualQty - selectedExpectedQty;
-    if (Math.abs(diff) > 0.001) {
-        varianceMessage.textContent = 'Expected: ' + selectedExpectedQty.toFixed(2) + ' ' + selectedExpectedUnit + 
-                                      ', but you entered: ' + actualQty.toFixed(2) + ' ' + selectedExpectedUnit + 
-                                      '. Variance: ' + diff.toFixed(2) + ' ' + selectedExpectedUnit + '.';
-        varianceWarning.style.display = 'flex';
-    } else {
-        varianceWarning.style.display = 'none';
-    }
-}
-
-function resetToManualEntry() {
-    // Clear linked delivery ID
-    document.getElementById('linkedDeliveryId').value = '';
-    
-    // Reset form to default values
-    document.getElementById('supplierName').value = 'Petron Corporation';
-    document.getElementById('itemName').value = '';
-    document.getElementById('categoryDisplay').value = '';
-    document.getElementById('categoryHidden').value = '';
-    document.getElementById('unitSelect').value = 'pcs';
-    document.getElementById('quantityInput').value = '';
-    
-    // Reset category styling
-    const categoryDisplay = document.getElementById('categoryDisplay');
-    categoryDisplay.style.background = '#f8f9fa';
-    categoryDisplay.style.color = '';
-    categoryDisplay.style.fontWeight = '';
-    categoryDisplay.placeholder = 'Auto-filled from product';
-    
-    // Hide expected info
-    document.getElementById('expectedQtyInfo').style.display = 'none';
-    
-    // Hide variance warning
-    document.getElementById('manualVarianceWarning').style.display = 'none';
-    
-    // Reset expected values
-    selectedExpectedQty = 0;
-    selectedExpectedUnit = '';
-    
-    console.log('Reset to manual entry mode');
-}
-
-// ═══════════════════════════════════════════════════════════
-// ORIGINAL AUTO-CATEGORY HANDLER (EXISTING)
-// ═══════════════════════════════════════════════════════════
 document.addEventListener('input', function(e) {
     if (e.target && e.target.name === 'item_name[]') {
         const selectedItem = e.target.value;

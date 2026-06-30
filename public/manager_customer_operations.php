@@ -64,13 +64,13 @@ function listCustomers() {
     $params = [$station_id];
 
     if ($search !== '') {
-        $where[] = "(c.customer_id LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR c.name LIKE ? OR c.contact_number LIKE ? OR c.company_name LIKE ?)";
+        $where[] = "(CAST(c.id AS CHAR) LIKE ? OR c.name LIKE ? OR c.contact_number LIKE ?)";
         $s = "%$search%";
-        array_push($params, $s, $s, $s, $s, $s, $s);
+        array_push($params, $s, $s, $s);
     }
 
     if ($type !== '') {
-        $where[] = "c.customer_type = ?";
+        $where[] = "c.type = ?";
         $params[] = $type;
     }
 
@@ -89,25 +89,25 @@ function listCustomers() {
     $stmt = $pdo->prepare("
         SELECT
             c.id,
-            c.customer_id,
-            COALESCE(NULLIF(CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.middle_name,''),' ',COALESCE(c.last_name,'')), '  '), c.name) AS display_name,
-            c.first_name,
-            c.middle_name,
-            c.last_name,
+            c.id AS customer_id,
+            c.name AS display_name,
+            c.name AS first_name,
+            '' AS middle_name,
+            '' AS last_name,
             c.name,
             c.contact_number,
-            c.customer_type,
+            c.type AS customer_type,
             c.status,
             c.verification_status,
-            c.outstanding_balance,
+            c.current_balance AS outstanding_balance,
             COALESCE(c.credit_limit, 0) AS credit_limit,
-            c.company_name,
+            '' AS company_name,
             c.gov_id_image,
             c.cr_document,
-            COALESCE(c.registered_at, c.created_at) AS registered_at
+            c.created_at AS registered_at
         FROM customers c
         WHERE $whereClause
-        ORDER BY COALESCE(c.registered_at, c.created_at) DESC
+        ORDER BY c.created_at DESC
     ");
     $stmt->execute($params);
     $allCustomers = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -172,11 +172,11 @@ function listCustomers() {
     $statsStmt = $pdo->prepare("
         SELECT
             COUNT(*)                                                             AS total,
-            SUM(CASE WHEN DATE(COALESCE(registered_at,created_at)) = CURDATE() THEN 1 ELSE 0 END) AS new_today,
-            SUM(CASE WHEN customer_type = 'regular' THEN 1 ELSE 0 END)          AS regular,
-            SUM(CASE WHEN customer_type = 'fleet'   THEN 1 ELSE 0 END)          AS fleet,
-            SUM(CASE WHEN outstanding_balance > 0   THEN 1 ELSE 0 END)          AS outstanding,
-            SUM(CASE WHEN status = 'active'         THEN 1 ELSE 0 END)          AS active
+            SUM(CASE WHEN DATE(created_at) = CURDATE() THEN 1 ELSE 0 END)       AS new_today,
+            SUM(CASE WHEN type = 'cash'   THEN 1 ELSE 0 END)                    AS regular,
+            SUM(CASE WHEN type = 'credit' THEN 1 ELSE 0 END)                    AS fleet,
+            SUM(CASE WHEN current_balance > 0 THEN 1 ELSE 0 END)                AS outstanding,
+            SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END)                  AS active
         FROM customers WHERE station_id = ?
     ");
     $statsStmt->execute([$station_id]);
@@ -203,7 +203,7 @@ function viewCustomer() {
                CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS registered_by_name,
                CONCAT(COALESCE(v.first_name,''), ' ', COALESCE(v.last_name,'')) AS verified_by_name
         FROM customers c
-        LEFT JOIN users u ON c.registered_by = u.id
+        LEFT JOIN users u ON c.verified_by = u.id
         LEFT JOIN users v ON c.verified_by   = v.id
         WHERE c.id = ? AND c.station_id = ?
     ");

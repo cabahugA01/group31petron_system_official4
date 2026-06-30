@@ -1,0 +1,79 @@
+FUEL TANKS - 17 PUMPS CREATED FOR STATION 1
+============================================
+DATE: 2026-06-29
+ISSUE: Fuel transaction page only showing 5 rows instead of 17 tanks
+
+ROOT CAUSE:
+-----------
+Station 1 had NO fuel pumps in the database!
+- fuel_inventory table had 5 fuel types (Diesel, Kerosene, Turbo Diesel, XCS, Xtra Advance)
+- fuel_pumps table had 0 pumps for Station 1
+- The code creates 1 default row per fuel type when no pumps exist
+- Result: Only 5 rows displayed instead of 17
+
+SOLUTION:
+---------
+Created 17 fuel pumps for Station 1, distributed across fuel types as follows:
+
+DIESEL (Type ID: 10) - 7 PUMPS
+  - Pump #1, #2, #3, #4, #5, #6, #7
+
+KEROSENE (Type ID: 14) - 1 PUMP
+  - Pump #8
+
+TURBO DIESEL (Type ID: 11) - 3 PUMPS
+  - Pump #9, #10, #11
+
+XCS (Type ID: 12) - 3 PUMPS
+  - Pump #12, #13, #14
+
+XTRA ADVANCE (Type ID: 13) - 3 PUMPS
+  - Pump #15, #16, #17
+
+TOTAL: 17 PUMPS ✓
+
+HOW IT WORKS:
+-------------
+The staff_transactions_hub.php file:
+1. Queries fuel_inventory to get fuel types for the station
+2. For each fuel type, queries fuel_pumps to get all pumps for that fuel type
+3. Creates one table row per pump
+4. If no pumps exist for a fuel type, creates 1 default row
+
+Now that pumps exist, each pump gets its own row in the fuel transaction form.
+
+FILES CREATED:
+--------------
+1. database/create_station1_fuel_pumps.php
+   - Migration script that creates 17 pumps
+   - Can be re-run safely (won't create duplicates)
+   - Includes verification query
+
+DATABASE CHANGES:
+-----------------
+Table: fuel_pumps
+- Added 17 new records for station_id = 1
+- pump_number: "1" through "17"
+- fuel_type_id: Linked to corresponding fuel type
+- status: "Active"
+- All pumps created with current timestamp
+
+VERIFICATION:
+-------------
+Query from staff_transactions_hub.php now returns:
+- 5 fuel types
+- 17 pumps total
+- Each pump creates 1 table row
+- All 17 rows will display in the fuel transaction form ✓
+
+STATUS: FIXED ✓
+
+NOTE FOR USER:
+--------------
+When you refresh the page (staff_transactions_hub.php?section=fuel), 
+you should now see all 17 tanks/pumps displaying:
+- DIESEL - PUMP 1 through DIESEL - PUMP 7
+- KEROSENE - PUMP 8
+- TURBO DIESEL - PUMP 9, 10, 11
+- XCS - PUMP 12, 13, 14
+- XTRA ADVANCE - PUMP 15, 16, 17

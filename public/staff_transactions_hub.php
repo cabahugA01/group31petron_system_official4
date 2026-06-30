@@ -2550,17 +2550,29 @@ input[list] {
                 ]
             ];
             
+            $rendered_config_keys_forms = []; // Track already-rendered config keys to avoid duplicates
             foreach ($fuel_types as $idx => $ft):
                 $ft_name_form = htmlspecialchars($ft['fuel_type']);
                 $ft_lower = strtolower(trim($ft['fuel_type']));
                 
                 // Get tanker configuration for this fuel type
                 $config_groups_forms = null;
+                $matched_key_forms = null;
                 foreach ($tanker_config_forms as $key => $groups) {
                     if (str_contains($ft_lower, $key)) {
                         $config_groups_forms = $groups;
+                        $matched_key_forms = $key;
                         break;
                     }
+                }
+                
+                // Skip if this config key was already rendered (prevents duplicates when
+                // fuel_inventory has both generic e.g. "Diesel" AND specific e.g. "Diesel 1","Diesel 2")
+                if ($matched_key_forms !== null) {
+                    if (in_array($matched_key_forms, $rendered_config_keys_forms)) {
+                        continue; // already rendered this group, skip
+                    }
+                    $rendered_config_keys_forms[] = $matched_key_forms;
                 }
                 
                 // If no config found, create default single tanker
@@ -2642,17 +2654,29 @@ input[list] {
                         ]
                     ];
                     
+                    $rendered_config_keys_table = []; // Track already-rendered config keys to avoid duplicates
                     foreach ($fuel_types as $idx => $ft):
                         $ft_lower = strtolower(trim($ft['fuel_type']));
                         $price_per_liter = (float)$ft['price_per_liter'];
                         
                         // Get tanker configuration for this fuel type
                         $config_groups = null;
+                        $matched_key_table = null;
                         foreach ($tanker_config as $key => $groups) {
                             if (str_contains($ft_lower, $key)) {
                                 $config_groups = $groups;
+                                $matched_key_table = $key;
                                 break;
                             }
+                        }
+                        
+                        // Skip if this config key was already rendered (prevents duplicates from
+                        // having both generic e.g. "Diesel" and specific e.g. "Diesel 1", "Diesel 2" in fuel_inventory)
+                        if ($matched_key_table !== null) {
+                            if (in_array($matched_key_table, $rendered_config_keys_table)) {
+                                continue; // already rendered this group, skip
+                            }
+                            $rendered_config_keys_table[] = $matched_key_table;
                         }
                         
                         // If no config found, create default single tanker

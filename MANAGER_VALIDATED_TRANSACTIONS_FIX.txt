@@ -1,0 +1,85 @@
+MANAGER VALIDATED TRANSACTIONS - DEBUG LOGGING ADDED
+===================================================
+Date: 2026-06-29
+
+ISSUE: "No Transactions Found" showing even though 1 transaction exists
+
+INVESTIGATION:
+--------------
+- Database check: 1 merchandise_transaction exists for Station 1
+  * TXN-15881 | Juan Dela Cruz | ₱2,408.00 | Cash
+  * Created: 2026-06-29 09:34:11
+  * Type: Combined (Oil Change + Wheel Alignment + products)
+  
+- Query test: The SQL query DOES return the record correctly
+- PHP query works: $rows array should have 1 record
+
+POSSIBLE CAUSES:
+----------------
+1. Browser cache showing old page
+2. JavaScript filtering out the data
+3. Session/permission issue
+4. Date filter accidentally applied
+
+SOLUTION APPLIED:
+-----------------
+Added debug logging to track what's happening:
+- Logs merchandise row count
+- Logs job order row count
+- Logs all rows before filtering
+- Logs final rows after filtering
+- Logs first row data if available
+
+FILE MODIFIED:
+--------------
+public/manager_validated_transactions.php
+- Added error_log statements after line 248
+- Logs will appear in PHP error log
+
+HOW TO DEBUG:
+-------------
+1. Refresh the page: manager_validated_transactions.php
+2. Check PHP error log (usually in xampp/apache/logs/error.log)
+3. Look for lines starting with "Manager Validated Transactions"
+
+EXPECTED LOG OUTPUT:
+--------------------
+Manager Validated Transactions - Station 1 - User: Edgar (manager)
+  Merchandise rows: 1
+  Job order rows: 0
+  All rows before filter: 1
+  Final rows after filter: 1
+  First row: {"row_id":54,"txn_id":"TXN-15881",...}
+
+IF STILL NOT SHOWING:
+---------------------
+1. Hard refresh: Ctrl + Shift + R
+2. Clear browser cache
+3. Check console for JavaScript errors (F12)
+4. Verify you're logged in as Edgar (Manager) at Station 1
+5. Check if any date filters are applied in URL
+
+VERIFICATION STEPS:
+-------------------
+1. Access URL: http://localhost/.../manager_validated_transactions.php
+2. Should see summary cards:
+   - Total Transactions: 1
+   - Merchandise: 1
+   - Job Orders: 0
+   - Paid: 1
+   - Unpaid/Partial: 0
+   - Total Amount: ₱2,408.00
+
+3. Table should show:
+   TXN-15881 | Juan Dela Cruz | Combined | Oil Change, Wheel Alignment, etc. 
+   ₱2,408.00 | Cash | Paid | Judy User | Jun 29, 2026
+
+NEXT STEPS:
+-----------
+After refreshing the page:
+1. If it shows "No Transactions Found", check the error log
+2. The log will tell us which step is filtering out the data
+3. We can then fix the specific filter/condition causing the issue
+
+STATUS: DEBUG LOGGING ADDED
+Refresh page and check error log to continue debugging.

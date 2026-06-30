@@ -1,0 +1,102 @@
+===============================================
+FIXED: customer_id Column Not Found Error
+===============================================
+
+ERROR MESSAGE:
+-------------
+Failed to load customers: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'c.customer_id' in 'field list'
+From: staff_customer_list.php (and other customer pages)
+
+ROOT CAUSE:
+-----------
+Multiple customer operation files were referencing columns that don't exist in the customers table:
+
+REFERENCED (WRONG):          ACTUAL COLUMN IN DB:
+- c.customer_id          →   c.id
+- c.first_name           →   c.name
+- c.middle_name          →   (doesn't exist)
+- c.last_name            →   (doesn't exist)
+- c.customer_type        →   c.type
+- c.registered_at        →   c.created_at
+- c.outstanding_balance  →   c.current_balance
+- c.company_name         →   (doesn't exist)
+- c.registered_by        →   c.verified_by
+
+The customers table structure:
+- id (primary key)
+- name (full customer name)
+- contact_number
+- contact_person
+- type (enum: 'cash', 'credit')
+- status (enum: 'active', 'suspended', 'inactive')
+- current_balance
+- credit_limit
+- station_id
+- created_at
+- verified_by
+- etc.
+
+SOLUTION:
+---------
+Fixed all customer operation and export files to use correct column names:
+
+FILES MODIFIED:
+---------------
+1. public/staff_customer_operations.php
+   - Fixed search condition: c.customer_id → CAST(c.id AS CHAR)
+   - Fixed type filter: c.customer_type → c.type
+   - Fixed date filters: c.registered_at → c.created_at
+   - Fixed SELECT: Added aliases to map to expected column names
+   - Fixed stats query: c.customer_type → c.type, c.registered_at → c.created_at
+
+2. public/manager_customer_operations.php
+   - Fixed search condition (removed non-existent columns)
+   - Fixed type filter: c.customer_type → c.type
+   - Fixed SELECT query with proper aliases
+   - Used c.name for display, c.current_balance for outstanding_balance
+
+3. public/admin_customer_operations.php
+   - Fixed search condition (simplified to existing columns)
+   - Fixed type filter: c.customer_type → c.type
+   - Fixed date filters: c.registered_at → c.created_at
+   - Fixed SELECT query with proper column references
+   - Changed c.registered_by → c.verified_by
+
+4. public/manager_customer_export.php
+   - Fixed all column references for export functionality
+   - Updated to use correct database schema
+
+5. public/admin_customer_export.php
+   - Fixed all column references for export functionality
+   - Updated registered_by → verified_by
+
+ALIASES USED:
+-------------
+To maintain compatibility with frontend JavaScript code expecting certain field names:
+- c.id AS customer_id (so frontend can still use c.customer_id)
+- c.name AS display_name (full customer name)
+- c.name AS first_name (for compatibility)
+- '' AS middle_name (empty string)
+- '' AS last_name (empty string)
+- c.type AS customer_type (to match frontend expectations)
+- c.created_at AS registered_at (to match frontend expectations)
+- c.current_balance AS outstanding_balance (for manager module)
+
+VERIFICATION:
+-------------
+All customer list pages should now load without SQL errors:
+✓ Staff Customer List (staff_customer_list.php)
+✓ Manager Customer Management (manager_customers.php)
+✓ Admin Customer Oversight (admin_customers.php)
+✓ All customer export functions (Excel/PDF/CSV)
+
+NOTES:
+------
+- The customers table uses a simple structure with 'name' for full customer name
+- No separate first_name/middle_name/last_name fields exist
+- Type is enum('cash', 'credit') not 'regular', 'fleet', etc.
+- Primary registration timestamp is 'created_at'
+- User who verified/registered customer is in 'verified_by' column
+
+STATUS: FIXED ✓
+Date: <?php echo date('Y-m-d H:i:s'); ?>

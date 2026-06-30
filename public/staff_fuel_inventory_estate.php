@@ -1,12 +1,11 @@
 ﻿<?php
 // ============================================================
-// Fuel Inventory Estate View
+// 17-Tanker Fuel Inventory Estate View
 // Shows: Beginning + Purchases = Total Available - Sales - Calibration = Ending Balance
 // Compare with Actual Dip Reading → Variance & Status
 // ============================================================
 $page_id = 'fuel_inventory_estate';
 require_once __DIR__ . '/../backend/lib.php';
-require_once __DIR__ . '/../backend/inventory_data.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
 
@@ -19,19 +18,38 @@ if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 
     exit;
 }
 
-// Build fuel rows from the live station inventory.
-$TANK_CONFIG_17 = inventory_get_fuel_tank_config($pdo, (int)$station_id);
+// ── 17-Tanker Configuration ──
+$TANK_CONFIG_17 = [
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 1',     'tank'=>'Underground Tank #1',  'tanker_num'=>1],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 2',     'tank'=>'Underground Tank #2',  'tanker_num'=>2],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 3',     'tank'=>'Underground Tank #3',  'tanker_num'=>3],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 4',     'tank'=>'Underground Tank #4',  'tanker_num'=>4],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 5',     'tank'=>'Underground Tank #5',  'tanker_num'=>5],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 6',     'tank'=>'Underground Tank #6',  'tanker_num'=>6],
+    ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'Underground Tank #7',  'tanker_num'=>1],
+    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'Underground Tank #8',  'tanker_num'=>1],
+    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 2', 'tank'=>'Underground Tank #9',  'tanker_num'=>2],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'Underground Tank #10', 'tanker_num'=>1],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 2',     'tank'=>'Underground Tank #11', 'tanker_num'=>2],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 3',     'tank'=>'Underground Tank #12', 'tanker_num'=>3],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 4',     'tank'=>'Underground Tank #13', 'tanker_num'=>4],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 1',   'tank'=>'Underground Tank #14', 'tanker_num'=>1],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 2',   'tank'=>'Underground Tank #15', 'tanker_num'=>2],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 3',   'tank'=>'Underground Tank #16', 'tanker_num'=>3],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 4',   'tank'=>'Underground Tank #17', 'tanker_num'=>4],
+];
 
-// Fetch inventory data for each live fuel record.
+// ── Fetch inventory data for each tanker ──
 $tanker_data = [];
 foreach ($TANK_CONFIG_17 as $tank) {
     $fuel_key = strtolower(trim($tank['fuel_type']));
     
     try {
-        // Get live fuel inventory for this station/type.
+        // Get pump master inventory for beginning balance
         $stmt = $pdo->prepare("
-            SELECT current_level, current_stock, capacity, latest_calibration, last_updated
-            FROM fuel_inventory
+            SELECT beginning_balance, latest_calibration, current_balance, actual_dip_reading,
+                   last_dip_date, updated_at
+            FROM pump_master_inventory
             WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = ?
             LIMIT 1
         ");
@@ -44,7 +62,7 @@ foreach ($TANK_CONFIG_17 as $tank) {
             FROM fuel_deliveries
             WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = ?
               AND DATE(delivery_date) = CURDATE()
-              AND LOWER(status) IN ('verified','finalized','approved','completed','received')
+              AND status = 'Verified'
         ");
         $stmt_purchases->execute([$station_id, $fuel_key]);
         $purchases = (float)$stmt_purchases->fetchColumn();
@@ -55,7 +73,7 @@ foreach ($TANK_CONFIG_17 as $tank) {
             FROM fuel_transactions
             WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = ?
               AND DATE(transaction_date) = CURDATE()
-              AND LOWER(status) IN ('validated','verified','approved','completed')
+              AND status = 'Validated'
         ");
         $stmt_sales->execute([$station_id, $fuel_key]);
         $sales = (float)$stmt_sales->fetchColumn();
@@ -67,16 +85,15 @@ foreach ($TANK_CONFIG_17 as $tank) {
             WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = ?
               AND DATE(adjustment_date) = CURDATE()
               AND adjustment_type = 'calibration'
-              AND LOWER(COALESCE(status, 'approved')) IN ('approved','completed')
         ");
         $stmt_cal->execute([$station_id, $fuel_key]);
         $calibration = (float)$stmt_cal->fetchColumn();
         
         // Calculate inventory flow
-        $ending_balance = (float)($inv['current_level'] ?? $inv['current_stock'] ?? $tank['current_level'] ?? 0);
-        $beginning = max(0, $ending_balance - $purchases + $sales + $calibration);
+        $beginning = (float)($inv['beginning_balance'] ?? 0);
         $total_available = $beginning + $purchases;
-        $actual_dip = $ending_balance;
+        $ending_balance = $total_available - $sales - $calibration;
+        $actual_dip = (float)($inv['actual_dip_reading'] ?? $ending_balance);
         $variance = $actual_dip - $ending_balance;
         
         // Determine status based on variance
@@ -104,7 +121,7 @@ foreach ($TANK_CONFIG_17 as $tank) {
             'variance'        => $variance,
             'status'          => $status,
             'status_color'    => $status_color,
-            'last_dip_date'   => $inv['last_updated'] ?? $tank['last_updated'] ?? null,
+            'last_dip_date'   => $inv['last_dip_date'] ?? null,
         ];
         
     } catch (Exception $e) {
@@ -132,7 +149,7 @@ foreach ($TANK_CONFIG_17 as $tank) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fuel Inventory Estate - Petron Management System</title>
+    <title>17-Tanker Fuel Inventory Estate - Petron Management System</title>
     <link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="../assets/css/style.css">
 </head>
@@ -184,7 +201,7 @@ foreach ($TANK_CONFIG_17 as $tank) {
 
 <div class="estate-head">
     <div>
-        <h1><i class="fas fa-gas-pump"></i> Fuel Inventory Estate</h1>
+        <h1><i class="fas fa-gas-pump"></i> 17-Tanker Fuel Inventory Estate</h1>
         <div class="estate-subtitle">BEGINNING + PURCHASES - SALES - CALIBRATION = ENDING vs ACTUAL DIP</div>
     </div>
     <div class="estate-actions">
@@ -194,7 +211,7 @@ foreach ($TANK_CONFIG_17 as $tank) {
 
 <div class="estate-card">
     <div class="estate-card-hd">
-        <h3 class="estate-card-title"><i class="fas fa-table"></i> Fuel Inventory Flow (Today: <?= date('M d, Y') ?>)</h3>
+        <h3 class="estate-card-title"><i class="fas fa-table"></i> 17 Tanker Inventory Flow (Today: <?= date('M d, Y') ?>)</h3>
         <span style="font-size:11px;color:#64748b;">Real-time inventory tracking with variance detection</span>
     </div>
     <div class="estate-tbl-wrap">
@@ -202,7 +219,7 @@ foreach ($TANK_CONFIG_17 as $tank) {
             <thead>
                 <tr>
                     <th>Fuel Type</th>
-                    <th>Inventory Reference</th>
+                    <th>Tanker Reference</th>
                     <th class="r">Beginning</th>
                     <th class="r">Purchases</th>
                     <th class="r">Total Available</th>
@@ -303,7 +320,7 @@ function exportCSV(){
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'Fuel_Inventory_' + new Date().toISOString().split('T')[0] + '.csv';
+    a.download = '17_Tanker_Inventory_' + new Date().toISOString().split('T')[0] + '.csv';
     a.click();
     window.URL.revokeObjectURL(url);
 }

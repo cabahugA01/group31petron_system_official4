@@ -25,11 +25,11 @@ try {
             if ($shift === 1) {
                 $shift_start = "$today 06:00:00";
                 $shift_end = "$today 14:00:00";
-                $shift_filter = " AND (u.assigned_shift LIKE '%Shift 1%' OR u.assigned_shift = '1')";
+                $shift_filter = " AND (u.assigned_shift LIKE '%Shift 1%' OR u.assigned_shift = '1' OR u.assigned_shift LIKE '%All Shifts%' OR u.assigned_shift IS NULL OR u.assigned_shift = '')";
             } elseif ($shift === 2) {
                 $shift_start = "$today 14:00:00";
                 $shift_end = "$today 23:59:59";
-                $shift_filter = " AND (u.assigned_shift LIKE '%Shift 2%' OR u.assigned_shift = '2')";
+                $shift_filter = " AND (u.assigned_shift LIKE '%Shift 2%' OR u.assigned_shift = '2' OR u.assigned_shift LIKE '%All Shifts%' OR u.assigned_shift IS NULL OR u.assigned_shift = '')";
             } else {
                 $shift_start = "$today 00:00:00";
                 $shift_end = "$today 23:59:59";
@@ -47,7 +47,6 @@ try {
                     u.email,
                     u.station_id,
                     u.role as assigned_role,
-                    u.shift_assignment,
                     s.name as station_name,
                     u.status as account_status,
                     '' as remarks,

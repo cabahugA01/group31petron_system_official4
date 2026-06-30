@@ -505,8 +505,6 @@ $user_list_columns = "
     u.status,
     u.created_at,
     u.updated_at,
-    u.profile_picture,
-    u.name,
     s.name AS station_name
 ";
 

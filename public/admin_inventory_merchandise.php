@@ -68,9 +68,7 @@ if (isset($_GET['print_id'])) {
                ip.supplier
         FROM inventory_products ip
         LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-        WHERE ip.id = ?
-          AND LOWER(COALESCE(ip.category, '')) <> 'fuel'
-          AND LOWER(COALESCE(ip.status, 'active')) <> 'inactive'
+        WHERE ip.id = ? AND ip.category NOT IN ('Fuel')
     ");
     $stmt->execute([$station_id, $print_id]);
     $item = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -255,7 +253,7 @@ $date_to        = trim($_GET['date_to'] ?? '');
 // ── Fetch dynamic categories for dropdown ────────────────────
 $all_categories = [];
 try {
-    $cat_stmt = $pdo->query("SELECT DISTINCT category FROM inventory_products WHERE LOWER(COALESCE(category, '')) <> 'fuel' AND category IS NOT NULL AND category != '' ORDER BY category");
+    $cat_stmt = $pdo->query("SELECT DISTINCT category FROM inventory_products WHERE category NOT IN ('Fuel') AND category IS NOT NULL AND category != '' ORDER BY category");
     $all_categories = $cat_stmt->fetchAll(PDO::FETCH_COLUMN);
 } catch (Exception $e) {}
 
@@ -280,8 +278,7 @@ try {
         FROM inventory_products ip
         LEFT JOIN station_inventory si
                ON si.product_id = ip.id AND si.station_id = ?
-        WHERE LOWER(COALESCE(ip.category, '')) <> 'fuel'
-          AND LOWER(COALESCE(ip.status, 'active')) <> 'inactive'
+        WHERE ip.category NOT IN ('Fuel')
         ORDER BY ip.category, ip.product_name
     ");
     $stmt->execute([$station_id]);

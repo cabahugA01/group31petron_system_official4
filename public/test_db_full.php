@@ -1,0 +1,120 @@
+<?php
+// Comprehensive database test
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+echo "<h2>Full Database Diagnostic</h2>";
+
+$host = "localhost";
+$dbname = "petron_pos_db_secure";
+$user = "root";
+$pass = "";
+
+try {
+    $pdo = new PDO(
+        "mysql:host=$host;dbname=$dbname;charset=utf8mb4",
+        $user,
+        $pass,
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+    );
+    echo "<p style='color:green;'>✅ Connected to database</p>";
+    
+    // Get all tables
+    $tables = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
+    echo "<h3>Found " . count($tables) . " tables</h3>";
+    
+    // Check each table
+    echo "<table border='1' cellpadding='5' style='border-collapse:collapse;'>";
+    echo "<tr><th>Table</th><th>Engine</th><th>Rows</th><th>Status</th></tr>";
+    
+    foreach ($tables as $table) {
+        try {
+            // Get engine
+            $engineQuery = $pdo->query("SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA='$dbname' AND TABLE_NAME='$table'");
+            $engine = $engineQuery->fetchColumn();
+            
+            // Count rows
+            $countQuery = $pdo->query("SELECT COUNT(*) FROM `$table`");
+            $rows = $countQuery->fetchColumn();
+            
+            $status = "✅ OK";
+            $color = "green";
+            
+            if ($engine === 'MEMORY') {
+                $status = "⚠️ MEMORY (will lose data!)";
+                $color = "orange";
+            }
+            
+            echo "<tr>";
+            echo "<td><strong>$table</strong></td>";
+            echo "<td>$engine</td>";
+            echo "<td>$rows</td>";
+            echo "<td style='color:$color;'>$status</td>";
+            echo "</tr>";
+            
+        } catch (Exception $e) {
+            echo "<tr>";
+            echo "<td><strong>$table</strong></td>";
+            echo "<td colspan='3' style='color:red;'>❌ ERROR: " . $e->getMessage() . "</td>";
+            echo "</tr>";
+        }
+    }
+    echo "</table>";
+    
+    // Test critical queries that login uses
+    echo "<hr><h3>Testing Login Queries</h3>";
+    
+    try {
+        echo "<p>1. Testing SHOW COLUMNS FROM users...</p>";
+        $cols = $pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_ASSOC);
+        echo "<p style='color:green;'>✅ Success - Found " . count($cols) . " columns</p>";
+        
+        echo "<p>2. Testing SELECT from users...</p>";
+        $userTest = $pdo->query("SELECT id, username, role, status FROM users LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        if ($userTest) {
+            echo "<p style='color:green;'>✅ Success - Can read user data</p>";
+            echo "<pre>";
+            print_r($userTest);
+            echo "</pre>";
+        } else {
+            echo "<p style='color:orange;'>⚠️ No users found</p>";
+        }
+        
+        echo "<p>3. Testing login_attempts table...</p>";
+        $pdo->query("SELECT COUNT(*) FROM login_attempts")->fetchColumn();
+        echo "<p style='color:green;'>✅ login_attempts table OK</p>";
+        
+    } catch (Exception $e) {
+        echo "<p style='color:red;'>❌ Query Error: " . $e->getMessage() . "</p>";
+        echo "<p><strong>Error Code:</strong> " . $e->getCode() . "</p>";
+    }
+    
+    echo "<hr><h3>Summary</h3>";
+    echo "<p>If all tables show OK and queries work, then login should work.</p>";
+    echo "<p>If you see MEMORY engine warnings, run FIX_DATABASE_ENGINE.sql</p>";
+    echo "<p><a href='test_db.php'>Back to Simple Test</a> | <a href='login.php'>Try Login</a></p>";
+    
+} catch (PDOException $e) {
+    echo "<p style='color:red; font-size:18px;'><strong>❌ FATAL ERROR</strong></p>";
+    echo "<p style='color:red;'>Message: " . $e->getMessage() . "</p>";
+    echo "<p>Error Code: " . $e->getCode() . "</p>";
+    
+    if ($e->getCode() == 1932) {
+        echo "<hr>";
+        echo "<h3 style='color:red;'>CORRUPTED TABLE DETECTED (Error 1932)</h3>";
+        echo "<p><strong>This means:</strong> Table exists but data files are missing or corrupted.</p>";
+        echo "<p><strong>SOLUTION:</strong></p>";
+        echo "<ol>";
+        echo "<li>Run <strong>RESTORE_NOW.bat</strong> to restore from backup</li>";
+        echo "<li>OR manually import in phpMyAdmin:";
+        echo "<ul>";
+        echo "<li>Open phpMyAdmin</li>";
+        echo "<li>Drop database: petron_pos_db_secure</li>";
+        echo "<li>Create new database: petron_pos_db_secure</li>";
+        echo "<li>Import: database/petron_pos_db_secure.sql</li>";
+        echo "</ul>";
+        echo "</li>";
+        echo "</ol>";
+    }
+}
+?>

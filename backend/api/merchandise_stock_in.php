@@ -199,7 +199,7 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
                 ip.category
             FROM deliveries_oversight do2
             LEFT JOIN inventory_products ip 
-                   ON ip.product_name = do2.product AND LOWER(COALESCE(ip.category, '')) <> 'fuel'
+                   ON ip.product_name = do2.product AND ip.category != 'Fuel'
             WHERE do2.id = ? AND do2.station_id = ?
               AND do2.delivery_type = 'merchandise'
               AND do2.status IN ('Ready for Stock-In', 'Validated', 'Partial Delivery', 'Damaged Items')
@@ -226,7 +226,7 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
             SELECT po.*, ip.id AS product_id, ip.sku, ip.category
             FROM purchase_orders po
             LEFT JOIN inventory_products ip
-                   ON ip.product_name = po.product_name AND LOWER(COALESCE(ip.category, '')) <> 'fuel'
+                   ON ip.product_name = po.product_name AND ip.category != 'Fuel'
             WHERE po.id = ? AND po.station_id = ?
               AND po.type = 'merch'
               AND po.admin_finalized    = 1
@@ -253,7 +253,7 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
     $product_id = (int)($po['product_id'] ?? 0);
     if ($product_id <= 0) {
         // Try to find product by name
-        $ps = $pdo->prepare("SELECT id FROM inventory_products WHERE product_name = ? AND LOWER(COALESCE(category, '')) <> 'fuel' LIMIT 1");
+        $ps = $pdo->prepare("SELECT id FROM inventory_products WHERE product_name = ? AND category != 'Fuel' LIMIT 1");
         $ps->execute([$po['product_name']]);
         $product_id = (int)($ps->fetchColumn() ?: 0);
     }
@@ -337,29 +337,6 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
                     $pdo->prepare("UPDATE inventory_products SET stock = stock + ? WHERE id = ?")
                         ->execute([$qty_to_add, $item_product_id]);
                 } catch (Exception $e) {}
-
-                try {
-                    $movement_ref_id = $delivery_id > 0 ? $delivery_id : $po_id;
-                    $movement_ref_type = $delivery_id > 0 ? 'deliveries_oversight' : 'purchase_orders';
-                    $pdo->prepare("
-                        INSERT INTO inventory_logs
-                            (station_id, product_id, user_id, action, quantity_before, quantity_after,
-                             quantity_change, reference_type, reference_id, notes, created_at)
-                        VALUES (?, ?, ?, 'Stock-In', ?, ?, ?, ?, ?, ?, NOW())
-                    ")->execute([
-                        $station_id,
-                        $item_product_id,
-                        $me['id'],
-                        $stock_before,
-                        $stock_after,
-                        $qty_to_add,
-                        $movement_ref_type,
-                        $movement_ref_id,
-                        "Stock-In batch {$effective_batch_id}; condition {$condition}"
-                    ]);
-                } catch (Exception $e) {
-                    error_log("inventory_logs stock-in insert warning: " . $e->getMessage());
-                }
             }
 
             // Record stock-in entry

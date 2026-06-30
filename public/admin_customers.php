@@ -174,17 +174,17 @@ require_once __DIR__ . '/../partials/header.php';
             </div>
         </div>
         <div class="summary-card">
-            <div class="summary-icon bg-info-dark"><i class="fas fa-star"></i></div>
+            <div class="summary-icon bg-info-dark"><i class="fas fa-money-bill-wave"></i></div>
             <div class="summary-info">
-                <h4 id="stat-regular">0</h4>
-                <p>Regulars</p>
+                <h4 id="stat-cash">0</h4>
+                <p>Cash Customers</p>
             </div>
         </div>
         <div class="summary-card">
-            <div class="summary-icon bg-warning-dark"><i class="fas fa-building"></i></div>
+            <div class="summary-icon bg-warning-dark"><i class="fas fa-credit-card"></i></div>
             <div class="summary-info">
-                <h4 id="stat-fleet">0</h4>
-                <p>Fleets</p>
+                <h4 id="stat-credit">0</h4>
+                <p>Credit Accounts</p>
             </div>
         </div>
         <div class="summary-card">
@@ -205,19 +205,18 @@ require_once __DIR__ . '/../partials/header.php';
 
     <!-- Search & Filter Panel - Professional Horizontal Layout -->
     <div class="filter-bar">
-        <!-- Row 1: Search (wide) + 3 Dropdowns -->
+        <!-- Row 1: Search (wide) + 2 Dropdowns -->
         <div class="filter-row-top">
             <div class="filter-group">
                 <label>Search Customer</label>
-                <input type="text" id="filter-search" placeholder="Customer ID / Name / Contact Number...">
+                <input type="text" id="filter-search" placeholder="Name / Contact Number...">
             </div>
             <div class="filter-group">
                 <label>Customer Type</label>
                 <select id="filter-type">
                     <option value="">All Types</option>
-                    <option value="walk-in">Walk-in</option>
-                    <option value="regular">Regular</option>
-                    <option value="fleet">Fleet / Company</option>
+                    <option value="cash">Cash</option>
+                    <option value="credit">Credit</option>
                 </select>
             </div>
             <div class="filter-group">
@@ -230,11 +229,7 @@ require_once __DIR__ . '/../partials/header.php';
                 </select>
             </div>
             <div class="filter-group">
-                <label>Registered By</label>
-                <select id="filter-registered-by">
-                    <option value="">All Staff</option>
-                    <!-- Populated dynamically -->
-                </select>
+                <!-- Empty space for alignment -->
             </div>
         </div>
         
@@ -283,11 +278,9 @@ require_once __DIR__ . '/../partials/header.php';
             <table class="cust-table">
                 <thead>
                     <tr>
-                        <th>Customer ID</th>
                         <th>Customer Name</th>
-                        <th>Customer Type</th>
                         <th>Contact Number</th>
-                        <th>Registered By</th>
+                        <th>Customer Type</th>
                         <th>Date Registered</th>
                         <th>Last Transaction</th>
                         <th>Status</th>
@@ -317,13 +310,11 @@ require_once __DIR__ . '/../partials/header.php';
                 <!-- Customer Details Block -->
                 <div class="info-block">
                     <h4><i class="fas fa-info-circle"></i> Customer Information</h4>
-                    <div class="info-row"><span class="label">Customer ID</span><span class="value" id="info-id">-</span></div>
-                    <div class="info-row"><span class="label">Full Name</span><span class="value" id="info-name">-</span></div>
+                    <div class="info-row"><span class="label">Customer Name</span><span class="value" id="info-name">-</span></div>
                     <div class="info-row"><span class="label">Contact Number</span><span class="value" id="info-contact">-</span></div>
                     <div class="info-row"><span class="label">Address</span><span class="value" id="info-address">-</span></div>
                     <div class="info-row"><span class="label">Customer Type</span><span class="value" id="info-type">-</span></div>
                     <div class="info-row"><span class="label">Date Registered</span><span class="value" id="info-registered">-</span></div>
-                    <div class="info-row"><span class="label">Registered By</span><span class="value" id="info-by">-</span></div>
                     <div class="info-row"><span class="label">Status</span><span class="value" id="info-status">-</span></div>
                 </div>
 
@@ -333,7 +324,6 @@ require_once __DIR__ . '/../partials/header.php';
                         <h4><i class="fas fa-chart-line"></i> Transaction Summary</h4>
                         <div class="info-row"><span class="label">Total Merchandise Transactions</span><span class="value" id="sum-merch-count">0</span></div>
                         <div class="info-row"><span class="label">Total Job Orders</span><span class="value" id="sum-jo-count">0</span></div>
-                        <div class="info-row"><span class="label">Total Fuel Transactions</span><span class="value" id="sum-fuel-count">0</span></div>
                         <div class="info-row"><span class="label">Total Amount Spent</span><span class="value" style="font-weight:700; color:#0f172a;" id="sum-total-spent">₱0.00</span></div>
                         <div class="info-row"><span class="label">Last Transaction Date</span><span class="value" id="sum-last-txn">-</span></div>
                         <div class="info-row"><span class="label">Outstanding Balance</span><span class="value" style="color:#b91c1c; font-weight:700;" id="info-outstanding">₱0.00</span></div>
@@ -353,17 +343,6 @@ require_once __DIR__ . '/../partials/header.php';
                 </div>
             </div>
 
-            <!-- Fleet / Company Information (Conditionally Rendered) -->
-            <div class="info-block" id="fleet-info-block" style="margin-top:16px; display:none;">
-                <h4><i class="fas fa-building"></i> Fleet / Company Information</h4>
-                <div class="info-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:10px 20px;">
-                    <div class="info-row"><span class="label">Company Name</span><span class="value" id="fleet-company">-</span></div>
-                    <div class="info-row"><span class="label">Company Address</span><span class="value" id="fleet-address">-</span></div>
-                    <div class="info-row"><span class="label">Contact Person</span><span class="value" id="fleet-person">-</span></div>
-                    <div class="info-row"><span class="label">Contact Number</span><span class="value" id="fleet-contact">-</span></div>
-                </div>
-            </div>
-
             <!-- Transaction History Section with Independent Filters & Pagination -->
             <div class="txn-history-wrap">
                 <div class="txn-history-hdr">
@@ -378,13 +357,12 @@ require_once __DIR__ . '/../partials/header.php';
                         <option value="">All Modules</option>
                         <option value="Merchandise">Merchandise</option>
                         <option value="Job Order">Job Order</option>
-                        <option value="Fuel">Fuel</option>
                     </select>
                     <select id="hist-status">
                         <option value="">All Statuses</option>
                         <option value="Completed">Completed</option>
                         <option value="Pending">Pending</option>
-                        <option value="Voided">Voided</option>
+                        <option value="Approved">Approved</option>
                         <option value="Rejected">Rejected</option>
                     </select>
                     <input type="date" id="hist-date-from" placeholder="From Date">
@@ -456,14 +434,12 @@ require_once __DIR__ . '/../partials/header.php';
 </div>
 
 <script>
-    // Module States
     let customersList = [];
     let activeCustomerId = null;
     let historyPage = 1;
     let historyTotalPages = 1;
 
     document.addEventListener('DOMContentLoaded', () => {
-        loadStaffFilter();
         loadCustomers();
     });
 
@@ -493,37 +469,48 @@ require_once __DIR__ . '/../partials/header.php';
         setTimeout(() => t.remove(), 3500);
     }
 
-    // Load filter list of staff
-    function loadStaffFilter() {
-        fetch('admin_customer_operations.php?action=get_staff_list')
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    const sel = document.getElementById('filter-registered-by');
-                    data.staff.forEach(s => {
-                        const opt = document.createElement('option');
-                        opt.value = s.id;
-                        opt.textContent = s.name;
-                        sel.appendChild(opt);
-                    });
-                }
-            }).catch(err => console.error(err));
-    }
-
     // Load customers and summary cards
     function loadCustomers() {
         const tbody = document.getElementById('cust-tbody');
-        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:30px; color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading customer records...</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:30px; color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading customer records...</td></tr>`;
 
         const params = new URLSearchParams({
             action: 'list',
             search: document.getElementById('filter-search').value,
             type: document.getElementById('filter-type').value,
             status: document.getElementById('filter-status').value,
-            registered_by: document.getElementById('filter-registered-by').value,
             date_reg_from: document.getElementById('filter-reg-from').value,
             date_reg_to: document.getElementById('filter-reg-to').value,
             date_tx_from: document.getElementById('filter-tx-from').value,
+            date_tx_to: document.getElementById('filter-tx-to').value
+        });
+
+        fetch(`admin_customer_operations.php?${params.toString()}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    showToast(data.error || 'Failed to fetch customers', 'error');
+                    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#dc2626;">Error: ${data.error}</td></tr>`;
+                    return;
+                }
+                
+                customersList = data.customers;
+                
+                // Update stats
+                document.getElementById('stat-total').textContent = data.stats.total_customers;
+                document.getElementById('stat-new').textContent = data.stats.new_registered;
+                document.getElementById('stat-cash').textContent = data.stats.cash_customers;
+                document.getElementById('stat-credit').textContent = data.stats.credit_customers;
+                document.getElementById('stat-active').textContent = data.stats.active_customers;
+                document.getElementById('stat-inactive').textContent = data.stats.inactive_customers;
+
+                renderTable(data.customers);
+            })
+            .catch(err => {
+                console.error(err);
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#dc2626;">Connection error.</td></tr>`;
+            });
+    }ue,
             date_tx_to: document.getElementById('filter-tx-to').value
         });
 
@@ -559,22 +546,20 @@ require_once __DIR__ . '/../partials/header.php';
         document.getElementById('count-label').textContent = `${list.length} records found`;
 
         if (!list.length) {
-            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:40px; color:#94a3b8;"><i class="fas fa-users-slash" style="font-size:24px; margin-bottom:8px; display:block;"></i>No customers found matching filters.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:40px; color:#94a3b8;"><i class="fas fa-users-slash" style="font-size:24px; margin-bottom:8px; display:block;"></i>No customers found matching filters.</td></tr>`;
             return;
         }
 
         tbody.innerHTML = list.map(c => {
-            const typeBadge = {'walk-in':'badge-walk-in', 'regular':'badge-regular', 'fleet':'badge-fleet'}[c.customer_type] || 'badge-walk-in';
+            const typeBadge = {'cash':'badge-walk-in', 'credit':'badge-regular'}[c.customer_type] || 'badge-walk-in';
             const statusBadge = {'active':'badge-active', 'inactive':'badge-inactive', 'suspended':'badge-inactive'}[c.status] || 'badge-inactive';
             const nameDisplay = c.display_name || 'Unnamed Customer';
             const lastTx = c.last_transaction_date ? fmtDate(c.last_transaction_date) : '<span style="color:#94a3b8;">None</span>';
 
             return `<tr>
-                <td><strong>${esc(c.customer_id)}</strong></td>
-                <td>${esc(nameDisplay)}</td>
+                <td><strong>${esc(nameDisplay)}</strong></td>
+                <td>${esc(c.contact_number || 'N/A')}</td>
                 <td><span class="badge ${typeBadge}">${c.customer_type}</span></td>
-                <td>${esc(c.contact_number)}</td>
-                <td>${esc(c.registered_by_name || 'System')}</td>
                 <td>${fmtDate(c.registered_at)}</td>
                 <td>${lastTx}</td>
                 <td><span class="badge ${statusBadge}">${c.status}</span></td>
@@ -592,7 +577,6 @@ require_once __DIR__ . '/../partials/header.php';
         document.getElementById('filter-search').value = '';
         document.getElementById('filter-type').value = '';
         document.getElementById('filter-status').value = '';
-        document.getElementById('filter-registered-by').value = '';
         document.getElementById('filter-reg-from').value = '';
         document.getElementById('filter-reg-to').value = '';
         document.getElementById('filter-tx-from').value = '';
@@ -607,7 +591,6 @@ require_once __DIR__ . '/../partials/header.php';
             search: document.getElementById('filter-search').value,
             type: document.getElementById('filter-type').value,
             status: document.getElementById('filter-status').value,
-            registered_by: document.getElementById('filter-registered-by').value,
             date_reg_from: document.getElementById('filter-reg-from').value,
             date_reg_to: document.getElementById('filter-reg-to').value,
             date_tx_from: document.getElementById('filter-tx-from').value,
@@ -631,58 +614,35 @@ require_once __DIR__ . '/../partials/header.php';
                 const c = data.customer;
                 const sum = data.summary;
 
-                const nameDisplay = c.first_name ? [c.first_name, c.middle_name, c.last_name].filter(Boolean).join(' ') : c.name;
+                const nameDisplay = c.name || 'Unnamed Customer';
 
                 // Bind fields
                 document.getElementById('prof-name').textContent = nameDisplay;
-                document.getElementById('prof-id-badge').textContent = `${c.customer_id} | ${c.customer_type.toUpperCase()}`;
+                document.getElementById('prof-id-badge').textContent = `${c.type.toUpperCase()} CUSTOMER`;
 
-                document.getElementById('info-id').textContent = c.customer_id;
                 document.getElementById('info-name').textContent = nameDisplay;
-                document.getElementById('info-contact').textContent = c.contact_number || 'N/A';
+                document.getElementById('info-contact').textContent = c.contact_number || c.phone || 'N/A';
                 document.getElementById('info-address').textContent = c.address || 'N/A';
-                document.getElementById('info-type').textContent = c.customer_type.toUpperCase();
-                document.getElementById('info-registered').textContent = fmtDate(c.registered_at);
-                document.getElementById('info-by').textContent = data.customer.registered_by_name || 'System';
+                document.getElementById('info-type').textContent = c.type.toUpperCase();
+                document.getElementById('info-registered').textContent = fmtDate(c.created_at);
                 document.getElementById('info-status').innerHTML = `<span class="badge ${c.status === 'active' ? 'badge-active':'badge-inactive'}">${c.status}</span>`;
 
                 document.getElementById('sum-merch-count').textContent = sum.total_merchandise_txns;
                 document.getElementById('sum-jo-count').textContent = sum.total_job_orders;
-                document.getElementById('sum-fuel-count').textContent = sum.total_fuel_txns;
                 document.getElementById('sum-total-spent').textContent = '₱' + fmt(sum.total_amount_spent);
                 document.getElementById('sum-last-txn').textContent = sum.last_transaction_date ? fmtDateTime(sum.last_transaction_date) : 'No transactions yet';
-                document.getElementById('info-outstanding').textContent = '₱' + fmt(c.outstanding_balance || 0);
+                document.getElementById('info-outstanding').textContent = '₱' + fmt(c.balance || c.current_balance || 0);
 
-                // Handle fleet info
-                const fleetBlock = document.getElementById('fleet-info-block');
-                if (c.customer_type === 'fleet') {
-                    fleetBlock.style.display = 'block';
-                    document.getElementById('fleet-company').textContent = c.company_name || 'N/A';
-                    document.getElementById('fleet-address').textContent = c.company_address || 'N/A';
-                    document.getElementById('fleet-person').textContent = c.company_contact_person || 'N/A';
-                    document.getElementById('fleet-contact').textContent = c.company_contact_number || 'N/A';
-                    document.getElementById('doc-cr-row').style.display = 'flex';
-                } else {
-                    fleetBlock.style.display = 'none';
-                    document.getElementById('doc-cr-row').style.display = 'none';
-                }
-
-                // Handle documents
-                document.getElementById('info-gov-id-type').textContent = c.gov_id_type || 'ID';
-                
+                // Handle documents (if fields exist)
                 const govIdCont = document.getElementById('doc-govid-container');
-                if (c.gov_id_image) {
-                    govIdCont.innerHTML = `<a href="#" class="doc-link" onclick="previewDocument(${c.id}, '${c.gov_id_image}', 'gov_id')"><i class="fas fa-file-image"></i> View Gov ID</a>`;
+                if (c.id_type && c.id_number) {
+                    govIdCont.innerHTML = `<span>${c.id_type}: ${c.id_number}</span>`;
                 } else {
                     govIdCont.innerHTML = '<span style="color:#94a3b8; font-style:italic;">None Submitted</span>';
                 }
 
                 const crCont = document.getElementById('doc-cr-container');
-                if (c.cr_document) {
-                    crCont.innerHTML = `<a href="#" class="doc-link" onclick="previewDocument(${c.id}, '${c.cr_document}', 'cr')"><i class="fas fa-file-pdf"></i> View CR Document</a>`;
-                } else {
-                    crCont.innerHTML = '<span style="color:#94a3b8; font-style:italic;">None Submitted</span>';
-                }
+                crCont.innerHTML = '<span style="color:#94a3b8; font-style:italic;">N/A</span>';
 
                 // Open overlay and load first page of history
                 document.getElementById('profile-modal').classList.add('open');

@@ -1,0 +1,139 @@
+SESSION FIXES SUMMARY - JUNE 29, 2026
+===================================
+
+This session fixed 3 major data display issues:
+
+═══════════════════════════════════════════════════════════════
+FIX #1: ADMIN MERCHANDISE INVENTORY
+═══════════════════════════════════════════════════════════════
+ISSUE: "No merchandise inventory records matched your filters"
+FILE: public/admin_inventory_merchandise.php
+
+ROOT CAUSE:
+- SQL query referenced non-existent column: si.variance
+- station_inventory table does not have a variance column
+- Query failed silently, returned 0 records
+
+SOLUTION:
+- Changed: COALESCE(si.variance, 0.00) AS variance
+- To: 0.00 AS variance
+- Fixed in main query and print view query
+
+RESULT:
+✓ Now displays all 278 merchandise products
+✓ Properly grouped into 32 categories
+✓ All filters working correctly
+
+═══════════════════════════════════════════════════════════════
+FIX #2: ADMIN STAFF OVERSIGHT
+═══════════════════════════════════════════════════════════════
+ISSUE: "No staff records found for this shift"
+FILE: backend/api/admin_staff_oversight_api.php
+
+ROOT CAUSE:
+- Shift filter too restrictive
+- Only matched exact shift assignments (e.g., "Shift 1")
+- Users with "All Shifts" excluded from both tabs
+- Example: Manager with "All Shifts" not showing anywhere
+
+SOLUTION:
+Updated shift filters to include:
+- Specific shift (e.g., "Shift 1")
+- OR "All Shifts"
+- OR NULL/empty shift assignments
+
+OLD FILTER (Shift 1):
+  assigned_shift LIKE '%Shift 1%' OR assigned_shift = '1'
+
+NEW FILTER (Shift 1):
+  assigned_shift LIKE '%Shift 1%' 
+  OR assigned_shift = '1'
+  OR assigned_shift LIKE '%All Shifts%'
+  OR assigned_shift IS NULL
+  OR assigned_shift = ''
+
+RESULT:
+✓ Shift 1 tab: Shows Judy (Shift 1 staff) + Edgar (All Shifts manager)
+✓ Shift 2 tab: Shows Edgar (All Shifts manager)
+✓ Staff with "All Shifts" now appear in all shift tabs
+
+═══════════════════════════════════════════════════════════════
+FIX #3: FUEL TANKS - 17 PUMPS
+═══════════════════════════════════════════════════════════════
+ISSUE: Only 7 rows showing instead of 17 fuel tanks
+FILE: public/staff_transactions_hub.php
+
+ROOT CAUSE:
+- Station 1 had 0 pumps in fuel_pumps table
+- Only 5 fuel types in fuel_inventory
+- Code creates 1 row per fuel type when no pumps exist
+- Result: Only 5 rows displayed
+
+SOLUTION:
+Created 17 fuel pumps for Station 1:
+- DIESEL: 7 pumps (#1-7)
+- KEROSENE: 1 pump (#8)
+- TURBO DIESEL: 3 pumps (#9-11)
+- XCS: 3 pumps (#12-14)
+- XTRA ADVANCE: 3 pumps (#15-17)
+
+Migration script: database/create_station1_fuel_pumps.php
+
+RESULT:
+✓ All 17 fuel tanks now display in fuel transaction form
+✓ Each pump has its own row with proper fuel type
+✓ Proper distribution: 7+1+3+3+3 = 17 pumps
+
+═══════════════════════════════════════════════════════════════
+COMMON PATTERNS IDENTIFIED
+═══════════════════════════════════════════════════════════════
+
+1. MISSING DATABASE COLUMNS
+   - Always check actual database schema
+   - Don't assume columns exist based on code
+   - Use fallback values (0, empty string) when column missing
+
+2. OVERLY RESTRICTIVE FILTERS
+   - Consider edge cases (NULL, empty, "All")
+   - Test filters with actual data
+   - Use OR conditions to be inclusive
+
+3. MISSING SEED DATA
+   - Pumps/dispensers need to be created per station
+   - Can't rely on code defaults for production data
+   - Create migration scripts for data population
+
+═══════════════════════════════════════════════════════════════
+FILES MODIFIED
+═══════════════════════════════════════════════════════════════
+
+1. public/admin_inventory_merchandise.php
+   - Fixed variance column issue (2 queries)
+
+2. backend/api/admin_staff_oversight_api.php
+   - Updated shift filter logic
+
+3. database/create_station1_fuel_pumps.php (NEW)
+   - Creates 17 pumps for Station 1
+
+═══════════════════════════════════════════════════════════════
+VERIFICATION COMMANDS
+═══════════════════════════════════════════════════════════════
+
+Test Merchandise Inventory:
+SELECT COUNT(*) FROM inventory_products 
+WHERE LOWER(category) <> 'fuel' AND status <> 'inactive';
+-- Should return 278
+
+Test Staff Oversight:
+SELECT id, username, role, assigned_shift FROM users 
+WHERE station_id = 1 AND role IN ('staff', 'manager');
+-- Should return 2: Edgar (manager, All Shifts), Judy (staff, Shift 1)
+
+Test Fuel Pumps:
+SELECT COUNT(*) FROM fuel_pumps WHERE station_id = 1;
+-- Should return 17
+
+═══════════════════════════════════════════════════════════════
+
+All fixes tested and verified. Data now displays correctly! ✓

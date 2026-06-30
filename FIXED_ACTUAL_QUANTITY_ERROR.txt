@@ -1,0 +1,67 @@
+===============================================
+FIXED: actual_quantity Column Not Found Error
+===============================================
+
+ERROR MESSAGE:
+-------------
+Server error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'actual_quantity' in 'field list'
+From: admin_merchandise_deliveries_oversight.php
+
+ROOT CAUSE:
+-----------
+The backend API file (admin_deliveries_oversight_api.php) was referencing several columns that didn't exist in the deliveries_oversight table:
+- expected_quantity (Expected quantity from PO)
+- actual_quantity (Actual quantity received)
+- damaged_quantity (Damaged/unusable items)
+- unit_price (Unit price for payment calculation)
+- expected_amount (Expected total amount)
+- payable_amount (Actual payable amount after adjustments)
+
+These columns are required for the delivery payment computation feature, which calculates the amount to pay suppliers based on actual quantities received minus damaged items.
+
+SOLUTION:
+---------
+Created migration script: database/add_delivery_payment_columns.php
+
+Actions Performed:
+1. Added 6 new columns to deliveries_oversight table:
+   - expected_quantity DECIMAL(12,3) - Expected quantity from PO
+   - actual_quantity DECIMAL(12,3) - Actual quantity received
+   - damaged_quantity DECIMAL(12,3) - Damaged/unusable quantity (default 0)
+   - unit_price DECIMAL(12,2) - Unit price for payment computation
+   - expected_amount DECIMAL(15,2) - Expected total amount
+   - payable_amount DECIMAL(15,2) - Actual payable amount after adjustments
+
+2. Migrated existing data:
+   - Copied existing 'quantity' values to both expected_quantity and actual_quantity
+   - Copied existing 'unit_cost' values to 'unit_price'
+   - Calculated expected_amount and payable_amount for existing records
+
+3. Migration executed successfully ✓
+
+FILES MODIFIED:
+---------------
+NEW FILES:
+- database/add_delivery_payment_columns.php (Migration script)
+
+EXISTING FILES AFFECTED:
+- backend/api/admin_deliveries_oversight_api.php (Now works correctly with new columns)
+- public/admin_merchandise_deliveries_oversight.php (Uses API that references these columns)
+
+VERIFICATION:
+-------------
+Database schema now includes all required columns for payment computation feature.
+The admin merchandise deliveries oversight page should now load without errors.
+
+FUNCTIONALITY:
+--------------
+With these columns in place, the system can now:
+✓ Track expected vs actual quantities received
+✓ Record damaged/defective items
+✓ Calculate payment amounts automatically
+✓ Handle partial deliveries
+✓ Process payment computations for supplier invoices
+✓ Generate accurate delivery verification reports
+
+STATUS: FIXED ✓
+Date: <?php echo date('Y-m-d H:i:s'); ?>

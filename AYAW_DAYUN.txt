@@ -1,0 +1,59 @@
+═══════════════════════════════════════════════════════════════════════════════
+                    AYAW DAYUN - 2 MINUTE FIX
+═══════════════════════════════════════════════════════════════════════════════
+
+STEP 1: TEST DATABASE (30 seconds)
+────────────────────────────────────────────────────────────────────────────────
+Open sa browser:
+http://localhost/group31petron_system_official4/public/test_db.php
+
+Tan-awa ang result:
+- If ✅ green checkmarks → Database OK, may lain problema
+- If ❌ red X → Database wala, need restore
+
+────────────────────────────────────────────────────────────────────────────────
+
+STEP 2: RESTORE DATABASE (1 minute)
+────────────────────────────────────────────────────────────────────────────────
+Double-click this file:
+RESTORE_DATABASE_NOW.bat
+
+Wait until mo-say "SUCCESS!"
+
+────────────────────────────────────────────────────────────────────────────────
+
+STEP 3: FIX ENGINE (30 seconds)
+────────────────────────────────────────────────────────────────────────────────
+1. Open: http://localhost/phpmyadmin
+2. Click: petron_pos_db_secure
+3. Click: SQL tab
+4. Open file: FIX_DATABASE_ENGINE.sql
+5. Copy paste tanan
+6. Click: Go
+
+────────────────────────────────────────────────────────────────────────────────
+
+STEP 4: TEST LOGIN
+────────────────────────────────────────────────────────────────────────────────
+Go to: http://localhost/group31petron_system_official4/public/login.php
+
+Try login with your credentials.
+
+Should work na!
+
+═══════════════════════════════════════════════════════════════════════════════
+
+KUNG DILI PA GIHAPON MO-WORK:
+
+1. Take screenshot sa test_db.php result
+2. Take screenshot sa login error
+3. Send nako para ma-check nato unsa pa ang issue
+
+═══════════════════════════════════════════════════════════════════════════════
+
+FILES NGA I-RUN:
+1. test_db.php - Test if database OK
+2. RESTORE_DATABASE_NOW.bat - Restore database
+3. FIX_DATABASE_ENGINE.sql - Fix MEMORY engine
+
+═══════════════════════════════════════════════════════════════════════════════

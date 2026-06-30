@@ -58,12 +58,12 @@ $where  = ['c.station_id = ?'];
 $params = [$station_id];
 
 if ($search !== '') {
-    $where[] = "(c.customer_id LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR c.name LIKE ? OR c.contact_number LIKE ? OR c.company_name LIKE ?)";
+    $where[] = "(CAST(c.id AS CHAR) LIKE ? OR c.name LIKE ? OR c.contact_number LIKE ?)";
     $s = "%$search%";
-    array_push($params, $s, $s, $s, $s, $s, $s);
+    array_push($params, $s, $s, $s);
 }
 if ($type !== '') {
-    $where[] = "c.customer_type = ?";
+    $where[] = "c.type = ?";
     $params[] = $type;
 }
 if ($status !== '') {
@@ -71,30 +71,30 @@ if ($status !== '') {
     $params[] = $status;
 }
 if ($registeredBy !== '') {
-    $where[] = "c.registered_by = ?";
+    $where[] = "c.verified_by = ?";
     $params[] = (int)$registeredBy;
 }
 if ($dateRegFrom !== '') {
-    $where[] = "DATE(COALESCE(c.registered_at, c.created_at)) >= ?";
+    $where[] = "DATE(c.created_at) >= ?";
     $params[] = $dateRegFrom;
 }
 if ($dateRegTo !== '') {
-    $where[] = "DATE(COALESCE(c.registered_at, c.created_at)) <= ?";
+    $where[] = "DATE(c.created_at) <= ?";
     $params[] = $dateRegTo;
 }
 
 $whereClause = implode(' AND ', $where);
 
 $stmt = $pdo->prepare("
-    SELECT c.id, c.customer_id,
-           COALESCE(NULLIF(CONCAT(TRIM(COALESCE(c.first_name,'')), ' ', TRIM(COALESCE(c.middle_name,'')), ' ', TRIM(COALESCE(c.last_name,''))), '  '), c.name, '') AS display_name,
-           c.contact_number, c.customer_type, c.status,
-           COALESCE(c.registered_at, c.created_at) AS registered_at,
+    SELECT c.id, c.id AS customer_id,
+           c.name AS display_name,
+           c.contact_number, c.type AS customer_type, c.status,
+           c.created_at AS registered_at,
            CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS registered_by_name
     FROM customers c
-    LEFT JOIN users u ON c.registered_by = u.id
+    LEFT JOIN users u ON c.verified_by = u.id
     WHERE $whereClause
-    ORDER BY COALESCE(c.registered_at, c.created_at) DESC
+    ORDER BY c.created_at DESC
 ");
 $stmt->execute($params);
 $rawCustomers = $stmt->fetchAll(PDO::FETCH_ASSOC);

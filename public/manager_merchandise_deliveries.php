@@ -310,42 +310,6 @@ try {
     </div>
 </div>
 
-<!-- Success/Error Message Banner (Top Alert) -->
-<div id="topAlert" style="display:none;margin-bottom:20px;padding:16px 20px;border-radius:10px;font-size:14px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.1);animation:slideDown .3s ease;">
-    <div style="display:flex;align-items:center;gap:12px;">
-        <i id="topAlertIcon" class="fas fa-check-circle" style="font-size:24px;"></i>
-        <div style="flex:1;">
-            <div id="topAlertTitle" style="font-size:15px;font-weight:700;margin-bottom:4px;"></div>
-            <div id="topAlertMessage" style="font-size:13px;font-weight:500;opacity:0.9;"></div>
-        </div>
-        <button onclick="closeTopAlert()" style="background:none;border:none;font-size:20px;cursor:pointer;opacity:0.7;transition:opacity .15s;">
-            <i class="fas fa-times"></i>
-        </button>
-    </div>
-</div>
-
-<style>
-#topAlert.success {
-    background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
-    color: #155724;
-    border: 2px solid #28a745;
-}
-#topAlert.error {
-    background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
-    color: #721c24;
-    border: 2px solid #dc3545;
-}
-#topAlert.warning {
-    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
-    color: #856404;
-    border: 2px solid #ffc107;
-}
-@keyframes slideDown {
-    from { opacity: 0; transform: translateY(-20px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-</style>
-
 <!-- 5 Summary Cards -->
 <div class="sum-grid" style="margin-bottom:18px;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
     <div class="sum-card sc-pending">
@@ -833,46 +797,6 @@ function toast(msg, type) {
     setTimeout(function() { t.classList.remove('show'); }, 4000);
 }
 
-// ── Top Alert Banner (Green Success Message) ──────────────────────────────────
-function showTopAlert(title, message, type) {
-    var alert = document.getElementById('topAlert');
-    var icon = document.getElementById('topAlertIcon');
-    var titleEl = document.getElementById('topAlertTitle');
-    var messageEl = document.getElementById('topAlertMessage');
-    
-    // Set content
-    titleEl.textContent = title;
-    messageEl.textContent = message;
-    
-    // Set icon and type
-    if (type === 'success') {
-        icon.className = 'fas fa-check-circle';
-        alert.className = 'success';
-    } else if (type === 'error') {
-        icon.className = 'fas fa-times-circle';
-        alert.className = 'error';
-    } else if (type === 'warning') {
-        icon.className = 'fas fa-exclamation-triangle';
-        alert.className = 'warning';
-    }
-    
-    // Show alert
-    alert.style.display = 'block';
-    
-    // Auto-hide after 8 seconds
-    setTimeout(function() {
-        closeTopAlert();
-    }, 8000);
-    
-    // Scroll to top to ensure it's visible
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-function closeTopAlert() {
-    var alert = document.getElementById('topAlert');
-    alert.style.display = 'none';
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function h(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function j(s) { return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"'); }
@@ -1246,17 +1170,8 @@ function doApprove() {
     .then(function(r){return r.json();})
     .then(function(res){
         closeM('aprModal');
-        if (res.success) {
-            // Show large green success banner at top
-            showTopAlert(
-                '✓ Delivery Verified Successfully!',
-                res.message || 'Delivery has been verified. Staff can now update inventory.',
-                'success'
-            );
-            loadDeliveries();
-        } else {
-            toast(res.message, 'error');
-        }
+        toast(res.message, res.success ? 'success' : 'error');
+        if (res.success) loadDeliveries();
     });
 }
 
@@ -1292,17 +1207,8 @@ function doFlag() {
     .then(function(r){ return r.json(); })
     .then(function(res){
         closeM('flagModal');
-        if (res.success) {
-            // Show warning banner for rejection
-            showTopAlert(
-                '⚠ Delivery Rejected',
-                res.message || 'Delivery has been rejected and returned to staff for correction.',
-                'warning'
-            );
-            loadDeliveries();
-        } else {
-            toast(res.message, 'error');
-        }
+        toast(res.message, res.success ? 'success' : 'error');
+        if (res.success) loadDeliveries();
     });
 }
 

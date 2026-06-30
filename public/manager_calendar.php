@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'calendar';
 require_once __DIR__ . '/../backend/lib.php';
@@ -343,7 +343,14 @@ try {
     
     // MANAGER SPECIFIC: Low stock items
     try {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory_products WHERE station_id = ? AND current_stock <= minimum_stock AND status = 'Active'");
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) 
+            FROM inventory_products ip
+            LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
+            WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
+              AND ip.status = 'Active'
+              AND COALESCE(si.stock_level, ip.stock, 0) <= COALESCE(si.reorder_level, ip.min_stock, 10)
+        ");
         $stmt->execute([$station_id]);
         $summary_stats['low_stock_items'] = $stmt->fetchColumn();
     } catch (Exception $e) {}
@@ -613,10 +620,18 @@ try {
     
     // Auto-sync low inventory items (restocking reminders)
     try {
-        $low_stock = $pdo->prepare("SELECT ip.id, ip.product_name, ip.current_stock, ip.minimum_stock, ip.unit
+        $low_stock = $pdo->prepare("
+            SELECT ip.id, ip.product_name, 
+                   COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
+                   COALESCE(si.reorder_level, ip.min_stock, 10) AS minimum_stock,
+                   COALESCE(si.unit, ip.size, 'pcs') AS unit
             FROM inventory_products ip
-            WHERE ip.station_id = ? AND ip.current_stock <= ip.minimum_stock AND ip.status = 'Active'
-            LIMIT 10");
+            LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
+            WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
+              AND ip.status = 'Active'
+              AND COALESCE(si.stock_level, ip.stock, 0) <= COALESCE(si.reorder_level, ip.min_stock, 10)
+            LIMIT 10
+        ");
         $low_stock->execute([$station_id]);
         
         // Add low stock items to today's date as reminders

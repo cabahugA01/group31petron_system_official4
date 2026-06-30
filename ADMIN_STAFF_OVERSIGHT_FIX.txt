@@ -1,0 +1,61 @@
+ADMIN STAFF OVERSIGHT FIX
+=========================
+DATE: 2026-06-29
+ISSUE: Admin Staff Oversight page showing "No staff records found for this shift"
+
+ROOT CAUSE:
+-----------
+The shift filter in the API was TOO RESTRICTIVE and excluded users with "All Shifts" assignment:
+
+OLD FILTER (Shift 1):
+- Only matched: assigned_shift LIKE '%Shift 1%' OR assigned_shift = '1'
+- Problem: Users with "All Shifts" were excluded from both shift tabs
+
+EXAMPLE:
+- Judy User (staff) - "Shift 1" → Shown in Shift 1 tab only
+- Edgar User (manager) - "All Shifts" → NOT shown in any tab ❌
+
+SOLUTION:
+---------
+Updated shift filter to include users with "All Shifts", NULL, or empty shift assignments:
+
+NEW FILTER (Shift 1):
+- Matches: 
+  * assigned_shift LIKE '%Shift 1%' 
+  * OR assigned_shift = '1'
+  * OR assigned_shift LIKE '%All Shifts%' 
+  * OR assigned_shift IS NULL 
+  * OR assigned_shift = ''
+
+NEW FILTER (Shift 2):
+- Matches:
+  * assigned_shift LIKE '%Shift 2%'
+  * OR assigned_shift = '2'
+  * OR assigned_shift LIKE '%All Shifts%'
+  * OR assigned_shift IS NULL
+  * OR assigned_shift = ''
+
+RESULT:
+-------
+Now both shift tabs display correctly:
+
+Shift 1 Tab:
+- Judy User (staff) - "Shift 1" ✓
+- Edgar User (manager) - "All Shifts" ✓
+
+Shift 2 Tab:
+- Edgar User (manager) - "All Shifts" ✓
+
+LOGIC:
+------
+Users with "All Shifts" should appear in ALL shift tabs since they work across all shifts.
+Users with specific shift assignments only appear in their assigned shift tab.
+Users with NULL or empty shifts are treated as "All Shifts" (shown in all tabs).
+
+FILES FIXED:
+------------
+1. backend/api/admin_staff_oversight_api.php
+   - Updated shift filter logic in fetch_staff_oversight case
+   - Line ~20-28 (shift filter conditions)
+
+STATUS: FIXED ✓

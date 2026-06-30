@@ -1,7 +1,6 @@
 <?php
 $page_id = 'admin_inventory_fuel';
 require_once __DIR__ . '/../backend/lib.php';
-require_once __DIR__ . '/../backend/inventory_data.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
 $me         = current_user();
@@ -52,48 +51,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_
     $note = trim($_POST['note'] ?? '');
     if ($fid > 0 && $newL >= 0) {
         try {
-            $stmt = $pdo->prepare("SELECT fuel_type, current_level, current_stock, capacity FROM fuel_inventory WHERE id=? AND station_id=?");
+            $stmt = $pdo->prepare("SELECT current_level, capacity FROM fuel_inventory WHERE id=? AND station_id=?");
             $stmt->execute([$fid, $station_id]);
             $fi = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!$fi) throw new Exception('Fuel record not found.');
             if ($newL > (float)$fi['capacity']) throw new Exception('New level exceeds tank capacity.');
             
             $oldL = (float)$fi['current_level'];
-            $pdo->prepare("UPDATE fuel_inventory SET current_level=?, current_stock=?, last_updated=NOW(), updated_by=? WHERE id=? AND station_id=?")
-                ->execute([$newL, $newL, $me['id'], $fid, $station_id]);
+            $pdo->prepare("UPDATE fuel_inventory SET current_level=?, last_updated=NOW() WHERE id=? AND station_id=?")
+                ->execute([$newL, $fid, $station_id]);
             
             if (function_exists('log_activity')) {
                 log_activity($pdo, $me['id'], 'Admin Edit Fuel Level',
                     "Fuel ID $fid: {$oldL}L → {$newL}L. Note: $note");
             }
-            $audit_detail = sprintf(
-                'Fuel inventory corrected | Fuel: %s | Level: %.2f L -> %.2f L | Note: %s',
-                $fi['fuel_type'] ?? ('ID #' . $fid),
-                $oldL,
-                $newL,
-                $note
-            );
-            $pdo->prepare("
-                INSERT INTO audit_logs
-                    (user_id, log_type, action_type, action_details, entity_type, entity_id, old_values, new_values, status, ip_address, user_agent, created_at)
-                VALUES (?, 'inventory', 'Update', ?, 'fuel_inventory', ?, ?, ?, 'Success', ?, ?, NOW())
-            ")->execute([
-                $me['id'],
-                $audit_detail,
-                $fid,
-                json_encode(['current_level' => $oldL, 'current_stock' => (float)($fi['current_stock'] ?? $oldL)]),
-                json_encode(['current_level' => $newL, 'current_stock' => $newL, 'note' => $note]),
-                $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0',
-                $_SERVER['HTTP_USER_AGENT'] ?? 'CLI'
-            ]);
             $_SESSION['ok'] = 'Fuel level updated successfully.';
         } catch (Exception $e) { $_SESSION['err'] = $e->getMessage(); }
     }
     header('Location: admin_inventory_fuel.php'); exit;
 }
 
-// ── DB-driven fuel tank configuration ────────────────────────────────
-$TANK_CONFIG_17 = inventory_get_fuel_tank_config($pdo, $station_id);
+// ── 17-Tanker Configuration ──────────────────────────────────────────
+$TANK_CONFIG_17 = [
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 1',     'tank'=>'Underground Tank #1',  'tanker_num'=>1,  'capacity'=>50000],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 2',     'tank'=>'Underground Tank #2',  'tanker_num'=>2,  'capacity'=>50000],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 3',     'tank'=>'Underground Tank #3',  'tanker_num'=>3,  'capacity'=>50000],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 4',     'tank'=>'Underground Tank #4',  'tanker_num'=>4,  'capacity'=>50000],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 5',     'tank'=>'Underground Tank #5',  'tanker_num'=>5,  'capacity'=>50000],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 6',     'tank'=>'Underground Tank #6',  'tanker_num'=>6,  'capacity'=>50000],
+    ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'Underground Tank #7',  'tanker_num'=>7,  'capacity'=>20000],
+    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'Underground Tank #8',  'tanker_num'=>8,  'capacity'=>45000],
+    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 2', 'tank'=>'Underground Tank #9',  'tanker_num'=>9,  'capacity'=>45000],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'Underground Tank #10', 'tanker_num'=>10, 'capacity'=>20000],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 2',     'tank'=>'Underground Tank #11', 'tanker_num'=>11, 'capacity'=>20000],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 3',     'tank'=>'Underground Tank #12', 'tanker_num'=>12, 'capacity'=>20000],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 4',     'tank'=>'Underground Tank #13', 'tanker_num'=>13, 'capacity'=>20000],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 1',  'tank'=>'Underground Tank #14', 'tanker_num'=>14, 'capacity'=>20000],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 2',  'tank'=>'Underground Tank #15', 'tanker_num'=>15, 'capacity'=>20000],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 3',  'tank'=>'Underground Tank #16', 'tanker_num'=>16, 'capacity'=>20000],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 4',  'tank'=>'Underground Tank #17', 'tanker_num'=>17, 'capacity'=>20000],
+];
 
 // ── DB lookups ──────────────────────────────────────────────────────
 $fi_lookup = [];
@@ -106,29 +103,15 @@ try {
 
 $del_lookup = [];
 try {
-    $s = $pdo->prepare("
-        SELECT fuel_type, SUM(delivery_liters) AS tot
-        FROM fuel_deliveries
-        WHERE station_id=?
-          AND DATE(delivery_date)=CURDATE()
-          AND LOWER(status) IN ('verified','finalized','approved','completed','received')
-        GROUP BY fuel_type
-    ");
+    $s = $pdo->prepare("SELECT tank_assigned, SUM(delivery_liters) AS tot FROM fuel_deliveries WHERE station_id=? AND DATE(delivery_date)=CURDATE() AND status='Verified' GROUP BY tank_assigned");
     $s->execute([$station_id]);
     foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row)
-        $del_lookup[strtolower(trim($row['fuel_type']))] = (float)$row['tot'];
+        $del_lookup[strtolower(trim($row['tank_assigned']))] = (float)$row['tot'];
 } catch (Exception $e) {}
 
 $sales_lookup = [];
 try {
-    $s = $pdo->prepare("
-        SELECT fuel_type, SUM(liters_sold) AS tot
-        FROM fuel_transactions
-        WHERE station_id=?
-          AND DATE(transaction_date)=CURDATE()
-          AND LOWER(status) IN ('verified','approved','completed')
-        GROUP BY fuel_type
-    ");
+    $s = $pdo->prepare("SELECT fuel_type, SUM(liters_sold) AS tot FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date)=CURDATE() AND status='Verified' GROUP BY fuel_type");
     $s->execute([$station_id]);
     foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row)
         $sales_lookup[strtolower(trim($row['fuel_type']))] = (float)$row['tot'];
@@ -152,19 +135,21 @@ try {
     }
 } catch (Exception $e) {}
 
-// ── Build fuel inventory rows ───────────────────────────────────────
+// ── Build 17 rows ──────────────────────────────────────────────────
 $rows = [];
 foreach ($TANK_CONFIG_17 as $tc) {
     $ft_key   = strtolower(trim($tc['fuel_type']));
+    $tank_key = strtolower(trim($tc['tank']));
     $inv      = $fi_lookup[$ft_key] ?? null;
     $capacity = (float)$tc['capacity'];
     $cur_level= $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
-    $purchases   = $del_lookup[$ft_key] ?? 0;
-    $sales       = $sales_lookup[$ft_key] ?? 0;
-    $calibration = $adj_lookup[$ft_key] ?? 0;
-    $ending      = $cur_level;
-    $beginning   = max(0, round($ending - $purchases + $sales + $calibration, 2));
+    $same_n   = count(array_filter($TANK_CONFIG_17, fn($t) => strtolower($t['fuel_type']) === $ft_key));
+    $purchases   = $del_lookup[$tank_key] ?? 0;
+    $sales       = $same_n > 0 ? round(($sales_lookup[$ft_key] ?? 0) / $same_n, 2) : 0;
+    $calibration = $same_n > 0 ? round(($adj_lookup[$ft_key]  ?? 0) / $same_n, 2) : 0;
+    $beginning   = $same_n > 0 ? round($cur_level / $same_n, 2) : 0;
     $total_avail = $beginning + $purchases;
+    $ending      = max(0, $total_avail - $sales - $calibration);
     $actual_dip  = $ending;
     $variance    = 0; // computed locally or pulled from reconciliation if needed
     $fill_pct    = $capacity > 0 ? ($ending / $capacity) * 100 : 0;
@@ -208,7 +193,6 @@ $total_fuel_variance = array_sum(array_column($rows, 'variance'));
 $var_color = abs($total_fuel_variance) < 0.01 ? '#64748b' : ($total_fuel_variance >= 0 ? '#28a745' : '#dc3545');
 $var_prefix = $total_fuel_variance > 0.01 ? '+' : '';
 $var_display = $var_prefix . number_format($total_fuel_variance, 2) . ' L';
-$fuel_type_options = inventory_fuel_type_options($rows);
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -371,7 +355,7 @@ body, html { overflow-x:hidden !important; }
 <div class="int-head">
   <div>
     <h1><i class="fas fa-gas-pump"></i> Fuel Inventory Oversight</h1>
-    <div class="sub">Database Inventory Overview &middot; Today: <?= date('F d, Y') ?></div>
+    <div class="sub">17-Tanker Overview &middot; Today: <?= date('F d, Y') ?></div>
   </div>
 </div>
 
@@ -433,9 +417,11 @@ body, html { overflow-x:hidden !important; }
     <!-- Filter Fuel Type -->
     <select id="cf" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none; background:#fff;">
       <option value="">All Fuel Types</option>
-      <?php foreach ($fuel_type_options as $fuel_type_option): ?>
-        <option value="<?= htmlspecialchars(strtolower($fuel_type_option)) ?>"><?= htmlspecialchars($fuel_type_option) ?></option>
-      <?php endforeach; ?>
+      <option value="diesel">Diesel</option>
+      <option value="kerosene">Kerosene</option>
+      <option value="turbo diesel">Turbo Diesel</option>
+      <option value="xcs plus">XCS Plus</option>
+      <option value="xtra unl">XTRA UNL</option>
     </select>
     <!-- Filter Status -->
     <select id="sf" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none; background:#fff;">

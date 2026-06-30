@@ -99,13 +99,13 @@ function listCustomers() {
     $params = [$station_id];
     
     if ($search !== '') {
-        $where[] = "(c.customer_id LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR c.contact_number LIKE ?)";
+        $where[] = "(CAST(c.id AS CHAR) LIKE ? OR c.name LIKE ? OR c.contact_number LIKE ?)";
         $searchTerm = "%$search%";
-        $params = array_merge($params, [$searchTerm, $searchTerm, $searchTerm, $searchTerm]);
+        $params = array_merge($params, [$searchTerm, $searchTerm, $searchTerm]);
     }
     
     if ($type !== '') {
-        $where[] = "c.customer_type = ?";
+        $where[] = "c.type = ?";
         $params[] = $type;
     }
     
@@ -115,12 +115,12 @@ function listCustomers() {
     }
     
     if ($dateFrom !== '') {
-        $where[] = "DATE(c.registered_at) >= ?";
+        $where[] = "DATE(c.created_at) >= ?";
         $params[] = $dateFrom;
     }
     
     if ($dateTo !== '') {
-        $where[] = "DATE(c.registered_at) <= ?";
+        $where[] = "DATE(c.created_at) <= ?";
         $params[] = $dateTo;
     }
     
@@ -133,19 +133,19 @@ function listCustomers() {
     $stmt = $pdo->prepare("
         SELECT 
             c.id,
-            c.customer_id,
-            c.first_name,
-            c.middle_name,
-            c.last_name,
+            c.id AS customer_id,
+            c.name AS first_name,
+            '' AS middle_name,
+            '' AS last_name,
             c.contact_number,
-            c.customer_type,
+            c.type AS customer_type,
             c.status,
-            c.registered_at,
+            c.created_at AS registered_at,
             0 AS total_transactions,
             NULL AS last_transaction
         FROM customers c
         WHERE $whereClause
-        ORDER BY c.registered_at DESC
+        ORDER BY c.created_at DESC
     ");
     
     $stmt->execute($params);
@@ -157,9 +157,9 @@ function listCustomers() {
     $statsStmt = $pdo->prepare("
         SELECT 
             COUNT(*) as total,
-            SUM(CASE WHEN DATE(registered_at) = CURDATE() THEN 1 ELSE 0 END) as new_today,
-            SUM(CASE WHEN customer_type = 'regular' THEN 1 ELSE 0 END) as regular,
-            SUM(CASE WHEN customer_type = 'fleet' THEN 1 ELSE 0 END) as fleet
+            SUM(CASE WHEN DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) as new_today,
+            SUM(CASE WHEN type = 'cash' THEN 1 ELSE 0 END) as regular,
+            SUM(CASE WHEN type = 'credit' THEN 1 ELSE 0 END) as fleet
         FROM customers
         WHERE station_id = ?
     ");

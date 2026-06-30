@@ -239,6 +239,16 @@ if ($payment_status !== '') {
 $rows = array_values($all_rows);
 usort($rows, fn($a, $b) => strtotime($b['txn_date']) - strtotime($a['txn_date']));
 
+// DEBUG: Log the results
+error_log("Manager Validated Transactions - Station $station_id - User: {$me['username']} ({$me['role']})");
+error_log("  Merchandise rows: " . count($mt_rows));
+error_log("  Job order rows: " . count($jo_rows));
+error_log("  All rows before filter: " . count($all_rows));
+error_log("  Final rows after filter: " . count($rows));
+if (count($rows) > 0) {
+    error_log("  First row: " . json_encode($rows[0]));
+}
+
 // Pre-fetch items for merchandise_transactions
 $mgr_items_map = [];
 try {

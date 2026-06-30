@@ -1,0 +1,108 @@
+<?php
+// Simple database connection test
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+echo "<h2>Database Connection Test</h2>";
+
+$host = "localhost";
+$dbname = "petron_pos_db_secure";
+$user = "root";
+$pass = "";
+
+try {
+    echo "<p>1. Attempting to connect to MySQL...</p>";
+    $pdo = new PDO(
+        "mysql:host=$host;charset=utf8mb4",
+        $user,
+        $pass,
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+    );
+    echo "<p style='color:green;'>✅ MySQL connection successful!</p>";
+    
+    echo "<p>2. Checking if database exists...</p>";
+    $databases = $pdo->query("SHOW DATABASES LIKE 'petron_pos_db_secure'")->fetchAll();
+    if (empty($databases)) {
+        echo "<p style='color:red;'>❌ Database 'petron_pos_db_secure' does NOT exist!</p>";
+        echo "<p><strong>FIX:</strong> Create the database first:</p>";
+        echo "<pre>CREATE DATABASE petron_pos_db_secure;</pre>";
+        exit;
+    }
+    echo "<p style='color:green;'>✅ Database 'petron_pos_db_secure' exists!</p>";
+    
+    echo "<p>3. Selecting database...</p>";
+    $pdo->exec("USE petron_pos_db_secure");
+    echo "<p style='color:green;'>✅ Database selected!</p>";
+    
+    echo "<p>4. Checking if 'users' table exists...</p>";
+    $tables = $pdo->query("SHOW TABLES LIKE 'users'")->fetchAll();
+    if (empty($tables)) {
+        echo "<p style='color:red;'>❌ Table 'users' does NOT exist!</p>";
+        echo "<p><strong>ACTION NEEDED:</strong> Import database schema or restore from backup.</p>";
+        exit;
+    }
+    echo "<p style='color:green;'>✅ Table 'users' exists!</p>";
+    
+    echo "<p>5. Checking table engine...</p>";
+    $engine = $pdo->query("SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA='petron_pos_db_secure' AND TABLE_NAME='users'")->fetchColumn();
+    echo "<p>Engine: <strong>$engine</strong></p>";
+    if ($engine === 'MEMORY') {
+        echo "<p style='color:orange;'>⚠️ WARNING: Table is using MEMORY engine (data will be lost on restart!)</p>";
+        echo "<p><strong>FIX:</strong> Run this command:</p>";
+        echo "<pre>ALTER TABLE users ENGINE=InnoDB;</pre>";
+    } else {
+        echo "<p style='color:green;'>✅ Table is using persistent storage ($engine)</p>";
+    }
+    
+    echo "<p>6. Counting users...</p>";
+    $count = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
+    echo "<p>Total users: <strong>$count</strong></p>";
+    if ($count == 0) {
+        echo "<p style='color:orange;'>⚠️ No users found in database!</p>";
+        echo "<p><strong>ACTION NEEDED:</strong> Restore from backup or create admin user.</p>";
+    } else {
+        echo "<p style='color:green;'>✅ Users exist in database!</p>";
+    }
+    
+    echo "<p>7. Sample user data:</p>";
+    $users = $pdo->query("SELECT id, username, email, role, status FROM users LIMIT 3")->fetchAll(PDO::FETCH_ASSOC);
+    echo "<pre>";
+    print_r($users);
+    echo "</pre>";
+    
+    echo "<hr>";
+    echo "<h3 style='color:green;'>✅ ALL TESTS PASSED!</h3>";
+    echo "<p>Database connection is working. The login error must be something else.</p>";
+    echo "<p><a href='login.php'>Try Login Page</a></p>";
+    
+} catch (PDOException $e) {
+    echo "<p style='color:red;'>❌ ERROR: " . $e->getMessage() . "</p>";
+    echo "<p><strong>Error Code:</strong> " . $e->getCode() . "</p>";
+    
+    if ($e->getCode() == 1932) {
+        echo "<h3 style='color:red;'>MEMORY ENGINE ISSUE DETECTED!</h3>";
+        echo "<p>The table is using MEMORY engine and data was lost.</p>";
+        echo "<p><strong>SOLUTION:</strong></p>";
+        echo "<ol>";
+        echo "<li>Restore database from backup</li>";
+        echo "<li>Convert tables to InnoDB engine</li>";
+        echo "</ol>";
+        echo "<p>Run CHECK_DATABASE_STATUS.sql and FIX_DATABASE_ENGINE.sql</p>";
+    } else if ($e->getCode() == 1049) {
+        echo "<h3 style='color:red;'>DATABASE DOES NOT EXIST!</h3>";
+        echo "<p><strong>SOLUTION:</strong> Create database first:</p>";
+        echo "<pre>CREATE DATABASE petron_pos_db_secure;</pre>";
+        echo "<p>Then import schema from backup file.</p>";
+    } else if ($e->getCode() == 1146) {
+        echo "<h3 style='color:red;'>TABLE DOES NOT EXIST!</h3>";
+        echo "<p><strong>SOLUTION:</strong> Import database from backup:</p>";
+        echo "<ol>";
+        echo "<li>Open phpMyAdmin</li>";
+        echo "<li>Select database: petron_pos_db_secure</li>";
+        echo "<li>Click Import</li>";
+        echo "<li>Choose backup file (.sql)</li>";
+        echo "<li>Click Go</li>";
+        echo "</ol>";
+    }
+}
+?>

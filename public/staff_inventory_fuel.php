@@ -1,7 +1,6 @@
 <?php
 $page_id = 'inv_fuel';
 require_once __DIR__ . '/../backend/lib.php';
-require_once __DIR__ . '/../backend/inventory_data.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
 
@@ -46,8 +45,26 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
     exit;
 }
 
-// ── DB-driven fuel tank configuration ────────────────────────────────
-$TANK_CONFIG_17 = inventory_get_fuel_tank_config($pdo, (int)$station_id);
+// ── 17-Tanker Configuration ──────────────────────────────────────────
+$TANK_CONFIG_17 = [
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 1',     'tank'=>'Underground Tank #1',  'tanker_num'=>1,  'capacity'=>50000],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 2',     'tank'=>'Underground Tank #2',  'tanker_num'=>2,  'capacity'=>50000],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 3',     'tank'=>'Underground Tank #3',  'tanker_num'=>3,  'capacity'=>50000],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 4',     'tank'=>'Underground Tank #4',  'tanker_num'=>4,  'capacity'=>50000],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 5',     'tank'=>'Underground Tank #5',  'tanker_num'=>5,  'capacity'=>50000],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 6',     'tank'=>'Underground Tank #6',  'tanker_num'=>6,  'capacity'=>50000],
+    ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'Underground Tank #7',  'tanker_num'=>7,  'capacity'=>20000],
+    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'Underground Tank #8',  'tanker_num'=>8,  'capacity'=>45000],
+    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 2', 'tank'=>'Underground Tank #9',  'tanker_num'=>9,  'capacity'=>45000],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'Underground Tank #10', 'tanker_num'=>10, 'capacity'=>20000],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 2',     'tank'=>'Underground Tank #11', 'tanker_num'=>11, 'capacity'=>20000],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 3',     'tank'=>'Underground Tank #12', 'tanker_num'=>12, 'capacity'=>20000],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 4',     'tank'=>'Underground Tank #13', 'tanker_num'=>13, 'capacity'=>20000],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 1',  'tank'=>'Underground Tank #14', 'tanker_num'=>14, 'capacity'=>20000],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 2',  'tank'=>'Underground Tank #15', 'tanker_num'=>15, 'capacity'=>20000],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 3',  'tank'=>'Underground Tank #16', 'tanker_num'=>16, 'capacity'=>20000],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 4',  'tank'=>'Underground Tank #17', 'tanker_num'=>17, 'capacity'=>20000],
+];
 
 // ── Fetch fuel_inventory (one row per fuel_type for this station) ─────
 $fi_lookup = [];
@@ -62,31 +79,17 @@ try {
 // ── Fetch today's deliveries per (fuel_type, tank_assigned) ─────────
 $del_lookup = [];
 try {
-    $s = $pdo->prepare("
-        SELECT fuel_type, SUM(delivery_liters) AS total_del
-        FROM fuel_deliveries
-        WHERE station_id=?
-          AND DATE(delivery_date)=CURDATE()
-          AND LOWER(status) IN ('verified','finalized','approved','completed','received')
-        GROUP BY fuel_type
-    ");
+    $s = $pdo->prepare("SELECT tank_assigned, fuel_type, SUM(delivery_liters) AS total_del FROM fuel_deliveries WHERE station_id=? AND DATE(delivery_date)=CURDATE() AND status='Verified' GROUP BY tank_assigned, fuel_type");
     $s->execute([$station_id]);
     foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $del_lookup[strtolower(trim($row['fuel_type']))] = (float)$row['total_del'];
+        $del_lookup[strtolower(trim($row['tank_assigned']))] = (float)$row['total_del'];
     }
 } catch (Exception $e) {}
 
 // ── Fetch today's sales per fuel_type ────────────────────────────────
 $sales_lookup = [];
 try {
-    $s = $pdo->prepare("
-        SELECT fuel_type, SUM(liters_sold) AS total_sales
-        FROM fuel_transactions
-        WHERE station_id=?
-          AND DATE(transaction_date)=CURDATE()
-          AND LOWER(status) IN ('verified','approved','completed')
-        GROUP BY fuel_type
-    ");
+    $s = $pdo->prepare("SELECT fuel_type, SUM(liters_sold) AS total_sales FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date)=CURDATE() AND status='Verified' GROUP BY fuel_type");
     $s->execute([$station_id]);
     foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $sales_lookup[strtolower(trim($row['fuel_type']))] = (float)$row['total_sales'];
@@ -170,28 +173,37 @@ foreach ($TANK_CONFIG_17 as $tc) {
     }
 }
 
-// ── Build fuel inventory dataset ─────────────────────────────────────
+// ── Build 17-row dataset ─────────────────────────────────────────────
 $rows = [];
 $msg = '';
 try {
     foreach ($TANK_CONFIG_17 as $tc) {
         $ft_key   = strtolower(trim($tc['fuel_type']));
+        $tank_key = strtolower(trim($tc['tank']));
         $inv      = $fi_lookup[$ft_key] ?? null;
 
         $capacity  = (float)$tc['capacity'];
         $cur_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
 
-        $purchases = $del_lookup[$ft_key] ?? 0;
+        // Number of tanks for this fuel type
+        $same_type_count = count(array_filter($TANK_CONFIG_17, fn($t) => strtolower($t['fuel_type']) === $ft_key));
 
+        // Deliveries: per tank_assigned
+        $purchases = $del_lookup[$tank_key] ?? 0;
+
+        // Sales & Calibration: split equally
         $sales_total = $sales_lookup[$ft_key] ?? 0;
         $adj_total   = $adj_lookup[$ft_key] ?? 0;
-        $sales       = round($sales_total, 2);
-        $calibration_adj = round($adj_total, 2);
+        $sales       = $same_type_count > 0 ? round($sales_total / $same_type_count, 2) : 0;
+        $calibration_adj = $same_type_count > 0 ? round($adj_total / $same_type_count, 2) : 0;
 
-        $ending_system = $cur_level;
-        $beginning = max(0, round($ending_system - $purchases + $sales + $calibration_adj, 2));
+        // Beginning Balance
+        $beginning = $same_type_count > 0 ? round($cur_level / $same_type_count, 2) : 0;
+
         $total_available = $beginning + $purchases;
+        $ending_system   = max(0, $total_available - $sales - $calibration_adj);
 
+        // Actual Dip = use ending_system as proxy
         $actual_dip = $ending_system;
         $variance   = $ending_system - $actual_dip;
 
@@ -289,7 +301,6 @@ $total_tanks = count($rows);
 $total_fuel_available = array_sum(array_column($rows, 'current_level'));
 $total_low_fuel_tanks = count(array_filter($rows, fn($r) => $r['status'] === 'Low'));
 $total_critical_fuel_tanks = count(array_filter($rows, fn($r) => in_array($r['status'], ['Critical','Out of Stock'])));
-$fuel_type_options = inventory_fuel_type_options($rows);
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -509,7 +520,7 @@ body, html { overflow-x: hidden !important; }
 <div class="mif-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
     <div>
         <h1 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#00264D;text-transform:uppercase;">Fuel Inventory</h1>
-        <div style="font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.3px;">Database Inventory Overview &middot; Today: <?= date('F d, Y') ?></div>
+        <div style="font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.3px;">17-Tanker Overview &middot; Today: <?= date('F d, Y') ?></div>
     </div>
 </div>
 
@@ -566,9 +577,11 @@ body, html { overflow-x: hidden !important; }
     <!-- Filter Fuel Type -->
     <select id="cf" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none; background:#fff;">
       <option value="">All Fuel Types</option>
-      <?php foreach ($fuel_type_options as $fuel_type_option): ?>
-        <option value="<?= htmlspecialchars(strtolower($fuel_type_option)) ?>"><?= htmlspecialchars($fuel_type_option) ?></option>
-      <?php endforeach; ?>
+      <option value="diesel">Diesel</option>
+      <option value="kerosene">Kerosene</option>
+      <option value="turbo diesel">Turbo Diesel</option>
+      <option value="xcs plus">XCS Plus</option>
+      <option value="xtra unl">XTRA UNL</option>
     </select>
     <!-- Filter Status -->
     <select id="sf" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none; background:#fff;">
@@ -594,7 +607,7 @@ body, html { overflow-x: hidden !important; }
 
 <div class="inv-card">
     <div class="inv-card-head">
-        <div class="inv-card-title">Fuel Inventory Grid</div>
+        <div class="inv-card-title">17-Tanker Fuel Inventory Grid</div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
             <button onclick="openFuelSrModal()" class="txn-btn primary">
                 <i class="fas fa-boxes"></i> Stock Request
@@ -667,10 +680,14 @@ body, html { overflow-x: hidden !important; }
                         </td>
                         <td style="color:#64748b; font-size:11px;"><?= $ts_str ?></td>
                         <td>
-                            <!-- ACTION: View button only (simple text) -->
-                            <button class="int-btn-outline" onclick="viewTankDetails(<?= htmlspecialchars(json_encode($r)) ?>)" title="View Details" style="width:100%;">
-                                <i class="fas fa-eye" style="width:14px;"></i> View
-                            </button>
+                            <div style="display:flex; flex-direction:column; gap:4px; width:100%;">
+                                <button class="int-btn-outline" onclick="viewTankDetails(<?= htmlspecialchars(json_encode($r)) ?>)" title="View Details">
+                                    <i class="fas fa-eye" style="width:14px;"></i> View Tank Details
+                                </button>
+                                <button class="int-btn-outline" onclick="viewFuelMovement('<?= htmlspecialchars($r['fuel_type']) ?>', '<?= htmlspecialchars($r['label']) ?>')" title="View Movement">
+                                    <i class="fas fa-chart-bar" style="width:14px;"></i> View Fuel Transaction History
+                                </button>
+                            </div>
                         </td>
                     </tr>
                     <?php endforeach; ?>

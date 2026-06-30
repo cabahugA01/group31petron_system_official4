@@ -1,0 +1,81 @@
+===============================================
+FIXED: Manager Customer Page "Error loading data"
+===============================================
+
+ERROR DISPLAYED:
+---------------
+"Error loading data" message in the customer registry table on manager_customers.php
+
+ROOT CAUSE:
+-----------
+The manager_customer_operations.php file had additional column reference errors that were not caught in the first fix:
+
+1. Stats Query Issues:
+   - COALESCE(registered_at,created_at) → should be just created_at
+   - customer_type = 'regular' → should be type = 'cash'
+   - customer_type = 'fleet' → should be type = 'credit'
+   - outstanding_balance → should be current_balance
+
+2. View Customer Query Issue:
+   - c.registered_by (doesn't exist) → should use c.verified_by
+
+INCORRECT COLUMNS IN STATS QUERY:
+---------------------------------
+BEFORE:
+- DATE(COALESCE(registered_at,created_at)) → registered_at doesn't exist
+- customer_type = 'regular' → customer_type doesn't exist, type values are 'cash'/'credit'
+- customer_type = 'fleet' → same issue
+- outstanding_balance > 0 → column is current_balance
+
+AFTER:
+- DATE(created_at) ✓
+- type = 'cash' ✓
+- type = 'credit' ✓
+- current_balance > 0 ✓
+
+SOLUTION:
+---------
+Fixed manager_customer_operations.php:
+
+1. Updated stats query to use correct columns:
+   - registered_at → created_at
+   - customer_type → type
+   - outstanding_balance → current_balance
+   - Updated customer type filters from 'regular'/'fleet' to 'cash'/'credit'
+
+2. Fixed viewCustomer query:
+   - Changed c.registered_by to c.verified_by (both JOINs now use verified_by)
+
+FILES MODIFIED:
+---------------
+- public/manager_customer_operations.php (Stats query + View customer query)
+
+CUSTOMER TYPES IN DATABASE:
+----------------------------
+The customers table uses type enum('cash', 'credit'):
+- 'cash' = Regular walk-in customers (displayed as "Regular" in UI)
+- 'credit' = Fleet/Credit account customers (displayed as "Fleet" in UI)
+
+NOT 'regular' or 'fleet' as the code was checking for!
+
+VERIFICATION:
+-------------
+After this fix:
+✓ Manager customers page should load successfully
+✓ Summary cards (Total, New Today, Regular, Fleet, Outstanding, Active) should show correct counts
+✓ Customer list should display in the table
+✓ View customer details should work
+✓ All filters should function properly
+
+RELATED FIXES:
+--------------
+This fix complements the earlier fixes to:
+- staff_customer_operations.php
+- admin_customer_operations.php
+- manager_customer_export.php
+- admin_customer_export.php
+
+All customer operation files now use the correct database schema.
+
+STATUS: FIXED ✓
+Date: <?php echo date('Y-m-d H:i:s'); ?>

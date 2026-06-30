@@ -1,0 +1,198 @@
+═══════════════════════════════════════════════════════════════════════════════
+                    AYAW NI - QUICK FIX SA LOGIN ERROR
+═══════════════════════════════════════════════════════════════════════════════
+
+PROBLEMA: Dili ka maka-login, nag-say "System error"
+
+ROOT CAUSE: Ang database tables naka-MEMORY engine (mawala ang data pag restart)
+
+═══════════════════════════════════════════════════════════════════════════════
+                    ⚡ 5-MINUTE QUICK FIX
+═══════════════════════════════════════════════════════════════════════════════
+
+STEP 1: CHECK IF TABLES EXIST (30 seconds)
+────────────────────────────────────────────────────────────────────────────────
+1. Open: http://localhost/phpmyadmin
+2. Click: petron_pos_db_secure
+3. Tan-awa: Naa bay tables sa left sidebar?
+
+   If NAA tables:
+   → Go to STEP 2 (Fix Engine)
+   
+   If WALA tables:
+   → Go to STEP 3 (Restore Backup)
+
+────────────────────────────────────────────────────────────────────────────────
+
+STEP 2: FIX TABLE ENGINE (2 minutes)
+────────────────────────────────────────────────────────────────────────────────
+1. Sa phpMyAdmin, click "SQL" tab
+2. Open file: CHECK_DATABASE_STATUS.sql
+3. Copy paste tanan
+4. Click "Go"
+5. Tan-awa ang result - if naa'y "ENGINE = MEMORY", padayon:
+
+6. Open file: FIX_DATABASE_ENGINE.sql
+7. Copy paste tanan
+8. Click "Go"
+9. Wait until mag-say "Query OK"
+
+10. Test login:
+    - Go to: http://localhost/group31petron_system_official4/public/login.php
+    - Login
+    - Should work na!
+
+────────────────────────────────────────────────────────────────────────────────
+
+STEP 3: RESTORE BACKUP (3 minutes)
+────────────────────────────────────────────────────────────────────────────────
+Kung WALA na ang tables (mawala na ang data):
+
+1. Find backup file sa imong folder:
+   → database/petron_pos_db_secure.sql
+   → backups/backup_*.sql
+   → database/backups/*.sql
+
+2. Sa phpMyAdmin:
+   - Click "Import" tab
+   - Click "Choose File"
+   - Select ang backup file
+   - Click "Go" button
+   - Wait (pwede mag-take ug 1-2 minutes kung dako ang file)
+
+3. After import, run STEP 2 para i-convert to InnoDB
+
+4. Test login - should work na!
+
+═══════════════════════════════════════════════════════════════════════════════
+                    ⚠️ EMERGENCY FIX (LAST RESORT)
+═══════════════════════════════════════════════════════════════════════════════
+
+Kung wala jud mo-work, create temporary admin account:
+
+1. Open phpMyAdmin
+2. Select: petron_pos_db_secure
+3. Click "SQL" tab
+4. Paste ni:
+
+DROP TABLE IF EXISTS users;
+CREATE TABLE users (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  username VARCHAR(50) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  first_name VARCHAR(100),
+  last_name VARCHAR(100),
+  email VARCHAR(150),
+  role ENUM('superadmin','admin','manager','staff') NOT NULL,
+  station_id INT DEFAULT 1,
+  status ENUM('Active','Locked','Disabled') DEFAULT 'Active',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+INSERT INTO users (username, password_hash, first_name, last_name, email, role, station_id, status)
+VALUES 
+('admin', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Admin', 'User', 'admin@petron.com', 'superadmin', 1, 'Active');
+
+5. Click "Go"
+
+6. Login credentials:
+   Username: admin
+   Password: password
+
+7. IMPORTANTE: I-change dayon ang password after mo-login!
+
+═══════════════════════════════════════════════════════════════════════════════
+                    🔍 UNSAY NAHITABO?
+═══════════════════════════════════════════════════════════════════════════════
+
+MEMORY Engine:
+- Fast pero temporary
+- Mawala ang data pag restart sa Apache/MySQL
+- DILI dapat gamiton sa production
+
+InnoDB Engine:
+- Permanent storage
+- Data ma-preserve even after restart
+- SAKTO kini para sa production
+
+Ang nahitabo:
+1. Imong database gi-import with ENGINE=MEMORY
+2. Nag-restart ang XAMPP/Apache
+3. Nawala tanan tables kay MEMORY engine
+4. Login dili mo-work kay wala na ang users table
+
+Solution:
+- Convert all tables to InnoDB
+- NEVER use MEMORY engine sa production
+
+═══════════════════════════════════════════════════════════════════════════════
+                    📋 TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════════════
+
+PROBLEM: After import, MEMORY pa gihapon
+FIX:
+   1. Open ang backup file sa text editor
+   2. Find: ENGINE=MEMORY
+   3. Replace with: ENGINE=InnoDB
+   4. Save
+   5. Re-import
+
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEM: Import fail - "Max execution time"
+FIX:
+   1. Edit: c:\xampp\php\php.ini
+   2. Find: max_execution_time = 30
+   3. Change: max_execution_time = 300
+   4. Find: upload_max_filesize = 2M
+   5. Change: upload_max_filesize = 128M
+   6. Restart Apache
+   7. Try import again
+
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEM: "Table doesn't exist"
+FIX:
+   1. Tables nawala na (MEMORY engine cleared)
+   2. Restore from backup file
+   3. Run FIX_DATABASE_ENGINE.sql
+   4. Test login
+
+════════════════════════════════════════════════════════════════════════════════
+                    ✅ SUCCESS CHECK
+═══════════════════════════════════════════════════════════════════════════════
+
+Mo-work na if:
+✅ Login page mo-load
+✅ Maka-login ka
+✅ Mo-redirect to dashboard
+✅ Dashboard mo-load walay errors
+✅ After restart sa Apache, mo-work gihapon
+
+═══════════════════════════════════════════════════════════════════════════════
+                    📞 NEED HELP?
+═══════════════════════════════════════════════════════════════════════════════
+
+Check error logs:
+- Apache: c:\xampp\apache\logs\error.log
+- MySQL: c:\xampp\mysql\data\mysql_error.log
+- Browser: Press F12 → Console tab
+
+Files nga nabuhat:
+1. CHECK_DATABASE_STATUS.sql - Check engine status
+2. FIX_DATABASE_ENGINE.sql - Convert to InnoDB
+3. FIX_LOGIN_ERROR.md - Complete English guide
+4. AYAW_NI_QUICK_FIX.txt - This Bisaya guide
+
+═══════════════════════════════════════════════════════════════════════════════
+
+SUMMARY:
+1. Check if tables exist (phpMyAdmin)
+2. If exists: Run FIX_DATABASE_ENGINE.sql
+3. If wala: Restore backup then fix engine
+4. Emergency: Create temporary admin account
+5. Test login
+
+IMPORTANTE: Convert all tables to InnoDB para dili na mawala ang data!
+
+═══════════════════════════════════════════════════════════════════════════════
