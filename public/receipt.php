@@ -445,23 +445,24 @@ $txn_type_label    = 'MERCHANDISE/SERVICE TRANSACTION';
 $txn_type_sublabel = 'Official Merchandise & Service Invoice';
 
 // ── Compute subtotal and VAT correctly ────────────────────────────────────
-// If stored subtotal_amount exists, use it. Otherwise derive from items sum.
+// ALWAYS use the stored total_amount - never recalculate to avoid discrepancies
 $items_sum = 0;
 foreach (($sale['items'] ?? []) as $it) {
     $items_sum += (float)($it['subtotal'] ?? ((float)($it['unit_price'] ?? 0) * (float)($it['quantity'] ?? 1)));
 }
 
+// CRITICAL FIX: Use stored total_amount directly - do NOT recalculate
+// This ensures printed receipt matches the transaction total in the database
+$total = (float)($sale['total_amount'] ?? $sale['total'] ?? 0);
+
 if (!empty($sale['subtotal_amount']) && (float)$sale['subtotal_amount'] > 0) {
-    // Stored values — trust them
+    // Stored values exist — use them for breakdown
     $subtotal_display = (float)$sale['subtotal_amount'];
     $vat_display      = !empty($sale['vat_amount']) ? (float)$sale['vat_amount'] : round($subtotal_display * 0.12, 2);
-    // Recompute grand total from stored subtotal + vat for accuracy
-    $total = round($subtotal_display + $vat_display, 2);
 } else {
-    // Legacy: total_amount was stored without VAT — treat items_sum as subtotal
-    $subtotal_display = $items_sum > 0 ? $items_sum : ($total > 0 ? round($total / 1.12, 2) : 0);
-    $vat_display      = round($subtotal_display * 0.12, 2);
-    $total            = round($subtotal_display + $vat_display, 2);
+    // Derive breakdown from the stored total (not from items_sum to avoid rounding errors)
+    $subtotal_display = $total > 0 ? round($total / 1.12, 2) : 0;
+    $vat_display      = $total > 0 ? round($total - $subtotal_display, 2) : 0;
 }
 $vatable = $subtotal_display;
 $vat_amt = $vat_display;

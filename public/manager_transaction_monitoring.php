@@ -255,12 +255,17 @@ try {
             mt.customer_name,
             mt.total_amount,
             mt.payment_method,
-            mt.payment_status,
+            COALESCE(mt.payment_status, 'Unpaid') AS payment_status,
+            COALESCE(mt.validation_status, 'Pending') AS validation_status,
+            COALESCE(mt.workflow_status, 'Pending') AS workflow_status,
+            COALESCE(mt.shift_name, mt.shift_period, '-') AS shift_name,
+            COALESCE(mt.shift_period, '-') AS shift_period,
             mt.transaction_type,
-            mt.quantity,
-            mt.unit_price,
+            (SELECT COUNT(*) FROM merchandise_transaction_items mti WHERE mti.transaction_id = mt.id) AS item_count,
             COALESCE(mt.transaction_date, mt.created_at) AS txn_date,
-            u.name AS staff_name
+            mt.created_at,
+            COALESCE(NULLIF(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')),' '),
+                     u.username, 'Unknown') AS staff_name
         FROM merchandise_transactions mt
         LEFT JOIN users u ON u.id = mt.staff_id
         WHERE " . implode(' AND ', $where) . "
@@ -558,11 +563,8 @@ require_once __DIR__ . '/../partials/header.php';
 
 <div class="page-head txn-page-head">
     <div>
-        <h1 class="h1"><i class="fas fa-sliders-h"></i> Transaction Adjustments</h1>
-        <div class="sub">Review and manage transaction corrections, modifications, and adjustment records.</div>
-    </div>
-    <div id="pageHeadButtons" class="actions txn-head-actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <!-- Buttons will be dynamically inserted here by JavaScript -->
+        <h1 class="h1"><i class="fas fa-sliders-h"></i> Transaction Adjustments History</h1>
+        <div class="sub">Review and monitor transaction corrections, modifications, and adjustment records.</div>
     </div>
 </div>
 
@@ -629,65 +631,24 @@ require_once __DIR__ . '/../partials/header.php';
     </form>
 </div>
 
-<!-- TAB NAVIGATION -->
-<div style="display:flex;gap:10px;margin-top:20px;margin-bottom:12px;">
-    <button onclick="switchTab('transactions')" id="tabBtn_transactions" class="flt-btn flt-btn-reset" style="font-size:12px;padding:8px 16px;">
-        <i class="fas fa-list"></i> Transactions (<?php echo count($transactions); ?>)
-    </button>
-    <button onclick="switchTab('history')" id="tabBtn_history" class="flt-btn flt-btn-solid-primary" style="font-size:12px;padding:8px 16px;">
-        <i class="fas fa-history"></i> Adjustment History (<?php echo count($adjustments); ?>)
-    </button>
+<!-- TAB NAVIGATION - REMOVED: Only showing Adjustment History now -->
+<div style="display:none;">
+    <!-- Transactions tab removed as per requirement -->
 </div>
 
-<!-- TAB CONTENT: TRANSACTIONS -->
+<!-- TAB CONTENT: TRANSACTIONS - HIDDEN -->
 <div id="tab_transactions" class="card" style="margin-top:0;display:none;">
-    <div class="card-head">
-        <div class="card-title">Transactions (<?php echo count($transactions); ?>)</div>
-    </div>
-    <table class="adj-table">
-        <thead>
-            <tr>
-                <th style="width:12%;">Transaction ID</th>
-                <th style="width:15%;">Customer</th>
-                <th style="width:8%;">Shift</th>
-                <th style="width:12%;">Staff</th>
-                <th style="width:10%;">Type</th>
-                <th style="width:10%;">Amount</th>
-                <th style="width:10%;">Payment</th>
-                <th style="width:13%;">Date</th>
-                <th style="width:10%;">Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php if (!$transactions): ?>
-            <tr><td colspan="9" style="text-align:center;padding:40px;color:#888;">No transactions found</td></tr>
-            <?php else: ?>
-            <?php foreach ($transactions as $txn): ?>
-            <tr>
-                <td><strong><?php echo htmlspecialchars($txn['transaction_id']); ?></strong></td>
-                <td><?php echo htmlspecialchars($txn['customer_name'] ?? 'Walk-in Customer'); ?></td>
-                <td><?php echo htmlspecialchars($txn['shift_name'] ?? $txn['shift_period'] ?? '-'); ?></td>
-                <td><?php echo htmlspecialchars($txn['staff_name'] ?? 'Staff'); ?></td>
-                <td><?php echo htmlspecialchars($txn['transaction_type'] ?? 'Merchandise'); ?></td>
-                <td style="font-weight:700;">₱<?php echo number_format($txn['total_amount'], 2); ?></td>
-                <td><?php echo htmlspecialchars($txn['payment_method'] ?? '-'); ?></td>
-                <td><?php echo date('M d, Y h:i A', strtotime($txn['txn_date'])); ?></td>
-                <td>
-                    <button class="flt-btn flt-btn-search" style="height:28px;padding:0 10px;font-size:11px;" onclick='openAdjustModal(<?php echo json_encode($txn, JSON_HEX_APOS | JSON_HEX_QUOT); ?>)'>
-                        <i class="fas fa-edit"></i> Adjust
-                    </button>
-                </td>
-            </tr>
-            <?php endforeach; ?>
-            <?php endif; ?>
-        </tbody>
-    </table>
+    <!-- Content hidden - tab removed -->
 </div>
 
 <!-- ADJUSTMENT HISTORY -->
-<div id="tab_history" class="card" style="margin-top:0;">
+<div id="tab_history" class="card" style="margin-top:20px;">
     <div class="card-head">
         <div class="card-title">Adjustment History (<?php echo count($adjustments); ?>)</div>
+        <div style="display:flex;gap:8px;">
+            <a href="?export=excel&table=adjustments&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>&type=<?php echo urlencode($filter_type); ?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
+            <a href="?export=csv&table=adjustments&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>&type=<?php echo urlencode($filter_type); ?>" class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</a>
+        </div>
     </div>
     <div class="card-table-wrap">
     <table class="t-compact">
@@ -696,27 +657,26 @@ require_once __DIR__ . '/../partials/header.php';
                 <th style="width: 3.5%;">Adj ID</th>
                 <th style="width: 7%;">Trans ID</th>
                 <th style="width: 3.5%;">JO No.</th>
-                <th style="width: 7.5%;">Customer</th>
-                <th style="width: 4.5%;">Plate</th>
-                <th style="width: 4.5%;">Type</th>
-                <th style="width: 10%;">Items/Service</th>
-                <th style="width: 3.5%; text-align:center;">Orig Qty</th>
-                <th style="width: 3.5%; text-align:center;">Upd Qty</th>
-                <th style="width: 5.5%;">Orig Amt</th>
-                <th style="width: 5.5%;">Upd Amt</th>
-                <th style="width: 5.5%;">Diff</th>
-                <th style="width: 4.5%;">Payment</th>
-                <th style="width: 5.5%;">Adj Type</th>
-                <th style="width: 9.5%;">Reason</th>
-                <th style="width: 5.5%;">By</th>
-                <th style="width: 4.5%; text-align:center;">Status</th>
-                <th style="width: 6.5%;">Date/Time</th>
-                <th style="width: 5.5%; text-align:center;">Action</th>
+                <th style="width: 8%;">Customer</th>
+                <th style="width: 5%;">Plate</th>
+                <th style="width: 5%;">Type</th>
+                <th style="width: 11%;">Items/Service</th>
+                <th style="width: 4%; text-align:center;">Orig Qty</th>
+                <th style="width: 4%; text-align:center;">Upd Qty</th>
+                <th style="width: 6%;">Orig Amt</th>
+                <th style="width: 6%;">Upd Amt</th>
+                <th style="width: 6%;">Diff</th>
+                <th style="width: 5%;">Payment</th>
+                <th style="width: 6%;">Adj Type</th>
+                <th style="width: 10%;">Reason</th>
+                <th style="width: 6%;">By</th>
+                <th style="width: 5%; text-align:center;">Status</th>
+                <th style="width: 7%;">Date/Time</th>
             </tr>
         </thead>
         <tbody>
             <?php if (!$adjustments): ?>
-            <tr><td colspan="19" style="text-align:center;padding:40px;color:#888;">No adjustments found</td></tr>
+            <tr><td colspan="18" style="text-align:center;padding:40px;color:#888;">No adjustments found</td></tr>
             <?php else: ?>
             <?php foreach ($adjustments as $adj): ?>
             <?php 
@@ -821,21 +781,6 @@ require_once __DIR__ . '/../partials/header.php';
                 <td style="font-size:11px; line-height:1.2;"><?php echo htmlspecialchars($adj['adjusted_by_name']); ?></td>
                 <td style="text-align:center; white-space:nowrap;"><span class="badge <?php echo $badge_class; ?>" style="font-size:9.5px;padding:2px 6px;"><?php echo $status_text; ?></span></td>
                 <td style="white-space:nowrap; font-size:10.5px; line-height:1.2;"><?php echo date('M d, Y', strtotime($adj['adjustment_date'])); ?><br><span style="color:#64748b; font-size:10px;"><?php echo date('h:i A', strtotime($adj['adjustment_date'])); ?></span></td>
-                <td style="text-align:center; white-space:nowrap;">
-                    <button class="flt-btn flt-btn-search" style="height:22px;font-size:9px;padding:0 6px;margin:0;" onclick="openAdjModal({
-                        adjId: '#<?php echo $adj['adj_id']; ?>',
-                        txnId: '<?php echo addslashes(htmlspecialchars($adj['transaction_id'])); ?>',
-                        customer: '<?php echo addslashes(htmlspecialchars($adj['customer'])); ?>',
-                        type: '<?php echo addslashes(htmlspecialchars(ucwords(str_replace('_', ' ', $adj['transaction_type'])))); ?>',
-                        original: '₱<?php echo number_format($adj['original_amount'], 2); ?>',
-                        updated: '₱<?php echo number_format($adj['updated_amount'], 2); ?>',
-                        diff: '<?php echo ($adj['amount_difference'] >= 0 ? '+' : '') . '₱' . number_format($adj['amount_difference'], 2); ?>',
-                        reason: '<?php echo addslashes(htmlspecialchars($adj['adjustment_reason'])); ?>',
-                        remarks: '<?php echo addslashes(htmlspecialchars($adj['manager_remarks'] ?? '')); ?>',
-                        by: '<?php echo addslashes(htmlspecialchars($adj['adjusted_by_name'])); ?>',
-                        date: '<?php echo date('M d, Y h:i A', strtotime($adj['adjustment_date'])); ?>'
-                    })"><i class="fas fa-eye"></i> View</button>
-                </td>
             </tr>
             <?php endforeach; ?>
             <?php endif; ?>
@@ -844,104 +789,7 @@ require_once __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- ADJUSTMENT MODAL -->
-<div id="adjustmentModal" class="modal">
-    <div class="modal-card">
-        <div class="modal-head">
-            <div style="display:flex;align-items:center;gap:10px;">
-                <div class="modal-icon">
-                    <i class="fas fa-edit"></i>
-                </div>
-                <div>
-                    <div class="modal-title">Adjust Transaction</div>
-                    <div class="modal-subtitle" id="adj_display_id_header"></div>
-                </div>
-            </div>
-            <button class="modal-close" onclick="closeModal()">&times;</button>
-        </div>
-        <form method="POST">
-            <input type="hidden" name="action" value="save_adjustment">
-            <input type="hidden" name="transaction_id" id="adj_txn_id">
-            <input type="hidden" name="transaction_type" id="adj_txn_type">
-            <input type="hidden" name="original_amount" id="adj_orig_amt">
-            <div class="modal-body">
-                <!-- TRANSACTION INFORMATION (Read-Only) -->
-                <div class="modal-info-box">
-                    <h4><i class="fas fa-info-circle" style="margin-right:6px;"></i>Transaction Information</h4>
-                    <div class="modal-info-grid">
-                        <div><strong>Transaction ID:</strong> <span id="adj_display_id"></span></div>
-                        <div><strong>Customer Name:</strong> <span id="adj_display_customer"></span></div>
-                        <div><strong>Transaction Type:</strong> <span id="adj_display_type"></span></div>
-                        <div><strong>Current Amount:</strong> <span id="adj_display_amt"></span></div>
-                    </div>
-                </div>
-                
-                <!-- EDITABLE FIELDS -->
-                <h4 style="margin:0 0 12px 0;font-size:13px;color:#003d7a;font-weight:700;"><i class="fas fa-pencil-alt" style="margin-right:6px;font-size:11px;"></i>Editable Fields</h4>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px;">
-                    <div>
-                        <label>Quantity <span style="color:red;">*</span></label>
-                        <input type="number" name="quantity" id="adj_quantity" class="input" step="1" min="1" value="1" required>
-                    </div>
-                    <div>
-                        <label>Unit Price <span style="color:red;">*</span></label>
-                        <input type="number" name="unit_price" id="adj_unit_price" class="input" step="0.01" min="0" required>
-                    </div>
-                </div>
-                <div style="margin-bottom:15px;">
-                    <label>Service Fee</label>
-                    <input type="number" name="service_fee" id="adj_service_fee" class="input" step="0.01" min="0" value="0">
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px;">
-                    <div>
-                        <label>Payment Method</label>
-                        <select name="payment_method" id="adj_payment_method" class="input">
-                            <option value="Cash">Cash</option>
-                            <option value="Card">Card</option>
-                            <option value="E-Wallet">E-Wallet</option>
-                            <option value="Petron E-Fuel">Petron E-Fuel</option>
-                            <option value="Fleet Card">Fleet Card</option>
-                            <option value="Credit">Credit</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label>Payment Status</label>
-                        <select name="payment_status" id="adj_payment_status" class="input">
-                            <option value="Paid">Paid</option>
-                            <option value="Partial Payment">Partial Payment</option>
-                            <option value="Pending Payment">Pending Payment</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <!-- REQUIRED FIELDS -->
-                <h4 style="margin:20px 0 12px 0;font-size:13px;color:#003d7a;font-weight:700;"><i class="fas fa-check-circle" style="margin-right:6px;font-size:11px;"></i>Required Fields</h4>
-                <div style="margin-bottom:15px;">
-                    <label>Adjustment Reason <span style="color:red;">*</span></label>
-                    <select name="adjustment_reason" class="input" required>
-                        <option value="">Select reason...</option>
-                        <option value="Pricing Error">Pricing Error</option>
-                        <option value="Quantity Mismatch">Quantity Mismatch</option>
-                        <option value="Payment Method Change">Payment Method Change</option>
-                        <option value="Customer Request">Customer Request</option>
-                        <option value="System Error">System Error</option>
-                        <option value="Other">Other</option>
-                    </select>
-                </div>
-                <div>
-                    <label>Manager Remarks</label>
-                    <textarea name="manager_remarks" class="input" rows="3" placeholder="Additional notes..."></textarea>
-                </div>
-                
-                <input type="hidden" name="customer_name" id="adj_customer_name">
-            </div>
-            <div class="modal-actions">
-                <button type="button" class="flt-btn flt-btn-reset" onclick="closeModal()"><i class="fas fa-times"></i> Cancel</button>
-                <button type="submit" class="flt-btn flt-btn-solid-primary"><i class="fas fa-save"></i> Save Adjustment</button>
-            </div>
-        </form>
-    </div>
-</div>
+<!-- ADJUSTMENT MODAL - REMOVED (Transactions tab removed, no longer needed) -->
 
 <!-- Adjustment Detail Modal -->
 <div id="adjDetailModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
@@ -969,100 +817,16 @@ require_once __DIR__ . '/../partials/header.php';
 </style>
 
 <script>
-function openAdjustModal(txn) {
-    document.getElementById('adj_txn_id').value = txn.transaction_id;
-    document.getElementById('adj_txn_type').value = txn.transaction_type || 'merchandise';
-    document.getElementById('adj_orig_amt').value = txn.total_amount;
-    document.getElementById('adj_customer_name').value = txn.customer_name || 'Walk-in Customer';
-    
-    // Display transaction info
-    document.getElementById('adj_display_id').textContent = txn.transaction_id;
-    document.getElementById('adj_display_id_header').textContent = txn.transaction_id; // For modal header subtitle
-    document.getElementById('adj_display_customer').textContent = txn.customer_name || 'Walk-in Customer';
-    document.getElementById('adj_display_type').textContent = txn.transaction_type || 'Merchandise';
-    document.getElementById('adj_display_amt').textContent = '₱' + parseFloat(txn.total_amount).toFixed(2);
-    
-    // Pre-fill editable fields
-    document.getElementById('adj_quantity').value = txn.quantity || 1;
-    document.getElementById('adj_unit_price').value = txn.unit_price || txn.total_amount || 0;
-    document.getElementById('adj_service_fee').value = 0;
-    document.getElementById('adj_payment_method').value = txn.payment_method || 'Cash';
-    document.getElementById('adj_payment_status').value = txn.payment_status || 'Paid';
-    
-    document.getElementById('adjustmentModal').style.display = 'flex';
-}
-
+// Adjustment modal is removed - transactions tab removed
 function closeModal() {
-    document.getElementById('adjustmentModal').style.display = 'none';
+    // Modal functionality kept for compatibility
 }
 
-// Close modal on overlay click
-document.getElementById('adjustmentModal').addEventListener('click', function(e) {
-    if (e.target === this) closeModal();
-});
-
-function openAdjModal(d){
-  var diff = parseFloat((d.diff||'').replace(/[^₱0-9.\-]/g,'').replace('₱','')) || 0;
-  var diffColor = diff >= 0 ? '#16a34a' : '#dc2626';
-  var rows=[
-    ['Adjustment ID',    '<strong>'+d.adjId+'</strong>'],
-    ['Transaction ID',   d.txnId],
-    ['Customer',         d.customer],
-    ['Type',             d.type],
-    ['Original Amount',  d.original],
-    ['Updated Amount',   '<strong style="color:#002F70;font-size:15px;">'+d.updated+'</strong>'],
-    ['Difference',       '<strong style="color:'+diffColor+';font-size:14px;">'+d.diff+'</strong>'],
-    ['Reason',           d.reason],
-    ['Manager Remarks',  d.remarks || '—'],
-    ['Adjusted By',      d.by],
-    ['Adjustment Date',  d.date]
-  ];
-  var html='';
-  rows.forEach(function(r){ html+='<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>'; });
-  document.getElementById('adjModalBody').innerHTML=html;
-  document.getElementById('adjDetailModal').style.display='flex';
-}
 function closeAdjModal(){
   document.getElementById('adjDetailModal').style.display='none';
 }
 document.getElementById('adjDetailModal').addEventListener('click',function(e){
   if(e.target===this) closeAdjModal();
-});
-
-// ── Tab Switching Function ──────────────────────────────────────────────
-function switchTab(tabName) {
-    // Hide all tabs
-    document.getElementById('tab_transactions').style.display = 'none';
-    document.getElementById('tab_history').style.display = 'none';
-    
-    // Show selected tab
-    document.getElementById('tab_' + tabName).style.display = 'block';
-    
-    // Update button styles
-    var transBtn = document.getElementById('tabBtn_transactions');
-    var histBtn = document.getElementById('tabBtn_history');
-    var pageHeadButtons = document.getElementById('pageHeadButtons');
-    
-    if (tabName === 'transactions') {
-        transBtn.className = 'flt-btn flt-btn-solid-primary';
-        histBtn.className = 'flt-btn flt-btn-reset';
-        // Clear page-head buttons for Transactions tab
-        pageHeadButtons.innerHTML = '';
-    } else {
-        transBtn.className = 'flt-btn flt-btn-reset';
-        histBtn.className = 'flt-btn flt-btn-solid-primary';
-        // Show export and back buttons for Adjustment History tab
-        pageHeadButtons.innerHTML = `
-            <a href="?export=excel&table=adjustments&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>&type=<?php echo urlencode($filter_type); ?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
-            <a href="?export=csv&table=adjustments&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>&type=<?php echo urlencode($filter_type); ?>" class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</a>
-            <button onclick="switchTab('transactions')" class="flt-btn flt-btn-reset">Back</button>
-        `;
-    }
-}
-
-// Initialize - show adjustment history tab by default
-window.addEventListener('DOMContentLoaded', function() {
-    switchTab('history');
 });
 </script>
 

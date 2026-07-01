@@ -51,9 +51,9 @@
       <i class="fas fa-arrow-left"></i> <span>Back</span>
     </button>
     <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
-      <button onclick="exportTableToExcel('histTbl','txn_history_<?= date('Ymd') ?>')" class="txn-btn success"><i class="fas fa-file-excel"></i> Excel</button>
-      <button onclick="exportTableToPDF('histTbl','Transaction History')" class="txn-btn danger"><i class="fas fa-file-pdf"></i> PDF</button>
-      <button onclick="exportTableToCSV('histTbl','txn_history_<?= date('Ymd') ?>.csv')" class="txn-btn primary"><i class="fas fa-file-csv"></i> CSV</button>
+      <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'excel'])) ?>" class="txn-btn success" style="text-decoration:none; display:inline-flex; align-items:center; gap:5px;"><i class="fas fa-file-excel"></i> Excel</a>
+      <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'pdf'])) ?>" target="_blank" class="txn-btn danger" style="text-decoration:none; display:inline-flex; align-items:center; gap:5px;"><i class="fas fa-file-pdf"></i> PDF</a>
+      <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'csv'])) ?>" class="txn-btn primary" style="text-decoration:none; display:inline-flex; align-items:center; gap:5px;"><i class="fas fa-file-csv"></i> CSV</a>
     </div>
   </div>
 </div>

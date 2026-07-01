@@ -430,18 +430,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     'desc' => 'View consolidated product list, current prices, and inventory snapshot.'
                 ];
                 
-                // Add standalone Master Data Requests after Product & Pricing
-                $filtered_menu[] = [
-                    'id' => 'mgr_master_data_requests',
-                    'label' => 'Master Data Requests',
-                    'ico' => 'fas fa-clipboard-check',
-                    'href' => 'master_data_requests.php',
-                    'permissions' => ['approve_transactions', 'manage_job_orders'],
-                    'station_specific' => true,
-                    'desc' => 'Review and approve staff requests for new vehicle types, service types, and products.'
-                ];
-                
-                // Add standalone Customers after Master Data Requests
+                // Add standalone Customers after Product & Pricing
                 $filtered_menu[] = [
                     'id' => 'mgr_customers',
                     'label' => 'Customers',

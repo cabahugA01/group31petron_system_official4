@@ -126,8 +126,8 @@ require_once __DIR__ . '/../partials/header.php';
 
 <div class="page-head txn-page-head">
     <div>
-        <h1><i class="fas fa-sliders-h"></i> Transaction Adjustments</h1>
-        <div class="sub">Review all adjustments performed by Managers across the station.</div>
+        <h1><i class="fas fa-sliders-h"></i> Transaction Adjustments Oversight</h1>
+        <div class="sub">Monitor and review all adjustments performed by Managers across the station.</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <a href="admin_transaction_overview.php" class="flt-btn flt-btn-reset"><i class="fas fa-arrow-left"></i> Back</a>

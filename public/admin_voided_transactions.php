@@ -198,8 +198,8 @@ require_once __DIR__ . '/../partials/header.php';
 
 <div class="page-head txn-page-head">
     <div>
-        <h1><i class="fas fa-ban"></i> Voided Transactions</h1>
-        <div class="sub">Review all voided transactions for compliance monitoring and audit purposes.</div>
+        <h1><i class="fas fa-ban"></i> Voided Transactions Oversight</h1>
+        <div class="sub">Monitor and review all voided transactions for compliance monitoring and audit purposes.</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <a href="?<?=http_build_query(array_merge($_GET,['export'=>'excel']))?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>

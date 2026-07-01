@@ -58,7 +58,7 @@ if (isset($_GET['print_id'])) {
     // Fetch product details
     $stmt = $pdo->prepare("
         SELECT ip.*,
-               COALESCE(si.unit, ip.unit, 'pcs')       AS unit,
+               COALESCE(si.unit, ip.size, 'pcs')       AS unit,
                COALESCE(si.status, 'active')          AS status,
                COALESCE(si.stock_level, ip.stock, 0)  AS stock_level,
                COALESCE(si.capacity, ip.max_stock, 100) AS capacity,
@@ -68,7 +68,7 @@ if (isset($_GET['print_id'])) {
                ip.supplier
         FROM inventory_products ip
         LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-        WHERE ip.id = ? AND ip.category NOT IN ('Fuel')
+        WHERE ip.id = ? AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
     ");
     $stmt->execute([$station_id, $print_id]);
     $item = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -267,7 +267,7 @@ try {
                ip.unit_price   AS price,
                ip.unit_cost    AS cost,
                ip.sku,
-               COALESCE(si.unit, ip.unit, 'pcs')       AS unit,
+               COALESCE(si.unit, ip.size, 'pcs')       AS unit,
                COALESCE(si.status, 'active')          AS status,
                COALESCE(si.stock_level, ip.stock, 0)  AS stock_level,
                COALESCE(si.capacity, ip.max_stock, 100) AS capacity,
@@ -278,7 +278,7 @@ try {
         FROM inventory_products ip
         LEFT JOIN station_inventory si
                ON si.product_id = ip.id AND si.station_id = ?
-        WHERE ip.category NOT IN ('Fuel')
+        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
         ORDER BY ip.category, ip.product_name
     ");
     $stmt->execute([$station_id]);

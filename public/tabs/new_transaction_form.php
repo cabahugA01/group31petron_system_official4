@@ -281,12 +281,22 @@
                     <label for="service_category">Service Category <span style="color: #9ca3af;">(Recommended)</span></label>
                     <select id="service_category" name="service_category">
                         <option value="">-- Select Category --</option>
-                        <option value="Maintenance">Maintenance</option>
-                        <option value="Repair">Repair</option>
-                        <option value="Diagnostic">Diagnostic</option>
-                        <option value="Installation">Installation</option>
-                        <option value="Cleaning">Cleaning</option>
-                        <option value="Other">Other</option>
+                        <option value="Lubrication">Lubrication</option>
+                        <option value="PMS">PMS</option>
+                        <option value="Engine">Engine</option>
+                        <option value="Fuel System">Fuel System</option>
+                        <option value="Cooling System">Cooling System</option>
+                        <option value="Transmission">Transmission</option>
+                        <option value="Brake">Brake</option>
+                        <option value="Suspension">Suspension</option>
+                        <option value="Steering">Steering</option>
+                        <option value="Tire Services">Tire Services</option>
+                        <option value="Battery Services">Battery Services</option>
+                        <option value="Electrical">Electrical</option>
+                        <option value="Air Conditioning">Air Conditioning</option>
+                        <option value="Diagnostics">Diagnostics</option>
+                        <option value="Inspection">Inspection</option>
+                        <option value="Others">Others</option>
                     </select>
                 </div>
                 

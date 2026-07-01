@@ -40,7 +40,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_product_details') {
                 COALESCE(si.stock_level, ip.stock, 0)        AS stock_level,
                 COALESCE(si.capacity, ip.max_stock, 0)       AS capacity,
                 COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
-                COALESCE(si.unit, ip.unit, 'pcs')            AS unit,
+                COALESCE(si.unit, ip.size, 'pcs')            AS unit,
                 si.physical_count,
                 si.variance,
                 si.last_updated
@@ -56,6 +56,24 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_product_details') {
             echo json_encode(['success' => false, 'message' => 'Product not found']);
             exit;
         }
+
+        // Apply capacity fallbacks
+        $capacity = (float)($prod['capacity'] ?? 0);
+        $cat = strtoupper(trim($prod['category_name'] ?? ''));
+        if ($capacity <= 0) {
+            if      (strpos($cat,'OIL')!==false&&strpos($cat,'ENGINE')!==false)    $capacity=100;
+            elseif  (strpos($cat,'COOLANT')!==false||strpos($cat,'FLUID')!==false) $capacity=strpos($cat,'BRAKE')!==false?50:80;
+            elseif  (strpos($cat,'GREASE')!==false||strpos($cat,'LUBE')!==false)   $capacity=100;
+            elseif  (strpos($cat,'FILTER')!==false)                                 $capacity=150;
+            elseif  (strpos($cat,'ACCESSORI')!==false||strpos($cat,'TIRE')!==false||strpos($cat,'WAX')!==false) $capacity=200;
+            elseif  (strpos($cat,'FRESHENER')!==false)                              $capacity=250;
+            elseif  (strpos($cat,'BEVERAGE')!==false||strpos($cat,'DRINK')!==false) $capacity=500;
+            elseif  (strpos($cat,'SNACK')!==false||strpos($cat,'CHIP')!==false||strpos($cat,'BISCUIT')!==false||strpos($cat,'NOODLE')!==false) $capacity=500;
+            elseif  (strpos($cat,'CHOCOLATE')!==false||strpos($cat,'CANDY')!==false) $capacity=400;
+            elseif  (strpos($cat,'CHEMICAL')!==false||strpos($cat,'ADDITIVE')!==false) $capacity=80;
+            else    $capacity=100;
+        }
+        $prod['capacity'] = $capacity;
 
         // Movement history for this product
         $stmt = $pdo->prepare("
@@ -462,7 +480,7 @@ try {
             COALESCE(si.stock_level, ip.stock, 0)        AS stock_level,
             COALESCE(si.capacity, ip.max_stock, 100)     AS capacity,
             COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
-            COALESCE(si.unit, ip.unit, 'pcs')            AS unit,
+            COALESCE(si.unit, ip.size, 'pcs')            AS unit,
             si.last_updated                              AS last_updated,
             si.physical_count,
             si.variance
@@ -476,6 +494,34 @@ try {
 } catch (Exception $e) {
     $msg = 'Error loading merchandise: ' . $e->getMessage();
 }
+
+// Last movement per product
+$last_movements = [];
+try {
+    $mvStmt = $pdo->prepare("
+        SELECT product_id, qty_received AS qty, 'Delivery' AS mtype, encoded_at AS mdate
+        FROM merchandise_stock_in WHERE station_id = ? AND product_id IS NOT NULL
+    ");
+    $mvStmt->execute([$station_id]);
+    foreach ($mvStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $pid = (int)$r['product_id'];
+        if (!isset($last_movements[$pid]) || $r['mdate'] > $last_movements[$pid]['date'])
+            $last_movements[$pid] = ['qty'=>(int)$r['qty'],'type'=>$r['mtype'],'sign'=>'+','date'=>$r['mdate']];
+    }
+} catch (Exception $e) {}
+try {
+    $slStmt = $pdo->prepare("
+        SELECT ti.product_id, SUM(ti.quantity) AS qty, MAX(t.created_at) AS mdate
+        FROM transaction_items ti JOIN transactions t ON t.id=ti.transaction_id
+        WHERE t.station_id=? AND ti.product_id IS NOT NULL GROUP BY ti.product_id
+    ");
+    $slStmt->execute([$station_id]);
+    foreach ($slStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $pid = (int)$r['product_id'];
+        if (!isset($last_movements[$pid]) || $r['mdate'] > $last_movements[$pid]['date'])
+            $last_movements[$pid] = ['qty'=>(int)$r['qty'],'type'=>'Sales','sign'=>'-','date'=>$r['mdate']];
+    }
+} catch (Exception $e) {}
 
 // Category list for filters
 $categories_list = [];
@@ -543,7 +589,7 @@ try {
     $stmt = $pdo->prepare("
         SELECT sr.*, u.name AS staff_name, 
                COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
-               COALESCE(si.unit, ip.unit, 'pcs') AS unit,
+               COALESCE(si.unit, ip.size, 'pcs') AS unit,
                ip.sku AS prod_sku
         FROM stock_requests sr 
         JOIN users u ON sr.staff_id = u.id 
@@ -624,7 +670,7 @@ try {
     $stmt = $pdo->prepare("
         SELECT il.id AS log_id, il.created_at, il.action AS movement_type, il.quantity_change AS quantity, 
                il.quantity_before, il.quantity_after, il.reference_type, il.reference_id, il.notes, 
-               ip.product_name, ip.sku, COALESCE(si.unit, ip.unit, 'pcs') AS unit, u.name AS user_name 
+               ip.product_name, ip.sku, COALESCE(si.unit, ip.size, 'pcs') AS unit, u.name AS user_name 
         FROM inventory_logs il 
         JOIN inventory_products ip ON il.product_id = ip.id 
         LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = il.station_id 
@@ -690,6 +736,15 @@ include __DIR__ . '/../partials/header.php';
 .pstatus-active   { background:#d4edda; color:#155724; }
 .pstatus-inactive { background:#e9ecef; color:#495057; }
 .pstatus-pending  { background:#fff3cd; color:#856404; }
+
+/* Fill bar style */
+.fill-bar-wrap{background:#e9ecef;border-radius:3px;height:5px;overflow:hidden;margin-bottom:2px;width:100%;}
+.fill-bar-inner{height:100%;border-radius:3px;}
+
+/* Last Movement signs style */
+.mv-pos{color:#16a34a;font-weight:700;}
+.mv-neg{color:#dc2626;font-weight:700;}
+.mv-none{color:#94a3b8;}
 
 .po-table-wrap { width:100%; overflow-x:auto; }
 .po-table { width:100%; border-collapse:collapse; font-size:11px; }
@@ -954,11 +1009,12 @@ include __DIR__ . '/../partials/header.php';
                     <th>Product Name</th>
                     <th style="text-align:center;">Category</th>
                     <th>Unit</th>
-                    <th style="text-align:right;">Current Stock</th>
-                    <th style="text-align:right;">Reorder Level</th>
+                    <th style="text-align:center;">Capacity</th>
+                    <th>Current Stock / Reorder</th>
                     <th style="text-align:right;">Physical Count</th>
                     <th style="text-align:right;">Variance</th>
                     <th style="text-align:center;">Status</th>
+                    <th style="text-align:center;">Last Movement</th>
                     <th>Last Updated</th>
                     <th style="text-align:center;">Actions</th>
                 </tr>
@@ -967,27 +1023,45 @@ include __DIR__ . '/../partials/header.php';
             <?php
             foreach ($sorted as $cat_label => $items):
             ?>
-                <tr class="cat-header"><td colspan="11"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                <tr class="cat-header"><td colspan="12"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                 <?php foreach ($items as $item):
                     $stock    = (float)($item['stock_level'] ?? 0);
                     $reorder  = (float)($item['reorder_level'] ?? 10);
-                    $capacity = (float)($item['capacity']    ?? 100);
+                    $capacity = (float)($item['capacity']    ?? 0);
                     $unit     = htmlspecialchars($item['unit'] ?? 'pcs');
                     $variance = $item['variance'];
                     $has_variance = ($variance !== null && (float)$variance != 0);
 
+                    // Dynamic capacity fallbacks
+                    $cat_upper = strtoupper(trim($item['category_name'] ?? ''));
+                    if ($capacity <= 0) {
+                        if      (strpos($cat_upper,'OIL')!==false&&strpos($cat_upper,'ENGINE')!==false)    $capacity=100;
+                        elseif  (strpos($cat_upper,'COOLANT')!==false||strpos($cat_upper,'FLUID')!==false) $capacity=strpos($cat_upper,'BRAKE')!==false?50:80;
+                        elseif  (strpos($cat_upper,'GREASE')!==false||strpos($cat_upper,'LUBE')!==false)   $capacity=100;
+                        elseif  (strpos($cat_upper,'FILTER')!==false)                                 $capacity=150;
+                        elseif  (strpos($cat_upper,'ACCESSORI')!==false||strpos($cat_upper,'TIRE')!==false||strpos($cat_upper,'WAX')!==false) $capacity=200;
+                        elseif  (strpos($cat_upper,'FRESHENER')!==false)                              $capacity=250;
+                        elseif  (strpos($cat_upper,'BEVERAGE')!==false||strpos($cat_upper,'DRINK')!==false) $capacity=500;
+                        elseif  (strpos($cat_upper,'SNACK')!==false||strpos($cat_upper,'CHIP')!==false||strpos($cat_upper,'BISCUIT')!==false||strpos($cat_upper,'NOODLE')!==false) $capacity=500;
+                        elseif  (strpos($cat_upper,'CHOCOLATE')!==false||strpos($cat_upper,'CANDY')!==false) $capacity=400;
+                        elseif  (strpos($cat_upper,'CHEMICAL')!==false||strpos($cat_upper,'ADDITIVE')!==false) $capacity=80;
+                        else    $capacity=100;
+                    }
+
+                    $fill_pct = $capacity > 0 ? ($stock / $capacity) * 100 : 0;
+
                     if ($stock <= 0) {
-                        $st = 'Out of Stock'; $sc = '#dc3545'; $si_cls = 'out of stock';
-                    } elseif ($stock <= $reorder / 2) {
-                        $st = 'Critical Stock'; $sc = '#dc3545'; $si_cls = 'critical';
-                    } elseif ($stock <= $reorder) {
-                        $st = 'Low Stock'; $sc = '#fd7e14'; $si_cls = 'low';
+                        $st = 'OUT OF STOCK'; $sc = '#dc3545'; $si_cls = 'out of stock';
+                    } elseif ($fill_pct <= 10) {
+                        $st = 'CRITICAL'; $sc = '#dc3545'; $si_cls = 'critical';
+                    } elseif ($stock <= $reorder || $fill_pct <= 25) {
+                        $st = 'LOW STOCK'; $sc = '#fd7e14'; $si_cls = 'low';
                     } else {
-                        $st = 'Available'; $sc = '#28a745'; $si_cls = 'available';
+                        $st = 'AVAILABLE'; $sc = '#28a745'; $si_cls = 'available';
                     }
 
                     if ($has_variance) {
-                        $st = 'Variance Detected'; $sc = '#fd7e14'; // Warning color (Orange)
+                        $st = 'VARIANCE DETECTED'; $sc = '#fd7e14'; // Warning color (Orange)
                         $si_cls = 'variance detected';
                     }
 
@@ -1015,6 +1089,11 @@ include __DIR__ . '/../partials/header.php';
                     }
 
                     $phys_text = ($item['physical_count'] !== null) ? number_format((float)$item['physical_count'], 0) : '—';
+
+                    $pid = (int)$item['id'];
+                    $mv  = $last_movements[$pid] ?? null;
+                    $mv_label = $mv ? ($mv['sign'].$mv['qty'].' '.$mv['type']) : '';
+                    $mv_class = $mv ? ($mv['sign'] === '+' ? 'mv-pos' : ($mv['sign'] === '-' ? 'mv-neg' : 'mv-none')) : 'mv-none';
                 ?>
                 <tr class="merch-row"
                     data-name="<?php echo strtolower(htmlspecialchars($item['name'])); ?>"
@@ -1026,20 +1105,38 @@ include __DIR__ . '/../partials/header.php';
                     <td><strong><?php echo htmlspecialchars($item['name']); ?></strong></td>
                     <td style="text-align:center;"><?php echo htmlspecialchars($item['category_name'] ?? ''); ?></td>
                     <td><?php echo $unit; ?></td>
-                    <td style="text-align:right;font-weight:700;color:#002F70;"><?php echo number_format($stock, 0); ?></td>
-                    <td style="text-align:right;font-weight:600;color:#475569;"><?php echo number_format($reorder, 0); ?></td>
+                    <td style="text-align:center;font-weight:600;color:#334155;"><?php echo number_format($capacity, 0); ?></td>
+                    <td>
+                        <div class="fill-bar-wrap">
+                            <div class="fill-bar-inner" style="width:<?php echo min(100,round($fill_pct)); ?>%;background:<?php echo $sc; ?>;"></div>
+                        </div>
+                        <span style="font-size:11px;font-weight:600;color:#334155;"><?php echo number_format($stock, 0); ?> <?php echo $unit; ?></span>
+                        <span style="font-size:10px;color:#94a3b8;margin-left:4px;">· Reorder: <?php echo number_format($reorder, 0); ?></span>
+                    </td>
                     <td style="text-align:right;font-weight:700;color:#0f172a;"><?php echo $phys_text; ?></td>
                     <td style="text-align:right;<?php echo $var_style; ?>"><?php echo $var_text; ?></td>
                     <td style="text-align:center;">
                         <span class="inv-stock-badge" style="background:<?php echo $sc; ?>20;color:<?php echo $sc; ?>;border:1px solid <?php echo $sc; ?>40;padding:4px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;white-space:nowrap;">
-                            <?php if ($st === 'Variance Detected'): ?><i class="fas fa-exclamation-triangle"></i> <?php endif; ?><?php echo $st; ?>
+                            <?php if ($st === 'VARIANCE DETECTED'): ?><i class="fas fa-exclamation-triangle"></i> <?php endif; ?><?php echo $st; ?>
                         </span>
+                    </td>
+                    <td style="text-align:center;">
+                        <?php if ($mv_label): ?>
+                            <span class="<?php echo $mv_class; ?>" style="font-size:11px;"><?php echo htmlspecialchars($mv_label); ?></span>
+                        <?php else: ?>
+                            <span class="mv-none" style="font-size:11px;">—</span>
+                        <?php endif; ?>
                     </td>
                     <td style="font-size:11px;color:#64748b;"><?php echo $timestamp; ?></td>
                     <td style="text-align:center;">
-                        <button class="int-btn-outline" onclick="viewDetails(<?= (int)$item['id'] ?>, 'info')" title="View Details" style="font-size:11px; padding:6px 16px;">
-                            <i class="fas fa-eye"></i> View
-                        </button>
+                        <div style="display:flex; gap:4px; justify-content:center;">
+                            <button class="int-btn-outline" onclick="viewDetails(<?= (int)$item['id'] ?>, 'info')" title="View Details" style="font-size:11px; padding:6px 12px; height:30px;">
+                                <i class="fas fa-eye"></i> View
+                            </button>
+                            <button class="int-btn-outline" style="border-color:#6f42c1; color:#6f42c1; font-size:11px; padding:6px 12px; height:30px;" onclick="openAdjustmentModal(<?= (int)$item['id'] ?>, '<?= htmlspecialchars(addslashes($item['name'])) ?>', <?= (float)$stock ?>, '<?= htmlspecialchars(addslashes($unit)) ?>')" title="Adjust Stock">
+                                <i class="fas fa-balance-scale"></i> Adjust
+                            </button>
+                        </div>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -1130,6 +1227,7 @@ include __DIR__ . '/../partials/header.php';
                     <th style="text-align:right;">Variance</th>
                     <th style="text-align:center;">Alert Type</th>
                     <th>Recommended Action</th>
+                    <th style="text-align:center;">Actions</th>
                 </tr>
             </thead>
             <tbody id="alertTableBody">
@@ -1146,11 +1244,12 @@ include __DIR__ . '/../partials/header.php';
                 }
                 if (empty($cat_alerts)) continue;
             ?>
-                <tr class="cat-header"><td colspan="8"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                <tr class="cat-header"><td colspan="9"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                 <?php foreach ($cat_alerts as $item):
                     $alert_count++;
                     $stock    = (float)($item['stock_level'] ?? 0);
                     $reorder  = (float)($item['reorder_level'] ?? 10);
+                    $unit     = htmlspecialchars($item['unit'] ?? 'pcs');
                     $variance = $item['variance'];
                     $has_variance = ($variance !== null && (float)$variance != 0);
                     if ($has_variance && $stock > $reorder) {
@@ -1200,11 +1299,25 @@ include __DIR__ . '/../partials/header.php';
                             <i class="fas <?php echo $rec_icon; ?>"></i> <?php echo htmlspecialchars($recommended); ?>
                         </span>
                     </td>
+                    <td style="text-align:center;">
+                        <div style="display:flex; gap:4px; justify-content:center;">
+                            <?php if ($st === 'Variance Detected' || ($has_variance && $stock <= $reorder)): ?>
+                                <button class="int-btn-outline" style="border-color:#6f42c1; color:#6f42c1; font-size:11px; padding:4px 8px; height:28px;" onclick="openAdjustmentModal(<?= (int)$item['id'] ?>, '<?= htmlspecialchars(addslashes($item['name'])) ?>', <?= (float)$stock ?>, '<?= htmlspecialchars(addslashes($unit)) ?>')">
+                                    <i class="fas fa-clipboard-check"></i> Adjust
+                                </button>
+                            <?php endif; ?>
+                            <?php if ($stock <= $reorder): ?>
+                                <button class="int-btn-outline" style="border-color:#002F70; color:#002F70; font-size:11px; padding:4px 8px; height:28px;" onclick="openCreateStockRequest(<?= (int)$item['id'] ?>, '<?= htmlspecialchars(addslashes($item['name'])) ?>', <?= (float)$stock ?>, <?= (float)$reorder ?>)">
+                                    <i class="fas fa-paper-plane"></i> Request
+                                </button>
+                            <?php endif; ?>
+                        </div>
+                    </td>
                 </tr>
                 <?php endforeach; ?>
             <?php endforeach; ?>
             <?php if ($alert_count === 0): ?>
-                <tr><td colspan="8" class="empty-state">
+                <tr><td colspan="9" class="empty-state">
                     <i class="fas fa-check-circle" style="color:#28a745;font-size:32px;display:block;margin-bottom:8px;"></i>
                     No stock alerts. All products are at healthy stock levels!
                 </td></tr>
@@ -2126,6 +2239,7 @@ function viewDetails(productId, focusTab) {
                         '<h4 style="margin:0 0 12px;color:#002F70;text-transform:uppercase;font-size:12px;letter-spacing:.5px;"><i class="fas fa-warehouse"></i> Inventory Information</h4>' +
                         '<table style="width:100%;font-size:13px;border-collapse:collapse;">' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;width:120px;border-bottom:1px solid #f1f5f9;">Current Stock:</td><td style="font-weight:700;font-size:14px;color:#002F70;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + p.stock_level + ' ' + esc(p.unit) + '</td></tr>' +
+                            '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Capacity:</td><td style="font-weight:700;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + p.capacity + ' ' + esc(p.unit) + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Reorder Level:</td><td style="font-weight:700;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + p.reorder_level + ' ' + esc(p.unit) + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Physical Count:</td><td style="font-weight:700;color:#0f172a;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + (p.physical_count !== null ? p.physical_count + ' ' + esc(p.unit) : '—') + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Variance:</td><td style="font-weight:700;color:' + vColor + ';border-bottom:1px solid #f1f5f9;padding:8px 0;">' + vText + '</td></tr>' +

@@ -1,0 +1,81 @@
+====================================
+RECEIPT PRINTING TOTAL FIX SUMMARY
+====================================
+Date: July 1, 2026
+
+PROBLEM IDENTIFIED:
+------------------
+When printing receipts, the GRAND TOTAL shown on the receipt
+did not match the "Total Amount Encoded" shown in the system.
+
+For example:
+- System Display: ₱9,587.20
+- Printed Receipt: Different amount (recalculated)
+
+ROOT CAUSE:
+----------
+File: public/receipt.php (lines 448-469)
+
+The receipt.php file was RECALCULATING the total instead of
+using the stored total_amount from the database. This caused
+discrepancies due to:
+1. Rounding differences when recalculating from items
+2. VAT computation differences (subtotal * 1.12 vs stored value)
+3. Floating-point arithmetic precision issues
+
+OLD CODE (WRONG):
+```php
+if (!empty($sale['subtotal_amount']) && (float)$sale['subtotal_amount'] > 0) {
+    $subtotal_display = (float)$sale['subtotal_amount'];
+    $vat_display      = round($subtotal_display * 0.12, 2);
+    $total = round($subtotal_display + $vat_display, 2);  // RECALCULATING!
+} else {
+    $subtotal_display = $items_sum > 0 ? $items_sum : ...;
+    $vat_display      = round($subtotal_display * 0.12, 2);
+    $total            = round($subtotal_display + $vat_display, 2);  // RECALCULATING!
+}
+```
+
+FIX APPLIED:
+-----------
+✅ Changed receipt.php to ALWAYS use the stored total_amount
+✅ Only derive subtotal and VAT for display breakdown
+✅ Never recalculate the grand total
+
+NEW CODE (CORRECT):
+```php
+// CRITICAL FIX: Use stored total_amount directly - do NOT recalculate
+$total = (float)($sale['total_amount'] ?? $sale['total'] ?? 0);
+
+if (!empty($sale['subtotal_amount']) && (float)$sale['subtotal_amount'] > 0) {
+    // Use stored breakdown values
+    $subtotal_display = (float)$sale['subtotal_amount'];
+    $vat_display      = (float)$sale['vat_amount'];
+} else {
+    // Derive breakdown FROM the stored total (not from items)
+    $subtotal_display = $total > 0 ? round($total / 1.12, 2) : 0;
+    $vat_display      = $total > 0 ? round($total - $subtotal_display, 2) : 0;
+}
+// $total is NEVER recalculated - it stays as the stored database value
+```
+
+RESULT:
+-------
+✅ Printed receipt now shows EXACT same total as system display
+✅ Grand Total = Database total_amount (no recalculation)
+✅ Subtotal and VAT are derived for display only
+✅ No more discrepancies between printed and encoded amounts
+
+TESTING:
+--------
+1. Open a transaction in staff_transactions_hub.php
+2. Click "View" or "Print" on any transaction
+3. Verify the printed receipt GRAND TOTAL matches the 
+   "Total Amount Encoded" shown in the system exactly
+
+EXAMPLE:
+--------
+System: ₱9,587.20
+Receipt: ₱9,587.20 ✅ (FIXED - now matches exactly)
+
+====================================

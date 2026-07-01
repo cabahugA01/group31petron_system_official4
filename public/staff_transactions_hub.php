@@ -744,6 +744,258 @@ if ($section === 'history' || $section === 'fuel_history') {
 
     $shift_log = []; $available_shifts = [];
 
+    // ── Staff Transaction History Exports ──────────────────────────────────────────
+    $export_type = $_GET['export'] ?? '';
+    if ($export_type === 'csv' && $section === 'history') {
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="Staff_Transactions_' . date('Y-m-d') . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputcsv($out, ['Txn ID', 'Customer', 'Type', 'Vehicle Plate', 'Amount', 'Payment Method', 'Payment Status', 'Date', 'Validation Status']);
+        foreach ($recent_merch as $r) {
+            fputcsv($out, [
+                $r['transaction_id'],
+                $r['customer_name'] ?: 'Walk-in Customer',
+                ucwords(str_replace('_', ' ', $r['transaction_type'])),
+                $r['vehicle_plate'] ?: '—',
+                number_format((float)$r['total_amount'], 2),
+                $r['payment_method'],
+                $r['payment_status'],
+                date('M d, Y H:i', strtotime($r['transaction_date'])),
+                $r['validation_status']
+            ]);
+        }
+        fclose($out);
+        exit;
+    }
+    if ($export_type === 'excel' && $section === 'history') {
+        header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+        header('Content-Disposition: attachment; filename="Staff_Transactions_' . date('Y-m-d') . '.xls"');
+        echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8">';
+        echo '<style>table{border-collapse:collapse}th,td{border:1px solid #ddd;padding:7px}th{background:#002F70;color:#fff;font-weight:700}</style>';
+        echo '</head><body>';
+        echo '<h2>Staff Transactions Report</h2>';
+        echo '<p>Generated: ' . date('F d, Y h:i A') . ' | Records: ' . count($recent_merch) . '</p>';
+        echo '<table><thead><tr>';
+        foreach (['Txn ID', 'Customer', 'Type', 'Vehicle Plate', 'Amount', 'Payment Method', 'Payment Status', 'Date', 'Validation Status'] as $h) {
+            echo '<th>' . htmlspecialchars($h) . '</th>';
+        }
+        echo '</tr></thead><tbody>';
+        $total_amount = 0.0;
+        foreach ($recent_merch as $r) {
+            $total_amount += (float)$r['total_amount'];
+            echo '<tr>';
+            echo '<td>' . htmlspecialchars($r['transaction_id']) . '</td>';
+            echo '<td>' . htmlspecialchars($r['customer_name'] ?: 'Walk-in Customer') . '</td>';
+            echo '<td>' . htmlspecialchars(ucwords(str_replace('_', ' ', $r['transaction_type']))) . '</td>';
+            echo '<td>' . htmlspecialchars($r['vehicle_plate'] ?: '—') . '</td>';
+            echo '<td style="text-align:right">&#8369;' . number_format((float)$r['total_amount'], 2) . '</td>';
+            echo '<td>' . htmlspecialchars($r['payment_method']) . '</td>';
+            echo '<td>' . htmlspecialchars($r['payment_status']) . '</td>';
+            echo '<td>' . date('M d, Y H:i', strtotime($r['transaction_date'])) . '</td>';
+            echo '<td>' . htmlspecialchars($r['validation_status']) . '</td>';
+            echo '</tr>';
+        }
+        echo '<tr style="font-weight:800;background:#f0f7ff">';
+        echo '<td colspan="4" style="text-align:right"><strong>TOTAL</strong></td>';
+        echo '<td style="text-align:right"><strong>&#8369;' . number_format($total_amount, 2) . '</strong></td>';
+        echo '<td colspan="4"></td>';
+        echo '</tr>';
+        echo '</tbody></table></body></html>';
+        exit;
+    }
+    if ($export_type === 'pdf' && $section === 'history') {
+        header('Content-Type: text/html; charset=utf-8');
+        $logo_url = '../assets/img/Petron%20Logo.png';
+        $generated = date('F d, Y h:i A');
+        $rec_count = count($recent_merch);
+        $total_amount = array_sum(array_column($recent_merch, 'total_amount'));
+        echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Staff Transactions Report</title>';
+        echo '<style>';
+        echo 'body{font-family:Arial,sans-serif;font-size:12px;margin:0;padding:0;background:#f1f5f9;color:#1e293b;}';
+        echo '.action-bar{background:#002F70;padding:12px 24px;display:flex;align-items:center;justify-content:center;gap:12px;}';
+        echo '.action-bar h2{color:#fff;font-size:15px;margin:0;}';
+        echo '.btn-print{padding:9px 20px;background:#DC0032;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;text-decoration:none;}';
+        echo '.btn-back{padding:9px 18px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;}';
+        echo '.report{background:#fff;max-width:1100px;margin:20px auto;border-radius:10px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1);}';
+        echo '.rpt-header{background:linear-gradient(135deg,#002F70 0%,#003d8a 100%);padding:22px 28px;display:flex;align-items:center;}';
+        echo '.rpt-header img{height:45px;margin-right:15px;}';
+        echo '.rpt-header-text h1{color:#fff;font-size:18px;margin:0 0 3px;}';
+        echo '.rpt-header-text p{color:#93c5fd;font-size:11px;margin:0;}';
+        echo '.rpt-header-meta{margin-left:auto;text-align:right;color:#bfdbfe;font-size:11px;}';
+        echo '.rpt-body{padding:20px;}';
+        echo 'table{width:100%;border-collapse:collapse;font-size:11px;}';
+        echo 'th{background:#002F70;color:#fff;padding:9px 8px;font-weight:700;text-align:left;}';
+        echo 'td{padding:8px;border-bottom:1px solid #e2e8f0;}';
+        echo 'tr:nth-child(even) td{background:#f8fafc;}';
+        echo '.amount{text-align:right;font-weight:700;color:#002F70;}';
+        echo '.total-row td{background:#f0f7ff!important;font-weight:800;color:#002F70;border-top:2px solid #002F70;}';
+        echo '@media print{.action-bar{display:none!important;}body{background:#fff;}.report{box-shadow:none;margin:0;}}';
+        echo '</style></head><body>';
+        echo '<div class="action-bar">';
+        echo '  <h2>Staff Transactions Report</h2>';
+        echo '  <button onclick="window.print()" class="btn-print">Print / Save as PDF</button>';
+        echo '  <button onclick="window.close()" class="btn-back">Close</button>';
+        echo '</div>';
+        echo '<div class="report">';
+        echo '<div class="rpt-header">';
+        echo '  <img src="' . $logo_url . '" alt="Petron">';
+        echo '  <div class="rpt-header-text"><h1>Petron Station</h1><p>Staff Transaction History Report</p></div>';
+        echo '  <div class="rpt-header-meta"><div>Encoder: ' . htmlspecialchars($me['name'] ?? $me['username']) . '</div><div>Generated: ' . $generated . '</div></div>';
+        echo '</div>';
+        echo '<div class="rpt-body"><table><thead><tr>';
+        foreach (['Txn ID', 'Customer', 'Type', 'Vehicle Plate', 'Amount', 'Payment Method', 'Payment Status', 'Date', 'Validation Status'] as $h) {
+            echo '<th>' . htmlspecialchars($h) . '</th>';
+        }
+        echo '</tr></thead><tbody>';
+        foreach ($recent_merch as $r) {
+            echo '<tr>';
+            echo '<td>' . htmlspecialchars($r['transaction_id']) . '</td>';
+            echo '<td>' . htmlspecialchars($r['customer_name'] ?: 'Walk-in Customer') . '</td>';
+            echo '<td>' . htmlspecialchars(ucwords(str_replace('_', ' ', $r['transaction_type']))) . '</td>';
+            echo '<td>' . htmlspecialchars($r['vehicle_plate'] ?: '—') . '</td>';
+            echo '<td class="amount">&#8369;' . number_format((float)$r['total_amount'], 2) . '</td>';
+            echo '<td>' . htmlspecialchars($r['payment_method']) . '</td>';
+            echo '<td>' . htmlspecialchars($r['payment_status']) . '</td>';
+            echo '<td>' . date('M d, Y H:i', strtotime($r['transaction_date'])) . '</td>';
+            echo '<td>' . htmlspecialchars($r['validation_status']) . '</td>';
+            echo '</tr>';
+        }
+        echo '<tr class="total-row">';
+        echo '<td colspan="4" style="text-align:right">TOTAL AMOUNT</td>';
+        echo '<td class="amount">&#8369;' . number_format($total_amount, 2) . '</td>';
+        echo '<td colspan="4"></td>';
+        echo '</tr>';
+        echo '</tbody></table></div></div></body></html>';
+        exit;
+    }
+
+    if ($export_type === 'csv' && $section === 'fuel_history') {
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="Staff_Fuel_Transactions_' . date('Y-m-d') . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputcsv($out, ['ID', 'Fuel Type', 'Liters Sold', 'Price/Liter', 'Total Amount', 'Date', 'Status', 'Shift']);
+        foreach ($recent_fuel as $r) {
+            fputcsv($out, [
+                $r['id'],
+                $r['fuel_type'],
+                number_format((float)$r['liters_sold'], 2),
+                number_format((float)$r['price_per_liter'], 2),
+                number_format((float)$r['total_amount'], 2),
+                date('M d, Y H:i', strtotime($r['transaction_date'])),
+                $r['status'],
+                $r['shift_period']
+            ]);
+        }
+        fclose($out);
+        exit;
+    }
+    if ($export_type === 'excel' && $section === 'fuel_history') {
+        header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+        header('Content-Disposition: attachment; filename="Staff_Fuel_Transactions_' . date('Y-m-d') . '.xls"');
+        echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8">';
+        echo '<style>table{border-collapse:collapse}th,td{border:1px solid #ddd;padding:7px}th{background:#002F70;color:#fff;font-weight:700}</style>';
+        echo '</head><body>';
+        echo '<h2>Staff Fuel Transactions Report</h2>';
+        echo '<p>Generated: ' . date('F d, Y h:i A') . ' | Records: ' . count($recent_fuel) . '</p>';
+        echo '<table><thead><tr>';
+        foreach (['ID', 'Fuel Type', 'Liters Sold', 'Price/Liter', 'Total Amount', 'Date', 'Status', 'Shift'] as $h) {
+            echo '<th>' . htmlspecialchars($h) . '</th>';
+        }
+        echo '</tr></thead><tbody>';
+        $total_liters = 0.0;
+        $total_amount = 0.0;
+        foreach ($recent_fuel as $r) {
+            $total_liters += (float)$r['liters_sold'];
+            $total_amount += (float)$r['total_amount'];
+            echo '<tr>';
+            echo '<td>' . htmlspecialchars($r['id']) . '</td>';
+            echo '<td>' . htmlspecialchars($r['fuel_type']) . '</td>';
+            echo '<td style="text-align:right">' . number_format((float)$r['liters_sold'], 2) . ' L</td>';
+            echo '<td style="text-align:right">&#8369;' . number_format((float)$r['price_per_liter'], 2) . '</td>';
+            echo '<td style="text-align:right">&#8369;' . number_format((float)$r['total_amount'], 2) . '</td>';
+            echo '<td>' . date('M d, Y H:i', strtotime($r['transaction_date'])) . '</td>';
+            echo '<td>' . htmlspecialchars($r['status']) . '</td>';
+            echo '<td>' . htmlspecialchars($r['shift_period']) . '</td>';
+            echo '</tr>';
+        }
+        echo '<tr style="font-weight:800;background:#f0f7ff">';
+        echo '<td colspan="2" style="text-align:right"><strong>TOTAL</strong></td>';
+        echo '<td style="text-align:right"><strong>' . number_format($total_liters, 2) . ' L</strong></td>';
+        echo '<td></td>';
+        echo '<td style="text-align:right"><strong>&#8369;' . number_format($total_amount, 2) . '</strong></td>';
+        echo '<td colspan="3"></td>';
+        echo '</tr>';
+        echo '</tbody></table></body></html>';
+        exit;
+    }
+    if ($export_type === 'pdf' && $section === 'fuel_history') {
+        header('Content-Type: text/html; charset=utf-8');
+        $logo_url = '../assets/img/Petron%20Logo.png';
+        $generated = date('F d, Y h:i A');
+        $rec_count = count($recent_fuel);
+        $total_liters = array_sum(array_column($recent_fuel, 'liters_sold'));
+        $total_amount = array_sum(array_column($recent_fuel, 'total_amount'));
+        echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Staff Fuel Transactions Report</title>';
+        echo '<style>';
+        echo 'body{font-family:Arial,sans-serif;font-size:12px;margin:0;padding:0;background:#f1f5f9;color:#1e293b;}';
+        echo '.action-bar{background:#002F70;padding:12px 24px;display:flex;align-items:center;justify-content:center;gap:12px;}';
+        echo '.action-bar h2{color:#fff;font-size:15px;margin:0;}';
+        echo '.btn-print{padding:9px 20px;background:#DC0032;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;text-decoration:none;}';
+        echo '.btn-back{padding:9px 18px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;}';
+        echo '.report{background:#fff;max-width:1100px;margin:20px auto;border-radius:10px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1);}';
+        echo '.rpt-header{background:linear-gradient(135deg,#002F70 0%,#003d8a 100%);padding:22px 28px;display:flex;align-items:center;}';
+        echo '.rpt-header img{height:45px;margin-right:15px;}';
+        echo '.rpt-header-text h1{color:#fff;font-size:18px;margin:0 0 3px;}';
+        echo '.rpt-header-text p{color:#93c5fd;font-size:11px;margin:0;}';
+        echo '.rpt-header-meta{margin-left:auto;text-align:right;color:#bfdbfe;font-size:11px;}';
+        echo '.rpt-body{padding:20px;}';
+        echo 'table{width:100%;border-collapse:collapse;font-size:11px;}';
+        echo 'th{background:#002F70;color:#fff;padding:9px 8px;font-weight:700;text-align:left;}';
+        echo 'td{padding:8px;border-bottom:1px solid #e2e8f0;}';
+        echo 'tr:nth-child(even) td{background:#f8fafc;}';
+        echo '.amount{text-align:right;font-weight:700;color:#002F70;}';
+        echo '.total-row td{background:#f0f7ff!important;font-weight:800;color:#002F70;border-top:2px solid #002F70;}';
+        echo '@media print{.action-bar{display:none!important;}body{background:#fff;}.report{box-shadow:none;margin:0;}}';
+        echo '</style></head><body>';
+        echo '<div class="action-bar">';
+        echo '  <h2>Staff Fuel Transactions Report</h2>';
+        echo '  <button onclick="window.print()" class="btn-print">Print / Save as PDF</button>';
+        echo '  <button onclick="window.close()" class="btn-back">Close</button>';
+        echo '</div>';
+        echo '<div class="report">';
+        echo '<div class="rpt-header">';
+        echo '  <img src="' . $logo_url . '" alt="Petron">';
+        echo '  <div class="rpt-header-text"><h1>Petron Station</h1><p>Staff Fuel Transaction History Report</p></div>';
+        echo '  <div class="rpt-header-meta"><div>Encoder: ' . htmlspecialchars($me['name'] ?? $me['username']) . '</div><div>Generated: ' . $generated . '</div></div>';
+        echo '</div>';
+        echo '<div class="rpt-body"><table><thead><tr>';
+        foreach (['ID', 'Fuel Type', 'Liters Sold', 'Price/Liter', 'Total Amount', 'Date', 'Status', 'Shift'] as $h) {
+            echo '<th>' . htmlspecialchars($h) . '</th>';
+        }
+        echo '</tr></thead><tbody>';
+        foreach ($recent_fuel as $r) {
+            echo '<tr>';
+            echo '<td>' . htmlspecialchars($r['id']) . '</td>';
+            echo '<td>' . htmlspecialchars($r['fuel_type']) . '</td>';
+            echo '<td style="text-align:right">' . number_format((float)$r['liters_sold'], 2) . ' L</td>';
+            echo '<td style="text-align:right">&#8369;' . number_format((float)$r['price_per_liter'], 2) . '</td>';
+            echo '<td class="amount">&#8369;' . number_format((float)$r['total_amount'], 2) . '</td>';
+            echo '<td>' . date('M d, Y H:i', strtotime($r['transaction_date'])) . '</td>';
+            echo '<td>' . htmlspecialchars($r['status']) . '</td>';
+            echo '<td>' . htmlspecialchars($r['shift_period']) . '</td>';
+            echo '</tr>';
+        }
+        echo '<tr class="total-row">';
+        echo '<td colspan="2" style="text-align:right">TOTALS</td>';
+        echo '<td style="text-align:right">' . number_format($total_liters, 2) . ' L</td>';
+        echo '<td></td>';
+        echo '<td class="amount">&#8369;' . number_format($total_amount, 2) . '</td>';
+        echo '<td colspan="3"></td>';
+        echo '</tr>';
+        echo '</tbody></table></div></div></body></html>';
+        exit;
+    }
+
 }
 
 
@@ -4059,14 +4311,21 @@ input[list] {
                                 <label>Service Category <span style="font-size:10px;color:#94a3b8;">(Auto-filled)</span></label>
                                 <select id="joServiceCategory" class="txn-select auto-pull" onchange="onServiceCategoryChange()" style="background:#f8f9fa;">
                                     <option value="">-- Select Category --</option>
-                                    <option value="Oil Change">Oil Change</option>
-                                    <option value="Wheel Alignment">Wheel Alignment</option>
-                                    <option value="Battery Services">Battery Services</option>
-                                    <option value="Brake Services">Brake Services</option>
+                                    <option value="Lubrication">Lubrication</option>
+                                    <option value="PMS">PMS</option>
+                                    <option value="Engine">Engine</option>
+                                    <option value="Fuel System">Fuel System</option>
+                                    <option value="Cooling System">Cooling System</option>
+                                    <option value="Transmission">Transmission</option>
+                                    <option value="Brake">Brake</option>
+                                    <option value="Suspension">Suspension</option>
+                                    <option value="Steering">Steering</option>
                                     <option value="Tire Services">Tire Services</option>
-                                    <option value="Engine Services">Engine Services</option>
-                                    <option value="AC Services">AC Services</option>
-                                    <option value="General Inspection">General Inspection</option>
+                                    <option value="Battery Services">Battery Services</option>
+                                    <option value="Electrical">Electrical</option>
+                                    <option value="Air Conditioning">Air Conditioning</option>
+                                    <option value="Diagnostics">Diagnostics</option>
+                                    <option value="Inspection">Inspection</option>
                                     <option value="Others">Others</option>
                                 </select>
                             </div>
@@ -5220,14 +5479,21 @@ input[list] {
                         Category <span style="color:#dc2626;">*</span>
                     </label>
                     <select id="newServiceCategory" class="txn-select" style="font-size:13px;width:100%;">
-                        <option value="Oil Change">Oil Change</option>
-                        <option value="Wheel Alignment">Wheel Alignment</option>
-                        <option value="Battery Services">Battery Services</option>
-                        <option value="Brake Services">Brake Services</option>
+                        <option value="Lubrication">Lubrication</option>
+                        <option value="PMS">PMS</option>
+                        <option value="Engine">Engine</option>
+                        <option value="Fuel System">Fuel System</option>
+                        <option value="Cooling System">Cooling System</option>
+                        <option value="Transmission">Transmission</option>
+                        <option value="Brake">Brake</option>
+                        <option value="Suspension">Suspension</option>
+                        <option value="Steering">Steering</option>
                         <option value="Tire Services">Tire Services</option>
-                        <option value="Engine Services">Engine Services</option>
-                        <option value="AC Services">AC Services</option>
-                        <option value="General Inspection">General Inspection</option>
+                        <option value="Battery Services">Battery Services</option>
+                        <option value="Electrical">Electrical</option>
+                        <option value="Air Conditioning">Air Conditioning</option>
+                        <option value="Diagnostics">Diagnostics</option>
+                        <option value="Inspection">Inspection</option>
                         <option value="Others" selected>Others</option>
                     </select>
                 </div>
@@ -5747,17 +6013,21 @@ input[list] {
             // Fallback inference for un-saved / custom names
             const key  = svc.key  || '';
             const name = (svc.name || '').toLowerCase();
-            if (key === 'oil_change'        || name.includes('oil change'))                               return 'Oil Change';
-            if (key === 'wheel_alignment'   || name.includes('wheel alignment'))                          return 'Wheel Alignment';
-            if (key === 'battery_replacement'|| name.includes('battery'))                                 return 'Battery Services';
-            if (key === 'brake_service'     || name.includes('brake'))                                    return 'Brake Services';
-            if (key === 'tire_repair'       || name.includes('tire'))                                     return 'Tire Services';
-            if (key === 'engine_repair'     || key === 'transmission'
-                || name.includes('engine') || name.includes('transmission'))                              return 'Engine Services';
-            if (key === 'air_conditioning'  || name.includes('air conditioning') || name.includes('a/c')) return 'AC Services';
-            if (key === 'general_maintenance'||key === 'diagnostic_check'
-                || name.includes('maintenance') || name.includes('diagnostic')
-                || name.includes('inspection') || name.includes('calibration'))                           return 'General Inspection';
+            if (name.includes('oil') || name.includes('lube') || name.includes('grease') || name.includes('flush'))  return 'Lubrication';
+            if (name.includes('pms') || name.includes('preventive') || name.includes('km'))                            return 'PMS';
+            if (name.includes('spark') || name.includes('glow') || name.includes('throttle') || name.includes('carbon') || name.includes('timing belt') || name.includes('serpentine') || name.includes('valve cover') || name.includes('compression') || name.includes('intake') || name.includes('injector clean')) return 'Engine';
+            if (name.includes('fuel pump') || name.includes('fuel tank') || name.includes('fuel line') || name.includes('fuel inject') || name.includes('diesel injector') || name.includes('fuel pressure') || name.includes('fuel rail')) return 'Fuel System';
+            if (name.includes('radiator') || name.includes('coolant') || name.includes('thermostat') || name.includes('water pump') || name.includes('cooling'))                                                                              return 'Cooling System';
+            if (name.includes('atf') || name.includes('cvt') || name.includes('transmission') || name.includes('clutch') || name.includes('differential') || name.includes('transfer case') || name.includes('gear oil'))                    return 'Transmission';
+            if (name.includes('brake'))                                                                                 return 'Brake';
+            if (name.includes('shock') || name.includes('coil spring') || name.includes('ball joint') || name.includes('stabilizer') || name.includes('control arm') || name.includes('rack end') || name.includes('tie rod'))             return 'Suspension';
+            if (name.includes('steering') || name.includes('wheel bearing'))                                           return 'Steering';
+            if (name.includes('tire') || name.includes('wheel align') || name.includes('wheel balanc') || name.includes('vulcan') || name.includes('mounting'))                                                                              return 'Tire Services';
+            if (name.includes('battery') || name.includes('alternator') || name.includes('starter motor'))            return 'Battery Services';
+            if (name.includes('headlight') || name.includes('taillight') || name.includes('bulb') || name.includes('fuse') || name.includes('wiring'))                                                                                       return 'Electrical';
+            if (name.includes('aircon') || name.includes('air conditioning') || name.includes('a/c') || name.includes('refrigerant')) return 'Air Conditioning';
+            if (name.includes('ecu') || name.includes('obd') || name.includes('diagnostic') || name.includes('scan')) return 'Diagnostics';
+            if (name.includes('inspection') || name.includes('safety check') || name.includes('lto'))                 return 'Inspection';
             return 'Others';
         }
 
@@ -9227,11 +9497,16 @@ input[list] {
                     <p>Your fuel transaction records</p>
                 </div>
             </div>
-            <div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
                 <button type="button" onclick="window.location.href='staff_transactions_hub.php?section=fuel'" 
                         class="txn-btn secondary" title="Back to Fuel Transaction">
                     <i class="fas fa-arrow-left"></i> <span>Back</span>
                 </button>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+                    <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'excel'])) ?>" class="txn-btn success" style="text-decoration:none;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-file-excel"></i> Excel</a>
+                    <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'pdf'])) ?>" target="_blank" class="txn-btn danger" style="text-decoration:none;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-file-pdf"></i> PDF</a>
+                    <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'csv'])) ?>" class="txn-btn primary" style="text-decoration:none;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-file-csv"></i> CSV</a>
+                </div>
             </div>
         </div>
 

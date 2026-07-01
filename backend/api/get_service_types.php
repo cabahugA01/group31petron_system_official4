@@ -56,23 +56,20 @@ try {
         if (!in_array($col, $cols)) $pdo->exec($sql);
     }
 
-    // ── Seed category for existing rows that still have 'Others' as default ──
-    $pdo->exec("
-        UPDATE job_order_service_types SET category = 'Oil Change'       WHERE service_key = 'oil_change'         AND (category = 'Others' OR category = '');
-        UPDATE job_order_service_types SET category = 'Tire Services'    WHERE service_key = 'tire_repair'        AND (category = 'Others' OR category = '');
-        UPDATE job_order_service_types SET category = 'General Inspection' WHERE service_key = 'calibration'      AND (category = 'Others' OR category = '');
-        UPDATE job_order_service_types SET category = 'General Inspection' WHERE service_key = 'general_maintenance' AND (category = 'Others' OR category = '');
-        UPDATE job_order_service_types SET category = 'Engine Services'  WHERE service_key = 'engine_repair'      AND (category = 'Others' OR category = '');
-        UPDATE job_order_service_types SET category = 'Brake Services'   WHERE service_key = 'brake_service'      AND (category = 'Others' OR category = '');
-        UPDATE job_order_service_types SET category = 'Others'           WHERE service_key = 'electrical'         AND (category = 'Others' OR category = '');
-        UPDATE job_order_service_types SET category = 'AC Services'      WHERE service_key = 'air_conditioning'   AND (category = 'Others' OR category = '');
-        UPDATE job_order_service_types SET category = 'Engine Services'  WHERE service_key = 'transmission'       AND (category = 'Others' OR category = '');
-        UPDATE job_order_service_types SET category = 'Others'           WHERE service_key = 'suspension_repair'  AND (category = 'Others' OR category = '');
-        UPDATE job_order_service_types SET category = 'Wheel Alignment'  WHERE service_key = 'wheel_alignment'    AND (category = 'Others' OR category = '');
-        UPDATE job_order_service_types SET category = 'Battery Services' WHERE service_key = 'battery_replacement' AND (category = 'Others' OR category = '');
-        UPDATE job_order_service_types SET category = 'General Inspection' WHERE service_key = 'diagnostic_check' AND (category = 'Others' OR category = '');
-        UPDATE job_order_service_types SET category = 'Others'           WHERE service_key = 'detailing_cleaning' AND (category = 'Others' OR category = '');
-    ");
+    // ── Re-map any rows still using legacy categories to the new 15-category taxonomy ──
+    $legacy_map = [
+        'Oil Change'          => 'Lubrication',
+        'Wheel Alignment'     => 'Tire Services',
+        'Battery Services'    => 'Battery Services',
+        'Brake Services'      => 'Brake',
+        'Engine Services'     => 'Engine',
+        'AC Services'         => 'Air Conditioning',
+        'General Inspection'  => 'Inspection',
+        'Wheel Alignment'     => 'Tire Services',
+    ];
+    foreach ($legacy_map as $old => $new) {
+        $pdo->prepare("UPDATE job_order_service_types SET category = ? WHERE category = ?")->execute([$new, $old]);
+    }
 
     // Mark all existing rows (no status yet) as approved
     $pdo->exec("UPDATE job_order_service_types SET status = 'approved' WHERE status IS NULL OR status = ''");
@@ -86,76 +83,12 @@ try {
             OR service_key IN ('other','other_manual','other_service','custom_input')
     ");
 
-    // ── Seed the canonical 14 service types if table is empty ────────────────
+    // ── Only seed if table is completely empty (production catalog already loaded) ──
     $count = (int)$pdo->query("SELECT COUNT(*) FROM job_order_service_types")->fetchColumn();
     if ($count === 0) {
-        $seed = [
-            // [key, name, category, price, min, max, description, notes, icon, color, sort]
-            ['oil_change',        'Oil Change',                'Oil Change',       3540.00, 1700.00, 5380.00,
-             '₱1,700 to ₱5,380 (depends on oil type and filter)',
-             'Consider: Oil type (mineral vs synthetic), filter quality, engine size',
-             'fas fa-oil-can', 'text-success', 1],
-            ['tire_repair',       'Tire Repair',               'Tire Services',    500.00,  300.00,  700.00,
-             '₱300 to ₱700 per tire (depends on puncture size)',
-             'Consider: Puncture size/location, tire condition, patch vs plug',
-             'fas fa-circle-dot', 'text-warning', 2],
-            ['calibration',       'Calibration',               'General Inspection', 3400.00, 800.00, 6000.00,
-             '₱800 to ₱6,000+ (depends on equipment type)',
-             'Consider: Equipment type, number of pumps, calibration complexity',
-             'fas fa-tachometer-alt', 'text-info', 3],
-            ['general_maintenance','General Maintenance',      'General Inspection', 1500.00, 800.00, 3000.00,
-             '₱800 to ₱3,000 (depends on scope)',
-             'Consider: Scope of work, parts needed, vehicle condition',
-             'fas fa-tools', 'text-secondary', 4],
-            ['engine_repair',     'Engine Repair',             'Engine Services',  5000.00, 2000.00,15000.00,
-             '₱2,000 to ₱15,000+ (depends on damage)',
-             'Consider: Severity of damage, parts required, labor hours',
-             'fas fa-cogs', 'text-danger', 5],
-            ['brake_service',     'Brake Service',             'Brake Services',   2000.00,  800.00, 4000.00,
-             '₱800 to ₱4,000 (depends on brake type)',
-             'Consider: Disc vs drum, pad/shoe condition, rotor wear',
-             'fas fa-circle-stop', 'text-danger', 6],
-            ['electrical',        'Electrical Service',        'Others',           1500.00,  500.00, 5000.00,
-             '₱500 to ₱5,000 (depends on issue)',
-             'Consider: Wiring complexity, component replacement, diagnostic time',
-             'fas fa-bolt', 'text-warning', 7],
-            ['air_conditioning',  'Air Conditioning Service',  'AC Services',      2500.00, 1000.00, 6000.00,
-             '₱1,000 to ₱6,000 (depends on service type)',
-             'Consider: Regas vs repair, compressor condition, refrigerant type',
-             'fas fa-snowflake', 'text-info', 8],
-            ['transmission',      'Transmission Service',      'Engine Services',  3000.00, 1500.00, 8000.00,
-             '₱1,500 to ₱8,000 (depends on transmission type)',
-             'Consider: Manual vs automatic, fluid change vs overhaul',
-             'fas fa-gears', 'text-secondary', 9],
-            ['suspension_repair', 'Suspension Repair',         'Others',           2500.00, 1000.00, 7000.00,
-             '₱1,000 to ₱7,000 (depends on component)',
-             'Consider: Shock absorbers, springs, bushings, alignment needed',
-             'fas fa-car-side', 'text-secondary', 10],
-            ['wheel_alignment',   'Wheel Alignment',           'Wheel Alignment',  1200.00,  600.00, 2000.00,
-             '₱600 to ₱2,000 (depends on vehicle type)',
-             'Consider: 2-wheel vs 4-wheel alignment, camber/toe adjustment',
-             'fas fa-circle-dot', 'text-primary', 11],
-            ['battery_replacement','Battery Replacement',      'Battery Services', 3500.00, 1500.00, 6000.00,
-             '₱1,500 to ₱6,000 (depends on battery brand/capacity)',
-             'Consider: Battery capacity (Ah), brand, warranty period',
-             'fas fa-car-battery', 'text-warning', 12],
-            ['diagnostic_check',  'Diagnostic Check',          'General Inspection', 1000.00, 500.00, 2000.00,
-             '₱500 to ₱2,000 (depends on scope)',
-             'Consider: OBD scan, manual inspection, report complexity',
-             'fas fa-stethoscope', 'text-info', 13],
-            ['detailing_cleaning','Detailing / Cleaning',      'Others',           2000.00,  800.00, 5000.00,
-             '₱800 to ₱5,000 (depends on package)',
-             'Consider: Interior vs exterior, vehicle size, detailing package',
-             'fas fa-spray-can', 'text-success', 14],
-        ];
-
-        $stmt = $pdo->prepare("
-            INSERT IGNORE INTO job_order_service_types
-                (service_key, service_name, category, service_price, min_price, max_price,
-                 price_description, pricing_notes, icon_class, color_class, sort_order, status, active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', 1)
-        ");
-        foreach ($seed as $row) $stmt->execute($row);
+        // No hardcoded seed — table should be populated via the official seeder script.
+        // If empty, log a warning and continue cleanly.
+        error_log('job_order_service_types is empty. Run the service catalog seeder to populate it.');
     }
 
 } catch (Exception $e) {
@@ -237,9 +170,13 @@ if ($method === 'POST') {
     $service_price = floatval($data['service_price'] ?? $data['price'] ?? 0.00);
     $notes         = trim($data['notes'] ?? $data['pricing_notes'] ?? '');
     $category      = trim($data['category'] ?? 'Others');
-    // Whitelist category
-    $allowed_categories = ['Oil Change','Wheel Alignment','Battery Services','Brake Services',
-                           'Tire Services','Engine Services','AC Services','General Inspection','Others'];
+    // Whitelist category — 15 standardized service categories
+    $allowed_categories = [
+        'Lubrication', 'PMS', 'Engine', 'Fuel System', 'Cooling System',
+        'Transmission', 'Brake', 'Suspension', 'Steering', 'Tire Services',
+        'Battery Services', 'Electrical', 'Air Conditioning', 'Diagnostics',
+        'Inspection', 'Others'
+    ];
     if (!in_array($category, $allowed_categories)) $category = 'Others';
 
     if (!$service_name) {

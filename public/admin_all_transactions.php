@@ -32,7 +32,8 @@ $mt_pay   = aat_has($mt_cols,'payment_method') ? "COALESCE(mt.payment_method,'Ca
 $mt_pstat = aat_has($mt_cols,'payment_status') ? "COALESCE(mt.payment_status,'')" : "''";
 
 // ── Filters ───────────────────────────────────────────────────────────────────
-$date_from  = trim($_GET['date_from']       ?? date('Y-m-01'));
+// DEFAULT: Show last 365 days (1 year) to ensure we catch all historical staff transactions
+$date_from  = trim($_GET['date_from']       ?? date('Y-m-d', strtotime('-365 days')));
 $date_to    = trim($_GET['date_to']         ?? date('Y-m-d'));
 $f_shift    = trim($_GET['shift']           ?? '');
 $f_staff    = trim($_GET['staff']           ?? '');
@@ -51,11 +52,27 @@ try {
 } catch(Exception $e){}
 
 // ── Build WHERE clause ────────────────────────────────────────────────────────
-$where  = "WHERE mt.station_id=? AND DATE($mt_date) BETWEEN ? AND ?";
-$params = [$station_id,$date_from,$date_to];
+// IMPORTANT: Show ALL transactions by default - only filter by date if user provides specific dates
+$where  = "WHERE mt.station_id=?";
+$params = [$station_id];
 
-if($search!=='') { $where.=" AND (mt.customer_name LIKE ? OR mt.transaction_id LIKE ? OR mt.vehicle_plate LIKE ?)"; $params[]="%$search%"; $params[]="%$search%"; $params[]="%$search%"; }
-if($f_shift!=='') { $where.=" AND $mt_shift=?"; $params[]=$f_shift; }
+// Only apply date filter if dates are explicitly provided by user
+if($date_from !== '' && $date_to !== '') {
+    $where .= " AND DATE($mt_date) BETWEEN ? AND ?";
+    $params[] = $date_from;
+    $params[] = $date_to;
+}
+
+if($search!=='') {
+    // Search transaction_id, customer_name, and vehicle_plate (if column exists)
+    $veh_search = aat_has($mt_cols,'vehicle_plate') ? ' OR mt.vehicle_plate LIKE ?' : '';
+    $where.=" AND (mt.customer_name LIKE ? OR mt.transaction_id LIKE ?$veh_search)";
+    $params[]="%$search%"; $params[]="%$search%";
+    if(aat_has($mt_cols,'vehicle_plate')) $params[]="%$search%";
+}
+// Shift filter: use raw shift_period column, not a CASE expression (CASE cannot be used in WHERE)
+$shift_col = aat_has($mt_cols,'shift_period') ? 'mt.shift_period' : (aat_has($mt_cols,'shift_name') ? 'mt.shift_name' : null);
+if($f_shift!=='' && $shift_col) { $where.=" AND COALESCE($shift_col,'')=?"; $params[]=$f_shift; }
 if($f_staff!=='') { $where.=" AND mt.staff_id=?"; $params[]=$f_staff; }
 if($f_type==='merchandise') { $where.=" AND COALESCE(mt.transaction_type,'merchandise')='merchandise'"; }
 elseif($f_type==='job_order') { $where.=" AND COALESCE(mt.transaction_type,'merchandise') IN ('job_order','combined')"; }
@@ -73,8 +90,10 @@ try {
     $s2=$pdo->prepare("SELECT COUNT(DISTINCT staff_id) FROM merchandise_transactions mt WHERE station_id=? AND DATE($mt_date)=?");
     $s2->execute([$station_id,$today]);
     $kpi_active_staff=(int)$s2->fetchColumn();
-    if(aat_has($mt_cols,'shift')) {
-        $s3=$pdo->prepare("SELECT COUNT(DISTINCT shift) FROM merchandise_transactions mt WHERE station_id=? AND DATE($mt_date)=?");
+    // Count distinct shifts active today — use shift_period column
+    $kpi_shift_col = aat_has($mt_cols,'shift_period') ? 'shift_period' : (aat_has($mt_cols,'shift_name') ? 'shift_name' : null);
+    if($kpi_shift_col) {
+        $s3=$pdo->prepare("SELECT COUNT(DISTINCT $kpi_shift_col) FROM merchandise_transactions mt WHERE station_id=? AND DATE($mt_date)=?");
         $s3->execute([$station_id,$today]);
         $kpi_active_shifts=(int)$s3->fetchColumn();
     }
@@ -152,8 +171,8 @@ require_once __DIR__ . '/../partials/header.php';
 
 <div class="page-head txn-page-head">
     <div>
-        <h1><i class="fas fa-list-alt"></i> All Transactions</h1>
-        <div class="sub">View all transactions system-wide across all shifts and staff encoders.</div>
+        <h1><i class="fas fa-list-alt"></i> All Transactions Oversight</h1>
+        <div class="sub">Monitor and review all transactions system-wide across all shifts and staff encoders.</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <a href="?<?=http_build_query(array_merge($_GET,['export'=>'excel']))?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>

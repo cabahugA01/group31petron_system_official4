@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * MANAGER VALIDATED TRANSACTIONS
  * 
@@ -52,8 +52,9 @@ function vt_pay_status(array $row): string {
 
 // ── Filters ───────────────────────────────────────────────────────────────────
 $search         = trim($_GET['search']         ?? '');
-$date_from      = trim($_GET['date_from']      ?? '');
-$date_to        = trim($_GET['date_to']        ?? '');
+// Default: show last 90 days so historical staff records are always visible
+$date_from      = trim($_GET['date_from']      ?? date('Y-m-d', strtotime('-90 days')));
+$date_to        = trim($_GET['date_to']        ?? date('Y-m-d'));
 $type_filter    = trim($_GET['type']           ?? ''); // 'merchandise' | 'job_order' | ''
 $payment_method = trim($_GET['payment_method'] ?? ''); // 'Cash' | 'GCash' | etc
 $payment_status = trim($_GET['payment_status'] ?? ''); // 'Paid' | 'Unpaid' | 'Partial'
@@ -65,14 +66,19 @@ $rows = [];
 $total_amount = 0.0;
 
 // Merchandise official transactions
+// IMPORTANT: Show ALL transactions from staff - no validation_status filter
+// This ensures all merchandise and job order transactions encoded by staff are visible
 $mt_status_col = vt_has($mt_cols, 'validation_status') ? 'mt.validation_status' : "'Approved'";
-$mt_staff_col  = vt_has($mt_cols, 'staff_id') ? "COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown')" : "'Unknown'";
-$mt_date_col   = "CASE WHEN mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE mt.created_at END";
+$mt_staff_col  = vt_has($mt_cols, 'staff_id') ? "CASE WHEN mt.staff_id > 0 THEN COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Staff') ELSE 'Staff (Legacy)' END" : "'Staff'";
+// Use created_at as primary date column - it always exists
+$mt_date_col   = vt_has($mt_cols, 'transaction_date') ? "COALESCE(NULLIF(mt.transaction_date, '0000-00-00'), mt.created_at)" : 'mt.created_at';
 $mt_paid_col   = vt_has($mt_cols, 'amount_paid') ? 'mt.amount_paid' : 'NULL';
 $mt_vby_col    = vt_has($mt_cols, 'validated_by') ? "COALESCE(NULLIF(CONCAT(v.first_name,' ',v.last_name),' '), v.username, 'N/A')" : "'N/A'";
 $mt_shift_col  = "CASE WHEN LOWER(TRIM(COALESCE(mt.shift_period, mt.shift_name, u.assigned_shift, u.shift_assignment, ''))) IN ('first', 'shift 1', 'shift1') THEN 'Shift 1' WHEN LOWER(TRIM(COALESCE(mt.shift_period, mt.shift_name, u.assigned_shift, u.shift_assignment, ''))) IN ('second', 'shift 2', 'shift2') THEN 'Shift 2' ELSE COALESCE(NULLIF(TRIM(mt.shift_period),''), NULLIF(TRIM(mt.shift_name),''), NULLIF(TRIM(u.assigned_shift),''), NULLIF(TRIM(u.shift_assignment),''), 'N/A') END";
 $mt_staff_id   = vt_has($mt_cols, 'staff_id') ? 'mt.staff_id' : 'NULL';
 
+// IMPORTANT: Show ALL transactions from staff - no validation_status filter
+// This ensures all merchandise and job order transactions encoded by staff are visible
 $mt_where  = "WHERE mt.station_id = ?";
 $mt_params = [$station_id];
 if ($search !== '') {
@@ -80,11 +86,11 @@ if ($search !== '') {
     $mt_params[] = "%$search%"; $mt_params[] = "%$search%";
 }
 if ($date_from !== '') {
-    $mt_where .= " AND {$mt_date_col} >= ?";
+    $mt_where .= " AND DATE({$mt_date_col}) >= ?";
     $mt_params[] = $date_from;
 }
 if ($date_to !== '') {
-    $mt_where .= " AND {$mt_date_col} <= ?";
+    $mt_where .= " AND DATE({$mt_date_col}) <= ?";
     $mt_params[] = $date_to;
 }
 if ($payment_method !== '') {
@@ -104,6 +110,12 @@ if ($shift_filter !== '') {
 
 $mt_rows = [];
 try {
+    // DIAGNOSTIC: First check if there's ANY data in merchandise_transactions for this station
+    $diag_stmt = $pdo->prepare("SELECT COUNT(*) as total, MIN(created_at) as oldest, MAX(created_at) as newest FROM merchandise_transactions WHERE station_id = ?");
+    $diag_stmt->execute([$station_id]);
+    $diag = $diag_stmt->fetch(PDO::FETCH_ASSOC);
+    error_log("DIAGNOSTIC - merchandise_transactions for station $station_id: Total={$diag['total']}, Oldest={$diag['oldest']}, Newest={$diag['newest']}");
+    
     $stmt = $pdo->prepare("
         SELECT
             mt.id AS row_id,
@@ -121,6 +133,7 @@ try {
             COALESCE(mt.payment_method,'Cash') AS payment_method,
             {$mt_date_col} AS txn_date,
             COALESCE({$mt_status_col},'Approved') AS validation_status,
+            COALESCE(mt.workflow_status, 'Pending') AS workflow_status,
             COALESCE({$mt_staff_col},'Unknown') AS staff_name,
             {$mt_staff_id} AS staff_id,
             COALESCE({$mt_shift_col},'N/A') AS shift,
@@ -144,9 +157,14 @@ try {
     ");
     $stmt->execute($mt_params);
     $mt_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) { $mt_rows = []; }
+    error_log("QUERY EXECUTED - Merchandise rows returned: " . count($mt_rows));
+} catch (Exception $e) { 
+    error_log("ERROR fetching merchandise transactions: " . $e->getMessage());
+    $mt_rows = []; 
+}
 
 // Job Orders official/completed
+// IMPORTANT: Show ALL job orders from staff - no status filter
 $jo_status_col = vt_has($jo_cols, 'validation_status') ? 'jo.validation_status' : 'jo.status';
 $jo_staff_col  = vt_has($jo_cols, 'created_by') ? 'COALESCE(jo.created_by, jo.user_id)' : 'jo.user_id';
 $jo_pay_col    = vt_has($jo_cols, 'payment_method') ? "COALESCE(jo.payment_method,'N/A')" : "'N/A'";
@@ -163,11 +181,11 @@ if ($search !== '') {
     $jo_params[] = "%$search%"; $jo_params[] = "%$search%"; $jo_params[] = "%$search%";
 }
 if ($date_from !== '') {
-    $jo_where .= " AND jo.created_at >= ?";
+    $jo_where .= " AND DATE(jo.created_at) >= ?";
     $jo_params[] = $date_from;
 }
 if ($date_to !== '') {
-    $jo_where .= " AND jo.created_at <= ?";
+    $jo_where .= " AND DATE(jo.created_at) <= ?";
     $jo_params[] = $date_to;
 }
 if ($payment_method !== '') {
@@ -187,6 +205,12 @@ if ($shift_filter !== '') {
 
 $jo_rows = [];
 try {
+    // DIAGNOSTIC: First check if there's ANY data in job_orders for this station
+    $diag_stmt = $pdo->prepare("SELECT COUNT(*) as total, MIN(created_at) as oldest, MAX(created_at) as newest FROM job_orders WHERE station_id = ?");
+    $diag_stmt->execute([$station_id]);
+    $diag = $diag_stmt->fetch(PDO::FETCH_ASSOC);
+    error_log("DIAGNOSTIC - job_orders for station $station_id: Total={$diag['total']}, Oldest={$diag['oldest']}, Newest={$diag['newest']}");
+    
     $stmt = $pdo->prepare("
         SELECT
             jo.id AS row_id,
@@ -200,6 +224,7 @@ try {
             {$jo_pay_col} AS payment_method,
             jo.created_at AS txn_date,
             COALESCE(NULLIF(TRIM({$jo_status_col}),''),'Approved') AS validation_status,
+            COALESCE(jo.status, 'Pending') AS workflow_status,
             COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name,
             {$jo_staff_id} AS staff_id,
             COALESCE({$jo_shift_col},'N/A') AS shift,
@@ -220,7 +245,11 @@ try {
     ");
     $stmt->execute($jo_params);
     $jo_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) { $jo_rows = []; }
+    error_log("QUERY EXECUTED - Job Order rows returned: " . count($jo_rows));
+} catch (Exception $e) { 
+    error_log("ERROR fetching job orders: " . $e->getMessage());
+    $jo_rows = []; 
+}
 
 // Merge, apply type filter (in-PHP), then sort
 $all_rows = array_merge($mt_rows, $jo_rows);
@@ -241,12 +270,20 @@ usort($rows, fn($a, $b) => strtotime($b['txn_date']) - strtotime($a['txn_date'])
 
 // DEBUG: Log the results
 error_log("Manager Validated Transactions - Station $station_id - User: {$me['username']} ({$me['role']})");
+error_log("  Date Range: $date_from to $date_to");
+error_log("  Filters - Type: '$type_filter', Payment: '$payment_method', Staff: '$staff_filter', Shift: '$shift_filter', Search: '$search'");
 error_log("  Merchandise rows: " . count($mt_rows));
 error_log("  Job order rows: " . count($jo_rows));
 error_log("  All rows before filter: " . count($all_rows));
 error_log("  Final rows after filter: " . count($rows));
 if (count($rows) > 0) {
     error_log("  First row: " . json_encode($rows[0]));
+} else {
+    // Log the SQL params to debug why no results
+    error_log("  Merch WHERE: $mt_where");
+    error_log("  Merch PARAMS: " . json_encode($mt_params));
+    error_log("  JO WHERE: $jo_where");
+    error_log("  JO PARAMS: " . json_encode($jo_params));
 }
 
 // Pre-fetch items for merchandise_transactions
@@ -495,11 +532,20 @@ if ($export_type === 'pdf') {
 
 include __DIR__ . '/../partials/header.php';
 ?>
+<style>
+.flt-btn-excel{color:#1d6f42 !important;border-color:#1d6f42 !important;} .flt-btn-excel:hover{background:#1d6f42 !important;color:#fff !important;}
+.flt-btn-pdf{color:#dc2626 !important;border-color:#dc2626 !important;} .flt-btn-pdf:hover{background:#dc2626 !important;color:#fff !important;}
+</style>
 
 <div class="page-head txn-page-head">
     <div>
         <h1 class="h1"><i class="fas fa-check-double"></i> All Transactions</h1>
         <div class="sub">View and monitor all transactions encoded by staff across operational shifts.</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <a href="?<?=http_build_query(array_merge($_GET,['export'=>'excel']))?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
+        <a href="?<?=http_build_query(array_merge($_GET,['export'=>'csv']))?>"   class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</a>
+        <a href="?<?=http_build_query(array_merge($_GET,['export'=>'pdf']))?>"   class="flt-btn flt-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
     </div>
 </div>
 
@@ -731,13 +777,33 @@ try {
                         <button class="vt-btn-action vt-btn-view" onclick="viewValidatedTransaction('<?php echo $r['_source']; ?>', <?php echo $r['row_id']; ?>)" title="View details" style="padding:3px 6px;font-size:9px;width:100%;">
                             <i class="fas fa-eye"></i> View
                         </button>
-                        <?php if ($r['_source'] === 'merchandise_transactions' && $vst !== 'voided'): ?>
-                        <button class="vt-btn-action" style="color:#d97706;border-color:#d97706;background:white;padding:3px 6px;font-size:9px;width:100%;" onclick="openAdjustModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['entry_type'])) ?>', '<?= htmlspecialchars(addslashes($r['txn_date'])) ?>', '<?= htmlspecialchars(addslashes($r['staff_name'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_method'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_status'] ?? 'Paid')) ?>')" title="Adjust">
-                            <i class="fas fa-pen"></i> Adjust
-                        </button>
-                        <button class="vt-btn-action" style="color:#dc2626;border-color:#dc2626;background:white;padding:3px 6px;font-size:9px;width:100%;" onclick="openVoidModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>')" title="Void">
-                            <i class="fas fa-ban"></i> Void
-                        </button>
+                        <?php if ($vst !== 'voided'): ?>
+                            <?php if ($r['_source'] === 'merchandise_transactions'): ?>
+                            <button class="vt-btn-action" style="color:#d97706;border-color:#d97706;background:white;padding:3px 6px;font-size:9px;width:100%;" onclick="openAdjustModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['entry_type'])) ?>', '<?= htmlspecialchars(addslashes($r['txn_date'])) ?>', '<?= htmlspecialchars(addslashes($r['staff_name'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_method'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_status'] ?? 'Paid')) ?>')" title="Adjust">
+                                <i class="fas fa-pen"></i> Adjust
+                            </button>
+                            <?php endif; ?>
+
+                            <?php 
+                            $is_job_order = ($r['entry_type'] === 'Job Order' || $r['entry_type'] === 'Combined' || $r['_source'] === 'job_orders');
+                            $wf_status = strtolower(trim($r['workflow_status'] ?? 'pending'));
+                            
+                            if ($is_job_order): 
+                                if ($wf_status === 'pending'): 
+                            ?>
+                                <button class="vt-btn-action" style="color:#dc2626;border-color:#dc2626;background:white;padding:3px 6px;font-size:9px;width:100%;" onclick="openVoidModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['_source'])) ?>')" title="Void">
+                                    <i class="fas fa-ban"></i> Void
+                                </button>
+                                <?php else: ?>
+                                <button class="vt-btn-action" style="color:#94a3b8;border-color:#cbd5e1;background:#f8fafc;padding:3px 6px;font-size:9px;width:100%;cursor:not-allowed;" disabled title="Cannot void In Progress or Completed Job Orders (Workflow status: <?= htmlspecialchars(ucwords($wf_status)) ?>)">
+                                    <i class="fas fa-ban"></i> Void
+                                </button>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <button class="vt-btn-action" style="color:#dc2626;border-color:#dc2626;background:white;padding:3px 6px;font-size:9px;width:100%;" onclick="openVoidModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['_source'])) ?>')" title="Void">
+                                    <i class="fas fa-ban"></i> Void
+                                </button>
+                            <?php endif; ?>
                         <?php endif; ?>
                         </div>
                     </td>
@@ -1359,19 +1425,28 @@ function submitAdjustment() {
 
 /* ─────────────────────────────────────────────── VOID MODAL ────────────── */
 let _voidRowId = null;
+let _voidSource = null;
 
-function openVoidModal(rowId, txnId, customer) {
+function openVoidModal(rowId, txnId, customer, source) {
     _voidRowId = rowId;
+    _voidSource = source || 'merchandise_transactions';
     document.getElementById('voidReason').value          = '';
     document.getElementById('voidManagerRemarks').value  = '';
-    document.getElementById('voidModalInfo').innerHTML   =
-        `<i class="fas fa-ban"></i> You are about to void <strong>${txnId}</strong> — Customer: <strong>${customer}</strong>.<br>Inventory will be restored automatically.`;
+    
+    let info = `<i class="fas fa-ban"></i> You are about to void <strong>${txnId}</strong> — Customer: <strong>${customer}</strong>.`;
+    if (_voidSource === 'merchandise_transactions') {
+        info += `<br>Inventory and sales will be restored automatically.`;
+    } else {
+        info += `<br>The job order status will be updated to Voided.`;
+    }
+    document.getElementById('voidModalInfo').innerHTML = info;
     document.getElementById('voidModal').classList.add('active');
 }
 
 function closeVoidModal() {
     document.getElementById('voidModal').classList.remove('active');
     _voidRowId = null;
+    _voidSource = null;
 }
 
 function submitVoid() {
@@ -1389,6 +1464,7 @@ function submitVoid() {
         headers: { 'Content-Type': 'application/json' },
         body   : JSON.stringify({
             row_id          : _voidRowId,
+            source          : _voidSource,
             void_reason     : reason,
             manager_remarks : remarks,
         }),

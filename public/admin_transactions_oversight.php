@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'ato_oversight_dashboard';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -294,10 +294,9 @@ if ($search !== '') {
 if ($status_f !== '') {
     $mt_where .= " AND LOWER(TRIM(COALESCE({$mt_status_col},''))) = LOWER(?)";
     $mt_params[] = $status_f;
-} else {
-    // Admin Oversight: show all manager-processed records
-    $mt_where .= " AND LOWER(TRIM(COALESCE({$mt_status_col},''))) IN ('approved','completed','adjusted','rejected')";
 }
+// No default status filter — Admin Oversight shows ALL transactions
+// (pending, approved, rejected, adjusted, completed, etc.)
 
 $mt_rows = [];
 if ($type_f === '' || $type_f === 'merchandise' || $type_f === 'job_order' || $type_f === 'jo_merchandise') {
@@ -398,10 +397,8 @@ if ($search !== '') {
 if ($status_f !== '') {
     $jo_where .= " AND LOWER(TRIM(COALESCE({$jo_status_col},''))) = LOWER(?)";
     $jo_params[] = $status_f;
-} else {
-    // Admin Oversight: show all manager-processed job orders
-    $jo_where .= " AND LOWER(TRIM(COALESCE({$jo_status_col},''))) IN ('approved','completed','adjusted','rejected','in progress')";
 }
+// No default status filter — show ALL job orders regardless of status
 
 $jo_rows = [];
 if ($type_f === '' || $type_f === 'job_order') {

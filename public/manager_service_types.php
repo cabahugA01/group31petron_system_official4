@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Service Type Management
  * Manager view: list, add, edit, activate/deactivate service types for Job Orders.
@@ -95,6 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ── Add service type ─────────────────────────────────────────────────────
     if ($action === 'add_service') {
         $name        = trim($_POST['service_name'] ?? '');
+        $category    = trim($_POST['service_category'] ?? 'Others');
         $price       = (float)($_POST['service_price'] ?? 0);
         $min_price   = (float)($_POST['min_price'] ?? 0);
         $max_price   = (float)($_POST['max_price'] ?? 0);
@@ -123,10 +124,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $max_sort = $pdo->query("SELECT COALESCE(MAX(sort_order), 0) FROM job_order_service_types")->fetchColumn();
                     $new_sort = $max_sort + 1;
 
-                    $pdo->prepare("INSERT INTO job_order_service_types (station_id, service_key, service_name, service_price, min_price, max_price, price_description, pricing_notes, icon_class, color_class, sort_order, active, status, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,1,'active',?,NOW())")
-                        ->execute([$station_id, $service_key, $name, $price, $min_price, $max_price, $price_desc, $notes, $icon, $color, $new_sort, $me['id']]);
+                    $pdo->prepare("INSERT INTO job_order_service_types (station_id, service_key, service_name, category, service_price, min_price, max_price, price_description, pricing_notes, icon_class, color_class, sort_order, active, status, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,'active',?,NOW())")
+                        ->execute([$station_id, $service_key, $name, $category, $price, $min_price, $max_price, $price_desc, $notes, $icon, $color, $new_sort, $me['id']]);
                     
-                    log_activity($pdo, $me['id'], 'Service Type Added', "Service type '$name' added by {$me['name']} (Price: ₱".number_format($price, 2).")");
+                    log_activity($pdo, $me['id'], 'Service Type Added', "Service type '$name' added by {$me['name']} (Category: $category, Price: ₱".number_format($price, 2).")");
                     $_SESSION['success'] = "Service type '$name' added successfully.";
                 }
             } catch (Exception $e) {
@@ -140,6 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'update_service') {
         $id          = (int)($_POST['service_id'] ?? 0);
         $name        = trim($_POST['service_name'] ?? '');
+        $category    = trim($_POST['service_category'] ?? 'Others');
         $price       = (float)($_POST['service_price'] ?? 0);
         $min_price   = (float)($_POST['min_price'] ?? 0);
         $max_price   = (float)($_POST['max_price'] ?? 0);
@@ -160,9 +162,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $old_price = (float)($stmt->fetchColumn() ?: 0);
 
                 if ($old_price != $price) {
-                    // Update non-pricing fields
-                    $pdo->prepare("UPDATE job_order_service_types SET service_name=?, min_price=?, max_price=?, price_description=?, pricing_notes=?, icon_class=?, color_class=? WHERE id=?")
-                        ->execute([$name, $min_price, $max_price, $price_desc, $notes, $icon, $color, $id]);
+                    // Update non-pricing fields including category
+                    $pdo->prepare("UPDATE job_order_service_types SET service_name=?, category=?, min_price=?, max_price=?, price_description=?, pricing_notes=?, icon_class=?, color_class=? WHERE id=?")
+                        ->execute([$name, $category, $min_price, $max_price, $price_desc, $notes, $icon, $color, $id]);
                     
                     // Insert into pending_price_approvals
                     $pdo->prepare("INSERT INTO pending_price_approvals (station_id, product_type, product_id, old_price, new_price, manager_id, status, created_at) VALUES (?, 'service_type', ?, ?, ?, ?, 'pending', NOW())")
@@ -171,10 +173,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['success'] = "Service details updated. Price change submitted for Admin approval.";
                     $log_msg = "Service '$name' updated. Price change submitted: ₱".number_format($old_price, 2)." → ₱".number_format($price, 2)." (Pending Approval)";
                 } else {
-                    $pdo->prepare("UPDATE job_order_service_types SET service_name=?, service_price=?, min_price=?, max_price=?, price_description=?, pricing_notes=?, icon_class=?, color_class=? WHERE id=?")
-                        ->execute([$name, $price, $min_price, $max_price, $price_desc, $notes, $icon, $color, $id]);
+                    $pdo->prepare("UPDATE job_order_service_types SET service_name=?, category=?, service_price=?, min_price=?, max_price=?, price_description=?, pricing_notes=?, icon_class=?, color_class=? WHERE id=?")
+                        ->execute([$name, $category, $price, $min_price, $max_price, $price_desc, $notes, $icon, $color, $id]);
                     $_SESSION['success'] = "Service type updated.";
-                    $log_msg = "Service type '$name' updated.";
+                    $log_msg = "Service type '$name' (Category: $category) updated.";
                 }
                 log_activity($pdo, $me['id'], 'Service Type Updated', $log_msg);
 
@@ -336,6 +338,7 @@ include __DIR__ . '/../partials/header.php';
                     <tr>
                         <th>ID</th>
                         <th>Service Name</th>
+                        <th>Category</th>
                         <th>Base Fee</th>
                         <th>Price Range</th>
                         <th>Status</th>
@@ -360,6 +363,9 @@ include __DIR__ . '/../partials/header.php';
 
                     <!-- Service Name -->
                     <td><strong><?php echo htmlspecialchars($s['service_name']); ?></strong></td>
+
+                    <!-- Category -->
+                    <td><span style="background:#eff6ff;color:#1e40af;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;"><?php echo htmlspecialchars($s['category'] ?: 'Uncategorized'); ?></span></td>
 
                     <!-- Base Fee -->
                     <td style="color:#28a745;font-weight:700;">₱<?php echo number_format((float)$s['service_price'], 2); ?></td>
@@ -399,7 +405,7 @@ include __DIR__ . '/../partials/header.php';
                 </tr>
                 <?php endforeach; ?>
                 <?php if (empty($services)): ?>
-                <tr><td colspan="6" style="text-align:center;padding:40px;color:#666;">No service types found.</td></tr>
+                <tr><td colspan="7" style="text-align:center;padding:40px;color:#666;">No service types found.</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
@@ -415,7 +421,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="modal-content">
         <div class="modal-header">
             <h3><i class="fas fa-plus" style="color:#28a745;"></i> Add Service Type</h3>
-            <button class="close" onclick="closeModal('addModal')">&times;</button>
+            <button class="close" onclick="closeModal('addModal')">×</button>
         </div>
         <form method="POST" onsubmit="return validateServiceForm(this)">
             <input type="hidden" name="action" value="add_service">
@@ -423,6 +429,27 @@ include __DIR__ . '/../partials/header.php';
                 <div class="form-group">
                     <label>Service Name <span style="color:#dc2626;">*</span></label>
                     <input type="text" name="service_name" class="form-control" placeholder="e.g., Oil Change, Tire Repair" required>
+                </div>
+                <div class="form-group">
+                    <label>Category <span style="color:#dc2626;">*</span></label>
+                    <select name="service_category" class="form-control" required>
+                        <option value="Lubrication">Lubrication</option>
+                        <option value="PMS">PMS</option>
+                        <option value="Engine">Engine</option>
+                        <option value="Fuel System">Fuel System</option>
+                        <option value="Cooling System">Cooling System</option>
+                        <option value="Transmission">Transmission</option>
+                        <option value="Brake">Brake</option>
+                        <option value="Suspension">Suspension</option>
+                        <option value="Steering">Steering</option>
+                        <option value="Tire Services">Tire Services</option>
+                        <option value="Battery Services">Battery Services</option>
+                        <option value="Electrical">Electrical</option>
+                        <option value="Air Conditioning">Air Conditioning</option>
+                        <option value="Diagnostics">Diagnostics</option>
+                        <option value="Inspection">Inspection</option>
+                        <option value="Others">Others</option>
+                    </select>
                 </div>
                 <div class="fg2">
                     <div class="form-group">
@@ -469,7 +496,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="modal-content">
         <div class="modal-header">
             <h3><i class="fas fa-edit" style="color:#002F70;"></i> Edit Service Type</h3>
-            <button class="close" onclick="closeModal('editModal')">&times;</button>
+            <button class="close" onclick="closeModal('editModal')">×</button>
         </div>
         <form method="POST" onsubmit="return validateServiceForm(this)">
             <input type="hidden" name="action" value="update_service">
@@ -478,6 +505,25 @@ include __DIR__ . '/../partials/header.php';
                 <div class="form-group">
                     <label>Service Name <span style="color:#dc2626;">*</span></label>
                     <input type="text" name="service_name" id="edit_service_name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Category <span style="color:#dc2626;">*</span></label>
+                    <select name="service_category" id="edit_service_category" class="form-control" required>
+                        <option value="Oil Change">Oil Change</option>
+                        <option value="Tire Services">Tire Services</option>
+                        <option value="Brake Services">Brake Services</option>
+                        <option value="Engine Services">Engine Services</option>
+                        <option value="Electrical Services">Electrical Services</option>
+                        <option value="AC Services">AC Services</option>
+                        <option value="Transmission Services">Transmission Services</option>
+                        <option value="Suspension Services">Suspension Services</option>
+                        <option value="Wheel Alignment">Wheel Alignment</option>
+                        <option value="Battery Services">Battery Services</option>
+                        <option value="General Inspection">General Inspection</option>
+                        <option value="General Maintenance">General Maintenance</option>
+                        <option value="Detailing &amp; Cleaning">Detailing &amp; Cleaning</option>
+                        <option value="Others">Others</option>
+                    </select>
                 </div>
                 <div class="fg2">
                     <div class="form-group">
@@ -635,6 +681,12 @@ function editService(id) {
     document.getElementById('edit_price_description').value = service.price_description || '';
     document.getElementById('edit_pricing_notes').value = service.pricing_notes || '';
     document.getElementById('edit_icon_class').value = service.icon_class || 'fa-wrench';
+    // Pre-select category
+    const catSel = document.getElementById('edit_service_category');
+    if (catSel) {
+        const opt = Array.from(catSel.options).find(o => o.value === service.category);
+        catSel.value = opt ? service.category : 'Others';
+    }
     
     openModal('editModal');
 }

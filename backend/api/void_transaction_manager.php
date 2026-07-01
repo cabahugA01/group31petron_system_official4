@@ -89,54 +89,113 @@ try {
         try { $pdo->exec("ALTER TABLE voided_transactions ADD COLUMN IF NOT EXISTS fields_changed JSON DEFAULT NULL"); } catch(Exception $e2){}
     } catch (Exception $e) {}
 
-    // Load transaction
-    $stmt = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND station_id = ? LIMIT 1");
-    $stmt->execute([$row_id, $station_id]);
-    $txn = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$txn) {
-        echo json_encode(['success' => false, 'error' => 'Transaction not found']); exit;
-    }
+    $source = trim($data['source'] ?? 'merchandise_transactions');
 
-    // Already voided?
-    if (strtolower(trim($txn['validation_status'] ?? '')) === 'voided') {
-        echo json_encode(['success' => false, 'error' => 'Transaction is already voided']); exit;
-    }
+    if ($source === 'job_orders') {
+        // Ensure needed columns exist in job_orders
+        foreach ([
+            "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS void_reason      TEXT DEFAULT NULL",
+            "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS manager_remarks  TEXT DEFAULT NULL",
+            "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS validated_by     INT DEFAULT NULL",
+            "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS validated_at     DATETIME DEFAULT NULL"
+        ] as $ddl) {
+            try { $pdo->exec($ddl); } catch (Exception $e) {}
+        }
 
-    // Load items
-    $items_stmt = $pdo->prepare("SELECT * FROM merchandise_transaction_items WHERE transaction_id = ? ORDER BY id ASC");
-    $items_stmt->execute([$row_id]);
-    $items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
+        // Load job order
+        $stmt = $pdo->prepare("SELECT * FROM job_orders WHERE id = ? AND station_id = ? LIMIT 1");
+        $stmt->execute([$row_id, $station_id]);
+        $txn = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$txn) {
+            echo json_encode(['success' => false, 'error' => 'Job Order not found']); exit;
+        }
 
-    $pdo->beginTransaction();
+        $v_status = strtolower(trim($txn['validation_status'] ?? $txn['status'] ?? ''));
+        if ($v_status === 'voided') {
+            echo json_encode(['success' => false, 'error' => 'Job Order is already voided']); exit;
+        }
 
-    // ── Restore inventory ─────────────────────────────────────────────────────
-    $inv_deducted = (int)($txn['inventory_deducted'] ?? 1);
-    if ($inv_deducted) {
-        foreach ($items as $item) {
-            $product_id = (int)($item['product_id'] ?? 0);
-            $qty        = (float)$item['quantity'];
-            if ($product_id > 0 && $qty > 0 && $item['item_type'] !== 'service') {
-                $pdo->prepare("
-                    UPDATE station_inventory
-                    SET stock_level = stock_level + ?
-                    WHERE product_id = ? AND station_id = ?
-                ")->execute([$qty, $product_id, $station_id]);
+        // ONLY Pending job orders can be voided
+        $wf_status = strtolower(trim($txn['status'] ?? 'pending'));
+        if ($wf_status !== 'pending') {
+            echo json_encode(['success' => false, 'error' => 'Dili mahimong i-void ang Job Order nga In Progress o Completed na.']); exit;
+        }
+
+        $pdo->beginTransaction();
+
+        $pdo->prepare("
+            UPDATE job_orders SET
+                status          = 'Voided',
+                void_reason     = ?,
+                manager_remarks = ?,
+                validated_by    = ?,
+                validated_at    = NOW()
+            WHERE id = ? AND station_id = ?
+        ")->execute([$void_reason, $manager_remarks, $me['id'], $row_id, $station_id]);
+
+        try {
+            $pdo->prepare("UPDATE job_orders SET validation_status = 'Voided' WHERE id = ?")->execute([$row_id]);
+        } catch (Exception $e) {}
+
+    } else {
+        // Load merchandise transaction
+        $stmt = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND station_id = ? LIMIT 1");
+        $stmt->execute([$row_id, $station_id]);
+        $txn = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$txn) {
+            echo json_encode(['success' => false, 'error' => 'Transaction not found']); exit;
+        }
+
+        // If it is a Job Order/Combined type, check workflow status
+        $txn_type = strtolower(trim($txn['transaction_type'] ?? 'merchandise'));
+        if ($txn_type === 'job_order' || $txn_type === 'combined') {
+            $wf_status = strtolower(trim($txn['workflow_status'] ?? 'pending'));
+            if ($wf_status !== 'pending') {
+                echo json_encode(['success' => false, 'error' => 'Dili mahimong i-void ang Job Order nga In Progress o Completed na.']); exit;
             }
         }
-    }
 
-    // ── Update transaction ────────────────────────────────────────────────────
-    $pdo->prepare("
-        UPDATE merchandise_transactions SET
-            validation_status  = 'Voided',
-            void_reason        = ?,
-            manager_remarks    = ?,
-            inventory_deducted = 0,
-            validated_by       = ?,
-            validated_at       = NOW(),
-            updated_at         = NOW()
-        WHERE id = ? AND station_id = ?
-    ")->execute([$void_reason, $manager_remarks, $me['id'], $row_id, $station_id]);
+        if (strtolower(trim($txn['validation_status'] ?? '')) === 'voided') {
+            echo json_encode(['success' => false, 'error' => 'Transaction is already voided']); exit;
+        }
+
+        // Load items
+        $items_stmt = $pdo->prepare("SELECT * FROM merchandise_transaction_items WHERE transaction_id = ? ORDER BY id ASC");
+        $items_stmt->execute([$row_id]);
+        $items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $pdo->beginTransaction();
+
+        // ── Restore inventory ─────────────────────────────────────────────────────
+        $inv_deducted = (int)($txn['inventory_deducted'] ?? 1);
+        if ($inv_deducted) {
+            foreach ($items as $item) {
+                $product_id = (int)($item['product_id'] ?? 0);
+                $qty        = (float)$item['quantity'];
+                if ($product_id > 0 && $qty > 0 && $item['item_type'] !== 'service') {
+                    $pdo->prepare("
+                        UPDATE station_inventory
+                        SET stock_level = stock_level + ?
+                        WHERE product_id = ? AND station_id = ?
+                    ")->execute([$qty, $product_id, $station_id]);
+                }
+            }
+        }
+
+        // ── Update transaction ────────────────────────────────────────────────────
+        $pdo->prepare("
+            UPDATE merchandise_transactions SET
+                validation_status  = 'Voided',
+                workflow_status    = 'Voided',
+                void_reason        = ?,
+                manager_remarks    = ?,
+                inventory_deducted = 0,
+                validated_by       = ?,
+                validated_at       = NOW(),
+                updated_at         = NOW()
+            WHERE id = ? AND station_id = ?
+        ")->execute([$void_reason, $manager_remarks, $me['id'], $row_id, $station_id]);
+    }
 
     // ── Insert into voided_transactions log ───────────────────────────────────
     try {
@@ -149,20 +208,36 @@ try {
         }
 
         $voided_items_data = [];
-        foreach ($items as $it) {
-            $voided_items_data[] = [
-                'product_name' => $it['product_name'],
-                'item_type'    => $it['item_type'] ?? 'merchandise',
-                'quantity'     => (float)$it['quantity'],
-                'unit_price'   => (float)$it['unit_price'],
-                'subtotal'     => (float)$it['subtotal']
-            ];
+        if ($source !== 'job_orders') {
+            foreach ($items as $it) {
+                $voided_items_data[] = [
+                    'product_name' => $it['product_name'],
+                    'item_type'    => $it['item_type'] ?? 'merchandise',
+                    'quantity'     => (float)$it['quantity'],
+                    'unit_price'   => (float)$it['unit_price'],
+                    'subtotal'     => (float)$it['subtotal']
+                ];
+            }
         }
 
         // Extract additional fields from the transaction
-        $job_order_no   = !empty($txn['job_order_id']) ? $txn['job_order_id'] : ($txn['job_order_no'] ?? $txn['job_order_number'] ?? null);
-        $vehicle_plate  = !empty($txn['job_order_vehicle_plate']) ? $txn['job_order_vehicle_plate'] : ($txn['vehicle_plate'] ?? $txn['vehicle_plate_no'] ?? $txn['plate_number'] ?? null);
-        $payment_method = !empty($txn['payment_method']) ? $txn['payment_method'] : 'Cash';
+        if ($source === 'job_orders') {
+            $txn_id_val     = 'JO-' . $row_id;
+            $customer_val   = $txn['customer_name'] ?? 'Walk-in';
+            $txn_type_val   = 'job_order';
+            $amount_val     = isset($txn['total_cost']) ? $txn['total_cost'] : ($txn['estimated_cost'] ?? 0);
+            $job_order_no   = 'JO-' . $row_id;
+            $vehicle_plate  = $txn['vehicle_plate'] ?? null;
+            $payment_method = $txn['payment_method'] ?? 'N/A';
+        } else {
+            $txn_id_val     = $txn['transaction_id'] ?? ('TXN-' . $row_id);
+            $customer_val   = $txn['customer_name']   ?? 'Walk-in Customer';
+            $txn_type_val   = $txn['transaction_type'] ?? 'merchandise';
+            $amount_val     = $txn['total_amount']    ?? 0;
+            $job_order_no   = !empty($txn['job_order_id']) ? $txn['job_order_id'] : ($txn['job_order_no'] ?? $txn['job_order_number'] ?? null);
+            $vehicle_plate  = !empty($txn['job_order_vehicle_plate']) ? $txn['job_order_vehicle_plate'] : ($txn['vehicle_plate'] ?? $txn['vehicle_plate_no'] ?? $txn['plate_number'] ?? null);
+            $payment_method = !empty($txn['payment_method']) ? $txn['payment_method'] : 'Cash';
+        }
 
         $pdo->prepare("
             INSERT INTO voided_transactions
@@ -171,11 +246,11 @@ try {
                  job_order_no, vehicle_plate, payment_method, fields_changed, void_date)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
         ")->execute([
-            $row_id,
-            $txn['transaction_id'] ?? ('TXN-' . $row_id),
-            $txn['customer_name']   ?? 'Walk-in Customer',
-            $txn['transaction_type'] ?? 'merchandise',
-            $txn['total_amount']    ?? 0,
+            ($source === 'job_orders' ? null : $row_id),
+            $txn_id_val,
+            $customer_val,
+            $txn_type_val,
+            $amount_val,
             $void_reason,
             $manager_remarks,
             $me['id'],
@@ -186,7 +261,7 @@ try {
             $payment_method,
             json_encode([
                 'payment_method' => $payment_method,
-                'payment_status' => $txn['payment_status'] ?? 'Paid',
+                'payment_status' => $txn['payment_status'] ?? $txn['status'] ?? 'Paid',
                 'job_order_no'   => $job_order_no,
                 'vehicle_plate'  => $vehicle_plate,
                 'voided_items'   => $voided_items_data
@@ -198,8 +273,8 @@ try {
 
     // ── Audit trail ───────────────────────────────────────────────────────────
     $old_snap = json_encode([
-        'validation_status' => $txn['validation_status'] ?? '',
-        'total_amount'      => $txn['total_amount']      ?? 0,
+        'validation_status' => $txn['validation_status'] ?? $txn['status'] ?? '',
+        'total_amount'      => $txn['total_amount'] ?? $txn['total_cost'] ?? $txn['estimated_cost'] ?? 0,
     ]);
     $new_snap = json_encode([
         'validation_status' => 'Voided',
@@ -209,9 +284,9 @@ try {
 
     $pdo->prepare("
         INSERT INTO audit_trail (transaction_id, manager_id, action_type, old_value, new_value, station_id, source_table)
-        VALUES (?, ?, 'Void', ?, ?, ?, 'merchandise_transactions')
+        VALUES (?, ?, 'Void', ?, ?, ?, ?)
     ")->execute([
-        $txn['transaction_id'] ?? $row_id,
+        $txn['transaction_id'] ?? ('JO-' . $row_id),
         $me['id'],
         $old_snap,
         $new_snap,

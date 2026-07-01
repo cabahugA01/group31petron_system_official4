@@ -776,7 +776,7 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             'subtotal_amount'       => $subtotal_amount,
             'vat_amount'            => $vat_amount,
             'remarks'               => $data['remarks'] ?? '',
-            'validation_status'     => 'Official',
+            'validation_status'     => $has_service_item ? 'Pending' : 'Official',
             'amount_tendered'       => $data['amount_tendered'] ?? null,
             'change_amount'         => $data['change_amount'] ?? null,
             'card_reference'        => $data['card_reference'] ?? null,

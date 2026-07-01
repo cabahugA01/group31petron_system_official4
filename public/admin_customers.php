@@ -510,35 +510,6 @@ require_once __DIR__ . '/../partials/header.php';
                 console.error(err);
                 tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#dc2626;">Connection error.</td></tr>`;
             });
-    }ue,
-            date_tx_to: document.getElementById('filter-tx-to').value
-        });
-
-        fetch(`admin_customer_operations.php?${params.toString()}`)
-            .then(r => r.json())
-            .then(data => {
-                if (!data.success) {
-                    showToast(data.error || 'Failed to fetch customers', 'error');
-                    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:#dc2626;">Error: ${data.error}</td></tr>`;
-                    return;
-                }
-                
-                customersList = data.customers;
-                
-                // Update stats
-                document.getElementById('stat-total').textContent = data.stats.total_customers;
-                document.getElementById('stat-new').textContent = data.stats.new_registered;
-                document.getElementById('stat-regular').textContent = data.stats.regular_customers;
-                document.getElementById('stat-fleet').textContent = data.stats.fleet_accounts;
-                document.getElementById('stat-active').textContent = data.stats.active_customers;
-                document.getElementById('stat-inactive').textContent = data.stats.inactive_customers;
-
-                renderTable(data.customers);
-            })
-            .catch(err => {
-                console.error(err);
-                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:#dc2626;">Connection error.</td></tr>`;
-            });
     }
 
     function renderTable(list) {

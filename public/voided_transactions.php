@@ -384,7 +384,7 @@ require_once __DIR__ . '/../partials/header.php';
 
 <div class="page-head txn-page-head">
     <div>
-        <h1 class="h1"><i class="fas fa-ban"></i> Voided Transactions</h1>
+        <h1 class="h1"><i class="fas fa-ban"></i> Voided Transactions History</h1>
         <div class="sub">Review and monitor voided, cancelled, and reversed transactions.</div>
     </div>
     <div class="actions txn-head-actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
@@ -463,25 +463,24 @@ require_once __DIR__ . '/../partials/header.php';
     <table class="void-table">
         <thead>
             <tr>
-                <th style="width:4%;">Void ID</th>
-                <th style="width:8%;">Transaction ID</th>
-                <th style="width:6%;">Job Order</th>
-                <th style="width:9%;">Customer</th>
-                <th style="width:6%;">Plate No.</th>
-                <th style="width:6%;">Type</th>
-                <th style="width:14%;">Items / Service</th>
-                <th style="width:6%;">Amount</th>
-                <th style="width:7%;">Payment</th>
-                <th style="width:12%;">Void Reason</th>
-                <th style="width:7%;">Voided By</th>
-                <th style="width:9%;">Date & Time</th>
-                <th style="width:5%;">Status</th>
-                <th style="width:5%;">Action</th>
+                <th style="width:4.2%;">Void ID</th>
+                <th style="width:8.5%;">Transaction ID</th>
+                <th style="width:6.5%;">Job Order</th>
+                <th style="width:9.5%;">Customer</th>
+                <th style="width:6.5%;">Plate No.</th>
+                <th style="width:6.5%;">Type</th>
+                <th style="width:15%;">Items / Service</th>
+                <th style="width:6.5%;">Amount</th>
+                <th style="width:7.5%;">Payment</th>
+                <th style="width:13%;">Void Reason</th>
+                <th style="width:7.5%;">Voided By</th>
+                <th style="width:9.5%;">Date & Time</th>
+                <th style="width:5.5%;">Status</th>
             </tr>
         </thead>
         <tbody>
             <?php if (!$voided): ?>
-            <tr><td colspan="14" style="text-align:center;padding:40px;color:#888;">No voided transactions found</td></tr>
+            <tr><td colspan="13" style="text-align:center;padding:40px;color:#888;">No voided transactions found</td></tr>
             <?php else: ?>
             <?php foreach ($voided as $v): 
                 $v_fields  = !empty($v['fields_changed']) ? json_decode($v['fields_changed'], true) : [];
@@ -567,28 +566,6 @@ require_once __DIR__ . '/../partials/header.php';
                         VOID
                     </span>
                 </td>
-                <td>
-                    <?php
-                    $void_modal_data = [
-                        'voidId'   => 'VOID-' . (int)$v['id'],
-                        'txnId'    => $v['transaction_id'],
-                        'customer' => $v['customer_name'] ?? 'Walk-in Customer',
-                        'type'     => ucwords(str_replace('_',' ',$v['transaction_type'])),
-                        'amount'   => '₱' . number_format($v['amount'],2),
-                        'reason'   => $v['void_reason'],
-                        'remarks'  => $v['manager_remarks'] ?? '',
-                        'by'       => $v['voided_by_name'] ?? 'Manager',
-                        'date'     => date('M d, Y h:i A', strtotime($v['void_date'])),
-                        'payment'  => $payment,
-                        'items'    => $v['item_names'] ?? '—',
-                        'vehicle'  => $plate_disp,
-                        'joNo'     => $jo_disp,
-                        'fields_changed' => !empty($v['fields_changed']) ? json_decode($v['fields_changed'], true) : null
-                    ];
-                    ?>
-                    <button class="flt-btn flt-btn-search" style="height:22px;font-size:8px;padding:0 6px;display:inline-flex;align-items:center;gap:3px;"
-                        onclick="openVoidModal(<?= htmlspecialchars(json_encode($void_modal_data, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>)"><i class="fas fa-eye"></i> View</button>
-                </td>
             </tr>
             <?php endforeach; ?>
             <?php endif; ?>
@@ -597,92 +574,10 @@ require_once __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- Voided Transaction Detail Modal -->
-<div id="voidDetailModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:16px;width:92%;max-width:560px;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden;animation:voidModalIn .2s ease;">
-    <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid #e2e8f0;">
-      <div style="width:36px;height:36px;background:#fef2f2;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-        <i class="fas fa-ban" style="color:#dc2626;font-size:15px;"></i>
-      </div>
-      <div>
-        <div style="font-size:14px;font-weight:700;color:#1e293b;">Void Record Details</div>
-      </div>
-    </div>
-    <div style="padding:22px 24px;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <tbody id="voidModalBody"></tbody>
-      </table>
-    </div>
-    <div style="padding:12px 24px 18px;text-align:right;border-top:1px solid #f1f5f9;">
-      <button onclick="closeVoidModal()" class="flt-btn flt-btn-reset" style="height:34px;"><i class="fas fa-times"></i> Close</button>
-    </div>
-  </div>
-</div>
-<style>
-@keyframes voidModalIn{from{opacity:0;transform:translateY(-16px)}to{opacity:1;transform:none}}
-#voidModalBody tr{border-bottom:1px solid #f1f5f9;}
-#voidModalBody td{padding:9px 8px;vertical-align:top;}
-#voidModalBody td:first-child{font-weight:700;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:.4px;width:150px;white-space:nowrap;}
-#voidModalBody td:last-child{color:#1e293b;font-weight:500;}
-</style>
+<!-- Voided Transaction Detail Modal - REMOVED (Action column removed, read-only history) -->
 
 <script>
-function openVoidModal(d){
-  var pm = d.payment || '—';
-  var itemsHtml = '';
-  if (d.fields_changed) {
-    if (d.fields_changed.payment_method) {
-      pm = '<strong>' + d.fields_changed.payment_method + '</strong> (' + (d.fields_changed.payment_status || 'Paid') + ')';
-    }
-    if (d.fields_changed.voided_items && d.fields_changed.voided_items.length > 0) {
-      itemsHtml = '<div style="margin-top: 6px; border: 1px solid #fca5a5; border-radius: 8px; overflow: hidden; background: #fff5f5;">' +
-        '<table style="width: 100%; border-collapse: collapse; font-size: 11px; text-align: left;">' +
-        '<tr style="background: #fee2e2; border-bottom: 1px solid #fca5a5; color: #991b1b;">' +
-        '<th style="padding: 6px 8px; font-weight: 700;">Item / Service</th>' +
-        '<th style="padding: 6px 8px; font-weight: 700;">Normal / Gipalit</th>' +
-        '<th style="padding: 6px 8px; font-weight: 700;">Gi-Void (Total)</th>' +
-        '</tr>';
-      d.fields_changed.voided_items.forEach(function(item) {
-        itemsHtml += '<tr style="border-bottom: 1px solid #fecaca;">' +
-          '<td style="padding: 6px 8px;"><strong>' + item.product_name + '</strong></td>' +
-          '<td style="padding: 6px 8px; color: #64748b;">' + item.quantity + ' x ₱' + Number(item.unit_price).toFixed(2) + '</td>' +
-          '<td style="padding: 6px 8px; font-weight: bold; color: #dc2626;">₱' + Number(item.subtotal).toFixed(2) + '</td>' +
-          '</tr>';
-      });
-      itemsHtml += '</table></div>';
-    }
-  }
-  
-  if (!itemsHtml) {
-    itemsHtml = d.items ? d.items : '<em style="color: #94a3b8; font-size: 12px;">No items logged or legacy record.</em>';
-  }
-
-  var rows=[
-    ['Void ID',          '<strong>'+d.voidId+'</strong>'],
-    ['Transaction ID',   d.txnId],
-    ['Job Order No.',    d.joNo || '—'],
-    ['Customer',         d.customer],
-    ['Vehicle Plate',    d.vehicle || '—'],
-    ['Type',             d.type],
-    ['Payment Method',   pm],
-    ['Voided Amount',    '<strong style="color:#002F70;font-size:15px;">'+d.amount+'</strong>'],
-    ['Voided Items',     itemsHtml],
-    ['Void Reason',      d.reason],
-    ['Manager Remarks',  d.remarks || '—'],
-    ['Voided By',        d.by],
-    ['Void Date',        d.date]
-  ];
-  var html='';
-  rows.forEach(function(r){ html+='<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>'; });
-  document.getElementById('voidModalBody').innerHTML=html;
-  document.getElementById('voidDetailModal').style.display='flex';
-}
-function closeVoidModal(){
-  document.getElementById('voidDetailModal').style.display='none';
-}
-document.getElementById('voidDetailModal').addEventListener('click',function(e){
-  if(e.target===this) closeVoidModal();
-});
+// Modal functions removed - voided transactions is now read-only history
 </script>
 
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

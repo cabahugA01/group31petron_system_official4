@@ -166,8 +166,8 @@ function listCustomers() {
         SELECT
             COUNT(*) AS total_customers,
             SUM(CASE WHEN DATE(COALESCE(registered_at, created_at)) = CURDATE() THEN 1 ELSE 0 END) AS new_registered,
-            SUM(CASE WHEN customer_type = 'regular' THEN 1 ELSE 0 END) AS regular_customers,
-            SUM(CASE WHEN customer_type = 'fleet' THEN 1 ELSE 0 END) AS fleet_accounts,
+            SUM(CASE WHEN type = 'cash' THEN 1 ELSE 0 END) AS cash_customers,
+            SUM(CASE WHEN type = 'credit' THEN 1 ELSE 0 END) AS credit_customers,
             SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active_customers,
             SUM(CASE WHEN status IN ('inactive', 'suspended') THEN 1 ELSE 0 END) AS inactive_customers
         FROM customers
@@ -177,8 +177,8 @@ function listCustomers() {
     $stats = $statsStmt->fetch(PDO::FETCH_ASSOC) ?: [
         'total_customers' => 0,
         'new_registered' => 0,
-        'regular_customers' => 0,
-        'fleet_accounts' => 0,
+        'cash_customers' => 0,
+        'credit_customers' => 0,
         'active_customers' => 0,
         'inactive_customers' => 0
     ];

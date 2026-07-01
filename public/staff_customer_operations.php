@@ -99,13 +99,13 @@ function listCustomers() {
     $params = [$station_id];
     
     if ($search !== '') {
-        $where[] = "(CAST(c.id AS CHAR) LIKE ? OR c.name LIKE ? OR c.contact_number LIKE ?)";
+        $where[] = "(c.customer_id LIKE ? OR c.name LIKE ? OR CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,'')) LIKE ? OR c.contact_number LIKE ?)";
         $searchTerm = "%$search%";
-        $params = array_merge($params, [$searchTerm, $searchTerm, $searchTerm]);
+        $params = array_merge($params, [$searchTerm, $searchTerm, $searchTerm, $searchTerm]);
     }
     
     if ($type !== '') {
-        $where[] = "c.type = ?";
+        $where[] = "c.customer_type = ?";
         $params[] = $type;
     }
     
@@ -128,17 +128,16 @@ function listCustomers() {
     
     error_log("[listCustomers] WHERE: $whereClause");
     
-    // Get customers with basic transaction counts
-    // For production, we count transactions from actual tables
+    // Get customers — fetch actual customer_id string, name columns
     $stmt = $pdo->prepare("
         SELECT 
             c.id,
-            c.id AS customer_id,
-            c.name AS first_name,
-            '' AS middle_name,
-            '' AS last_name,
+            COALESCE(c.customer_id, CAST(c.id AS CHAR)) AS customer_id,
+            COALESCE(c.first_name, c.name, '') AS first_name,
+            COALESCE(c.middle_name, '') AS middle_name,
+            COALESCE(c.last_name, '') AS last_name,
             c.contact_number,
-            c.type AS customer_type,
+            COALESCE(c.customer_type, c.type, 'walk-in') AS customer_type,
             c.status,
             c.created_at AS registered_at,
             0 AS total_transactions,
@@ -153,13 +152,13 @@ function listCustomers() {
     
     error_log("[listCustomers] Found " . count($customers) . " customers");
     
-    // Get stats
+    // Get stats using correct column names
     $statsStmt = $pdo->prepare("
         SELECT 
             COUNT(*) as total,
             SUM(CASE WHEN DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) as new_today,
-            SUM(CASE WHEN type = 'cash' THEN 1 ELSE 0 END) as regular,
-            SUM(CASE WHEN type = 'credit' THEN 1 ELSE 0 END) as fleet
+            SUM(CASE WHEN COALESCE(customer_type, type) IN ('regular','walk-in') THEN 1 ELSE 0 END) as regular,
+            SUM(CASE WHEN COALESCE(customer_type, type) = 'fleet' THEN 1 ELSE 0 END) as fleet
         FROM customers
         WHERE station_id = ?
     ");
@@ -190,7 +189,21 @@ function viewCustomer() {
     
     // Get customer details
     $stmt = $pdo->prepare("
-        SELECT c.*, u.name as registered_by_name
+        SELECT 
+            c.id,
+            COALESCE(c.customer_id, CAST(c.id AS CHAR)) AS customer_id,
+            COALESCE(c.first_name, c.name, '') AS first_name,
+            COALESCE(c.middle_name, '') AS middle_name,
+            COALESCE(c.last_name, '') AS last_name,
+            c.contact_number,
+            c.address,
+            COALESCE(c.customer_type, c.type, 'walk-in') AS customer_type,
+            c.status,
+            c.gov_id_type,
+            c.gov_id_image,
+            c.cr_document,
+            c.created_at AS registered_at,
+            CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS registered_by_name
         FROM customers c
         LEFT JOIN users u ON c.registered_by = u.id
         WHERE c.id = ? AND c.station_id = ?
@@ -330,17 +343,20 @@ function addCustomer() {
         $crDocument = handleFileUpload($_FILES['cr_document'], 'cr');
     }
     
-    // Insert customer
+    // Build full name for denormalized name column
+    $fullName = trim("$firstName $middleName $lastName");
+    
+    // Insert customer — include both name (full) and individual name columns + verification_status
     $stmt = $pdo->prepare("
         INSERT INTO customers (
-            customer_id, station_id, first_name, middle_name, last_name,
+            customer_id, station_id, name, first_name, middle_name, last_name,
             contact_number, address, customer_type, gov_id_type,
-            gov_id_image, cr_document, status, registered_by, registered_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, NOW())
+            gov_id_image, cr_document, status, verification_status, registered_by, registered_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 'pending', ?, NOW())
     ");
     
     $stmt->execute([
-        $customerId, $station_id, $firstName, $middleName, $lastName,
+        $customerId, $station_id, $fullName, $firstName, $middleName, $lastName,
         $contactNumber, $address, $customerType, $govIdType,
         $govIdImage, $crDocument, $me['id']
     ]);
@@ -348,7 +364,7 @@ function addCustomer() {
     $newId = $pdo->lastInsertId();
     
     // Audit log
-    write_audit_log($pdo, 'Create', "New customer: $firstName $lastName ($customerId)", 'customers', $newId, 'customer');
+    write_audit_log($pdo, 'Create', "New customer: $fullName ($customerId)", 'customers', $newId, 'customer');
     
     error_log("[addCustomer] Success. ID: $newId, Customer ID: $customerId");
     
@@ -391,17 +407,18 @@ function updateCustomer() {
         throw new Exception('Customer not found or unauthorized');
     }
     
-    // Update customer
+    // Update customer — also update denormalized name column
+    $fullName = trim("$firstName $middleName $lastName");
     $stmt = $pdo->prepare("
         UPDATE customers
-        SET first_name = ?, middle_name = ?, last_name = ?,
+        SET name = ?, first_name = ?, middle_name = ?, last_name = ?,
             contact_number = ?, address = ?, customer_type = ?,
             updated_by = ?, updated_at = NOW()
         WHERE id = ? AND station_id = ?
     ");
     
     $result = $stmt->execute([
-        $firstName, $middleName, $lastName,
+        $fullName, $firstName, $middleName, $lastName,
         $contactNumber, $address, $customerType,
         $me['id'], $id, $station_id
     ]);

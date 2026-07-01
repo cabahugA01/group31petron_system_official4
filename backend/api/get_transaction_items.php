@@ -39,8 +39,8 @@ try {
                mt.total_amount, mt.amount_tendered, mt.change_amount,
                mt.validation_status, mt.rejection_reason, mt.created_at,
                mt.shift_period, mt.shift_name,
-               u.name AS staff_name,
-               vm.name AS validated_by_name,
+               COALESCE(NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''), u.username, 'Staff') AS staff_name,
+               COALESCE(NULLIF(TRIM(CONCAT(vm.first_name, ' ', vm.last_name)), ''), vm.username, 'N/A') AS validated_by_name,
                mt.validated_at
         FROM merchandise_transactions mt
         LEFT JOIN users u  ON mt.staff_id    = u.id

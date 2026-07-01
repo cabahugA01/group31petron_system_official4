@@ -142,12 +142,12 @@ function getValidatedTransactions($station_id, $date_filter, $type_filter, $paym
             s.total_amount,
             s.payment_method,
             s.transaction_date,
-            u.name as staff_name,
-            s.status,
+            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),' '), u.name, u.username, 'Unknown') as staff_name,
+            s.validation_status as status,
             NULL as pump_number
-        FROM sales s
+        FROM merchandise_transactions s
         LEFT JOIN users u ON u.id = s.staff_id
-        LEFT JOIN sale_items si ON si.sale_id = s.id
+        LEFT JOIN merchandise_transaction_items si ON si.transaction_id = s.id
         WHERE s.station_id = ? $date_condition $type_condition $payment_condition $search_condition
         
         ORDER BY transaction_date DESC
@@ -229,13 +229,13 @@ function getPendingTransactions($station_id) {
             s.total_amount,
             s.payment_method,
             s.transaction_date,
-            u.name as staff_name,
-            s.status,
+            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),' '), u.name, u.username, 'Unknown') as staff_name,
+            s.validation_status as status,
             s.created_at as submitted_at
-        FROM sales s
+        FROM merchandise_transactions s
         LEFT JOIN users u ON u.id = s.staff_id
-        LEFT JOIN sale_items si ON si.sale_id = s.id
-        WHERE s.station_id = ? AND s.status = 'pending_validation'
+        LEFT JOIN merchandise_transaction_items si ON si.transaction_id = s.id
+        WHERE s.station_id = ? AND s.validation_status = 'pending_validation'
         
         UNION ALL
         

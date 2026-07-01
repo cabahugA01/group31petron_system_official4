@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'settings';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -100,63 +100,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     elseif ($action === 'save_supplier') {
-        $supplier_id = $_POST['supplier_id'] ?? '';
-        $name = trim($_POST['name'] ?? '');
-        $contact_person = trim($_POST['contact_person'] ?? '');
-        $phone = trim($_POST['phone'] ?? '');
-        $email = trim($_POST['email'] ?? '');
-        $address = trim($_POST['address'] ?? '');
-        $is_default = isset($_POST['is_default']) ? 1 : 0;
-        
-        if (empty($name)) {
-            $notice = '❌ Supplier name is required.';
-        } else {
-            // Check for duplicate supplier name (exclude current supplier when updating)
-            $duplicate_check = $pdo->prepare("SELECT id FROM suppliers WHERE name = ? AND id != ?");
-            $duplicate_check->execute([$name, $supplier_id ?? 0]);
-            if ($duplicate_check->fetch()) {
-                $notice = '❌ Supplier "' . htmlspecialchars($name) . '" already exists.';
-            } else {
-                if ($supplier_id) {
-                    // Update
-                    $stmt = $pdo->prepare("UPDATE suppliers SET name=?, contact_person=?, phone=?, email=?, address=? WHERE id=?");
-                    $stmt->execute([$name, $contact_person, $phone, $email, $address, $supplier_id]);
-                    
-                    // Update default if set
-                    if ($is_default) {
-                        $pdo->prepare("UPDATE system_settings SET setting_value=?, updated_at=NOW(), updated_by=? WHERE setting_key='default_supplier_id'")->execute([$supplier_id, $me['id']]);
-                    }
-                    $notice = '✅ Supplier updated successfully';
-                } else {
-                    // Create
-                    $stmt = $pdo->prepare("INSERT INTO suppliers (name, contact_person, phone, email, address, created_at) VALUES (?, ?, ?, ?, ?, NOW())");
-                    $stmt->execute([$name, $contact_person, $phone, $email, $address]);
-                    $new_id = $pdo->lastInsertId();
-                    
-                    // Set as default if marked
-                    if ($is_default) {
-                        $pdo->prepare("UPDATE system_settings SET setting_value=?, updated_at=NOW(), updated_by=? WHERE setting_key='default_supplier_id'")->execute([$new_id, $me['id']]);
-                    }
-                    $notice = '✅ Supplier added successfully';
-                }
-                
-                log_activity($pdo, $me['id'], 'Supplier Management', ($supplier_id ? "Updated supplier: $name" : "Created supplier: $name"), $_SERVER['REMOTE_ADDR']);
-            }
-        }
+        $notice = '❌ Supplier modification is disabled. Petron Corporation is the sole supplier for the system.';
     }
     
     elseif ($action === 'delete_supplier') {
-        $supplier_id = $_POST['supplier_id'] ?? 0;
-        
-        // Hard delete - remove from database since deleted_at column doesn't exist
-        $stmt = $pdo->prepare("DELETE FROM suppliers WHERE id=?");
-        $stmt->execute([$supplier_id]);
-        
-        // Reset default if deleted supplier was default
-        $pdo->prepare("UPDATE system_settings SET setting_value=NULL, updated_at=NOW(), updated_by=? WHERE setting_key='default_supplier_id' AND setting_value=?")->execute([$me['id'], $supplier_id]);
-        
-        $notice = '✅ Supplier deleted successfully';
-        log_activity($pdo, $me['id'], 'Supplier Management', "Deleted supplier ID: $supplier_id", $_SERVER['REMOTE_ADDR']);
+        $notice = '❌ Supplier deletion is disabled. Petron Corporation must remain as the sole supplier.';
     }
     
     elseif ($action === 'set_default_supplier') {
@@ -1063,23 +1011,20 @@ include __DIR__ . '/../partials/header.php';
         <!-- Supplier Management Section -->
         <div class="section-header">
             <h1 class="section-title"><i class="fas fa-truck"></i> Supplier Management</h1>
-            <p class="section-subtitle">Manage merchandise suppliers and configure default supplier</p>
+            <p class="section-subtitle">View merchandise suppliers and configure default supplier</p>
         </div>
         
         <div class="table-card">
             <div class="table-header">
                 <h2 class="table-title">Suppliers</h2>
-                <button class="btn btn-primary" id="addSupplierBtn" onclick="openSupplierModal()" type="button">
-                    <i class="fas fa-plus"></i> Add Supplier
-                </button>
+                <!-- Add Supplier is disabled as Petron Corporation is the sole supplier -->
             </div>
             <div class="table-container">
                 <?php if (empty($suppliers_list)): ?>
                     <div class="empty-state">
                         <div class="empty-icon"><i class="fas fa-truck"></i></div>
                         <div class="empty-title">No suppliers found</div>
-                        <div class="empty-description">Add your first supplier to configure merchandise receiving</div>
-                        <button class="btn btn-primary" onclick="openSupplierModal()" type="button">Add Supplier</button>
+                        <div class="empty-description">Petron Corporation is the sole supplier of the system.</div>
                     </div>
                 <?php else: ?>
                     <table class="settings-table">
@@ -1090,7 +1035,6 @@ include __DIR__ . '/../partials/header.php';
                                 <th>Phone</th>
                                 <th>Email</th>
                                 <th>Default</th>
-                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1113,16 +1057,6 @@ include __DIR__ . '/../partials/header.php';
                                                 <i class="far fa-star"></i>
                                             </button>
                                         <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <div class="action-buttons">
-                                            <button class="btn-icon edit" id="edit_<?php echo $supplier['id']; ?>" onclick="editSupplier(<?php echo $supplier['id']; ?>)" type="button">
-                                                <i class="fas fa-edit"></i>
-                                            </button>
-                                            <button class="btn-icon delete" id="delete_<?php echo $supplier['id']; ?>" onclick="deleteSupplier(<?php echo $supplier['id']; ?>)" type="button">
-                                                <i class="fas fa-trash"></i>
-                                            </button>
-                                        </div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
