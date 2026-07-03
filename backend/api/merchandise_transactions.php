@@ -521,23 +521,28 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
     }
 
     // ── Calculate totals ──────────────────────────────────────────────────────
-    // Use frontend-computed values (subtotal + VAT = grand total).
-    // Fall back to summing items if not provided.
+    // Use frontend-computed values (VAT is inclusive in final retail pricing).
+    // The items sum ($items_subtotal) is the actual Grand Total (VAT-inclusive).
     $items_subtotal = 0;
     foreach ($data['items'] as $item) {
         $items_subtotal += floatval($item['quantity'] ?? 1) * floatval($item['unit_price'] ?? 0);
     }
-    $subtotal_amount = floatval($data['subtotal']     ?? $items_subtotal);
-    $vat_amount      = floatval($data['vat_amount']   ?? ($subtotal_amount * 0.12));
-    $total_amount    = floatval($data['total_amount'] ?? ($subtotal_amount + $vat_amount));
+    
+    // Grand total is the sum of items (already VAT inclusive)
+    $total_amount = floatval($data['total_amount'] ?? $items_subtotal);
+    
+    // Subtotal (Vatable Sales) is total divided by 1.12
+    $subtotal_amount = floatval($data['subtotal'] ?? round($total_amount / 1.12, 2));
+    
+    // VAT (12%) is the difference between total and vatable subtotal
+    $vat_amount = floatval($data['vat_amount'] ?? round($total_amount - $subtotal_amount, 2));
 
-    // Sanity-check: if frontend grand total doesn't match items sum + VAT, recompute
-    $expected_grand = round($items_subtotal * 1.12, 2);
-    if (abs($total_amount - $expected_grand) > 0.10) {
+    // Sanity-check: if frontend grand total deviates too much from items sum, recompute
+    if (abs($total_amount - $items_subtotal) > 0.10) {
         // Frontend total deviates too much — recompute from items
-        $subtotal_amount = $items_subtotal;
-        $vat_amount      = round($items_subtotal * 0.12, 2);
-        $total_amount    = round($items_subtotal + $vat_amount, 2);
+        $total_amount    = round($items_subtotal, 2);
+        $subtotal_amount = round($total_amount / 1.12, 2);
+        $vat_amount      = round($total_amount - $subtotal_amount, 2);
     }
 
     // ── Payment method + amount setup ─────────────────────────────────────────
@@ -944,6 +949,31 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             $deductStmt->execute([$qty, $station_id, $product_id]);
             if ($deductStmt->rowCount() > 0) {
                 $deducted_inventory = true;
+
+                // Log to inventory_logs
+                try {
+                    $qtyBefore = (float)$stockLevel;
+                    $qtyAfter = $qtyBefore - $qty;
+                    $logStmt = $pdo->prepare("
+                        INSERT INTO inventory_logs (
+                            station_id, product_id, user_id, action, 
+                            quantity_before, quantity_after, quantity_change, 
+                            reference_type, reference_id, notes, created_at
+                        ) VALUES (?, ?, ?, 'sale', ?, ?, ?, 'transaction', ?, ?, NOW())
+                    ");
+                    $logStmt->execute([
+                        $station_id,
+                        $product_id,
+                        $me['id'] ?? null,
+                        $qtyBefore,
+                        $qtyAfter,
+                        -$qty,
+                        $merch_transaction_id,
+                        "POS Merchandise Sale - Ref: " . $transaction_id
+                    ]);
+                } catch (Exception $logErr) {
+                    error_log("Inventory log insert error: " . $logErr->getMessage());
+                }
             }
         }
 

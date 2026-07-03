@@ -302,7 +302,7 @@ $total_fuel_available = array_sum(array_column($rows, 'current_level'));
 $total_low_fuel_tanks = count(array_filter($rows, fn($r) => $r['status'] === 'Low'));
 $total_critical_fuel_tanks = count(array_filter($rows, fn($r) => in_array($r['status'], ['Critical','Out of Stock'])));
 
-include __DIR__ . '/../partials/header.php';
+include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 <style>
 .inv-card { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #e9ecef; margin-bottom:20px; }

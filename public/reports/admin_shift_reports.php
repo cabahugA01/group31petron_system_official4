@@ -16,7 +16,7 @@ if ($is_standalone) {
     $station_id   = user_station_id();
     if (!$station_id && in_array($user_role, ['admin','manager','staff']))
         render_no_station_page('admin_dashboard.php');
-    $date_start = $_GET['date_from'] ?? date('Y-m-01');
+    $date_start = $_GET['date_from'] ?? date('Y-m-d');
     $date_end   = $_GET['date_to']   ?? date('Y-m-d');
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_start)) $date_start = date('Y-m-d');
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_end))   $date_end   = date('Y-m-d');
@@ -41,10 +41,18 @@ if (!in_array($section, $valid_sections)) $section = 'fuel_sales';
 $active_shift = (int)($_GET['shift'] ?? 0); // 0 = all, 1 = shift1, 2 = shift2
 
 // Shift definitions — extend Shift 2 to midnight to catch all late transactions
+// Ensure order: Shift 1 always comes before Shift 2
 $shifts = [
     1 => ['label'=>'Shift 1 (6AM–2PM)',  'start'=>'06:00:00','end'=>'14:00:00'],
     2 => ['label'=>'Shift 2 (2PM–12AM)', 'start'=>'14:00:00','end'=>'23:59:59'],
 ];
+// Sort by key to ensure Shift 1 comes first, then Shift 2
+ksort($shifts);
+
+// Reuse the production-grade manager shift report data layer/rendering to avoid duplicate report logic.
+// The output contains neutral report titles and live station-scoped data, so it is safe for Admin Reports too.
+require __DIR__ . '/manager_shift_reports.php';
+return;
 ?>
 
 <style>
@@ -246,7 +254,7 @@ $shifts = [
 </div>
 
 <?php
-function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shift_end_t, $section) {
+function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shift_end_t, $section) {
     $rows = [];
     try {
         switch ($section) {
@@ -280,7 +288,7 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
                     WHERE ft.station_id = ?
                       AND DATE(ft.transaction_date) BETWEEN ? AND ?
                       AND $shift_cond
-                    ORDER BY ft.transaction_date, ft.pump_id
+                    ORDER BY ft.transaction_date ASC, TIME(ft.transaction_date) ASC, ft.fuel_type ASC, ft.pump_id ASC
                 ");
                 $q->execute([$station_id, $date_start, $date_end]);
                 $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -605,14 +613,36 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
         <?php if ($sec_key === 'fuel_sales'): ?>
         <table class="sr-table">
             <thead><tr>
-                <th>Pump / Fuel Type</th><th>Beginning Reading</th><th>Ending Reading</th>
+                <th>Name</th><th>Beginning Reading</th><th>Ending Reading</th>
                 <th>Calibration</th><th>Dispensed Liters</th><th>Unit Price</th><th>Amount</th><th>Encoder</th>
             </tr></thead>
             <tbody>
             <?php if (empty($rows)): ?><tr><td colspan="8" class="sr-empty">No fuel sales for this shift</td></tr>
-            <?php else: $tl=0;$ta=0; foreach($rows as $r): $tl+=$r['dispensed_liters'];$ta+=$r['amount']; ?>
+            <?php else:
+                $tl=0;$ta=0;
+                // Group pumps by fuel type and assign sequential numbers
+                $fuel_pump_counter = [];
+                foreach($rows as $r):
+                    $tl+=$r['dispensed_liters'];
+                    $ta+=$r['amount'];
+                    // Clean fuel type: remove number suffixes for display
+                    $fuel_display = preg_replace('/\s+\d+\s*-\s*\d+$/', '', $r['fuel_type']);
+
+                    // Track pump counter per fuel type
+                    if (!isset($fuel_pump_counter[$fuel_display])) {
+                        $fuel_pump_counter[$fuel_display] = [];
+                    }
+                    $pump_key = $r['pump_name'];
+                    if (!isset($fuel_pump_counter[$fuel_display][$pump_key])) {
+                        $fuel_pump_counter[$fuel_display][$pump_key] = count($fuel_pump_counter[$fuel_display]) + 1;
+                    }
+                    $pump_num = $fuel_pump_counter[$fuel_display][$pump_key];
+            ?>
                 <tr>
-                    <td><?=htmlspecialchars($r['pump_name'])?> / <?=htmlspecialchars($r['fuel_type'])?></td>
+                    <td>
+                        <div style="font-weight:700;font-size:.85rem;">Pump <?=$pump_num?></div>
+                        <div style="font-size:.78rem;color:#555;"><?=htmlspecialchars($fuel_display)?></div>
+                    </td>
                     <td><?=number_format($r['beg_reading'],2)?></td>
                     <td><?=number_format($r['end_reading'],2)?></td>
                     <td><?=number_format($r['calibration'],2)?></td>

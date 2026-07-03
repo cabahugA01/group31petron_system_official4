@@ -17,7 +17,7 @@ if ($is_standalone) {
     $station_id   = user_station_id();
     if (!$station_id && in_array($user_role, ['manager','admin','staff']))
         render_no_station_page('manager_dashboard.php');
-    $date_start = $_GET['date_from'] ?? date('Y-m-01');
+    $date_start = $_GET['date_from'] ?? date('Y-m-d');
     $date_end   = $_GET['date_to']   ?? date('Y-m-d');
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_start)) $date_start = date('Y-m-d');
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_end))   $date_end   = date('Y-m-d');
@@ -42,10 +42,13 @@ if (!in_array($section, $valid_sections)) $section = 'fuel_sales';
 $active_shift = (int)($_GET['shift'] ?? 0); // 0 = all, 1 = shift1, 2 = shift2
 
 // Shift definitions — extend Shift 2 to midnight to catch all late transactions
+// Ensure order: Shift 1 always comes before Shift 2
 $shifts = [
     1 => ['label'=>'Shift 1 (6AM–2PM)',  'start'=>'06:00:00','end'=>'14:00:00'],
     2 => ['label'=>'Shift 2 (2PM–12AM)', 'start'=>'14:00:00','end'=>'23:59:59'],
 ];
+// Sort by key to ensure Shift 1 comes first, then Shift 2
+ksort($shifts);
 ?>
 
 <style>
@@ -238,6 +241,17 @@ $shifts = [
 </div>
 
 <?php
+if (!function_exists('srFuelDisplayName')) {
+    function srFuelDisplayName($fuel_type): string {
+        $name = trim((string)$fuel_type);
+        $normalized = strtoupper(preg_replace('/\s+/', ' ', $name));
+        if (strpos($normalized, 'XTRA') !== false && strpos($normalized, 'UNL') !== false) {
+            return 'Xtra UNL';
+        }
+        return $name !== '' ? $name : 'Fuel';
+    }
+}
+
 function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shift_end_t, $section) {
     $rows = [];
     try {
@@ -272,10 +286,14 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
                     WHERE ft.station_id = ?
                       AND DATE(ft.transaction_date) BETWEEN ? AND ?
                       AND $shift_cond
-                    ORDER BY ft.transaction_date, ft.pump_id
+                    ORDER BY ft.transaction_date ASC, TIME(ft.transaction_date) ASC, ft.fuel_type ASC, ft.pump_id ASC
                 ");
                 $q->execute([$station_id, $date_start, $date_end]);
                 $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                foreach ($rows as &$row) {
+                    $row['fuel_type'] = srFuelDisplayName($row['fuel_type'] ?? '');
+                }
+                unset($row);
                 break;
 
             case 'merchandise':
@@ -545,6 +563,421 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
     }
     return $rows;
 }
+
+function srManagerTableExists(PDO $pdo, string $table): bool {
+    static $cache = [];
+    if (isset($cache[$table])) return $cache[$table];
+    try {
+        $stmt = $pdo->query('SHOW TABLES LIKE ' . $pdo->quote($table));
+        return $cache[$table] = ($stmt && $stmt->rowCount() > 0);
+    } catch (Exception $e) {
+        return $cache[$table] = false;
+    }
+}
+
+function srManagerColumnExists(PDO $pdo, string $table, string $column): bool {
+    static $cache = [];
+    $key = $table . '.' . $column;
+    if (isset($cache[$key])) return $cache[$key];
+    try {
+        $safeTable = str_replace('`', '``', $table);
+        $stmt = $pdo->query("SHOW COLUMNS FROM `$safeTable` LIKE " . $pdo->quote($column));
+        return $cache[$key] = ($stmt && $stmt->rowCount() > 0);
+    } catch (Exception $e) {
+        return $cache[$key] = false;
+    }
+}
+
+function srManagerUserNameSql(PDO $pdo, string $alias): string {
+    $parts = [];
+    if (srManagerColumnExists($pdo, 'users', 'first_name') && srManagerColumnExists($pdo, 'users', 'last_name')) {
+        $parts[] = "NULLIF(TRIM(CONCAT(COALESCE($alias.first_name,''),' ',COALESCE($alias.last_name,''))), '')";
+    }
+    if (srManagerColumnExists($pdo, 'users', 'name')) {
+        $parts[] = "NULLIF($alias.name, '')";
+    }
+    if (srManagerColumnExists($pdo, 'users', 'username')) {
+        $parts[] = "NULLIF($alias.username, '')";
+    }
+    $parts[] = "'N/A'";
+    return 'COALESCE(' . implode(', ', $parts) . ')';
+}
+
+function srManagerMerchValidWhere(string $alias = 'mt'): string {
+    return "LOWER(COALESCE($alias.validation_status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+        AND LOWER(COALESCE($alias.workflow_status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+        AND ($alias.void_reason IS NULL OR TRIM($alias.void_reason) = '')";
+}
+
+function srManagerFuelValidWhere(string $alias = 'ft'): string {
+    return "LOWER(COALESCE($alias.status, '')) NOT IN ('voided','rejected','cancelled','canceled')";
+}
+
+function srManagerJobValidWhere(string $alias = 'jo'): string {
+    return "LOWER(COALESCE($alias.status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+        AND LOWER(COALESCE($alias.validation_status, '')) NOT IN ('voided','rejected','cancelled','canceled')";
+}
+
+function srManagerShiftCondition(string $alias, string $dateExpr, bool $isShift1): string {
+    $period = "LOWER(COALESCE($alias.shift_period,''))";
+    $name = "LOWER(COALESCE($alias.shift_name,''))";
+    $emptyShift = "(COALESCE($alias.shift_period,'') = '' AND COALESCE($alias.shift_name,'') = '')";
+    if ($isShift1) {
+        return "( $period IN ('first','morning','1','shift1','shift 1','first shift')
+            OR $name LIKE '%first%' OR $name LIKE '%morning%'
+            OR ($emptyShift AND TIME($dateExpr) >= '06:00:00' AND TIME($dateExpr) < '14:00:00') )";
+    }
+    return "( $period IN ('second','afternoon','evening','2','shift2','shift 2','second shift','night','midnight')
+        OR $name LIKE '%second%' OR $name LIKE '%afternoon%' OR $name LIKE '%evening%'
+        OR ($emptyShift AND (TIME($dateExpr) >= '14:00:00' OR TIME($dateExpr) < '06:00:00')) )";
+}
+
+function srManagerJobTimeShiftCondition(string $alias, bool $isShift1): string {
+    if ($isShift1) {
+        return "(TIME($alias.created_at) >= '06:00:00' AND TIME($alias.created_at) < '14:00:00')";
+    }
+    return "NOT (TIME($alias.created_at) >= '06:00:00' AND TIME($alias.created_at) < '14:00:00')";
+}
+
+function srManagerLineAmountSql(string $itemAlias = 'mti', string $txAlias = 'mt', string $sumAlias = 'mis'): string {
+    return "ROUND(COALESCE($itemAlias.subtotal, COALESCE($itemAlias.quantity, 0) * COALESCE($itemAlias.unit_price, 0), 0)
+        * CASE
+            WHEN COALESCE($sumAlias.item_subtotal, 0) > 0 AND COALESCE($txAlias.total_amount, 0) > 0
+                THEN $txAlias.total_amount / $sumAlias.item_subtotal
+            ELSE 1
+          END, 2)";
+}
+
+function srManagerFetchEmbeddedServices(PDO $pdo, int $station_id, string $date_start, string $date_end, bool $isShift1, bool $forJobOrders = false): array {
+    if (!srManagerTableExists($pdo, 'merchandise_transactions')) return [];
+
+    $rows = [];
+    $encoderSql = srManagerTableExists($pdo, 'users') ? srManagerUserNameSql($pdo, 'u') : "'N/A'";
+    $validWhere = srManagerMerchValidWhere('mt');
+    $dateExpr = 'COALESCE(mt.transaction_date, mt.created_at)';
+    $shiftCond = srManagerShiftCondition('mt', $dateExpr, $isShift1);
+    $jobFilter = "(LOWER(COALESCE(mt.transaction_type, '')) IN ('job_order','combined')
+        OR NULLIF(TRIM(COALESCE(mt.job_order_service, '')), '') IS NOT NULL
+        OR mt.job_order_id IS NOT NULL
+        OR mt.job_order_db_id IS NOT NULL)";
+
+    if (srManagerTableExists($pdo, 'merchandise_transaction_items')) {
+        $lineAmount = srManagerLineAmountSql('mti', 'mt');
+        $stmt = $pdo->prepare("
+            SELECT
+                mt.id,
+                COALESCE(mt.workflow_status, mt.validation_status, 'Completed') AS status,
+                COALESCE(
+                    NULLIF(mt.job_order_service, ''),
+                    NULLIF(GROUP_CONCAT(DISTINCT CASE WHEN LOWER(COALESCE(mti.item_type, 'merchandise')) = 'service' THEN mti.product_name END ORDER BY mti.id SEPARATOR ', '), ''),
+                    'Service'
+                ) AS service_type,
+                SUM(CASE WHEN LOWER(COALESCE(mti.item_type, 'merchandise')) = 'service' THEN $lineAmount ELSE 0 END) AS labor_fee,
+                SUM(CASE WHEN LOWER(COALESCE(mti.item_type, 'merchandise')) <> 'service' THEN $lineAmount ELSE 0 END) AS parts_used,
+                COALESCE(mt.total_amount, SUM($lineAmount), 0) AS total_amount,
+                $encoderSql AS encoder,
+                $dateExpr AS created_at
+            FROM merchandise_transactions mt
+            LEFT JOIN (
+                SELECT transaction_id,
+                       SUM(COALESCE(subtotal, COALESCE(quantity, 0) * COALESCE(unit_price, 0), 0)) AS item_subtotal
+                FROM merchandise_transaction_items
+                GROUP BY transaction_id
+            ) mis ON mis.transaction_id = mt.id
+            LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
+            LEFT JOIN users u ON mt.staff_id = u.id
+            WHERE mt.station_id = ?
+              AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
+              AND $validWhere
+              AND $jobFilter
+              AND $shiftCond
+            GROUP BY mt.id, mt.workflow_status, mt.validation_status, mt.job_order_service, mt.total_amount, encoder, created_at
+            HAVING labor_fee > 0 OR parts_used > 0 OR total_amount > 0
+            ORDER BY created_at ASC, mt.id ASC
+        ");
+        $stmt->execute([$station_id, $date_start, $date_end, $date_start, $date_end]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    $fallbackSql = srManagerTableExists($pdo, 'merchandise_transaction_items')
+        ? "AND NOT EXISTS (SELECT 1 FROM merchandise_transaction_items mi WHERE mi.transaction_id = mt.id)"
+        : '';
+    $stmt = $pdo->prepare("
+        SELECT
+            mt.id,
+            COALESCE(mt.workflow_status, mt.validation_status, 'Completed') AS status,
+            COALESCE(NULLIF(mt.job_order_service, ''), NULLIF(mt.item_sku, ''), 'Service') AS service_type,
+            COALESCE(NULLIF(mt.subtotal_amount, 0), NULLIF(mt.unit_price, 0), mt.total_amount, 0) AS labor_fee,
+            0 AS parts_used,
+            COALESCE(mt.total_amount, 0) AS total_amount,
+            $encoderSql AS encoder,
+            $dateExpr AS created_at
+        FROM merchandise_transactions mt
+        LEFT JOIN users u ON mt.staff_id = u.id
+        WHERE mt.station_id = ?
+          AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
+          AND $validWhere
+          AND $jobFilter
+          AND $shiftCond
+          $fallbackSql
+        ORDER BY created_at ASC, mt.id ASC
+    ");
+    $stmt->execute([$station_id, $date_start, $date_end, $date_start, $date_end]);
+    $fallbackRows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    $seen = [];
+    foreach ($rows as $row) $seen[(int)$row['id']] = true;
+    foreach ($fallbackRows as $row) {
+        if (!isset($seen[(int)$row['id']])) $rows[] = $row;
+    }
+
+    if (!$forJobOrders) {
+        foreach ($rows as &$row) unset($row['status']);
+        unset($row);
+    }
+    return $rows;
+}
+
+function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $date_end, string $shift_start_t, string $shift_end_t, string $section): array {
+    $rows = [];
+    $isShift1 = ($shift_start_t === '06:00:00');
+    $encoderSql = srManagerTableExists($pdo, 'users') ? srManagerUserNameSql($pdo, 'u') : "'N/A'";
+
+    try {
+        switch ($section) {
+            case 'fuel_sales':
+                if (!srManagerTableExists($pdo, 'fuel_transactions')) break;
+                $shiftCond = srManagerShiftCondition('ft', 'ft.transaction_date', $isShift1);
+                $validWhere = srManagerFuelValidWhere('ft');
+                $q = $pdo->prepare("
+                    SELECT
+                        COALESCE(ft.pump_id, '—') AS pump_name,
+                        COALESCE(ft.fuel_type, '—') AS fuel_type,
+                        COALESCE(ft.previous_reading, 0) AS beg_reading,
+                        COALESCE(ft.present_reading, 0) AS end_reading,
+                        COALESCE(ft.calibration, 0) AS calibration,
+                        COALESCE(ft.liters_sold, GREATEST(COALESCE(ft.present_reading,0) - COALESCE(ft.previous_reading,0) - COALESCE(ft.calibration,0), 0)) AS dispensed_liters,
+                        COALESCE(ft.price_per_liter, 0) AS unit_price,
+                        COALESCE(ft.total_amount, 0) AS amount,
+                        $encoderSql AS encoder
+                    FROM fuel_transactions ft
+                    LEFT JOIN users u ON ft.staff_id = u.id
+                    WHERE ft.station_id = ?
+                      AND DATE(ft.transaction_date) BETWEEN ? AND ?
+                      AND $validWhere
+                      AND $shiftCond
+                    ORDER BY ft.transaction_date ASC, ft.fuel_type ASC, ft.pump_id ASC
+                ");
+                $q->execute([$station_id, $date_start, $date_end]);
+                $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                foreach ($rows as &$row) {
+                    $row['fuel_type'] = srFuelDisplayName($row['fuel_type'] ?? '');
+                }
+                unset($row);
+                break;
+
+            case 'merchandise':
+                if (!srManagerTableExists($pdo, 'merchandise_transactions') || !srManagerTableExists($pdo, 'merchandise_transaction_items')) break;
+                $validWhere = srManagerMerchValidWhere('mt');
+                $dateExpr = 'COALESCE(mt.transaction_date, mt.created_at)';
+                $shiftCond = srManagerShiftCondition('mt', $dateExpr, $isShift1);
+                $lineAmount = srManagerLineAmountSql('mti', 'mt');
+                $q = $pdo->prepare("
+                    SELECT
+                        COALESCE(NULLIF(mti.category, ''), 'General') AS category,
+                        COALESCE(NULLIF(mti.product_name, ''), mt.item_sku, 'Item') AS product_name,
+                        COALESCE(si.stock_level, 0) + SUM(COALESCE(mti.quantity, 0)) AS beg_stock,
+                        0 AS stock_in,
+                        SUM(COALESCE(mti.quantity, 0)) AS stock_out,
+                        COALESCE(si.stock_level, 0) AS end_stock,
+                        COALESCE(mti.unit_price, mt.unit_price, 0) AS unit_price,
+                        SUM($lineAmount) AS amount,
+                        GROUP_CONCAT(DISTINCT $encoderSql ORDER BY $encoderSql SEPARATOR ', ') AS encoder
+                    FROM merchandise_transactions mt
+                    LEFT JOIN (
+                        SELECT transaction_id,
+                               SUM(COALESCE(subtotal, COALESCE(quantity, 0) * COALESCE(unit_price, 0), 0)) AS item_subtotal
+                        FROM merchandise_transaction_items
+                        GROUP BY transaction_id
+                    ) mis ON mis.transaction_id = mt.id
+                    JOIN merchandise_transaction_items mti
+                        ON mti.transaction_id = mt.id
+                       AND LOWER(COALESCE(mti.item_type, 'merchandise')) <> 'service'
+                    LEFT JOIN users u ON mt.staff_id = u.id
+                    LEFT JOIN station_inventory si ON si.product_id = mti.product_id AND si.station_id = mt.station_id
+                    WHERE mt.station_id = ?
+                      AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
+                      AND $validWhere
+                      AND $shiftCond
+                    GROUP BY mti.product_id, mti.category, mti.product_name, unit_price, si.stock_level
+                    ORDER BY category, product_name
+                ");
+                $q->execute([$station_id, $date_start, $date_end, $date_start, $date_end]);
+                $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                break;
+
+            case 'service_income':
+                $rows = srManagerFetchEmbeddedServices($pdo, $station_id, $date_start, $date_end, $isShift1, false);
+                if (srManagerTableExists($pdo, 'job_orders')) {
+                    $shiftCond = srManagerJobTimeShiftCondition('jo', $isShift1);
+                    $validWhere = srManagerJobValidWhere('jo');
+                    $serviceSql = srManagerColumnExists($pdo, 'job_orders', 'service_type')
+                        ? "COALESCE(NULLIF(jo.service_type, ''), NULLIF(jo.service_description, ''), 'Service')"
+                        : "COALESCE(NULLIF(jo.service_description, ''), 'Service')";
+                    $q = $pdo->prepare("
+                        SELECT
+                            $serviceSql AS service_type,
+                            COALESCE(NULLIF(jo.actual_labor_cost, 0), NULLIF(jo.estimated_labor_cost, 0), 0) AS labor_fee,
+                            COALESCE(NULLIF(jo.actual_parts_cost, 0), NULLIF(jo.estimated_parts_cost, 0), 0) AS parts_used,
+                            COALESCE(NULLIF(jo.total_cost, 0), NULLIF(jo.estimated_cost, 0), NULLIF(jo.amount_paid, 0), 0) AS total_amount,
+                            $encoderSql AS encoder,
+                            jo.created_at
+                        FROM job_orders jo
+                        LEFT JOIN users u ON jo.created_by = u.id
+                        WHERE jo.station_id = ?
+                          AND DATE(jo.created_at) BETWEEN ? AND ?
+                          AND $validWhere
+                          AND $shiftCond
+                        ORDER BY jo.created_at ASC, service_type
+                    ");
+                    $q->execute([$station_id, $date_start, $date_end]);
+                    $rows = array_merge($rows, $q->fetchAll(PDO::FETCH_ASSOC) ?: []);
+                }
+                usort($rows, fn($a, $b) => strcmp((string)($a['created_at'] ?? ''), (string)($b['created_at'] ?? '')));
+                break;
+
+            case 'payments':
+                $merged = [];
+                $addPayment = static function (array $items) use (&$merged): void {
+                    foreach ($items as $r) {
+                        $mode = $r['mode_of_payment'] ?: 'Cash';
+                        if (!isset($merged[$mode])) $merged[$mode] = ['mode_of_payment' => $mode, 'txn_count' => 0, 'amount' => 0];
+                        $merged[$mode]['txn_count'] += (int)$r['txn_count'];
+                        $merged[$mode]['amount'] += (float)$r['amount'];
+                    }
+                };
+                if (srManagerTableExists($pdo, 'fuel_transactions')) {
+                    $shiftCond = srManagerShiftCondition('ft', 'ft.transaction_date', $isShift1);
+                    $validWhere = srManagerFuelValidWhere('ft');
+                    $q = $pdo->prepare("
+                        SELECT
+                            CASE
+                                WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%fleet%' THEN 'Fleet'
+                                WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%fuel card%' OR LOWER(COALESCE(ft.payment_method,'')) LIKE '%efuel%' THEN 'E-Fuel'
+                                WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%card%' THEN 'Card'
+                                WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%wallet%' OR LOWER(COALESCE(ft.payment_method,'')) LIKE '%gcash%' OR LOWER(COALESCE(ft.payment_method,'')) LIKE '%maya%' THEN 'E-Wallet'
+                                WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%cash%' OR COALESCE(ft.payment_method,'') = '' THEN 'Cash'
+                                ELSE COALESCE(NULLIF(ft.payment_method,''), 'Cash')
+                            END AS mode_of_payment,
+                            COUNT(*) AS txn_count,
+                            SUM(COALESCE(ft.total_amount, 0)) AS amount
+                        FROM fuel_transactions ft
+                        WHERE ft.station_id = ?
+                          AND DATE(ft.transaction_date) BETWEEN ? AND ?
+                          AND $validWhere
+                          AND $shiftCond
+                        GROUP BY mode_of_payment
+                    ");
+                    $q->execute([$station_id, $date_start, $date_end]);
+                    $addPayment($q->fetchAll(PDO::FETCH_ASSOC) ?: []);
+                }
+                if (srManagerTableExists($pdo, 'merchandise_transactions')) {
+                    $validWhere = srManagerMerchValidWhere('mt');
+                    $dateExpr = 'COALESCE(mt.transaction_date, mt.created_at)';
+                    $shiftCond = srManagerShiftCondition('mt', $dateExpr, $isShift1);
+                    $q = $pdo->prepare("
+                        SELECT
+                            CASE
+                                WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%fleet%' THEN 'Fleet'
+                                WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%fuel card%' OR LOWER(COALESCE(mt.payment_method,'')) LIKE '%efuel%' THEN 'E-Fuel'
+                                WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%card%' THEN 'Card'
+                                WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%wallet%' OR LOWER(COALESCE(mt.payment_method,'')) LIKE '%gcash%' OR LOWER(COALESCE(mt.payment_method,'')) LIKE '%maya%' THEN 'E-Wallet'
+                                WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%cash%' OR COALESCE(mt.payment_method,'') = '' THEN 'Cash'
+                                ELSE COALESCE(NULLIF(mt.payment_method,''), 'Cash')
+                            END AS mode_of_payment,
+                            COUNT(*) AS txn_count,
+                            SUM(COALESCE(mt.total_amount, 0)) AS amount
+                        FROM merchandise_transactions mt
+                        WHERE mt.station_id = ?
+                          AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
+                          AND $validWhere
+                          AND $shiftCond
+                        GROUP BY mode_of_payment
+                    ");
+                    $q->execute([$station_id, $date_start, $date_end, $date_start, $date_end]);
+                    $addPayment($q->fetchAll(PDO::FETCH_ASSOC) ?: []);
+                }
+                $rows = array_values($merged);
+                usort($rows, fn($a, $b) => $b['amount'] <=> $a['amount']);
+                break;
+
+            case 'job_orders':
+                $rows = srManagerFetchEmbeddedServices($pdo, $station_id, $date_start, $date_end, $isShift1, true);
+                if (srManagerTableExists($pdo, 'job_orders')) {
+                    $shiftCond = srManagerJobTimeShiftCondition('jo', $isShift1);
+                    $validWhere = srManagerJobValidWhere('jo');
+                    $serviceSql = srManagerColumnExists($pdo, 'job_orders', 'service_type')
+                        ? "COALESCE(NULLIF(jo.service_type, ''), NULLIF(jo.service_description, ''), 'Service')"
+                        : "COALESCE(NULLIF(jo.service_description, ''), 'Service')";
+                    $q = $pdo->prepare("
+                        SELECT
+                            COALESCE(jo.status, 'Pending') AS status,
+                            $serviceSql AS service_type,
+                            COALESCE(NULLIF(jo.actual_parts_cost, 0), NULLIF(jo.estimated_parts_cost, 0), 0) AS parts_used,
+                            COALESCE(NULLIF(jo.actual_labor_cost, 0), NULLIF(jo.estimated_labor_cost, 0), 0) AS labor_fee,
+                            COALESCE(NULLIF(jo.total_cost, 0), NULLIF(jo.estimated_cost, 0), NULLIF(jo.amount_paid, 0), 0) AS total_amount,
+                            $encoderSql AS encoder,
+                            jo.created_at
+                        FROM job_orders jo
+                        LEFT JOIN users u ON jo.created_by = u.id
+                        WHERE jo.station_id = ?
+                          AND DATE(jo.created_at) BETWEEN ? AND ?
+                          AND $validWhere
+                          AND $shiftCond
+                        ORDER BY FIELD(jo.status,'Pending','In Progress','Completed','Verified','finalized','Cancelled'), jo.created_at DESC
+                    ");
+                    $q->execute([$station_id, $date_start, $date_end]);
+                    $rows = array_merge($rows, $q->fetchAll(PDO::FETCH_ASSOC) ?: []);
+                }
+                usort($rows, fn($a, $b) => strcmp((string)($b['created_at'] ?? ''), (string)($a['created_at'] ?? '')));
+                break;
+
+            case 'customers':
+                if (!srManagerTableExists($pdo, 'merchandise_transactions')) break;
+                $validWhere = srManagerMerchValidWhere('mt');
+                $dateExpr = 'COALESCE(mt.transaction_date, mt.created_at)';
+                $shiftCond = srManagerShiftCondition('mt', $dateExpr, $isShift1);
+                $pointsCol = srManagerColumnExists($pdo, 'customers', 'loyalty_points') ? 'c.loyalty_points' : (srManagerColumnExists($pdo, 'customers', 'points') ? 'c.points' : '0');
+                $q = $pdo->prepare("
+                    SELECT
+                        COALESCE(NULLIF(c.name, ''), NULLIF(mt.customer_name, ''), 'Walk-in Customer') AS customer_name,
+                        COALESCE(CONCAT('#', c.id), 'Walk-in') AS customer_ref,
+                        COUNT(DISTINCT mt.id) AS txn_count,
+                        MAX(COALESCE(c.balance, c.current_balance, 0)) AS balance,
+                        MAX(COALESCE($pointsCol, 0)) AS loyalty_points
+                    FROM merchandise_transactions mt
+                    LEFT JOIN customers c
+                        ON c.station_id = mt.station_id
+                       AND (
+                            c.id = mt.credit_customer_id
+                            OR (NULLIF(mt.customer_name, '') IS NOT NULL AND LOWER(c.name) = LOWER(mt.customer_name))
+                       )
+                    WHERE mt.station_id = ?
+                      AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
+                      AND $validWhere
+                      AND $shiftCond
+                    GROUP BY customer_ref, customer_name
+                    ORDER BY txn_count DESC, customer_name ASC
+                ");
+                $q->execute([$station_id, $date_start, $date_end, $date_start, $date_end]);
+                $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                break;
+        }
+    } catch (Exception $ex) {
+        $rows = [];
+    }
+    return $rows;
+}
 ?>
 
 <!-- Section Panels -->
@@ -588,7 +1021,7 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
     </div>
 
     <?php foreach ($shifts as $snum => $sdef):
-        $rows = srFetch($pdo, $station_id, $date_start, $date_end, $sdef['start'], $sdef['end'], $sec_key);
+        $rows = srFetchManager($pdo, (int)$station_id, $date_start, $date_end, $sdef['start'], $sdef['end'], $sec_key);
     ?>
     <div class="sr-shift-block <?= ($active_shift!==0 && $active_shift!==$snum)?'hidden':'' ?>" data-shift="<?=$snum?>" data-section="<?=$sec_key?>">
         <div class="sr-shift-heading"><?= $sdef['label'] ?></div>
@@ -596,14 +1029,36 @@ function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shi
         <?php if ($sec_key === 'fuel_sales'): ?>
         <table class="sr-table">
             <thead><tr>
-                <th>Pump / Fuel Type</th><th>Beginning Reading</th><th>Ending Reading</th>
+                <th>Name</th><th>Beginning Reading</th><th>Ending Reading</th>
                 <th>Calibration</th><th>Dispensed Liters</th><th>Unit Price</th><th>Amount</th><th>Encoder</th>
             </tr></thead>
             <tbody>
             <?php if (empty($rows)): ?><tr><td colspan="8" class="sr-empty">No fuel sales for this shift</td></tr>
-            <?php else: $tl=0;$ta=0; foreach($rows as $r): $tl+=$r['dispensed_liters'];$ta+=$r['amount']; ?>
+            <?php else:
+                $tl=0;$ta=0;
+                // Group pumps by fuel type and assign sequential numbers
+                $fuel_pump_counter = [];
+                foreach($rows as $r):
+                    $tl+=$r['dispensed_liters'];
+                    $ta+=$r['amount'];
+                    // Clean fuel type: remove number suffixes for display
+                    $fuel_display = preg_replace('/\s+\d+\s*-\s*\d+$/', '', $r['fuel_type']);
+
+                    // Track pump counter per fuel type
+                    if (!isset($fuel_pump_counter[$fuel_display])) {
+                        $fuel_pump_counter[$fuel_display] = [];
+                    }
+                    $pump_key = $r['pump_name'];
+                    if (!isset($fuel_pump_counter[$fuel_display][$pump_key])) {
+                        $fuel_pump_counter[$fuel_display][$pump_key] = count($fuel_pump_counter[$fuel_display]) + 1;
+                    }
+                    $pump_num = $fuel_pump_counter[$fuel_display][$pump_key];
+            ?>
                 <tr>
-                    <td><?=htmlspecialchars($r['pump_name'])?> / <?=htmlspecialchars($r['fuel_type'])?></td>
+                    <td>
+                        <div style="font-weight:700;font-size:.85rem;">Pump <?=$pump_num?></div>
+                        <div style="font-size:.78rem;color:#555;"><?=htmlspecialchars($fuel_display)?></div>
+                    </td>
                     <td><?=number_format($r['beg_reading'],2)?></td>
                     <td><?=number_format($r['end_reading'],2)?></td>
                     <td><?=number_format($r['calibration'],2)?></td>

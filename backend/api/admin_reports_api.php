@@ -271,9 +271,9 @@ try {
                     COUNT(DISTINCT t.id) as transaction_count,
                     COALESCE(SUM(t.amount), 0) as total_transactions
                 FROM customers c
-                LEFT JOIN transactions t ON c.id = t.customer_id 
+                LEFT JOIN customer_credit_transactions t ON c.id = t.customer_id 
                     AND t.station_id = ?
-                    AND DATE(t.transaction_date) BETWEEN ? AND ?
+                    AND DATE(t.created_at) BETWEEN ? AND ?
                 WHERE c.station_id = ?
                 GROUP BY c.id
                 ORDER BY c.created_at DESC";

@@ -1,8 +1,7 @@
 <?php
 // ============================================================
-// Manager Pump Master Oversight â€“ manager_fuel_pump_master.php
-// Purpose: View, monitor, and manage station fuel pump assignments,
-//          calibration values, status changes, and history validation.
+// Manager Calibration Review – manager_fuel_pump_master.php
+// Purpose: Granular, shift-based calibration and meter reading validation.
 // ============================================================
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'fuel_pump_master';
@@ -14,8 +13,8 @@ $me         = current_user();
 $role       = role_key($me['role'] ?? '');
 $station_id = (int) user_station_id();
 
-// Access control - Manager only
-if (!in_array($role, ['manager', 'supervisor', 'admin'])) {
+// Access control - Manager, Supervisor, Admin
+if (!in_array($role, ['manager', 'supervisor', 'admin', 'superadmin'])) {
     $_SESSION['error'] = 'Access denied. Manager access required.';
     header('Location: staff_dashboard.php'); 
     exit;
@@ -27,13 +26,128 @@ if ($station_id <= 0) {
     exit;
 }
 
-// â”€â”€ Status Badge Styles / Helper Functions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Shift Dependency & Continuity Helpers ─────────────────────
+if (!function_exists('get_preceding_shift_and_date')) {
+    function get_preceding_shift_and_date($pdo, $shift_key, $date) {
+        $stmt = $pdo->query("SELECT shift_key FROM shift_periods WHERE is_active = 1 ORDER BY sort_order ASC");
+        $shifts = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        if (empty($shifts)) {
+            return null;
+        }
+        
+        $index = array_search(strtolower($shift_key), array_map('strtolower', $shifts));
+        if ($index === false) {
+            return null;
+        }
+        
+        if ($index > 0) {
+            return [
+                'shift_key' => $shifts[$index - 1],
+                'date' => $date
+            ];
+        } else {
+            $prev_date = date('Y-m-d', strtotime($date . ' -1 day'));
+            return [
+                'shift_key' => $shifts[count($shifts) - 1],
+                'date' => $prev_date
+            ];
+        }
+    }
+}
+
+if (!function_exists('get_preceding_shift_validated_ending')) {
+    function get_preceding_shift_validated_ending($pdo, $station_id, $pump_id, $current_shift, $current_date) {
+        $preceding = get_preceding_shift_and_date($pdo, $current_shift, $current_date);
+        if ($preceding) {
+            $stmt = $pdo->prepare("
+                SELECT present_reading 
+                FROM fuel_transactions 
+                WHERE station_id = ? 
+                  AND pump_id = ? 
+                  AND LOWER(shift_period) = LOWER(?) 
+                  AND DATE(transaction_date) = ?
+                  AND LOWER(status) IN ('verified', 'adjusted')
+                ORDER BY id DESC 
+                LIMIT 1
+            ");
+            $stmt->execute([$station_id, $pump_id, $preceding['shift_key'], $preceding['date']]);
+            $val = $stmt->fetchColumn();
+            if ($val !== false) {
+                return (float)$val;
+            }
+        }
+        
+        $stmt_fallback = $pdo->prepare("
+            SELECT present_reading 
+            FROM fuel_transactions 
+            WHERE station_id = ? 
+              AND pump_id = ? 
+              AND LOWER(status) IN ('verified', 'adjusted')
+            ORDER BY transaction_date DESC, id DESC 
+            LIMIT 1
+        ");
+        $stmt_fallback->execute([$station_id, $pump_id]);
+        $val_fallback = $stmt_fallback->fetchColumn();
+        return $val_fallback !== false ? (float)$val_fallback : 0.0;
+    }
+}
+
+if (!function_exists('is_preceding_shift_validated')) {
+    function is_preceding_shift_validated($pdo, $station_id, $pump_id, $current_shift, $current_date) {
+        $preceding = get_preceding_shift_and_date($pdo, $current_shift, $current_date);
+        if (!$preceding) {
+            return true; 
+        }
+        
+        $stmt_exists = $pdo->prepare("
+            SELECT COUNT(*) 
+            FROM fuel_transactions 
+            WHERE station_id = ? 
+              AND pump_id = ? 
+              AND LOWER(shift_period) = LOWER(?) 
+              AND DATE(transaction_date) = ?
+        ");
+        $stmt_exists->execute([$station_id, $pump_id, $preceding['shift_key'], $preceding['date']]);
+        $exists = (int)$stmt_exists->fetchColumn() > 0;
+        
+        if (!$exists) {
+            return false;
+        }
+        
+        $stmt_unverified = $pdo->prepare("
+            SELECT COUNT(*) 
+            FROM fuel_transactions 
+            WHERE station_id = ? 
+              AND pump_id = ? 
+              AND LOWER(shift_period) = LOWER(?) 
+              AND DATE(transaction_date) = ?
+              AND LOWER(status) NOT IN ('verified', 'adjusted')
+        ");
+        $stmt_unverified->execute([$station_id, $pump_id, $preceding['shift_key'], $preceding['date']]);
+        $unverified = (int)$stmt_unverified->fetchColumn();
+        
+        return $unverified === 0;
+    }
+}
+
+if (!function_exists('formatShiftLabel')) {
+    function formatShiftLabel($shift_key) {
+        $s = strtolower(trim($shift_key ?? ''));
+        if ($s === 'first') return 'Shift 1';
+        if ($s === 'second') return 'Shift 2';
+        if ($s === 'third') return 'Shift 3';
+        return ucfirst($shift_key);
+    }
+}
+
 if (!function_exists('getStatusBadgeClass')) {
     function getStatusBadgeClass($status) {
         $s = strtolower(trim($status ?? ''));
-        if ($s === 'active') return 'bg-green';
-        if ($s === 'inactive') return 'bg-red';
-        if ($s === 'maintenance') return 'bg-amber';
+        if (str_contains($s, 'pending')) return 'bg-amber';
+        if ($s === 'verified' || $s === 'approved' || $s === 'validated') return 'bg-green';
+        if ($s === 'adjusted') return 'bg-blue';
+        if ($s === 'rejected') return 'bg-red';
         return 'bg-gray';
     }
 }
@@ -41,332 +155,388 @@ if (!function_exists('getStatusBadgeClass')) {
 if (!function_exists('getStatusLabel')) {
     function getStatusLabel($status) {
         $s = strtolower(trim($status ?? ''));
-        if ($s === 'active') return 'Active';
-        if ($s === 'inactive') return 'Inactive';
-        if ($s === 'maintenance') return 'Maintenance';
+        if (str_contains($s, 'pending')) return 'Pending';
+        if ($s === 'verified' || $s === 'approved' || $s === 'validated') return 'Verified';
+        if ($s === 'adjusted') return 'Adjusted';
+        if ($s === 'rejected') return 'Rejected';
         return ucfirst($status);
     }
 }
 
-// â”€â”€ POST Actions (Activate / Deactivate / Update Calibration) â”€â”€
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
-    $action = trim($_POST['action'] ?? '');
-    $pump_id = (int)($_POST['pump_id'] ?? 0);
-
-    // 1. ACTIVATE PUMP
-    if ($action === 'activate') {
-        if ($pump_id <= 0) {
-            $_SESSION['error'] = 'Invalid pump ID.';
-            header('Location: manager_fuel_pump_master.php'); exit;
-        }
-
-        try {
-            $pdo->beginTransaction();
-
-            // Fetch pump
-            $stmt = $pdo->prepare("SELECT * FROM fuel_pumps WHERE id = ? AND station_id = ? FOR UPDATE");
-            $stmt->execute([$pump_id, $station_id]);
-            $pump = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$pump) throw new Exception("Pump not found.");
-
-            // Update status
-            $up = $pdo->prepare("UPDATE fuel_pumps SET status='Active' WHERE id=? AND station_id=?");
-            $up->execute([$pump_id, $station_id]);
-
-            log_activity($pdo, $me['id'], 'Activate Pump', "Activated pump ID {$pump_id} (Number: {$pump['pump_number']})");
-            $_SESSION['success'] = "Pump <strong>{$pump['pump_number']}</strong> has been activated.";
-            $pdo->commit();
-        } catch (Exception $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
-            $_SESSION['error'] = "Error: " . $e->getMessage();
-        }
-        header('Location: manager_fuel_pump_master.php'); exit;
-    }
-
-    // 2. DEACTIVATE PUMP
-    elseif ($action === 'deactivate') {
-        if ($pump_id <= 0) {
-            $_SESSION['error'] = 'Invalid pump ID.';
-            header('Location: manager_fuel_pump_master.php'); exit;
-        }
-
-        try {
-            $pdo->beginTransaction();
-
-            // Fetch pump
-            $stmt = $pdo->prepare("SELECT * FROM fuel_pumps WHERE id = ? AND station_id = ? FOR UPDATE");
-            $stmt->execute([$pump_id, $station_id]);
-            $pump = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$pump) throw new Exception("Pump not found.");
-
-            // Update status
-            $up = $pdo->prepare("UPDATE fuel_pumps SET status='Inactive' WHERE id=? AND station_id=?");
-            $up->execute([$pump_id, $station_id]);
-
-            log_activity($pdo, $me['id'], 'Deactivate Pump', "Deactivated pump ID {$pump_id} (Number: {$pump['pump_number']})");
-            $_SESSION['success'] = "Pump <strong>{$pump['pump_number']}</strong> has been deactivated.";
-            $pdo->commit();
-        } catch (Exception $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
-            $_SESSION['error'] = "Error: " . $e->getMessage();
-        }
-        header('Location: manager_fuel_pump_master.php'); exit;
-    }
-
-    // 3. UPDATE CALIBRATION VALUE
-    elseif ($action === 'update_calibration') {
-        $calibration_value = (float)($_POST['calibration_value'] ?? 0);
-        $reason            = trim($_POST['reason'] ?? '');
-
-        if ($pump_id <= 0) {
-            $_SESSION['error'] = 'Invalid pump ID.';
-            header('Location: manager_fuel_pump_master.php'); exit;
-        }
-
-        if (empty($reason)) {
-            $_SESSION['error'] = 'Detailed calibration reason is required.';
-            header('Location: manager_fuel_pump_master.php'); exit;
-        }
-
-        try {
-            $pdo->beginTransaction();
-
-            // Fetch pump & fuel type name
-            $stmt = $pdo->prepare("
-                SELECT fp.*, ft.name as fuel_type_name
-                FROM fuel_pumps fp
-                LEFT JOIN fuel_types ft ON fp.fuel_type_id = ft.id
-                WHERE fp.id = ? AND fp.station_id = ? FOR UPDATE
-            ");
-            $stmt->execute([$pump_id, $station_id]);
-            $pump = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$pump) throw new Exception("Pump record not found.");
-
-            $previous_cal = (float)$pump['calibration_value'];
-            $difference   = $calibration_value - $previous_cal;
-
-            // Update fuel_pumps record
-            $up = $pdo->prepare("
-                UPDATE fuel_pumps 
-                SET calibration_value = ?, 
-                    calibration_updated_at = NOW(), 
-                    calibration_updated_by = ?, 
-                    calibration_notes = ? 
-                WHERE id = ? AND station_id = ?
-            ");
-            $up->execute([$calibration_value, $me['id'], $reason, $pump_id, $station_id]);
-
-            // Log to pump_calibration_history
-            $ins_history = $pdo->prepare("
-                INSERT INTO pump_calibration_history 
-                    (station_id, fuel_type, previous_calibration, new_calibration, updated_by, updated_at, created_at, reason)
-                VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?)
-            ");
-            $ins_history->execute([
-                $station_id, 
-                $pump['fuel_type_name'], 
-                $previous_cal, 
-                $calibration_value, 
-                $me['id'], 
-                "Pump " . $pump['pump_number'] . ": " . $reason
-            ]);
-
-            // CRITICAL: Insert into fuel_adjustments for Admin oversight transparency
-            $adj_notes = "Calibration adjustment for Pump " . $pump['pump_number'] . " (" . $pump['fuel_type_name'] . "). Reason: " . $reason;
-            $ins_adj = $pdo->prepare("
-                INSERT INTO fuel_adjustments 
-                    (station_id, adjustment_date, fuel_type, fuel_type_id, adjustment_type, liters, previous_value, new_value, reason, user_id, status, created_at)
-                VALUES (?, CURDATE(), ?, ?, 'Calibration', ?, 0, 0, ?, ?, 'Approved', NOW())
-            ");
-            $ins_adj->execute([
-                $station_id, 
-                $pump['fuel_type_name'], 
-                $pump['fuel_type_id'], 
-                $difference, 
-                $adj_notes, 
-                $me['id']
-            ]);
-
-            // Sync with fuel_inventory latest_calibration value
-            $up_inv = $pdo->prepare("
-                UPDATE fuel_inventory 
-                SET latest_calibration = ?, last_updated = NOW() 
-                WHERE station_id = ? AND fuel_type_id = ?
-            ");
-            $up_inv->execute([$calibration_value, $station_id, $pump['fuel_type_id']]);
-
-            log_activity($pdo, $me['id'], 'Update Calibration', "Updated pump {$pump['pump_number']} calibration to {$calibration_value} L. Change: {$difference} L.");
-            $_SESSION['success'] = "Calibration for Pump <strong>{$pump['pump_number']}</strong> updated successfully.";
-            $pdo->commit();
-
-        } catch (Exception $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
-            $_SESSION['error'] = "Error: " . $e->getMessage();
-        }
-        header('Location: manager_fuel_pump_master.php'); exit;
+// ── GET Filters ──────────────────────────────────────────────
+// Default date: if no date provided in URL, use the most recent date with transactions.
+// Falls back to today if nothing found.
+if (isset($_GET['date']) && $_GET['date'] !== '') {
+    $date_filter = trim($_GET['date']);
+} else {
+    // Find most recent date with any fuel transactions for this station
+    try {
+        $latest_stmt = $pdo->prepare("SELECT DATE(transaction_date) FROM fuel_transactions WHERE station_id = ? ORDER BY transaction_date DESC, id DESC LIMIT 1");
+        $latest_stmt->execute([$station_id]);
+        $latest_date = $latest_stmt->fetchColumn();
+        $date_filter = $latest_date ?: date('Y-m-d');
+    } catch (Exception $e) {
+        $date_filter = date('Y-m-d');
     }
 }
-
-// â”€â”€ GET Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+$shift_filter       = trim($_GET['shift']     ?? 'all');
 $fuel_type_filter   = trim($_GET['fuel_type'] ?? 'all');
-$pump_status_filter = trim($_GET['pump_status'] ?? 'all');
-$search_pump        = trim($_GET['search_pump'] ?? '');
-$export             = trim($_GET['export'] ?? '');
+$staff_filter       = trim($_GET['staff']     ?? '');
+$export             = trim($_GET['export']    ?? '');
 
-// Base SQL conditions
-$where = ["fp.station_id = ?"];
+
+// ── POST Actions (Verify / Adjust / Reject) ───────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $export === '') {
+    $action  = trim($_POST['action'] ?? '');
+    $tx_id   = (int)($_POST['id'] ?? 0);
+    $remarks = trim($_POST['remarks'] ?? '');
+
+    if ($tx_id <= 0) {
+        $_SESSION['error'] = 'Invalid transaction ID.';
+        header('Location: manager_fuel_pump_master.php'); exit;
+    }
+
+    try {
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("
+            SELECT ft.*,
+                   COALESCE(
+                       NULLIF(CONCAT(TRIM(COALESCE(staff.first_name, '')), ' ', TRIM(COALESCE(staff.last_name, ''))), ' '),
+                       staff.username,
+                       'Unknown'
+                   ) as staff_name
+            FROM fuel_transactions ft
+            LEFT JOIN users staff ON ft.staff_id = staff.id
+            WHERE ft.id = ? AND ft.station_id = ?
+        ");
+        $stmt->execute([$tx_id, $station_id]);
+        $tx = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$tx) {
+            throw new Exception("Transaction not found.");
+        }
+
+        // 1. VERIFY ACTION
+        if ($action === 'verify') {
+            if (!str_contains(strtolower($tx['status']), 'pending')) {
+                throw new Exception("Transaction has already been processed.");
+            }
+
+            $liters_sold = (float)$tx['liters_sold'];
+            $prev_reading = (float)$tx['previous_reading'];
+
+            if ($tx['pump_id'] > 0) {
+                $tx_date_str = date('Y-m-d', strtotime($tx['transaction_date']));
+                
+                // Shift validation gate check
+                if (!is_preceding_shift_validated($pdo, $station_id, $tx['pump_id'], $tx['shift_period'], $tx_date_str)) {
+                    $preceding = get_preceding_shift_and_date($pdo, $tx['shift_period'], $tx_date_str);
+                    throw new Exception("Cannot validate this transaction. The transaction for the preceding shift (" . formatShiftLabel($preceding['shift_key']) . " on " . $preceding['date'] . ") for this fuel line must be verified or adjusted first.");
+                }
+
+                // Programmatically set Beginning Reading to match preceding shift's validated Ending Reading
+                $prev_reading = get_preceding_shift_validated_ending($pdo, $station_id, $tx['pump_id'], $tx['shift_period'], $tx_date_str);
+                $present_reading = (float)$tx['present_reading'];
+                $calibration = (float)$tx['calibration'];
+                
+                if ($present_reading < $prev_reading) {
+                    throw new Exception("Ending reading (" . number_format($present_reading, 2) . ") cannot be less than the preceding shift's validated ending reading (" . number_format($prev_reading, 2) . ").");
+                }
+                
+                $liters_sold = max(0.00, $present_reading - $prev_reading - $calibration);
+                $price_per_liter = (float)$tx['price_per_liter'];
+                $total_amount = round($liters_sold * $price_per_liter, 2);
+                
+                $up = $pdo->prepare("UPDATE fuel_transactions SET previous_reading = ?, liters_sold = ?, total_amount = ?, status = 'Verified', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
+                $up->execute([$prev_reading, $liters_sold, $total_amount, $me['id'], $remarks ?: null, $tx_id]);
+            } else {
+                $up = $pdo->prepare("UPDATE fuel_transactions SET status = 'Verified', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
+                $up->execute([$me['id'], $remarks ?: null, $tx_id]);
+            }
+
+            // Deduct stock from fuel_inventory
+            $up_stock = $pdo->prepare("UPDATE fuel_inventory 
+                                       SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?),
+                                           current_stock  = GREATEST(0, COALESCE(current_stock, 0) - ?),
+                                           last_updated   = NOW()
+                                       WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
+            $up_stock->execute([$liters_sold, $liters_sold, $station_id, $tx['fuel_type']]);
+
+            log_activity($pdo, $me['id'], 'Fuel Reading Approved', "TXN {$tx['transaction_id']} | {$tx['fuel_type']} | {$liters_sold} L");
+            $_SESSION['success'] = "Transaction <strong>{$tx['transaction_id']}</strong> verified and approved successfully.";
+        }
+
+        // 2. ADJUST ACTION
+        elseif ($action === 'adjust') {
+            if (empty($remarks)) {
+                throw new Exception("Adjustment reason is required.");
+            }
+            if (!str_contains(strtolower($tx['status']), 'pending')) {
+                throw new Exception("Transaction has already been processed.");
+            }
+
+            $ending = isset($_POST['ending']) ? (float)$_POST['ending'] : null;
+            $calibration = isset($_POST['calibration']) ? (float)$_POST['calibration'] : null;
+
+            if ($ending !== null && $calibration !== null) {
+                $tx_date_str = date('Y-m-d', strtotime($tx['transaction_date']));
+                $beginning = (float)$tx['previous_reading'];
+
+                if ($tx['pump_id'] > 0) {
+                    // Shift validation gate check
+                    if (!is_preceding_shift_validated($pdo, $station_id, $tx['pump_id'], $tx['shift_period'], $tx_date_str)) {
+                        $preceding = get_preceding_shift_and_date($pdo, $tx['shift_period'], $tx_date_str);
+                        throw new Exception("Cannot adjust this transaction. The transaction for the preceding shift (" . formatShiftLabel($preceding['shift_key']) . " on " . $preceding['date'] . ") for this fuel line must be verified or adjusted first.");
+                    }
+
+                    $beginning = get_preceding_shift_validated_ending($pdo, $station_id, $tx['pump_id'], $tx['shift_period'], $tx_date_str);
+                }
+
+                $liters_sold = $ending - $beginning - $calibration;
+                if ($liters_sold < 0) {
+                    throw new Exception("Ending reading cannot be less than beginning reading and calibration combined.");
+                }
+                $price_per_liter = (float)$tx['price_per_liter'];
+                $total_amount = $liters_sold * $price_per_liter;
+
+                // Update transaction readings and calibration
+                $up = $pdo->prepare("
+                    UPDATE fuel_transactions 
+                    SET previous_reading = ?, 
+                        present_reading = ?, 
+                        calibration = ?, 
+                        liters_sold = ?, 
+                        total_amount = ?, 
+                        status = 'Adjusted', 
+                        validated_by = ?, 
+                        validated_at = NOW(), 
+                        reject_reason = ? 
+                    WHERE id = ?
+                ");
+                $up->execute([$beginning, $ending, $calibration, $liters_sold, $total_amount, $me['id'], $remarks, $tx_id]);
+
+                // Deduct stock from fuel_inventory
+                $up_stock = $pdo->prepare("UPDATE fuel_inventory 
+                                           SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?),
+                                               current_stock  = GREATEST(0, COALESCE(current_stock, 0) - ?),
+                                               last_updated   = NOW()
+                                           WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
+                $up_stock->execute([$liters_sold, $liters_sold, $station_id, $tx['fuel_type']]);
+
+                // Log into fuel_adjustments audit log
+                try {
+                    $meta_notes = json_encode([
+                        'transaction_id' => $tx['transaction_id'],
+                        'fuel_line' => 'Pump #' . ($tx['pump_id'] ?? '—'),
+                        'fuel_type' => $tx['fuel_type'],
+                        'shift' => formatShiftLabel($tx['shift_period']),
+                        'staff_name' => $tx['staff_name'] ?? '—',
+                        'prev_beginning' => (float)$tx['previous_reading'],
+                        'prev_ending' => (float)$tx['present_reading'],
+                        'prev_calibration' => (float)$tx['calibration'],
+                        'new_beginning' => $beginning,
+                        'new_ending' => $ending,
+                        'new_calibration' => $calibration,
+                    ]);
+
+                    $ins_adj = $pdo->prepare("
+                        INSERT INTO fuel_adjustments 
+                        (station_id, adjustment_date, fuel_type, fuel_type_id, adjustment_type, liters, previous_value, new_value, reason, user_id, notes, status, approved_by, approved_at, created_at)
+                        VALUES (?, CURDATE(), ?, null, 'transaction_adjustment', ?, ?, ?, ?, ?, ?, 'Approved', ?, NOW(), NOW())
+                    ");
+                    $ins_adj->execute([
+                        $station_id,
+                        $tx['fuel_type'],
+                        $liters_sold,
+                        (float)$tx['liters_sold'],
+                        $liters_sold,
+                        $remarks,
+                        $me['id'],
+                        $meta_notes,
+                        $me['id']
+                    ]);
+                } catch (Exception $e) {}
+
+                log_activity($pdo, $me['id'], 'Fuel Reading Adjusted and Approved', "TXN {$tx['transaction_id']} | {$tx['fuel_type']} | Old: {$tx['liters_sold']} L -> New: {$liters_sold} L | Reason: {$remarks}");
+                $_SESSION['success'] = "Transaction <strong>{$tx['transaction_id']}</strong> adjusted and validated successfully.";
+            }
+        }
+
+        // 3. REJECT ACTION
+        elseif ($action === 'reject') {
+            if (empty($remarks)) {
+                throw new Exception("Rejection reason is required.");
+            }
+            if (!str_contains(strtolower($tx['status']), 'pending')) {
+                throw new Exception("Transaction has already been processed.");
+            }
+
+            $up = $pdo->prepare("UPDATE fuel_transactions SET status = 'Rejected', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
+            $up->execute([$me['id'], $remarks, $tx_id]);
+
+            log_activity($pdo, $me['id'], 'Fuel Reading Rejected', "TXN {$tx['transaction_id']} | Reason: {$remarks}");
+            $_SESSION['success'] = "Transaction <strong>{$tx['transaction_id']}</strong> rejected and returned to staff.";
+        }
+
+        $pdo->commit();
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        $_SESSION['error'] = "Error: " . $e->getMessage();
+    }
+
+    $redirect_url = 'manager_fuel_pump_master.php';
+    if (!empty($_SERVER['QUERY_STRING'])) {
+        $redirect_url .= '?' . $_SERVER['QUERY_STRING'];
+    }
+    header('Location: ' . $redirect_url); exit;
+}
+
+// ── Fetch Filtered Calibration Records ────────────────────────
+$where = ["ft.station_id = ?"];
 $params = [$station_id];
 
-// Fuel Type Filter
-if ($fuel_type_filter !== 'all' && $fuel_type_filter !== '') {
-    $where[] = "ft.name = ?";
-    $params[] = $fuel_type_filter;
+// Date Filter
+$where[] = "DATE(ft.transaction_date) = ?";
+$params[] = $date_filter;
+
+// Shift Filter
+if ($shift_filter !== 'all') {
+    $where[] = "LOWER(ft.shift_period) = ?";
+    $params[] = strtolower($shift_filter);
 }
 
-// Status Filter
-if ($pump_status_filter !== 'all' && $pump_status_filter !== '') {
-    $where[] = "LOWER(fp.status) = ?";
-    $params[] = strtolower($pump_status_filter);
+// Fuel Type Filter — use LIKE so 'Diesel' matches stored 'DIESEL 1 - 1', etc.
+if ($fuel_type_filter !== 'all') {
+    $where[] = "LOWER(ft.fuel_type) LIKE ?";
+    $params[] = '%' . strtolower($fuel_type_filter) . '%';
 }
 
-// Search Filter
-if ($search_pump !== '') {
-    $where[] = "fp.pump_number LIKE ?";
-    $params[] = '%' . $search_pump . '%';
+// Staff Filter
+if ($staff_filter !== '') {
+    $where[] = "(LOWER(staff.username) LIKE ? OR LOWER(staff.first_name) LIKE ? OR LOWER(staff.last_name) LIKE ?)";
+    $like_val = '%' . strtolower($staff_filter) . '%';
+    $params = array_merge($params, [$like_val, $like_val, $like_val]);
 }
 
-// â”€â”€ Fetch Pumps â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-$pumps = [];
+$records = [];
 try {
-    $sql = "SELECT 
-                   fi.fuel_type_id,
-                   ft.name as fuel_type_name,
-                   fi.latest_calibration as calibration_value,
-                   fi.current_stock as tank_stock,
-                   fi.capacity as tank_capacity,
-                   fi.last_updated as calibration_updated_at,
-                   (SELECT fp.id FROM fuel_pumps fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fi.station_id ORDER BY fp.pump_number ASC LIMIT 1) as id,
-                   (SELECT fp.pump_number FROM fuel_pumps fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fi.station_id ORDER BY fp.pump_number ASC LIMIT 1) as pump_number,
-                   (SELECT fp.status FROM fuel_pumps fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fi.station_id ORDER BY fp.pump_number ASC LIMIT 1) as status,
-                   (SELECT fp.calibration_updated_by FROM fuel_pumps fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fi.station_id ORDER BY fp.calibration_updated_at DESC LIMIT 1) as calibration_updated_by,
+    $sql = "SELECT ft.*, 
+                   fp.pump_number,
                    COALESCE(
-                       NULLIF(CONCAT(TRIM(COALESCE(u.first_name, '')), ' ', TRIM(COALESCE(u.last_name, ''))), ' '),
-                       u.username,
+                       NULLIF(CONCAT(TRIM(COALESCE(staff.first_name, '')), ' ', TRIM(COALESCE(staff.last_name, ''))), ' '),
+                       staff.username,
+                       'Unknown'
+                   ) as staff_name,
+                   COALESCE(
+                       NULLIF(CONCAT(TRIM(COALESCE(validator.first_name, '')), ' ', TRIM(COALESCE(validator.last_name, ''))), ' '),
+                       validator.username,
                        '—'
-                   ) as updated_by_name
-            FROM fuel_inventory fi
-            LEFT JOIN fuel_types ft ON fi.fuel_type_id = ft.id
-            LEFT JOIN users u ON (SELECT fp.calibration_updated_by FROM fuel_pumps fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fi.station_id ORDER BY fp.calibration_updated_at DESC LIMIT 1) = u.id
-            WHERE fi.station_id = ?
-              AND fi.latest_calibration IS NOT NULL 
-              AND fi.latest_calibration > 0.00
-            ORDER BY ft.name ASC";
-            
+                   ) as validator_name
+            FROM fuel_transactions ft
+            LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
+            LEFT JOIN users staff ON ft.staff_id = staff.id
+            LEFT JOIN users validator ON ft.validated_by = validator.id
+            WHERE " . implode(" AND ", $where) . "
+            ORDER BY
+                CASE
+                    WHEN TRIM(UPPER(ft.fuel_type)) = 'DIESEL'                                          THEN 1
+                    WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 1%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 1%' THEN 2
+                    WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 2%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 2%' THEN 3
+                    WHEN UPPER(ft.fuel_type) LIKE '%TURBO%DIESEL%'                                      THEN 4
+                    WHEN UPPER(ft.fuel_type) LIKE '%KEROSENE%'                                          THEN 5
+                    WHEN UPPER(ft.fuel_type) LIKE '%XCS%PLUS%' OR UPPER(ft.fuel_type) LIKE 'XCS PLUS%' THEN 6
+                    WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%1%'                                       THEN 7
+                    WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%2%'                                       THEN 8
+                    WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%'                                         THEN 9
+                    WHEN UPPER(ft.fuel_type) LIKE '%DIESEL%'                                           THEN 10
+                    ELSE 99
+                END ASC,
+                ft.fuel_type ASC,
+                fp.pump_number ASC,
+                ft.transaction_date ASC,
+                ft.created_at ASC";
+    
     $stmt = $pdo->prepare($sql);
-    $stmt->execute([$station_id]);
-    $pumps = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt->execute($params);
+    $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    error_log("Fetch pumps error: " . $e->getMessage());
-    $_SESSION['error'] = "Error loading pumps: " . $e->getMessage();
+    error_log("Fetch calibration records error: " . $e->getMessage());
+    $_SESSION['error'] = "Error loading calibration records: " . $e->getMessage();
 }
 
-// â”€â”€ Compute Summary Card Metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-$total_pumps_count       = 0;
-$active_pumps_count      = 0;
-$inactive_pumps_count    = 0;
-$calibrated_pumps_count  = 0;
-$cal_updates_this_month = 0;
+// ── Metrics Calculations ──────────────────────────────────────
+$total_calibration_liters = 0.0;
+$pending_reviews_count = 0;
+$total_liters_validated = 0.0;
 
-try {
-    // 1. Total Pumps
-    $sp = $pdo->prepare("SELECT COUNT(*) FROM fuel_pumps WHERE station_id = ?");
-    $sp->execute([$station_id]);
-    $total_pumps_count = (int)$sp->fetchColumn();
-
-    // 2. Active Pumps
-    $sa = $pdo->prepare("SELECT COUNT(*) FROM fuel_pumps WHERE station_id = ? AND LOWER(status) = 'active'");
-    $sa->execute([$station_id]);
-    $active_pumps_count = (int)$sa->fetchColumn();
-
-    // 3. Inactive Pumps
-    $si = $pdo->prepare("SELECT COUNT(*) FROM fuel_pumps WHERE station_id = ? AND LOWER(status) = 'inactive'");
-    $si->execute([$station_id]);
-    $inactive_pumps_count = (int)$si->fetchColumn();
-
-    // 4. Pumps with Calibration (calibration_value is non-zero)
-    $sc = $pdo->prepare("SELECT COUNT(*) FROM fuel_pumps WHERE station_id = ? AND calibration_value != 0.00 AND calibration_value IS NOT NULL");
-    $sc->execute([$station_id]);
-    $calibrated_pumps_count = (int)$sc->fetchColumn();
-
-    // 5. Calibration updates this month
-    $sum_m = $pdo->prepare("
-        SELECT COUNT(*) 
-        FROM pump_calibration_history 
-        WHERE station_id = ? 
-          AND MONTH(updated_at) = MONTH(CURRENT_DATE()) 
-          AND YEAR(updated_at) = YEAR(CURRENT_DATE())
-    ");
-    $sum_m->execute([$station_id]);
-    $cal_updates_this_month = (int)$sum_m->fetchColumn();
-} catch (Exception $e) {
-    error_log("Summary calculations error: " . $e->getMessage());
+foreach ($records as $r) {
+    $st = strtolower(trim($r['status'] ?? ''));
+    if (in_array($st, ['verified', 'approved', 'adjusted', 'validated'])) {
+        $total_calibration_liters += (float)($r['calibration'] ?? 0.0);
+        $total_liters_validated += (float)($r['liters_sold'] ?? 0.0);
+    } elseif (str_contains($st, 'pending')) {
+        $pending_reviews_count++;
+    }
 }
 
-// â”€â”€ Fetch dynamic fuel types for filter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Fetch dynamic filters data (from fuel_transactions for accurate type list) ─
 $fuel_types = [];
 try {
-    $ft_stmt = $pdo->prepare("SELECT DISTINCT ft.name FROM fuel_inventory fi JOIN fuel_types ft ON fi.fuel_type_id = ft.id WHERE fi.station_id=? ORDER BY ft.name");
-    $ft_stmt->execute([$station_id]);
-    $fuel_types = $ft_stmt->fetchAll(PDO::FETCH_COLUMN);
-} catch (Exception $e) {}
-
-// â”€â”€ Fetch complete calibration history for JS modal viewer â”€â”€â”€â”€
-$calibration_history_all = [];
-try {
-    $hist_stmt = $pdo->prepare("
-        SELECT pch.*, 
-               COALESCE(NULLIF(CONCAT(TRIM(u.first_name), ' ', TRIM(u.last_name)), ' '), u.username, 'System') as updater_name
-        FROM pump_calibration_history pch
-        LEFT JOIN users u ON pch.updated_by = u.id
-        WHERE pch.station_id = ?
-        ORDER BY pch.updated_at DESC
+    // Pull distinct fuel types from actual transactions so the dropdown matches stored data
+    $ft_stmt = $pdo->prepare("
+        SELECT DISTINCT
+            CASE
+                WHEN UPPER(fuel_type) LIKE '%TURBO%DIESEL%' THEN 'Turbo Diesel'
+                WHEN UPPER(fuel_type) LIKE '%KEROSENE%'     THEN 'Kerosene'
+                WHEN UPPER(fuel_type) LIKE '%XCS%'          THEN 'XCS Plus'
+                WHEN UPPER(fuel_type) LIKE '%XTRA%UNL%'     THEN 'Xtra UNL'
+                WHEN UPPER(fuel_type) LIKE '%DIESEL%'       THEN 'Diesel'
+                ELSE fuel_type
+            END AS normalized_type
+        FROM fuel_transactions
+        WHERE station_id = ?
+        ORDER BY 1
     ");
-    $hist_stmt->execute([$station_id]);
-    $calibration_history_all = $hist_stmt->fetchAll(PDO::FETCH_ASSOC);
+    $ft_stmt->execute([$station_id]);
+    $fuel_types = array_unique($ft_stmt->fetchAll(PDO::FETCH_COLUMN));
 } catch (Exception $e) {}
 
-// â”€â”€ EXPORTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── EXPORTS ──────────────────────────────────────────────────
 if (in_array($export, ['excel', 'pdf'])) {
-    $headers = ['Pump ID', 'Pump Name', 'Fuel Type', 'Assigned Tank', 'Calibration Value', 'Status', 'Last Updated', 'Updated By'];
+    $headers = ['Date', 'Shift', 'Fuel Line', 'Fuel Type', 'Staff Encoder', 'Beginning', 'Ending', 'Staff Calibration', 'Manager Calibration', 'Liters Sold', 'Status', 'Validated By', 'Date Validated'];
     $rows_fmt = [];
-    foreach ($pumps as $p) {
+    foreach ($records as $r) {
         $rows_fmt[] = [
-            'PUMP-' . $p['id'],
-            $p['pump_number'],
-            $p['fuel_type_name'] ?? '—',
-            ($p['fuel_type_name'] ?? '') . ' Tank (Cap: ' . number_format($p['tank_capacity'] ?? 0, 0) . ' L)',
-            number_format($p['calibration_value'], 3) . ' L',
-            getStatusLabel($p['status']),
-            $p['calibration_updated_at'] ? date('M d, Y H:i', strtotime($p['calibration_updated_at'])) : '—',
-            $p['updated_by_name'] ?? '—'
+            date('Y-m-d', strtotime($r['transaction_date'])),
+            formatShiftLabel($r['shift_period']),
+            $r['pump_number'] ?? '—',
+            $r['fuel_type'],
+            $r['staff_name'] ?? '—',
+            number_format($r['previous_reading'], 2),
+            number_format($r['present_reading'], 2),
+            number_format($r['staff_calibration'], 2) . ' L',
+            number_format($r['calibration'], 2) . ' L',
+            number_format($r['liters_sold'], 2) . ' L',
+            getStatusLabel($r['status']),
+            $r['validator_name'] ?? '—',
+            $r['validated_at'] ? date('Y-m-d H:i', strtotime($r['validated_at'])) : '—'
         ];
     }
-    $filename = 'pump_master_oversight_' . date('Y-m-d');
+    $filename = 'calibration_review_' . $date_filter;
 
     if ($export === 'excel') {
         header('Content-Type: application/vnd.ms-excel; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '.xls"');
         echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>table{border-collapse:collapse}th,td{border:1px solid #ddd;padding:7px}th{background:#002F6C;color:#fff;font-size:11px}</style></head><body>';
-        echo '<h2>Pump Master Oversight Report</h2><p>Station: ' . $station_id . ' | Run Date: ' . date('M d, Y H:i') . '</p>';
+        echo '<h2>Calibration Review Report - ' . htmlspecialchars($date_filter) . '</h2>';
+        echo '<p>Station: ' . htmlspecialchars(user_station_name()) . ' | Records: ' . count($rows_fmt) . '</p>';
         echo '<table><thead><tr>';
         foreach ($headers as $h) echo '<th>' . htmlspecialchars($h) . '</th>';
         echo '</tr></thead><tbody>';
-        foreach ($rows_fmt as $r) {
+        foreach ($rows_fmt as $row) {
             echo '<tr>';
-            foreach ($r as $c) echo '<td>' . htmlspecialchars($c) . '</td>';
+            foreach ($row as $col) echo '<td>' . htmlspecialchars($col) . '</td>';
             echo '</tr>';
         }
         echo '</tbody></table></body></html>'; exit;
@@ -374,914 +544,547 @@ if (in_array($export, ['excel', 'pdf'])) {
 
     if ($export === 'pdf') {
         header('Content-Type: text/html; charset=UTF-8');
-        $generated = date('M d, Y H:i');
-        
         $tbody = '';
-        foreach ($pumps as $p) {
+        foreach ($rows_fmt as $row) {
             $tbody .= '<tr>';
-            $tbody .= '<td>PUMP-' . htmlspecialchars($p['id']) . '</td>';
-            $tbody .= '<td>' . htmlspecialchars($p['pump_number']) . '</td>';
-            $tbody .= '<td>' . htmlspecialchars($p['fuel_type_name'] ?? '—') . '</td>';
-            $tbody .= '<td>' . htmlspecialchars($p['fuel_type_name'] ?? '') . ' Tank (' . number_format($p['tank_capacity'] ?? 0, 0) . ' L)</td>';
-            $tbody .= '<td style="text-align:right;">' . number_format($p['calibration_value'], 3) . ' L</td>';
-            $tbody .= '<td>' . getStatusLabel($p['status']) . '</td>';
-            $tbody .= '<td>' . ($p['calibration_updated_at'] ? date('M d, Y', strtotime($p['calibration_updated_at'])) : '—') . '</td>';
-            $tbody .= '<td>' . htmlspecialchars($p['updated_by_name'] ?? '—') . '</td>';
+            foreach ($row as $col) {
+                $tbody .= '<td>' . htmlspecialchars($col) . '</td>';
+            }
             $tbody .= '</tr>';
         }
-
-        echo '
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Pump Master Oversight Report</title>
-            <style>
-                body { font-family: Arial, sans-serif; font-size: 10px; color: #333; line-height: 1.4; padding: 20px; }
-                .header { border-bottom: 2px solid #002f6c; padding-bottom: 10px; margin-bottom: 15px; }
-                .logo-text { font-size: 18px; font-weight: bold; color: #002f6c; text-transform: uppercase; }
-                .rpt-title { font-size: 13px; font-weight: bold; margin-top: 5px; color: #555; }
-                .meta-table { width: 100%; margin-bottom: 15px; font-size: 10px; }
-                .data-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                .data-table th, .data-table td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
-                .data-table th { background-color: #002f6c; color: white; font-weight: bold; text-transform: uppercase; font-size: 9px; }
-                .data-table tr:nth-child(even) { background-color: #f9f9f9; }
-                .footer { margin-top: 30px; border-top: 1px solid #ddd; padding-top: 8px; font-size: 8px; color: #777; display: flex; justify-content: space-between; }
-            </style>
-        </head>
-        <body onload="window.print()">
-            <div class="header">
-                <div class="logo-text">Petron Corporation</div>
-                <div class="rpt-title">Pump Master Oversight Summary</div>
-            </div>
-            
-            <table class="meta-table">
-                <tr>
-                    <td><strong>Station ID:</strong> ' . htmlspecialchars($station_id) . '</td>
-                    <td style="text-align: right;"><strong>Run Date:</strong> ' . $generated . '</td>
-                </tr>
-                <tr>
-                    <td><strong>Generated By:</strong> ' . htmlspecialchars($me['username']) . ' (' . htmlspecialchars($role) . ')</td>
-                    <td style="text-align: right;"><strong>Total Pumps Loaded:</strong> ' . count($pumps) . '</td>
-                </tr>
-            </table>
-
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Pump ID</th>
-                        <th>Pump Name</th>
-                        <th>Fuel Type</th>
-                        <th>Assigned Tank</th>
-                        <th style="text-align:right;">Calibration</th>
-                        <th>Status</th>
-                        <th>Last Updated</th>
-                        <th>Updated By</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ' . $tbody . '
-                </tbody>
-            </table>
-
-            <div class="footer">
-                <span>System Generated Report â€¢ Confidential</span>
-                <span>Page 1 of 1</span>
-            </div>
-        </body>
-        </html>';
-        exit;
+        echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Calibration Review</title>
+        <style>body{font-family:Arial,sans-serif;font-size:10px;padding:20px;color:#333;}
+        .pbtn{margin-bottom:12px}@media print{.pbtn{display:none}}
+        .hdr{border-bottom:3px solid #002F6C;margin-bottom:14px;padding-bottom:8px;display:flex;align-items:center;justify-content:between;}
+        h1{color:#002F6C;font-size:16px;margin:0 0 4px;text-transform:uppercase;}
+        table{width:100%;border-collapse:collapse;margin-top:10px;}
+        th{background:#002F6C;color:#fff;padding:6px;font-size:8px;text-transform:uppercase;text-align:left;}
+        td{padding:5px;border-bottom:1px solid #e2e8f0;font-size:8px;}
+        tr:nth-child(even) td{background:#f8fafc}
+        </style></head><body>';
+        echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;font-weight:bold;">🖨 Print / Save PDF</button>
+        <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none;font-weight:bold;">← Back</a></div>';
+        echo '<div class="hdr"><div><h1>Calibration Review</h1><p style="margin:2px 0 0;color:#666;">Date: ' . htmlspecialchars($date_filter) . ' | Station: ' . htmlspecialchars(user_station_name()) . '</p></div></div>';
+        echo '<table><thead><tr>';
+        foreach ($headers as $h) echo '<th>' . htmlspecialchars($h) . '</th>';
+        echo '</tr></thead>';
+        echo '<tbody>' . ($tbody ?: '<tr><td colspan="' . count($headers) . '" style="text-align:center;padding:20px;color:#94a3b8">No records found.</td></tr>') . '</tbody></table>';
+        echo '</body></html>'; exit;
     }
 }
 
-require_once __DIR__ . '/../partials/header.php';
+require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 
 <style>
-/* == PAGE HEADER - Petron standard == */
-.int-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-bottom: 20px;
-    margin-top: -12px !important;
-}
-.int-head h1 {
-    font-size: 22px !important;
-    font-weight: 700 !important;
-    color: var(--petron-blue, #00264D) !important;
-    margin: 0 !important;
-    text-transform: uppercase !important;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.int-head .sub {
-    font-size: 13px;
-    color: #666;
-    margin-top: 4px;
-    text-transform: none !important;
-}
+* { box-sizing: border-box; }
+.mcr-wrap { max-width: 100%; width: 100%; box-sizing: border-box; overflow-x: hidden !important; padding: 0 12px; }
+.main-content { max-width: 100% !important; overflow-x: hidden !important; padding: 0 !important; }
 
-/* == SUMMARY CARDS == */
-.afto-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 16px;
-    margin-bottom: 24px;
-}
-.afto-card {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    padding: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    position: relative;
-    overflow: hidden;
-}
-.afto-card-info {
-    display: flex;
-    flex-direction: column;
-}
-.afto-card-lbl {
-    font-size: 11px;
-    font-weight: 700;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 4px;
-}
-.afto-card-val {
-    font-size: 20px;
-    font-weight: 700;
-    color: #1e293b;
-}
-.afto-card-icon {
-    font-size: 24px;
-    opacity: 0.8;
-}
+/* Petron style headers */
+.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; margin-top: 8px !important; padding-top: 8px; width: 100%; }
+.int-head h1 { font-size: 22px !important; font-weight: 700 !important; color: #00264D !important; margin: 0 !important; text-transform: uppercase !important; display: flex; align-items: center; gap: 8px; line-height: 1.3; }
+.int-head .sub { font-size: 13px; color: #64748b; margin-top: 4px; line-height: 1.4; }
 
-/* Card icon colors (No colored borders) */
-.afto-card.blue .afto-card-icon { color: #2563eb; }
-.afto-card.green .afto-card-icon { color: #16a34a; }
-.afto-card.red .afto-card-icon { color: #dc2626; }
-.afto-card.yellow .afto-card-icon { color: #d97706; }
-.afto-card.purple .afto-card-icon { color: #7c3aed; }
+/* Summary Cards */
+.mcr-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.mcr-card { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+.mcr-card-info { display: flex; flex-direction: column; }
+.mcr-card-lbl { font-size: 10.5px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.mcr-card-val { font-size: 19px; font-weight: 700; color: #1e293b; }
+.mcr-card-icon { font-size: 22px; opacity: 0.85; }
+.mcr-card.blue .mcr-card-icon { color: #0ea5e9; }
+.mcr-card.green .mcr-card-icon { color: #10b981; }
+.mcr-card.amber .mcr-card-icon { color: #f59e0b; }
 
-/* == FILTER BAR == */
-.afto-filter {
-    display: flex;
-    align-items: flex-end;
-    gap: 12px;
-    flex-wrap: wrap;
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    padding: 16px;
-    margin-bottom: 20px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-}
-.afto-fg {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-.afto-fg label {
-    font-size: 11px;
-    font-weight: 700;
-    color: #475569;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-}
-.afto-fg input, .afto-fg select {
-    height: 36px;
-    padding: 0 12px;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    font-size: 13px;
-    color: #1e293b;
-    background: #ffffff;
-    outline: none;
-    box-sizing: border-box;
-}
-.afto-fg input:focus, .afto-fg select:focus {
-    border-color: var(--petron-blue, #00264D);
-    box-shadow: 0 0 0 3px rgba(0, 38, 77, 0.1);
-}
-.afto-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-}
+/* Filter Bar */
+.mcr-filter { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; }
+.mcr-fg { display: flex; flex-direction: column; gap: 3px; }
+.mcr-fg label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .4px; }
+.mcr-fg input, .mcr-fg select { height: 36px; padding: 0 10px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px; color: #1e293b; background: #fff; outline: none; }
+.mcr-fg input:focus, .mcr-fg select:focus { border-color: #002F70; box-shadow: 0 0 0 3px rgba(0,47,112,.1); }
 
-/* Buttons styling - White background with Petron Blue outline */
-.ato-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 0 16px;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    border: 1px solid transparent;
-    text-decoration: none;
-    transition: all 0.15s ease-in-out;
-    height: 36px;
-    white-space: nowrap;
-    background: #ffffff !important;
-}
-.ato-btn-filter { color: #002F70 !important; border-color: #002F70 !important; }
-.ato-btn-filter:hover { background: #002F70 !important; color: #ffffff !important; }
-.ato-btn-export { color: #16a34a !important; border-color: #16a34a !important; }
-.ato-btn-export:hover { background: #16a34a !important; color: #ffffff !important; }
+/* Table design */
+.mcr-table-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 11px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.04); width: 100%; }
+.mcr-table-hd { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #f1f5f9; }
+.mcr-table-title { font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: .3px; margin: 0; }
+.mcr-tbl-wrap { width: 100%; overflow-x: auto; }
+.mcr-tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
+.mcr-tbl thead tr { background: #002F70; }
+.mcr-tbl thead th { padding: 9px 10px; text-align: left; font-size: 10px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; }
+.mcr-tbl tbody tr { border-bottom: 1px solid #f1f5f9; }
+.mcr-tbl tbody tr:hover td { background: #eff6ff; }
+.mcr-tbl tbody td { padding: 9px 10px; color: #334155; vertical-align: middle; background: #fff; }
+
+/* Buttons */
+.ato-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 16px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid transparent; text-decoration: none; transition: all .15s; height: 36px; white-space: nowrap; background: white !important; }
+.ato-btn-excel { color: #1d6f42 !important; border-color: #1d6f42 !important; }
+.ato-btn-excel:hover { background: #1d6f42 !important; color: #fff !important; }
 .ato-btn-pdf { color: #dc2626 !important; border-color: #dc2626 !important; }
-.ato-btn-pdf:hover { background: #dc2626 !important; color: #ffffff !important; }
-.ato-btn-reset { color: #4b5563 !important; border-color: #9ca3af !important; }
-.ato-btn-reset:hover { background: #6b7280 !important; color: #ffffff !important; }
+.ato-btn-pdf:hover { background: #dc2626 !important; color: #fff !important; }
+.ato-btn-back { color: #4b5563 !important; border-color: #cbd5e1 !important; }
+.ato-btn-back:hover { background: #cbd5e1 !important; }
+.ato-btn-filter { color: #002F70 !important; border-color: #002F70 !important; }
+.ato-btn-filter:hover { background: #002F70 !important; color: #fff !important; }
+.ato-btn-reset { color: #475569 !important; border-color: #cbd5e1 !important; }
+.ato-btn-reset:hover { background: #f1f5f9 !important; }
 
-/* == TABLE CARD == */
-.tbl-card {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    overflow: hidden;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
-    margin-bottom: 24px;
-}
-.tbl-hd {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 16px;
-    border-bottom: 1px solid #e9ecef;
-    flex-wrap: wrap;
-    gap: 8px;
-    background: #f8fafc;
-}
-.tbl-title {
-    font-size: 14px;
-    font-weight: 700;
-    color: #00264D;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.afto-tbl {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
-    text-align: left;
-}
-.afto-tbl thead tr {
-    background: #002F70;
-}
-.afto-tbl thead th {
-    padding: 10px 12px;
-    font-weight: 700;
-    color: #ffffff;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    font-size: 11px;
-    border-bottom: 2px solid #001a3d;
-}
-.afto-tbl tbody tr {
-    border-bottom: 1px solid #f1f5f9;
-    transition: background 0.1s ease;
-}
-.afto-tbl tbody tr:hover td {
-    background: #f8fafc;
-}
-.afto-tbl tbody td {
-    padding: 10px 12px;
-    color: #334155;
-    vertical-align: middle;
-}
+/* Row Actions — outlined style matching export buttons (white bg, colored border+text, hover fills) */
+.act-btn { display: flex; align-items: center; justify-content: center; gap: 5px; padding: 0 10px; border-radius: 6px; font-size: 10.5px; font-weight: 700; border: 1.5px solid transparent; cursor: pointer; height: 28px; text-decoration: none; text-transform: uppercase; background: #ffffff !important; transition: all 0.15s; width: 100%; box-sizing: border-box; }
+.act-btn-verify { border-color: #16a34a !important; color: #16a34a !important; background: #ffffff !important; }
+.act-btn-verify:hover { background: #16a34a !important; color: #ffffff !important; }
+.act-btn-edit { border-color: #0284c7 !important; color: #0284c7 !important; background: #ffffff !important; }
+.act-btn-edit:hover { background: #0284c7 !important; color: #ffffff !important; }
+.act-btn-reject { border-color: #dc2626 !important; color: #dc2626 !important; background: #ffffff !important; }
+.act-btn-reject:hover { background: #dc2626 !important; color: #ffffff !important; }
+.act-btn-view { border-color: #475569 !important; color: #475569 !important; background: #ffffff !important; }
+.act-btn-view:hover { background: #475569 !important; color: #ffffff !important; }
+.act-btn:disabled, .act-btn.disabled { opacity: 0.5; cursor: not-allowed; border-color: #cbd5e1 !important; color: #94a3b8 !important; background: #f1f5f9 !important; }
 
-/* Numeric alignment */
-.align-right { text-align: right; font-family: monospace; }
-.align-left { text-align: left; }
-.bold-vol { font-weight: 700; color: #002F6C; }
+/* Status — plain colored text, no background fill */
+.badge-st { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; background: none !important; padding: 0; border-radius: 0; }
+.badge-st::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.badge-st.bg-amber { color: #b45309; }
+.badge-st.bg-amber::before { background: #d97706; }
+.badge-st.bg-green { color: #15803d; }
+.badge-st.bg-green::before { background: #16a34a; }
+.badge-st.bg-blue { color: #1d4ed8; }
+.badge-st.bg-blue::before { background: #2563eb; }
+.badge-st.bg-red { color: #b91c1c; }
+.badge-st.bg-red::before { background: #dc2626; }
+.badge-st.bg-gray { color: #475569; }
+.badge-st.bg-gray::before { background: #64748b; }
 
-/* Status Badges */
-.badge-lbl {
-    display: inline-block;
-    padding: 3px 8px;
-    border-radius: 12px;
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    text-align: center;
-    white-space: nowrap;
-}
-.bg-amber { background-color: #fef3c7; color: #b45309; }
-.bg-green { background-color: #dcfce7; color: #15803d; }
-.bg-red   { background-color: #fee2e2; color: #b91c1c; }
-.bg-gray  { background-color: #f1f5f9; color: #475569; }
+/* Modal Window styles */
+.modal { display: none; position: fixed; inset: 0; z-index: 9999; background: rgba(15,23,42,0.55); backdrop-filter: blur(4px); align-items: center; justify-content: center; }
+.modal-content { background: #fff; border-radius: 12px; width: 90%; max-width: 500px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); overflow: hidden; animation: modalIn 0.2s ease; }
+@keyframes modalIn { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+.modal-header h3 { margin: 0; font-size: 14px; color: #00264D; font-weight: 700; text-transform: uppercase; }
+.modal-body { padding: 20px; }
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 20px; border-top: 1px solid #e2e8f0; background: #f8fafc; }
 
-/* Row Actions */
-.row-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    height: 26px;
-    padding: 0 10px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
-    border: 1px solid transparent;
-    text-decoration: none;
-    transition: all 0.1s ease;
-    background: #ffffff !important;
-}
-.row-btn-details { color: #1e40af !important; border-color: #bfdbfe !important; }
-.row-btn-details:hover { background: #eff6ff !important; border-color: #1e40af !important; }
-.row-btn-approve { color: #15803d !important; border-color: #bbf7d0 !important; }
-.row-btn-approve:hover { background: #f0fdf4 !important; border-color: #15803d !important; }
-.row-btn-reject  { color: #b91c1c !important; border-color: #fecaca !important; }
-.row-btn-reject:hover { background: #fef2f2 !important; border-color: #b91c1c !important; }
-.row-btn-print   { color: #4b5563 !important; border-color: #e5e7eb !important; }
-.row-btn-print:hover { background: #f9fafb !important; border-color: #4b5563 !important; }
+.modal-fg { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+.modal-fg label { font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; }
+.modal-fg input, .modal-fg textarea, .modal-fg select { padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13.5px; color: #1e293b; background: #fff; outline: none; }
+.modal-fg input:focus, .modal-fg textarea:focus { border-color: #002F70; }
+.modal-fg input[readonly] { background-color: #f8fafc; color: #64748b; }
 
-/* Empty state */
-.empty-state {
-    padding: 40px 16px;
-    text-align: center;
-    color: #94a3b8;
-}
-.empty-state i {
-    font-size: 32px;
-    margin-bottom: 8px;
-    display: block;
-    opacity: 0.5;
-}
-
-/* Modals */
-.modal-overlay {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.4);
-    z-index: 999;
-    align-items: center;
-    justify-content: center;
-}
-.modal-overlay.active {
-    display: flex;
-}
-.modal-box {
-    background: #ffffff;
-    border-radius: 8px;
-    width: 100%;
-    max-width: 550px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    overflow: hidden;
-    animation: modalShow 0.15s ease-out;
-}
-@keyframes modalShow {
-    from { transform: scale(0.95); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
-}
-.modal-header {
-    background: #002F70;
-    color: #ffffff;
-    padding: 14px 16px;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-.modal-header h3 {
-    margin: 0;
-    font-size: 14px;
-    text-transform: uppercase;
-}
-.modal-header .close {
-    cursor: pointer;
-    font-size: 18px;
-    font-weight: bold;
-}
-.modal-body {
-    padding: 16px;
-    max-height: 400px;
-    overflow-y: auto;
-}
-.modal-footer {
-    padding: 12px 16px;
-    border-top: 1px solid #e2e8f0;
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    background: #f8fafc;
-}
-.modal-form-row {
-    margin-bottom: 12px;
-}
-.modal-form-row label {
-    display: block;
-    font-size: 11px;
-    font-weight: 700;
-    color: #475569;
-    text-transform: uppercase;
-    margin-bottom: 4px;
-}
-.modal-form-row input, .modal-form-row select, .modal-form-row textarea {
-    width: 100%;
-    padding: 8px 10px;
-    border: 1px solid #cbd5e1;
-    border-radius: 4px;
-    font-size: 13px;
-    box-sizing: border-box;
-}
-.modal-form-row textarea {
-    height: 60px;
-    resize: none;
-}
-.modal-btn {
-    padding: 8px 16px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    border: 1px solid transparent;
-}
-.modal-btn-primary { background: #002F70; color: #ffffff; }
-.modal-btn-primary:hover { background: #001f4d; }
-.modal-btn-secondary { background: #e2e8f0; color: #475569; border-color: #cbd5e1; }
-.modal-btn-secondary:hover { background: #cbd5e1; }
-
-.detail-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 8px 0;
-    border-bottom: 1px solid #f1f5f9;
-}
-.detail-row:last-child {
-    border-bottom: none;
-}
-.detail-lbl {
-    font-weight: 700;
-    color: #64748b;
-    font-size: 11px;
-    text-transform: uppercase;
-}
-.detail-val {
-    color: #1e293b;
-    font-size: 12px;
-}
+.details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; }
+.details-item { border-bottom: 1px solid #f1f5f9; padding-bottom: 6px; }
+.details-item.full-width { grid-column: span 2; }
+.details-lbl { font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: bold; }
+.details-val { font-size: 12px; color: #1e293b; font-weight: 600; margin-top: 2px; }
 </style>
 
-<!-- == TOP INT-HEAD HEADER == -->
-<div class="int-head">
-    <div>
-        <h1><i class="fas fa-gas-pump"></i> Pump Master Oversight</h1>
-        <div class="sub">Monitor pump layouts, verify nozzle calibration values, and adjust operational status settings</div>
+<div class="mcr-wrap">
+    <!-- Page Header -->
+    <div class="int-head">
+        <div>
+            <h1><i class="fas fa-balance-scale"></i> Calibration Review</h1>
+            <div class="sub">Verify and reconcile shift-based pump meter readings and calibration amounts.</div>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <a href="manager_dashboard.php" class="ato-btn ato-btn-back"><i class="fas fa-arrow-left"></i> Dashboard</a>
+            <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'excel'])) ?>" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
+            <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'pdf'])) ?>" class="ato-btn ato-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
+        </div>
     </div>
-    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-        <a href="?export=excel" class="ato-btn ato-btn-export">
-            <i class="fas fa-file-excel"></i> Export Excel
-        </a>
-        <button class="ato-btn ato-btn-pdf" onclick="window.open('?export=pdf', '_blank')">
-            <i class="fas fa-file-pdf"></i> Export PDF
-        </button>
-    </div>
-</div>
 
-<!-- == ALERTS == -->
-<?php if (!empty($_SESSION['success'])): ?>
-    <div style="padding: 12px 16px; background: #dcfce7; border: 1px solid #bbf7d0; color: #15803d; border-radius: 8px; margin-bottom: 16px; font-weight: 600;">
-        <i class="fas fa-check-circle"></i> <?= $_SESSION['success']; unset($_SESSION['success']); ?>
+    <!-- Summary Cards -->
+    <div class="mcr-cards">
+        <div class="mcr-card blue">
+            <div class="mcr-card-info">
+                <span class="mcr-card-lbl">Total Validated Liters</span>
+                <span class="mcr-card-val"><?= number_format($total_liters_validated, 2) ?> L</span>
+            </div>
+            <div class="mcr-card-icon"><i class="fas fa-gas-pump"></i></div>
+        </div>
+        <div class="mcr-card green">
+            <div class="mcr-card-info">
+                <span class="mcr-card-lbl">Total Calibration Liters</span>
+                <span class="mcr-card-val"><?= number_format($total_calibration_liters, 2) ?> L</span>
+            </div>
+            <div class="mcr-card-icon"><i class="fas fa-tint"></i></div>
+        </div>
+        <div class="mcr-card amber">
+            <div class="mcr-card-info">
+                <span class="mcr-card-lbl">Pending Review Rows</span>
+                <span class="mcr-card-val"><?= number_format($pending_reviews_count) ?></span>
+            </div>
+            <div class="mcr-card-icon"><i class="fas fa-clock"></i></div>
+        </div>
     </div>
-<?php endif; ?>
-<?php if (!empty($_SESSION['error'])): ?>
-    <div style="padding: 12px 16px; background: #fee2e2; border: 1px solid #fecaca; color: #b91c1c; border-radius: 8px; margin-bottom: 16px; font-weight: 600;">
-        <i class="fas fa-exclamation-circle"></i> <?= $_SESSION['error']; unset($_SESSION['error']); ?>
-    </div>
-<?php endif; ?>
 
-<!-- == SUMMARY CARDS == -->
-<div class="afto-cards">
-    <!-- Total Pumps Card -->
-    <div class="afto-card blue">
-        <div class="afto-card-info">
-            <span class="afto-card-lbl">Total Pumps</span>
-            <span class="afto-card-val"><?= number_format($total_pumps_count) ?></span>
+    <!-- Filters Form -->
+    <form method="get" class="mcr-filter">
+        <div class="mcr-fg">
+            <label>Review Date</label>
+            <input type="date" name="date" value="<?= htmlspecialchars($date_filter) ?>">
         </div>
-        <div class="afto-card-icon"><i class="fas fa-gas-pump"></i></div>
-    </div>
-    
-    <!-- Active Pumps Card -->
-    <div class="afto-card green">
-        <div class="afto-card-info">
-            <span class="afto-card-lbl">Active Pumps</span>
-            <span class="afto-card-val"><?= number_format($active_pumps_count) ?></span>
+        <div class="mcr-fg">
+            <label>Shift</label>
+            <select name="shift">
+                <option value="all">All Shifts</option>
+                <option value="first" <?= $shift_filter === 'first' ? 'selected' : '' ?>>Shift 1</option>
+                <option value="second" <?= $shift_filter === 'second' ? 'selected' : '' ?>>Shift 2</option>
+            </select>
         </div>
-        <div class="afto-card-icon"><i class="fas fa-toggle-on"></i></div>
-    </div>
-    
-    <!-- Inactive Pumps Card -->
-    <div class="afto-card red">
-        <div class="afto-card-info">
-            <span class="afto-card-lbl">Inactive Pumps</span>
-            <span class="afto-card-val"><?= number_format($inactive_pumps_count) ?></span>
+        <div class="mcr-fg">
+            <label>Fuel Type</label>
+            <select name="fuel_type">
+                <option value="all">All Fuel Types</option>
+                <?php foreach ($fuel_types as $ft): ?>
+                    <option value="<?= htmlspecialchars($ft) ?>" <?= strtolower($fuel_type_filter) === strtolower($ft) ? 'selected' : '' ?>><?= htmlspecialchars($ft) ?></option>
+                <?php endforeach; ?>
+            </select>
         </div>
-        <div class="afto-card-icon"><i class="fas fa-toggle-off"></i></div>
-    </div>
-    
-    <!-- Calibrated Pumps Card -->
-    <div class="afto-card yellow">
-        <div class="afto-card-info">
-            <span class="afto-card-lbl">Pumps with Calibration</span>
-            <span class="afto-card-val"><?= number_format($calibrated_pumps_count) ?></span>
+        <div class="mcr-fg">
+            <label>Staff Encoder</label>
+            <input type="text" name="staff" value="<?= htmlspecialchars($staff_filter) ?>" placeholder="Staff name...">
         </div>
-        <div class="afto-card-icon"><i class="fas fa-balance-scale"></i></div>
-    </div>
-    
-    <!-- Monthly Calibration Card -->
-    <div class="afto-card purple">
-        <div class="afto-card-info">
-            <span class="afto-card-lbl">Cal. Updates This Month</span>
-            <span class="afto-card-val"><?= number_format($cal_updates_this_month) ?></span>
+        <div style="display: flex; gap: 8px;">
+            <button type="submit" class="ato-btn ato-btn-filter"><i class="fas fa-search"></i> Filter</button>
+            <a href="manager_fuel_pump_master.php" class="ato-btn ato-btn-reset"><i class="fas fa-rotate-left"></i> Reset</a>
         </div>
-        <div class="afto-card-icon"><i class="fas fa-history"></i></div>
-    </div>
-</div>
+    </form>
 
-<!-- == FILTERS == -->
-<form method="get" class="afto-filter">
-    <div class="afto-fg">
-        <label>Fuel Type</label>
-        <select name="fuel_type">
-            <option value="all">All Fuels</option>
-            <?php foreach ($fuel_types as $ft): ?>
-                <option value="<?= htmlspecialchars($ft) ?>" <?= $fuel_type_filter === $ft ? 'selected' : '' ?>>
-                    <?= htmlspecialchars($ft) ?>
-                </option>
-            <?php endforeach; ?>
-        </select>
-    </div>
-    
-    <div class="afto-fg">
-        <label>Pump Status</label>
-        <select name="pump_status">
-            <option value="all">All Status</option>
-            <option value="active" <?= $pump_status_filter === 'active' ? 'selected' : '' ?>>Active</option>
-            <option value="inactive" <?= $pump_status_filter === 'inactive' ? 'selected' : '' ?>>Inactive</option>
-            <option value="maintenance" <?= $pump_status_filter === 'maintenance' ? 'selected' : '' ?>>Maintenance</option>
-        </select>
-    </div>
-    
-    <div class="afto-fg">
-        <label>Search Pump</label>
-        <input type="text" name="search_pump" value="<?= htmlspecialchars($search_pump) ?>" placeholder="Search pump number/name..." style="width: 220px;">
-    </div>
-    
-    <div class="afto-fg" style="flex-direction: row; gap: 6px;">
-        <button type="submit" class="ato-btn ato-btn-filter"><i class="fas fa-filter"></i> Filter</button>
-        <a href="manager_fuel_pump_master.php" class="ato-btn ato-btn-reset"><i class="fas fa-sync-alt"></i> Reset</a>
-    </div>
-</form>
-
-<!-- == DETAILS TABLE == -->
-<div class="tbl-card">
-    <div class="tbl-hd">
-        <span class="tbl-title"><i class="fas fa-gas-pump"></i> Fuel Nozzles & Calibration Assignments</span>
-        <span style="font-size: 11px; color: #64748b; font-weight: 600;">Showing <?= count($pumps) ?> record(s)</span>
-    </div>
-    
-    <div style="overflow-x: auto;">
-        <table class="afto-tbl">
-            <thead>
-                <tr>
-                    <th>Pump ID</th>
-                    <th>Pump Name</th>
-                    <th>Fuel Type</th>
-                    <th>Assigned Tank</th>
-                    <th class="align-right">Calibration Value</th>
-                    <th>Status</th>
-                    <th>Last Updated</th>
-                    <th>Updated By</th>
-                    <th style="text-align: center;">Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (empty($pumps)): ?>
+    <!-- Calibration Review Table Card -->
+    <div class="mcr-table-card">
+        <div class="mcr-table-hd">
+            <h3 class="mcr-table-title"><i class="fas fa-table"></i> Shift-Based Readings & Calibration Logs</h3>
+        </div>
+        <div class="mcr-tbl-wrap">
+            <table class="mcr-tbl">
+                <thead>
                     <tr>
-                        <td colspan="9">
-                            <div class="empty-state">
-                                <i class="fas fa-inbox"></i>
-                                No pump layout records found matching the filter criteria.
-                            </div>
-                        </td>
+                        <th>Date</th>
+                        <th>Shift</th>
+                        <th>Fuel Line</th>
+                        <th>Fuel Type</th>
+                        <th>Staff</th>
+                        <th style="text-align:right;">Beginning</th>
+                        <th style="text-align:right;">Ending</th>
+                        <th style="text-align:right;">Staff Calibration</th>
+                        <th style="text-align:right;">Manager Calibration</th>
+                        <th style="text-align:center;">Status</th>
+                        <th style="text-align:center; width: 220px;">Actions</th>
                     </tr>
-                <?php else: ?>
-                    <?php foreach ($pumps as $p): 
-                        $cal = (float)$p['calibration_value'];
-                        $cal_class = $cal == 0 ? 'var-zero' : ($cal > 0 ? 'var-pos' : 'var-neg');
-                        $cal_str = ($cal >= 0 ? '+' : '') . number_format($cal, 3) . ' L';
-                        
-                        $tank_lbl = ($p['fuel_type_name'] ?? '—') . ' Tank (Cap: ' . number_format($p['tank_capacity'] ?? 0, 0) . ' L)';
-                    ?>
+                </thead>
+                <tbody>
+                    <?php if (empty($records)): ?>
                         <tr>
-                            <td><strong style="color:#1e40af;">PUMP-<?= htmlspecialchars($p['id']) ?></strong></td>
-                            <td style="font-weight: 600;"><?= htmlspecialchars($p['pump_number']) ?></td>
-                            <td class="bold-vol"><?= htmlspecialchars($p['fuel_type_name'] ?? '—') ?></td>
-                            <td><span style="font-size:11px; color:#64748b;"><?= htmlspecialchars($tank_lbl) ?></span></td>
-                            <td class="align-right <?= $cal_class ?>" style="font-weight: bold; font-family: monospace;"><?= $cal_str ?></td>
-                            <td>
-                                <span class="badge-lbl <?= getStatusBadgeClass($p['status']) ?>">
-                                    <?= getStatusLabel($p['status']) ?>
-                                </span>
-                            </td>
-                            <td>
-                                <?= $p['calibration_updated_at'] ? date('M d, Y H:i', strtotime($p['calibration_updated_at'])) : '—' ?>
-                            </td>
-                            <td><?= htmlspecialchars($p['updated_by_name'] ?? '—') ?></td>
-                            <td style="text-align: center;">
-                                <div style="display: flex; flex-direction: column; gap: 2px;">
-                                    <!-- VIEW PUMP -->
-                                    <button class="row-btn row-btn-details btn-view-pump"
-                                        data-pump="<?= htmlspecialchars(json_encode($p), ENT_QUOTES, 'UTF-8') ?>"
-                                        title="View Pump Details">
-                                        <i class="fas fa-eye"></i> View
-                                    </button>
-
-                                    <!-- CALIBRATION -->
-                                    <button class="row-btn row-btn-approve btn-calibrate"
-                                        data-pump-id="<?= $p['id'] ?>"
-                                        data-pump-name="<?= htmlspecialchars($p['pump_number'], ENT_QUOTES) ?>"
-                                        data-cal-val="<?= $cal ?>"
-                                        data-fuel-type="<?= htmlspecialchars($p['fuel_type_name'] ?? '', ENT_QUOTES) ?>"
-                                        title="Update Calibration" style="width: 100%; font-size: 9px;">
-                                        <i class="fas fa-balance-scale"></i> Calibration
-                                    </button>
-
-                                    <!-- ACTIVATE / DEACTIVATE -->
-                                    <?php if (strtolower($p['status']) !== 'active'): ?>
-                                        <form method="post" style="display: block; width: 100%;" class="pump-status-form">
-                                            <input type="hidden" name="action" value="activate">
-                                            <input type="hidden" name="pump_id" value="<?= $p['id'] ?>">
-                                            <button type="button" class="row-btn row-btn-details btn-status-submit"
-                                                data-confirm="Activate Pump <?= htmlspecialchars(addslashes($p['pump_number'])) ?>?"
-                                                style="color:#16a34a !important; border-color:#bbf7d0 !important; width: 100%; font-size: 9px;"
-                                                title="Activate Pump">
-                                                <i class="fas fa-play"></i> Activate
-                                            </button>
-                                        </form>
-                                    <?php else: ?>
-                                        <form method="post" style="display: block; width: 100%;" class="pump-status-form">
-                                            <input type="hidden" name="action" value="deactivate">
-                                            <input type="hidden" name="pump_id" value="<?= $p['id'] ?>">
-                                            <button type="button" class="row-btn row-btn-reject btn-status-submit"
-                                                data-confirm="Deactivate Pump <?= htmlspecialchars(addslashes($p['pump_number'])) ?>?"
-                                                title="Deactivate Pump" style="width: 100%; font-size: 9px;">
-                                                <i class="fas fa-stop"></i> Deactivate
-                                            </button>
-                                        </form>
-                                    <?php endif; ?>
-                                </div>
+                            <td colspan="11" style="text-align:center;padding:40px;color:#94a3b8;">
+                                <i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>
+                                No calibration/readings records found for the selected filters.
                             </td>
                         </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
+                    <?php else: ?>
+                        <?php foreach ($records as $r): 
+                            $status = strtolower($r['status'] ?? 'pending validation');
+                            $tx_date = date('Y-m-d', strtotime($r['transaction_date']));
+                            $preceding_ok = true;
+                            
+                            // Check sequence validation for active validation actions
+                            if ($status === 'pending validation' && $r['pump_id'] > 0) {
+                                $preceding_ok = is_preceding_shift_validated($pdo, $station_id, $r['pump_id'], $r['shift_period'], $tx_date);
+                            }
+                            
+                            $shift_lbl = formatShiftLabel($r['shift_period']);
+                        ?>
+                            <tr>
+                                <td><?= date('M d, Y', strtotime($r['transaction_date'])) ?></td>
+                                <td><strong><?= htmlspecialchars($shift_lbl) ?></strong></td>
+                                <td><strong><?= htmlspecialchars($r['pump_number'] ?? '—') ?></strong></td>
+                                <td><?= htmlspecialchars($r['fuel_type']) ?></td>
+                                <td><?= htmlspecialchars($r['staff_name']) ?></td>
+                                <td style="text-align:right; font-family: monospace;"><?= number_format($r['previous_reading'], 2) ?></td>
+                                <td style="text-align:right; font-family: monospace;"><?= number_format($r['present_reading'], 2) ?></td>
+                                <td style="text-align:right; font-family: monospace; color: #475569;"><?= number_format($r['staff_calibration'], 2) ?> L</td>
+                                <td style="text-align:right; font-family: monospace; font-weight: bold;"><?= number_format($r['calibration'], 2) ?> L</td>
+                                <td style="text-align:center;">
+                                    <span class="badge-st <?= getStatusBadgeClass($r['status']) ?>"><?= getStatusLabel($r['status']) ?></span>
+                                </td>
+                                <td style="text-align:center; padding: 8px 10px; vertical-align:middle;">
+                                    <div style="display:flex; flex-direction:column; gap:5px; align-items:stretch; min-width:90px;">
+                                    <?php if ($status === 'pending validation'): ?>
+                                        <?php if ($preceding_ok): ?>
+                                            <!-- Verify -->
+                                            <form method="post" style="margin:0;" onsubmit="return confirm('Verify and approve this entry? Beginning reading will match preceding shift ending.');">
+                                                <input type="hidden" name="action" value="verify">
+                                                <input type="hidden" name="id" value="<?= $r['id'] ?>">
+                                                <button type="submit" class="act-btn act-btn-verify" title="Verify Readings"><i class="fas fa-check"></i> Verify</button>
+                                            </form>
+                                            <!-- Edit/Adjust -->
+                                            <button class="act-btn act-btn-edit" onclick="openAdjustModal(<?= htmlspecialchars(json_encode([
+                                                'id' => $r['id'],
+                                                'txn_id' => $r['transaction_id'],
+                                                'pump' => $r['pump_number'] ?? '—',
+                                                'fuel_type' => $r['fuel_type'],
+                                                'beginning' => get_preceding_shift_validated_ending($pdo, $station_id, $r['pump_id'], $r['shift_period'], $tx_date),
+                                                'ending' => $r['present_reading'],
+                                                'calibration' => $r['calibration'],
+                                                'price' => $r['price_per_liter']
+                                            ])) ?>)" title="Adjust Readings"><i class="fas fa-edit"></i> Edit</button>
+                                            <!-- Reject -->
+                                            <button class="act-btn act-btn-reject" onclick="openRejectModal(<?= $r['id'] ?>, '<?= $r['transaction_id'] ?>')" title="Reject"><i class="fas fa-times"></i> Reject</button>
+                                        <?php else: ?>
+                                            <?php 
+                                                $preceding = get_preceding_shift_and_date($pdo, $r['shift_period'], $tx_date);
+                                                $prec_lbl = $preceding ? (formatShiftLabel($preceding['shift_key']) . ' on ' . $preceding['date']) : 'Shift 1';
+                                            ?>
+                                            <button class="act-btn disabled" disabled title="Waiting for preceding shift (<?= $prec_lbl ?>) validation"><i class="fas fa-lock"></i> Locked</button>
+                                            <span style="font-size:9px; color:#dc2626; text-align:center; display:block;">⚠️ Check preceding shift</span>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <button class="act-btn act-btn-view" onclick="openViewModal(<?= htmlspecialchars(json_encode([
+                                            'txn_id' => $r['transaction_id'],
+                                            'pump' => $r['pump_number'] ?? '—',
+                                            'fuel_type' => $r['fuel_type'],
+                                            'beginning' => number_format($r['previous_reading'], 2),
+                                            'ending' => number_format($r['present_reading'], 2),
+                                            'staff_cal' => number_format($r['staff_calibration'], 2) . ' L',
+                                            'mgr_cal' => number_format($r['calibration'], 2) . ' L',
+                                            'liters_sold' => number_format($r['liters_sold'], 2) . ' L',
+                                            'total_amount' => '₱' . number_format($r['total_amount'], 2),
+                                            'staff' => $r['staff_name'],
+                                            'status' => getStatusLabel($r['status']),
+                                            'validator' => $r['validator_name'],
+                                            'validated_at' => $r['validated_at'] ? date('M d, Y h:i A', strtotime($r['validated_at'])) : '—',
+                                            'remarks' => $r['reject_reason'] ?: '—'
+                                        ])) ?>)"><i class="fas fa-eye"></i> View</button>
+                                    <?php endif; ?>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
-<!-- == MODAL: VIEW PUMP DETAILS == -->
-<div id="viewPumpModal" class="modal-overlay">
-    <div class="modal-box">
-        <div class="modal-header">
-            <h3>Pump Details</h3>
-            <span class="close" onclick="closeModal('viewPumpModal')">&times;</span>
-        </div>
-        <div class="modal-body" id="pumpDetailsContent">
-            <!-- Rendered dynamically -->
-        </div>
-        <div class="modal-footer">
-            <button class="modal-btn modal-btn-secondary" onclick="closeModal('viewPumpModal')">Close</button>
-        </div>
-    </div>
-</div>
-
-<!-- == MODAL: UPDATE CALIBRATION == -->
-<div id="calibrationModal" class="modal-overlay">
-    <div class="modal-box">
-        <form method="post" action="manager_fuel_pump_master.php">
-            <input type="hidden" name="action" value="update_calibration">
-            <input type="hidden" name="pump_id" id="cal_pump_id">
+<!-- Adjust / Edit Modal -->
+<div id="adjustModal" class="modal">
+    <div class="modal-content">
+        <form method="post">
+            <input type="hidden" name="action" value="adjust">
+            <input type="hidden" name="id" id="adj_tx_id">
             
             <div class="modal-header">
-                <h3>Update Nozzle Calibration</h3>
-                <span class="close" onclick="closeModal('calibrationModal')">&times;</span>
+                <h3>Adjust Calibration & Readings</h3>
+                <button type="button" onclick="closeModal('adjustModal')" style="border:none;background:none;font-size:20px;cursor:pointer;">&times;</button>
             </div>
+            
             <div class="modal-body">
-                <div class="modal-form-row">
-                    <label>Pump Number / Name</label>
-                    <input type="text" id="cal_pump_name" readonly style="background: #f1f5f9; color: #475569;">
+                <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 10px; font-size: 11px; color: #1e3a8a; margin-bottom: 14px;">
+                    <i class="fas fa-info-circle"></i> <strong>Sequence Rules:</strong> The beginning reading is programmatically set to match the validated ending reading of the preceding shift to maintain a seamless audit trail.
                 </div>
                 
-                <div class="modal-form-row">
-                    <label>Fuel Type / Tank</label>
-                    <input type="text" id="cal_fuel_type" readonly style="background: #f1f5f9; color: #475569;">
+                <div class="details-grid" style="margin-bottom: 12px;">
+                    <div>
+                        <span class="details-lbl">Fuel Line</span>
+                        <div class="details-val" id="adj_lbl_pump"></div>
+                    </div>
+                    <div>
+                        <span class="details-lbl">Fuel Type</span>
+                        <div class="details-val" id="adj_lbl_fuel"></div>
+                    </div>
                 </div>
 
-                <div class="modal-form-row">
-                    <label>Previous Calibration Value (Liters)</label>
-                    <input type="text" id="cal_prev_val" readonly style="background: #f1f5f9; color: #475569;">
+                <div class="modal-fg">
+                    <label>Beginning Reading (Preceding Ending)</label>
+                    <input type="number" step="0.01" id="adj_beginning" name="beginning" readonly>
+                </div>
+                <div class="modal-fg">
+                    <label>Ending Reading</label>
+                    <input type="number" step="0.01" id="adj_ending" name="ending" required oninput="calculateAdjustedLiters()">
+                </div>
+                <div class="modal-fg">
+                    <label>Manager Calibration (Liters)</label>
+                    <input type="number" step="0.1" id="adj_calibration" name="calibration" required oninput="calculateAdjustedLiters()">
                 </div>
                 
-                <div class="modal-form-row">
-                    <label>New Calibration Value (Liters) *</label>
-                    <input type="number" step="0.001" name="calibration_value" required placeholder="e.g. 0.050 or -0.020">
-                    <span style="font-size: 10px; color: #64748b; margin-top: 2px; display: block;">
-                        Positive value represents over-dispensing correction (adds stock adjustments), negative represents under-dispensing.
-                    </span>
+                <div class="modal-fg" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; margin-top: 10px;">
+                    <span class="details-lbl">Calculated Liters Sold</span>
+                    <div id="adj_calculated_liters" style="font-size: 16px; font-weight: 700; color: #00264D; margin-top: 2px;">0.00 L</div>
                 </div>
                 
-                <div class="modal-form-row">
-                    <label>Calibration Correction Reason *</label>
-                    <textarea name="reason" required placeholder="Describe the reason (e.g. periodic validation with 10L calibration bucket, nozzle replacement verification...)"></textarea>
+                <div class="modal-fg" style="margin-top: 10px;">
+                    <label>Reason for Adjustment</label>
+                    <textarea name="remarks" rows="3" required placeholder="Provide clear reason for this override..."></textarea>
                 </div>
             </div>
+            
             <div class="modal-footer">
-                <button type="button" class="modal-btn modal-btn-secondary" onclick="closeModal('calibrationModal')">Cancel</button>
-                <button type="submit" class="modal-btn modal-btn-primary">Save Calibration</button>
+                <button type="button" class="ato-btn ato-btn-reset" onclick="closeModal('adjustModal')">Cancel</button>
+                <button type="submit" class="ato-btn ato-btn-filter" style="background: #002F70 !important; color: white !important;"><i class="fas fa-save"></i> Save Adjustment</button>
             </div>
         </form>
     </div>
 </div>
 
-<!-- == MODAL: CALIBRATION HISTORY == -->
-<div id="historyModal" class="modal-overlay">
-    <div class="modal-box" style="max-width: 650px;">
+<!-- Reject Modal -->
+<div id="rejectModal" class="modal">
+    <div class="modal-content">
+        <form method="post">
+            <input type="hidden" name="action" value="reject">
+            <input type="hidden" name="id" id="reject_tx_id">
+            
+            <div class="modal-header">
+                <h3>Reject Reading Entry</h3>
+                <button type="button" onclick="closeModal('rejectModal')" style="border:none;background:none;font-size:20px;cursor:pointer;">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <p style="font-size: 12.5px; color: #475569; margin-bottom: 12px;">
+                    Are you sure you want to reject transaction <strong id="reject_lbl_txn"></strong>? It will be returned to the staff for re-encoding.
+                </p>
+                <div class="modal-fg">
+                    <label>Reason for Rejection</label>
+                    <textarea name="remarks" rows="3" required placeholder="Specify why the meter reading/calibration was rejected..."></textarea>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="ato-btn ato-btn-reset" onclick="closeModal('rejectModal')">Cancel</button>
+                <button type="submit" class="ato-btn ato-btn-pdf" style="background: #dc2626 !important; color: white !important;"><i class="fas fa-times"></i> Reject Entry</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- View Details Modal -->
+<div id="viewModal" class="modal">
+    <div class="modal-content">
         <div class="modal-header">
-            <h3 id="historyModalTitle">Calibration History</h3>
-            <span class="close" onclick="closeModal('historyModal')">&times;</span>
+            <h3>Calibration Entry Audit Details</h3>
+            <button type="button" onclick="closeModal('viewModal')" style="border:none;background:none;font-size:20px;cursor:pointer;">&times;</button>
         </div>
         <div class="modal-body">
-            <div style="overflow-x: auto;">
-                <table class="afto-tbl" style="font-size: 11px;">
-                    <thead>
-                        <tr>
-                            <th>Update Date</th>
-                            <th class="align-right">Prev Value</th>
-                            <th class="align-right">New Value</th>
-                            <th class="align-right">Difference</th>
-                            <th>Changed By</th>
-                            <th>Reason / Explanation</th>
-                        </tr>
-                    </thead>
-                    <tbody id="historyTableBody">
-                        <!-- Loaded dynamically from JSON -->
-                    </tbody>
-                </table>
+            <div class="details-grid">
+                <div class="details-item">
+                    <div class="details-lbl">Transaction ID</div>
+                    <div class="details-val" id="view_txn_id"></div>
+                </div>
+                <div class="details-item">
+                    <div class="details-lbl">Fuel Line (Pump)</div>
+                    <div class="details-val" id="view_pump"></div>
+                </div>
+                <div class="details-item">
+                    <div class="details-lbl">Fuel Type</div>
+                    <div class="details-val" id="view_fuel_type"></div>
+                </div>
+                <div class="details-item">
+                    <div class="details-lbl">Staff Encoder</div>
+                    <div class="details-val" id="view_staff"></div>
+                </div>
+                <div class="details-item">
+                    <div class="details-lbl">Beginning Reading</div>
+                    <div class="details-val" id="view_beginning"></div>
+                </div>
+                <div class="details-item">
+                    <div class="details-lbl">Ending Reading</div>
+                    <div class="details-val" id="view_ending"></div>
+                </div>
+                <div class="details-item">
+                    <div class="details-lbl">Staff Calibration</div>
+                    <div class="details-val" id="view_staff_cal"></div>
+                </div>
+                <div class="details-item">
+                    <div class="details-lbl">Manager Calibration</div>
+                    <div class="details-val" id="view_mgr_cal" style="font-weight:700;"></div>
+                </div>
+                <div class="details-item">
+                    <div class="details-lbl">Liters Sold</div>
+                    <div class="details-val" id="view_liters_sold"></div>
+                </div>
+                <div class="details-item">
+                    <div class="details-lbl">Total Amount</div>
+                    <div class="details-val" id="view_total_amount"></div>
+                </div>
+                <div class="details-item">
+                    <div class="details-lbl">Review Status</div>
+                    <div class="details-val" id="view_status"></div>
+                </div>
+                <div class="details-item">
+                    <div class="details-lbl">Validator Manager</div>
+                    <div class="details-val" id="view_validator"></div>
+                </div>
+                <div class="details-item full-width">
+                    <div class="details-lbl">Validation Timestamp</div>
+                    <div class="details-val" id="view_validated_at"></div>
+                </div>
+                <div class="details-item full-width">
+                    <div class="details-lbl">Manager Notes / Reason</div>
+                    <div class="details-val" id="view_remarks" style="white-space:pre-wrap;font-weight:normal;color:#475569;"></div>
+                </div>
             </div>
         </div>
         <div class="modal-footer">
-            <button class="modal-btn modal-btn-secondary" onclick="closeModal('historyModal')">Close</button>
+            <button type="button" class="ato-btn ato-btn-reset" onclick="closeModal('viewModal')">Close</button>
         </div>
     </div>
 </div>
 
 <script>
-// â”€â”€ Calibration history pre-loaded from PHP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const calibrationLogsAll = <?= json_encode($calibration_history_all) ?>;
+let activePrice = 0.00;
 
-// â”€â”€ Modal open/close â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function closeModal(id) {
-    document.getElementById(id).classList.remove('active');
+function openAdjustModal(data) {
+    document.getElementById('adj_tx_id').value = data.id;
+    document.getElementById('adj_lbl_pump').innerText = data.pump;
+    document.getElementById('adj_lbl_fuel').innerText = data.fuel_type;
+    document.getElementById('adj_beginning').value = parseFloat(data.beginning).toFixed(2);
+    document.getElementById('adj_ending').value = parseFloat(data.ending).toFixed(2);
+    document.getElementById('adj_calibration').value = parseFloat(data.calibration).toFixed(2);
+    activePrice = parseFloat(data.price || 0);
+    calculateAdjustedLiters();
+    document.getElementById('adjustModal').style.display = 'flex';
 }
-document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
-    overlay.addEventListener('click', function(e) {
-        if (e.target === overlay) closeModal(overlay.id);
-    });
-});
 
-// â”€â”€ VIEW PUMP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-document.querySelectorAll('.btn-view-pump').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-        var p;
-        try { p = JSON.parse(this.dataset.pump); }
-        catch(e) { alert('Error reading pump data: ' + e.message); return; }
+function calculateAdjustedLiters() {
+    const beginning = parseFloat(document.getElementById('adj_beginning').value) || 0;
+    const ending = parseFloat(document.getElementById('adj_ending').value) || 0;
+    const calibration = parseFloat(document.getElementById('adj_calibration').value) || 0;
+    const liters = Math.max(0, ending - beginning - calibration);
+    document.getElementById('adj_calculated_liters').innerText = liters.toFixed(2) + ' L';
+}
 
-        var cal = parseFloat(p.calibration_value) || 0;
-        var calStr = (cal >= 0 ? '+' : '') + cal.toFixed(3) + ' L';
-        var capFmt = parseFloat(p.tank_capacity || 0).toLocaleString();
+function openRejectModal(id, txnId) {
+    document.getElementById('reject_tx_id').value = id;
+    document.getElementById('reject_lbl_txn').innerText = txnId;
+    document.getElementById('rejectModal').style.display = 'flex';
+}
 
-        var html = '<div class="detail-row"><span class="detail-lbl">Pump ID</span><span class="detail-val">PUMP-' + p.id + '</span></div>'
-            + '<div class="detail-row"><span class="detail-lbl">Pump Name</span><span class="detail-val">' + (p.pump_number || '—') + '</span></div>'
-            + '<div class="detail-row"><span class="detail-lbl">Fuel Type</span><span class="detail-val">' + (p.fuel_type_name || '—') + '</span></div>'
-            + '<div class="detail-row"><span class="detail-lbl">Assigned Tank</span><span class="detail-val">' + (p.fuel_type_name || '') + ' Tank (Cap: ' + capFmt + ' L)</span></div>'
-            + '<div class="detail-row"><span class="detail-lbl">Current Stock</span><span class="detail-val">' + parseFloat(p.tank_stock || 0).toFixed(2) + ' L</span></div>'
-            + '<div class="detail-row"><span class="detail-lbl">Calibration Value</span><span class="detail-val" style="font-weight:bold;color:' + (cal >= 0 ? '#16a34a' : '#dc2626') + '">' + calStr + '</span></div>'
-            + '<div class="detail-row"><span class="detail-lbl">Status</span><span class="detail-val" style="font-weight:bold;">' + (p.status || '—') + '</span></div>'
-            + '<div class="detail-row"><span class="detail-lbl">Date Added</span><span class="detail-val">' + (p.created_at || '—') + '</span></div>';
+function openViewModal(data) {
+    document.getElementById('view_txn_id').innerText = data.txn_id;
+    document.getElementById('view_pump').innerText = data.pump;
+    document.getElementById('view_fuel_type').innerText = data.fuel_type;
+    document.getElementById('view_staff').innerText = data.staff;
+    document.getElementById('view_beginning').innerText = data.beginning;
+    document.getElementById('view_ending').innerText = data.ending;
+    document.getElementById('view_staff_cal').innerText = data.staff_cal;
+    document.getElementById('view_mgr_cal').innerText = data.mgr_cal;
+    document.getElementById('view_liters_sold').innerText = data.liters_sold;
+    document.getElementById('view_total_amount').innerText = data.total_amount;
+    document.getElementById('view_status').innerText = data.status;
+    document.getElementById('view_validator').innerText = data.validator;
+    document.getElementById('view_validated_at').innerText = data.validated_at;
+    document.getElementById('view_remarks').innerText = data.remarks;
+    document.getElementById('viewModal').style.display = 'flex';
+}
 
-        if (p.calibration_updated_at) {
-            html += '<div style="margin-top:12px;border-top:1px solid #e2e8f0;padding-top:12px;">'
-                + '<div class="detail-lbl" style="margin-bottom:4px;">Last Calibration Update</div>'
-                + '<div class="detail-row"><span class="detail-lbl">Date Updated</span><span class="detail-val">' + p.calibration_updated_at + '</span></div>'
-                + '<div class="detail-row"><span class="detail-lbl">Updated By</span><span class="detail-val">' + (p.updated_by_name || '—') + '</span></div>'
-                + '<div class="detail-lbl" style="margin-top:8px;margin-bottom:4px;">Notes / Remarks</div>'
-                + '<div style="font-size:11px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;padding:6px;border-radius:4px;font-style:italic;">'
-                + (p.calibration_notes || 'No notes provided.') + '</div></div>';
-        }
+function closeModal(modalId) {
+    document.getElementById(modalId).style.display = 'none';
+}
 
-        document.getElementById('pumpDetailsContent').innerHTML = html;
-        document.getElementById('viewPumpModal').classList.add('active');
-    });
-});
-
-// â”€â”€ CALIBRATION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-document.querySelectorAll('.btn-calibrate').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-        var id       = this.dataset.pumpId;
-        var name     = this.dataset.pumpName;
-        var prevVal  = parseFloat(this.dataset.calVal) || 0;
-        var fuelType = this.dataset.fuelType;
-
-        document.getElementById('cal_pump_id').value   = id;
-        document.getElementById('cal_pump_name').value  = name;
-        document.getElementById('cal_fuel_type').value  = fuelType;
-        document.getElementById('cal_prev_val').value   = (prevVal >= 0 ? '+' : '') + prevVal.toFixed(3) + ' L';
-
-        var form = document.getElementById('calibrationModal').querySelector('form');
-        form.querySelector('input[name="calibration_value"]').value = '';
-        form.querySelector('textarea[name="reason"]').value = '';
-
-        document.getElementById('calibrationModal').classList.add('active');
-    });
-});
-
-// â”€â”€ ACTIVATE / DEACTIVATE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-document.querySelectorAll('.btn-status-submit').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-        var msg = this.dataset.confirm || 'Are you sure?';
-        if (confirm(msg)) {
-            this.closest('form').submit();
-        }
-    });
-});
-
-// â”€â”€ CALIBRATION HISTORY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-document.querySelectorAll('.btn-view-history').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-        var fuelType = this.dataset.fuelType;
-        var pumpName = this.dataset.pumpName;
-
-        var logs = calibrationLogsAll.filter(function(l) {
-            return l.fuel_type.toLowerCase().trim() === fuelType.toLowerCase().trim();
-        });
-
-        document.getElementById('historyModalTitle').textContent = 'Calibration Log â€“ Pump ' + pumpName + ' (' + fuelType + ')';
-
-        var html = '';
-        if (logs.length === 0) {
-            html = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#94a3b8;"><i class="fas fa-history"></i> No calibration history found for this pump.</td></tr>';
-        } else {
-            logs.forEach(function(l) {
-                var prev = parseFloat(l.previous_calibration);
-                var next = parseFloat(l.new_calibration);
-                var diff = next - prev;
-                var diffStr = (diff >= 0 ? '+' : '') + diff.toFixed(3) + ' L';
-                var diffColor = diff > 0 ? '#16a34a' : (diff < 0 ? '#dc2626' : '#475569');
-                var d = new Date(l.updated_at);
-                var dateStr = d.toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'})
-                            + ' ' + d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit'});
-                html += '<tr>'
-                    + '<td>' + dateStr + '</td>'
-                    + '<td class="align-right">' + prev.toFixed(3) + ' L</td>'
-                    + '<td class="align-right">' + next.toFixed(3) + ' L</td>'
-                    + '<td class="align-right" style="font-weight:bold;color:' + diffColor + '">' + diffStr + '</td>'
-                    + '<td>' + (l.updater_name || '—') + '</td>'
-                    + '<td>' + (l.reason || '—') + '</td>'
-                    + '</tr>';
-            });
-        }
-
-        document.getElementById('historyTableBody').innerHTML = html;
-        document.getElementById('historyModal').classList.add('active');
-    });
-});
-
-
+// Close modals when clicking outside
+window.onclick = function(event) {
+    if (event.target.classList.contains('modal')) {
+        event.target.style.display = 'none';
+    }
+}
 </script>
 
-<?php
-require_once __DIR__ . '/../partials/footer.php';
-?>
-
-
+<?php require_once __DIR__ . '/../partials/footer.php'; ?>

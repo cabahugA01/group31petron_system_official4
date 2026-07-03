@@ -171,7 +171,7 @@ $jo_pay_col    = vt_has($jo_cols, 'payment_method') ? "COALESCE(jo.payment_metho
 $jo_cost_col   = vt_has($jo_cols, 'total_cost') ? 'COALESCE(jo.total_cost,0)' : 'COALESCE(jo.estimated_cost,0)';
 $jo_paid_col   = vt_has($jo_cols, 'amount_paid') ? 'jo.amount_paid' : 'NULL';
 $jo_vby_col    = vt_has($jo_cols, 'validated_by') ? "COALESCE(NULLIF(CONCAT(v.first_name,' ',v.last_name),' '), v.username, 'N/A')" : "'N/A'";
-$jo_shift_col  = "CASE WHEN LOWER(TRIM(COALESCE(jo.shift_period, jo.shift_name, u.assigned_shift, u.shift_assignment, ''))) IN ('first', 'shift 1', 'shift1') THEN 'Shift 1' WHEN LOWER(TRIM(COALESCE(jo.shift_period, jo.shift_name, u.assigned_shift, u.shift_assignment, ''))) IN ('second', 'shift 2', 'shift2') THEN 'Shift 2' ELSE COALESCE(NULLIF(TRIM(jo.shift_period),''), NULLIF(TRIM(jo.shift_name),''), NULLIF(TRIM(u.assigned_shift),''), NULLIF(TRIM(u.shift_assignment),''), 'N/A') END";
+$jo_shift_col  = "CASE WHEN LOWER(TRIM(COALESCE(sh.name, u.assigned_shift, u.shift_assignment, ''))) IN ('first', 'shift 1', 'shift1') THEN 'Shift 1' WHEN LOWER(TRIM(COALESCE(sh.name, u.assigned_shift, u.shift_assignment, ''))) IN ('second', 'shift 2', 'shift2') THEN 'Shift 2' ELSE COALESCE(NULLIF(TRIM(sh.name),''), NULLIF(TRIM(u.assigned_shift),''), NULLIF(TRIM(u.shift_assignment),''), 'N/A') END";
 $jo_staff_id   = vt_has($jo_cols, 'created_by') ? 'COALESCE(jo.created_by, jo.user_id)' : 'jo.user_id';
 
 $jo_where  = "WHERE jo.station_id = ?";
@@ -197,7 +197,7 @@ if ($staff_filter !== '') {
     $jo_params[] = $staff_filter;
 }
 if ($shift_filter !== '') {
-    $jo_where .= " AND (jo.shift_period = ? OR u.assigned_shift = ? OR u.shift_assignment = ?)";
+    $jo_where .= " AND (sh.name = ? OR u.assigned_shift = ? OR u.shift_assignment = ?)";
     $jo_params[] = $shift_filter;
     $jo_params[] = $shift_filter;
     $jo_params[] = $shift_filter;
@@ -239,6 +239,7 @@ try {
         FROM job_orders jo
         LEFT JOIN users u ON u.id = COALESCE(jo.created_by, jo.user_id)
         LEFT JOIN users v ON v.id = jo.validated_by
+        LEFT JOIN shifts sh ON sh.id = jo.shift_id
         {$jo_where}
         ORDER BY jo.created_at DESC
         LIMIT 500
@@ -917,35 +918,218 @@ try {
 </div>
 
 <!-- ════════════════════════════════════════════════════════════ VOID MODAL -->
+<!-- ════════════════════════════════════════════════════════════ VOID MODAL -->
 <div class="vt-modal-overlay" id="voidModal">
-  <div class="vt-modal" style="max-width:500px;">
-    <div class="vt-modal-header">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <div style="width:36px;height:36px;background:#fef2f2;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-          <i class="fas fa-ban" style="color:#dc2626;font-size:15px;"></i>
+  <div class="vt-modal" style="max-width:750px; width:95%;">
+    <!-- Normal Modal Content -->
+    <div id="voidModalMainContent" style="display:flex; flex-direction:column; max-height:90vh; width:100%;">
+      <div class="vt-modal-header" style="background:#fff3f3; border-bottom:1px solid #fee2e2;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:36px;height:36px;background:#fef2f2;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fas fa-ban" style="color:#dc2626;font-size:15px;"></i>
+          </div>
+          <div>
+            <div style="font-size:16px;font-weight:700;color:#991b1b;display:flex;align-items:center;gap:6px;">🚫 VOID TRANSACTION</div>
+            <div style="font-size:11px;color:#7f1d1d;margin-top:2px;">Void a completed Merchandise / Job Order transaction. Only Managers are authorized to perform this action.</div>
+          </div>
         </div>
-        <div>
-          <div style="font-size:14px;font-weight:700;color:#1e293b;">Void Transaction</div>
+        <button type="button" class="vt-modal-close" onclick="closeVoidModal()">&times;</button>
+      </div>
+      
+      <div class="vt-modal-body" style="padding:20px; overflow-y:auto;">
+        
+        <!-- Two Column Layout for info -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+          
+          <!-- Column 1: Read-Only Info -->
+          <div>
+            <div style="font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">
+              <i class="fas fa-info-circle"></i> Transaction Information
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;font-size:11px;">
+              <div><span style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;">Transaction ID</span><strong id="voidInfoTxnId" style="font-family:monospace;font-size:11px;color:#0f172a;">-</strong></div>
+              <div><span style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;">Transaction Type</span><span id="voidInfoTxnType" style="font-weight:600;color:#0f172a;">-</span></div>
+              <div style="grid-column: span 2;"><span style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;">Customer Name</span><span id="voidInfoCustomer" style="color:#0f172a;">-</span></div>
+              <div><span style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;">Processed By</span><span id="voidInfoStaff" style="color:#0f172a;">-</span></div>
+              <div><span style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;">Shift</span><span id="voidInfoShift" style="color:#0f172a;">-</span></div>
+              <div style="grid-column: span 2;"><span style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;">Date & Time</span><span id="voidInfoDateTime" style="color:#0f172a;">-</span></div>
+              <div><span style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;">Payment Method</span><span id="voidInfoPayMethod" style="color:#0f172a;">-</span></div>
+              <div><span style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;">Payment Status</span><span id="voidInfoPayStatus" style="color:#0f172a;">-</span></div>
+              <div><span style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;">Transaction Status</span><span id="voidInfoStatus" style="color:#0f172a;">-</span></div>
+              <div><span style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;">Total Amount</span><strong id="voidInfoTotalAmount" style="color:#002F70;font-size:12px;">-</strong></div>
+            </div>
+          </div>
+          
+          <!-- Column 2: Items list -->
+          <div>
+            <div style="font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">
+              <i class="fas fa-shopping-cart"></i> Purchased Items / Services
+            </div>
+            <div id="voidItemsContainer" style="border:1px solid #cbd5e1;border-radius:8px;overflow-y:auto;max-height:165px;background:#fff;padding:8px;font-size:11px;">
+              <!-- Dynamic content -->
+            </div>
+          </div>
+          
         </div>
+
+        <!-- Inventory and Sales Impact Preview Row -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+          <!-- Inventory Impact -->
+          <div>
+            <div style="font-size:11px;font-weight:800;color:#16a34a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">
+              <i class="fas fa-cubes"></i> Inventory Impact
+            </div>
+            <div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:8px;padding:12px;min-height:90px;display:flex;flex-direction:column;justify-content:space-between;">
+              <div>
+                <div style="font-weight:700;color:#15803d;font-size:11px;margin-bottom:4px;">Inventory To Restore:</div>
+                <div id="voidInventoryImpactList" style="display:flex;flex-direction:column;gap:3px;color:#166534;font-size:11px;font-weight:600;">
+                  <!-- ✔ Product Name (+Qty) -->
+                </div>
+              </div>
+              <div style="font-size:10px;color:#15803d;margin-top:6px;font-style:italic;">
+                These quantities will automatically return to inventory after voiding.
+              </div>
+            </div>
+          </div>
+          
+          <!-- Sales Impact -->
+          <div>
+            <div style="font-size:11px;font-weight:800;color:#ea580c;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">
+              <i class="fas fa-chart-bar"></i> Sales Impact
+            </div>
+            <div style="border:1px solid #fed7aa;background:#fff7ed;border-radius:8px;padding:12px;min-height:90px;display:flex;flex-direction:column;justify-content:space-between;">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div>
+                  <span style="display:block;font-size:10px;font-weight:700;color:#c2410c;">Current Sale</span>
+                  <strong id="voidSalesCurrent" style="font-size:13px;color:#0f172a;">₱0.00</strong>
+                </div>
+                <div>
+                  <span style="display:block;font-size:10px;font-weight:700;color:#c2410c;">After Void</span>
+                  <strong id="voidSalesAfter" style="color:#dc2626;font-size:13px;">-₱0.00</strong>
+                </div>
+              </div>
+              <div style="font-size:10px;color:#9a3412;margin-top:4px;font-weight:600;display:flex;flex-direction:column;gap:2px;">
+                <div>✔ Sales Report: <span id="voidSalesDiff">-₱0.00</span></div>
+                <div>✔ Payment Report Updated</div>
+                <div>✔ Customer Purchase History Updated</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Void Details & Manager Verification -->
+        <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:14px; margin-bottom:16px;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
+            <div>
+              <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;display:block;margin-bottom:4px;">Void Reason <span style="color:#dc2626;">*</span></label>
+              <select id="voidReasonSelect" onchange="toggleVoidOtherReason()" style="width:100%;height:32px;padding:0 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;background:#fff;">
+                <option value="" disabled selected>Select Reason...</option>
+                <option value="Wrong Product">Wrong Product</option>
+                <option value="Wrong Quantity">Wrong Quantity</option>
+                <option value="Wrong Customer">Wrong Customer</option>
+                <option value="Duplicate Transaction">Duplicate Transaction</option>
+                <option value="Customer Cancelled">Customer Cancelled</option>
+                <option value="Pricing Error">Pricing Error</option>
+                <option value="Staff Encoding Error">Staff Encoding Error</option>
+                <option value="System Error">System Error</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;display:block;margin-bottom:4px;">Manager Remarks <span style="color:#dc2626;">*</span></label>
+              <textarea id="voidManagerRemarksNew" rows="1" placeholder="Manager notes..." oninput="validateVoidForm()" style="width:100%;height:32px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;resize:none;box-sizing:border-box;vertical-align:middle;"></textarea>
+            </div>
+          </div>
+          
+          <div id="voidReasonOtherContainer" style="margin-bottom:12px; display:none;">
+            <label style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;display:block;margin-bottom:4px;">If Other, Specify Reason <span style="color:#dc2626;">*</span></label>
+            <input type="text" id="voidReasonOther" oninput="validateVoidForm()" placeholder="Specify void reason..." style="width:100%;height:32px;padding:0 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;box-sizing:border-box;">
+          </div>
+          
+          <!-- Manager Auth -->
+          <div style="padding:10px; background:#fff; border:1px solid #e2e8f0; border-radius:6px;">
+            <div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:6px;">🔑 Manager Authentication (Recommended)</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div>
+                <label style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:3px;">Confirm Manager Password</label>
+                <input type="password" id="voidAuthPassword" oninput="validateVoidForm()" placeholder="Password..." style="width:100%;height:28px;padding:0 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;box-sizing:border-box;">
+              </div>
+              <div>
+                <label style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:3px;">Manager PIN</label>
+                <input type="password" id="voidAuthPin" maxlength="6" oninput="validateVoidForm()" placeholder="PIN..." style="width:100%;height:28px;padding:0 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;box-sizing:border-box;">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Checklist -->
+        <div style="display:grid; grid-template-columns:1fr; gap:6px; margin-bottom:16px; padding:0 4px;">
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:#334155;cursor:pointer;user-select:none;">
+            <input type="checkbox" class="void-checklist" onchange="validateVoidForm()" style="margin-top:2px;">
+            <span>I reviewed this transaction.</span>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:#334155;cursor:pointer;user-select:none;">
+            <input type="checkbox" class="void-checklist" onchange="validateVoidForm()" style="margin-top:2px;">
+            <span>I verified the inventory restoration.</span>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:#334155;cursor:pointer;user-select:none;">
+            <input type="checkbox" class="void-checklist" onchange="validateVoidForm()" style="margin-top:2px;">
+            <span>I understand sales reports will be recalculated.</span>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:#334155;cursor:pointer;user-select:none;">
+            <input type="checkbox" class="void-checklist" onchange="validateVoidForm()" style="margin-top:2px;">
+            <span>I understand customer history will be updated.</span>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:#334155;cursor:pointer;user-select:none;">
+            <input type="checkbox" class="void-checklist" onchange="validateVoidForm()" style="margin-top:2px;">
+            <span>I understand this action cannot be undone.</span>
+          </label>
+        </div>
+
+        <!-- Warning Panel -->
+        <div style="padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:11px;color:#991b1b;">
+          <strong style="display:block;margin-bottom:4px;font-size:12px;text-transform:uppercase;"><i class="fas fa-exclamation-triangle"></i> WARNING</strong>
+          <div style="margin-bottom:4px;">This transaction will be marked as VOIDED. The following actions will happen automatically:</div>
+          <ul style="margin:4px 0 4px 16px;padding:0;list-style-type:disc;line-height:1.4;">
+            <li>Merchandise stock will be restored.</li>
+            <li>Job Order consumables will be restored.</li>
+            <li>Daily Sales Report will be updated.</li>
+            <li>Payment Report will be recalculated.</li>
+            <li>Customer Purchase History will be updated.</li>
+            <li>Audit Trail will be recorded.</li>
+          </ul>
+          <strong>This action cannot be undone.</strong>
+        </div>
+
+      </div>
+      
+      <div class="vt-modal-footer" style="padding:12px 20px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" class="vt-btn vt-btn-reset" onclick="closeVoidModal()">Cancel</button>
+        <button type="button" class="vt-btn" onclick="previewVoidImpact()" style="border-color:#ea580c;color:#ea580c;height:36px;padding:0 14px;border-radius:7px;font-size:13px;font-weight:700;"><i class="fas fa-chart-line"></i> Preview Impact</button>
+        <button type="button" id="confirmVoidBtnNew" onclick="submitVoidNew()" disabled style="background:#dc2626;color:#fff;border:none;height:36px;padding:0 20px;border-radius:7px;font-size:13px;font-weight:700;cursor:not-allowed;opacity:0.6;display:inline-flex;align-items:center;gap:6px;">
+          <i class="fas fa-ban"></i> Confirm Void
+        </button>
       </div>
     </div>
-    <div class="vt-modal-body">
-      <div id="voidModalInfo" style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#991b1b;"></div>
-      <div style="margin-bottom:12px;">
-        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px;">Void Reason <span style="color:#dc2626;">*</span></label>
-        <textarea id="voidReason" rows="3" placeholder="Reason for voiding this transaction..." style="width:100%;padding:8px 10px;border:1px solid #fca5a5;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
+
+    <!-- Success Modal View (hidden by default) -->
+    <div id="voidModalSuccessContent" style="display:none; flex-direction:column; padding:30px; text-align:center; width:100%;">
+      <div style="width:64px; height:64px; background:#f0fdf4; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; margin:0 auto 16px;">
+        <i class="fas fa-check" style="color:#16a34a; font-size:32px;"></i>
+      </div>
+      <h3 style="font-size:20px; font-weight:800; color:#15803d; margin:0 0 8px;">Transaction Successfully Voided</h3>
+      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px; display:inline-block; margin:0 auto 20px; text-align:left; font-size:13px; min-width:300px;">
+        <div style="margin-bottom:6px;"><span style="color:#64748b; font-weight:600;">Transaction ID:</span> <strong id="voidSuccessTxnId" style="font-family:monospace; margin-left:8px;">-</strong></div>
+        <div style="margin-bottom:12px;"><span style="color:#64748b; font-weight:600;">Status:</span> <span style="background:#fef2f2; color:#991b1b; border:1px solid #fecaca; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700; margin-left:8px;">VOIDED</span></div>
+        <div style="display:flex; flex-direction:column; gap:4px; color:#166534; font-weight:600; font-size:12px; margin-top:10px; border-top:1px solid #e2e8f0; padding-top:10px;">
+          <div>✔ Inventory Restored Successfully</div>
+          <div>✔ Sales Updated Successfully</div>
+          <div>✔ Audit Log Created</div>
+        </div>
       </div>
       <div>
-        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px;">Manager Remarks <span style="color:#dc2626;">*</span></label>
-        <textarea id="voidManagerRemarks" rows="2" placeholder="Manager notes..." style="width:100%;padding:8px 10px;border:1px solid #fca5a5;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
+        <button type="button" class="vt-btn vt-btn-reset" style="background:#16a34a !important; color:#fff !important; border-color:#16a34a !important; height:40px; padding:0 24px;" onclick="closeVoidModalReload()">Done</button>
       </div>
-      <div style="margin-top:12px;padding:10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;font-size:12px;color:#9a3412;">
-        <i class="fas fa-exclamation-triangle"></i> <strong>Warning:</strong> This will permanently void the transaction and restore inventory. This action cannot be undone.
-      </div>
-    </div>
-    <div class="vt-modal-footer">
-      <button type="button" class="vt-btn vt-btn-reset" onclick="closeVoidModal()">Cancel</button>
-      <button type="button" id="confirmVoidBtn" onclick="submitVoid()" style="background:#dc2626;color:#fff;border:none;height:36px;padding:0 20px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-ban"></i> Confirm Void</button>
     </div>
   </div>
 </div>
@@ -1430,17 +1614,167 @@ let _voidSource = null;
 function openVoidModal(rowId, txnId, customer, source) {
     _voidRowId = rowId;
     _voidSource = source || 'merchandise_transactions';
-    document.getElementById('voidReason').value          = '';
-    document.getElementById('voidManagerRemarks').value  = '';
     
-    let info = `<i class="fas fa-ban"></i> You are about to void <strong>${txnId}</strong> — Customer: <strong>${customer}</strong>.`;
-    if (_voidSource === 'merchandise_transactions') {
-        info += `<br>Inventory and sales will be restored automatically.`;
-    } else {
-        info += `<br>The job order status will be updated to Voided.`;
+    // Reset inputs
+    document.getElementById('voidReasonSelect').value = '';
+    document.getElementById('voidReasonOther').value = '';
+    document.getElementById('voidReasonOtherContainer').style.display = 'none';
+    document.getElementById('voidManagerRemarksNew').value = '';
+    document.getElementById('voidAuthPassword').value = '';
+    document.getElementById('voidAuthPin').value = '';
+    
+    document.querySelectorAll('.void-checklist').forEach(cb => cb.checked = false);
+    
+    const confirmBtn = document.getElementById('confirmVoidBtnNew');
+    if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.style.opacity = '0.6';
+        confirmBtn.style.cursor = 'not-allowed';
     }
-    document.getElementById('voidModalInfo').innerHTML = info;
+    
+    // Set view modes
+    document.getElementById('voidModalMainContent').style.display = 'flex';
+    document.getElementById('voidModalSuccessContent').style.display = 'none';
+    
+    // Set default textual info
+    document.getElementById('voidInfoTxnId').innerText = txnId;
+    document.getElementById('voidInfoTxnType').innerText = _voidSource === 'job_orders' ? 'Job Order' : 'Merchandise';
+    document.getElementById('voidInfoCustomer').innerText = customer || 'Walk-in';
+    document.getElementById('voidInfoStaff').innerText = 'Loading...';
+    document.getElementById('voidInfoShift').innerText = 'Loading...';
+    document.getElementById('voidInfoDateTime').innerText = 'Loading...';
+    document.getElementById('voidInfoPayMethod').innerText = 'Loading...';
+    document.getElementById('voidInfoPayStatus').innerText = 'Loading...';
+    document.getElementById('voidInfoStatus').innerText = 'Loading...';
+    document.getElementById('voidInfoTotalAmount').innerText = 'Loading...';
+    
+    document.getElementById('voidItemsContainer').innerHTML = '<div style="text-align:center;padding:20px;color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading items...</div>';
+    document.getElementById('voidInventoryImpactList').innerHTML = '<div style="color:#64748b;">Loading...</div>';
+    document.getElementById('voidSalesCurrent').innerText = '₱0.00';
+    document.getElementById('voidSalesAfter').innerText = '₱0.00';
+    document.getElementById('voidSalesDiff').innerText = '-₱0.00';
+    
     document.getElementById('voidModal').classList.add('active');
+    
+    // Fetch data using Promise.all
+    Promise.all([
+        fetch('../backend/get_transaction_details.php?type=' + _voidSource + '&id=' + rowId).then(r => r.json()),
+        fetch('get_transaction_items.php?id=' + rowId + '&source=' + _voidSource).then(r => r.json())
+    ])
+    .then(([detailsRes, itemsRes]) => {
+        if (!detailsRes.success || !itemsRes.items) {
+            alert('Error loading transaction details.');
+            return;
+        }
+        
+        const details = detailsRes;
+        const items = itemsRes.items || [];
+        
+        // Populate header fields
+        document.getElementById('voidInfoTxnType').innerText = _voidSource === 'job_orders' ? 'Job Order' : (details.type === 'combined' ? 'Combined' : 'Merchandise');
+        document.getElementById('voidInfoCustomer').innerText = details.customer_name || 'Walk-in';
+        document.getElementById('voidInfoStaff').innerText = details.staff_name || 'Staff';
+        document.getElementById('voidInfoShift').innerText = details.shift || 'N/A';
+        document.getElementById('voidInfoDateTime').innerText = details.transaction_date || 'N/A';
+        document.getElementById('voidInfoPayMethod').innerText = details.payment_method || 'N/A';
+        document.getElementById('voidInfoPayStatus').innerText = details.payment_status || details.validation_status || 'N/A';
+        document.getElementById('voidInfoStatus').innerText = details.validation_status || details.job_status || 'Completed';
+        
+        const grandTotal = parseFloat(itemsRes.total_amount || details.total_amount || 0);
+        document.getElementById('voidInfoTotalAmount').innerText = '₱' + grandTotal.toFixed(2);
+        
+        // Render items breakdown inside voidItemsContainer
+        let itemsHtml = '';
+        const services = items.filter(i => i.item_type === 'service');
+        const merchandise = items.filter(i => i.item_type !== 'service');
+        
+        if (merchandise.length > 0) {
+            itemsHtml += `<div style="font-weight:700;color:#15803d;margin-bottom:4px;">Merchandise</div>
+            <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
+                <thead>
+                    <tr style="background:#f1f5f9;text-align:left;font-size:10px;">
+                        <th style="padding:4px;border-bottom:1px solid #cbd5e1;">Product</th>
+                        <th style="padding:4px;border-bottom:1px solid #cbd5e1;text-align:center;">Qty</th>
+                        <th style="padding:4px;border-bottom:1px solid #cbd5e1;text-align:right;">Unit Price</th>
+                        <th style="padding:4px;border-bottom:1px solid #cbd5e1;text-align:right;">Total</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+            merchandise.forEach(item => {
+                itemsHtml += `
+                    <tr>
+                        <td style="padding:4px;border-bottom:1px solid #f1f5f9;font-weight:600;">${item.product_name}</td>
+                        <td style="padding:4px;border-bottom:1px solid #f1f5f9;text-align:center;">${parseInt(item.quantity)}</td>
+                        <td style="padding:4px;border-bottom:1px solid #f1f5f9;text-align:right;">₱${parseFloat(item.unit_price).toFixed(2)}</td>
+                        <td style="padding:4px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#002F70;">₱${parseFloat(item.subtotal).toFixed(2)}</td>
+                    </tr>`;
+            });
+            
+            // Subtotal, Discount, VAT, Grand Total
+            const subtotal = details.subtotal_amount && details.subtotal_amount !== 'N/A' ? parseFloat(details.subtotal_amount) : grandTotal / 1.12;
+            const vat = details.vat_amount && details.vat_amount !== 'N/A' ? parseFloat(details.vat_amount) : grandTotal - subtotal;
+            
+            itemsHtml += `
+                </tbody>
+            </table>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:10px;color:#475569;margin-bottom:8px;padding-right:4px;">
+                <div>Subtotal: <strong>₱${subtotal.toFixed(2)}</strong></div>
+                <div>Discount: <strong>₱0.00</strong></div>
+                <div>VAT (12%): <strong>₱${vat.toFixed(2)}</strong></div>
+                <div style="font-size:11px;color:#002F70;margin-top:2px;">Grand Total: <strong>₱${grandTotal.toFixed(2)}</strong></div>
+            </div>`;
+        }
+        
+        if (services.length > 0) {
+            itemsHtml += `<div style="font-weight:700;color:#b45309;margin-top:8px;margin-bottom:4px;">Job Order</div>
+            <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
+                <thead>
+                    <tr style="background:#fffbeb;text-align:left;font-size:10px;">
+                        <th style="padding:4px;border-bottom:1px solid #fde68a;">Service</th>
+                        <th style="padding:4px;border-bottom:1px solid #fde68a;text-align:right;">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+            services.forEach(item => {
+                itemsHtml += `
+                    <tr>
+                        <td style="padding:4px;border-bottom:1px solid #fef3c7;font-weight:600;">${item.product_name}</td>
+                        <td style="padding:4px;border-bottom:1px solid #fef3c7;text-align:right;font-weight:700;color:#002F70;">₱${parseFloat(item.subtotal).toFixed(2)}</td>
+                    </tr>`;
+            });
+            itemsHtml += `
+                </tbody>
+            </table>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:10px;color:#475569;margin-bottom:8px;padding-right:4px;">
+                <div style="font-size:11px;color:#002F70;margin-top:2px;">Grand Total: <strong>₱${grandTotal.toFixed(2)}</strong></div>
+            </div>`;
+        }
+        
+        document.getElementById('voidItemsContainer').innerHTML = itemsHtml || '<div style="color:#94a3b8;">No items in transaction.</div>';
+        
+        // Render Inventory Restore Impact Preview list
+        let invHtml = '';
+        if (merchandise.length > 0) {
+            merchandise.forEach(item => {
+                invHtml += `<div>✔ ${item.product_name} (+${parseInt(item.quantity)})</div>`;
+            });
+        } else {
+            invHtml = '<div style="color:#94a3b8;">No inventory items to restore.</div>';
+        }
+        document.getElementById('voidInventoryImpactList').innerHTML = invHtml;
+        
+        // Sales Impact fields
+        document.getElementById('voidSalesCurrent').innerText = '₱' + grandTotal.toFixed(2);
+        document.getElementById('voidSalesAfter').innerText = '₱0.00';
+        document.getElementById('voidSalesDiff').innerText = '-₱' + grandTotal.toFixed(2);
+        
+        validateVoidForm();
+    })
+    .catch(err => {
+        console.error(err);
+        document.getElementById('voidItemsContainer').innerHTML = '<div style="color:#dc2626;">Error loading details.</div>';
+        document.getElementById('voidInventoryImpactList').innerHTML = '<div style="color:#dc2626;">Error.</div>';
+    });
 }
 
 function closeVoidModal() {
@@ -1449,43 +1783,117 @@ function closeVoidModal() {
     _voidSource = null;
 }
 
-function submitVoid() {
-    const reason  = document.getElementById('voidReason')?.value.trim();
-    const remarks = document.getElementById('voidManagerRemarks')?.value.trim();
-    if (!reason)  { alert('Please enter the Void Reason.'); return; }
-    if (!remarks) { alert('Please enter Manager Remarks.'); return; }
+function toggleVoidOtherReason() {
+    const select = document.getElementById('voidReasonSelect');
+    const container = document.getElementById('voidReasonOtherContainer');
+    if (select.value === 'Other') {
+        container.style.display = 'block';
+    } else {
+        container.style.display = 'none';
+        document.getElementById('voidReasonOther').value = '';
+    }
+    validateVoidForm();
+}
 
-    const btn = document.getElementById('confirmVoidBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+function validateVoidForm() {
+    const reasonSelect = document.getElementById('voidReasonSelect').value;
+    const reasonOther = document.getElementById('voidReasonOther').value.trim();
+    const remarks = document.getElementById('voidManagerRemarksNew').value.trim();
+    const password = document.getElementById('voidAuthPassword').value.trim();
+    const pin = document.getElementById('voidAuthPin').value.trim();
+    
+    // Checkboxes
+    let checklistChecked = true;
+    document.querySelectorAll('.void-checklist').forEach(cb => {
+        if (!cb.checked) checklistChecked = false;
+    });
+    
+    let isReasonValid = (reasonSelect !== '');
+    if (reasonSelect === 'Other') {
+        isReasonValid = (reasonOther !== '');
+    }
+    
+    // Either Password OR PIN must be filled
+    const isAuthValid = (password !== '' || pin !== '');
+    
+    const confirmBtn = document.getElementById('confirmVoidBtnNew');
+    if (confirmBtn) {
+        if (isReasonValid && remarks !== '' && isAuthValid && checklistChecked) {
+            confirmBtn.disabled = false;
+            confirmBtn.style.opacity = '1';
+            confirmBtn.style.cursor = 'pointer';
+        } else {
+            confirmBtn.disabled = true;
+            confirmBtn.style.opacity = '0.6';
+            confirmBtn.style.cursor = 'not-allowed';
+        }
+    }
+}
 
+function previewVoidImpact() {
+    const txnId = document.getElementById('voidInfoTxnId').innerText;
+    const amt = document.getElementById('voidInfoTotalAmount').innerText;
+    
+    alert(`Void Impact Preview for ${txnId}:\n\n` +
+          `• Inventory: Stock quantities listed in the preview will be returned to store inventory.\n` +
+          `• Sales: Sales totals will decrease by ${amt}.\n` +
+          `• Reports: Shift summaries, Daily Sales, and Payment reports will exclude this transaction.\n` +
+          `• Customer: Purchase history for this customer will be updated (marked VOIDED).\n` +
+          `• Audit Log: Void event with manager name, reason, remarks, and timestamp will be logged.`);
+}
+
+function submitVoidNew() {
+    const reasonSelect = document.getElementById('voidReasonSelect').value;
+    const reasonOther = document.getElementById('voidReasonOther').value.trim();
+    const remarks = document.getElementById('voidManagerRemarksNew').value.trim();
+    const password = document.getElementById('voidAuthPassword').value.trim();
+    const pin = document.getElementById('voidAuthPin').value.trim();
+    
+    const finalReason = (reasonSelect === 'Other') ? reasonOther : reasonSelect;
+    
+    const confirmBtn = document.getElementById('confirmVoidBtnNew');
+    confirmBtn.disabled = true;
+    confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Voiding...';
+    
     fetch('../backend/api/void_transaction_manager.php', {
         method : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body   : JSON.stringify({
             row_id          : _voidRowId,
             source          : _voidSource,
-            void_reason     : reason,
+            void_reason     : finalReason,
             manager_remarks : remarks,
+            password        : password,
+            pin             : pin
         }),
     })
     .then(r => r.json())
     .then(data => {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-ban"></i> Confirm Void';
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = '<i class="fas fa-ban"></i> Confirm Void';
+        
         if (data.success) {
-            closeVoidModal();
-            showToast('success', '✅ ' + (data.message || 'Transaction voided successfully.'));
-            setTimeout(() => location.reload(), 2000);
+            // Populate Success View
+            document.getElementById('voidSuccessTxnId').innerText = document.getElementById('voidInfoTxnId').innerText;
+            
+            // Switch views
+            document.getElementById('voidModalMainContent').style.display = 'none';
+            document.getElementById('voidModalSuccessContent').style.display = 'flex';
         } else {
-            alert('Error: ' + (data.error || 'Void failed. Please try again.'));
+            alert('Error: ' + (data.error || 'Failed to void transaction.'));
         }
     })
-    .catch(() => {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-ban"></i> Confirm Void';
+    .catch(err => {
+        console.error(err);
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = '<i class="fas fa-ban"></i> Confirm Void';
         alert('Connection error. Please try again.');
     });
+}
+
+function closeVoidModalReload() {
+    closeVoidModal();
+    location.reload();
 }
 
 /* ─────────────────────────────────────────────── TOAST ─────────────────── */

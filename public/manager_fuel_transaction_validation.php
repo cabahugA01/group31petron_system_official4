@@ -26,6 +26,69 @@ if ($station_id <= 0) {
     exit;
 }
 
+// ── Shift Dependency & Continuity Helpers ─────────────────────
+function get_preceding_shift_and_date($pdo, $shift_key, $date) {
+    $stmt = $pdo->query("SELECT shift_key FROM shift_periods WHERE is_active = 1 ORDER BY sort_order ASC");
+    $shifts = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    
+    if (empty($shifts)) {
+        return null;
+    }
+    
+    $index = array_search(strtolower($shift_key), array_map('strtolower', $shifts));
+    if ($index === false) {
+        return null;
+    }
+    
+    if ($index > 0) {
+        return [
+            'shift_key' => $shifts[$index - 1],
+            'date' => $date
+        ];
+    } else {
+        $prev_date = date('Y-m-d', strtotime($date . ' -1 day'));
+        return [
+            'shift_key' => $shifts[count($shifts) - 1],
+            'date' => $prev_date
+        ];
+    }
+}
+
+function get_preceding_shift_validated_ending($pdo, $station_id, $pump_id, $current_shift, $current_date) {
+    $preceding = get_preceding_shift_and_date($pdo, $current_shift, $current_date);
+    if ($preceding) {
+        $stmt = $pdo->prepare("
+            SELECT present_reading 
+            FROM fuel_transactions 
+            WHERE station_id = ? 
+              AND pump_id = ? 
+              AND LOWER(shift_period) = LOWER(?) 
+              AND DATE(transaction_date) = ?
+              AND LOWER(status) IN ('verified', 'adjusted')
+            ORDER BY id DESC 
+            LIMIT 1
+        ");
+        $stmt->execute([$station_id, $pump_id, $preceding['shift_key'], $preceding['date']]);
+        $val = $stmt->fetchColumn();
+        if ($val !== false) {
+            return (float)$val;
+        }
+    }
+    
+    $stmt_fallback = $pdo->prepare("
+        SELECT present_reading 
+        FROM fuel_transactions 
+        WHERE station_id = ? 
+          AND pump_id = ? 
+          AND LOWER(status) IN ('verified', 'adjusted')
+        ORDER BY transaction_date DESC, id DESC 
+        LIMIT 1
+    ");
+    $stmt_fallback->execute([$station_id, $pump_id]);
+    $val_fallback = $stmt_fallback->fetchColumn();
+    return $val_fallback !== false ? (float)$val_fallback : 0.0;
+}
+
 // ── Filters & Inputs ─────────────────────────────────────────
 $date_from          = trim($_GET['date_from']          ?? date('Y-m-d', strtotime('-30 days')));
 $date_to            = trim($_GET['date_to']            ?? date('Y-m-d'));
@@ -64,46 +127,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception("Transaction has already been processed.");
             }
 
-            // Update status and remarks
-            $up = $pdo->prepare("UPDATE fuel_transactions SET status = 'Verified', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
-            $up->execute([$me['id'], $remarks ?: null, $tx_id]);
+            $liters_sold = (float)$tx['liters_sold'];
+            $prev_reading = (float)$tx['previous_reading'];
 
-            // Deduct stock from fuel_inventory (both current_level AND current_stock must stay in sync)
-            // Formula: liters_sold = present_reading - previous_reading - calibration (stored at encoding time)
+            // Enforce sequence validation & carry-over for pump transactions
+            if ($tx['pump_id'] > 0) {
+                $tx_date_str = date('Y-m-d', strtotime($tx['transaction_date']));
+                $preceding = get_preceding_shift_and_date($pdo, $tx['shift_period'], $tx_date_str);
+                
+                if ($preceding) {
+                    // Check if there is any unverified/unadjusted transaction for the preceding shift
+                    $stmt_check = $pdo->prepare("
+                        SELECT COUNT(*) 
+                        FROM fuel_transactions 
+                        WHERE station_id = ? 
+                          AND pump_id = ? 
+                          AND LOWER(shift_period) = LOWER(?) 
+                          AND DATE(transaction_date) = ?
+                          AND LOWER(status) NOT IN ('verified', 'adjusted')
+                    ");
+                    $stmt_check->execute([$station_id, $tx['pump_id'], $preceding['shift_key'], $preceding['date']]);
+                    $unverified_count = (int)$stmt_check->fetchColumn();
+                    
+                    if ($unverified_count > 0) {
+                        throw new Exception("Cannot validate this transaction. The transaction for the preceding shift (" . ucfirst($preceding['shift_key']) . " on " . $preceding['date'] . ") for this fuel line must be verified or adjusted first.");
+                    }
+                }
+                
+                // Programmatically set Beginning Reading to match preceding shift's validated Ending Reading
+                $prev_reading = get_preceding_shift_validated_ending($pdo, $station_id, $tx['pump_id'], $tx['shift_period'], $tx_date_str);
+                $present_reading = (float)$tx['present_reading'];
+                $calibration = (float)$tx['calibration'];
+                
+                if ($present_reading < $prev_reading) {
+                    throw new Exception("Ending reading (" . number_format($present_reading, 2) . ") cannot be less than the preceding shift's validated ending reading (" . number_format($prev_reading, 2) . ").");
+                }
+                
+                $liters_sold = max(0.00, $present_reading - $prev_reading - $calibration);
+                $price_per_liter = (float)$tx['price_per_liter'];
+                $total_amount = round($liters_sold * $price_per_liter, 2);
+                
+                // Update with carried over readings
+                $up = $pdo->prepare("UPDATE fuel_transactions SET previous_reading = ?, liters_sold = ?, total_amount = ?, status = 'Verified', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
+                $up->execute([$prev_reading, $liters_sold, $total_amount, $me['id'], $remarks ?: null, $tx_id]);
+            } else {
+                // Non-pump fallback
+                $up = $pdo->prepare("UPDATE fuel_transactions SET status = 'Verified', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
+                $up->execute([$me['id'], $remarks ?: null, $tx_id]);
+            }
+
+            // Deduct stock from fuel_inventory
             $up_stock = $pdo->prepare("UPDATE fuel_inventory 
                                        SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?),
                                            current_stock  = GREATEST(0, COALESCE(current_stock, 0) - ?),
                                            last_updated   = NOW()
                                        WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
-            $up_stock->execute([$tx['liters_sold'], $tx['liters_sold'], $station_id, $tx['fuel_type']]);
+            $up_stock->execute([$liters_sold, $liters_sold, $station_id, $tx['fuel_type']]);
 
             // Safety check: ensure the fuel type was found in inventory
             if ($up_stock->rowCount() === 0) {
-                // Log the mismatch but don't block approval — inventory may not be set up yet
                 error_log("FUEL INVENTORY WARNING: No fuel_inventory row matched fuel_type='{$tx['fuel_type']}' station_id={$station_id} for TXN {$tx['transaction_id']}");
             }
 
-            // Add adjustment log for audit
-            try {
-                $pdo->prepare("INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
-                               SELECT ?, fuel_type_id, 'verified_sale', ?, ?, ?, CURDATE()
-                               FROM fuel_inventory
-                               WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) LIMIT 1")
-                    ->execute([
-                        $station_id,
-                        -abs($tx['liters_sold']),
-                        "Approved Transaction {$tx['transaction_id']}. Remarks: " . ($remarks ?: 'None'),
-                        $me['id'],
-                        $station_id,
-                        $tx['fuel_type']
-                    ]);
-            } catch (Exception $ae) {
-                // Audit log insert is non-critical; continue even if it fails
-                error_log("Fuel adj log insert error for TXN {$tx['transaction_id']}: " . $ae->getMessage());
-            }
-
             // Log activity
-            log_activity($pdo, $me['id'], 'Fuel Reading Approved', "TXN {$tx['transaction_id']} | {$tx['fuel_type']} | {$tx['liters_sold']} L");
+            log_activity($pdo, $me['id'], 'Fuel Reading Approved', "TXN {$tx['transaction_id']} | {$tx['fuel_type']} | {$liters_sold} L");
 
             $_SESSION['success'] = "Transaction <strong>{$tx['transaction_id']}</strong> validated successfully.";
         }
@@ -136,14 +223,163 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception("Transaction has already been processed.");
             }
 
-            // Update status to Adjusted
-            $up = $pdo->prepare("UPDATE fuel_transactions SET status = 'Adjusted', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
-            $up->execute([$me['id'], $remarks, $tx_id]);
+            $beginning   = isset($_POST['beginning'])   ? (float)$_POST['beginning']   : null;
+            $ending      = isset($_POST['ending'])      ? (float)$_POST['ending']      : null;
+            $calibration = isset($_POST['calibration']) ? (float)$_POST['calibration'] : null;
 
-            // Log activity
-            log_activity($pdo, $me['id'], 'Fuel Reading Marked for Adjustment', "TXN {$tx['transaction_id']} | Reason: {$remarks}");
+            if ($beginning !== null && $ending !== null && $calibration !== null) {
+                // Enforce sequence validation & carry-over check for pump transactions
+                if ($tx['pump_id'] > 0) {
+                    $tx_date_str = date('Y-m-d', strtotime($tx['transaction_date']));
+                    $preceding = get_preceding_shift_and_date($pdo, $tx['shift_period'], $tx_date_str);
+                    
+                    if ($preceding) {
+                        // Check if there is any unverified/unadjusted transaction for the preceding shift
+                        $stmt_check = $pdo->prepare("
+                            SELECT COUNT(*) 
+                            FROM fuel_transactions 
+                            WHERE station_id = ? 
+                              AND pump_id = ? 
+                              AND LOWER(shift_period) = LOWER(?) 
+                              AND DATE(transaction_date) = ?
+                              AND LOWER(status) NOT IN ('verified', 'adjusted')
+                        ");
+                        $stmt_check->execute([$station_id, $tx['pump_id'], $preceding['shift_key'], $preceding['date']]);
+                        $unverified_count = (int)$stmt_check->fetchColumn();
+                        
+                        if ($unverified_count > 0) {
+                            throw new Exception("Cannot adjust this transaction. The transaction for the preceding shift (" . ucfirst($preceding['shift_key']) . " on " . $preceding['date'] . ") for this fuel line must be verified or adjusted first.");
+                        }
+                    }
+                    
+                    // Verify that beginning reading matches validated preceding shift ending reading
+                    $prev_ending = get_preceding_shift_validated_ending($pdo, $station_id, $tx['pump_id'], $tx['shift_period'], $tx_date_str);
+                    if (abs($beginning - $prev_ending) > 0.01) {
+                        throw new Exception("Invalid Beginning Reading: Adjusted Beginning Reading (" . number_format($beginning, 2) . ") must match the preceding shift's validated ending reading (" . number_format($prev_ending, 2) . ").");
+                    }
+                }
 
-            $_SESSION['success'] = "Transaction <strong>{$tx['transaction_id']}</strong> marked for adjustment.";
+                // Perform calculations
+                $liters_sold = $ending - $beginning - $calibration;
+                if ($liters_sold < 0) {
+                    throw new Exception("Ending reading cannot be less than beginning reading and calibration combined.");
+                }
+                $price_per_liter = (float)$tx['price_per_liter'];
+                $total_amount    = $liters_sold * $price_per_liter;
+
+                // Update all fields including adjusted readings
+                $up = $pdo->prepare("
+                    UPDATE fuel_transactions 
+                    SET previous_reading = ?, 
+                        present_reading = ?, 
+                        calibration = ?, 
+                        liters_sold = ?, 
+                        total_amount = ?, 
+                        status = 'Adjusted', 
+                        validated_by = ?, 
+                        validated_at = NOW(), 
+                        reject_reason = ? 
+                    WHERE id = ?
+                ");
+                $up->execute([$beginning, $ending, $calibration, $liters_sold, $total_amount, $me['id'], $remarks, $tx_id]);
+
+                // Deduct stock from fuel_inventory using the new liters_sold
+                $up_stock = $pdo->prepare("UPDATE fuel_inventory 
+                                           SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?),
+                                               current_stock  = GREATEST(0, COALESCE(current_stock, 0) - ?),
+                                               last_updated   = NOW()
+                                           WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
+                $up_stock->execute([$liters_sold, $liters_sold, $station_id, $tx['fuel_type']]);
+
+                // Fetch fuel_type_id for the adjustment record
+                $fuel_type_id = null;
+                try {
+                    $ft_stmt = $pdo->prepare("SELECT fuel_type_id FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) LIMIT 1");
+                    $ft_stmt->execute([$station_id, $tx['fuel_type']]);
+                    $fuel_type_id = $ft_stmt->fetchColumn() ?: null;
+                } catch (Exception $e) {}
+
+                // Insert into fuel_adjustments log
+                try {
+                    $meta_notes = json_encode([
+                        'transaction_id' => $tx['transaction_id'],
+                        'fuel_line' => 'Pump #' . ($tx['pump_id'] ?? '—'),
+                        'fuel_type' => $tx['fuel_type'],
+                        'shift' => $tx['shift_name'] ?: ($tx['shift_period'] ?: '—'),
+                        'staff_name' => $tx['staff_name'] ?? '—',
+                        'prev_beginning' => (float)$tx['previous_reading'],
+                        'prev_ending' => (float)$tx['present_reading'],
+                        'prev_calibration' => (float)$tx['calibration'],
+                        'new_beginning' => $beginning,
+                        'new_ending' => $ending,
+                        'new_calibration' => $calibration,
+                    ]);
+
+                    $ins_adj = $pdo->prepare("
+                        INSERT INTO fuel_adjustments 
+                        (station_id, adjustment_date, fuel_type, fuel_type_id, adjustment_type, liters, previous_value, new_value, reason, user_id, notes, status, approved_by, approved_at, created_at)
+                        VALUES (?, CURDATE(), ?, ?, 'transaction_adjustment', ?, ?, ?, ?, ?, ?, 'Approved', ?, NOW(), NOW())
+                    ");
+                    $liters_diff = $liters_sold - (float)$tx['liters_sold'];
+                    $ins_adj->execute([
+                        $station_id,
+                        $tx['fuel_type'],
+                        $fuel_type_id,
+                        $liters_diff,
+                        $tx['liters_sold'],
+                        $liters_sold,
+                        $remarks,
+                        $me['id'],
+                        $meta_notes,
+                        $me['id']
+                    ]);
+                } catch (Exception $e) {
+                    error_log("Failed to insert transaction adjustment log: " . $e->getMessage());
+                }
+
+                log_activity($pdo, $me['id'], 'Fuel Reading Adjusted and Approved', "TXN {$tx['transaction_id']} | {$tx['fuel_type']} | Old: {$tx['liters_sold']} L -> New: {$liters_sold} L | Reason: {$remarks}");
+                $_SESSION['success'] = "Transaction <strong>{$tx['transaction_id']}</strong> adjusted and validated successfully.";
+            } else {
+                // Legacy / bulk adjust: just change status to Adjusted
+                $up = $pdo->prepare("UPDATE fuel_transactions SET status = 'Adjusted', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
+                $up->execute([$me['id'], $remarks, $tx_id]);
+
+                // Insert into fuel_adjustments log for bulk/legacy adjustment
+                try {
+                    $meta_notes = json_encode([
+                        'transaction_id' => $tx['transaction_id'],
+                        'fuel_line' => 'Pump #' . ($tx['pump_id'] ?? '—'),
+                        'fuel_type' => $tx['fuel_type'],
+                        'shift' => $tx['shift_name'] ?: ($tx['shift_period'] ?: '—'),
+                        'staff_name' => $tx['staff_name'] ?? '—',
+                        'prev_beginning' => (float)$tx['previous_reading'],
+                        'prev_ending' => (float)$tx['present_reading'],
+                        'prev_calibration' => (float)$tx['calibration'],
+                        'new_beginning' => (float)$tx['previous_reading'],
+                        'new_ending' => (float)$tx['present_reading'],
+                        'new_calibration' => (float)$tx['calibration'],
+                    ]);
+
+                    $ins_adj = $pdo->prepare("
+                        INSERT INTO fuel_adjustments 
+                        (station_id, adjustment_date, fuel_type, fuel_type_id, adjustment_type, liters, previous_value, new_value, reason, user_id, notes, status, approved_by, approved_at, created_at)
+                        VALUES (?, CURDATE(), ?, null, 'transaction_adjustment', 0, ?, ?, ?, ?, ?, 'Approved', ?, NOW(), NOW())
+                    ");
+                    $ins_adj->execute([
+                        $station_id,
+                        $tx['fuel_type'],
+                        (float)$tx['liters_sold'],
+                        (float)$tx['liters_sold'],
+                        $remarks,
+                        $me['id'],
+                        $meta_notes,
+                        $me['id']
+                    ]);
+                } catch (Exception $e) {}
+
+                log_activity($pdo, $me['id'], 'Fuel Reading Marked for Adjustment', "TXN {$tx['transaction_id']} | Reason: {$remarks}");
+                $_SESSION['success'] = "Transaction <strong>{$tx['transaction_id']}</strong> marked for adjustment.";
+            }
         }
 
 
@@ -282,11 +518,48 @@ try {
             LEFT JOIN users staff ON ft.staff_id = staff.id
             LEFT JOIN users validator ON ft.validated_by = validator.id
             WHERE " . implode(" AND ", $where) . "
-            ORDER BY ft.transaction_date DESC, ft.created_at DESC";
+            ORDER BY
+                CASE
+                    WHEN TRIM(UPPER(ft.fuel_type)) = 'DIESEL'                                          THEN 1
+                    WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 1%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 1%' THEN 2
+                    WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 2%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 2%' THEN 3
+                    WHEN UPPER(ft.fuel_type) LIKE '%TURBO%DIESEL%'                                      THEN 4
+                    WHEN UPPER(ft.fuel_type) LIKE '%KEROSENE%'                                          THEN 5
+                    WHEN UPPER(ft.fuel_type) LIKE '%XCS%PLUS%' OR UPPER(ft.fuel_type) LIKE 'XCS PLUS%' THEN 6
+                    WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%1%'                                       THEN 7
+                    WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%2%'                                       THEN 8
+                    WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%'                                         THEN 9
+                    WHEN UPPER(ft.fuel_type) LIKE '%DIESEL%'                                           THEN 10
+                    ELSE 99
+                END ASC,
+                ft.fuel_type ASC,
+                fp.pump_number ASC,
+                ft.transaction_date ASC,
+                ft.created_at ASC";
     
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Compute dynamic filtered summaries based on the displayed transactions
+    $pending_count = 0;
+    $validated_count = 0;
+    $rejected_count = 0;
+    $total_liters_today = 0.0;
+    $total_sales_today = 0.0;
+
+    foreach ($transactions as $tx) {
+        $st = strtolower(trim($tx['status'] ?? ''));
+        $total_liters_today += (float)($tx['liters_sold'] ?? 0);
+        $total_sales_today += (float)($tx['total_amount'] ?? 0);
+        if (str_contains($st, 'pending')) {
+            $pending_count++;
+        } elseif (in_array($st, ['verified', 'approved', 'adjusted', 'validated'])) {
+            $validated_count++;
+        } elseif ($st === 'rejected') {
+            $rejected_count++;
+        }
+    }
 } catch (Exception $e) {
     error_log("Fetch transactions error: " . $e->getMessage());
     $_SESSION['error'] = "Error loading transactions: " . $e->getMessage();
@@ -294,16 +567,14 @@ try {
 
 // ── EXPORTS ──────────────────────────────────────────────────
 if (in_array($export, ['excel', 'pdf'])) {
-    $headers = ['Transaction ID', 'Date', 'Shift', 'Pump Name', 'Fuel Type', 'Beginning Reading', 'Ending Reading', 'Calibration', 'Volume Liters', 'Price/L', 'Amount', 'Staff Encoder', 'Status', 'Validation Date', 'Remarks'];
+    $headers = ['Transaction ID', 'Date', 'Shift', 'Fuel Type', 'Beginning Reading', 'Ending Reading', 'Calibration', 'Volume Liters', 'Price/L', 'Amount', 'Staff Encoder', 'Status', 'Validation Date', 'Remarks'];
     $rows_fmt = [];
     foreach ($transactions as $tx) {
-        $pump_display = !empty($tx['pump_number']) ? $tx['pump_number'] : (!empty($tx['pump_id']) ? 'Pump #' . $tx['pump_id'] : '—');
         $shift_display = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? '—'));
         $rows_fmt[] = [
             $tx['transaction_id'],
             date('M d, Y H:i', strtotime($tx['transaction_date'])),
             $shift_display,
-            $pump_display,
             $tx['fuel_type'],
             number_format($tx['previous_reading'], 2),
             number_format($tx['present_reading'], 2),
@@ -323,7 +594,7 @@ if (in_array($export, ['excel', 'pdf'])) {
         header('Content-Type: application/vnd.ms-excel; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '.xls"');
         echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>table{border-collapse:collapse}th,td{border:1px solid #ddd;padding:7px}th{background:#002F6C;color:#fff;font-size:11px}</style></head><body>';
-        echo '<h2>Fuel Transactions Validation Report</h2><p>Period: ' . $date_from . ' to ' . $date_to . ' | Records: ' . count($rows_fmt) . '</p>';
+        echo '<h2>Fuel Transaction Validation Report</h2><p>Period: ' . $date_from . ' to ' . $date_to . ' | Records: ' . count($rows_fmt) . '</p>';
         echo '<table><thead><tr>';
         foreach ($headers as $h) echo '<th>' . htmlspecialchars($h) . '</th>';
         echo '</tr></thead><tbody>';
@@ -342,13 +613,11 @@ if (in_array($export, ['excel', 'pdf'])) {
         
         $tbody = '';
         foreach ($transactions as $tx) {
-            $pump_display = !empty($tx['pump_number']) ? $tx['pump_number'] : (!empty($tx['pump_id']) ? 'Pump #' . $tx['pump_id'] : '—');
             $shift_display = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? '—'));
             $tbody .= '<tr>';
             $tbody .= '<td>' . htmlspecialchars($tx['transaction_id']) . '</td>';
             $tbody .= '<td>' . date('M d, Y', strtotime($tx['transaction_date'])) . '</td>';
             $tbody .= '<td>' . htmlspecialchars($shift_display) . '</td>';
-            $tbody .= '<td>' . htmlspecialchars($pump_display) . '</td>';
             $tbody .= '<td>' . htmlspecialchars($tx['fuel_type']) . '</td>';
             $tbody .= '<td style="text-align:right;">' . number_format($tx['previous_reading'], 2) . '</td>';
             $tbody .= '<td style="text-align:right;">' . number_format($tx['present_reading'], 2) . '</td>';
@@ -376,13 +645,13 @@ if (in_array($export, ['excel', 'pdf'])) {
         echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;font-weight:bold;">🖨 Print / Save PDF</button>
         <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none;font-weight:bold;">← Back</a></div>';
         echo '<div class="hdr"><div><h1>Petron Fuel Transaction Validation</h1><p style="margin:2px 0 0;color:#666;">Period: ' . htmlspecialchars($date_from) . ' — ' . htmlspecialchars($date_to) . ' | Station: ' . htmlspecialchars(user_station_name()) . '</p></div><div style="text-align:right;"><p style="margin:0;">Generated: ' . $generated . '</p></div></div>';
-        echo '<table><thead><tr><th>Txn ID</th><th>Date</th><th>Shift</th><th>Pump</th><th>Fuel Type</th><th>Beginning</th><th>Ending</th><th>Calib</th><th>Liters</th><th>Price/L</th><th>Amount</th><th>Staff</th><th>Status</th><th>Val Date</th><th>Remarks</th></tr></thead>';
-        echo '<tbody>' . ($tbody ?: '<tr><td colspan="15" style="text-align:center;padding:20px;color:#94a3b8">No records found.</td></tr>') . '</tbody></table>';
+        echo '<table><thead><tr><th>Txn ID</th><th>Date</th><th>Shift</th><th>Fuel Type</th><th>Beginning</th><th>Ending</th><th>Calib</th><th>Liters</th><th>Price/L</th><th>Amount</th><th>Staff</th><th>Status</th><th>Val Date</th><th>Remarks</th></tr></thead>';
+        echo '<tbody>' . ($tbody ?: '<tr><td colspan="14" style="text-align:center;padding:20px;color:#94a3b8">No records found.</td></tr>') . '</tbody></table>';
         echo '</body></html>'; exit;
     }
 }
 
-require_once __DIR__ . '/../partials/header.php';
+require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 
 <style>
@@ -574,14 +843,14 @@ input[type="checkbox"]:indeterminate {
         </div>
         <div class="afto-card yellow">
             <div class="afto-card-info">
-                <span class="afto-card-lbl">Liters Sold Today</span>
+                <span class="afto-card-lbl">Total Liters Sold</span>
                 <span class="afto-card-val"><?= number_format($total_liters_today, 2) ?> L</span>
             </div>
             <div class="afto-card-icon"><i class="fas fa-tint"></i></div>
         </div>
         <div class="afto-card purple">
             <div class="afto-card-info">
-                <span class="afto-card-lbl">Sales Amount Today</span>
+                <span class="afto-card-lbl">Total Fuel Sales</span>
                 <span class="afto-card-val">₱<?= number_format($total_sales_today, 2) ?></span>
             </div>
             <div class="afto-card-icon"><i class="fas fa-peso-sign"></i></div>
@@ -637,7 +906,7 @@ input[type="checkbox"]:indeterminate {
     <!-- Table Card -->
     <div class="afto-table-card">
         <div class="afto-table-hd">
-            <h3 class="afto-table-title"><i class="fas fa-list"></i> Fuel Transaction Log</h3>
+            <h3 class="afto-table-title"><i class="fas fa-list"></i> Fuel Transactions Log</h3>
             <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                 <button type="button" id="btnApproveSelected" class="ato-btn ato-btn-batch-approve" style="font-size: 11px; padding: 7px 14px;" onclick="batchValidate()" disabled>
                     <i class="fas fa-check"></i> Approve
@@ -662,21 +931,20 @@ input[type="checkbox"]:indeterminate {
                             <th style="width: 8%;">Transaction ID</th>
                             <th style="width: 7%;">Date</th>
                             <th style="width: 5%;">Shift</th>
-                            <th style="width: 6%;">Pump</th>
-                            <th style="width: 7%;">Fuel Type</th>
+                            <th style="width: 12%;">Fuel Type</th>
                             <th style="text-align: right; width: 7%;">Begin</th>
                             <th style="text-align: right; width: 7%;">Ending</th>
                             <th style="text-align: right; width: 5%;">Cal</th>
                             <th style="text-align: right; width: 7%;">Liters</th>
                             <th style="text-align: right; width: 8%;">Amount</th>
-                            <th style="width: 8%;">Staff</th>
+                            <th style="width: 7%;">Staff</th>
                             <th style="width: 7%;">Status</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($transactions)): ?>
                             <tr>
-                                <td colspan="13">
+                                <td colspan="12">
                                     <div class="afto-empty">
                                         <i class="fas fa-inbox"></i>
                                         <div style="font-size: 15px; font-weight: 700; color: #64748b; margin-bottom: 4px;">No records found</div>
@@ -685,8 +953,56 @@ input[type="checkbox"]:indeterminate {
                                 </td>
                             </tr>
                         <?php else: ?>
+                            <?php
+                            // Helper: map fuel type to its parent group for shared sequential numbering
+                            function mgr_fuel_group(string $ft): string {
+                                $f = strtoupper(trim($ft));
+                                if (str_contains($f,'TURBO') && str_contains($f,'DIESEL')) return 'TURBO DIESEL';
+                                if (str_contains($f,'DIESEL'))   return 'DIESEL';
+                                if (str_contains($f,'KEROSENE')) return 'KEROSENE';
+                                if (str_contains($f,'XCS') && str_contains($f,'PLUS')) return 'XCS PLUS';
+                                if (str_contains($f,'XTRA') && str_contains($f,'UNL')) return 'XTRA UNL';
+                                return $f;
+                            }
+                            // Helper: get the formatted fuel name incorporating pump groupings
+                            function get_mgr_formatted_fuel_name(string $fuel_type, int $seq): string {
+                                $f = strtoupper(trim($fuel_type));
+                                if (str_contains($f,'TURBO') && str_contains($f,'DIESEL')) {
+                                    return "TURBO DIESEL - {$seq}";
+                                }
+                                if (str_contains($f,'DIESEL')) {
+                                    if ($seq <= 4) {
+                                        return "DIESEL 1 - {$seq}";
+                                    } else {
+                                        return "DIESEL 2 - {$seq}";
+                                    }
+                                }
+                                if (str_contains($f,'KEROSENE')) {
+                                    return "KEROSENE - {$seq}";
+                                }
+                                if (str_contains($f,'XCS') && str_contains($f,'PLUS')) {
+                                    return "XCS PLUS - {$seq}";
+                                }
+                                if (str_contains($f,'XTRA') && str_contains($f,'UNL')) {
+                                    if ($seq <= 2) {
+                                        return "XTRA UNL 1 - {$seq}";
+                                    } else {
+                                        return "XTRA UNL 2 - {$seq}";
+                                    }
+                                }
+                                return "{$f} - {$seq}";
+                            }
+                            // Pre-compute group-level sequential labels
+                            $grp_counters = [];
+                            foreach ($transactions as &$_tx) {
+                                $grp    = mgr_fuel_group($_tx['fuel_type'] ?? '');
+                                if (!isset($grp_counters[$grp])) $grp_counters[$grp] = 0;
+                                $grp_counters[$grp]++;
+                                $_tx['_seq_label'] = get_mgr_formatted_fuel_name($_tx['fuel_type'] ?? '', $grp_counters[$grp]);
+                            }
+                            unset($_tx);
+                            ?>
                             <?php foreach ($transactions as $tx): 
-                            $pump_display = !empty($tx['pump_number']) ? $tx['pump_number'] : (!empty($tx['pump_id']) ? 'Pump #' . $tx['pump_id'] : '—');
                             $shift_display = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Shift 2' : 'Shift 1');
                         ?>
                             <tr id="tx_row_<?= $tx['id'] ?>" data-tx-id="<?= $tx['id'] ?>" data-tx-json='<?= htmlspecialchars(json_encode($tx), ENT_QUOTES, 'UTF-8') ?>'>
@@ -700,8 +1016,7 @@ input[type="checkbox"]:indeterminate {
                                 <td style="font-weight: 600; color: #00264D; font-size: 9px;"><?= htmlspecialchars(substr($tx['transaction_id'], 0, 12)) ?></td>
                                 <td style="font-size: 9px;"><?= date('M d, Y', strtotime($tx['transaction_date'])) ?></td>
                                 <td style="font-size: 9px;"><?= htmlspecialchars($shift_display) ?></td>
-                                <td style="font-weight: 600; font-size: 9px;"><?= htmlspecialchars($pump_display) ?></td>
-                                <td style="font-size: 9px;"><?= htmlspecialchars(substr($tx['fuel_type'], 0, 10)) ?></td>
+                                <td style="font-size: 9px; font-weight:700; color:#0f172a; white-space:normal; word-break:break-word;" title="<?= htmlspecialchars($tx['_seq_label']) ?>"><?= htmlspecialchars($tx['_seq_label']) ?></td>
                                 <td style="text-align: right; font-size: 9px;"><?= number_format($tx['previous_reading'], 2) ?></td>
                                 <td style="text-align: right; font-weight: 600; font-size: 9px;"><?= number_format($tx['present_reading'], 2) ?></td>
                                 <td style="text-align: right; font-size: 9px;"><?= number_format($tx['calibration'], 2) ?></td>
@@ -760,16 +1075,12 @@ input[type="checkbox"]:indeterminate {
                     <div class="details-value" id="det_date">—</div>
                 </div>
                 <div class="details-item">
-                    <div class="details-label">Shift</div>
-                    <div class="details-value" id="det_shift">—</div>
-                </div>
-                <div class="details-item">
-                    <div class="details-label">Pump Assigned</div>
-                    <div class="details-value" id="det_pump">—</div>
-                </div>
-                <div class="details-item">
                     <div class="details-label">Fuel Type</div>
                     <div class="details-value" id="det_fuel">—</div>
+                </div>
+                <div class="details-item">
+                    <div class="details-label">Shift</div>
+                    <div class="details-value" id="det_shift">—</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Price per Liter</div>
@@ -985,10 +1296,44 @@ input[type="checkbox"]:indeterminate {
                 </div>
                 <h3 style="margin:0;">Adjust Selected Transactions</h3>
             </div>
-            <span class="modal-close" onclick="closeModal('batchAdjustModal')">&times;</span>
         </div>
         <div class="modal-body">
             <p id="batchAdjustPrompt" style="font-size: 13px; color: #475569; margin: 0 0 14px; font-weight: 500;"></p>
+            
+            <!-- Edit Fields for Single Transaction Adjustment -->
+            <div id="singleAdjustFields" style="border-top: 1px solid #f1f5f9; padding-top: 14px; margin-top: 14px; margin-bottom: 14px; display: none;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="form-group">
+                        <label>Beginning Reading</label>
+                        <input type="number" step="0.01" id="adj_beginning" name="beginning" oninput="calcAdjTotals()">
+                    </div>
+                    <div class="form-group">
+                        <label>Ending Reading</label>
+                        <input type="number" step="0.01" id="adj_ending" name="ending" oninput="calcAdjTotals()">
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="form-group">
+                        <label>Calibration</label>
+                        <input type="number" step="0.01" id="adj_calibration" name="calibration" oninput="calcAdjTotals()">
+                    </div>
+                    <div class="form-group">
+                        <label>Price per Liter</label>
+                        <input type="text" id="adj_price" readonly style="background:#f8fafc; color:#64748b; cursor:not-allowed;">
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: #eff6ff; padding: 10px; border-radius: 8px; margin-top: 10px;">
+                    <div>
+                        <div style="font-size: 10px; color: #1e40af; font-weight: bold; text-transform: uppercase;">Adj. Liters</div>
+                        <div id="adj_liters_val" style="font-size: 14px; font-weight: 700; color: #1e3a8a; margin-top: 2px;">0.00 L</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 10px; color: #166534; font-weight: bold; text-transform: uppercase;">Adj. Amount</div>
+                        <div id="adj_amount_val" style="font-size: 14px; font-weight: 700; color: #14532d; margin-top: 2px;">₱0.00</div>
+                    </div>
+                </div>
+            </div>
+
             <div class="form-group">
                 <label>Adjustment Reason <span style="color:#dc2626;">*</span></label>
                 <textarea id="batchAdjustReason" rows="3" required placeholder="Explain why these transactions need adjustment (e.g., 'Incorrect meter reading', 'Price correction needed')..."></textarea>
@@ -996,8 +1341,8 @@ input[type="checkbox"]:indeterminate {
         </div>
         <div class="modal-footer">
             <button type="button" class="ato-btn ato-btn-back" onclick="closeModal('batchAdjustModal')">Cancel</button>
-            <button type="button" class="ato-btn" style="background:#0ea5e9; color:#fff;" onclick="confirmBatchAdjust()">
-                <i class="fas fa-edit"></i> Adjust Selected
+            <button type="button" class="ato-btn" style="background:#0ea5e9 !important; color:#fff !important; border-color:#0ea5e9 !important;" onclick="confirmBatchAdjust()">
+                <i class="fas fa-edit"></i> Submit Adjust
             </button>
         </div>
     </div>
@@ -1006,13 +1351,11 @@ input[type="checkbox"]:indeterminate {
 <script>
 // Details View Modal
 function viewDetails(tx) {
-    const pump_display = tx.pump_number ? tx.pump_number : (tx.pump_id ? 'Pump #' + tx.pump_id : '—');
     const shift_display = tx.shift_name ? tx.shift_name : (tx.shift_period === 'second' ? 'Second Shift' : (tx.shift_period ? tx.shift_period : '—'));
     
     document.getElementById('det_id').textContent = tx.transaction_id || '—';
     document.getElementById('det_date').textContent = tx.transaction_date || '—';
     document.getElementById('det_shift').textContent = shift_display;
-    document.getElementById('det_pump').textContent = pump_display;
     document.getElementById('det_fuel').textContent = tx.fuel_type || '—';
     document.getElementById('det_price').textContent = '₱' + parseFloat(tx.price_per_liter || 0).toFixed(2);
     document.getElementById('det_beg').textContent = parseFloat(tx.previous_reading || 0).toFixed(2);
@@ -1140,7 +1483,6 @@ function mftvExport(format) {
 
 // Single Transaction Print Helper
 function printSingleTx(tx) {
-    const pump_display = tx.pump_number ? tx.pump_number : (tx.pump_id ? 'Pump #' + tx.pump_id : '—');
     const shift_display = tx.shift_name ? tx.shift_name : (tx.shift_period === 'second' ? 'Second Shift' : (tx.shift_period ? tx.shift_period : '—'));
     
     let iframe = document.getElementById('print-iframe');
@@ -1174,7 +1516,6 @@ function printSingleTx(tx) {
         <div class="receipt-line"><span>Txn ID:</span><span>${escapeHtml(tx.transaction_id)}</span></div>
         <div class="receipt-line"><span>Date:</span><span>${escapeHtml(tx.transaction_date)}</span></div>
         <div class="receipt-line"><span>Shift:</span><span>${escapeHtml(shift_display)}</span></div>
-        <div class="receipt-line"><span>Pump:</span><span>${escapeHtml(pump_display)}</span></div>
         <div class="receipt-line"><span>Fuel Type:</span><span>${escapeHtml(tx.fuel_type)}</span></div>
         <div class="receipt-line"><span>Beginning:</span><span>${parseFloat(tx.previous_reading || 0).toFixed(2)}</span></div>
         <div class="receipt-line"><span>Ending:</span><span>${parseFloat(tx.present_reading || 0).toFixed(2)}</span></div>
@@ -1519,7 +1860,36 @@ function openBatchAdjust() {
     
     document.getElementById('batchAdjustPrompt').textContent = `You are about to mark ${selected.length} transaction(s) for adjustment. Please provide a reason:`;
     document.getElementById('batchAdjustReason').value = '';
+    
+    const singleFields = document.getElementById('singleAdjustFields');
+    if (selected.length === 1) {
+        const tx = selected[0];
+        document.getElementById('adj_beginning').value = parseFloat(tx.previous_reading || 0).toFixed(2);
+        document.getElementById('adj_ending').value = parseFloat(tx.present_reading || 0).toFixed(2);
+        document.getElementById('adj_calibration').value = parseFloat(tx.calibration || 0).toFixed(2);
+        document.getElementById('adj_price').value = parseFloat(tx.price_per_liter || 0).toFixed(2);
+        singleFields.style.display = 'block';
+        calcAdjTotals();
+    } else {
+        singleFields.style.display = 'none';
+    }
+    
     document.getElementById('batchAdjustModal').style.display = 'flex';
+}
+
+function calcAdjTotals() {
+    const beg = parseFloat(document.getElementById('adj_beginning').value) || 0;
+    const end = parseFloat(document.getElementById('adj_ending').value) || 0;
+    const cal = parseFloat(document.getElementById('adj_calibration').value) || 0;
+    const price = parseFloat(document.getElementById('adj_price').value) || 0;
+
+    let liters = end - beg - cal;
+    if (liters < 0) liters = 0;
+
+    const amount = liters * price;
+
+    document.getElementById('adj_liters_val').textContent = liters.toFixed(2) + ' L';
+    document.getElementById('adj_amount_val').textContent = '₱' + amount.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 
 // Confirm Batch Adjust
@@ -1546,6 +1916,12 @@ async function confirmBatchAdjust() {
             formData.append('id', tx.id);
             formData.append('remarks', reason);
             
+            if (selected.length === 1) {
+                formData.append('beginning', document.getElementById('adj_beginning').value);
+                formData.append('ending', document.getElementById('adj_ending').value);
+                formData.append('calibration', document.getElementById('adj_calibration').value);
+            }
+            
             const response = await fetch('', {
                 method: 'POST',
                 body: formData
@@ -1564,7 +1940,7 @@ async function confirmBatchAdjust() {
     }
     
     if (errorCount === 0) {
-        alert(`✓ Successfully adjusted ${successCount} transaction(s). They have been returned to staff for correction.`);
+        alert(`✓ Successfully adjusted ${successCount} transaction(s).`);
         location.reload();
     } else {
         alert(`Completed with ${successCount} success, ${errorCount} failed.\n\n` + errors.join('\n'));

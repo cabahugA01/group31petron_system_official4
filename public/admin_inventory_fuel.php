@@ -194,7 +194,7 @@ $var_color = abs($total_fuel_variance) < 0.01 ? '#64748b' : ($total_fuel_varianc
 $var_prefix = $total_fuel_variance > 0.01 ? '+' : '';
 $var_display = $var_prefix . number_format($total_fuel_variance, 2) . ' L';
 
-include __DIR__ . '/../partials/header.php';
+include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 <style>
 /* == PAGE HEADER - matches Transaction Module int-head standard == */

@@ -67,10 +67,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
                     ")->execute([$transaction['liters_sold'], $transaction['liters_sold'], $station_id, $transaction['fuel_type']]);
 
-                    // -- Audit trail entry --
-                    $pdo->prepare("
-                        INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
-                        SELECT ?, fuel_type_id, 'verified_sale', ?, ?, ?, CURDATE()
+
+
+
+                        /* SELECT ?, fuel_type_id, 'verified_sale', ?, ?, ?, CURDATE()
                         FROM fuel_inventory WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?))
                         LIMIT 1
                     ")->execute([
@@ -80,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         $me['id'],
                         $station_id,
                         $transaction['fuel_type']
-                    ]);
+                    ]); */
 
                     // -- Auto-flag variance report if >5% --
                     if (abs($variance_liters) > 0.1) {
@@ -99,7 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     }
                 } else {
                     // -- Rejected: log for staff correction --
-                    $pdo->prepare("
+                    /* $pdo->prepare("
                         INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
                         SELECT ?, fuel_type_id, 'rejected_reading', 0, ?, ?, CURDATE()
                         FROM fuel_inventory WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?))
@@ -110,7 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         $me['id'],
                         $station_id,
                         $transaction['fuel_type']
-                    ]);
+                    ]); */
                 }
 
                 log_activity($pdo, $me['id'], 'Validate Transaction', "Transaction #{$reading_id} {$status}. Variance: {$variance_liters} L. Notes: {$notes}");
@@ -166,6 +166,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     WHERE transaction_id = ? AND station_id = ?
                 ")->execute([$adjusted_liters, $me['id'], $reading_id, $station_id]);
 
+                // Retrieve current stock before update
+                $stmt_inv = $pdo->prepare("SELECT COALESCE(current_stock, current_level, 0) FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) LIMIT 1");
+                $stmt_inv->execute([$station_id, $transaction['fuel_type']]);
+                $previous_value = (float)($stmt_inv->fetchColumn() ?: 0.0);
+                $new_value = max(0.0, $previous_value - $adjusted_liters);
+
                 // Deduct adjusted liters from tank inventory
                 $pdo->prepare("
                     UPDATE fuel_inventory
@@ -176,16 +182,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ")->execute([$adjusted_liters, $adjusted_liters, $station_id, $transaction['fuel_type']]);
 
                 // Audit trail
-                $audit_reason = substr("ADJUSTED by manager. Reading #{$reading_id}. Original: {$original_liters} L ? Adjusted: {$adjusted_liters} L. Reason: {$adj_reason}", 0, 255);
+                $audit_reason = substr("ADJUSTED by manager. Reading #{$reading_id}. Original: {$original_liters} L → Adjusted: {$adjusted_liters} L. Reason: {$adj_reason}", 0, 255);
                 $pdo->prepare("
-                    INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
-                    SELECT ?, fuel_type_id, 'adjusted_reading', ?, ?, ?, CURDATE()
+                    INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, previous_value, new_value, reason, user_id, status, approved_by, approved_at, adjustment_date)
+                    SELECT ?, fuel_type_id, 'adjusted_reading', ?, ?, ?, ?, ?, 'Approved', ?, NOW(), CURDATE()
                     FROM fuel_inventory WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?))
                     LIMIT 1
                 ")->execute([
                     $station_id,
-                    -abs($adjusted_liters),
+                    -$adjusted_liters,
+                    $previous_value,
+                    $new_value,
                     $audit_reason,
+                    $me['id'],
                     $me['id'],
                     $station_id,
                     $transaction['fuel_type']
@@ -230,11 +239,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 // Audit trail
                 $reason = substr("Daily log approved. Txn #{$txn_id}. Notes: {$mgr_notes}", 0, 255);
-                $pdo->prepare("
+                /* $pdo->prepare("
                     INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
                     SELECT ?, fuel_type_id, 'daily_log_approved', ?, ?, ?, CURDATE()
                     FROM fuel_inventory WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?)) LIMIT 1
-                ")->execute([$station_id, -abs($txn['liters_sold']), $reason, $me['id'], $station_id, $txn['fuel_type']]);
+                ")->execute([$station_id, -abs($txn['liters_sold']), $reason, $me['id'], $station_id, $txn['fuel_type']]); */
 
                 log_activity($pdo, $me['id'], 'Approve Daily Log', "Txn #{$txn_id} approved. {$txn['liters_sold']} L of {$txn['fuel_type']}. Notes: {$mgr_notes}");
                 $pdo->commit();
@@ -265,11 +274,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 // Audit trail - no inventory change on reject
                 $reason = substr("Daily log REJECTED. Txn #{$txn_id}. Reason: {$rej_notes}", 0, 255);
-                $pdo->prepare("
+                /* $pdo->prepare("
                     INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
                     SELECT ?, fuel_type_id, 'daily_log_rejected', 0, ?, ?, CURDATE()
                     FROM fuel_inventory WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?)) LIMIT 1
-                ")->execute([$station_id, $reason, $me['id'], $station_id, $txn['fuel_type']]);
+                ")->execute([$station_id, $reason, $me['id'], $station_id, $txn['fuel_type']]); */
 
                 log_activity($pdo, $me['id'], 'Reject Daily Log', "Txn #{$txn_id} rejected. Reason: {$rej_notes}");
                 $pdo->commit();
@@ -426,6 +435,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         WHERE id = ?
                     ")->execute([$adj_liters, $me['id'], $full_notes, $delivery_id]);
 
+                    // Insert into fuel_adjustments log for delivery adjustment
+                    try {
+                        $meta_notes = json_encode([
+                            'delivery_id' => $delivery_id,
+                            'supplier' => $del['supplier'] ?? '—',
+                            'fuel_type' => $del['fuel_type'],
+                            'tanker_number' => $del['tanker_number'] ?? '—',
+                            'invoice_no' => $del['invoice_no'] ?? '—',
+                            'prev_liters' => $original_liters,
+                            'new_liters' => $adj_liters,
+                        ]);
+
+                        $ins_adj = $pdo->prepare("
+                            INSERT INTO fuel_adjustments 
+                            (station_id, adjustment_date, fuel_type, fuel_type_id, adjustment_type, liters, previous_value, new_value, reason, user_id, notes, status, approved_by, approved_at, created_at)
+                            VALUES (?, CURDATE(), ?, ?, 'delivery_adjustment', ?, ?, ?, ?, ?, ?, 'Approved', ?, NOW(), NOW())
+                        ");
+                        $liters_diff = $adj_liters - $original_liters;
+                        $ins_adj->execute([
+                            $station_id,
+                            $del['fuel_type'],
+                            $fuel_type_id,
+                            $liters_diff,
+                            $original_liters,
+                            $adj_liters,
+                            $val_notes,
+                            $me['id'],
+                            $meta_notes,
+                            $me['id']
+                        ]);
+                    } catch (Exception $e) {
+                        error_log("Failed to insert delivery adjustment log: " . $e->getMessage());
+                    }
+
                 } elseif ($action === 'reject') {
                     $pdo->prepare("
                         UPDATE fuel_deliveries
@@ -516,7 +559,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $pdo->prepare("UPDATE fuel_inventory SET current_level=?, current_stock=?, last_updated=NOW() WHERE station_id=? AND fuel_type_id=?")->execute([$new_level, $new_level, $station_id, $fuel_type_id]);
 
                 // Audit trail row
-                $pdo->prepare("INSERT INTO fuel_adjustments (station_id, fuel_type_id, fuel_type, adjustment_type, liters, reason, user_id, adjustment_date) VALUES (?,?,?,?,?,?,?,CURDATE())")->execute([$station_id, $fuel_type_id, $fuel_name, $adjustment_type, $difference, $reason_short, $me['id']]);
+                $pdo->prepare("INSERT INTO fuel_adjustments (station_id, fuel_type_id, fuel_type, adjustment_type, liters, previous_value, new_value, reason, user_id, status, approved_by, approved_at, adjustment_date) VALUES (?,?,?,?,?,?,?,?,'Approved',?,NOW(),CURDATE())")->execute([$station_id, $fuel_type_id, $fuel_name, $adjustment_type, $difference, $current['current_stock'], $new_level, $reason_short, $me['id'], $me['id']]);
 
                 log_activity($pdo, $me['id'], 'Adjust Tank Level', "Adjusted {$adjustment_type} for {$fuel_name}: {$difference} L (new level: {$new_level} L). Reason: {$reason}");
                 $pdo->commit();
@@ -1041,13 +1084,16 @@ function adjustColor($hex,$pct) {
         
     </div>
 
-<?php if ($msg): ?>
-<div class="mfm-alert <?php echo $msg_type; ?>">
-    <i class="fas fa-<?php echo $msg_type==='success'?'check-circle':'exclamation-circle'; ?>"></i>
-    <span><?php echo htmlspecialchars($msg); ?></span>
-    <span class="close-alert" onclick="this.parentElement.remove()">-</span>
-</div>
-<?php endif; ?>
+<?php
+// Toast bridge: convert $msg/$msg_type to SESSION for flash_toast
+if (!empty($msg)) {
+    if ($msg_type === 'success') $_SESSION['success'] = $msg;
+    else $_SESSION['error'] = $msg;
+    $msg = ''; $msg_type = '';
+}
+require __DIR__ . '/../partials/flash_toast.php';
+?>
+
 
 <!-- -- SECTION NAVIGATION (sidebar-driven, no top tabs) -- -->
 

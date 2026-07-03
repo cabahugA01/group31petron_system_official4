@@ -245,7 +245,7 @@ try {
     $sc_sql = "SELECT
         COUNT(*) as total,
         SUM(CASE WHEN LOWER(ft.status) LIKE '%pending%' OR ft.status IS NULL OR ft.status='' THEN 1 ELSE 0 END) as pending,
-        SUM(CASE WHEN LOWER(ft.status) IN ('verified','adjusted') THEN 1 ELSE 0 END) as validated,
+        SUM(CASE WHEN LOWER(ft.status) IN ('verified','adjusted','approved','validated') THEN 1 ELSE 0 END) as validated,
         SUM(CASE WHEN LOWER(ft.status) = 'rejected' THEN 1 ELSE 0 END) as rejected,
         COALESCE(SUM(ft.liters_sold), 0) as liters,
         COALESCE(SUM(ft.total_amount), 0) as sales
@@ -287,7 +287,25 @@ try {
         LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
         LEFT JOIN stations s ON ft.station_id = s.id
         WHERE " . implode(' AND ', $where) . "
-        ORDER BY ft.transaction_date DESC, ft.id DESC LIMIT 500");
+        ORDER BY
+            CASE
+                WHEN TRIM(UPPER(ft.fuel_type)) = 'DIESEL'                                          THEN 1
+                WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 1%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 1%' THEN 2
+                WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 2%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 2%' THEN 3
+                WHEN UPPER(ft.fuel_type) LIKE '%TURBO%DIESEL%'                                      THEN 4
+                WHEN UPPER(ft.fuel_type) LIKE '%KEROSENE%'                                          THEN 5
+                WHEN UPPER(ft.fuel_type) LIKE '%XCS%PLUS%' OR UPPER(ft.fuel_type) LIKE 'XCS PLUS%' THEN 6
+                WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%1%'                                       THEN 7
+                WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%2%'                                       THEN 8
+                WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%'                                         THEN 9
+                WHEN UPPER(ft.fuel_type) LIKE '%DIESEL%'                                           THEN 10
+                ELSE 99
+            END ASC,
+            ft.fuel_type ASC,
+            fp.pump_number ASC,
+            ft.transaction_date ASC,
+            ft.id ASC
+        LIMIT 500");
     $stmt->execute($params);
     $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
@@ -339,14 +357,13 @@ if ($role === 'superadmin') {
 // ── EXPORTS ───────────────────────────────────────────────────
 if (in_array($export, ['csv','excel','pdf'])) {
     $headers = [
-        'Transaction ID', 'Date', 'Shift', 'Station', 'Pump', 'Fuel Type', 
+        'Transaction ID', 'Date', 'Shift', 'Station', 'Fuel Type', 
         'Beginning Reading', 'Ending Reading', 'Calibration', 'Volume Liters', 
         'Price/Liter', 'Amount', 'Staff Encoder', 'Manager Validator', 
         'Status', 'Validation Date', 'Remarks'
     ];
     $rows_fmt = [];
     foreach ($transactions as $tx) {
-        $pump_display = !empty($tx['pump_number']) ? $tx['pump_number'] : (!empty($tx['pump_id']) ? 'P'.$tx['pump_id'] : '—');
         $shift_label  = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? '—'));
         $remarks      = !empty($tx['notes']) ? $tx['notes'] : (!empty($tx['reject_reason']) ? $tx['reject_reason'] : '—');
         $rows_fmt[] = [
@@ -354,7 +371,6 @@ if (in_array($export, ['csv','excel','pdf'])) {
             date('M d, Y H:i', strtotime($tx['transaction_date'])),
             $shift_label,
             $tx['station_name'] ?? '—',
-            $pump_display,
             $tx['fuel_type'],
             number_format($tx['previous_reading'], 2),
             number_format($tx['present_reading'], 2),
@@ -384,7 +400,7 @@ if (in_array($export, ['csv','excel','pdf'])) {
         header('Content-Type: application/vnd.ms-excel; charset=utf-8');
         header('Content-Disposition: attachment; filename="'.$filename.'.xls"');
         echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>table{border-collapse:collapse}th,td{border:1px solid #ddd;padding:7px}th{background:#002F6C;color:#fff;font-size:11px}</style></head><body>';
-        echo '<h2>Fuel Transactions Oversight</h2><p>Period: '.$date_from.' to '.$date_to.' | Station: '.$station_name.' | Records: '.count($rows_fmt).'</p>';
+        echo '<h2>Fuel Transaction Oversight</h2><p>Period: '.$date_from.' to '.$date_to.' | Station: '.$station_name.' | Records: '.count($rows_fmt).'</p>';
         echo '<table><thead><tr>';
         foreach($headers as $h) echo '<th>'.htmlspecialchars($h).'</th>';
         echo '</tr></thead><tbody>';
@@ -397,14 +413,12 @@ if (in_array($export, ['csv','excel','pdf'])) {
         foreach($transactions as $tx) {
             $st = strtolower($tx['status'] ?? '');
             $sc_color = ($st === 'verified') ? '#16a34a' : (($st === 'rejected') ? '#dc2626' : '#d97706');
-            $pump_display = !empty($tx['pump_number']) ? $tx['pump_number'] : (!empty($tx['pump_id']) ? 'P'.$tx['pump_id'] : '—');
             $shift_label  = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? '—'));
             $remarks      = !empty($tx['notes']) ? $tx['notes'] : (!empty($tx['reject_reason']) ? $tx['reject_reason'] : '—');
             $tbody .= '<tr>';
             $tbody .= '<td style="font-size:10px;color:#475569;">'.htmlspecialchars($tx['transaction_id']).'</td>';
             $tbody .= '<td>'.date('M d, Y', strtotime($tx['transaction_date'])).'</td>';
             $tbody .= '<td>'.htmlspecialchars($shift_label).'</td>';
-            $tbody .= '<td>'.htmlspecialchars($pump_display).'</td>';
             $tbody .= '<td>'.htmlspecialchars($tx['fuel_type']).'</td>';
             $tbody .= '<td style="text-align:right">'.number_format($tx['previous_reading'],2).'</td>';
             $tbody .= '<td style="text-align:right">'.number_format($tx['present_reading'],2).'</td>';
@@ -419,7 +433,7 @@ if (in_array($export, ['csv','excel','pdf'])) {
             $tbody .= '<td style="font-size:10px;max-width:150px;white-space:normal;">'.htmlspecialchars($remarks).'</td>';
             $tbody .= '</tr>';
         }
-        echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fuel Transactions Oversight</title>
+        echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fuel Transaction Oversight</title>
         <style>body{font-family:Arial,sans-serif;font-size:11px;padding:20px}
         .pbtn{margin-bottom:12px}@media print{.pbtn{display:none}}
         .hdr{border-bottom:3px solid #002F6C;margin-bottom:14px;padding-bottom:8px}
@@ -431,11 +445,11 @@ if (in_array($export, ['csv','excel','pdf'])) {
         </style></head><body>';
         echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer">🖨 Print / Save PDF</button>
         <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none">← Back</a></div>';
-        echo '<div class="hdr"><h1>Fuel Transactions Oversight</h1><p>Period: '.htmlspecialchars($date_from).' — '.htmlspecialchars($date_to).' | Station: '.htmlspecialchars($station_name).' | Records: '.count($transactions).'</p></div>';
+        echo '<div class="hdr"><h1>Fuel Transaction Oversight</h1><p>Period: '.htmlspecialchars($date_from).' — '.htmlspecialchars($date_to).' | Station: '.htmlspecialchars($station_name).' | Records: '.count($transactions).'</p></div>';
         echo '<table><thead><tr>
-            <th>Txn ID</th><th>Date</th><th>Shift</th><th>Pump</th><th>Fuel Type</th><th>Beg</th><th>End</th><th>Calib</th><th>Volume</th><th>Price/L</th><th>Amount</th><th>Encoder</th><th>Validator</th><th>Status</th><th>Val Date</th><th>Remarks</th>
+            <th>Txn ID</th><th>Date</th><th>Shift</th><th>Fuel Type</th><th>Beg</th><th>End</th><th>Calib</th><th>Volume</th><th>Price/L</th><th>Amount</th><th>Encoder</th><th>Validator</th><th>Status</th><th>Val Date</th><th>Remarks</th>
         </tr></thead>';
-        echo '<tbody>'.($tbody ?: '<tr><td colspan="16" style="text-align:center;padding:20px;color:#94a3b8">No records.</td></tr>').'</tbody></table>';
+        echo '<tbody>'.($tbody ?: '<tr><td colspan="15" style="text-align:center;padding:20px;color:#94a3b8">No records.</td></tr>').'</tbody></table>';
         echo '</body></html>'; exit;
     }
 }
@@ -633,20 +647,12 @@ require_once __DIR__ . '/../partials/header.php';
 }
 </style>
 
-<?php if (isset($_SESSION['success'])): ?>
-    <div style="background:#d1e7dd; color:#0f5132; padding:12px; border-radius:8px; margin-bottom:16px; font-weight:600;">
-        <?= htmlspecialchars($_SESSION['success']); unset($_SESSION['success']); ?>
-    </div>
-<?php endif; ?>
-<?php if (isset($_SESSION['error'])): ?>
-    <div style="background:#f8d7da; color:#842029; padding:12px; border-radius:8px; margin-bottom:16px; font-weight:600;">
-        <?= htmlspecialchars($_SESSION['error']); unset($_SESSION['error']); ?>
-    </div>
-<?php endif; ?>
+<?php require __DIR__ . '/../partials/flash_toast.php'; ?>
+
 
 <div class="int-head">
     <div>
-        <h1><i class="fas fa-gas-pump"></i> Fuel Transactions Oversight</h1>
+        <h1><i class="fas fa-gas-pump"></i> Fuel Transaction Oversight</h1>
         <div class="sub">Monitor and audit all fuel transactions validated by managers, ensuring compliance and accuracy.</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -744,15 +750,6 @@ require_once __DIR__ . '/../partials/header.php';
         </select>
     </div>
     <div class="afto-fg">
-        <label>Pump</label>
-        <select name="pump">
-            <option value="">All Pumps</option>
-            <?php foreach($pumps as $p): ?>
-                <option value="<?= htmlspecialchars($p['id']) ?>" <?= $pump === (string)$p['id'] ? 'selected' : '' ?>><?= htmlspecialchars($p['pump_number']) ?></option>
-            <?php endforeach; ?>
-        </select>
-    </div>
-    <div class="afto-fg">
         <label>Status</label>
         <select name="status">
             <option value="">All Statuses</option>
@@ -769,17 +766,16 @@ require_once __DIR__ . '/../partials/header.php';
 <!-- Table -->
 <div class="afto-table-card">
     <div class="afto-table-hd">
-        <h3 class="afto-table-title"><i class="fas fa-table"></i> Fuel Transaction Records</h3>
+        <h3 class="afto-table-title"><i class="fas fa-table"></i> Fuel Transactions Records</h3>
         <span style="font-size:11px;color:#64748b;"><?= number_format(count($transactions)) ?> record(s) — <?= htmlspecialchars($date_from) ?> to <?= htmlspecialchars($date_to) ?></span>
     </div>
     <div class="afto-tbl-wrap">
         <table class="afto-tbl">
             <colgroup>
-                <col style="width:8%">   <!-- Transaction ID -->
+                <col style="width:7%">   <!-- Transaction ID -->
                 <col style="width:6%">   <!-- Date -->
                 <col style="width:6%">   <!-- Shift -->
-                <col style="width:4%">   <!-- Pump -->
-                <col style="width:7%">   <!-- Fuel Type -->
+                <col style="width:12%">  <!-- Fuel Type -->
                 <col style="width:6%">   <!-- Beg Reading -->
                 <col style="width:6%">   <!-- End Reading -->
                 <col style="width:5%">   <!-- Calibration -->
@@ -789,15 +785,14 @@ require_once __DIR__ . '/../partials/header.php';
                 <col style="width:7%">   <!-- Staff Encoder -->
                 <col style="width:7%">   <!-- Manager Validator -->
                 <col style="width:6%">   <!-- Status -->
-                <col style="width:7%">   <!-- Validation Date -->
-                <col style="width:6%">   <!-- Remarks -->
+                <col style="width:6%">   <!-- Validation Date -->
+                <col style="width:5%">   <!-- Remarks -->
             </colgroup>
             <thead>
                 <tr>
                     <th>Txn ID</th>
                     <th>Date</th>
                     <th>Shift</th>
-                    <th>Pump</th>
                     <th>Fuel Type</th>
                     <th style="text-align:right;">Beg. Rdg</th>
                     <th style="text-align:right;">End Rdg</th>
@@ -815,13 +810,62 @@ require_once __DIR__ . '/../partials/header.php';
             <tbody>
                 <?php if (empty($transactions)): ?>
                 <tr>
-                    <td colspan="16" style="text-align:center;padding:60px 20px;">
+                    <td colspan="15" style="text-align:center;padding:60px 20px;">
                         <i class="fas fa-inbox" style="font-size:48px;color:#cbd5e1;margin-bottom:16px;display:block;"></i>
                         <div style="font-size:16px;font-weight:700;color:#64748b;margin-bottom:8px;">No transactions found</div>
                         <div style="font-size:14px;color:#94a3b8;">No fuel transactions for the selected period.</div>
                     </td>
                 </tr>
                 <?php else: ?>
+                <?php
+                // Helper: map fuel type to its parent group for shared sequential numbering
+                function adm_fuel_group(string $ft): string {
+                    $f = strtoupper(trim($ft));
+                    if (str_contains($f,'TURBO') && str_contains($f,'DIESEL')) return 'TURBO DIESEL';
+                    if (str_contains($f,'DIESEL'))   return 'DIESEL';
+                    if (str_contains($f,'KEROSENE')) return 'KEROSENE';
+                    if (str_contains($f,'XCS') && str_contains($f,'PLUS')) return 'XCS PLUS';
+                    if (str_contains($f,'XTRA') && str_contains($f,'UNL')) return 'XTRA UNL';
+                    return $f;
+                }
+                // Helper: get the formatted fuel name incorporating pump groupings
+                function get_adm_formatted_fuel_name(string $fuel_type, int $seq): string {
+                    $f = strtoupper(trim($fuel_type));
+                    if (str_contains($f,'TURBO') && str_contains($f,'DIESEL')) {
+                        return "TURBO DIESEL - {$seq}";
+                    }
+                    if (str_contains($f,'DIESEL')) {
+                        if ($seq <= 4) {
+                            return "DIESEL 1 - {$seq}";
+                        } else {
+                            return "DIESEL 2 - {$seq}";
+                        }
+                    }
+                    if (str_contains($f,'KEROSENE')) {
+                        return "KEROSENE - {$seq}";
+                    }
+                    if (str_contains($f,'XCS') && str_contains($f,'PLUS')) {
+                        return "XCS PLUS - {$seq}";
+                    }
+                    if (str_contains($f,'XTRA') && str_contains($f,'UNL')) {
+                        if ($seq <= 2) {
+                            return "XTRA UNL 1 - {$seq}";
+                        } else {
+                            return "XTRA UNL 2 - {$seq}";
+                        }
+                    }
+                    return "{$f} - {$seq}";
+                }
+                // Pre-compute group-level sequential labels
+                $grp_counters = [];
+                foreach ($transactions as &$_tx) {
+                    $grp    = adm_fuel_group($_tx['fuel_type'] ?? '');
+                    if (!isset($grp_counters[$grp])) $grp_counters[$grp] = 0;
+                    $grp_counters[$grp]++;
+                    $_tx['_seq_label'] = get_adm_formatted_fuel_name($_tx['fuel_type'] ?? '', $grp_counters[$grp]);
+                }
+                unset($_tx);
+                ?>
                 <?php foreach($transactions as $tx):
                     $st = strtolower(trim($tx['status'] ?? ''));
                     if ($st === 'verified') {
@@ -835,7 +879,6 @@ require_once __DIR__ . '/../partials/header.php';
                     } else {
                         $badge = 'bg-gray'; $st_label = ucfirst($tx['status'] ?? '—');
                     }
-                    $pump_display = !empty($tx['pump_number']) ? $tx['pump_number'] : (!empty($tx['pump_id']) ? '#'.$tx['pump_id'] : '—');
                     $shift_label = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? '—'));
                     $remarks = !empty($tx['notes']) ? $tx['notes'] : (!empty($tx['reject_reason']) ? $tx['reject_reason'] : '—');
                 ?>
@@ -843,8 +886,7 @@ require_once __DIR__ . '/../partials/header.php';
                     <td style="font-weight:600;color:#00264D;" title="<?= htmlspecialchars($tx['transaction_id']) ?>"><?= htmlspecialchars($tx['transaction_id']) ?></td>
                     <td title="<?= date('M d, Y H:i', strtotime($tx['transaction_date'])) ?>"><?= date('M d, Y', strtotime($tx['transaction_date'])) ?></td>
                     <td title="<?= htmlspecialchars($shift_label) ?>"><?= htmlspecialchars($shift_label) ?></td>
-                    <td style="font-weight:600;text-align:center;" title="Pump <?= htmlspecialchars($pump_display) ?>"><?= htmlspecialchars($pump_display) ?></td>
-                    <td title="<?= htmlspecialchars($tx['fuel_type']) ?>"><?= htmlspecialchars($tx['fuel_type']) ?></td>
+                    <td style="font-weight:700; color:#0f172a; white-space:normal; word-break:break-word;" title="<?= htmlspecialchars($tx['_seq_label']) ?>"><?= htmlspecialchars($tx['_seq_label']) ?></td>
                     <td style="text-align:right;"><?= number_format($tx['previous_reading'],2) ?></td>
                     <td style="text-align:right;"><?= number_format($tx['present_reading'],2) ?></td>
                     <td style="text-align:right;"><?= number_format($tx['calibration'],2) ?></td>
@@ -969,7 +1011,6 @@ function viewTxnDetails(id) {
                     <div class="details-item"><label>Date / Time</label><span>${data.transaction_date || '—'}</span></div>
                     <div class="details-item"><label>Shift</label><span>${data.shift_name || data.shift_period || '—'}</span></div>
                     <div class="details-item"><label>Station</label><span>${data.station_name || '—'}</span></div>
-                    <div class="details-item"><label>Pump</label><span>${data.pump_number || 'P' + data.pump_id}</span></div>
                     <div class="details-item"><label>Fuel Type</label><span>${data.fuel_type || '—'}</span></div>
                     <div class="details-item"><label>Beginning Reading</label><span>${parseFloat(data.previous_reading).toLocaleString('en-US', {minimumFractionDigits:2})}</span></div>
                     <div class="details-item"><label>Ending Reading</label><span>${parseFloat(data.present_reading).toLocaleString('en-US', {minimumFractionDigits:2})}</span></div>

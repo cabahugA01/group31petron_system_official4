@@ -52,24 +52,21 @@ if (isset($_GET['ajax_action'])) {
             $stmt->execute([$pump_id]);
             $pump = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($pump) {
-                // Find calibration history by checking station and matching fuel_type and reason containing "Pump X:"
                 $h_stmt = $pdo->prepare("
-                    SELECT pch.*, 
-                           COALESCE(NULLIF(CONCAT(TRIM(u.first_name), ' ', TRIM(u.last_name)), ' '), u.username, 'System') as updater_name
+                    SELECT 
+                        pch.id,
+                        pch.previous_value AS previous_calibration,
+                        pch.calibration_value AS new_calibration,
+                        pch.performed_at AS updated_at,
+                        pch.reason,
+                        COALESCE(NULLIF(CONCAT(TRIM(u.first_name), ' ', TRIM(u.last_name)), ' '), u.username, 'System') as updater_name
                     FROM pump_calibration_history pch
-                    LEFT JOIN users u ON pch.updated_by = u.id
-                    WHERE pch.station_id = ? 
-                      AND LOWER(pch.fuel_type) = LOWER(?)
-                      AND (pch.reason LIKE ? OR pch.reason LIKE ?)
-                    ORDER BY pch.updated_at DESC
+                    LEFT JOIN users u ON pch.performed_by = u.id
+                    WHERE pch.pump_id = ?
+                    ORDER BY pch.performed_at DESC
                     LIMIT 100
                 ");
-                $h_stmt->execute([
-                    $pump['station_id'], 
-                    $pump['fuel_type_name'], 
-                    "Pump " . $pump['pump_number'] . ":%", 
-                    "Pump " . $pump['id'] . ":%"
-                ]);
+                $h_stmt->execute([$pump_id]);
                 echo json_encode($h_stmt->fetchAll(PDO::FETCH_ASSOC));
             } else {
                 echo json_encode([]);
@@ -277,30 +274,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Log to pump_calibration_history
                 $ins_history = $pdo->prepare("
                     INSERT INTO pump_calibration_history 
-                        (station_id, fuel_type, previous_calibration, new_calibration, updated_by, updated_at, created_at, reason)
-                    VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?)
+                        (pump_id, station_id, calibration_value, previous_value, reason, performed_by, performed_at)
+                    VALUES (?, ?, ?, ?, ?, ?, NOW())
                 ");
                 $ins_history->execute([
+                    $pump_id,
                     $target_station, 
-                    $pump['fuel_type_name'], 
-                    $previous_cal, 
                     $calibration_value, 
-                    $me['id'], 
-                    "Pump " . $pump['pump_number'] . ": " . $reason
+                    $previous_cal, 
+                    "Pump " . $pump['pump_number'] . ": " . $reason,
+                    $me['id']
                 ]);
 
                 // Insert into fuel_adjustments
                 $adj_notes = "Calibration adjustment for Pump " . $pump['pump_number'] . " (" . $pump['fuel_type_name'] . "). Reason: " . $reason;
+                
+                // Fetch current tank level (fuel inventory level) for the active pump's fuel type
+                $tank_level = 0.0;
+                try {
+                    $invStmt = $pdo->prepare("SELECT COALESCE(current_stock, current_level, 0) FROM fuel_inventory WHERE station_id = ? AND fuel_type_id = ? LIMIT 1");
+                    $invStmt->execute([$target_station, $pump['fuel_type_id']]);
+                    $tank_level = (float)($invStmt->fetchColumn() ?: 0.0);
+                } catch (Exception $e) {}
+
                 $ins_adj = $pdo->prepare("
                     INSERT INTO fuel_adjustments 
                         (station_id, adjustment_date, fuel_type, fuel_type_id, adjustment_type, liters, previous_value, new_value, reason, user_id, status, created_at)
-                    VALUES (?, CURDATE(), ?, ?, 'Calibration', ?, 0, 0, ?, ?, 'Approved', NOW())
+                    VALUES (?, CURDATE(), ?, ?, 'Calibration', ?, ?, ?, ?, ?, 'Approved', NOW())
                 ");
                 $ins_adj->execute([
                     $target_station, 
                     $pump['fuel_type_name'], 
                     $pump['fuel_type_id'], 
                     $difference, 
+                    $tank_level,
+                    $tank_level,
                     $adj_notes, 
                     $me['id']
                 ]);
@@ -425,8 +433,8 @@ try {
         SELECT COUNT(*) 
         FROM pump_calibration_history 
         WHERE $station_condition 
-          AND MONTH(updated_at) = MONTH(CURRENT_DATE()) 
-          AND YEAR(updated_at) = YEAR(CURRENT_DATE())
+          AND MONTH(performed_at) = MONTH(CURRENT_DATE()) 
+          AND YEAR(performed_at) = YEAR(CURRENT_DATE())
     ");
     $sm->execute($station_params);
     $cal_updates_month = (int)$sm->fetchColumn();
@@ -487,8 +495,6 @@ if (in_array($export, ['excel', 'pdf'])) {
             <table>
                 <thead>
                     <tr>
-                        <th>Pump ID</th>
-                        <th>Pump Name</th>
                         <th>Fuel Type</th>
                         <th>Assigned Tank</th>
                         <th>Calibration Value</th>
@@ -504,8 +510,6 @@ if (in_array($export, ['excel', 'pdf'])) {
                         $cal_str = ($cal_val >= 0 ? '+' : '') . number_format($cal_val, 3) . ' L';
                     ?>
                         <tr>
-                            <td>PUMP-<?= $p['id'] ?></td>
-                            <td><?= htmlspecialchars($p['pump_number']) ?></td>
                             <td><?= htmlspecialchars($p['fuel_type_name'] ?? '—') ?></td>
                             <td><?= htmlspecialchars($tank_lbl) ?></td>
                             <td><?= $cal_str ?></td>
@@ -568,8 +572,6 @@ if (in_array($export, ['excel', 'pdf'])) {
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>Pump ID</th>
-                        <th>Pump Name</th>
                         <th>Fuel Type</th>
                         <th>Assigned Tank</th>
                         <th style="text-align:right;">Calibration</th>
@@ -585,8 +587,6 @@ if (in_array($export, ['excel', 'pdf'])) {
                         $cal_str = ($cal_val >= 0 ? '+' : '') . number_format($cal_val, 3) . ' L';
                     ?>
                         <tr>
-                            <td>PUMP-<?= $p['id'] ?></td>
-                            <td><?= htmlspecialchars($p['pump_number']) ?></td>
                             <td><?= htmlspecialchars($p['fuel_type_name'] ?? '—') ?></td>
                             <td><?= htmlspecialchars($tank_lbl) ?></td>
                             <td style="text-align:right; font-family:monospace;"><?= $cal_str ?></td>
@@ -1014,7 +1014,7 @@ include __DIR__ . '/../partials/header.php';
 <!-- == TOP HEADER == -->
 <div class="int-head">
     <div>
-        <h1><i class="fas fa-gas-pump"></i> Pump Master Oversight</h1>
+        <h1><i class="fas fa-gas-pump"></i> Calibration Oversight</h1>
         <div class="sub">Central monitoring, maintenance, calibration adjustments, and status controls for all fuel pumps</div>
     </div>
     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
@@ -1034,16 +1034,7 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <!-- == ALERTS == -->
-<?php if (!empty($_SESSION['success'])): ?>
-    <div style="padding: 12px 16px; background: #dcfce7; border: 1px solid #bbf7d0; color: #15803d; border-radius: 8px; margin-bottom: 16px; font-weight: 600;">
-        <i class="fas fa-check-circle"></i> <?= $_SESSION['success']; unset($_SESSION['success']); ?>
-    </div>
-<?php endif; ?>
-<?php if (!empty($_SESSION['error'])): ?>
-    <div style="padding: 12px 16px; background: #fee2e2; border: 1px solid #fecaca; color: #b91c1c; border-radius: 8px; margin-bottom: 16px; font-weight: 600;">
-        <i class="fas fa-exclamation-circle"></i> <?= $_SESSION['error']; unset($_SESSION['error']); ?>
-    </div>
-<?php endif; ?>
+<?php require __DIR__ . '/../partials/flash_toast.php'; ?>
 
 <!-- == SUMMARY CARDS == -->
 <div class="pmo-cards">
@@ -1161,19 +1152,15 @@ include __DIR__ . '/../partials/header.php';
     <div style="overflow:hidden;">
         <table class="pmo-tbl">
             <colgroup>
-                <col style="width:8%">
-                <col style="width:13%">
-                <col style="width:13%">
-                <col style="width:18%">
-                <col style="width:12%">
-                <col style="width:10%">
-                <col style="width:13%">
-                <col style="width:13%">
+                <col style="width:15%">
+                <col style="width:25%">
+                <col style="width:15%">
+                <col style="width:15%">
+                <col style="width:15%">
+                <col style="width:15%">
             </colgroup>
             <thead>
                 <tr>
-                    <th>Pump ID</th>
-                    <th>Pump Name</th>
                     <th>Fuel Type</th>
                     <th>Assigned Tank</th>
                     <th class="align-right">Calibration Value</th>
@@ -1185,7 +1172,7 @@ include __DIR__ . '/../partials/header.php';
             <tbody>
                 <?php if (empty($pumps)): ?>
                     <tr>
-                        <td colspan="8">
+                        <td colspan="6">
                             <div class="empty-state">
                                 <i class="fas fa-inbox"></i>
                                 No pump records found matching the filter criteria.
@@ -1200,11 +1187,9 @@ include __DIR__ . '/../partials/header.php';
                         $tank_lbl = ($p['fuel_type_name'] ?? '—') . ' Tank (Cap: ' . number_format($p['tank_capacity'] ?? 0, 0) . ' L)';
                     ?>
                         <tr>
-                            <td><strong style="color:#002F70;">PUMP-<?= $p['id'] ?></strong></td>
-                            <td style="font-weight:700;"><?= htmlspecialchars($p['pump_number']) ?></td>
                             <td class="bold-vol"><?= htmlspecialchars($p['fuel_type_name'] ?? '—') ?></td>
-                            <td><span style="font-size:11px;color:#64748b;"><?= htmlspecialchars($tank_lbl) ?></span></td>
-                            <td class="align-right <?= $cal_class ?>" style="font-weight:700; font-family:monospace;"><?= $cal_str ?></td>
+                            <td><span style="font-size:11px; color:#64748b;"><?= htmlspecialchars($tank_lbl) ?></span></td>
+                            <td class="align-right <?= $cal_class ?>" style="font-weight: bold; font-family: monospace;"><?= $cal_str ?></td>
                             <td>
                                 <span class="badge-lbl <?= getStatusBadgeClass($p['status']) ?>">
                                     <?= getStatusLabel($p['status']) ?>

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * MANAGER FUEL SALES SUMMARY
  * 
@@ -47,6 +47,7 @@ try {
 }
 
 require_once __DIR__ . '/../partials/header.php';
+require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 
 <style>
@@ -683,8 +684,83 @@ function exportSummary() {
         alert('No data to export. Please load the summary first.');
         return;
     }
-    // TODO: Implement Excel export using SheetJS or server-side export
-    alert('Export feature coming soon!');
+
+    const escapeHtml = value => String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    const num = value => Number(value || 0).toLocaleString('en-PH', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+    const money = value => '&#8369;' + num(value);
+    const table = (title, headers, rows) => `
+        <h2>${escapeHtml(title)}</h2>
+        <table border="1">
+            <thead><tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>
+            <tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table><br>`;
+
+    const filters = currentData.filters || {};
+    const meterRows = currentData.meter_readings || [];
+    const volumeRows = currentData.vol_sales_summary || [];
+    const amountRows = currentData.vol_amt_summary || [];
+    const totals = currentData.totals || {};
+
+    const meterTable = table('Meter Reading Table', [
+        'Pump', 'Fuel Type', 'Beginning', 'Ending', 'Calibration', 'Liters Sold', 'Price/L', 'Amount', 'Shift', 'Date', 'Staff', 'Status'
+    ], meterRows.map(r => [
+        escapeHtml(r.pump_number || r.pump_id || ''),
+        escapeHtml(r.fuel_type || ''),
+        num(r.beginning),
+        num(r.ending),
+        num(r.cal),
+        num(r.volume_liters),
+        money(r.price_per_liter),
+        money(r.amount),
+        escapeHtml(r.shift_name || r.shift_period || ''),
+        escapeHtml(r.reading_date || ''),
+        escapeHtml(r.staff_name || ''),
+        escapeHtml(r.status || '')
+    ]));
+
+    const volumeTable = table('Volume Sales Summary', [
+        'Fuel Type', 'Volume Sales (L)'
+    ], volumeRows.map(r => [
+        escapeHtml(r.fuel_type || ''),
+        num(r.volume_sales)
+    ]).concat([['TOTAL', num(totals.total_liters)]]));
+
+    const amountTable = table('Volume & Amount Summary', [
+        'Fuel Type', 'Volume Sales (L)', 'Amount Sales'
+    ], amountRows.map(r => [
+        escapeHtml(r.fuel_type || ''),
+        num(r.volume_sales),
+        money(r.amount_sales)
+    ]).concat([['TOTAL', num(totals.total_liters), money(totals.total_amount)]]));
+
+    const workbook = `
+        <html>
+        <head><meta charset="UTF-8"></head>
+        <body>
+            <h1>Fuel Sales Summary</h1>
+            <p><strong>Period:</strong> ${escapeHtml(filters.date_from || '')} to ${escapeHtml(filters.date_to || '')}</p>
+            ${meterTable}
+            ${volumeTable}
+            ${amountTable}
+        </body>
+        </html>`;
+
+    const blob = new Blob(['\ufeff', workbook], {type: 'application/vnd.ms-excel;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `fuel_sales_summary_${filters.date_from || 'from'}_to_${filters.date_to || 'to'}.xls`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
 }
 
 // Auto-load on page open

@@ -52,7 +52,7 @@ try {
 // LIST CUSTOMERS (WITH FILTERS AND SUMMARY STATS)
 // ─────────────────────────────────────────────────────────────────────
 function listCustomers() {
-    global $pdo, $station_id;
+    global $pdo, $station_id, $role;
 
     $search       = trim($_GET['search'] ?? '');
     $type         = trim($_GET['type'] ?? '');
@@ -63,8 +63,14 @@ function listCustomers() {
     $dateTxFrom   = trim($_GET['date_tx_from'] ?? '');
     $dateTxTo     = trim($_GET['date_tx_to'] ?? '');
 
-    $where  = ['c.station_id = ?'];
-    $params = [$station_id];
+    $where  = [];
+    $params = [];
+    
+    // Only filter by station if admin role (not superadmin or developer)
+    if ($role === 'admin' && $station_id > 0) {
+        $where[] = 'c.station_id = ?';
+        $params[] = $station_id;
+    }
 
     if ($search !== '') {
         $where[] = "(CAST(c.id AS CHAR) LIKE ? OR c.name LIKE ? OR c.contact_number LIKE ?)";
@@ -96,7 +102,7 @@ function listCustomers() {
         $params[] = $dateRegTo;
     }
 
-    $whereClause = implode(' AND ', $where);
+    $whereClause = !empty($where) ? implode(' AND ', $where) : '1=1';
 
     // Fetch customers
     $stmt = $pdo->prepare("
@@ -111,7 +117,7 @@ function listCustomers() {
             c.created_at AS registered_at,
             CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS registered_by_name
         FROM customers c
-        LEFT JOIN users u ON c.verified_by = u.id
+        LEFT JOIN users u ON c.registered_by = u.id
         WHERE $whereClause
         ORDER BY c.created_at DESC
     ");
@@ -161,7 +167,10 @@ function listCustomers() {
         $filteredCustomers[] = $c;
     }
 
-    // Dynamic Summary Stats (Calculated on ALL customers in station)
+    // Dynamic Summary Stats (Calculated on customers - filtered by station for admin only)
+    $statsWhere = ($role === 'admin' && $station_id > 0) ? 'WHERE station_id = ?' : 'WHERE 1=1';
+    $statsParams = ($role === 'admin' && $station_id > 0) ? [$station_id] : [];
+    
     $statsStmt = $pdo->prepare("
         SELECT
             COUNT(*) AS total_customers,
@@ -171,9 +180,9 @@ function listCustomers() {
             SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active_customers,
             SUM(CASE WHEN status IN ('inactive', 'suspended') THEN 1 ELSE 0 END) AS inactive_customers
         FROM customers
-        WHERE station_id = ?
+        $statsWhere
     ");
-    $statsStmt->execute([$station_id]);
+    $statsStmt->execute($statsParams);
     $stats = $statsStmt->fetch(PDO::FETCH_ASSOC) ?: [
         'total_customers' => 0,
         'new_registered' => 0,

@@ -18,7 +18,7 @@ $master_menu = [
     ['id'=>'fuel','label'=>'Fuel Management','ico'=>'fas fa-gas-pump','href'=>'#','permissions'=>['manage_fuel', 'encode_fuel', 'view_fuel_variance'],'station_specific'=>true,'sub_items'=>[
         ['id'=>'staff_fuel_deliveries_sub', 'label'=>'Record Fuel Delivery',         'href'=>'staff_fuel_deliveries.php',               'permissions'=>['encode_fuel','create_transactions'], 'desc'=>'Encode actual fuel delivery details (Invoice number, fuel type, liters, tanker number).'],
         ['id'=>'staff_fuel_del_history',     'label'=>'Fuel Deliveries History',      'href'=>'staff_fuel_deliveries_history.php',          'permissions'=>['encode_fuel','create_transactions'], 'desc'=>'View all fuel delivery records with manager approval status (Pending, Approved, Rejected).'],
-        ['id'=>'staff_fuel_transactions',   'label'=>'Fuel Transactions (pump readings)', 'href'=>'staff_transactions_hub.php?section=fuel', 'permissions'=>['encode_fuel','create_transactions']],
+        ['id'=>'staff_fuel_transactions',   'label'=>'Fuel Transaction (Meter Readings)', 'href'=>'staff_transactions_hub.php?section=fuel', 'permissions'=>['encode_fuel','create_transactions']],
     ]],
     
     // Deliveries Management - Staff (Merchandise ONLY — Fuel is under Fuel Management)
@@ -59,7 +59,6 @@ $master_menu = [
     // Reports - Staff, Manager, Admin
     ['id'=>'reports','label'=>'Reports','ico'=>'fas fa-chart-bar','href'=>'staff_reports.php','permissions'=>['view_personal_reports', 'view_operational_reports', 'view_financial_reports', 'view_all_reports'],'station_specific'=>true,'sub_items'=>[
         ['id'=>'report_daily_sales',      'label'=>'Sales Reports',                    'href'=>'staff_fuel_sales_summary.php',       'permissions'=>['view_personal_reports','view_operational_reports']],
-        ['id'=>'report_jo_tracker',       'label'=>'Job Orders Reports',               'href'=>'staff_job_orders_report.php',  'permissions'=>['view_personal_reports','view_operational_reports']],
         ['id'=>'report_deliveries',       'label'=>'Deliveries Reports',               'href'=>'staff_deliveries_report.php',           'permissions'=>['view_personal_reports','view_operational_reports']],
         ['id'=>'report_payments',         'label'=>'Payments Reports',                 'href'=>'staff_payments_report.php',    'permissions'=>['view_personal_reports','view_operational_reports']],
         ['id'=>'report_customers',        'label'=>'Customer Reports',                 'href'=>'staff_customers_report.php',   'permissions'=>['view_personal_reports','view_operational_reports']],
@@ -175,10 +174,10 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 'permissions' => ['view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
                 'sub_items' => [
-                    ['id' => 'admin_fuel_transactions_oversight', 'label' => 'Fuel Transactions Oversight', 'href' => 'admin_fuel_transactions_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'Monitor validated pump readings for compliance.'],
+                    ['id' => 'admin_fuel_transactions_oversight', 'label' => 'Fuel Transaction Oversight', 'href' => 'admin_fuel_transactions_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'Monitor validated fuel transactions for compliance.'],
                     ['id' => 'admin_fuel_deliveries_oversight', 'label' => 'Fuel Deliveries Oversight', 'href' => 'admin_fuel_deliveries_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'Oversee validated supplier deliveries and stock updates.'],
                     ['id' => 'admin_fuel_adjustments_oversight', 'label' => 'Adjustments Oversight', 'href' => 'admin_fuel_adjustments_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'Track manager adjustments for audit and transparency.'],
-                    ['id' => 'admin_pump_master_oversight', 'label' => 'Pump Master Oversight', 'href' => 'admin_pump_master_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'View calibration records and audit trail logs.'],
+                    ['id' => 'admin_pump_master_oversight', 'label' => 'Calibration Oversight', 'href' => 'admin_pump_master_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'View calibration records and audit trail logs for oversight.'],
                 ],
             ],
             // 6. Merchandise Deliveries Oversight — Admin Oversight Module
@@ -446,10 +445,10 @@ function filter_menu_by_permissions($menu_items, $user_role) {
             if ($user_role === 'manager' && ($item['id'] ?? '') === 'fuel') {
                 $filtered_item['href'] = 'manager_fuel_transaction_validation.php';
                 $filtered_item['sub_items'] = [
-                    ['id'=>'fuel_transactions_validation', 'label'=>'Fuel Transaction Validation',  'href'=>'manager_fuel_transaction_validation.php',         'permissions'=>['manage_fuel'], 'desc'=>'Review and validate staff‑encoded pump readings.'],
+                    ['id'=>'fuel_transactions_validation', 'label'=>'Fuel Transaction Validation',  'href'=>'manager_fuel_transaction_validation.php',         'permissions'=>['manage_fuel'], 'desc'=>'Review and validate staff‑encoded fuel transactions.'],
                     ['id'=>'fuel_deliveries_validation',   'label'=>'Fuel Deliveries Validation',   'href'=>'manager_fuel_deliveries_validation.php',          'permissions'=>['manage_fuel'], 'desc'=>'Approve or return supplier delivery receipts.'],
                     ['id'=>'fuel_adjustments',              'label'=>'Adjustments',                  'href'=>'manager_fuel_adjustments.php',                    'permissions'=>['manage_fuel'], 'desc'=>'Apply corrections for tank levels, stock, or price changes.'],
-                    ['id'=>'fuel_pump_master',              'label'=>'Pump Master',                  'href'=>'manager_fuel_pump_master.php',                    'permissions'=>['manage_fuel'], 'desc'=>'Manage calibration values for accurate pump readings.'],
+                    ['id'=>'fuel_pump_master',              'label'=>'Calibration Review',           'href'=>'manager_fuel_pump_master.php',                    'permissions'=>['manage_fuel'], 'desc'=>'Manage calibration values for accurate pump readings.'],
                 ];
                 // Add directly — skip the generic sub-item filter below
                 $filtered_menu[] = $filtered_item;

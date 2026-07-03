@@ -512,7 +512,7 @@ try {
 try {
     $slStmt = $pdo->prepare("
         SELECT ti.product_id, SUM(ti.quantity) AS qty, MAX(t.created_at) AS mdate
-        FROM transaction_items ti JOIN transactions t ON t.id=ti.transaction_id
+        FROM merchandise_transaction_items ti JOIN merchandise_transactions t ON t.id=ti.transaction_id
         WHERE t.station_id=? AND ti.product_id IS NOT NULL GROUP BY ti.product_id
     ");
     $slStmt->execute([$station_id]);
@@ -1227,7 +1227,6 @@ include __DIR__ . '/../partials/header.php';
                     <th style="text-align:right;">Variance</th>
                     <th style="text-align:center;">Alert Type</th>
                     <th>Recommended Action</th>
-                    <th style="text-align:center;">Actions</th>
                 </tr>
             </thead>
             <tbody id="alertTableBody">
@@ -1299,25 +1298,11 @@ include __DIR__ . '/../partials/header.php';
                             <i class="fas <?php echo $rec_icon; ?>"></i> <?php echo htmlspecialchars($recommended); ?>
                         </span>
                     </td>
-                    <td style="text-align:center;">
-                        <div style="display:flex; gap:4px; justify-content:center;">
-                            <?php if ($st === 'Variance Detected' || ($has_variance && $stock <= $reorder)): ?>
-                                <button class="int-btn-outline" style="border-color:#6f42c1; color:#6f42c1; font-size:11px; padding:4px 8px; height:28px;" onclick="openAdjustmentModal(<?= (int)$item['id'] ?>, '<?= htmlspecialchars(addslashes($item['name'])) ?>', <?= (float)$stock ?>, '<?= htmlspecialchars(addslashes($unit)) ?>')">
-                                    <i class="fas fa-clipboard-check"></i> Adjust
-                                </button>
-                            <?php endif; ?>
-                            <?php if ($stock <= $reorder): ?>
-                                <button class="int-btn-outline" style="border-color:#002F70; color:#002F70; font-size:11px; padding:4px 8px; height:28px;" onclick="openCreateStockRequest(<?= (int)$item['id'] ?>, '<?= htmlspecialchars(addslashes($item['name'])) ?>', <?= (float)$stock ?>, <?= (float)$reorder ?>)">
-                                    <i class="fas fa-paper-plane"></i> Request
-                                </button>
-                            <?php endif; ?>
-                        </div>
-                    </td>
                 </tr>
                 <?php endforeach; ?>
             <?php endforeach; ?>
             <?php if ($alert_count === 0): ?>
-                <tr><td colspan="9" class="empty-state">
+                <tr><td colspan="8" class="empty-state">
                     <i class="fas fa-check-circle" style="color:#28a745;font-size:32px;display:block;margin-bottom:8px;"></i>
                     No stock alerts. All products are at healthy stock levels!
                 </td></tr>

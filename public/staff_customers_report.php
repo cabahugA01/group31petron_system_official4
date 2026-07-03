@@ -1,210 +1,400 @@
 <?php
 /**
- * Staff Customers Report
- * Generate customer reports and statistics
+ * STAFF CUSTOMER REPORT
+ * Customer counts and transaction summaries for staff reports.
  */
+if (session_status() === PHP_SESSION_NONE) session_start();
 
 $page_id = 'report_customers';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
+require_once __DIR__ . '/../backend/staff_customer_report_data.php';
 require_login();
 
 $me = current_user();
-$role = role_key($me['role'] ?? '');
+$role = role_key($me['role'] ?? 'staff');
 $station_id = user_station_id();
 
-// Staff only
-if (!in_array($role, ['staff', 'superadmin', 'developer'])) {
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
     header('Location: dashboard.php');
     exit;
 }
 
-$page_title = "Customer Reports";
-include __DIR__ . '/../partials/header.php';
-
-// Date range
-$date_from = $_GET['date_from'] ?? date('Y-m-01');
-$date_to = $_GET['date_to'] ?? date('Y-m-d');
-
-// Fetch report data
-try {
-    // Check if customers table exists
-    $tableExists = false;
-    try {
-        $pdo->query("SELECT 1 FROM customers LIMIT 1");
-        $tableExists = true;
-    } catch (Exception $e) {
-        $tableExists = false;
-    }
-    
-    if ($tableExists) {
-        // Summary stats
-        $stmt = $pdo->prepare("
-            SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN customer_type = 'walk-in' THEN 1 ELSE 0 END) as walkin,
-                SUM(CASE WHEN customer_type = 'regular' THEN 1 ELSE 0 END) as regular,
-                SUM(CASE WHEN customer_type = 'fleet' THEN 1 ELSE 0 END) as fleet,
-                SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
-                SUM(CASE WHEN DATE(registered_at) BETWEEN ? AND ? THEN 1 ELSE 0 END) as new_period
-            FROM customers
-            WHERE station_id = ?
-        ");
-        $stmt->execute([$date_from, $date_to, $station_id]);
-        $stats = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        // New customers in period
-        $stmt = $pdo->prepare("
-            SELECT 
-                DATE(registered_at) as reg_date,
-                COUNT(*) as count
-            FROM customers
-            WHERE station_id = ? AND DATE(registered_at) BETWEEN ? AND ?
-            GROUP BY DATE(registered_at)
-            ORDER BY reg_date
-        ");
-        $stmt->execute([$station_id, $date_from, $date_to]);
-        $newCustomers = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } else {
-        $stats = [
-            'total' => 0,
-            'walkin' => 0,
-            'regular' => 0,
-            'fleet' => 0,
-            'active' => 0,
-            'new_period' => 0
-        ];
-        $newCustomers = [];
-    }
-} catch (Exception $e) {
-    $stats = [
-        'total' => 0,
-        'walkin' => 0,
-        'regular' => 0,
-        'fleet' => 0,
-        'active' => 0,
-        'new_period' => 0
-    ];
-    $newCustomers = [];
+if (!in_array($role, ['superadmin', 'developer']) && function_exists('is_module_enabled') && !is_module_enabled('reports')) {
+    render_module_disabled_page('Reports');
 }
+
+if (!$station_id) die('Error: You are not assigned to a station.');
+
+$station_name = 'Petron Station Management System';
+$station_location = '';
+try {
+    $stmt = $pdo->prepare("SELECT name, location FROM stations WHERE id = ? LIMIT 1");
+    $stmt->execute([$station_id]);
+    $station = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($station) {
+        $station_name = $station['name'] ?: $station_name;
+        $station_location = $station['location'] ?? '';
+    }
+} catch (Exception $e) {}
+
+$report = staff_customer_report_build($pdo, (int)$station_id, $_GET);
+$filters = $report['filters'];
+$rows = $report['rows'];
+$summary = $report['summary'];
+$generated_by = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
+if ($generated_by === '') $generated_by = $me['username'] ?? 'Staff';
+
+function staff_customer_report_h($value): string {
+    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+}
+
+function staff_customer_report_date($date, string $format = 'M d'): string {
+    $timestamp = strtotime((string)$date);
+    return $timestamp ? date($format, $timestamp) : 'N/A';
+}
+
+function staff_customer_report_query(array $filters, array $extra = []): string {
+    return http_build_query(array_merge([
+        'date_start' => $filters['date_start'],
+        'date_end' => $filters['date_end'],
+        'customer_type' => $filters['customer_type'],
+        'transaction_type' => $filters['transaction_type'],
+        'staff_id' => $filters['staff_id'] ?: 'all',
+    ], $extra));
+}
+
+$excel_url = 'staff_customer_export.php?' . staff_customer_report_query($filters, ['format' => 'excel']);
+$pdf_url = 'staff_customers_report.php?' . staff_customer_report_query($filters, ['print' => '1']);
+
+$page_title = 'Customer Report';
+require_once __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-.report-container{max-width:1200px;margin:0 auto;}
-.report-header{background:#fff;border-radius:10px;border:1px solid #e5e7eb;padding:20px;margin-bottom:20px;}
-.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:20px;}
-.stat-card{background:#fff;border-radius:10px;border:1px solid #e5e7eb;padding:20px;text-align:center;}
-.stat-card .number{font-size:36px;font-weight:700;color:#002F70;margin:10px 0;}
-.stat-card .label{font-size:13px;color:#6b7280;font-weight:600;}
-.chart-card{background:#fff;border-radius:10px;border:1px solid #e5e7eb;padding:20px;margin-bottom:20px;}
-.chart-card h3{margin:0 0 20px;font-size:18px;font-weight:700;color:#002F70;}
-.date-filters{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;}
-.filter-group{flex:1;min-width:200px;}
-.filter-group label{display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;}
-.filter-group input{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;}
-.empty-state{text-align:center;padding:60px 20px;color:#9ca3af;}
+    body { margin: 0; padding: 0; background: white; }
+    .main-content { width: 100%; max-width: 100%; padding: 0; margin: 0; }
+    .container { max-width: 100%; margin: 0; padding: 0; background: white; }
+    .controls {
+        padding: 12px 20px;
+        background: #fff;
+        border-bottom: 1px solid #000;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    .filter-controls { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; font-size: 12px; }
+    .filter-group { display: flex; flex-direction: column; gap: 4px; min-width: 130px; }
+    .filter-group label { font-weight: 700; color: #000; }
+    .filter-group input,
+    .filter-group select {
+        padding: 6px 10px;
+        border: 1px solid #000;
+        background: #fff;
+        color: #000;
+        font-size: 12px;
+        min-height: 32px;
+    }
+    .action-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .btn {
+        padding: 7px 12px;
+        border: 1px solid #000;
+        background: #fff;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 700;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        color: #000;
+        min-height: 32px;
+    }
+    .btn:hover { background: #f5f5f5; }
+    .btn-primary { background: #000; color: #fff; }
+    .btn-primary:hover { background: #333; }
+    .print-area { background: #fff; }
+    .header {
+        background: #fff;
+        color: #000;
+        padding: 16px 20px;
+        text-align: center;
+        border-bottom: 2px solid #000;
+        margin-bottom: 0;
+    }
+    .header h1 { font-size: 24px; margin: 0 0 8px 0; font-weight: 800; color: #000; }
+    .header p { font-size: 12px; color: #000; margin: 3px 0; }
+    .content { padding: 16px 20px 24px; }
+    .section-title {
+        font-size: 16px;
+        font-weight: 800;
+        margin: 20px 0 10px;
+        color: #000;
+        padding-bottom: 8px;
+        border-bottom: 2px solid #000;
+        text-transform: uppercase;
+    }
+    .summary-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 10px;
+        margin-bottom: 14px;
+    }
+    .summary-card { border: 1px solid #000; padding: 12px; background: #fff; min-height: 72px; }
+    .summary-card .label { font-size: 11px; font-weight: 800; text-transform: uppercase; color: #000; }
+    .summary-card .value { font-size: 24px; font-weight: 800; margin-top: 8px; color: #000; }
+    .table-container { overflow-x: auto; margin-bottom: 18px; width: 100%; }
+    table { width: 100%; border-collapse: collapse; background: white; border: 1px solid #000; font-size: 10px; table-layout: fixed; }
+    thead { background: #fff; color: #000; }
+    th { padding: 7px 5px; text-align: left; font-weight: 800; font-size: 9px; text-transform: uppercase; border: 1px solid #000; white-space: nowrap; }
+    td { padding: 6px 5px; border: 1px solid #000; font-size: 10px; vertical-align: top; }
+    tbody tr { background: #fff; }
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+    .font-bold { font-weight: 800; }
+    .two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+    .three-col { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+    .summary-box { border: 1px solid #000; padding: 12px; background: #fff; }
+    .summary-box h3 { font-size: 13px; text-transform: uppercase; margin: 0 0 8px; color: #000; border-bottom: 1px solid #000; padding-bottom: 6px; }
+    .summary-box .count { font-size: 24px; font-weight: 800; text-align: center; padding: 8px 0; }
+    .print-summary-table { display: none; }
+    .footer-table { max-width: 520px; margin: 0 auto; }
+
+    @media print {
+        @page { size: legal portrait; margin: 0.5in 0.4in; }
+        body * { visibility: hidden !important; }
+        .print-area, .print-area * { visibility: visible !important; }
+        .print-area {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
+        }
+        html, body { margin: 0 !important; padding: 0 !important; background: white !important; }
+        .controls, i, svg, .fas, .far, .fab, .fa, [class*="fa-"] { display: none !important; }
+        .container, .content { margin: 0 !important; padding: 0 !important; }
+        .header { text-align: center !important; border-bottom: 2px solid #000 !important; padding: 6px 0 !important; margin: 0 0 8px 0 !important; }
+        .header h1 { font-size: 16px !important; font-weight: 800 !important; color: #000 !important; margin: 0 0 3px 0 !important; }
+        .header p { font-size: 10px !important; color: #000 !important; margin: 2px 0 !important; }
+        .section-title { font-size: 12px !important; font-weight: 800 !important; margin: 8px 0 4px !important; border-bottom: 2px solid #000 !important; page-break-after: avoid !important; }
+        .summary-cards { display: none !important; }
+        .print-summary-table { display: table !important; }
+        .table-container { overflow: visible !important; width: 100% !important; text-align: center !important; margin-bottom: 8px !important; }
+        table { width: 95% !important; max-width: 100% !important; border-collapse: collapse !important; font-size: 9px !important; table-layout: auto !important; margin: 0 auto 8px !important; }
+        thead { display: table-header-group !important; }
+        tbody { display: table-row-group !important; }
+        tr { page-break-inside: avoid !important; }
+        th { font-size: 9px !important; padding: 5px 6px !important; border: 1px solid #000 !important; background: #fff !important; color: #000 !important; font-weight: 800 !important; text-align: center !important; white-space: nowrap !important; }
+        td { font-size: 8px !important; padding: 4px 6px !important; border: 1px solid #000 !important; white-space: nowrap !important; vertical-align: top !important; }
+        .two-col, .three-col { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 6px !important; margin: 6px 0 !important; page-break-inside: avoid !important; }
+        .summary-box { border: 1px solid #000 !important; padding: 5px !important; }
+        .summary-box h3 { font-size: 9px !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px !important; }
+        .summary-box .count { font-size: 16px !important; padding: 3px 0 !important; }
+    }
 </style>
 
-<div class="page-head">
-    <div>
-        <h1 class="h1"><i class="fas fa-chart-bar"></i> Customer Reports</h1>
-        <div class="sub">View customer statistics and trends</div>
-    </div>
-</div>
-
-<div class="report-container">
-    <!-- Date Filter -->
-    <div class="report-header">
-        <form method="GET" class="date-filters">
-            <div class="filter-group">
-                <label>Date From</label>
-                <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" required>
-            </div>
-            <div class="filter-group">
-                <label>Date To</label>
-                <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>" required>
-            </div>
-            <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Generate Report</button>
-            <button type="button" class="btn btn-export" onclick="exportReport()"><i class="fas fa-download"></i> Export</button>
-        </form>
-    </div>
-
-    <!-- Summary Stats -->
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="number"><?= number_format($stats['total']) ?></div>
-            <div class="label">Total Customers</div>
+<div class="controls">
+    <form method="GET" class="filter-controls" id="customerReportFilters">
+        <div class="filter-group">
+            <label for="date_start">From</label>
+            <input type="date" id="date_start" name="date_start" value="<?= staff_customer_report_h($filters['date_start']) ?>" required>
         </div>
-        <div class="stat-card">
-            <div class="number"><?= number_format($stats['new_period']) ?></div>
-            <div class="label">New (Period)</div>
+        <div class="filter-group">
+            <label for="date_end">To</label>
+            <input type="date" id="date_end" name="date_end" value="<?= staff_customer_report_h($filters['date_end']) ?>" required>
         </div>
-        <div class="stat-card">
-            <div class="number"><?= number_format($stats['active']) ?></div>
-            <div class="label">Active Customers</div>
+        <div class="filter-group">
+            <label for="customer_type">Customer Type</label>
+            <select id="customer_type" name="customer_type">
+                <option value="all" <?= $filters['customer_type'] === 'all' ? 'selected' : '' ?>>All Customers</option>
+                <option value="walkin" <?= $filters['customer_type'] === 'walkin' ? 'selected' : '' ?>>Walk-in</option>
+                <option value="registered" <?= $filters['customer_type'] === 'registered' ? 'selected' : '' ?>>Registered</option>
+            </select>
         </div>
-        <div class="stat-card">
-            <div class="number"><?= number_format($stats['regular']) ?></div>
-            <div class="label">Regular Customers</div>
+        <div class="filter-group">
+            <label for="transaction_type">Transaction Type</label>
+            <select id="transaction_type" name="transaction_type">
+                <option value="all" <?= $filters['transaction_type'] === 'all' ? 'selected' : '' ?>>All</option>
+                <option value="merchandise" <?= $filters['transaction_type'] === 'merchandise' ? 'selected' : '' ?>>Merchandise</option>
+                <option value="job_order" <?= $filters['transaction_type'] === 'job_order' ? 'selected' : '' ?>>Job Order</option>
+                <option value="fuel" <?= $filters['transaction_type'] === 'fuel' ? 'selected' : '' ?>>Fuel</option>
+            </select>
         </div>
-    </div>
-
-    <!-- Customer Type Breakdown -->
-    <div class="chart-card">
-        <h3><i class="fas fa-pie-chart"></i> Customer Type Breakdown</h3>
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="number" style="color:#3730a3;"><?= number_format($stats['walkin']) ?></div>
-                <div class="label">Walk-in</div>
-            </div>
-            <div class="stat-card">
-                <div class="number" style="color:#92400e;"><?= number_format($stats['regular']) ?></div>
-                <div class="label">Regular</div>
-            </div>
-            <div class="stat-card">
-                <div class="number" style="color:#1e40af;"><?= number_format($stats['fleet']) ?></div>
-                <div class="label">Fleet/Company</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- New Customers Trend -->
-    <?php if (!empty($newCustomers)): ?>
-    <div class="chart-card">
-        <h3><i class="fas fa-chart-line"></i> New Customers (<?= date('M d', strtotime($date_from)) ?> - <?= date('M d, Y', strtotime($date_to)) ?>)</h3>
-        <table style="width:100%;border-collapse:collapse;">
-            <thead>
-                <tr style="background:#f8fafc;border-bottom:2px solid #e5e7eb;">
-                    <th style="padding:12px;text-align:left;font-size:12px;font-weight:700;color:#374151;">Date</th>
-                    <th style="padding:12px;text-align:right;font-size:12px;font-weight:700;color:#374151;">New Customers</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($newCustomers as $row): ?>
-                <tr style="border-bottom:1px solid #f1f5f9;">
-                    <td style="padding:12px;font-size:14px;color:#374151;"><?= date('M d, Y', strtotime($row['reg_date'])) ?></td>
-                    <td style="padding:12px;text-align:right;font-size:14px;color:#374151;font-weight:600;"><?= number_format($row['count']) ?></td>
-                </tr>
+        <div class="filter-group">
+            <label for="staff_id">Staff</label>
+            <select id="staff_id" name="staff_id">
+                <option value="all" <?= !$filters['staff_id'] ? 'selected' : '' ?>>All Staff</option>
+                <?php foreach ($report['staff_options'] as $staff): ?>
+                    <option value="<?= (int)$staff['id'] ?>" <?= $filters['staff_id'] === (int)$staff['id'] ? 'selected' : '' ?>>
+                        <?= staff_customer_report_h($staff['staff_name']) ?>
+                    </option>
                 <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
-    <?php else: ?>
-    <div class="chart-card">
-        <div class="empty-state">
-            <i class="fas fa-chart-line fa-3x" style="margin-bottom:12px;"></i>
-            <p>No new customers in the selected period</p>
+            </select>
         </div>
+        <button type="submit" class="btn btn-primary">Apply</button>
+    </form>
+    <div class="action-controls">
+        <button type="button" class="btn" onclick="window.print()">Print</button>
+        <a href="<?= staff_customer_report_h($excel_url) ?>" class="btn">Excel</a>
+        <a href="<?= staff_customer_report_h($pdf_url) ?>" class="btn" target="_blank">PDF</a>
     </div>
-    <?php endif; ?>
 </div>
 
-<script>
-function exportReport() {
-    const from = '<?= $date_from ?>';
-    const to = '<?= $date_to ?>';
-    window.location.href = `staff_customer_export.php?format=excel&date_from=${from}&date_to=${to}&station_id=<?= $station_id ?>`;
-}
-</script>
+<div class="print-area">
+    <div class="container">
+        <div class="header">
+            <h1>CUSTOMER REPORT</h1>
+            <p>Petron Station Management System</p>
+            <p><?= staff_customer_report_h($station_location ?: $station_name) ?></p>
+            <p><strong>Period:</strong> <?= date('F d, Y', strtotime($filters['date_start'])) ?> - <?= date('F d, Y', strtotime($filters['date_end'])) ?></p>
+        </div>
 
-<?php include __DIR__ . '/../partials/footer.php'; ?>
+        <div class="content">
+            <div class="section-title">Customer Summary</div>
+            <div class="summary-cards">
+                <div class="summary-card"><div class="label">Total Customers Served</div><div class="value"><?= number_format($summary['total_served']) ?></div></div>
+                <div class="summary-card"><div class="label">Walk-in Customers</div><div class="value"><?= number_format($summary['walkin']) ?></div></div>
+                <div class="summary-card"><div class="label">Registered Customers</div><div class="value"><?= number_format($summary['registered']) ?></div></div>
+                <div class="summary-card"><div class="label">New Registered Customers</div><div class="value"><?= number_format($summary['new_registered']) ?></div></div>
+                <div class="summary-card"><div class="label">Returning Customers</div><div class="value"><?= number_format($summary['returning']) ?></div></div>
+            </div>
+            <table class="print-summary-table">
+                <tbody>
+                    <tr><td class="font-bold">Total Customers Served</td><td class="text-right font-bold"><?= number_format($summary['total_served']) ?></td></tr>
+                    <tr><td class="font-bold">Walk-in Customers</td><td class="text-right font-bold"><?= number_format($summary['walkin']) ?></td></tr>
+                    <tr><td class="font-bold">Registered Customers</td><td class="text-right font-bold"><?= number_format($summary['registered']) ?></td></tr>
+                    <tr><td class="font-bold">New Registered Customers</td><td class="text-right font-bold"><?= number_format($summary['new_registered']) ?></td></tr>
+                    <tr><td class="font-bold">Returning Customers</td><td class="text-right font-bold"><?= number_format($summary['returning']) ?></td></tr>
+                </tbody>
+            </table>
+
+            <div class="section-title">Customer Transaction Report</div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Customer ID</th>
+                            <th>Customer Name</th>
+                            <th>Type</th>
+                            <th>Vehicle</th>
+                            <th>Transaction Type</th>
+                            <th>Total Amount</th>
+                            <th>Date</th>
+                            <th>Staff</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (count($rows) > 0): foreach ($rows as $row): ?>
+                            <tr>
+                                <td class="font-bold"><?= staff_customer_report_h($row['customer_id_display']) ?></td>
+                                <td><?= staff_customer_report_h($row['customer_name']) ?></td>
+                                <td><?= staff_customer_report_h($row['customer_type']) ?></td>
+                                <td><?= staff_customer_report_h($row['vehicle']) ?></td>
+                                <td><?= staff_customer_report_h($row['transaction_type']) ?></td>
+                                <td class="text-right font-bold">₱<?= number_format((float)$row['total_amount'], 2) ?></td>
+                                <td><?= staff_customer_report_h(staff_customer_report_date($row['transaction_date'])) ?></td>
+                                <td><?= staff_customer_report_h($row['staff_name']) ?></td>
+                            </tr>
+                        <?php endforeach; else: ?>
+                            <tr><td colspan="8" class="text-center" style="padding: 30px;">No customer transactions found for the selected filters.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="section-title">Customer Type Summary</div>
+            <div class="two-col">
+                <div class="summary-box"><h3>Walk-in Customers</h3><div class="count"><?= number_format($report['customer_type_summary']['Walk-in']) ?></div></div>
+                <div class="summary-box"><h3>Registered Customers</h3><div class="count"><?= number_format($report['customer_type_summary']['Registered']) ?></div></div>
+            </div>
+
+            <div class="section-title">Transaction Type Summary</div>
+            <div class="three-col">
+                <div class="summary-box"><h3>Merchandise Customers</h3><div class="count"><?= number_format($report['transaction_type_summary']['Merchandise']) ?></div></div>
+                <div class="summary-box"><h3>Job Order Customers</h3><div class="count"><?= number_format($report['transaction_type_summary']['Job Order']) ?></div></div>
+                <div class="summary-box"><h3>Fuel Customers</h3><div class="count"><?= number_format($report['transaction_type_summary']['Fuel']) ?></div></div>
+            </div>
+
+            <div class="section-title">Staff Customer Summary</div>
+            <div class="table-container">
+                <table>
+                    <thead><tr><th>Staff</th><th>Customers Served</th></tr></thead>
+                    <tbody>
+                        <?php if (count($report['staff_summary']) > 0): foreach ($report['staff_summary'] as $staff): ?>
+                            <tr>
+                                <td class="font-bold"><?= staff_customer_report_h($staff['staff']) ?></td>
+                                <td class="text-right font-bold"><?= number_format($staff['customers_served']) ?></td>
+                            </tr>
+                        <?php endforeach; else: ?>
+                            <tr><td colspan="2" class="text-center" style="padding: 20px;">No staff customer data found.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="section-title">Daily Customer Summary</div>
+            <div class="table-container">
+                <table>
+                    <thead><tr><th>Date</th><th>Walk-in</th><th>Registered</th><th>Total</th></tr></thead>
+                    <tbody>
+                        <?php if (count($report['daily_summary']) > 0): foreach ($report['daily_summary'] as $day): ?>
+                            <tr>
+                                <td class="font-bold"><?= staff_customer_report_h(staff_customer_report_date($day['date'])) ?></td>
+                                <td class="text-right"><?= number_format($day['walkin']) ?></td>
+                                <td class="text-right"><?= number_format($day['registered']) ?></td>
+                                <td class="text-right font-bold"><?= number_format($day['total']) ?></td>
+                            </tr>
+                        <?php endforeach; else: ?>
+                            <tr><td colspan="4" class="text-center" style="padding: 20px;">No daily customer data found.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="section-title">Repeat Customers</div>
+            <div class="table-container">
+                <table>
+                    <thead><tr><th>Customer</th><th>Visits</th><th>Last Visit</th></tr></thead>
+                    <tbody>
+                        <?php if (count($report['repeat_customers']) > 0): foreach ($report['repeat_customers'] as $repeat): ?>
+                            <tr>
+                                <td class="font-bold"><?= staff_customer_report_h($repeat['customer']) ?></td>
+                                <td class="text-right"><?= number_format($repeat['visits']) ?></td>
+                                <td><?= staff_customer_report_h(staff_customer_report_date($repeat['last_visit'])) ?></td>
+                            </tr>
+                        <?php endforeach; else: ?>
+                            <tr><td colspan="3" class="text-center" style="padding: 20px;">No repeat customers found for the selected period.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="section-title">Footer</div>
+            <div class="table-container footer-table">
+                <table>
+                    <tbody>
+                        <tr><td class="font-bold">Generated By:</td><td><?= staff_customer_report_h($generated_by) ?></td></tr>
+                        <tr><td class="font-bold">Generated Date:</td><td><?= date('F d, Y') ?></td></tr>
+                        <tr><td class="font-bold">Report Type:</td><td>Customer Report</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<?php if (($_GET['print'] ?? '') === '1'): ?>
+<script>
+window.addEventListener('load', function () {
+    setTimeout(function () { window.print(); }, 350);
+});
+</script>
+<?php endif; ?>
+
+<?php require_once __DIR__ . '/../partials/footer.php'; ?>

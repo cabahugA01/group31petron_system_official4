@@ -1,0 +1,56 @@
+<?php
+// Update existing fuel_transactions to use proper pump names from fuel_pumps table
+require_once __DIR__ . '/public/db_connect.php';
+
+try {
+    $pdo->beginTransaction();
+    
+    // Get all fuel transactions
+    $stmt = $pdo->query("
+        SELECT ft.id, ft.station_id, ft.fuel_type, ft.pump_id
+        FROM fuel_transactions ft
+        WHERE ft.pump_id IS NOT NULL
+    ");
+    $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $updated = 0;
+    $skipped = 0;
+    
+    foreach ($transactions as $txn) {
+        // Get the proper pump name from fuel_pumps table
+        $pump_stmt = $pdo->prepare("
+            SELECT pump_number 
+            FROM fuel_pumps 
+            WHERE id = ? AND station_id = ?
+        ");
+        $pump_stmt->execute([$txn['pump_id'], $txn['station_id']]);
+        $pump_row = $pump_stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($pump_row && $pump_row['pump_number'] !== $txn['fuel_type']) {
+            // Update the fuel_type to match pump_number
+            $update_stmt = $pdo->prepare("
+                UPDATE fuel_transactions 
+                SET fuel_type = ? 
+                WHERE id = ?
+            ");
+            $update_stmt->execute([$pump_row['pump_number'], $txn['id']]);
+            $updated++;
+            echo "✅ Updated transaction #{$txn['id']}: '{$txn['fuel_type']}' → '{$pump_row['pump_number']}'<br>";
+        } else {
+            $skipped++;
+        }
+    }
+    
+    $pdo->commit();
+    
+    echo "<br><strong>✅ SUCCESS!</strong><br>";
+    echo "Updated: {$updated} transactions<br>";
+    echo "Skipped: {$skipped} transactions (already correct or pump not found)<br>";
+    
+} catch (Exception $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    echo "❌ Error: " . $e->getMessage();
+}
+?>

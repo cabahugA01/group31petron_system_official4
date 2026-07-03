@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'calendar';
 require_once __DIR__ . '/../backend/lib.php';
@@ -289,8 +289,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_details') {
             }
         } elseif ($event_type === 'financial_event' || strpos($event_id, 'high_value_') !== false) {
             $stmt = $pdo->prepare("SELECT t.*, CONCAT(u.first_name, ' ', u.last_name) AS staff_name, s.name as station_name
-                FROM transactions t
-                LEFT JOIN users u ON t.user_id = u.id
+                FROM merchandise_transactions t
+                LEFT JOIN users u ON t.staff_id = u.id
                 LEFT JOIN stations s ON t.station_id = s.id
                 WHERE t.id = ?");
             $stmt->execute([$numeric_id]);
@@ -426,8 +426,8 @@ try {
     // ADMIN SPECIFIC: Pending validations across all stations
     try {
         $validation_where = $filter_station > 0 ? "WHERE station_id = ?" : "";
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM transactions $validation_where " . 
-            ($filter_station > 0 ? "AND" : "WHERE") . " validation_status = 'pending'");
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions $validation_where " . 
+            ($filter_station > 0 ? "AND" : "WHERE") . " validation_status = 'Pending'");
         $stmt->execute($station_params);
         $summary_stats['pending_validations'] += $stmt->fetchColumn();
         
@@ -450,8 +450,8 @@ try {
     
     // ADMIN SPECIFIC: Overdue reports count
     try {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM transactions $station_where " . 
-            ($filter_station > 0 ? "AND" : "WHERE") . " validation_status = 'pending' AND DATE(transaction_date) < DATE_SUB(CURDATE(), INTERVAL 7 DAY)");
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions $station_where " . 
+            ($filter_station > 0 ? "AND" : "WHERE") . " validation_status = 'Pending' AND DATE(transaction_date) < DATE_SUB(CURDATE(), INTERVAL 7 DAY)");
         $stmt->execute($station_params);
         $summary_stats['overdue_reports'] = $stmt->fetchColumn();
     } catch (Exception $e) {}
@@ -466,7 +466,7 @@ try {
     
     // ADMIN SPECIFIC: High-value transactions today
     try {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM transactions $station_where " . 
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions $station_where " . 
             ($filter_station > 0 ? "AND" : "WHERE") . " DATE(transaction_date) = ? AND total_amount >= 50000");
         $stmt->execute(array_merge($station_params, [$today_date]));
         $summary_stats['high_value_transactions'] = $stmt->fetchColumn();
@@ -792,10 +792,10 @@ try {
     try {
         $validation_query = "SELECT t.id, t.transaction_date, t.customer_name, t.total_amount, 
             t.station_id, s.name as station_name, u.name as staff_name
-            FROM transactions t
+            FROM merchandise_transactions t
             JOIN stations s ON t.station_id = s.id
-            JOIN users u ON t.encoded_by = u.id
-            WHERE t.validation_status = 'pending' AND DATE(t.transaction_date) BETWEEN ? AND ?";
+            JOIN users u ON t.staff_id = u.id
+            WHERE t.validation_status = 'Pending' AND DATE(t.transaction_date) BETWEEN ? AND ?";
         
         $validation_params = [$view_start, $view_end];
         if ($filter_station > 0) {
@@ -827,9 +827,9 @@ try {
     try {
         $overdue_reports_query = "SELECT DATE(CURDATE()) as event_date, station_id, s.name as station_name,
             COUNT(*) as overdue_count
-            FROM transactions t
+            FROM merchandise_transactions t
             JOIN stations s ON t.station_id = s.id
-            WHERE t.validation_status = 'pending' AND DATE(t.transaction_date) < DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
+            WHERE t.validation_status = 'Pending' AND DATE(t.transaction_date) < DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
         
         if ($filter_station > 0) {
             $overdue_reports_query .= " AND t.station_id = ?";
@@ -898,9 +898,9 @@ try {
         // High-value transactions for admin oversight
         $high_value_query = "SELECT t.id, t.transaction_date, t.customer_name, t.total_amount,
             t.payment_method, s.name as station_name, u.name as staff_name
-            FROM transactions t
+            FROM merchandise_transactions t
             JOIN stations s ON t.station_id = s.id
-            JOIN users u ON t.encoded_by = u.id
+            JOIN users u ON t.staff_id = u.id
             WHERE t.total_amount >= 50000 AND DATE(t.transaction_date) BETWEEN ? AND ?";
         
         $high_value_params = [$view_start, $view_end];

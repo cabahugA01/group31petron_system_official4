@@ -31,8 +31,9 @@ if (!$station_id) {
 // Get active tab from URL parameter
 $active_tab = $_GET['tab'] ?? 'shift_reports';
 
-// Get date range from GET or use current month as default
-$date_from = $_GET['date_from'] ?? date('Y-m-01');
+// Get date range from GET or use current day as default.
+// Manager reports are operational daily reports, so the default should stay updated to today.
+$date_from = $_GET['date_from'] ?? date('Y-m-d');
 $date_to   = $_GET['date_to']   ?? date('Y-m-d');
 
 // Validate date format

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = match($_GET['tab'] ?? '') {
     'deliveries'    => 'fuel_deliveries_validation',
     'transactions'  => 'fuel_transactions_oversight',
@@ -123,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     ")->execute([$transaction['liters_sold'], $transaction['liters_sold'], $station_id, $transaction['fuel_type']]);
 
                     // -- Audit trail entry --
-                    $pdo->prepare("
+                    /* $pdo->prepare("
                         INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
                         SELECT ?, fuel_type_id, 'verified_sale', ?, ?, ?, CURDATE()
                         FROM fuel_inventory WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?))
@@ -135,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         $me['id'],
                         $station_id,
                         $transaction['fuel_type']
-                    ]);
+                    ]); */
 
                     // -- Auto-flag variance report if >5% --
                     if (abs($variance_liters) > 0.1) {
@@ -154,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     }
                 } else {
                     // -- Rejected: log for staff correction --
-                    $pdo->prepare("
+                    /* $pdo->prepare("
                         INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
                         SELECT ?, fuel_type_id, 'rejected_reading', 0, ?, ?, CURDATE()
                         FROM fuel_inventory WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?))
@@ -165,7 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         $me['id'],
                         $station_id,
                         $transaction['fuel_type']
-                    ]);
+                    ]); */
                 }
 
                 log_activity($pdo, $me['id'], 'Validate Transaction', "Transaction #{$reading_id} {$new_status}. Variance: {$variance_liters} L. Notes: {$notes}");
@@ -246,6 +246,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     WHERE transaction_id = ? AND station_id = ?
                 ")->execute([$adjusted_liters, $me['id'], $reading_id, $station_id]);
 
+                // Retrieve current stock before update
+                $stmt_inv = $pdo->prepare("SELECT COALESCE(current_stock, current_level, 0) FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) LIMIT 1");
+                $stmt_inv->execute([$station_id, $transaction['fuel_type']]);
+                $previous_value = (float)($stmt_inv->fetchColumn() ?: 0.0);
+                $new_value = max(0.0, $previous_value - $adjusted_liters);
+
                 // Deduct adjusted liters from tank inventory
                 $pdo->prepare("
                     UPDATE fuel_inventory
@@ -256,16 +262,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ")->execute([$adjusted_liters, $adjusted_liters, $station_id, $transaction['fuel_type']]);
 
                 // Audit trail
-                $audit_reason = substr("ADJUSTED by manager. Reading #{$reading_id}. Original: {$original_liters} L ? Adjusted: {$adjusted_liters} L. Reason: {$adj_reason}", 0, 255);
+                $audit_reason = substr("ADJUSTED by manager. Reading #{$reading_id}. Original: {$original_liters} L → Adjusted: {$adjusted_liters} L. Reason: {$adj_reason}", 0, 255);
                 $pdo->prepare("
-                    INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
-                    SELECT ?, fuel_type_id, 'adjusted_reading', ?, ?, ?, CURDATE()
+                    INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, previous_value, new_value, reason, user_id, status, approved_by, approved_at, adjustment_date)
+                    SELECT ?, fuel_type_id, 'adjusted_reading', ?, ?, ?, ?, ?, 'Approved', ?, NOW(), CURDATE()
                     FROM fuel_inventory WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?))
                     LIMIT 1
                 ")->execute([
                     $station_id,
-                    -abs($adjusted_liters),
+                    -$adjusted_liters,
+                    $previous_value,
+                    $new_value,
                     $audit_reason,
+                    $me['id'],
                     $me['id'],
                     $station_id,
                     $transaction['fuel_type']
@@ -327,11 +336,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 // Audit trail
                 $reason = substr("Daily log approved. Txn #{$txn_id}. Notes: {$mgr_notes}", 0, 255);
-                $pdo->prepare("
+                /* $pdo->prepare("
                     INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
                     SELECT ?, fuel_type_id, 'daily_log_approved', ?, ?, ?, CURDATE()
                     FROM fuel_inventory WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?)) LIMIT 1
-                ")->execute([$station_id, -abs($txn['liters_sold']), $reason, $me['id'], $station_id, $txn['fuel_type']]);
+                ")->execute([$station_id, -abs($txn['liters_sold']), $reason, $me['id'], $station_id, $txn['fuel_type']]); */
 
                 log_activity($pdo, $me['id'], 'Approve Daily Log', "Txn #{$txn_id} approved. {$txn['liters_sold']} L of {$txn['fuel_type']}. Notes: {$mgr_notes}");
                 $pdo->commit();
@@ -362,11 +371,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 // Audit trail  -  no inventory change on reject
                 $reason = substr("Daily log REJECTED. Txn #{$txn_id}. Reason: {$rej_notes}", 0, 255);
-                $pdo->prepare("
+                /* $pdo->prepare("
                     INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
                     SELECT ?, fuel_type_id, 'daily_log_rejected', 0, ?, ?, CURDATE()
                     FROM fuel_inventory WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?)) LIMIT 1
-                ")->execute([$station_id, $reason, $me['id'], $station_id, $txn['fuel_type']]);
+                ")->execute([$station_id, $reason, $me['id'], $station_id, $txn['fuel_type']]); */
 
                 log_activity($pdo, $me['id'], 'Reject Daily Log', "Txn #{$txn_id} rejected. Reason: {$rej_notes}");
                 $pdo->commit();
@@ -610,6 +619,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 $pdo->beginTransaction();
 
+                // Fetch previous stock level
+                $prev_stock = 0.0;
+                try {
+                    $invStmt = $pdo->prepare("SELECT COALESCE(current_stock, current_level, 0) FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) LIMIT 1");
+                    $invStmt->execute([$station_id, $fuel_type]);
+                    $prev_stock = (float)($invStmt->fetchColumn() ?: 0.0);
+                } catch (Exception $e) {}
+
                 if ($action === 'approve') {
                     $liters_to_add = $original_liters;
 
@@ -736,9 +753,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         $audit_reason = substr("Delivery #{$delivery_id} {$action}d. Added {$liters_to_add}L of {$fuel_type}.{$tank_note} Notes: {$val_notes}", 0, 255);
                         $pdo->prepare("
                             INSERT INTO fuel_adjustments
-                                (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
-                            VALUES (?, ?, 'delivery', ?, ?, ?, CURDATE())
-                        ")->execute([$station_id, $fuel_type_id, $liters_to_add, $audit_reason, $me['id']]);
+                                (station_id, fuel_type_id, adjustment_type, liters, previous_value, new_value, reason, user_id, status, approved_by, approved_at, adjustment_date)
+                            VALUES (?, ?, 'delivery', ?, ?, ?, ?, ?, 'Approved', ?, NOW(), CURDATE())
+                        ")->execute([
+                            $station_id,
+                            $fuel_type_id,
+                            $liters_to_add,
+                            $prev_stock,
+                            $new_tank_level !== null ? $new_tank_level : ($prev_stock + $liters_to_add),
+                            $audit_reason,
+                            $me['id'],
+                            $me['id']
+                        ]);
                     } catch (Exception $ae) {
                         error_log("fuel_adjustments insert failed: " . $ae->getMessage());
                     }
@@ -848,7 +874,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $pdo->prepare("UPDATE fuel_inventory SET current_level=?, current_stock=?, last_updated=NOW() WHERE station_id=? AND fuel_type_id=?")->execute([$new_level, $new_level, $station_id, $fuel_type_id]);
 
                 // Audit trail row
-                $pdo->prepare("INSERT INTO fuel_adjustments (station_id, fuel_type_id, fuel_type, adjustment_type, liters, reason, user_id, adjustment_date) VALUES (?,?,?,?,?,?,?,CURDATE())")->execute([$station_id, $fuel_type_id, $fuel_name, $adjustment_type, $difference, $reason_short, $me['id']]);
+                $pdo->prepare("INSERT INTO fuel_adjustments (station_id, fuel_type_id, fuel_type, adjustment_type, liters, previous_value, new_value, reason, user_id, status, approved_by, approved_at, adjustment_date) VALUES (?,?,?,?,?,?,?,?,'Approved',?,NOW(),CURDATE())")->execute([$station_id, $fuel_type_id, $fuel_name, $adjustment_type, $difference, $current['current_stock'], $new_level, $reason_short, $me['id'], $me['id']]);
 
                 log_activity($pdo, $me['id'], 'Adjust Tank Level', "Adjusted {$adjustment_type} for {$fuel_name}: {$difference} L (new level: {$new_level} L). Reason: {$reason}");
                 $pdo->commit();
@@ -1427,23 +1453,83 @@ try {
 } catch (Exception $e) { error_log("db_fuel_types: " . $e->getMessage()); }
 
 try {
-    // Tank levels
+    // Tank levels - Get ALL pump records to show 17 individual tanks
+    // Query fuel_pumps to get individual nozzles, then join with inventory for shared tank data
     $stmt = $pdo->prepare("
-        SELECT fi.*,
+        SELECT fp.id as pump_id,
+               fp.pump_name as fuel_type_name,
+               fp.pump_number,
+               fp.nozzle_number,
+               fp.fuel_type_id,
+               ft.name as fuel_category,
+               ft.category,
+               fi.fuel_type,
+               fi.current_level,
+               fi.current_stock,
                COALESCE(fi.current_level, fi.current_stock, 0) AS current_stock,
-               ft.name as fuel_type_name,
+               fi.capacity,
+               fi.critical_level,
+               fi.price_per_liter,
+               fp.calibration_value as latest_calibration,
+               fp.calibration_updated_at as last_updated,
                CASE
                    WHEN COALESCE(fi.current_level, fi.current_stock, 0) <= 0 THEN 'Out of Stock'
                    WHEN COALESCE(fi.current_level, fi.current_stock, 0) <= fi.critical_level THEN 'Low Stock'
                    ELSE 'Available'
                END as stock_status,
-               (SELECT COUNT(*) FROM fuel_pumps fp WHERE fp.fuel_type_id=fi.fuel_type_id AND fp.station_id=fi.station_id) as pump_count
-        FROM fuel_inventory fi JOIN fuel_types ft ON fi.fuel_type_id=ft.id
-        WHERE fi.station_id=? ORDER BY ft.name
+               1 as pump_count
+        FROM fuel_pumps fp
+        JOIN fuel_types ft ON fp.fuel_type_id = ft.id
+        LEFT JOIN fuel_inventory fi ON fi.fuel_type_id = fp.fuel_type_id AND fi.station_id = fp.station_id
+        WHERE fp.station_id = ?
+        ORDER BY ft.name, fp.pump_number, fp.nozzle_number
     ");
     $stmt->execute([$station_id]);
-    $tank_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) { error_log("tank_data: ".$e->getMessage()); }
+    $tank_data_pumps = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // If no pumps found, fall back to inventory-level grouping
+    if (empty($tank_data_pumps)) {
+        $stmt = $pdo->prepare("
+            SELECT fi.*,
+                   COALESCE(fi.current_level, fi.current_stock, 0) AS current_stock,
+                   ft.name as fuel_type_name,
+                   CASE
+                       WHEN COALESCE(fi.current_level, fi.current_stock, 0) <= 0 THEN 'Out of Stock'
+                       WHEN COALESCE(fi.current_level, fi.current_stock, 0) <= fi.critical_level THEN 'Low Stock'
+                       ELSE 'Available'
+                   END as stock_status,
+                   (SELECT COUNT(*) FROM fuel_pumps fp WHERE fp.fuel_type_id=fi.fuel_type_id AND fp.station_id=fi.station_id) as pump_count
+            FROM fuel_inventory fi JOIN fuel_types ft ON fi.fuel_type_id=ft.id
+            WHERE fi.station_id=? ORDER BY ft.name
+        ");
+        $stmt->execute([$station_id]);
+        $tank_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $tank_data = $tank_data_pumps;
+    }
+} catch (Exception $e) { 
+    error_log("tank_data: ".$e->getMessage()); 
+    // Fallback to inventory on error
+    try {
+        $stmt = $pdo->prepare("
+            SELECT fi.*,
+                   COALESCE(fi.current_level, fi.current_stock, 0) AS current_stock,
+                   ft.name as fuel_type_name,
+                   CASE
+                       WHEN COALESCE(fi.current_level, fi.current_stock, 0) <= 0 THEN 'Out of Stock'
+                       WHEN COALESCE(fi.current_level, fi.current_stock, 0) <= fi.critical_level THEN 'Low Stock'
+                       ELSE 'Available'
+                   END as stock_status,
+                   (SELECT COUNT(*) FROM fuel_pumps fp WHERE fp.fuel_type_id=fi.fuel_type_id AND fp.station_id=fi.station_id) as pump_count
+            FROM fuel_inventory fi JOIN fuel_types ft ON fi.fuel_type_id=ft.id
+            WHERE fi.station_id=? ORDER BY ft.name
+        ");
+        $stmt->execute([$station_id]);
+        $tank_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e2) {
+        $tank_data = [];
+    }
+}
 
 // -- Build calibration lookup from fuel_inventory (used in Fuel Transactions section) --
 $cal_lookup = [];
@@ -1676,8 +1762,14 @@ html, body {
 
 /* == PAGE HEADER - matches Transaction Module int-head standard == */
 .int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:0px !important; }
-.int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
-.int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
+.int-head h1 { font-size:26px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head .sub { font-size:16px; color:#666; margin-top:4px; text-transform:none !important; }
+
+/* Export Button Styles */
+.flt-btn{display:inline-flex;align-items:center;gap:6px;padding:0 18px;height:40px;border-radius:7px;font-size:15px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap;transition:all .15s;background:white !important;border:1px solid transparent;}
+.flt-btn-excel{color:#1d6f42 !important;border-color:#1d6f42 !important;} .flt-btn-excel:hover{background:#1d6f42 !important;color:#fff !important;}
+.flt-btn-pdf{color:#dc2626 !important;border-color:#dc2626 !important;} .flt-btn-pdf:hover{background:#dc2626 !important;color:#fff !important;}
+
 /* Prevent any element from exceeding viewport */
 *:not(.modal):not(.modal *) {
     max-width: 100% !important;
@@ -1767,12 +1859,12 @@ html, body {
     width:100%; 
     max-width:100%; 
     border-collapse:collapse; 
-    font-size:.88rem; 
+    font-size:1.1rem; 
     margin-top:8px; 
     table-layout: auto;
 }
 .data-table th, .data-table td { 
-    padding:9px 10px; 
+    padding:12px 14px; 
     text-align:left; 
     border-bottom:1px solid #f0f0f0; 
     vertical-align:middle;
@@ -1785,8 +1877,8 @@ html, body {
     background:#002F70; 
     color:#fff; 
     font-weight:600; 
-    font-size:.82rem; 
-    padding:10px; 
+    font-size:1rem; 
+    padding:14px 12px; 
     white-space:nowrap; 
     border-bottom:2px solid #002F70;
     position: sticky;
@@ -1799,10 +1891,10 @@ html, body {
 
 /* Mobile responsive table adjustments */
 @media (max-width: 1200px) {
-    .data-table { font-size: .8rem; }
+    .data-table { font-size: 1rem; }
     .data-table th, .data-table td { 
-        padding: 7px 8px;
-        font-size: .78rem;
+        padding: 10px 12px;
+        font-size: .95rem;
     }
 }
 
@@ -1870,7 +1962,7 @@ html, body {
 /* Modern Status Pills - Plain text, NO background */
 .status-pill-pending {
     color: #002F70;
-    font-size: 0.78rem;
+    font-size: 0.95rem;
     font-weight: 700;
     display: inline-block;
     text-align: center;
@@ -1879,7 +1971,7 @@ html, body {
 }
 .status-pill-verified {
     color: #28a745;
-    font-size: 0.78rem;
+    font-size: 0.95rem;
     font-weight: 700;
     display: inline-block;
     text-align: center;
@@ -1888,7 +1980,7 @@ html, body {
 }
 .status-pill-rejected {
     color: #dc3545;
-    font-size: 0.78rem;
+    font-size: 0.95rem;
     font-weight: 700;
     display: inline-block;
     text-align: center;
@@ -1897,15 +1989,15 @@ html, body {
 }
 
 /* Variance Tags - Plain text, NO background */
-.tag-investigate { color:#dc3545; font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; animation:pulse 1.5s infinite; }
+.tag-investigate { color:#dc3545; font-size:.95rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; animation:pulse 1.5s infinite; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.7} }
-.tag-open { color:#002F70; font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; }
-.tag-resolved { color:#28a745; font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; }
-.tag-investigating { color:#6c757d; font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; }
+.tag-open { color:#002F70; font-size:.95rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; }
+.tag-resolved { color:#28a745; font-size:.95rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; }
+.tag-investigating { color:#6c757d; font-size:.95rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; }
 
 /* Buttons */
-.btn { padding:6px 14px; border:none; border-radius:6px; cursor:pointer; font-size:.8rem; font-weight:600; transition:all .2s; display:inline-flex; align-items:center; gap:5px; text-decoration:none; }
-.btn-lg { padding:10px 22px; font-size:.9rem; }
+.btn { padding:10px 18px; border:none; border-radius:6px; cursor:pointer; font-size:1rem; font-weight:600; transition:all .2s; display:inline-flex; align-items:center; gap:5px; text-decoration:none; }
+.btn-lg { padding:14px 26px; font-size:1.1rem; }
 /* Approve / Validate ? Green #28A745 */
 .btn-success { background:#28A745; color:#fff; }
 .btn-success:hover { background:#218838; transform:translateY(-1px); }
@@ -1933,16 +2025,16 @@ html, body {
 
 /* Forms */
 .form-group { margin-bottom:14px; }
-.form-label { display:block; margin-bottom:5px; font-weight:600; color:#333; font-size:.88rem; }
+.form-label { display:block; margin-bottom:5px; font-weight:600; color:#333; font-size:1rem; }
 .form-label .required { color:<?php echo $colors['danger']; ?>; }
-.form-control { width:100%; padding:8px 12px; border:1px solid #ddd; border-radius:6px; font-size:.88rem; transition:border-color .2s; box-sizing:border-box; background:#fff; }
+.form-control { width:100%; padding:10px 14px; border:1px solid #ddd; border-radius:6px; font-size:1rem; transition:border-color .2s; box-sizing:border-box; background:#fff; }
 .form-control:focus { outline:none; border-color:<?php echo $colors['primary']; ?>; box-shadow:0 0 0 3px rgba(<?php echo hex2rgb($colors['primary']); ?>,.15); }
-.form-hint { font-size:.75rem; color:#888; margin-top:3px; }
+.form-hint { font-size:.9rem; color:#888; margin-top:3px; }
 
 /* Section Headers */
 .section-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:8px; }
-.section-title { font-size:1rem; font-weight:700; color:<?php echo $colors['primary']; ?>; display:flex; align-items:center; gap:8px; }
-.section-title i { font-size:.9rem; }
+.section-title { font-size:1.2rem; font-weight:700; color:<?php echo $colors['primary']; ?>; display:flex; align-items:center; gap:8px; }
+.section-title i { font-size:1.1rem; }
 
 /* Info Box */
 .info-box { background:linear-gradient(135deg,#f8f9fa,#e9ecef); border-radius:10px; padding:18px; border-left:4px solid <?php echo $colors['primary']; ?>; margin-bottom:18px; }
@@ -1962,7 +2054,7 @@ html, body {
 .modal-footer { display:flex; gap:10px; margin-top:20px; padding-top:14px; border-top:1px solid #e9ecef; }
 
 /* Audit Trail Badge */
-.audit-badge { display:inline-flex; align-items:center; gap:4px; background:#e8f4fd; color:#0056b3; padding:2px 8px; border-radius:10px; font-size:.72rem; font-weight:600; }
+.audit-badge { display:inline-flex; align-items:center; gap:4px; background:#e8f4fd; color:#0056b3; padding:4px 10px; border-radius:10px; font-size:.9rem; font-weight:600; }
 
 /* Empty State */
 .empty-state { text-align:center; padding:40px 20px; color:#888; }
@@ -1991,16 +2083,22 @@ html, body {
             <h1 id="mfm-page-title"><i class="fas fa-gas-pump"></i> Fuel Transactions Oversight</h1>
             <div class="sub" id="mfm-page-subtitle">Review pump readings encoded by Staff — Validate / Approve / Adjust</div>
         </div>
-        <div style="display:none;"></div>
+        <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <button onclick="exportCSV()" class="flt-btn flt-btn-excel" style="font-size:12px;"><i class="fas fa-file-csv"></i> CSV</button>
+            <button onclick="exportPDF()" class="flt-btn flt-btn-pdf" style="font-size:12px;"><i class="fas fa-file-pdf"></i> PDF</button>
+        </div>
     </div>
 
-<?php if ($msg): ?>
-<div class="mfm-alert <?php echo $msg_type; ?>">
-    <i class="fas fa-<?php echo $msg_type==='success'?'check-circle':'exclamation-circle'; ?>"></i>
-    <span><?php echo htmlspecialchars($msg); ?></span>
-    <span class="close-alert" onclick="this.parentElement.remove()">&times; - </span>
-</div>
-<?php endif; ?>
+<?php
+// Toast bridge: convert $msg/$msg_type to SESSION for flash_toast
+if (!empty($msg)) {
+    if ($msg_type === 'success') $_SESSION['success'] = $msg;
+    else $_SESSION['error'] = $msg;
+    $msg = ''; $msg_type = '';
+}
+require __DIR__ . '/../partials/flash_toast.php';
+?>
+
 
 <!-- -- SECTION NAVIGATION (sidebar-driven, no top tabs) -- -->
 
@@ -2204,7 +2302,7 @@ html, body {
         <th>Log ID</th>
         <th>Date</th>
         <th>Shift</th>
-        <th>Pump/Fuel</th>
+        <th>Fuel Type</th>
         <th>Sales (L)</th>
         <th>Tank (L)</th>
         <th>Variance %</th>
@@ -2257,15 +2355,12 @@ html, body {
             </span>
         </td>
         <td>
-            <?php if ($pump_display): ?>
-            <div style="font-weight:700;font-size:.85rem;">Pump #<?php echo htmlspecialchars($pump_display); ?></div>
-            <?php endif; ?>
-            <div style="font-size:.78rem;color:#555;"><?php echo htmlspecialchars($h['fuel_type']); ?></div>
+            <div style="font-weight:700;font-size:.85rem;color:<?php echo $colors['primary']; ?>;"><?php echo htmlspecialchars($h['fuel_type']); ?></div>
         </td>
         <td style="text-align:right;">
             <strong style="color:<?php echo $colors['primary']; ?>;"><?php echo number_format($liters_sold, 2); ?> L</strong>
             <?php if ($prev_h > 0 && $pres_h > 0): ?>
-            <div style="font-size:.68rem;color:#888;"><?php echo number_format($prev_h,2); ?> ? <?php echo number_format($pres_h,2); ?></div>
+            <div style="font-size:.68rem;color:#888;"><?php echo number_format($prev_h,2); ?> → <?php echo number_format($pres_h,2); ?></div>
             <?php endif; ?>
         </td>
         <td style="text-align:right;">
@@ -3475,13 +3570,13 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
 </div>
 
 <!-- ----------------------------------------------------------
-     TAB 7: PUMP MASTER (CALIBRATION)
+     TAB 7: CALIBRATION REVIEW
 ---------------------------------------------------------- -->
 <div id="pump-master" class="fuel-section">
 <div class="fuel-section-inner">
 
     <div class="section-head">
-        <div class="section-title"><i class="fas fa-cog"></i> Pump Master — Calibration Management</div>
+        <div class="section-title"><i class="fas fa-cog"></i> Calibration Review</div>
     </div>
 
     <!-- Update Calibration Table Form -->
@@ -4486,7 +4581,7 @@ const _sectionTitles = {
     'fuel-transactions': 'Fuel Transactions Oversight',
     'fuel-deliveries':   'Fuel Deliveries Validation',
     'adjustments':       'Adjustment',
-    'pump-master':       'Pump Master',
+    'pump-master':       'Calibration Review',
     'variance-reports':  'Variance Reports',
     'shift-history':     'Shift History',
     'fuel-reports':      'Sales Summary Report',
@@ -5032,6 +5127,49 @@ function exportReport() {
 
 function n2(v) { return Number(v||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// Simple CSV export for current view
+function exportCSV() {
+    if (_rptData) {
+        exportReport(); // Use existing report export if report data exists
+        return;
+    }
+    
+    // Fallback: export visible table
+    const table = document.querySelector('#fuel-transactions table');
+    if (!table) {
+        alert('No data to export');
+        return;
+    }
+    
+    let csv = 'Fuel Transactions Export\n';
+    csv += 'Generated: ' + new Date().toLocaleString() + '\n\n';
+    
+    // Get headers
+    const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim());
+    csv += headers.join(',') + '\n';
+    
+    // Get rows
+    table.querySelectorAll('tbody tr').forEach(tr => {
+        const cells = Array.from(tr.querySelectorAll('td')).map(td => {
+            const text = td.textContent.trim().replace(/"/g, '""');
+            return '"' + text + '"';
+        });
+        csv += cells.join(',') + '\n';
+    });
+    
+    const blob = new Blob([csv], {type: 'text/csv'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'fuel_transactions_' + new Date().toISOString().split('T')[0] + '.csv';
+    a.click();
+}
+
+// Simple PDF export (using print)
+function exportPDF() {
+    window.print();
+}
+
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

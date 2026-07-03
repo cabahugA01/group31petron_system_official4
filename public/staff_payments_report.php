@@ -56,8 +56,44 @@ function table_exists($pdo, $table) {
     }
 }
 
+function payment_is_shift1(array $payment): bool {
+    $shift = strtolower(trim((string)($payment['shift'] ?? '')));
+    if ($shift !== '') {
+        if (preg_match('/(^|[^a-z0-9])(2|second|shift 2|shift2|pm|evening|afternoon|night)([^a-z0-9]|$)/', $shift)) {
+            return false;
+        }
+        if (preg_match('/(^|[^a-z0-9])(1|first|shift 1|shift1|am|morning|day)([^a-z0-9]|$)/', $shift)) {
+            return true;
+        }
+    }
+
+    $created_at = $payment['created_at'] ?? null;
+    if ($created_at) {
+        $timestamp = strtotime((string)$created_at);
+        if ($timestamp !== false) {
+            $hour = (int)date('G', $timestamp);
+            return $hour >= 6 && $hour < 14;
+        }
+    }
+
+    return true;
+}
+
+function payment_mode_bucket($mode): string {
+    $mode = strtolower(trim(str_replace(['_', '-'], ' ', (string)$mode)));
+
+    if (strpos($mode, 'fleet') !== false) return 'fleet';
+    if (strpos($mode, 'efuel') !== false || strpos($mode, 'e fuel') !== false) return 'efuel';
+    if (strpos($mode, 'gcash') !== false || strpos($mode, 'maya') !== false || strpos($mode, 'wallet') !== false) return 'ewallet';
+    if (strpos($mode, 'card') !== false) return 'card';
+
+    return 'cash';
+}
+
 // Check available tables
 $has_payments = table_exists($pdo, 'payments');
+$has_merchandise_transactions = table_exists($pdo, 'merchandise_transactions');
+$has_job_orders = table_exists($pdo, 'job_orders');
 
 // Initialize data
 $payments = [];
@@ -100,40 +136,138 @@ if ($has_payments) {
         $stmt->execute([$station_id, $date_start, $date_end]);
         $payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        // Calculate shift totals by payment mode
-        foreach ($payments as $payment) {
-            $shift = strtolower($payment['shift'] ?? '');
-            $amount = (float)$payment['amount_paid'];
-            $mode = strtolower($payment['payment_mode'] ?? 'cash');
-            
-            // Determine which shift
-            $is_shift1 = (strpos($shift, 'shift 1') !== false || strpos($shift, '1') !== false);
-            
-            // Categorize payment mode
-            if (in_array($mode, ['cash', 'cash payment'])) {
-                if ($is_shift1) $shift1_cash += $amount;
-                else $shift2_cash += $amount;
-            } elseif (in_array($mode, ['card', 'credit card', 'debit card'])) {
-                if ($is_shift1) $shift1_card += $amount;
-                else $shift2_card += $amount;
-            } elseif (in_array($mode, ['gcash', 'maya', 'e-wallet', 'ewallet', 'e wallet'])) {
-                if ($is_shift1) $shift1_ewallet += $amount;
-                else $shift2_ewallet += $amount;
-            } elseif (in_array($mode, ['e-fuel card', 'efuel card', 'efuel'])) {
-                if ($is_shift1) $shift1_efuel += $amount;
-                else $shift2_efuel += $amount;
-            } elseif (in_array($mode, ['fleet card', 'fleet'])) {
-                if ($is_shift1) $shift1_fleet += $amount;
-                else $shift2_fleet += $amount;
-            } else {
-                // Default to cash
-                if ($is_shift1) $shift1_cash += $amount;
-                else $shift2_cash += $amount;
-            }
-        }
-        
     } catch (Exception $e) {
         $error_message = "Error fetching payments: " . $e->getMessage();
+    }
+}
+
+if (count($payments) === 0) {
+    $fallback_payments = [];
+
+    if ($has_merchandise_transactions) {
+        try {
+            $merchDateExpr = "COALESCE(NULLIF(mt.created_at, '0000-00-00 00:00:00'), NULLIF(mt.transaction_date, '0000-00-00 00:00:00'))";
+            $merchPaidExpr = "CASE
+                WHEN COALESCE(mt.amount_paid, 0) > 0 THEN mt.amount_paid
+                WHEN LOWER(COALESCE(mt.payment_status, '')) IN ('paid', 'completed') THEN COALESCE(mt.total_amount, 0)
+                ELSE 0
+            END";
+
+            $sql = "SELECT
+                        mt.id,
+                        COALESCE(NULLIF(mt.transaction_id, ''), CONCAT('MT-', mt.id)) AS transaction_id,
+                        COALESCE(
+                            NULLIF(TRIM(mt.customer_name), ''),
+                            NULLIF(TRIM(CONCAT(COALESCE(mt.customer_first_name, ''), ' ', COALESCE(mt.customer_last_name, ''))), ''),
+                            'Walk-in'
+                        ) AS customer_name,
+                        COALESCE(NULLIF(mt.payment_method, ''), 'Cash') AS payment_mode,
+                        {$merchPaidExpr} AS amount_paid,
+                        COALESCE(mt.balance_due, GREATEST(COALESCE(mt.total_amount, 0) - {$merchPaidExpr}, 0), 0) AS outstanding_balance,
+                        CASE
+                            WHEN LOWER(COALESCE(mt.shift_period, mt.shift_name, '')) IN ('first', 'first shift', 'shift 1', 'shift1', '1') THEN 'Shift 1'
+                            WHEN LOWER(COALESCE(mt.shift_period, mt.shift_name, '')) IN ('second', 'second shift', 'shift 2', 'shift2', '2') THEN 'Shift 2'
+                            WHEN HOUR({$merchDateExpr}) >= 6 AND HOUR({$merchDateExpr}) < 14 THEN 'Shift 1'
+                            ELSE 'Shift 2'
+                        END AS shift,
+                        COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), ''), u.username, CONCAT('User #', mt.staff_id), 'N/A') AS encoder,
+                        COALESCE(NULLIF(mt.payment_status, ''), NULLIF(mt.workflow_status, ''), NULLIF(mt.validation_status, ''), 'Recorded') AS status,
+                        COALESCE(mt.staff_remarks, mt.remarks, mt.manager_remarks, '') AS remarks,
+                        {$merchDateExpr} AS created_at
+                FROM merchandise_transactions mt
+                LEFT JOIN users u ON u.id = mt.staff_id
+                WHERE mt.station_id = ?
+                  AND DATE({$merchDateExpr}) BETWEEN ? AND ?
+                  AND LOWER(COALESCE(mt.validation_status, '')) NOT IN ('voided', 'void', 'rejected', 'cancelled', 'canceled')
+                  AND LOWER(COALESCE(mt.workflow_status, '')) NOT IN ('voided', 'void', 'rejected', 'cancelled', 'canceled')
+                  AND (
+                        COALESCE(mt.amount_paid, 0) > 0
+                        OR LOWER(COALESCE(mt.payment_status, '')) IN ('paid', 'partial', 'partially paid', 'completed')
+                  )
+                ORDER BY {$merchDateExpr} DESC";
+
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$station_id, $date_start, $date_end]);
+            $fallback_payments = array_merge($fallback_payments, $stmt->fetchAll(PDO::FETCH_ASSOC));
+        } catch (Exception $e) {
+            $error_message = "Error fetching merchandise payments: " . $e->getMessage();
+        }
+    }
+
+    if ($has_job_orders) {
+        try {
+            $jobDateExpr = "COALESCE(NULLIF(jo.created_at, '0000-00-00 00:00:00'), NULLIF(jo.completed_at, '0000-00-00 00:00:00'))";
+            $jobTotalExpr = "COALESCE(jo.total_cost, jo.estimated_cost, jo.actual_labor_cost + jo.actual_parts_cost, jo.estimated_labor_cost + jo.estimated_parts_cost, 0)";
+            $jobPaidExpr = "CASE
+                WHEN COALESCE(jo.amount_paid, 0) > 0 THEN jo.amount_paid
+                WHEN LOWER(COALESCE(jo.payment_status, '')) IN ('paid', 'completed') THEN {$jobTotalExpr}
+                ELSE 0
+            END";
+
+            $sql = "SELECT
+                        jo.id,
+                        COALESCE(NULLIF(jo.job_order_id, ''), NULLIF(jo.job_order_number, ''), CONCAT('JO-', jo.id)) AS transaction_id,
+                        COALESCE(NULLIF(TRIM(jo.customer_name), ''), c.name, 'Walk-in') AS customer_name,
+                        COALESCE(NULLIF(jo.payment_method, ''), 'Cash') AS payment_mode,
+                        {$jobPaidExpr} AS amount_paid,
+                        COALESCE(jo.balance_due, GREATEST({$jobTotalExpr} - {$jobPaidExpr}, 0), 0) AS outstanding_balance,
+                        CASE
+                            WHEN HOUR({$jobDateExpr}) >= 6 AND HOUR({$jobDateExpr}) < 14 THEN 'Shift 1'
+                            ELSE 'Shift 2'
+                        END AS shift,
+                        COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), ''), u.username, CONCAT('User #', COALESCE(jo.created_by, jo.user_id)), 'N/A') AS encoder,
+                        COALESCE(NULLIF(jo.payment_status, ''), NULLIF(jo.validation_status, ''), NULLIF(jo.status, ''), 'Recorded') AS status,
+                        COALESCE(jo.notes, jo.additional_notes, jo.admin_remarks, '') AS remarks,
+                        {$jobDateExpr} AS created_at
+                FROM job_orders jo
+                LEFT JOIN users u ON u.id = COALESCE(jo.created_by, jo.user_id)
+                LEFT JOIN customers c ON c.id = jo.customer_id
+                WHERE jo.station_id = ?
+                  AND DATE({$jobDateExpr}) BETWEEN ? AND ?
+                  AND LOWER(COALESCE(jo.status, '')) NOT IN ('cancelled', 'canceled', 'rejected')
+                  AND LOWER(COALESCE(jo.validation_status, '')) NOT IN ('voided', 'void', 'rejected', 'cancelled', 'canceled')
+                  AND (
+                        COALESCE(jo.amount_paid, 0) > 0
+                        OR LOWER(COALESCE(jo.payment_status, '')) IN ('paid', 'partial', 'partially paid', 'completed')
+                  )
+                ORDER BY {$jobDateExpr} DESC";
+
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$station_id, $date_start, $date_end]);
+            $fallback_payments = array_merge($fallback_payments, $stmt->fetchAll(PDO::FETCH_ASSOC));
+        } catch (Exception $e) {
+            $error_message = "Error fetching job order payments: " . $e->getMessage();
+        }
+    }
+
+    if (count($fallback_payments) > 0) {
+        usort($fallback_payments, function ($a, $b) {
+            return strtotime($b['created_at'] ?? '') <=> strtotime($a['created_at'] ?? '');
+        });
+        $payments = $fallback_payments;
+    }
+}
+
+foreach ($payments as $payment) {
+    $amount = (float)($payment['amount_paid'] ?? 0);
+    $bucket = payment_mode_bucket($payment['payment_mode'] ?? 'cash');
+    $is_shift1 = payment_is_shift1($payment);
+
+    if ($bucket === 'card') {
+        if ($is_shift1) $shift1_card += $amount;
+        else $shift2_card += $amount;
+    } elseif ($bucket === 'ewallet') {
+        if ($is_shift1) $shift1_ewallet += $amount;
+        else $shift2_ewallet += $amount;
+    } elseif ($bucket === 'efuel') {
+        if ($is_shift1) $shift1_efuel += $amount;
+        else $shift2_efuel += $amount;
+    } elseif ($bucket === 'fleet') {
+        if ($is_shift1) $shift1_fleet += $amount;
+        else $shift2_fleet += $amount;
+    } else {
+        if ($is_shift1) $shift1_cash += $amount;
+        else $shift2_cash += $amount;
     }
 }
 

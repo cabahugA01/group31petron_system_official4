@@ -22,8 +22,8 @@ if ($role !== 'admin') {
 // Get active tab from URL parameter
 $active_tab = $_GET['tab'] ?? 'shift_reports';
 
-// Get date range from GET or use current month as default
-$date_from = $_GET['date_from'] ?? date('Y-m-01');
+// Admin operational reports default to the current day so stale dates do not appear by default.
+$date_from = $_GET['date_from'] ?? date('Y-m-d');
 $date_to   = $_GET['date_to']   ?? date('Y-m-d');
 
 // Validate date format

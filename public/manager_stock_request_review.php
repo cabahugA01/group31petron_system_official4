@@ -57,6 +57,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $subtotal = $approved_qty * $unit_cost;
                 
+                // Resolve supplier_id from name
+                $stmt_sup = $pdo->prepare("SELECT id FROM suppliers WHERE name LIKE ? OR id = 1 LIMIT 1");
+                $stmt_sup->execute(['%' . $supplier_name . '%']);
+                $supplier_id = (int)($stmt_sup->fetchColumn() ?: 1);
+
                 // Check existing PO or insert new
                 $stmtPO = $pdo->prepare("SELECT id FROM purchase_orders WHERE request_id = ? AND type = 'merch'");
                 $stmtPO->execute([$req_id]);
@@ -65,18 +70,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($existPO) {
                     $pdo->prepare("
                         UPDATE purchase_orders 
-                        SET quantity = ?, unit_price = ?, total_amount = ?, po_number = ?, supplier_name = ?, expected_delivery = ?, status = 'Pending Admin Validation', remarks = ?, updated_at = NOW()
+                        SET quantity = ?, unit_price = ?, total_amount = ?, po_number = ?, supplier_id = ?, expected_delivery_date = ?, status = 'Pending Admin Validation', remarks = ?, updated_at = NOW()
                         WHERE id = ?
                     ")->execute([
-                        $approved_qty, $unit_cost, $subtotal, $po_number, $supplier_name, $expected_delivery, $notes, $existPO
+                        $approved_qty, $unit_cost, $subtotal, $po_number, $supplier_id, $expected_delivery, $notes, $existPO
                     ]);
                 } else {
                     $pdo->prepare("
                         INSERT INTO purchase_orders 
-                            (request_id, product_name, quantity, unit_price, total_amount, type, po_number, station_id, supplier_name, expected_delivery, created_by, status, remarks, created_at, updated_at, admin_finalized)
+                            (request_id, product_name, quantity, unit_price, total_amount, type, po_number, station_id, supplier_id, expected_delivery_date, created_by, status, remarks, created_at, updated_at, admin_finalized)
                         VALUES (?, ?, ?, ?, ?, 'merch', ?, ?, ?, ?, ?, 'Pending Admin Validation', ?, NOW(), NOW(), 0)
                     ")->execute([
-                        $req_id, $req['item_name'], $approved_qty, $unit_cost, $subtotal, $po_number, $station_id, $supplier_name, $expected_delivery, $me['id'], $notes
+                        $req_id, $req['item_name'], $approved_qty, $unit_cost, $subtotal, $po_number, $station_id, $supplier_id, $expected_delivery, $me['id'], $notes
                     ]);
                 }
                 
@@ -421,10 +426,10 @@ $categories_list = [];
 $requesters_list = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT sr.*, u.name AS staff_name, 
+        SELECT sr.*, COALESCE(u.name, 'Unknown Staff') AS staff_name, 
                m.name AS manager_name,
                COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
-               COALESCE(si.unit, ip.unit, 'pcs') AS unit,
+               COALESCE(si.unit, 'pcs') AS unit,
                COALESCE(ip.unit_price, 145.00) AS unit_price,
                ip.sku AS prod_sku,
                po.po_number,
@@ -432,13 +437,14 @@ try {
                po.total_amount AS po_total,
                po.created_at AS po_created,
                po.remarks AS po_remarks,
-               po.supplier_name AS po_supplier
+               s.name AS po_supplier
         FROM stock_requests sr 
-        JOIN users u ON sr.staff_id = u.id 
+        LEFT JOIN users u ON sr.staff_id = u.id 
         LEFT JOIN users m ON sr.manager_id = m.id
         LEFT JOIN inventory_products ip ON sr.item_id = ip.id
         LEFT JOIN station_inventory si ON sr.item_id = si.product_id AND si.station_id = sr.station_id
         LEFT JOIN purchase_orders po ON po.request_id = sr.id AND po.type = 'merch'
+        LEFT JOIN suppliers s ON po.supplier_id = s.id
         WHERE sr.station_id = ? AND LOWER(COALESCE(sr.item_category, '')) != 'fuel'
         ORDER BY CASE sr.status WHEN 'Pending' THEN 1 ELSE 2 END, sr.created_at DESC
     ");
@@ -465,9 +471,9 @@ try {
 $fuel_requests_list = [];
 try {
     $fstmt = $pdo->prepare("
-        SELECT fsr.*, u.name AS staff_name
+        SELECT fsr.*, COALESCE(u.name, 'Unknown Staff') AS staff_name
         FROM fuel_stock_requests fsr
-        JOIN users u ON fsr.staff_id = u.id
+        LEFT JOIN users u ON fsr.staff_id = u.id
         WHERE fsr.station_id = ?
         ORDER BY
             CASE fsr.status WHEN 'Pending' THEN 1 ELSE 2 END,

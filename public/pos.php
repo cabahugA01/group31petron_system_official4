@@ -306,7 +306,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                            'price' => $item_price,
                            'total' => $item_total,
                            'unit' => $product['unit'] ?? 'pc',
-                           'size' => $product['size'] ?? ''
+                           'size' => $product['size'] ?? '',
+                           'stock_before' => $stock
                        ];
                     }
                    
@@ -348,6 +349,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                            // Deduct inventory stock using product name
                            $stmtStock = $pdo->prepare("UPDATE station_inventory SET stock_level = stock_level - ? WHERE product_name = ? AND station_id = ?");
                            $stmtStock->execute([$item['quantity'], $item['name'], $station_id]);
+
+                           // Log inventory movement to inventory_logs
+                           try {
+                               $qtyBefore = (float)($item['stock_before'] ?? 0);
+                               $qtyAfter = $qtyBefore - $item['quantity'];
+                               $logStmt = $pdo->prepare("
+                                   INSERT INTO inventory_logs (
+                                       station_id, product_id, user_id, action, 
+                                       quantity_before, quantity_after, quantity_change, 
+                                       reference_type, notes, created_at
+                                   ) VALUES (?, ?, ?, 'sale', ?, ?, ?, 'sale', ?, NOW())
+                               ");
+                               $logStmt->execute([
+                                   $station_id,
+                                   $item['product_id'],
+                                   $me['id'] ?? null,
+                                   $qtyBefore,
+                                   $qtyAfter,
+                                   -$item['quantity'],
+                                   "POS Sale - Ref: " . $sale_id
+                               ]);
+                           } catch (Exception $logErr) {
+                               error_log("Inventory log insert error in pos.php: " . $logErr->getMessage());
+                           }
                        }
                        
                                                // Update customer balance if Account Receivable

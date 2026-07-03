@@ -78,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $ae) { /* silent — audit must not break main flow */ }
     };
 
-    $deduct_inventory_once = function(int $txn_id) use ($pdo, $station_id, $has_mt) {
+    $deduct_inventory_once = function(int $txn_id) use ($pdo, $station_id, $has_mt, $me) {
         $deducted_expr = $has_mt('inventory_deducted') ? 'COALESCE(inventory_deducted, 0)' : '0';
         $lock = $pdo->prepare("SELECT {$deducted_expr} FROM merchandise_transactions WHERE id = ? AND station_id = ? FOR UPDATE");
         $lock->execute([$txn_id, $station_id]);
@@ -100,6 +100,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             return;
         }
 
+        $txn_info_stmt = $pdo->prepare("SELECT transaction_id FROM merchandise_transactions WHERE id = ?");
+        $txn_info_stmt->execute([$txn_id]);
+        $transaction_id_code = $txn_info_stmt->fetchColumn() ?: ('Ref ID: ' . $txn_id);
+
         foreach ($items as $item) {
             $stock_stmt = $pdo->prepare("
                 SELECT stock_level
@@ -118,12 +122,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         foreach ($items as $item) {
+            $stock_stmt = $pdo->prepare("
+                SELECT stock_level
+                FROM station_inventory
+                WHERE station_id = ? AND product_id = ?
+                FOR UPDATE
+            ");
+            $stock_stmt->execute([$station_id, $item['product_id']]);
+            $stock_level = (float)($stock_stmt->fetchColumn() ?: 0);
+            
+            $new_stock = $stock_level - (float)$item['quantity'];
+
             $pdo->prepare("
                 UPDATE station_inventory
-                SET stock_level = stock_level - ?,
+                SET stock_level = ?,
                     last_updated = NOW()
                 WHERE station_id = ? AND product_id = ?
-            ")->execute([(float)$item['quantity'], $station_id, (int)$item['product_id']]);
+            ")->execute([$new_stock, $station_id, (int)$item['product_id']]);
+
+            // Log to inventory_logs
+            try {
+                $log_notes = "Official Merchandise Sale (Approval) - Ref: " . $transaction_id_code;
+                $pdo->prepare("
+                    INSERT INTO inventory_logs (
+                        station_id, product_id, user_id, action, 
+                        quantity_before, quantity_after, quantity_change, 
+                        reference_type, reference_id, notes, created_at
+                    ) VALUES (?, ?, ?, 'sale', ?, ?, ?, 'transaction', ?, ?, NOW())
+                ")->execute([
+                    $station_id,
+                    (int)$item['product_id'],
+                    $me['id'] ?? null,
+                    $stock_level,
+                    $new_stock,
+                    -(float)$item['quantity'],
+                    $txn_id,
+                    $log_notes
+                ]);
+            } catch (Exception $logErr) {
+                error_log("Inventory log insert error: " . $logErr->getMessage());
+            }
         }
 
         if ($has_mt('inventory_deducted')) {
@@ -2123,25 +2161,8 @@ try {
 
 // ── Print Receipt (Popup-Immune) ──────────────────────────────────────────────
 function printReceiptPopupImmune(id, type) {
-    let iframe = document.getElementById('print-receipt-iframe');
-    if (!iframe) {
-        iframe = document.createElement('iframe');
-        iframe.id = 'print-receipt-iframe';
-        iframe.style.position = 'fixed';
-        iframe.style.right = '0';
-        iframe.style.bottom = '0';
-        iframe.style.width = '0';
-        iframe.style.height = '0';
-        iframe.style.border = '0';
-        document.body.appendChild(iframe);
-    }
-    iframe.src = `receipt.php?id=${encodeURIComponent(id)}&type=${encodeURIComponent(type)}`;
-    iframe.onload = function() {
-        setTimeout(function() {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-        }, 250);
-    };
+    var url = `receipt.php?id=${encodeURIComponent(id)}&type=${encodeURIComponent(type)}`;
+    window.open(url, '_blank');
 }
 
 // ── View Details ──────────────────────────────────────────────────────────────

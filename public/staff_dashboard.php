@@ -154,6 +154,81 @@ function dashboard_range_label(string $date_from, string $date_to): string {
     return date('F j, Y', strtotime($date_from)) . ' - ' . date('F j, Y', strtotime($date_to));
 }
 
+function dashboard_log_query_error(string $context, Throwable $e): void {
+    error_log('staff_dashboard ' . $context . ': ' . $e->getMessage());
+}
+
+function dashboard_fetch_column(PDO $pdo, string $sql, array $params = [], $default = 0) {
+    try {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $value = $stmt->fetchColumn();
+        return $value === false ? $default : $value;
+    } catch (Throwable $e) {
+        dashboard_log_query_error('fetch_column', $e);
+        return $default;
+    }
+}
+
+function dashboard_fetch_all(PDO $pdo, string $sql, array $params = []): array {
+    try {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Throwable $e) {
+        dashboard_log_query_error('fetch_all', $e);
+        return [];
+    }
+}
+
+function dashboard_table_columns(PDO $pdo, string $table): array {
+    static $cache = [];
+    if (!preg_match('/^[A-Za-z0-9_]+$/', $table)) {
+        return [];
+    }
+    if (isset($cache[$table])) {
+        return $cache[$table];
+    }
+
+    try {
+        $cols = $pdo->query("SHOW COLUMNS FROM `{$table}`")->fetchAll(PDO::FETCH_COLUMN);
+        $cache[$table] = array_fill_keys(array_map('strtolower', $cols ?: []), true);
+    } catch (Throwable $e) {
+        dashboard_log_query_error('columns:' . $table, $e);
+        $cache[$table] = [];
+    }
+
+    return $cache[$table];
+}
+
+function dashboard_has_column(PDO $pdo, string $table, string $column): bool {
+    $cols = dashboard_table_columns($pdo, $table);
+    return isset($cols[strtolower($column)]);
+}
+
+function dashboard_column_sql(string $column, string $alias = ''): string {
+    $quoted = '`' . str_replace('`', '``', $column) . '`';
+    if ($alias !== '' && preg_match('/^[A-Za-z0-9_]+$/', $alias)) {
+        return "`{$alias}`.{$quoted}";
+    }
+    return $quoted;
+}
+
+function dashboard_datetime_expression(PDO $pdo, string $table, string $alias = '', array $preferred = ['created_at', 'transaction_date']): string {
+    $parts = [];
+    foreach ($preferred as $column) {
+        if (dashboard_has_column($pdo, $table, $column)) {
+            $parts[] = "NULLIF(" . dashboard_column_sql($column, $alias) . ", '0000-00-00 00:00:00')";
+        }
+    }
+
+    if (empty($parts)) {
+        return 'NOW()';
+    }
+
+    return count($parts) === 1 ? $parts[0] : 'COALESCE(' . implode(', ', $parts) . ')';
+}
+
 function dashboard_signature_query(PDO $pdo, string $key, string $from_where_sql, array $params, array $columns): string {
     $signature_columns = array_map(
         static fn($column) => "COALESCE(CAST({$column} AS CHAR), '')",
@@ -181,6 +256,9 @@ function dashboard_change_version(PDO $pdo, int $station_id, int $user_id, strin
     $week_start = date('Y-m-d', strtotime('monday this week', strtotime($date_from)));
     $week_end = date('Y-m-d', strtotime('sunday this week', strtotime($date_from)));
     $current_shift = dashboard_current_shift($shift_periods);
+    $fuel_dt = dashboard_datetime_expression($pdo, 'fuel_transactions', '', ['transaction_date', 'created_at']);
+    $merch_dt = dashboard_datetime_expression($pdo, 'merchandise_transactions', '', ['created_at', 'transaction_date']);
+    $job_dt = dashboard_datetime_expression($pdo, 'job_orders', '', ['created_at']);
 
     $pieces = [
         'range:' . $date_from . ':' . $date_to,
@@ -195,49 +273,49 @@ function dashboard_change_version(PDO $pdo, int $station_id, int $user_id, strin
     $pieces[] = dashboard_signature_query(
         $pdo,
         'fuel-range',
-        "fuel_transactions WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?",
+        "fuel_transactions WHERE station_id = ? AND DATE({$fuel_dt}) BETWEEN ? AND ?",
         [$station_id, $date_from, $date_to],
         $fuel_columns
     );
     $pieces[] = dashboard_signature_query(
         $pdo,
         'fuel-week',
-        "fuel_transactions WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?",
+        "fuel_transactions WHERE station_id = ? AND DATE({$fuel_dt}) BETWEEN ? AND ?",
         [$station_id, $week_start, $week_end],
         $fuel_columns
     );
     $pieces[] = dashboard_signature_query(
         $pdo,
         'merch-range',
-        "merchandise_transactions WHERE station_id = ? AND DATE(COALESCE(NULLIF(transaction_date, '0000-00-00 00:00:00'), created_at)) BETWEEN ? AND ?",
+        "merchandise_transactions WHERE station_id = ? AND DATE({$merch_dt}) BETWEEN ? AND ?",
         [$station_id, $date_from, $date_to],
         $merch_columns
     );
     $pieces[] = dashboard_signature_query(
         $pdo,
         'merch-week',
-        "merchandise_transactions WHERE station_id = ? AND DATE(COALESCE(NULLIF(transaction_date, '0000-00-00 00:00:00'), created_at)) BETWEEN ? AND ?",
+        "merchandise_transactions WHERE station_id = ? AND DATE({$merch_dt}) BETWEEN ? AND ?",
         [$station_id, $week_start, $week_end],
         $merch_columns
     );
     $pieces[] = dashboard_signature_query(
         $pdo,
         'merch-items-range',
-        "merchandise_transaction_items mti INNER JOIN merchandise_transactions mt ON mti.transaction_id = mt.id WHERE mt.station_id = ? AND DATE(COALESCE(NULLIF(mt.transaction_date, '0000-00-00 00:00:00'), mt.created_at)) BETWEEN ? AND ?",
+        "merchandise_transaction_items mti INNER JOIN merchandise_transactions mt ON mti.transaction_id = mt.id WHERE mt.station_id = ? AND DATE(" . dashboard_datetime_expression($pdo, 'merchandise_transactions', 'mt', ['created_at', 'transaction_date']) . ") BETWEEN ? AND ?",
         [$station_id, $date_from, $date_to],
         ['mti.id', 'mti.transaction_id', 'mti.product_name', 'mti.category', 'mti.quantity', 'mti.subtotal', 'mti.created_at']
     );
     $pieces[] = dashboard_signature_query(
         $pdo,
         'job-range',
-        "job_orders WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?",
+        "job_orders WHERE station_id = ? AND DATE({$job_dt}) BETWEEN ? AND ?",
         [$station_id, $date_from, $date_to],
         $job_columns
     );
     $pieces[] = dashboard_signature_query(
         $pdo,
         'job-week',
-        "job_orders WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?",
+        "job_orders WHERE station_id = ? AND DATE({$job_dt}) BETWEEN ? AND ?",
         [$station_id, $week_start, $week_end],
         $job_columns
     );
@@ -351,23 +429,28 @@ if (isset($_GET['dashboard_ping'])) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+$fuel_dt_expr = dashboard_datetime_expression($pdo, 'fuel_transactions', '', ['transaction_date', 'created_at']);
+$merch_dt_expr = dashboard_datetime_expression($pdo, 'merchandise_transactions', '', ['created_at', 'transaction_date']);
+$job_dt_expr = dashboard_datetime_expression($pdo, 'job_orders', '', ['created_at']);
+$merch_dt_expr_mt = dashboard_datetime_expression($pdo, 'merchandise_transactions', 'mt', ['created_at', 'transaction_date']);
+
 // METRICS QUERY BLOCK
 // ─────────────────────────────────────────────────────────────────────────────
 
 // 1. Today's Transactions
 $fuel_count = 0; $merch_count = 0; $jo_count = 0;
 try {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND DATE({$fuel_dt_expr}) BETWEEN ? AND ?");
     $stmt->execute([$station_id, $date_from, $date_to]);
     $fuel_count = (int)$stmt->fetchColumn();
 } catch (Exception $e) {}
 try {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions WHERE station_id = ? AND DATE(COALESCE(NULLIF(transaction_date, '0000-00-00 00:00:00'), created_at)) BETWEEN ? AND ?");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions WHERE station_id = ? AND DATE({$merch_dt_expr}) BETWEEN ? AND ?");
     $stmt->execute([$station_id, $date_from, $date_to]);
     $merch_count = (int)$stmt->fetchColumn();
 } catch (Exception $e) {}
 try {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND DATE({$job_dt_expr}) BETWEEN ? AND ?");
     $stmt->execute([$station_id, $date_from, $date_to]);
     $jo_count = (int)$stmt->fetchColumn();
 } catch (Exception $e) {}
@@ -376,17 +459,17 @@ $todays_transactions = $fuel_count + $merch_count + $jo_count;
 // 2. Today's Sales
 $fuel_sales = 0.0; $merch_sales = 0.0; $service_sales = 0.0;
 try {
-    $stmt = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ?");
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE({$fuel_dt_expr}) BETWEEN ? AND ?");
     $stmt->execute([$station_id, $date_from, $date_to]);
     $fuel_sales = (float)$stmt->fetchColumn();
 } catch (Exception $e) {}
 try {
-    $stmt = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE station_id=? AND DATE(COALESCE(NULLIF(transaction_date,'0000-00-00 00:00:00'),created_at)) BETWEEN ? AND ?");
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE station_id=? AND DATE({$merch_dt_expr}) BETWEEN ? AND ?");
     $stmt->execute([$station_id, $date_from, $date_to]);
     $merch_sales = (float)$stmt->fetchColumn();
 } catch (Exception $e) {}
 try {
-    $stmt = $pdo->prepare("SELECT COALESCE(SUM(total_cost),0) FROM job_orders WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ? AND status IN ('Completed','Verified','finalized')");
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(total_cost),0) FROM job_orders WHERE station_id=? AND DATE({$job_dt_expr}) BETWEEN ? AND ? AND status IN ('Completed','Verified','finalized')");
     $stmt->execute([$station_id, $date_from, $date_to]);
     $service_sales = (float)$stmt->fetchColumn();
 } catch (Exception $e) {}
@@ -395,7 +478,7 @@ $todays_sales = $fuel_sales + $merch_sales + $service_sales;
 // 3. Fuel Sold Today
 $fuel_sold_liters = 0.0;
 try {
-    $stmt = $pdo->prepare("SELECT COALESCE(SUM(liters_sold),0) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ?");
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(liters_sold),0) FROM fuel_transactions WHERE station_id=? AND DATE({$fuel_dt_expr}) BETWEEN ? AND ?");
     $stmt->execute([$station_id, $date_from, $date_to]);
     $fuel_sold_liters = (float)$stmt->fetchColumn();
 } catch (Exception $e) {}
@@ -403,7 +486,7 @@ try {
 // 4. Service Queue
 $service_queue_count = 0;
 try {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ? AND status IN ('Pending','Reviewed','In Progress','Awaiting Parts')");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND DATE({$job_dt_expr}) BETWEEN ? AND ? AND status IN ('Pending','Reviewed','In Progress','Awaiting Parts')");
     $stmt->execute([$station_id, $date_from, $date_to]);
     $service_queue_count = (int)$stmt->fetchColumn();
 } catch (Exception $e) {}
@@ -469,26 +552,25 @@ if ($current_shift_info) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Chart 1: Hourly Transactions (Line Chart)
-$hourly_tx_query = $pdo->prepare("
+$hourly_tx_raw = dashboard_fetch_all($pdo, "
     SELECT hr, COUNT(*) AS count FROM (
-        SELECT HOUR(transaction_date) AS hr FROM fuel_transactions 
-        WHERE station_id = ? AND transaction_date BETWEEN ? AND ?
+        SELECT HOUR({$fuel_dt_expr}) AS hr FROM fuel_transactions
+        WHERE station_id = ? AND {$fuel_dt_expr} BETWEEN ? AND ?
         UNION ALL
-        SELECT HOUR(COALESCE(NULLIF(transaction_date, '0000-00-00 00:00:00'), created_at)) AS hr FROM merchandise_transactions 
-        WHERE station_id = ? AND COALESCE(NULLIF(transaction_date, '0000-00-00 00:00:00'), created_at) BETWEEN ? AND ?
+        SELECT HOUR({$merch_dt_expr}) AS hr FROM merchandise_transactions
+        WHERE station_id = ? AND {$merch_dt_expr} BETWEEN ? AND ?
         UNION ALL
-        SELECT HOUR(created_at) AS hr FROM job_orders 
-        WHERE station_id = ? AND created_at BETWEEN ? AND ?
+        SELECT HOUR({$job_dt_expr}) AS hr FROM job_orders
+        WHERE station_id = ? AND {$job_dt_expr} BETWEEN ? AND ?
     ) AS combined_txns
     GROUP BY hr
     ORDER BY hr
-");
-$hourly_tx_query->execute([
+",
+[
     $station_id, $current_shift_window_start, $current_shift_window_end,
     $station_id, $current_shift_window_start, $current_shift_window_end,
     $station_id, $current_shift_window_start, $current_shift_window_end
 ]);
-$hourly_tx_raw = $hourly_tx_query->fetchAll(PDO::FETCH_ASSOC);
 
 $hourly_map = [];
 $shift_start_hour = (int)date('G', strtotime($current_shift_window_start));
@@ -514,57 +596,57 @@ foreach ($hourly_map as $h => $count) {
 }
 
 // Chart 2: Fuel Sales by Product (Bar Chart)
-$fuel_sales_query = $pdo->prepare("
+$raw_fuel_sales = dashboard_fetch_all($pdo, "
     SELECT fuel_type, COALESCE(SUM(liters_sold), 0) AS total_liters
     FROM fuel_transactions
-    WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?
+    WHERE station_id = ? AND DATE({$fuel_dt_expr}) BETWEEN ? AND ?
     GROUP BY fuel_type
-");
-$fuel_sales_query->execute([$station_id, $date_from, $date_to]);
-$raw_fuel_sales = $fuel_sales_query->fetchAll(PDO::FETCH_ASSOC);
+", [$station_id, $date_from, $date_to]);
+$fuel_labels_from_inventory = dashboard_fetch_all($pdo, "
+    SELECT fuel_type
+    FROM fuel_inventory
+    WHERE station_id = ?
+    GROUP BY fuel_type
+    ORDER BY fuel_type
+", [$station_id]);
 
-$canonical_fuels = [
-    'Diesel' => 0.0,
-    'XCS' => 0.0,
-    'XTRA Unleaded' => 0.0,
-    'Turbo Diesel' => 0.0,
-    'Kerosene' => 0.0
-];
-foreach ($raw_fuel_sales as $row) {
-    $ft = strtolower(trim($row['fuel_type']));
-    if (strpos($ft, 'diesel') !== false && strpos($ft, 'turbo') === false) {
-        $canonical_fuels['Diesel'] += (float)$row['total_liters'];
-    } elseif (strpos($ft, 'turbo') !== false) {
-        $canonical_fuels['Turbo Diesel'] += (float)$row['total_liters'];
-    } elseif (strpos($ft, 'xcs') !== false) {
-        $canonical_fuels['XCS'] += (float)$row['total_liters'];
-    } elseif (strpos($ft, 'xtra') !== false || strpos($ft, 'unl') !== false) {
-        $canonical_fuels['XTRA Unleaded'] += (float)$row['total_liters'];
-    } elseif (strpos($ft, 'kerosene') !== false) {
-        $canonical_fuels['Kerosene'] += (float)$row['total_liters'];
+$canonical_fuels = [];
+foreach ($fuel_labels_from_inventory as $row) {
+    $label = trim((string)($row['fuel_type'] ?? ''));
+    if ($label !== '') {
+        $canonical_fuels[$label] = 0.0;
     }
+}
+foreach ($raw_fuel_sales as $row) {
+    $label = trim((string)($row['fuel_type'] ?? ''));
+    if ($label === '') {
+        $label = 'Unspecified';
+    }
+    if (!array_key_exists($label, $canonical_fuels)) {
+        $canonical_fuels[$label] = 0.0;
+    }
+    $canonical_fuels[$label] += (float)$row['total_liters'];
 }
 $fuel_chart_labels = array_keys($canonical_fuels);
 $fuel_chart_data = array_values($canonical_fuels);
 
 // Chart 3: Merchandise Sales by Category (Bar Chart) — DB-driven, real categories
-$merch_sales_query = $pdo->prepare("
+$merch_chart_labels = [];
+$merch_chart_data = [];
+$raw_merch_sales = dashboard_fetch_all($pdo, "
     SELECT
         COALESCE(NULLIF(TRIM(mti.category), ''), 'Others') AS category,
         COALESCE(SUM(mti.subtotal), 0) AS total_sales
     FROM merchandise_transaction_items mti
     INNER JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
     WHERE mt.station_id = ?
-      AND DATE(COALESCE(NULLIF(mt.transaction_date, '0000-00-00 00:00:00'), mt.created_at)) BETWEEN ? AND ?
+      AND DATE({$merch_dt_expr_mt}) BETWEEN ? AND ?
     GROUP BY category
     ORDER BY total_sales DESC
-");
-$merch_sales_query->execute([$station_id, $date_from, $date_to]);
-$raw_merch_sales = $merch_sales_query->fetchAll(PDO::FETCH_ASSOC);
+    LIMIT 8
+", [$station_id, $date_from, $date_to]);
 
 // Use real categories from DB — no hardcoded mapping
-$canonical_merch = [];
-$merch_chart_data = [];
 if (!empty($raw_merch_sales)) {
     foreach ($raw_merch_sales as $row) {
         // Shorten long category names for chart readability
@@ -596,40 +678,13 @@ if (!empty($raw_merch_sales)) {
     } catch (Exception $e) {}
 }
 
-$canonical_merch = [
-    'Lubricants' => 0.0,
-    'Engine Oil' => 0.0,
-    'Drinks' => 0.0,
-    'Snacks' => 0.0,
-    'Accessories' => 0.0,
-];
-foreach ($raw_merch_sales as $row) {
-    $category = strtolower(trim((string)($row['category'] ?? '')));
-    $amount = (float)($row['total_sales'] ?? 0);
-    if (strpos($category, 'engine oil') !== false || strpos($category, 'motor oil') !== false || strpos($category, 'oil') !== false) {
-        $canonical_merch['Engine Oil'] += $amount;
-    } elseif (strpos($category, 'lubricant') !== false || strpos($category, 'lube') !== false) {
-        $canonical_merch['Lubricants'] += $amount;
-    } elseif (strpos($category, 'drink') !== false || strpos($category, 'beverage') !== false || strpos($category, 'water') !== false || strpos($category, 'juice') !== false) {
-        $canonical_merch['Drinks'] += $amount;
-    } elseif (strpos($category, 'snack') !== false || strpos($category, 'food') !== false || strpos($category, 'chips') !== false) {
-        $canonical_merch['Snacks'] += $amount;
-    } elseif (strpos($category, 'accessor') !== false || strpos($category, 'car care') !== false || strpos($category, 'auto') !== false) {
-        $canonical_merch['Accessories'] += $amount;
-    }
-}
-$merch_chart_labels = array_keys($canonical_merch);
-$merch_chart_data = array_values($canonical_merch);
-
 // Chart 4: Service Status Distribution (Doughnut Chart)
-$service_status_query = $pdo->prepare("
+$raw_statuses = dashboard_fetch_all($pdo, "
     SELECT status, COUNT(*) AS count
     FROM job_orders
-    WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?
+    WHERE station_id = ? AND DATE({$job_dt_expr}) BETWEEN ? AND ?
     GROUP BY status
-");
-$service_status_query->execute([$station_id, $date_from, $date_to]);
-$raw_statuses = $service_status_query->fetchAll(PDO::FETCH_ASSOC);
+", [$station_id, $date_from, $date_to]);
 
 $canonical_statuses = [
     'Pending' => 0,
@@ -655,25 +710,24 @@ $status_chart_data = array_values($canonical_statuses);
 // Chart 5: Weekly Transaction Trend (Line Chart)
 $monday = date('Y-m-d', strtotime('monday this week', strtotime($date_from)));
 $sunday = date('Y-m-d', strtotime('sunday this week', strtotime($date_from)));
-$weekly_trend_query = $pdo->prepare("
+$raw_weekly = dashboard_fetch_all($pdo, "
     SELECT DAYNAME(dt) AS day_name, COUNT(*) AS count FROM (
-        SELECT DATE(transaction_date) AS dt FROM fuel_transactions 
-        WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?
+        SELECT DATE({$fuel_dt_expr}) AS dt FROM fuel_transactions
+        WHERE station_id = ? AND DATE({$fuel_dt_expr}) BETWEEN ? AND ?
         UNION ALL
-        SELECT DATE(COALESCE(NULLIF(transaction_date, '0000-00-00 00:00:00'), created_at)) AS dt FROM merchandise_transactions 
-        WHERE station_id = ? AND DATE(COALESCE(NULLIF(transaction_date, '0000-00-00 00:00:00'), created_at)) BETWEEN ? AND ?
+        SELECT DATE({$merch_dt_expr}) AS dt FROM merchandise_transactions
+        WHERE station_id = ? AND DATE({$merch_dt_expr}) BETWEEN ? AND ?
         UNION ALL
-        SELECT DATE(created_at) AS dt FROM job_orders 
-        WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?
+        SELECT DATE({$job_dt_expr}) AS dt FROM job_orders
+        WHERE station_id = ? AND DATE({$job_dt_expr}) BETWEEN ? AND ?
     ) AS all_txns
     GROUP BY day_name
-");
-$weekly_trend_query->execute([
+",
+[
     $station_id, $monday, $sunday,
     $station_id, $monday, $sunday,
     $station_id, $monday, $sunday
 ]);
-$raw_weekly = $weekly_trend_query->fetchAll(PDO::FETCH_ASSOC);
 
 $weekly_days = [
     'Monday' => 0,
@@ -694,14 +748,12 @@ $weekly_chart_labels = array_keys($weekly_days);
 $weekly_chart_data = array_values($weekly_days);
 
 // Chart 6: Fuel Tank Levels (Progress Bars)
-$tank_levels_query = $pdo->prepare("
+$tank_levels = dashboard_fetch_all($pdo, "
     SELECT fuel_type, SUM(current_level) AS current_stock, SUM(capacity) AS total_capacity
     FROM fuel_inventory
     WHERE station_id = ?
     GROUP BY fuel_type
-");
-$tank_levels_query->execute([$station_id]);
-$tank_levels = $tank_levels_query->fetchAll(PDO::FETCH_ASSOC);
+", [$station_id]);
 
 foreach ($tank_levels as &$tl) {
     $current = (float)$tl['current_stock'];
@@ -715,40 +767,36 @@ unset($tl);
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Table 1: Recent Transactions
-$recent_transactions_query = $pdo->prepare("
+$recent_transactions = dashboard_fetch_all($pdo, "
     SELECT time, type, customer, amount, status FROM (
-        SELECT transaction_date AS time, 'Fuel' AS type, 'Walk-in' AS customer, total_amount AS amount, status 
+        SELECT {$fuel_dt_expr} AS time, 'Fuel' AS type, 'Walk-in' AS customer, total_amount AS amount, status
         FROM fuel_transactions 
         WHERE station_id = ?
         UNION ALL
-        SELECT COALESCE(NULLIF(transaction_date, '0000-00-00 00:00:00'), created_at) AS time, 'Merchandise' AS type, customer_name AS customer, total_amount AS amount, validation_status AS status 
+        SELECT {$merch_dt_expr} AS time, 'Merchandise' AS type, customer_name AS customer, total_amount AS amount, validation_status AS status
         FROM merchandise_transactions 
         WHERE station_id = ?
         UNION ALL
-        SELECT created_at AS time, 'Service' AS type, customer_name AS customer, total_cost AS amount, status 
+        SELECT {$job_dt_expr} AS time, 'Service' AS type, customer_name AS customer, total_cost AS amount, status
         FROM job_orders 
         WHERE station_id = ?
     ) AS unioned
     ORDER BY time DESC
     LIMIT 10
-");
-$recent_transactions_query->execute([$station_id, $station_id, $station_id]);
-$recent_transactions = $recent_transactions_query->fetchAll(PDO::FETCH_ASSOC);
+", [$station_id, $station_id, $station_id]);
 
 // Table 2: Active Service Queue
-$active_services_query = $pdo->prepare("
+$active_services = dashboard_fetch_all($pdo, "
     SELECT job_order_number AS service_no, customer_name AS customer, 
            CONCAT(vehicle_plate, ' (', vehicle_type, ')') AS vehicle, 
            service_type AS service, status 
     FROM job_orders 
-    WHERE station_id = ? AND DATE(created_at) = CURDATE() AND status IN ('Pending', 'Reviewed', 'In Progress', 'Awaiting Parts')
-    ORDER BY created_at DESC
-");
-$active_services_query->execute([$station_id]);
-$active_services = $active_services_query->fetchAll(PDO::FETCH_ASSOC);
+    WHERE station_id = ? AND DATE({$job_dt_expr}) BETWEEN ? AND ? AND status IN ('Pending', 'Reviewed', 'In Progress', 'Awaiting Parts')
+    ORDER BY {$job_dt_expr} DESC
+", [$station_id, $date_from, $date_to]);
 
 // Table 3: Fuel Stock Alerts
-$fuel_stock_alerts_query = $pdo->prepare("
+$fuel_stock_alerts = dashboard_fetch_all($pdo, "
     SELECT fuel_type, current_level AS current_stock, reorder_level,
            CASE 
                WHEN current_level <= critical_level THEN 'Critical'
@@ -757,12 +805,10 @@ $fuel_stock_alerts_query = $pdo->prepare("
     FROM fuel_inventory 
     WHERE station_id = ? AND current_level <= reorder_level
     ORDER BY current_level ASC
-");
-$fuel_stock_alerts_query->execute([$station_id]);
-$fuel_stock_alerts = $fuel_stock_alerts_query->fetchAll(PDO::FETCH_ASSOC);
+", [$station_id]);
 
 // Table 4: Merchandise Low Stock
-$merch_low_stock_table_query = $pdo->prepare("
+$merch_low_stock_table = dashboard_fetch_all($pdo, "
     SELECT COALESCE(ip.product_name, CONCAT('Product #', si.product_id)) AS product,
            si.stock_level AS current_qty,
            si.reorder_level,
@@ -775,9 +821,8 @@ $merch_low_stock_table_query = $pdo->prepare("
     WHERE si.station_id = ? AND LOWER(si.status) = 'active'
       AND si.stock_level <= COALESCE(si.reorder_level, 10)
     ORDER BY si.stock_level ASC
-");
-$merch_low_stock_table_query->execute([$station_id]);
-$merch_low_stock_table = $merch_low_stock_table_query->fetchAll(PDO::FETCH_ASSOC);
+    LIMIT 25
+", [$station_id]);
 
 if (empty($merch_low_stock_table)) {
     try {
@@ -801,7 +846,8 @@ if (empty($merch_low_stock_table)) {
 }
 
 // Table 5: Pending Stock Requests
-$pending_requests_table_query = $pdo->prepare("
+$requester_name = html_entity_decode($display_name, ENT_QUOTES | ENT_HTML5);
+$pending_requests_table = dashboard_fetch_all($pdo, "
     SELECT CONCAT('SR-', id) AS request_no, item_category AS type, ? AS requested_by, status 
     FROM stock_requests 
     WHERE staff_id = ? AND status = 'Pending'
@@ -810,9 +856,7 @@ $pending_requests_table_query = $pdo->prepare("
     FROM fuel_stock_requests 
     WHERE staff_id = ? AND status = 'Pending'
     ORDER BY request_no DESC
-");
-$pending_requests_table_query->execute([$display_name, $user_id, $display_name, $user_id]);
-$pending_requests_table = $pending_requests_table_query->fetchAll(PDO::FETCH_ASSOC);
+", [$requester_name, $user_id, $requester_name, $user_id]);
 
 // Include standard header layout
 include __DIR__ . '/../partials/header.php';
@@ -1658,7 +1702,7 @@ include __DIR__ . '/../partials/header.php';
     const merchLabels = <?= json_encode($merch_chart_labels) ?>;
     const merchData   = <?= json_encode($merch_chart_data) ?>;
     const merchCtx = document.getElementById('merchSalesChart').getContext('2d');
-    const hasAnySales = true;
+    const hasAnySales = merchData.some(v => Number(v) > 0);
     if (!hasAnySales) {
         const el = document.getElementById('merchSalesChart').parentElement;
         el.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#94a3b8;"><i class="fas fa-shopping-basket" style="font-size:32px;margin-bottom:10px;"></i><span style="font-size:13px;font-weight:600;">No merchandise sales for this period</span></div>';

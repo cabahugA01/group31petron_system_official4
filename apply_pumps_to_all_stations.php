@@ -1,0 +1,90 @@
+<?php
+/**
+ * Apply 17 standard pump names to ALL stations in the system
+ */
+
+require_once 'public/db_connect.php';
+
+// Define the 17 standard pumps
+$standard_pumps = [
+    ['name' => 'DIESEL 1 - 1', 'fuel_type' => 'Diesel'],
+    ['name' => 'DIESEL 1 - 2', 'fuel_type' => 'Diesel'],
+    ['name' => 'DIESEL 1 - 3', 'fuel_type' => 'Diesel'],
+    ['name' => 'DIESEL 1 - 4', 'fuel_type' => 'Diesel'],
+    ['name' => 'DIESEL 2 - 5', 'fuel_type' => 'Diesel'],
+    ['name' => 'DIESEL 2 - 6', 'fuel_type' => 'Diesel'],
+    ['name' => 'KEROSENE - 1', 'fuel_type' => 'Kerosene'],
+    ['name' => 'TURBO DIESEL - 1', 'fuel_type' => 'Turbo Diesel'],
+    ['name' => 'TURBO DIESEL - 2', 'fuel_type' => 'Turbo Diesel'],
+    ['name' => 'XCS PLUS - 1', 'fuel_type' => 'XCS Plus'],
+    ['name' => 'XCS PLUS - 2', 'fuel_type' => 'XCS Plus'],
+    ['name' => 'XCS PLUS - 3', 'fuel_type' => 'XCS Plus'],
+    ['name' => 'XCS PLUS - 4', 'fuel_type' => 'XCS Plus'],
+    ['name' => 'XTRA UNL 1 - 1', 'fuel_type' => 'Xtra UNL 1'],
+    ['name' => 'XTRA UNL 1 - 2', 'fuel_type' => 'Xtra UNL 1'],
+    ['name' => 'XTRA UNL 2 - 3', 'fuel_type' => 'Xtra UNL 2'],
+    ['name' => 'XTRA UNL 2 - 4', 'fuel_type' => 'Xtra UNL 2'],
+];
+
+try {
+    $pdo->beginTransaction();
+    
+    // Get fuel type mapping
+    $fuel_type_map = [];
+    $stmt = $pdo->query("SELECT id, name FROM fuel_types");
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $fuel_type_map[$row['name']] = $row['id'];
+    }
+    
+    // Get all active stations
+    $stations = $pdo->query("SELECT id, name FROM stations WHERE status = 'active'")->fetchAll(PDO::FETCH_ASSOC);
+    
+    echo "Found " . count($stations) . " active stations\n";
+    echo "Found " . count($fuel_type_map) . " fuel types\n\n";
+    
+    foreach ($stations as $station) {
+        $station_id = $station['id'];
+        $station_name = $station['name'];
+        
+        echo "Processing Station $station_id: $station_name\n";
+        echo str_repeat('-', 70) . "\n";
+        
+        // Delete existing pumps
+        $deleted = $pdo->prepare("DELETE FROM fuel_pumps WHERE station_id = ?")->execute([$station_id]);
+        echo "  Cleared existing pumps\n";
+        
+        // Insert 17 standard pumps
+        $insert_stmt = $pdo->prepare("
+            INSERT INTO fuel_pumps 
+            (station_id, pump_number, fuel_type_id, status, calibration_value, created_at)
+            VALUES (?, ?, ?, 'Active', 0.00, NOW())
+        ");
+        
+        $count = 0;
+        foreach ($standard_pumps as $pump) {
+            $fuel_type_id = $fuel_type_map[$pump['fuel_type']] ?? null;
+            
+            if ($fuel_type_id === null) {
+                echo "  ⚠️  Skipping '{$pump['name']}' - fuel type '{$pump['fuel_type']}' not found\n";
+                continue;
+            }
+            
+            $insert_stmt->execute([$station_id, $pump['name'], $fuel_type_id]);
+            $count++;
+        }
+        
+        echo "  ✓ Created $count pumps\n\n";
+    }
+    
+    $pdo->commit();
+    
+    echo "\n" . str_repeat('=', 70) . "\n";
+    echo "✅ SUCCESS! All stations now have 17 standard pumps.\n";
+    echo "Refresh your browser to see the changes.\n";
+    
+} catch (Exception $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    echo "❌ ERROR: " . $e->getMessage() . "\n";
+}

@@ -174,11 +174,6 @@ require_once __DIR__ . '/../partials/header.php';
         <h1><i class="fas fa-list-alt"></i> All Transactions Oversight</h1>
         <div class="sub">Monitor and review all transactions system-wide across all shifts and staff encoders.</div>
     </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <a href="?<?=http_build_query(array_merge($_GET,['export'=>'excel']))?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
-        <a href="?<?=http_build_query(array_merge($_GET,['export'=>'csv']))?>"   class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</a>
-        <button class="flt-btn flt-btn-pdf" onclick="window.print()"><i class="fas fa-file-pdf"></i> PDF</button>
-    </div>
 </div>
 
 <?php

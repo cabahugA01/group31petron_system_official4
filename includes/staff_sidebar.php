@@ -33,7 +33,7 @@ function getStaffSidebar($current_page = 'dashboard') {
                 ],
                 'staff_fuel_transactions' => [
                     'icon'  => 'fas fa-tachometer-alt',
-                    'title' => 'Fuel Transactions (pump readings)',
+                    'title' => 'Meter Readings',
                     'url'   => 'staff_transactions_hub.php?section=fuel',
                 ],
             ],

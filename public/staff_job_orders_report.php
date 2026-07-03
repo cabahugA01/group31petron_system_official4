@@ -27,6 +27,16 @@ if (!in_array($role, ['superadmin', 'developer']) && !is_module_enabled('reports
 
 if (!$station_id) die('Error: You are not assigned to a station.');
 
+$redirect_date = trim($_GET['report_date'] ?? $_GET['date_start'] ?? $_GET['date'] ?? date('Y-m-d'));
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $redirect_date)) {
+    $redirect_date = date('Y-m-d');
+}
+header('Location: staff_fuel_sales_summary.php?' . http_build_query([
+    'report_date' => $redirect_date,
+    'tab' => 'merchandise',
+]));
+exit;
+
 // Get Station Info
 $station_name = 'Station';
 try {

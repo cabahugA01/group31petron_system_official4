@@ -214,8 +214,17 @@ if ($fuel_type !== '') {
     $params[] = $fuel_type;
 }
 if ($status !== '') {
-    $where[] = "LOWER(fd.status) = ?";
-    $params[] = strtolower($status);
+    $st_lower = strtolower($status);
+    if ($st_lower === 'pending') {
+        $where[] = "(LOWER(fd.status) IN ('pending', 'pending validation', 'pending manager validation', 'pending manager approval', '') OR fd.status IS NULL)";
+    } elseif ($st_lower === 'verified') {
+        $where[] = "LOWER(fd.status) IN ('verified', 'approved', 'validated')";
+    } elseif ($st_lower === 'rejected') {
+        $where[] = "LOWER(fd.status) IN ('rejected', 'discrepancy')";
+    } else {
+        $where[] = "LOWER(fd.status) = ?";
+        $params[] = $st_lower;
+    }
 }
 if ($dr_number !== '') {
     $where[] = "fd.invoice_no LIKE ?";
@@ -231,10 +240,10 @@ $total_deliveries = 0; $pending_deliveries = 0; $verified_deliveries = 0; $rejec
 try {
     $sc_sql = "SELECT
         COUNT(*) as total,
-        SUM(CASE WHEN LOWER(fd.status)='pending' OR fd.status = '' OR fd.status IS NULL THEN 1 ELSE 0 END) as pending,
-        SUM(CASE WHEN LOWER(fd.status)='verified' THEN 1 ELSE 0 END) as verified,
-        SUM(CASE WHEN LOWER(fd.status)='rejected' THEN 1 ELSE 0 END) as rejected,
-        COALESCE(SUM(CASE WHEN LOWER(fd.status)='verified' THEN fd.delivery_liters ELSE 0 END), 0) as liters
+        SUM(CASE WHEN LOWER(fd.status) IN ('pending', 'pending validation', 'pending manager validation', 'pending manager approval', '') OR fd.status IS NULL THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN LOWER(fd.status) IN ('verified', 'approved', 'validated') THEN 1 ELSE 0 END) as verified,
+        SUM(CASE WHEN LOWER(fd.status) IN ('rejected', 'discrepancy') THEN 1 ELSE 0 END) as rejected,
+        COALESCE(SUM(CASE WHEN LOWER(fd.status) IN ('verified', 'approved', 'validated') THEN fd.delivery_liters ELSE 0 END), 0) as liters
         FROM fuel_deliveries fd
         WHERE " . implode(' AND ', $where);
     
@@ -374,7 +383,7 @@ if (in_array($export, ['csv','excel','pdf'])) {
     }
 }
 
-require_once __DIR__ . '/../partials/header.php';
+require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 <style>
 /* == PAGE HEADER - matches SuperAdmin int-head standard == */

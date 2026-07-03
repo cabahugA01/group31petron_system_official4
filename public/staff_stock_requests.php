@@ -254,12 +254,12 @@ function get_fuel_tank_label($fuel_type) {
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
-.ssr-wrap { max-width:1300px; margin:0 auto; padding:16px 24px 24px 24px; }
+.ssr-wrap { max-width:1800px; margin:0 auto; padding:24px; }
 
 /* Header */
-.ssr-header { display:flex; align-items:center; justify-content:space-between; padding-bottom:18px; border-bottom:1px solid #e2e8f0; margin-bottom:20px; }
-.ssr-title h1 { font-size:24px; font-weight:700; margin:0 0 4px 0; color:#002F70; display:flex; align-items:center; gap:10px; }
-.ssr-title p  { font-size:13px; color:#6c757d; margin:0; text-transform:uppercase; letter-spacing:0.3px; }
+.ssr-header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
+.ssr-title h1 { font-size:22px; font-weight:700; margin:0 0 4px 0; color:#00264D; display:flex; align-items:center; gap:9px; }
+.ssr-title p  { font-size:13px; color:#6b7280; margin:0; text-transform:uppercase; letter-spacing:0.3px; }
 
 /* Alert messages styling */
 .ssr-alert { border-radius:8px; padding:12px 18px; margin-bottom:20px; font-size:13px; display:flex; align-items:center; gap:10px; }
@@ -267,13 +267,13 @@ include __DIR__ . '/../partials/header.php';
 .ssr-alert-error { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; }
 
 /* Metrics Summary Cards */
-.ssr-stats-row { display:grid; grid-template-columns:repeat(4, 1fr); gap:16px; margin-bottom:24px; }
-.ssr-stat-card { background:#fff; border-radius:12px; padding:18px 20px; border:1px solid #e2e8f0; box-shadow:0 2px 8px rgba(0,0,0,.04); display:flex; align-items:center; gap:16px; transition:transform 0.15s ease, box-shadow 0.15s ease; }
-.ssr-stat-card:hover { transform:translateY(-2px); box-shadow:0 6px 16px rgba(0,0,0,.07); }
-.ssr-stat-icon { width:46px; height:46px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
+.ssr-stats-row { display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; margin-bottom:20px; }
+.ssr-stat-card { background:#fff; border-radius:11px; padding:16px 18px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,.04); display:flex; align-items:center; gap:14px; transition:transform 0.15s ease, box-shadow 0.15s ease; }
+.ssr-stat-card:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,.07); }
+.ssr-stat-icon { width:42px; height:42px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
 .ssr-stat-info { min-width:0; }
-.ssr-stat-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#64748b; margin-bottom:3px; }
-.ssr-stat-val { font-size:26px; font-weight:800; line-height:1; color:#0f172a; }
+.ssr-stat-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; color:#64748b; margin-bottom:2px; }
+.ssr-stat-val { font-size:24px; font-weight:800; line-height:1; color:#0f172a; }
 
 /* Status-specific card borders and colors */
 .card-pending  { border-left:4px solid #f59e0b; }
@@ -286,21 +286,21 @@ include __DIR__ . '/../partials/header.php';
 .card-total    .ssr-stat-icon { background:#eff6ff; color:#2563eb; }
 
 /* Tabs Layout */
-.ssr-tabs { display:flex; border-bottom:2px solid #e2e8f0; margin-bottom:20px; }
-.ssr-tab  { padding:12px 24px; font-size:13.5px; font-weight:700; color:#64748b; cursor:pointer; border-bottom:3px solid transparent; margin-bottom:-2px; transition:color .15s, border-color .15s; display:flex; align-items:center; gap:8px; user-select:none; }
-.ssr-tab:hover  { color:#002F70; }
-.ssr-tab.active { color:#002F70; border-bottom-color:#002F70; }
-.ssr-tab .tab-count { background:#f1f5f9; color:#475569; font-size:11px; font-weight:700; padding:1px 8px; border-radius:12px; }
+.ssr-tabs { display:flex; border-bottom:2px solid #e2e8f0; margin-bottom:16px; }
+.ssr-tab  { padding:10px 22px; font-size:13px; font-weight:700; color:#64748b; cursor:pointer; border-bottom:3px solid transparent; margin-bottom:-2px; transition:color .15s, border-color .15s; display:flex; align-items:center; gap:7px; user-select:none; }
+.ssr-tab:hover  { color:#00264D; }
+.ssr-tab.active { color:#00264D; border-bottom-color:#002F70; }
+.ssr-tab .tab-count { background:#f1f5f9; color:#475569; font-size:10px; font-weight:700; padding:2px 7px; border-radius:10px; }
 .ssr-tab.active .tab-count { background:#002F70; color:#fff; }
 
 .ssr-tab-panel { display:none; }
 .ssr-tab-panel.active { display:block; }
 
 /* Table and Card Container styling */
-.ssr-card { background:#fff; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,.04); border:1px solid #e2e8f0; margin-bottom:24px; overflow:hidden; }
-.ssr-card-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e2e8f0; flex-wrap:wrap; gap:12px; background:#fafafa; }
-.ssr-card-title { font-size:.95rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px; }
-.ssr-card-body { padding:20px; }
+.ssr-card { background:#fff; border-radius:11px; box-shadow:0 1px 3px rgba(0,0,0,.04); border:1px solid #e2e8f0; margin-bottom:20px; overflow:hidden; }
+.ssr-card-head { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid #f1f5f9; flex-wrap:wrap; gap:8px; }
+.ssr-card-title { font-size:13px; font-weight:700; color:#00264D; text-transform:uppercase; letter-spacing:.3px; margin:0; }
+.ssr-card-body { padding:16px; }
 
 /* Status Badges */
 .sbadge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; white-space:nowrap; border:1px solid transparent; text-transform:uppercase; text-align:center; }
@@ -312,21 +312,38 @@ include __DIR__ . '/../partials/header.php';
 .sbadge-completed          { background:#ecfdf5; color:#047857; border-color:#a7f3d0; }
 
 /* Standard Flter Row style */
-.ssr-filter-row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:16px; }
-.ssr-filter-row select, .ssr-filter-row input { padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; background:#fff; height:38px; outline:none; }
+.ssr-filter-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }
+.ssr-filter-row select, .ssr-filter-row input { padding:7px 11px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; color:#334155; background:#fff; height:34px; outline:none; }
 .ssr-filter-row select:focus, .ssr-filter-row input:focus { border-color:#002F70; box-shadow:0 0 0 2px rgba(0,47,112,.1); }
 
 /* Table custom classes for strict Petron outline design system */
-.table { width:100%; border-collapse:collapse; text-align:left; }
-.table thead th { background:#002F70; color:#ffffff; padding:12px 10px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; }
-.table tbody td { padding:12px 10px; border-bottom:1px solid #e2e8f0; font-size:12.5px; vertical-align:middle; color:#334155; }
+.table { width:100%; border-collapse:collapse; text-align:left; font-size:12px; }
+.table thead th { background:#002F70; color:#ffffff; padding:10px 8px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px; white-space:nowrap; }
+.table tbody td { padding:10px 8px; border-bottom:1px solid #e2e8f0; font-size:11.5px; vertical-align:middle; color:#334155; }
 .table tbody tr:hover td { background:#f8fafc; }
 
+/* Fixed column widths for better responsiveness */
+.table thead th:nth-child(1), .table tbody td:nth-child(1) { width: 60px; } /* Request ID */
+.table thead th:nth-child(2), .table tbody td:nth-child(2) { width: 90px; } /* Date */
+.table thead th:nth-child(3), .table tbody td:nth-child(3) { min-width: 180px; max-width: 250px; } /* Product */
+.table thead th:nth-child(4), .table tbody td:nth-child(4) { width: 80px; text-align: center; } /* Current Stock */
+.table thead th:nth-child(5), .table tbody td:nth-child(5) { width: 80px; text-align: center; } /* Requested Qty */
+.table thead th:nth-child(6), .table tbody td:nth-child(6) { width: 90px; text-align: center; } /* Status */
+.table thead th:nth-child(7), .table tbody td:nth-child(7) { width: 100px; } /* Last Updated */
+.table thead th:nth-child(8), .table tbody td:nth-child(8) { width: 120px; } /* Actions */
+
+/* Product name truncation */
+.table tbody td:nth-child(3) { 
+    overflow: hidden; 
+    text-overflow: ellipsis; 
+    white-space: nowrap; 
+}
+
 /* Table Action Buttons layout - Vertical list */
-.action-stack { display:flex; flex-direction:column; gap:4px; align-items:stretch; width:130px; }
+.action-stack { display:flex; flex-direction:column; gap:3px; align-items:stretch; width:100%; }
 
 /* Outline Buttons design styles */
-.flt-btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; height:32px; padding:4px 10px; border-radius:4px; font-size:11px; font-weight:700; cursor:pointer; background:#fff; border:1px solid #cbd5e1; transition:all 0.15s ease-in-out; text-decoration:none; white-space:nowrap; box-sizing:border-box; width:100%; }
+.flt-btn { display:inline-flex; align-items:center; justify-content:center; gap:4px; height:28px; padding:3px 8px; border-radius:4px; font-size:10px; font-weight:700; cursor:pointer; background:#fff; border:1px solid #cbd5e1; transition:all 0.15s ease-in-out; text-decoration:none; white-space:nowrap; box-sizing:border-box; width:100%; }
 .flt-btn-primary   { color:#002F70; border-color:#002F70; }
 .flt-btn-primary:hover   { background:#002F70; color:#fff; }
 .flt-btn-secondary { color:#64748b; border-color:#cbd5e1; }

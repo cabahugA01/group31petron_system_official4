@@ -106,7 +106,7 @@ if ($export === 'excel') {
     echo '</tbody></table></body></html>'; exit;
 }
 
-require_once __DIR__ . '/../partials/header.php';
+require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 <style>
 html,body{max-width:100vw;overflow-x:hidden}

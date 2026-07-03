@@ -208,6 +208,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 require_once __DIR__ . '/../partials/header.php';
+require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 
 <style>

@@ -352,7 +352,7 @@ function handle_get_requests($pdo, $me, $role, $station_id) {
     $sql = "
         SELECT sr.*,
                COALESCE(sr.purchase_request_id, '') AS purchase_request_id,
-               u.name  AS staff_name,
+               COALESCE(u.name, 'Unknown Staff')  AS staff_name,
                m.name  AS manager_name,
                s.name  AS station_name,
                po.po_number,
@@ -365,7 +365,7 @@ function handle_get_requests($pdo, $me, $role, $station_id) {
                po.stock_in_done,
                po.stock_in_at
         FROM stock_requests sr
-        JOIN users u    ON sr.staff_id    = u.id
+        LEFT JOIN users u    ON sr.staff_id    = u.id
         LEFT JOIN users m ON sr.manager_id = m.id
         LEFT JOIN stations s ON sr.station_id = s.id
         LEFT JOIN purchase_orders po ON po.request_id = sr.id AND po.type = 'merch'
@@ -600,13 +600,13 @@ function handle_audit_trail($pdo, $me, $role, $station_id) {
                sr.item_name, sr.item_sku, sr.item_category,
                sr.requested_quantity, sr.approved_quantity,
                sr.remarks AS staff_remarks,
-               u.name  AS performed_by_name,
-               st.name AS staff_name,
+               COALESCE(u.name, 'Unknown User')  AS performed_by_name,
+               COALESCE(st.name, 'Unknown Staff') AS staff_name,
                s.name  AS station_name
         FROM stock_request_audit sra
         JOIN stock_requests sr ON sra.stock_request_id = sr.id
-        JOIN users u  ON sra.performed_by = u.id
-        JOIN users st ON sr.staff_id = st.id
+        LEFT JOIN users u  ON sra.performed_by = u.id
+        LEFT JOIN users st ON sr.staff_id = st.id
         LEFT JOIN stations s ON sr.station_id = s.id
     ";
     if ($where) $sql .= ' WHERE ' . implode(' AND ', $where);
@@ -636,12 +636,12 @@ function handle_export_csv($pdo, $me, $role, $station_id) {
 
     $sql = "
         SELECT sr.id, sr.created_at, s.name AS station_name,
-               u.name AS staff_name, sr.item_name, sr.item_sku, sr.item_category,
+               COALESCE(u.name, 'Unknown Staff') AS staff_name, sr.item_name, sr.item_sku, sr.item_category,
                sr.current_stock, sr.requested_quantity, sr.approved_quantity,
                sr.status, m.name AS manager_name, sr.manager_notes, sr.remarks,
                sr.processed_at
         FROM stock_requests sr
-        JOIN users u ON sr.staff_id = u.id
+        LEFT JOIN users u ON sr.staff_id = u.id
         LEFT JOIN users m ON sr.manager_id = m.id
         LEFT JOIN stations s ON sr.station_id = s.id
     ";

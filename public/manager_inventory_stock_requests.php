@@ -110,9 +110,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_type'] ?? '') === 'fu
 $fuel_requests = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT fsr.*, u.name AS staff_name, m.name AS manager_name
+        SELECT fsr.*, COALESCE(u.name, 'Unknown Staff') AS staff_name, m.name AS manager_name
         FROM fuel_stock_requests fsr
-        JOIN users u ON fsr.staff_id = u.id
+        LEFT JOIN users u ON fsr.staff_id = u.id
         LEFT JOIN users m ON fsr.manager_id = m.id
         WHERE fsr.station_id = ?
         ORDER BY CASE fsr.status WHEN 'Pending' THEN 1 WHEN 'Approved' THEN 2 WHEN 'Rejected' THEN 3 END, fsr.created_at DESC

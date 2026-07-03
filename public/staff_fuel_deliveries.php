@@ -192,7 +192,16 @@ try {
     $tank_levels = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch(Exception $e){}
 
-include __DIR__ . '/../partials/header.php';
+// Build a lookup map: fuel_type name => inventory row
+$tank_inv_map = [];
+foreach ($tank_levels as $tl) {
+    $key = strtolower(trim($tl['fuel_type_name'] ?? $tl['fuel_type'] ?? ''));
+    if (!isset($tank_inv_map[$key])) {
+        $tank_inv_map[$key] = $tl;
+    }
+}
+
+include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -429,7 +438,7 @@ body{overflow-x:hidden;max-width:100vw}
                 <i class="fas fa-database" style="color:#002F70;"></i> Tank Monitoring
             </h2>
             <div style="font-size:11px;color:#64748b;margin-top:3px;font-weight:500;text-transform:uppercase;letter-spacing:.3px;">
-                <i class="fas fa-eye" style="font-size:10px;"></i> View Only &mdash; Real-time underground tank levels
+                <i class="fas fa-eye" style="font-size:10px;"></i> View Only &mdash; Real-time underground tank levels (<?= count($TANK_CONFIG) ?> tanks)
             </div>
         </div>
         <span style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;">
@@ -437,108 +446,93 @@ body{overflow-x:hidden;max-width:100vw}
         </span>
     </div>
 
-    <?php if (empty($tank_levels)): ?>
+    <?php if (empty($TANK_CONFIG)): ?>
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:40px;text-align:center;color:#94a3b8;">
         <i class="fas fa-database" style="font-size:36px;margin-bottom:12px;display:block;opacity:.3;"></i>
-        <div style="font-size:14px;font-weight:600;">No tank data available.</div>
-        <div style="font-size:12px;margin-top:4px;">Fuel inventory has not been configured for this station yet.</div>
+        <div style="font-size:14px;font-weight:600;">No tank configuration defined.</div>
+        <div style="font-size:12px;margin-top:4px;">Tank configuration has not been set up for this station yet.</div>
     </div>
     <?php else: ?>
 
-    <!-- Tank Cards Grid -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;">
-    <?php foreach ($tank_levels as $tk):
-        $ft_key   = $tk['fuel_type_name'] ?? $tk['fuel_type'];
-        $sty      = $FT_STYLE[$ft_key] ?? ['color'=>'#334155','icon'=>'fas fa-gas-pump'];
-        $level    = (float)$tk['current_level'];
-        $capacity = (float)$tk['capacity'];
-        $critical = (float)$tk['critical_level'];
-        $reorder  = (float)$tk['reorder_level'];
+    <!-- Tank Cards Grid — all 17 tanks in order -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;">
+    <?php foreach ($TANK_CONFIG as $tank_num => $tank_cfg):
+        $ft_raw   = $tank_cfg['fuel_type'];
+        $ft_key_l = strtolower(trim($ft_raw));
+        $tk       = $tank_inv_map[$ft_key_l] ?? null;
+
+        $tank_label  = $tank_cfg['label'];
+        $tank_assign = $tank_cfg['tank'];
+        $sty         = $FT_STYLE[$ft_raw] ?? ['color'=>'#334155','icon'=>'fas fa-gas-pump'];
+
+        $level    = $tk ? (float)($tk['current_level'] ?? 0) : 0;
+        $capacity = $tk ? (float)($tk['capacity']      ?? 0) : 0;
+        $critical = $tk ? (float)($tk['critical_level']?? 0) : 0;
+        $reorder  = $tk ? (float)($tk['reorder_level'] ?? 0) : 0;
+        $last_upd = $tk ? ($tk['last_updated'] ?? null) : null;
         $pct      = $capacity > 0 ? min(100, round($level / $capacity * 100, 1)) : 0;
 
-        // Status logic
-        if ($level <= $critical) {
-            $bar_color = '#dc2626'; // red - critical
-            $status_label = 'Critical';
-            $status_bg = '#fee2e2'; $status_color = '#dc2626'; $status_border = '#fca5a5';
-            $card_border = '#fca5a5';
+        if (!$tk) {
+            $bar_color = '#94a3b8'; $status_label = 'No Data'; $status_color = '#64748b';
+        } elseif ($level <= $critical) {
+            $bar_color = '#dc2626'; $status_label = 'Critical'; $status_color = '#dc2626';
         } elseif ($level <= $reorder) {
-            $bar_color = '#d97706'; // amber - low
-            $status_label = 'Low Stock';
-            $status_bg = '#fef3c7'; $status_color = '#d97706'; $status_border = '#fcd34d';
-            $card_border = '#fcd34d';
+            $bar_color = '#d97706'; $status_label = 'Low Stock'; $status_color = '#d97706';
         } else {
-            $bar_color = '#16a34a'; // green - ok
-            $status_label = 'Available';
-            $status_bg = '#dcfce7'; $status_color = '#16a34a'; $status_border = '#86efac';
-            $card_border = '#e2e8f0';
+            $bar_color = '#16a34a'; $status_label = 'Available'; $status_color = '#16a34a';
         }
     ?>
-    <div style="background:#fff;border:1.5px solid <?= $card_border ?>;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.05);transition:transform .15s,box-shadow .15s;"
-         onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(0,0,0,.08)'"
-         onmouseout="this.style.transform='';this.style.boxShadow='0 1px 4px rgba(0,0,0,.05)'">
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:11px 13px;box-shadow:0 1px 3px rgba(0,0,0,.04);">
 
-        <!-- Card Top Bar -->
-        <div style="height:4px;background:<?= $bar_color ?>;width:<?= $pct ?>%;transition:width .5s ease;"></div>
-
-        <!-- Card Content -->
-        <div style="padding:14px 16px;">
-
-            <!-- Tank Name + Status -->
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;margin-bottom:10px;">
-                <div>
-                    <div style="font-size:13px;font-weight:800;color:#00264D;">
-                        <?= htmlspecialchars($ft_key) ?>
-                    </div>
-                    <div style="font-size:10px;color:#94a3b8;margin-top:2px;">
-                        <?= htmlspecialchars($tk['fuel_type'] ?? '') ?>
-                    </div>
-                </div>
-                <span style="background:<?= $status_bg ?>;color:<?= $status_color ?>;border:1px solid <?= $status_border ?>;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;">
-                    <?= $status_label ?>
-                </span>
+        <!-- Tank Label + Status -->
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:3px;">
+            <div style="font-size:13px;font-weight:800;color:#00264D;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                <?= htmlspecialchars($tank_label) ?>
             </div>
-
-            <!-- Current Level (big number) -->
-            <div style="margin-bottom:10px;">
-                <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px;">Current Level</div>
-                <div style="display:flex;align-items:baseline;gap:4px;">
-                    <span style="font-size:22px;font-weight:800;color:<?= $bar_color ?>;font-family:monospace;">
-                        <?= number_format($level, 0) ?>
-                    </span>
-                    <span style="font-size:12px;color:#64748b;font-weight:600;">L</span>
-                    <span style="font-size:11px;color:#94a3b8;margin-left:4px;">of <?= number_format($capacity, 0) ?> L</span>
-                </div>
-            </div>
-
-            <!-- Progress Bar -->
-            <div style="background:#f1f5f9;border-radius:8px;height:8px;overflow:hidden;margin-bottom:8px;">
-                <div style="height:100%;width:<?= $pct ?>%;background:<?= $bar_color ?>;border-radius:8px;transition:width .5s ease;"></div>
-            </div>
-
-            <!-- Pct + Thresholds -->
-            <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#64748b;">
-                <span style="font-weight:700;color:<?= $bar_color ?>;"><?= $pct ?>% full</span>
-                <span><i class="fas fa-exclamation-triangle" style="color:#d97706;font-size:9px;"></i> Critical: <?= number_format($critical, 0) ?> L</span>
-            </div>
-
-            <!-- Last Updated -->
-            <div style="margin-top:10px;padding-top:8px;border-top:1px solid #f1f5f9;font-size:10px;color:#94a3b8;display:flex;align-items:center;gap:4px;">
-                <i class="fas fa-clock" style="font-size:9px;"></i>
-                Updated: <?= $tk['last_updated'] ? date('M d, H:i', strtotime($tk['last_updated'])) : '—' ?>
-            </div>
-
+            <span style="font-size:11px;font-weight:700;color:<?= $status_color ?>;white-space:nowrap;flex-shrink:0;">
+                <?= $status_label ?>
+            </span>
         </div>
+
+        <!-- Sub-label -->
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            <?= htmlspecialchars($ft_raw) ?> &middot; <?= htmlspecialchars($tank_assign) ?>
+        </div>
+
+        <!-- Level number -->
+        <div style="display:flex;align-items:baseline;gap:3px;margin-bottom:5px;">
+            <span style="font-size:20px;font-weight:800;color:<?= $bar_color ?>;font-family:monospace;"><?= number_format($level, 0) ?></span>
+            <span style="font-size:12px;color:#64748b;font-weight:600;">L</span>
+            <span style="font-size:11px;color:#94a3b8;margin-left:3px;">/ <?= number_format($capacity, 0) ?> L</span>
+        </div>
+
+        <!-- Progress bar -->
+        <div style="background:#f1f5f9;border-radius:4px;height:5px;overflow:hidden;">
+            <div style="height:100%;width:<?= $pct ?>%;background:<?= $bar_color ?>;border-radius:4px;"></div>
+        </div>
+
+        <!-- Pct -->
+        <div style="margin-top:4px;font-size:11px;color:<?= $bar_color ?>;font-weight:700;"><?= $pct ?>% full</div>
+
     </div>
     <?php endforeach; ?>
     </div>
 
     <!-- Summary Bar -->
     <?php
-        $total_tanks  = count($tank_levels);
-        $critical_cnt = count(array_filter($tank_levels, function($t) { return (float)($t['current_level']) <= (float)($t['critical_level']); }));
-        $low_cnt      = count(array_filter($tank_levels, function($t) { return (float)($t['current_level']) > (float)($t['critical_level']) && (float)($t['current_level']) <= (float)($t['reorder_level']); }));
-        $ok_cnt       = $total_tanks - $critical_cnt - $low_cnt;
+        $total_tanks  = count($TANK_CONFIG);
+        $critical_cnt = 0; $low_cnt = 0; $ok_cnt = 0; $nodata_cnt = 0;
+        foreach ($TANK_CONFIG as $tc) {
+            $key = strtolower(trim($tc['fuel_type']));
+            $inv = $tank_inv_map[$key] ?? null;
+            if (!$inv) { $nodata_cnt++; continue; }
+            $lv = (float)($inv['current_level'] ?? 0);
+            $cr = (float)($inv['critical_level'] ?? 0);
+            $re = (float)($inv['reorder_level'] ?? 0);
+            if ($lv <= $cr) $critical_cnt++;
+            elseif ($lv <= $re) $low_cnt++;
+            else $ok_cnt++;
+        }
     ?>
     <div style="margin-top:14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 18px;display:flex;align-items:center;flex-wrap:wrap;gap:16px;">
         <span style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;"><i class="fas fa-chart-bar"></i> Summary:</span>

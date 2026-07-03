@@ -24,32 +24,24 @@ $pumps = [];
 try {
     $stmt = $pdo->prepare("
         SELECT
-            fi.fuel_type,
-            COALESCE(fi.latest_calibration, 0)  AS calibration_value,
+            fp.id,
+            fp.pump_number,
+            fp.fuel_type_id,
+            fp.status,
+            fp.calibration_value,
+            fp.calibration_updated_at,
+            fp.calibration_updated_by,
+            ft.name AS fuel_type,
             COALESCE(fi.price_per_liter, 0)      AS price_per_liter,
             COALESCE(fi.current_level, 0)        AS current_level,
             COALESCE(fi.current_stock, 0)        AS current_stock,
-            COALESCE(fi.status, 'Normal')        AS status,
-            fi.last_updated,
-            (SELECT fp.pump_number
-             FROM fuel_pumps fp
-             WHERE fp.station_id = fi.station_id
-               AND fp.fuel_type_id = fi.fuel_type_id
-             ORDER BY fp.pump_number ASC LIMIT 1) AS pump_number,
-            (SELECT u.name
-             FROM fuel_pumps fp2
-             JOIN users u ON fp2.calibration_updated_by = u.id
-             WHERE fp2.station_id = fi.station_id
-               AND fp2.fuel_type_id = fi.fuel_type_id
-             ORDER BY fp2.calibration_updated_at DESC LIMIT 1) AS last_updated_by,
-            (SELECT fp3.calibration_updated_at
-             FROM fuel_pumps fp3
-             WHERE fp3.station_id = fi.station_id
-               AND fp3.fuel_type_id = fi.fuel_type_id
-             ORDER BY fp3.calibration_updated_at DESC LIMIT 1) AS calibration_updated_at
-        FROM fuel_inventory fi
-        WHERE fi.station_id = ?
-        ORDER BY fi.fuel_type
+            COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name, '')), ' ', TRIM(COALESCE(u.last_name, ''))), ' '), u.username, 'System') AS last_updated_by
+        FROM fuel_pumps fp
+        LEFT JOIN fuel_types ft ON fp.fuel_type_id = ft.id
+        LEFT JOIN fuel_inventory fi ON fi.fuel_type_id = fp.fuel_type_id AND fi.station_id = fp.station_id
+        LEFT JOIN users u ON fp.calibration_updated_by = u.id
+        WHERE fp.station_id = ?
+        ORDER BY fp.pump_number ASC
     ");
     $stmt->execute([$station_id]);
     $pumps = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -58,6 +50,7 @@ try {
 }
 
 include __DIR__ . '/../partials/header.php';
+require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 
 <style>
@@ -255,7 +248,8 @@ include __DIR__ . '/../partials/header.php';
 <?php if (empty($pumps)): ?>
 <div class="empty-state">
     <i class="fas fa-gas-pump"></i>
-    <p>No pump data available for this station.</p>
+    <p><strong>No calibration data available yet.</strong></p>
+    <p style="font-size:12px;color:#94a3b8;margin-top:4px;">The manager has not set calibration values for any fuel type yet. Please check back later.</p>
 </div>
 <?php else: ?>
 <div class="pump-grid">

@@ -52,6 +52,10 @@ try {
 } catch (Exception $e) {}
 $report_date = trim($_GET['report_date'] ?? $default_date);
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $report_date)) $report_date = $default_date;
+$active_tab = strtolower(trim($_GET['tab'] ?? $_GET['type'] ?? 'fuel'));
+if (!in_array($active_tab, ['fuel', 'merchandise'], true)) {
+    $active_tab = 'fuel';
+}
 
 // Helper: Check table existence
 function table_exists($pdo, $table) {
@@ -91,6 +95,616 @@ function is_shift1(string $shift): bool {
     return strpos($s, '2') === false;
 }
 
+function staff_report_fuel_display_name($fuel_type): string {
+    $name = trim((string)$fuel_type);
+    $normalized = strtoupper(preg_replace('/\s+/', ' ', $name));
+    
+    // Remove pump/nozzle numbers pattern like "DIESEL 1 - 1" → "DIESEL"
+    // Patterns: "DIESEL 1 - 1", "TURBO DIESEL - 1", "XCS PLUS - 2", "XTRA UNL 1 - 2"
+    $name = preg_replace('/\s+\d+\s*-\s*\d+$/', '', $name); // Remove " 1 - 1", " 2 - 3" at end
+    $name = preg_replace('/\s*-\s*\d+$/', '', $name); // Remove " - 1", " - 2" at end
+    $name = trim($name);
+    
+    $normalized = strtoupper(preg_replace('/\s+/', ' ', $name));
+    if (strpos($normalized, 'TURBO') !== false && strpos($normalized, 'DIESEL') !== false) {
+        return 'Turbo Diesel';
+    }
+    if (strpos($normalized, 'KEROSENE') !== false) {
+        return 'Kerosene';
+    }
+    if (strpos($normalized, 'XCS') !== false) {
+        return 'XCS Plus';
+    }
+    if (strpos($normalized, 'XTRA') !== false && strpos($normalized, 'UNL') !== false) {
+        return 'Xtra UNL';
+    }
+    if (strpos($normalized, 'DIESEL') !== false) {
+        return 'Diesel';
+    }
+    return $name !== '' ? $name : 'Fuel';
+}
+
+function staff_report_user_display_sql(PDO $pdo, string $alias): string {
+    $parts = [];
+    if (column_exists($pdo, 'users', 'first_name') && column_exists($pdo, 'users', 'last_name')) {
+        $parts[] = "NULLIF(TRIM(CONCAT(COALESCE($alias.first_name,''),' ',COALESCE($alias.last_name,''))), '')";
+    }
+    if (column_exists($pdo, 'users', 'name')) {
+        $parts[] = "NULLIF($alias.name, '')";
+    }
+    if (column_exists($pdo, 'users', 'username')) {
+        $parts[] = "NULLIF($alias.username, '')";
+    }
+    $parts[] = "'N/A'";
+    return 'COALESCE(' . implode(', ', $parts) . ')';
+}
+
+function staff_report_valid_merchandise_where(PDO $pdo, string $alias = 'mt'): string {
+    $checks = [];
+    if (column_exists($pdo, 'merchandise_transactions', 'validation_status')) {
+        $checks[] = "LOWER(COALESCE($alias.validation_status, '')) NOT IN ('voided','rejected','cancelled','canceled')";
+    }
+    if (column_exists($pdo, 'merchandise_transactions', 'workflow_status')) {
+        $checks[] = "LOWER(COALESCE($alias.workflow_status, '')) NOT IN ('voided','rejected','cancelled','canceled')";
+    }
+    if (column_exists($pdo, 'merchandise_transactions', 'void_reason')) {
+        $checks[] = "($alias.void_reason IS NULL OR TRIM($alias.void_reason) = '')";
+    }
+    return $checks ? implode(' AND ', $checks) : '1=1';
+}
+
+function staff_report_line_amount_sql(string $itemAlias = 'mti', string $txAlias = 'mt', string $sumAlias = 'mis'): string {
+    return "ROUND(COALESCE($itemAlias.subtotal, COALESCE($itemAlias.quantity, 0) * COALESCE($itemAlias.unit_price, 0), 0) * CASE WHEN COALESCE($sumAlias.item_subtotal, 0) > 0 AND COALESCE($txAlias.total_amount, 0) > 0 THEN $txAlias.total_amount / $sumAlias.item_subtotal ELSE 1 END, 2)";
+}
+
+function staff_report_fetch_merchandise_rows(PDO $pdo, int $station_id, string $report_date): array {
+    if (!table_exists($pdo, 'merchandise_transactions')) {
+        return [];
+    }
+
+    $encoderSql = table_exists($pdo, 'users') ? staff_report_user_display_sql($pdo, 'u') : "'N/A'";
+    $validWhere = staff_report_valid_merchandise_where($pdo, 'mt');
+
+    if (table_exists($pdo, 'merchandise_transaction_items')) {
+        $lineAmountSql = staff_report_line_amount_sql('mti', 'mt');
+        $stmt = $pdo->prepare("
+            SELECT
+                mt.id,
+                COALESCE(NULLIF(mti.category, ''), 'General') AS category,
+                COALESCE(NULLIF(mti.product_name, ''), mt.item_sku, 'Item') AS product_name,
+                COALESCE(mti.quantity, mt.quantity, 0) AS stock_out,
+                COALESCE(mti.unit_price, mt.unit_price, 0) AS unit_price,
+                CASE WHEN mti.id IS NOT NULL THEN $lineAmountSql ELSE COALESCE(mt.total_amount, 0) END AS total_amount,
+                COALESCE(mt.shift_period, '') AS shift,
+                $encoderSql AS encoder,
+                COALESCE(mt.payment_method, 'Cash') AS payment_method,
+                COALESCE(mt.transaction_date, mt.created_at) AS created_at
+            FROM merchandise_transactions mt
+            LEFT JOIN (
+                SELECT transaction_id,
+                       SUM(COALESCE(subtotal, COALESCE(quantity, 0) * COALESCE(unit_price, 0), 0)) AS item_subtotal
+                FROM merchandise_transaction_items
+                GROUP BY transaction_id
+            ) mis ON mis.transaction_id = mt.id
+            LEFT JOIN merchandise_transaction_items mti
+                   ON mti.transaction_id = mt.id
+                  AND LOWER(COALESCE(mti.item_type, 'merchandise')) <> 'service'
+            LEFT JOIN users u ON mt.staff_id = u.id
+            WHERE mt.station_id = ?
+              AND (DATE(mt.transaction_date) = ? OR DATE(mt.created_at) = ?)
+              AND $validWhere
+              AND (
+                    mti.id IS NOT NULL
+                    OR LOWER(COALESCE(mt.transaction_type, 'merchandise')) NOT IN ('job_order','combined')
+                  )
+            ORDER BY category, COALESCE(mt.transaction_date, mt.created_at), mt.id
+        ");
+        $stmt->execute([$station_id, $report_date, $report_date]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT
+            mt.id,
+            'General' AS category,
+            COALESCE(NULLIF(mt.item_sku, ''), 'Item') AS product_name,
+            COALESCE(mt.quantity, 0) AS stock_out,
+            COALESCE(mt.unit_price, 0) AS unit_price,
+            COALESCE(mt.total_amount, 0) AS total_amount,
+            COALESCE(mt.shift_period, '') AS shift,
+            $encoderSql AS encoder,
+            COALESCE(mt.payment_method, 'Cash') AS payment_method,
+            COALESCE(mt.transaction_date, mt.created_at) AS created_at
+        FROM merchandise_transactions mt
+        LEFT JOIN users u ON mt.staff_id = u.id
+        WHERE mt.station_id = ?
+          AND (DATE(mt.transaction_date) = ? OR DATE(mt.created_at) = ?)
+          AND $validWhere
+          AND LOWER(COALESCE(mt.transaction_type, 'merchandise')) NOT IN ('job_order','combined')
+        ORDER BY COALESCE(mt.transaction_date, mt.created_at), mt.id
+    ");
+    $stmt->execute([$station_id, $report_date, $report_date]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+}
+
+function staff_report_fetch_service_income_rows(PDO $pdo, int $station_id, string $report_date): array {
+    $rows = [];
+    $nativeJobOrderIds = [];
+    $encoderSql = table_exists($pdo, 'users') ? staff_report_user_display_sql($pdo, 'u') : "'N/A'";
+
+    if (table_exists($pdo, 'merchandise_transactions')) {
+        $validWhere = staff_report_valid_merchandise_where($pdo, 'mt');
+        $jobOrderFilter = "(
+            LOWER(COALESCE(mt.transaction_type, '')) IN ('job_order','combined')
+            OR NULLIF(TRIM(COALESCE(mt.job_order_service, '')), '') IS NOT NULL
+            OR mt.job_order_id IS NOT NULL
+            OR mt.job_order_db_id IS NOT NULL
+        )";
+
+        if (table_exists($pdo, 'merchandise_transaction_items')) {
+            $lineAmountSql = staff_report_line_amount_sql('mti', 'mt');
+            $stmt = $pdo->prepare("
+                SELECT
+                    CONCAT('mt-service-', mt.id, '-', mti.id) AS source_key,
+                    mt.id,
+                    mt.job_order_db_id AS native_job_order_id,
+                    COALESCE(NULLIF(mt.job_order_service, ''), NULLIF(mti.product_name, ''), 'Service') AS service_type,
+                    COALESCE(mti.subtotal, COALESCE(mti.quantity, 0) * COALESCE(mti.unit_price, 0), 0) AS labor_fee,
+                    (
+                        SELECT GROUP_CONCAT(CONCAT(mi.product_name, ' (x', FORMAT(mi.quantity, 0), ')') ORDER BY mi.id SEPARATOR ', ')
+                        FROM merchandise_transaction_items mi
+                        WHERE mi.transaction_id = mt.id
+                          AND LOWER(COALESCE(mi.item_type, 'merchandise')) <> 'service'
+                    ) AS parts_used,
+                    $lineAmountSql AS total_amount,
+                    COALESCE(mt.shift_period, '') AS shift,
+                    $encoderSql AS encoder,
+                    COALESCE(mt.payment_method, 'Cash') AS payment_method,
+                    COALESCE(mt.transaction_date, mt.created_at) AS created_at
+                FROM merchandise_transactions mt
+                LEFT JOIN (
+                    SELECT transaction_id,
+                           SUM(COALESCE(subtotal, COALESCE(quantity, 0) * COALESCE(unit_price, 0), 0)) AS item_subtotal
+                    FROM merchandise_transaction_items
+                    GROUP BY transaction_id
+                ) mis ON mis.transaction_id = mt.id
+                INNER JOIN merchandise_transaction_items mti
+                        ON mti.transaction_id = mt.id
+                       AND LOWER(COALESCE(mti.item_type, 'merchandise')) = 'service'
+                LEFT JOIN users u ON mt.staff_id = u.id
+                WHERE mt.station_id = ?
+                  AND (DATE(mt.transaction_date) = ? OR DATE(mt.created_at) = ?)
+                  AND $validWhere
+                  AND $jobOrderFilter
+                ORDER BY COALESCE(mt.transaction_date, mt.created_at), mt.id, mti.id
+            ");
+            $stmt->execute([$station_id, $report_date, $report_date]);
+            $rows = array_merge($rows, $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
+        }
+
+        $fallbackNotExists = table_exists($pdo, 'merchandise_transaction_items')
+            ? "AND NOT EXISTS (
+                    SELECT 1
+                    FROM merchandise_transaction_items mi
+                    WHERE mi.transaction_id = mt.id
+                      AND LOWER(COALESCE(mi.item_type, 'merchandise')) = 'service'
+               )"
+            : '';
+        $partsSql = table_exists($pdo, 'merchandise_transaction_items')
+            ? "(
+                    SELECT GROUP_CONCAT(CONCAT(mi.product_name, ' (x', FORMAT(mi.quantity, 0), ')') ORDER BY mi.id SEPARATOR ', ')
+                    FROM merchandise_transaction_items mi
+                    WHERE mi.transaction_id = mt.id
+                      AND LOWER(COALESCE(mi.item_type, 'merchandise')) <> 'service'
+               )"
+            : "NULL";
+
+        $stmt = $pdo->prepare("
+            SELECT
+                CONCAT('mt-job-', mt.id) AS source_key,
+                mt.id,
+                mt.job_order_db_id AS native_job_order_id,
+                COALESCE(NULLIF(mt.job_order_service, ''), NULLIF(mt.item_sku, ''), 'Service') AS service_type,
+                COALESCE(NULLIF(mt.subtotal_amount, 0), NULLIF(mt.unit_price, 0), mt.total_amount, 0) AS labor_fee,
+                $partsSql AS parts_used,
+                COALESCE(mt.total_amount, 0) AS total_amount,
+                COALESCE(mt.shift_period, '') AS shift,
+                $encoderSql AS encoder,
+                COALESCE(mt.payment_method, 'Cash') AS payment_method,
+                COALESCE(mt.transaction_date, mt.created_at) AS created_at
+            FROM merchandise_transactions mt
+            LEFT JOIN users u ON mt.staff_id = u.id
+            WHERE mt.station_id = ?
+              AND (DATE(mt.transaction_date) = ? OR DATE(mt.created_at) = ?)
+              AND $validWhere
+              AND $jobOrderFilter
+              $fallbackNotExists
+            ORDER BY COALESCE(mt.transaction_date, mt.created_at), mt.id
+        ");
+        $stmt->execute([$station_id, $report_date, $report_date]);
+        $rows = array_merge($rows, $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
+
+        foreach ($rows as $row) {
+            $nativeId = (int)($row['native_job_order_id'] ?? 0);
+            if ($nativeId > 0) {
+                $nativeJobOrderIds[$nativeId] = true;
+            }
+        }
+    }
+
+    if (table_exists($pdo, 'job_orders')) {
+        $joEncoderColumn = column_exists($pdo, 'job_orders', 'created_by') ? 'created_by' : (column_exists($pdo, 'job_orders', 'user_id') ? 'user_id' : 'created_by');
+        $serviceSql = column_exists($pdo, 'job_orders', 'service_type')
+            ? "COALESCE(NULLIF(jo.service_type, ''), NULLIF(jo.service_description, ''), 'Service')"
+            : "COALESCE(NULLIF(jo.service_description, ''), 'Service')";
+        $laborSql = "COALESCE(NULLIF(jo.actual_labor_cost, 0), NULLIF(jo.estimated_labor_cost, 0), 0)";
+        $amountSql = "COALESCE(NULLIF(jo.total_cost, 0), NULLIF(jo.estimated_cost, 0), NULLIF(jo.amount_paid, 0), NULLIF(COALESCE(jo.actual_labor_cost, 0) + COALESCE(jo.actual_parts_cost, 0), 0), NULLIF(COALESCE(jo.estimated_labor_cost, 0) + COALESCE(jo.estimated_parts_cost, 0), 0), 0)";
+        $partsSql = table_exists($pdo, 'job_order_parts')
+            ? "(
+                    SELECT GROUP_CONCAT(CONCAT(COALESCE(ip.product_name, CONCAT('Part #', jop.product_id)), ' (x', jop.quantity_used, ')') ORDER BY jop.id SEPARATOR ', ')
+                    FROM job_order_parts jop
+                    LEFT JOIN inventory_products ip ON ip.id = jop.product_id
+                    WHERE jop.job_order_id = jo.id
+               )"
+            : "NULL";
+
+        $stmt = $pdo->prepare("
+            SELECT
+                CONCAT('jo-', jo.id) AS source_key,
+                jo.id,
+                jo.id AS native_job_order_id,
+                $serviceSql AS service_type,
+                $laborSql AS labor_fee,
+                $partsSql AS parts_used,
+                $amountSql AS total_amount,
+                CASE WHEN HOUR(jo.created_at) >= 6 AND HOUR(jo.created_at) < 14 THEN 'Shift 1' ELSE 'Shift 2' END AS shift,
+                $encoderSql AS encoder,
+                COALESCE(jo.payment_method, 'Cash') AS payment_method,
+                jo.created_at
+            FROM job_orders jo
+            LEFT JOIN users u ON jo.$joEncoderColumn = u.id
+            WHERE jo.station_id = ?
+              AND DATE(jo.created_at) = ?
+              AND LOWER(COALESCE(jo.status, '')) NOT IN ('cancelled','canceled','rejected')
+              AND LOWER(COALESCE(jo.validation_status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+            ORDER BY jo.created_at, jo.id
+        ");
+        $stmt->execute([$station_id, $report_date]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $nativeId = (int)($row['native_job_order_id'] ?? 0);
+            if ($nativeId > 0 && isset($nativeJobOrderIds[$nativeId])) {
+                continue;
+            }
+            $rows[] = $row;
+        }
+    }
+
+    if (table_exists($pdo, 'service_transactions')) {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT
+                    CONCAT('st-', st.id) AS source_key,
+                    st.id,
+                    NULL AS native_job_order_id,
+                    st.service_type,
+                    st.labor_fee,
+                    st.parts_used,
+                    st.total_amount,
+                    COALESCE(st.shift, '') AS shift,
+                    $encoderSql AS encoder,
+                    'Cash' AS payment_method,
+                    st.created_at
+                FROM service_transactions st
+                LEFT JOIN users u ON st.user_id = u.id
+                WHERE st.station_id = ? AND DATE(st.created_at) = ?
+                ORDER BY st.created_at, st.id
+            ");
+            $stmt->execute([$station_id, $report_date]);
+            $rows = array_merge($rows, $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
+        } catch (Exception $e) {}
+    }
+
+    usort($rows, static function (array $left, array $right): int {
+        return strcmp((string)($left['created_at'] ?? ''), (string)($right['created_at'] ?? ''));
+    });
+
+    return $rows;
+}
+
+function staff_report_payment_bucket(string $payment): string {
+    $mode = strtolower(trim($payment));
+    if ($mode === '' || in_array($mode, ['cash', 'cash payment'], true)) {
+        return 'cash';
+    }
+    if (in_array($mode, ['card', 'credit card', 'debit card'], true)) {
+        return 'card';
+    }
+    if (in_array($mode, ['gcash', 'maya', 'e-wallet', 'ewallet'], true)) {
+        return 'ewallet';
+    }
+    return 'credit';
+}
+
+function staff_report_apply_payment_bucket(array &$summary, float $amount, string $payment): void {
+    $summary[staff_report_payment_bucket($payment)] += $amount;
+}
+
+function staff_report_empty_ar_shift_summary(): array {
+    return ['shift1' => 0, 'shift2' => 0, 'total' => 0];
+}
+
+function staff_report_add_ar_shift_amount(array &$summary, array $row): void {
+    if (staff_report_payment_bucket((string)($row['payment_method'] ?? '')) !== 'credit') {
+        return;
+    }
+    $amount = (float)($row['total_amount'] ?? $row['amount'] ?? 0);
+    if ($amount <= 0) {
+        return;
+    }
+
+    $shiftLabel = (string)($row['shift'] ?? $row['shift_period'] ?? '');
+    if ($shiftLabel === '' && !empty($row['created_at'])) {
+        $hour = (int)date('H', strtotime((string)$row['created_at']));
+        $shiftLabel = ($hour >= 6 && $hour < 14) ? 'Shift 1' : 'Shift 2';
+    }
+    if (is_shift1($shiftLabel)) {
+        $summary['shift1'] += $amount;
+    } else {
+        $summary['shift2'] += $amount;
+    }
+    $summary['total'] = $summary['shift1'] + $summary['shift2'];
+}
+
+function staff_report_empty_shift_summary(): array {
+    return [
+        'fuel_sales' => 0,
+        'merchandise_sales' => 0,
+        'service_income' => 0,
+        'total_sales' => 0,
+        'cash' => 0,
+        'card' => 0,
+        'ewallet' => 0,
+        'credit' => 0,
+    ];
+}
+
+function staff_report_add_shift_sale(array &$shift1_summary, array &$shift2_summary, array $row, string $kind): void {
+    $amount = (float)($row['total_amount'] ?? 0);
+    if ($amount <= 0) {
+        return;
+    }
+
+    $shiftLabel = (string)($row['shift'] ?? $row['shift_period'] ?? '');
+    if ($shiftLabel === '' && !empty($row['created_at'])) {
+        $hour = (int)date('H', strtotime((string)$row['created_at']));
+        $shiftLabel = ($hour >= 6 && $hour < 14) ? 'Shift 1' : 'Shift 2';
+    }
+
+    $target = is_shift1($shiftLabel) ? $shift1_summary : $shift2_summary;
+    if ($kind === 'fuel') {
+        $target['fuel_sales'] += $amount;
+    } elseif ($kind === 'service') {
+        $target['service_income'] += $amount;
+    } else {
+        $target['merchandise_sales'] += $amount;
+    }
+    staff_report_apply_payment_bucket($target, $amount, (string)($row['payment_method'] ?? 'Cash'));
+
+    if (is_shift1($shiftLabel)) {
+        $shift1_summary = $target;
+    } else {
+        $shift2_summary = $target;
+    }
+}
+
+function staff_report_fuel_price_amount(array $reading, array $volume_sales): array {
+    $liters = (float)($reading['liters_sold'] ?? 0);
+    $price = (float)($reading['unit_price'] ?? $reading['price_per_liter'] ?? 0);
+    $amount = (float)($reading['amount'] ?? $reading['total_amount'] ?? 0);
+
+    if ($price > 0 && $amount <= 0) {
+        $amount = $liters * $price;
+    }
+    if ($price <= 0 && $liters > 0 && $amount > 0) {
+        $price = $amount / $liters;
+    }
+
+    if ($price <= 0 || $amount <= 0) {
+        $readingFuel = strtolower(trim((string)($reading['fuel_type'] ?? '')));
+        foreach ($volume_sales as $vol) {
+            if ($readingFuel !== strtolower(trim((string)($vol['fuel_type'] ?? '')))) {
+                continue;
+            }
+            $fallbackPrice = (float)($vol['avg_price'] ?? 0);
+            if ($price <= 0) {
+                $price = $fallbackPrice;
+            }
+            if ($amount <= 0) {
+                $amount = $liters * $fallbackPrice;
+            }
+            break;
+        }
+    }
+
+    return [$price, $amount];
+}
+
+function staff_report_current_fuel_price_map(PDO $pdo, int $station_id): array {
+    $prices = [];
+
+    if (table_exists($pdo, 'fuel_inventory') && column_exists($pdo, 'fuel_inventory', 'price_per_liter')) {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT fuel_type, COALESCE(price_per_liter, 0) AS price_per_liter
+                FROM fuel_inventory
+                WHERE station_id = ?
+                ORDER BY id
+            ");
+            $stmt->execute([$station_id]);
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+                $price = (float)($row['price_per_liter'] ?? 0);
+                if ($price <= 0) continue;
+                $fuel = staff_report_fuel_display_name($row['fuel_type'] ?? '');
+                $key = strtolower($fuel);
+                if (!isset($prices[$key]) || $prices[$key] <= 0) {
+                    $prices[$key] = $price;
+                }
+            }
+        } catch (Exception $e) {}
+    }
+
+    if (table_exists($pdo, 'fuel_types') && column_exists($pdo, 'fuel_types', 'price_per_liter')) {
+        try {
+            $stmt = $pdo->query("
+                SELECT name AS fuel_type, COALESCE(price_per_liter, 0) AS price_per_liter
+                FROM fuel_types
+                ORDER BY id
+            ");
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+                $price = (float)($row['price_per_liter'] ?? 0);
+                if ($price <= 0) continue;
+                $fuel = staff_report_fuel_display_name($row['fuel_type'] ?? '');
+                $key = strtolower($fuel);
+                if (!isset($prices[$key]) || $prices[$key] <= 0) {
+                    $prices[$key] = $price;
+                }
+            }
+        } catch (Exception $e) {}
+    }
+
+    return $prices;
+}
+
+function staff_report_current_fuel_price(string $fuel_type, array $price_map, float $fallback = 0): float {
+    $key = strtolower(staff_report_fuel_display_name($fuel_type));
+    $price = (float)($price_map[$key] ?? 0);
+    return $price > 0 ? $price : $fallback;
+}
+
+function staff_report_build_24h_meter_readings(array $readings, array $price_map): array {
+    $groups = [];
+    $order = 0;
+
+    foreach ($readings as $reading) {
+        $fuel = staff_report_fuel_display_name($reading['fuel_type'] ?? '');
+        $pumpName = trim((string)($reading['pump_name'] ?? ''));
+        if ($pumpName === '') {
+            $pumpName = trim((string)($reading['pump_number'] ?? ''));
+        }
+        if ($pumpName === '') {
+            $pumpName = trim((string)($reading['fuel_type'] ?? $fuel));
+        }
+
+        $pumpId = (int)($reading['pump_id'] ?? 0);
+        $keyName = strtoupper(preg_replace('/\s+/', ' ', $pumpName));
+        $key = $pumpId > 0 ? 'pump:' . $pumpId : 'name:' . $keyName . '|fuel:' . strtolower($fuel);
+
+        if (!isset($groups[$key])) {
+            $groups[$key] = [
+                'id' => $reading['id'] ?? $order,
+                'pump_id' => $pumpId,
+                'pump_name' => $pumpName,
+                'fuel_type' => $fuel,
+                'first_order' => $order,
+                'first_beginning' => null,
+                'last_ending' => null,
+                'shift1_beginning' => null,
+                'shift2_ending' => null,
+                'calibration' => 0.0,
+                'unit_price' => 0.0,
+                'status' => $reading['status'] ?? '',
+                'encoded_at' => $reading['encoded_at'] ?? $reading['created_at'] ?? '',
+            ];
+        }
+
+        $beginning = (float)($reading['beginning_reading'] ?? $reading['previous_reading'] ?? 0);
+        $ending = (float)($reading['ending_reading'] ?? $reading['present_reading'] ?? 0);
+        $calibration = (float)($reading['calibration'] ?? 0);
+        $fallbackPrice = (float)($reading['unit_price'] ?? $reading['price_per_liter'] ?? 0);
+        $price = staff_report_current_fuel_price($fuel, $price_map, $fallbackPrice);
+
+        if ($groups[$key]['first_beginning'] === null) {
+            $groups[$key]['first_beginning'] = $beginning;
+        }
+        $groups[$key]['last_ending'] = $ending;
+        if (is_shift1((string)($reading['shift_period'] ?? $reading['shift'] ?? ''))) {
+            if ($groups[$key]['shift1_beginning'] === null) {
+                $groups[$key]['shift1_beginning'] = $beginning;
+            }
+        } else {
+            $groups[$key]['shift2_ending'] = $ending;
+        }
+        $groups[$key]['calibration'] += $calibration;
+        if ($price > 0) {
+            $groups[$key]['unit_price'] = $price;
+        }
+
+        $order++;
+    }
+
+    uasort($groups, static fn($a, $b) => ($a['first_order'] ?? 0) <=> ($b['first_order'] ?? 0));
+
+    $combined = [];
+    foreach ($groups as $group) {
+        $beginning = (float)($group['shift1_beginning'] ?? $group['first_beginning'] ?? 0);
+        $ending = (float)($group['shift2_ending'] ?? $group['last_ending'] ?? 0);
+        $calibration = (float)$group['calibration'];
+        $liters = max($ending - $beginning - $calibration, 0);
+        $price = (float)$group['unit_price'];
+        $amount = round($liters * $price, 2);
+
+        $combined[] = [
+            'id' => $group['id'],
+            'pump_id' => $group['pump_id'],
+            'pump_name' => $group['pump_name'],
+            'fuel_type' => $group['fuel_type'],
+            'beginning_reading' => $beginning,
+            'ending_reading' => $ending,
+            'calibration' => $calibration,
+            'liters_sold' => $liters,
+            'unit_price' => $price,
+            'price_per_liter' => $price,
+            'amount' => $amount,
+            'total_amount' => $amount,
+            'shift_period' => '24-hour',
+            'status' => $group['status'],
+            'encoded_at' => $group['encoded_at'],
+        ];
+    }
+
+    return $combined;
+}
+
+function staff_report_build_volume_sales_from_meter_rows(array $meter_readings): array {
+    $summary = [];
+
+    foreach ($meter_readings as $reading) {
+        $fuel = staff_report_fuel_display_name($reading['fuel_type'] ?? '');
+        if (!isset($summary[$fuel])) {
+            $summary[$fuel] = [
+                'fuel_type' => $fuel,
+                'total_liters' => 0.0,
+                'avg_price' => 0.0,
+                'total_amount' => 0.0,
+            ];
+        }
+
+        $liters = (float)($reading['liters_sold'] ?? 0);
+        $amount = (float)($reading['amount'] ?? $reading['total_amount'] ?? 0);
+        $summary[$fuel]['total_liters'] += $liters;
+        $summary[$fuel]['total_amount'] += $amount;
+    }
+
+    foreach ($summary as &$row) {
+        $row['avg_price'] = $row['total_liters'] > 0
+            ? $row['total_amount'] / $row['total_liters']
+            : 0;
+    }
+    unset($row);
+
+    return array_values($summary);
+}
+
 // Check available tables
 $has_fuel_readings = table_exists($pdo, 'fuel_readings');
 $has_fuel_transactions = table_exists($pdo, 'fuel_transactions');
@@ -99,15 +713,18 @@ $has_customers = table_exists($pdo, 'customers');
 $has_fuel_types = table_exists($pdo, 'fuel_types');
 $has_fuel_pumps = table_exists($pdo, 'fuel_pumps');
 $has_merchandise_transactions = table_exists($pdo, 'merchandise_transactions');
+$current_fuel_prices = staff_report_current_fuel_price_map($pdo, (int)$station_id);
 
 // Initialize data structures
 $meter_readings = [];
 $fuel_transactions = [];
 $volume_sales = [];
 $tank_sales = [];
+$ar_shift_summary = staff_report_empty_ar_shift_summary();
 $shift1_summary = [
     'fuel_sales' => 0,
     'merchandise_sales' => 0,
+    'service_income' => 0,
     'total_sales' => 0,
     'cash' => 0,
     'card' => 0,
@@ -117,6 +734,7 @@ $shift1_summary = [
 $shift2_summary = [
     'fuel_sales' => 0,
     'merchandise_sales' => 0,
+    'service_income' => 0,
     'total_sales' => 0,
     'cash' => 0,
     'card' => 0,
@@ -130,6 +748,7 @@ $overall_summary = [
     'total_liters' => 0,
     'total_cash' => 0,
     'total_deposits' => 0,
+    'total_ar' => 0,
 ];
 
 $error_message = null;
@@ -142,12 +761,17 @@ if ($has_fuel_readings) {
         $sql = "SELECT 
                     fr.id,
                     fr.pump_number,
+                    NULL AS pump_id,
                     ";
         
-        if ($has_fuel_pumps) {
-            $sql .= "COALESCE(fp.pump_number, CONCAT('Pump ', fr.pump_number)) AS pump_name, ";
+        if ($has_fuel_pumps && $has_fuel_types) {
+            $sql .= "COALESCE(NULLIF(fp.pump_number, ''), NULLIF(fr.pump_number, ''), ft.name, fr.fuel_type) AS pump_name, ";
+        } elseif ($has_fuel_pumps) {
+            $sql .= "COALESCE(NULLIF(fp.pump_number, ''), NULLIF(fr.pump_number, ''), fr.fuel_type) AS pump_name, ";
+        } elseif ($has_fuel_types) {
+            $sql .= "COALESCE(NULLIF(fr.pump_number, ''), ft.name, fr.fuel_type) AS pump_name, ";
         } else {
-            $sql .= "CONCAT('Pump ', fr.pump_number) AS pump_name, ";
+            $sql .= "COALESCE(NULLIF(fr.pump_number, ''), fr.fuel_type) AS pump_name, ";
         }
         
         if ($has_fuel_types) {
@@ -174,7 +798,7 @@ if ($has_fuel_readings) {
         }
         
         $sql .= "WHERE fr.station_id = ? AND DATE(fr.encoded_at) = ?
-                 ORDER BY fr.pump_number, fr.encoded_at";
+                 ORDER BY fr.encoded_at, fr.id";
         
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$station_id, $report_date]);
@@ -185,24 +809,29 @@ if ($has_fuel_readings) {
     }
 }
 
-// If no meter readings but we have fuel_transactions, generate meter readings from transactions
+// If no meter readings exist, use each fuel transaction as one report row.
 if (count($meter_readings) == 0 && $has_fuel_transactions) {
     try {
         $sql = "SELECT 
                     ft.id,
-                    CONCAT('Pump ', COALESCE(ft.pump_id, '—')) AS pump_name,
+                    ft.pump_id,
+                    COALESCE(NULLIF(fp.pump_number, ''), ft.fuel_type) AS pump_name,
                     ft.fuel_type,
-                    MIN(COALESCE(ft.previous_reading, 0)) AS beginning_reading,
-                    MAX(COALESCE(ft.present_reading, 0)) AS ending_reading,
-                    SUM(ft.liters_sold) AS liters_sold,
-                    0 AS calibration,
+                    COALESCE(ft.previous_reading, 0) AS beginning_reading,
+                    COALESCE(ft.present_reading, 0) AS ending_reading,
+                    COALESCE(ft.liters_sold, GREATEST(COALESCE(ft.present_reading, 0) - COALESCE(ft.previous_reading, 0) - COALESCE(ft.calibration, 0), 0)) AS liters_sold,
+                    COALESCE(ft.calibration, 0) AS calibration,
                     COALESCE(ft.shift_period, 'Shift 1') AS shift_period,
-                    'Completed' AS status,
-                    ft.transaction_date AS encoded_at
+                    COALESCE(ft.status, 'Completed') AS status,
+                    ft.transaction_date AS encoded_at,
+                    ft.transaction_id,
+                    COALESCE(ft.price_per_liter, 0) AS unit_price,
+                    COALESCE(ft.total_amount, 0) AS amount
             FROM fuel_transactions ft
+            LEFT JOIN fuel_pumps fp ON fp.id = ft.pump_id AND fp.station_id = ft.station_id
             WHERE ft.station_id = ? AND DATE(ft.transaction_date) = ?
-                 GROUP BY ft.fuel_type, ft.pump_id, ft.shift_period
-                 ORDER BY ft.fuel_type, ft.pump_id";
+              AND LOWER(COALESCE(ft.status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+            ORDER BY ft.transaction_date, ft.id";
         
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$station_id, $report_date]);
@@ -211,6 +840,12 @@ if (count($meter_readings) == 0 && $has_fuel_transactions) {
     } catch (Exception $e) {}
 }
 
+foreach ($meter_readings as &$reading) {
+    $reading['fuel_type'] = staff_report_fuel_display_name($reading['fuel_type'] ?? '');
+}
+unset($reading);
+$meter_readings = staff_report_build_24h_meter_readings($meter_readings, $current_fuel_prices);
+
 // ============================================================
 // DATA SOURCE 2: FUEL TRANSACTIONS TABLE
 // ============================================================
@@ -218,7 +853,11 @@ if ($has_fuel_transactions) {
     try {
         $sql = "SELECT 
                     ft.id,
+                    ft.pump_id,
                     ft.fuel_type,
+                    COALESCE(ft.previous_reading, 0) AS previous_reading,
+                    COALESCE(ft.present_reading, 0) AS present_reading,
+                    COALESCE(ft.calibration, 0) AS calibration,
                     ft.liters_sold,
                     ft.price_per_liter AS unit_price,
                     ft.total_amount,
@@ -227,11 +866,38 @@ if ($has_fuel_transactions) {
                     ft.transaction_date AS created_at
             FROM fuel_transactions ft
             WHERE ft.station_id = ? AND DATE(ft.transaction_date) = ?
-                 ORDER BY ft.transaction_date";
+              AND LOWER(COALESCE(ft.status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+            ORDER BY ft.transaction_date, ft.id";
         
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$station_id, $report_date]);
         $fuel_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($fuel_transactions as &$trans) {
+            $trans['fuel_type'] = staff_report_fuel_display_name($trans['fuel_type'] ?? '');
+            $liters = (float)($trans['liters_sold'] ?? 0);
+            if ($liters <= 0) {
+                $liters = max(
+                    (float)($trans['present_reading'] ?? 0)
+                    - (float)($trans['previous_reading'] ?? 0)
+                    - (float)($trans['calibration'] ?? 0),
+                    0
+                );
+            }
+            $storedAmount = (float)($trans['total_amount'] ?? 0);
+            $fallbackPrice = (float)($trans['unit_price'] ?? 0);
+            if ($fallbackPrice <= 0 && $liters > 0 && $storedAmount > 0) {
+                $fallbackPrice = $storedAmount / $liters;
+            }
+            $price = staff_report_current_fuel_price($trans['fuel_type'], $current_fuel_prices, $fallbackPrice);
+            $trans['liters_sold'] = $liters;
+            $trans['unit_price'] = $price;
+            $trans['price_per_liter'] = $price;
+            $trans['total_amount'] = round($liters * $price, 2);
+        }
+        unset($trans);
+        foreach ($fuel_transactions as $trans) {
+            staff_report_add_ar_shift_amount($ar_shift_summary, $trans);
+        }
         
         // Group by fuel type for volume sales summary
         $volume_sales_temp = [];
@@ -253,7 +919,9 @@ if ($has_fuel_transactions) {
         
         // Calculate averages
         foreach ($volume_sales_temp as $fuel => $data) {
-            $volume_sales_temp[$fuel]['avg_price'] = $data['total_amount'] / $data['total_liters'];
+            $volume_sales_temp[$fuel]['avg_price'] = $data['total_liters'] > 0
+                ? $data['total_amount'] / $data['total_liters']
+                : 0;
         }
         
         $volume_sales = array_values($volume_sales_temp);
@@ -262,6 +930,7 @@ if ($has_fuel_transactions) {
         $error_message = "Error fetching fuel transactions: " . $e->getMessage();
     }
 }
+$volume_sales = staff_report_build_volume_sales_from_meter_rows($meter_readings);
 
 // ============================================================
 // DATA SOURCE 3: PAYMENTS TABLE & SHIFT SUMMARIES
@@ -354,19 +1023,24 @@ try {
 // ============================================================
 if ($has_customers) {
     try {
+        $customerBalanceExpr = column_exists($pdo, 'customers', 'account_balance')
+            ? 'c.account_balance'
+            : (column_exists($pdo, 'customers', 'current_balance')
+                ? 'c.current_balance'
+                : (column_exists($pdo, 'customers', 'balance') ? 'c.balance' : '0'));
         $stmt = $pdo->prepare("
             SELECT 
                 c.id,
                 c.name,
                 c.contact_number,
-                COALESCE(c.account_balance, 0) AS balance,
+                COALESCE($customerBalanceExpr, 0) AS balance,
                 c.credit_limit,
                 c.type
             FROM customers c
             WHERE c.station_id = ? 
               AND c.type IN ('credit', 'suki')
-              AND COALESCE(c.account_balance, 0) > 0
-            ORDER BY c.account_balance DESC
+              AND COALESCE($customerBalanceExpr, 0) > 0
+            ORDER BY balance DESC
         ");
         $stmt->execute([$station_id]);
         $ar_summary = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -376,37 +1050,91 @@ if ($has_customers) {
     }
 }
 
+if ($ar_shift_summary['total'] <= 0 && table_exists($pdo, 'accounts_receivable')) {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT
+                amount,
+                'credit' AS payment_method,
+                CASE
+                    WHEN TIME(created_at) >= '06:00:00' AND TIME(created_at) < '14:00:00' THEN 'Shift 1'
+                    ELSE 'Shift 2'
+                END AS shift_period,
+                created_at
+            FROM accounts_receivable
+            WHERE station_id = ?
+              AND DATE(created_at) = ?
+              AND COALESCE(status, 'pending') IN ('pending', 'overdue')
+        ");
+        $stmt->execute([$station_id, $report_date]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $arRow) {
+            staff_report_add_ar_shift_amount($ar_shift_summary, $arRow);
+        }
+    } catch (Exception $e) {}
+}
+
 // ============================================================
-// TANK SALES SUMMARY
+// TANK LITERS SUMMARY
 // ============================================================
 try {
-    // Group meter readings by fuel type for tank summary
-    $tank_summary_temp = [];
+    // Tank liters summary follows the same per-transaction rows as the meter table.
+    $tankNo = 1;
     foreach ($meter_readings as $reading) {
-        $fuel = $reading['fuel_type'];
-        if (!isset($tank_summary_temp[$fuel])) {
-            $tank_summary_temp[$fuel] = [
-                'fuel_type' => $fuel,
-                'total_dispensed' => 0,
-                'tank_capacity' => 0,
-                'utilization' => 0,
-            ];
-        }
-        $tank_summary_temp[$fuel]['total_dispensed'] += (float)$reading['liters_sold'];
+        $fuel = staff_report_fuel_display_name($reading['fuel_type'] ?? '');
+        $liters = (float)($reading['liters_sold'] ?? 0);
+        $tank_sales[] = [
+            'tank_name' => trim((string)($reading['pump_name'] ?? '')) !== '' ? $reading['pump_name'] : 'Tank ' . $tankNo,
+            'fuel_type' => $fuel,
+            'total_dispensed' => $liters,
+            'total_liters' => $liters,
+            'tank_capacity' => 0,
+            'utilization' => 0,
+        ];
+        $tankNo++;
     }
-    
-    $tank_sales = array_values($tank_summary_temp);
-    
 } catch (Exception $e) {}
+
+// ============================================================
+// MERCHANDISE + SERVICE REPORT ROWS
+// ============================================================
+$merchandise_report_transactions = staff_report_fetch_merchandise_rows($pdo, (int)$station_id, $report_date);
+$service_income_transactions = staff_report_fetch_service_income_rows($pdo, (int)$station_id, $report_date);
+$total_merch_amount = array_sum(array_map(static fn($row) => (float)($row['total_amount'] ?? 0), $merchandise_report_transactions));
+$total_service_amount = array_sum(array_map(static fn($row) => (float)($row['total_amount'] ?? 0), $service_income_transactions));
+
+// Recompute displayed shift totals from the same rows used by the report tables.
+$fuel_shift1_summary = staff_report_empty_shift_summary();
+$fuel_shift2_summary = staff_report_empty_shift_summary();
+$shift1_summary = staff_report_empty_shift_summary();
+$shift2_summary = staff_report_empty_shift_summary();
+foreach ($fuel_transactions as $row) {
+    staff_report_add_shift_sale($fuel_shift1_summary, $fuel_shift2_summary, $row, 'fuel');
+}
+foreach ($merchandise_report_transactions as $row) {
+    staff_report_add_shift_sale($shift1_summary, $shift2_summary, $row, 'merchandise');
+}
+foreach ($service_income_transactions as $row) {
+    staff_report_add_shift_sale($shift1_summary, $shift2_summary, $row, 'service');
+}
+$fuel_shift1_summary['total_sales'] = $fuel_shift1_summary['fuel_sales'];
+$fuel_shift2_summary['total_sales'] = $fuel_shift2_summary['fuel_sales'];
+$shift1_summary['total_sales'] = $shift1_summary['fuel_sales'] + $shift1_summary['merchandise_sales'] + $shift1_summary['service_income'];
+$shift2_summary['total_sales'] = $shift2_summary['fuel_sales'] + $shift2_summary['merchandise_sales'] + $shift2_summary['service_income'];
 
 // ============================================================
 // OVERALL DAILY SUMMARY
 // ============================================================
-$overall_summary['total_fuel_sales'] = $shift1_summary['fuel_sales'] + $shift2_summary['fuel_sales'];
+$computed_fuel_total = array_sum(array_column($volume_sales, 'total_amount'));
+$overall_summary['total_fuel_sales'] = $computed_fuel_total > 0
+    ? $computed_fuel_total
+    : ($fuel_shift1_summary['fuel_sales'] + $fuel_shift2_summary['fuel_sales']);
 $overall_summary['total_merchandise_sales'] = $shift1_summary['merchandise_sales'] + $shift2_summary['merchandise_sales'];
 $overall_summary['total_liters'] = array_sum(array_column($volume_sales, 'total_liters'));
-$overall_summary['total_cash'] = $shift1_summary['cash'] + $shift2_summary['cash'];
+$overall_summary['total_fuel_cash'] = $fuel_shift1_summary['cash'] + $fuel_shift2_summary['cash'];
+$overall_summary['total_store_cash'] = $shift1_summary['cash'] + $shift2_summary['cash'];
+$overall_summary['total_cash'] = $overall_summary['total_fuel_cash'] + $overall_summary['total_store_cash'];
 $overall_summary['total_deposits'] = 0; // Would come from deposits table if available
+$overall_summary['total_ar'] = $ar_shift_summary['total'];
 
 // Ensure fuel transactions total matches
 if (isset($fuel_transactions) && is_array($fuel_transactions) && count($fuel_transactions) > 0) {
@@ -480,31 +1208,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         echo '<p><strong>Date:</strong> ' . date('F d, Y', strtotime($report_date)) . '</p>';
         echo '<br/>';
         
-        // Fetch merchandise transactions
-        $merch_transactions = [];
-        if ($has_merchandise_transactions) {
-            try {
-                $stmt = $pdo->prepare("
-                    SELECT 
-                        mt.id,
-                        COALESCE(mti.category, 'General') AS category,
-                        COALESCE(mti.product_name, mt.item_sku, 'Item') AS product_name,
-                        COALESCE(mti.quantity, mt.quantity) AS stock_out,
-                        mt.unit_price,
-                        mt.total_amount,
-                        mt.shift_period AS shift,
-                        u.username AS encoder,
-                        mt.created_at
-                    FROM merchandise_transactions mt
-                    LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
-                    LEFT JOIN users u ON mt.staff_id = u.id
-                    WHERE mt.station_id = ? AND DATE(mt.created_at) = ?
-                    ORDER BY mti.category, mt.created_at
-                ");
-                $stmt->execute([$station_id, $report_date]);
-                $merch_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            } catch (Exception $e) {}
-        }
+        $merch_transactions = $merchandise_report_transactions;
         
         // MERCHANDISE SALES TABLE
         echo '<h2>MERCHANDISE SALES TABLE</h2>';
@@ -554,29 +1258,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         echo '<br/>';
         
         // SERVICE INCOME TABLE
-        $service_transactions = [];
-        $has_services = table_exists($pdo, 'service_transactions');
-        if ($has_services) {
-            try {
-                $stmt = $pdo->prepare("
-                    SELECT 
-                        st.id,
-                        st.service_type,
-                        st.labor_fee,
-                        st.parts_used,
-                        st.total_amount,
-                        st.shift,
-                        u.username AS encoder,
-                        st.created_at
-                    FROM service_transactions st
-                    LEFT JOIN users u ON st.user_id = u.id
-                    WHERE st.station_id = ? AND DATE(st.created_at) = ?
-                    ORDER BY st.created_at
-                ");
-                $stmt->execute([$station_id, $report_date]);
-                $service_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            } catch (Exception $e) {}
-        }
+        $service_transactions = $service_income_transactions;
         
         echo '<h2>SERVICE INCOME TABLE</h2>';
         echo '<table border="1" cellpadding="5" cellspacing="0">';
@@ -621,7 +1303,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
         echo '<tbody>';
         echo '<tr><td class="font-bold">Merchandise Sales:</td><td class="text-right font-bold">₱' . number_format($shift1_summary['merchandise_sales'], 2) . '</td></tr>';
-        echo '<tr><td class="font-bold">Service Income:</td><td class="text-right font-bold">₱0.00</td></tr>';
+        echo '<tr><td class="font-bold">Service Income:</td><td class="text-right font-bold">₱' . number_format($shift1_summary['service_income'] ?? 0, 2) . '</td></tr>';
         echo '<tr><td colspan="2">&nbsp;</td></tr>';
         echo '<tr><td colspan="2" class="font-bold">Payment Breakdown</td></tr>';
         echo '<tr><td>Cash:</td><td class="text-right">₱' . number_format($shift1_summary['cash'], 2) . '</td></tr>';
@@ -636,7 +1318,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
         echo '<tbody>';
         echo '<tr><td class="font-bold">Merchandise Sales:</td><td class="text-right font-bold">₱' . number_format($shift2_summary['merchandise_sales'], 2) . '</td></tr>';
-        echo '<tr><td class="font-bold">Service Income:</td><td class="text-right font-bold">₱0.00</td></tr>';
+        echo '<tr><td class="font-bold">Service Income:</td><td class="text-right font-bold">₱' . number_format($shift2_summary['service_income'] ?? 0, 2) . '</td></tr>';
         echo '<tr><td colspan="2">&nbsp;</td></tr>';
         echo '<tr><td colspan="2" class="font-bold">Payment Breakdown</td></tr>';
         echo '<tr><td>Cash:</td><td class="text-right">₱' . number_format($shift2_summary['cash'], 2) . '</td></tr>';
@@ -723,7 +1405,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     echo '<table border="1" cellpadding="5" cellspacing="0">';
     echo '<thead>';
     echo '<tr>';
-    echo '<th>Pump Name</th>';
+    echo '<th>Name</th>';
     echo '<th>Fuel Type</th>';
     echo '<th>Beginning</th>';
     echo '<th>Ending</th>';
@@ -740,20 +1422,11 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         $total_amount_meter = 0;
         foreach ($meter_readings as $reading) {
             $total_liters_meter += $reading['liters_sold'];
-            // Get price from volume_sales
-            $price = 0;
-            $amount = 0;
-            foreach ($volume_sales as $vol) {
-                if (strpos($reading['fuel_type'], $vol['fuel_type']) !== false || strpos($vol['fuel_type'], $reading['fuel_type']) !== false) {
-                    $price = $vol['avg_price'];
-                    $amount = $reading['liters_sold'] * $price;
-                    break;
-                }
-            }
+            [$price, $amount] = staff_report_fuel_price_amount($reading, $volume_sales);
             $total_amount_meter += $amount;
             
             echo '<tr>';
-            echo '<td>' . htmlspecialchars($reading['pump_name']) . '</td>';
+            echo '<td>' . htmlspecialchars($reading['pump_name'] ?? '-') . '</td>';
             echo '<td>' . htmlspecialchars($reading['fuel_type']) . '</td>';
             echo '<td class="text-right">' . number_format($reading['beginning_reading'], 2) . '</td>';
             echo '<td class="text-right">' . number_format($reading['ending_reading'], 2) . '</td>';
@@ -814,18 +1487,42 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     echo '</tbody>';
     echo '</table>';
     echo '<br/>';
+
+    // TANK LITERS SUMMARY
+    echo '<h2>TANK LITERS SUMMARY</h2>';
+    echo '<table border="1" cellpadding="5" cellspacing="0">';
+    echo '<thead><tr><th>Tank</th><th>Fuel Type</th><th>Liters</th></tr></thead>';
+    echo '<tbody>';
+    if (count($tank_sales) > 0) {
+        $total_tank_liters = 0;
+        foreach ($tank_sales as $tank) {
+            $liters = (float)($tank['total_liters'] ?? $tank['total_dispensed'] ?? 0);
+            $total_tank_liters += $liters;
+            echo '<tr>';
+            echo '<td class="font-bold">' . htmlspecialchars($tank['tank_name'] ?? 'Tank') . '</td>';
+            echo '<td>' . htmlspecialchars($tank['fuel_type'] ?? '') . '</td>';
+            echo '<td class="text-right">' . number_format($liters, 2) . ' L</td>';
+            echo '</tr>';
+        }
+        echo '<tr class="font-bold"><td colspan="2" class="text-right">TOTAL TANK LITERS</td><td class="text-right">' . number_format($total_tank_liters, 2) . ' L</td></tr>';
+    } else {
+        echo '<tr><td colspan="3" style="text-align: center; padding: 20px;">No tank liters data available.</td></tr>';
+    }
+    echo '</tbody>';
+    echo '</table>';
+    echo '<br/>';
     
     // SHIFT SUMMARIES
     echo '<h2>SHIFT 1 FUEL SALES & CASH SUMMARY (6AM-2PM)</h2>';
     echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
     echo '<tbody>';
-    echo '<tr><td class="font-bold">Total Fuel Sales:</td><td class="text-right font-bold">₱' . number_format($shift1_summary['fuel_sales'], 2) . '</td></tr>';
+    echo '<tr><td class="font-bold">Total Fuel Sales:</td><td class="text-right font-bold">&#8369;' . number_format($fuel_shift1_summary['fuel_sales'], 2) . '</td></tr>';
     echo '<tr><td colspan="2">&nbsp;</td></tr>';
     echo '<tr><td colspan="2" class="font-bold">Payment Breakdown</td></tr>';
-    echo '<tr><td>Cash:</td><td class="text-right">₱' . number_format($shift1_summary['cash'], 2) . '</td></tr>';
-    echo '<tr><td>Card:</td><td class="text-right">₱' . number_format($shift1_summary['card'], 2) . '</td></tr>';
-    echo '<tr><td>E-Wallet:</td><td class="text-right">₱' . number_format($shift1_summary['ewallet'], 2) . '</td></tr>';
-    echo '<tr><td>Credit/Suki:</td><td class="text-right">₱' . number_format($shift1_summary['credit'], 2) . '</td></tr>';
+    echo '<tr><td>Cash:</td><td class="text-right">&#8369;' . number_format($fuel_shift1_summary['cash'], 2) . '</td></tr>';
+    echo '<tr><td>Card:</td><td class="text-right">&#8369;' . number_format($fuel_shift1_summary['card'], 2) . '</td></tr>';
+    echo '<tr><td>E-Wallet:</td><td class="text-right">&#8369;' . number_format($fuel_shift1_summary['ewallet'], 2) . '</td></tr>';
+    echo '<tr><td>Credit/Suki:</td><td class="text-right">&#8369;' . number_format($fuel_shift1_summary['credit'], 2) . '</td></tr>';
     echo '</tbody>';
     echo '</table>';
     echo '<br/>';
@@ -833,20 +1530,29 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     echo '<h2>SHIFT 2 FUEL SALES & CASH SUMMARY (2PM-12AM)</h2>';
     echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
     echo '<tbody>';
-    echo '<tr><td class="font-bold">Total Fuel Sales:</td><td class="text-right font-bold">₱' . number_format($shift2_summary['fuel_sales'], 2) . '</td></tr>';
+    echo '<tr><td class="font-bold">Total Fuel Sales:</td><td class="text-right font-bold">&#8369;' . number_format($fuel_shift2_summary['fuel_sales'], 2) . '</td></tr>';
     echo '<tr><td colspan="2">&nbsp;</td></tr>';
     echo '<tr><td colspan="2" class="font-bold">Payment Breakdown</td></tr>';
-    echo '<tr><td>Cash:</td><td class="text-right">₱' . number_format($shift2_summary['cash'], 2) . '</td></tr>';
-    echo '<tr><td>Card:</td><td class="text-right">₱' . number_format($shift2_summary['card'], 2) . '</td></tr>';
-    echo '<tr><td>E-Wallet:</td><td class="text-right">₱' . number_format($shift2_summary['ewallet'], 2) . '</td></tr>';
-    echo '<tr><td>Credit/Suki:</td><td class="text-right">₱' . number_format($shift2_summary['credit'], 2) . '</td></tr>';
+    echo '<tr><td>Cash:</td><td class="text-right">&#8369;' . number_format($fuel_shift2_summary['cash'], 2) . '</td></tr>';
+    echo '<tr><td>Card:</td><td class="text-right">&#8369;' . number_format($fuel_shift2_summary['card'], 2) . '</td></tr>';
+    echo '<tr><td>E-Wallet:</td><td class="text-right">&#8369;' . number_format($fuel_shift2_summary['ewallet'], 2) . '</td></tr>';
+    echo '<tr><td>Credit/Suki:</td><td class="text-right">&#8369;' . number_format($fuel_shift2_summary['credit'], 2) . '</td></tr>';
     echo '</tbody>';
     echo '</table>';
     echo '<br/>';
     
     // A/R SUMMARY
+    echo '<h2>A/R SUMMARY (Account Receivable / Utang)</h2>';
+    echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
+    echo '<tbody>';
+    echo '<tr><td class="font-bold">Shift 1 (6AM-2PM):</td><td class="text-right">&#8369;' . number_format($ar_shift_summary['shift1'], 2) . '</td></tr>';
+    echo '<tr><td class="font-bold">Shift 2 (2PM-12AM):</td><td class="text-right">&#8369;' . number_format($ar_shift_summary['shift2'], 2) . '</td></tr>';
+    echo '<tr><td class="font-bold">TOTAL A/R:</td><td class="text-right font-bold">&#8369;' . number_format($ar_shift_summary['total'], 2) . '</td></tr>';
+    echo '</tbody>';
+    echo '</table>';
+    echo '<br/>';
     if (count($ar_summary) > 0) {
-        echo '<h2>A/R SUMMARY (Suki/Credit Customers)</h2>';
+        echo '<h2>CUSTOMER A/R BALANCES</h2>';
         echo '<table border="1" cellpadding="5" cellspacing="0">';
         echo '<thead>';
         echo '<tr>';
@@ -1156,84 +1862,43 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
                 <table class="meter-table">
                     <thead>
                         <tr>
-                            <th rowspan="2">PUMP</th>
-                            <th rowspan="2">FUEL<br>TYPE</th>
-                            <th colspan="2">SHIFT 1</th>
-                            <th colspan="2">SHIFT 2</th>
-                            <th rowspan="2">TOTAL<br>LITERS</th>
-                            <th rowspan="2">AMOUNT</th>
-                        </tr>
-                        <tr>
-                            <th>BEGIN</th>
-                            <th>END</th>
-                            <th>BEGIN</th>
-                            <th>END</th>
+                            <th>PUMP</th>
+                            <th>FUEL<br>TYPE</th>
+                            <th>BEGINNING</th>
+                            <th>ENDING</th>
+                            <th>CAL</th>
+                            <th>VOLUME<br>LITERS</th>
+                            <th>PRICE</th>
+                            <th>AMOUNT</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php 
-                        // Group readings by pump and fuel type
-                        $pump_groups = [];
-                        foreach ($meter_readings as $reading) {
-                            $key = $reading['pump_name'] . '|' . $reading['fuel_type'];
-                            if (!isset($pump_groups[$key])) {
-                                $pump_groups[$key] = [
-                                    'pump' => $reading['pump_name'],
-                                    'fuel' => $reading['fuel_type'],
-                                    'shift1_begin' => 0,
-                                    'shift1_end' => 0,
-                                    'shift2_begin' => 0,
-                                    'shift2_end' => 0,
-                                    'total_liters' => 0,
-                                    'amount' => 0,
-                                ];
-                            }
-                            
-                            $shift = $reading['shift_period'] ?? '';
-                            if (is_shift1($shift)) {
-                                $pump_groups[$key]['shift1_begin'] = $reading['beginning_reading'];
-                                $pump_groups[$key]['shift1_end'] = $reading['ending_reading'];
-                            } else {
-                                $pump_groups[$key]['shift2_begin'] = $reading['beginning_reading'];
-                                $pump_groups[$key]['shift2_end'] = $reading['ending_reading'];
-                            }
-                            $pump_groups[$key]['total_liters'] += $reading['liters_sold'];
-                        }
-                        
-                        // Calculate amounts from volume sales
-                        foreach ($pump_groups as $key => &$group) {
-                            foreach ($volume_sales as $vol) {
-                                if (strpos($group['fuel'], $vol['fuel_type']) !== false) {
-                                    $group['amount'] = $group['total_liters'] * $vol['avg_price'];
-                                    break;
-                                }
-                            }
-                        }
-                        unset($group);
-                        
                         $grand_total_liters = 0;
                         $grand_total_amount = 0;
                         
-                        foreach ($pump_groups as $group): 
-                            $grand_total_liters += $group['total_liters'];
-                            $grand_total_amount += $group['amount'];
+                        foreach ($meter_readings as $reading): 
+                            [$readingPrice, $readingAmount] = staff_report_fuel_price_amount($reading, $volume_sales);
+                            $grand_total_liters += (float)($reading['liters_sold'] ?? 0);
+                            $grand_total_amount += $readingAmount;
                         ?>
                         <tr>
-                            <td><?= htmlspecialchars($group['pump']) ?></td>
-                            <td><?= htmlspecialchars($group['fuel']) ?></td>
-                            <td class="text-right"><?= number_format($group['shift1_begin'], 2) ?></td>
-                            <td class="text-right"><?= number_format($group['shift1_end'], 2) ?></td>
-                            <td class="text-right"><?= number_format($group['shift2_begin'], 2) ?></td>
-                            <td class="text-right"><?= number_format($group['shift2_end'], 2) ?></td>
-                            <td class="text-right" style="font-weight: bold;"><?= number_format($group['total_liters'], 2) ?></td>
-                            <td class="text-right" style="font-weight: bold;">₱<?= number_format($group['amount'], 2) ?></td>
+                            <td><?= htmlspecialchars($reading['pump_name'] ?? '-') ?></td>
+                            <td><?= htmlspecialchars($reading['fuel_type'] ?? '') ?></td>
+                            <td class="text-right"><?= number_format((float)($reading['beginning_reading'] ?? 0), 2) ?></td>
+                            <td class="text-right"><?= number_format((float)($reading['ending_reading'] ?? 0), 2) ?></td>
+                            <td class="text-right"><?= number_format((float)($reading['calibration'] ?? 0), 2) ?></td>
+                            <td class="text-right" style="font-weight: bold;"><?= number_format((float)($reading['liters_sold'] ?? 0), 2) ?></td>
+                            <td class="text-right">&#8369;<?= number_format($readingPrice, 2) ?></td>
+                            <td class="text-right" style="font-weight: bold;">&#8369;<?= number_format($readingAmount, 2) ?></td>
                         </tr>
                         <?php endforeach; ?>
                         
                         <tr style="font-weight: bold;">
-                            <td colspan="6" style="text-align: right;">TOTAL</td>
+                            <td colspan="5" style="text-align: right;">TOTAL</td>
                             <td class="text-right"><?= number_format($grand_total_liters, 2) ?></td>
-                            <td class="text-right">₱<?= number_format($grand_total_amount, 2) ?></td>
+                            <td></td>
+                            <td class="text-right">&#8369;<?= number_format($grand_total_amount, 2) ?></td>
                         </tr>
                     </tbody>
                 </table>
@@ -1265,6 +1930,29 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
                         </tr>
                     </table>
                 </div>
+
+                <!-- Tank Liters Summary -->
+                <div class="summary-section">
+                    <h3>TANK LITERS SUMMARY</h3>
+                    <table class="summary-table">
+                        <?php
+                        $print_tank_liters = 0;
+                        foreach ($tank_sales as $tank):
+                            $liters = (float)($tank['total_liters'] ?? $tank['total_dispensed'] ?? 0);
+                            $print_tank_liters += $liters;
+                        ?>
+                        <tr>
+                            <td class="label"><?= htmlspecialchars($tank['tank_name'] ?? 'Tank') ?></td>
+                            <td><?= htmlspecialchars($tank['fuel_type'] ?? '') ?></td>
+                            <td class="value"><?= number_format($liters, 2) ?> L</td>
+                        </tr>
+                        <?php endforeach; ?>
+                        <tr style="font-weight: bold;">
+                            <td colspan="2" class="label">TOTAL TANK LITERS</td>
+                            <td class="value"><?= number_format($print_tank_liters, 2) ?> L</td>
+                        </tr>
+                    </table>
+                </div>
                 
                 <!-- Cash Breakdown -->
                 <div class="summary-section">
@@ -1279,10 +1967,31 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
             </div>
         </div>
         
-        <!-- A/R Summary (if exists) -->
+        <!-- A/R Summary -->
+        <div class="summary-section" style="margin-top: 10px;">
+            <h3>A/R SUMMARY (ACCOUNT RECEIVABLE / UTANG)</h3>
+            <table class="meter-table">
+                <tbody>
+                    <tr>
+                        <td><strong>SHIFT 1</strong></td>
+                        <td class="text-right">&#8369;<?= number_format($ar_shift_summary['shift1'], 2) ?></td>
+                    </tr>
+                    <tr>
+                        <td><strong>SHIFT 2</strong></td>
+                        <td class="text-right">&#8369;<?= number_format($ar_shift_summary['shift2'], 2) ?></td>
+                    </tr>
+                    <tr style="font-weight: bold;">
+                        <td>TOTAL A/R</td>
+                        <td class="text-right">&#8369;<?= number_format($ar_shift_summary['total'], 2) ?></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Customer A/R Balances (if exists) -->
         <?php if (count($ar_summary) > 0): ?>
         <div class="summary-section" style="margin-top: 10px;">
-            <h3>ACCOUNTS RECEIVABLE (A/R) SUMMARY</h3>
+            <h3>CUSTOMER A/R BALANCES</h3>
             <table class="meter-table">
                 <thead>
                     <tr>
@@ -1344,6 +2053,7 @@ $page_title = "Fuel Sales Summary Report";
 
 // Include system header
 require_once __DIR__ . '/../partials/header.php';
+require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 
 <style>
@@ -1671,7 +2381,7 @@ require_once __DIR__ . '/../partials/header.php';
     </div>
     
     <div>
-        <a href="?export=excel&type=fuel&report_date=<?= urlencode($report_date) ?>" class="btn" id="export-excel-btn" style="border-color:#16a34a;color:#16a34a;">
+        <a href="?export=excel&type=<?= urlencode($active_tab) ?>&report_date=<?= urlencode($report_date) ?>" class="btn" id="export-excel-btn" style="border-color:#16a34a;color:#16a34a;">
             <i class="fa-solid fa-file-excel"></i> Export Excel
         </a>
         <button class="btn" onclick="window.print()" style="border-color:#475569;color:#475569;">
@@ -1682,14 +2392,14 @@ require_once __DIR__ . '/../partials/header.php';
 
 <!-- TAB NAVIGATION -->
 <div class="tab-navigation">
-    <button class="tab-btn active" onclick="switchTab('fuel')">DAILY FUEL SALES REPORT</button>
-    <button class="tab-btn" onclick="switchTab('merchandise')">DAILY MERCHANDISE SALES REPORT</button>
+    <button class="tab-btn <?= $active_tab === 'fuel' ? 'active' : '' ?>" onclick="switchTab('fuel', event)">DAILY FUEL SALES REPORT</button>
+    <button class="tab-btn <?= $active_tab === 'merchandise' ? 'active' : '' ?>" onclick="switchTab('merchandise', event)">DAILY MERCHANDISE & SERVICE SALES REPORT</button>
 </div>
 
 <!-- PRINTABLE DOCUMENT AREA -->
 <div class="print-area">
     <!-- FUEL TAB CONTENT -->
-    <div id="fuel-tab" class="tab-content active">
+    <div id="fuel-tab" class="tab-content <?= $active_tab === 'fuel' ? 'active' : '' ?>">
         <div class="container">
             <div class="header">
                 <h1>DAILY FUEL SALES REPORT</h1>
@@ -1707,7 +2417,7 @@ require_once __DIR__ . '/../partials/header.php';
                 <table>
                     <thead>
                         <tr>
-                            <th>Pump Name</th>
+                            <th>Name</th>
                             <th>Fuel Type</th>
                             <th class="text-right">Beginning</th>
                             <th class="text-right">Ending</th>
@@ -1724,20 +2434,11 @@ require_once __DIR__ . '/../partials/header.php';
                         if (count($meter_readings) > 0):
                             foreach ($meter_readings as $reading): 
                                 $total_liters_meter += $reading['liters_sold'];
-                                // Get price from volume_sales
-                                $price = 0;
-                                $amount = 0;
-                                foreach ($volume_sales as $vol) {
-                                    if (strpos($reading['fuel_type'], $vol['fuel_type']) !== false || strpos($vol['fuel_type'], $reading['fuel_type']) !== false) {
-                                        $price = $vol['avg_price'];
-                                        $amount = $reading['liters_sold'] * $price;
-                                        break;
-                                    }
-                                }
+                                [$price, $amount] = staff_report_fuel_price_amount($reading, $volume_sales);
                                 $total_amount_meter += $amount;
                         ?>
                         <tr>
-                            <td><strong><?= htmlspecialchars($reading['pump_name']) ?></strong></td>
+                            <td><strong><?= htmlspecialchars($reading['pump_name'] ?? '-') ?></strong></td>
                             <td><?= htmlspecialchars($reading['fuel_type']) ?></td>
                             <td class="text-right"><?= number_format($reading['beginning_reading'], 2) ?></td>
                             <td class="text-right"><?= number_format($reading['ending_reading'], 2) ?></td>
@@ -1817,39 +2518,45 @@ require_once __DIR__ . '/../partials/header.php';
                 </table>
             </div>
             
-            <!-- Tank Sales Summary -->
+            <!-- Tank Liters Summary -->
             <div class="section-title">
-                TANK SALES SUMMARY
+                TANK LITERS SUMMARY
             </div>
             <div class="table-container">
                 <table>
                     <thead>
                         <tr>
-                            <th>Tank / Fuel Type</th>
-                            <th class="text-right">Tank Capacity</th>
-                            <th class="text-right">Dispensed Liters</th>
-                            <th class="text-right">Utilization %</th>
+                            <th>Tank</th>
+                            <th>Fuel Type</th>
+                            <th class="text-right">Liters</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php 
                         if (count($tank_sales) > 0):
+                            $total_tank_liters = 0;
                             foreach ($tank_sales as $tank): 
+                                $total_tank_liters += (float)($tank['total_liters'] ?? $tank['total_dispensed'] ?? 0);
                         ?>
                         <tr>
-                            <td class="font-bold"><?= htmlspecialchars($tank['fuel_type']) ?></td>
-                            <td class="text-right">-</td>
-                            <td class="text-right"><?= number_format($tank['total_dispensed'], 2) ?> L</td>
-                            <td class="text-right">-</td>
+                            <td class="font-bold"><?= htmlspecialchars($tank['tank_name'] ?? 'Tank') ?></td>
+                            <td><?= htmlspecialchars($tank['fuel_type']) ?></td>
+                            <td class="text-right"><?= number_format($tank['total_liters'] ?? $tank['total_dispensed'], 2) ?> L</td>
                         </tr>
                         <?php 
                             endforeach;
                         else:
                         ?>
                         <tr>
-                            <td colspan="4" style="text-align: center; padding: 40px;">
-                                No tank sales data available.
+                            <td colspan="3" style="text-align: center; padding: 40px;">
+                                No tank liters data available.
                             </td>
+                        </tr>
+                        <?php endif; ?>
+                        <?php if (count($tank_sales) > 0): ?>
+                        <tr style="font-weight: 700;">
+                            <td colspan="2" class="text-right">TOTAL TANK LITERS</td>
+                            <td class="text-right"><?= number_format($total_tank_liters, 2) ?> L</td>
                         </tr>
                         <?php endif; ?>
                     </tbody>
@@ -1868,7 +2575,7 @@ require_once __DIR__ . '/../partials/header.php';
                         <tbody>
                             <tr>
                                 <td class="font-bold">Total Fuel Sales:</td>
-                                <td class="text-right font-bold">₱<?= number_format($shift1_summary['fuel_sales'], 2) ?></td>
+                                <td class="text-right font-bold">&#8369;<?= number_format($fuel_shift1_summary['fuel_sales'], 2) ?></td>
                             </tr>
                             <tr><td colspan="2" style="height: 10px;"></td></tr>
                             <tr>
@@ -1876,19 +2583,19 @@ require_once __DIR__ . '/../partials/header.php';
                             </tr>
                             <tr>
                                 <td>Cash:</td>
-                                <td class="text-right">₱<?= number_format($shift1_summary['cash'], 2) ?></td>
+                                <td class="text-right">&#8369;<?= number_format($fuel_shift1_summary['cash'], 2) ?></td>
                             </tr>
                             <tr>
                                 <td>Card:</td>
-                                <td class="text-right">₱<?= number_format($shift1_summary['card'], 2) ?></td>
+                                <td class="text-right">&#8369;<?= number_format($fuel_shift1_summary['card'], 2) ?></td>
                             </tr>
                             <tr>
                                 <td>E-Wallet:</td>
-                                <td class="text-right">₱<?= number_format($shift1_summary['ewallet'], 2) ?></td>
+                                <td class="text-right">&#8369;<?= number_format($fuel_shift1_summary['ewallet'], 2) ?></td>
                             </tr>
                             <tr>
                                 <td>Credit/Suki:</td>
-                                <td class="text-right">₱<?= number_format($shift1_summary['credit'], 2) ?></td>
+                                <td class="text-right">&#8369;<?= number_format($fuel_shift1_summary['credit'], 2) ?></td>
                             </tr>
                         </tbody>
                     </table>
@@ -1901,7 +2608,7 @@ require_once __DIR__ . '/../partials/header.php';
                         <tbody>
                             <tr>
                                 <td class="font-bold">Total Fuel Sales:</td>
-                                <td class="text-right font-bold">₱<?= number_format($shift2_summary['fuel_sales'], 2) ?></td>
+                                <td class="text-right font-bold">&#8369;<?= number_format($fuel_shift2_summary['fuel_sales'], 2) ?></td>
                             </tr>
                             <tr><td colspan="2" style="height: 10px;"></td></tr>
                             <tr>
@@ -1909,19 +2616,19 @@ require_once __DIR__ . '/../partials/header.php';
                             </tr>
                             <tr>
                                 <td>Cash:</td>
-                                <td class="text-right">₱<?= number_format($shift2_summary['cash'], 2) ?></td>
+                                <td class="text-right">&#8369;<?= number_format($fuel_shift2_summary['cash'], 2) ?></td>
                             </tr>
                             <tr>
                                 <td>Card:</td>
-                                <td class="text-right">₱<?= number_format($shift2_summary['card'], 2) ?></td>
+                                <td class="text-right">&#8369;<?= number_format($fuel_shift2_summary['card'], 2) ?></td>
                             </tr>
                             <tr>
                                 <td>E-Wallet:</td>
-                                <td class="text-right">₱<?= number_format($shift2_summary['ewallet'], 2) ?></td>
+                                <td class="text-right">&#8369;<?= number_format($fuel_shift2_summary['ewallet'], 2) ?></td>
                             </tr>
                             <tr>
                                 <td>Credit/Suki:</td>
-                                <td class="text-right">₱<?= number_format($shift2_summary['credit'], 2) ?></td>
+                                <td class="text-right">&#8369;<?= number_format($fuel_shift2_summary['credit'], 2) ?></td>
                             </tr>
                         </tbody>
                     </table>
@@ -1929,9 +2636,38 @@ require_once __DIR__ . '/../partials/header.php';
             </div>
             
             <!-- A/R Summary -->
+            <div class="section-title">
+                A/R SUMMARY (Account Receivable / Utang)
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Shift</th>
+                            <th class="text-right">A/R Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="font-bold">Shift 1 (6AM-2PM)</td>
+                            <td class="text-right">&#8369;<?= number_format($ar_shift_summary['shift1'], 2) ?></td>
+                        </tr>
+                        <tr>
+                            <td class="font-bold">Shift 2 (2PM-12AM)</td>
+                            <td class="text-right">&#8369;<?= number_format($ar_shift_summary['shift2'], 2) ?></td>
+                        </tr>
+                        <tr style="font-weight: 700;">
+                            <td class="text-right">TOTAL A/R</td>
+                            <td class="text-right">&#8369;<?= number_format($ar_shift_summary['total'], 2) ?></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Customer A/R Balances -->
             <?php if (count($ar_summary) > 0): ?>
             <div class="section-title">
-                A/R SUMMARY (Suki/Credit Customers)
+                CUSTOMER A/R BALANCES
             </div>
             <div class="table-container">
                 <table>
@@ -1962,7 +2698,7 @@ require_once __DIR__ . '/../partials/header.php';
                         </tr>
                         <?php endforeach; ?>
                         <tr style="font-weight: 700;">
-                            <td colspan="3" class="text-right">TOTAL ACCOUNTS RECEIVABLE</td>
+                            <td colspan="3" class="text-right">TOTAL CUSTOMER A/R BALANCE</td>
                             <td class="text-right">₱<?= number_format($total_ar, 2) ?></td>
                             <td colspan="2"></td>
                         </tr>
@@ -1991,6 +2727,11 @@ require_once __DIR__ . '/../partials/header.php';
                     <div class="value">₱<?= number_format($overall_summary['total_cash'], 2) ?></div>
                 </div>
                 
+                <div class="summary-card">
+                    <div class="label">Total A/R</div>
+                    <div class="value">&#8369;<?= number_format($overall_summary['total_ar'], 2) ?></div>
+                </div>
+
                 <div class="summary-card">
                     <div class="label">Total Deposits</div>
                     <div class="value">₱<?= number_format($overall_summary['total_deposits'], 2) ?></div>
@@ -2026,7 +2767,7 @@ require_once __DIR__ . '/../partials/header.php';
     <!-- END FUEL TAB -->
     
     <!-- MERCHANDISE TAB CONTENT -->
-    <div id="merchandise-tab" class="tab-content">
+    <div id="merchandise-tab" class="tab-content <?= $active_tab === 'merchandise' ? 'active' : '' ?>">
         <div class="container">
             <div class="header">
                 <h1>DAILY MERCHANDISE & SERVICE SALES REPORT</h1>
@@ -2057,33 +2798,8 @@ require_once __DIR__ . '/../partials/header.php';
                         </thead>
                         <tbody>
                             <?php 
-                            // Fetch merchandise transactions for the day
-                            $merch_transactions = [];
+                            $merch_transactions = $merchandise_report_transactions;
                             $total_merch_amount = 0;
-                            
-                            if ($has_merchandise_transactions) {
-                                try {
-                                    $stmt = $pdo->prepare("
-                                        SELECT 
-                                            mt.id,
-                                            COALESCE(mti.category, 'General') AS category,
-                                            COALESCE(mti.product_name, mt.item_sku, 'Item') AS product_name,
-                                            COALESCE(mti.quantity, mt.quantity) AS stock_out,
-                                            mt.unit_price,
-                                            mt.total_amount,
-                                            mt.shift_period AS shift,
-                                            u.username AS encoder,
-                                            mt.created_at
-                                        FROM merchandise_transactions mt
-                                        LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
-                                        LEFT JOIN users u ON mt.staff_id = u.id
-                                        WHERE mt.station_id = ? AND DATE(mt.created_at) = ?
-                                        ORDER BY mti.category, mt.created_at
-                                    ");
-                                    $stmt->execute([$station_id, $report_date]);
-                                    $merch_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                                } catch (Exception $e) {}
-                            }
                             
                             if (count($merch_transactions) > 0):
                                 foreach ($merch_transactions as $trans): 
@@ -2138,34 +2854,8 @@ require_once __DIR__ . '/../partials/header.php';
                         </thead>
                         <tbody>
                             <?php 
-                            // Fetch service transactions for the day
-                            $service_transactions = [];
+                            $service_transactions = $service_income_transactions;
                             $total_service_amount = 0;
-                            
-                            // Check if services table exists
-                            $has_services = table_exists($pdo, 'service_transactions');
-                            
-                            if ($has_services) {
-                                try {
-                                    $stmt = $pdo->prepare("
-                                        SELECT 
-                                            st.id,
-                                            st.service_type,
-                                            st.labor_fee,
-                                            st.parts_used,
-                                            st.total_amount,
-                                            st.shift,
-                                            u.username AS encoder,
-                                            st.created_at
-                                        FROM service_transactions st
-                                        LEFT JOIN users u ON st.user_id = u.id
-                                        WHERE st.station_id = ? AND DATE(st.created_at) = ?
-                                        ORDER BY st.created_at
-                                    ");
-                                    $stmt->execute([$station_id, $report_date]);
-                                    $service_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                                } catch (Exception $e) {}
-                            }
                             
                             if (count($service_transactions) > 0):
                                 foreach ($service_transactions as $trans): 
@@ -2215,7 +2905,7 @@ require_once __DIR__ . '/../partials/header.php';
                                 </tr>
                                 <tr>
                                     <td class="font-bold">Service Income:</td>
-                                    <td class="text-right font-bold">₱0.00</td>
+                                    <td class="text-right font-bold">₱<?= number_format($shift1_summary['service_income'] ?? 0, 2) ?></td>
                                 </tr>
                                 <tr><td colspan="2" style="height: 10px;"></td></tr>
                                 <tr>
@@ -2252,7 +2942,7 @@ require_once __DIR__ . '/../partials/header.php';
                                 </tr>
                                 <tr>
                                     <td class="font-bold">Service Income:</td>
-                                    <td class="text-right font-bold">₱0.00</td>
+                                    <td class="text-right font-bold">₱<?= number_format($shift2_summary['service_income'] ?? 0, 2) ?></td>
                                 </tr>
                                 <tr><td colspan="2" style="height: 10px;"></td></tr>
                                 <tr>
@@ -2377,7 +3067,10 @@ require_once __DIR__ . '/../partials/header.php';
 </div>
 
 <script>
-    function switchTab(tabName) {
+    let currentReportTab = '<?= htmlspecialchars($active_tab, ENT_QUOTES) ?>';
+
+    function switchTab(tabName, evt) {
+        currentReportTab = tabName;
         // Hide all tabs
         document.querySelectorAll('.tab-content').forEach(tab => {
             tab.classList.remove('active');
@@ -2392,7 +3085,9 @@ require_once __DIR__ . '/../partials/header.php';
         document.getElementById(tabName + '-tab').classList.add('active');
         
         // Highlight selected button
-        event.target.classList.add('active');
+        if (evt && evt.target) {
+            evt.target.classList.add('active');
+        }
         
         // Update export button
         const exportBtn = document.getElementById('export-excel-btn');
@@ -2406,7 +3101,7 @@ require_once __DIR__ . '/../partials/header.php';
     
     function applyFilters() {
         const reportDate = document.getElementById('report_date').value;
-        window.location.href = `?report_date=${reportDate}`;
+        window.location.href = `?report_date=${reportDate}&tab=${currentReportTab}`;
     }
     
     // Allow Enter key to apply filters

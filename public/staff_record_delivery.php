@@ -377,8 +377,8 @@ include __DIR__ . '/../partials/header.php';
 ?>
 <style>
 /* ── Layout & Cards ── */
-.layout-grid { display: grid; grid-template-columns: 1fr; gap: 24px; margin-bottom: 30px; }
-@media () { .layout-grid { grid-template-columns: 1fr 1fr; } }
+.layout-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; align-items: start; max-width: 100%; overflow: hidden; }
+@media (max-width: 1100px) { .layout-grid { grid-template-columns: 1fr; } }
 
 .del-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06); border: 1px solid #e9ecef; height: 100%; display: flex; flex-direction: column; }
 .del-card-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #e9ecef; }
@@ -516,98 +516,7 @@ textarea.form-control { resize: vertical; font-family: inherit; }
 <?php endif; ?>
 
 <div class="layout-grid">
-    <!-- LEFT: Expected Delivery Details (VIEW-ONLY - Reference for Staff) -->
-    <div class="del-card">
-        <div class="del-card-head">
-            <div class="del-card-title">
-                <i class="fas fa-clipboard-check"></i> <?php echo $selected_po ? 'Expected Delivery Details' : 'Expected Deliveries'; ?>
-            </div>
-            <?php if ($selected_po): ?>
-                <span style="font-size:12px;color:#6c757d;">Reference Only - Use Manual Encode →</span>
-            <?php else: ?>
-                <span style="font-size:12px;color:#6c757d;">Based on Finalized POs</span>
-            <?php endif; ?>
-        </div>
-        <div class="del-card-body">
-            <?php if ($selected_po): ?>
-                <!-- VIEW-ONLY: PO Order Details for Reference -->
-                <div style="background:#e8f4fd;border:1px solid #b8d4f0;border-radius:8px;padding:20px;">
-                    <h4 style="margin:0 0 16px 0;color:#002F70;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;">
-                        <i class="fas fa-file-invoice"></i> Purchase Order Details
-                    </h4>
-                    
-                    <div style="display:grid;gap:12px;font-size:14px;">
-                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
-                            <span style="color:#6c757d;font-weight:500;">PO Number:</span>
-                            <strong style="color:#002F70;font-family:monospace;font-size:15px;"><?php echo htmlspecialchars($selected_po['source_ref'] ?? 'N/A'); ?></strong>
-                        </div>
-                        
-                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
-                            <span style="color:#6c757d;font-weight:500;">Product:</span>
-                            <strong style="color:#212529;"><?php echo htmlspecialchars($selected_po['product']); ?></strong>
-                        </div>
-                        
-                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
-                            <span style="color:#6c757d;font-weight:500;">Supplier:</span>
-                            <strong style="color:#212529;"><?php echo htmlspecialchars($selected_po['supplier']); ?></strong>
-                        </div>
-                        
-                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
-                            <span style="color:#6c757d;font-weight:500;">Expected Quantity:</span>
-                            <strong style="color:#002F70;font-size:16px;"><?php echo number_format($selected_po['quantity'], 2); ?> <span style="font-size:14px;color:#6c757d;"><?php echo htmlspecialchars($selected_po['unit']); ?></span></strong>
-                        </div>
-                        
-                        <?php if (!empty($selected_po['remarks'])): ?>
-                        <div style="padding:10px 0;">
-                            <span style="color:#6c757d;font-weight:500;display:block;margin-bottom:6px;">Notes:</span>
-                            <p style="margin:0;padding:10px;background:#fff;border-radius:6px;font-size:13px;color:#495057;"><?php echo htmlspecialchars($selected_po['remarks']); ?></p>
-                        </div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:14px;margin-top:20px;display:flex;align-items:flex-start;gap:10px;">
-                    <i class="fas fa-info-circle" style="color:#856404;margin-top:2px;font-size:18px;flex-shrink:0;"></i>
-                    <div style="font-size:13px;color:#856404;line-height:1.5;">
-                        <strong>Instructions:</strong> Use the <strong>"Manual Encode Delivery"</strong> form on the right to record the actual delivery receipt. Fill in the actual quantity received, DR number, and any remarks.
-                    </div>
-                </div>
-
-                <div style="margin-top:20px;text-align:center;">
-                    <a href="staff_expected_deliveries.php" style="background:#6c757d;color:#fff;border:none;padding:10px 20px;border-radius:6px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:background .2s;">
-                        <i class="fas fa-arrow-left"></i> Back to Expected Deliveries
-                    </a>
-                </div>
-
-            <?php elseif (empty($expected_deliveries)): ?>
-                <div style="text-align:center;padding:40px;color:#adb5bd;">
-                    <i class="fas fa-box-open" style="font-size:3em;margin-bottom:15px;display:block;"></i>
-                    <p style="margin-bottom:16px;">No expected merchandise deliveries at the moment.</p>
-                    <a href="staff_expected_deliveries.php" style="color:#002F70;text-decoration:none;font-weight:600;">
-                        <i class="fas fa-arrow-left"></i> View Expected Deliveries
-                    </a>
-                </div>
-            <?php else: ?>
-                <?php foreach ($expected_deliveries as $ed): ?>
-                <div class="expected-item">
-                    <div class="expected-info">
-                        <h4><?php echo htmlspecialchars($ed['product']); ?></h4>
-                        <div class="expected-meta">
-                            <span><i class="fas fa-hashtag"></i> PO: <span class="po-badge"><?php echo htmlspecialchars($ed['source_ref'] ?? 'N/A'); ?></span></span>
-                            <span><i class="fas fa-box"></i> Exp: <strong><?php echo number_format($ed['quantity'], 2) . ' ' . $ed['unit']; ?></strong></span>
-                            <span><i class="fas fa-building"></i> <?php echo htmlspecialchars($ed['supplier']); ?></span>
-                        </div>
-                    </div>
-                    <button class="btn-receive" onclick="window.location.href='staff_record_delivery.php?po_id=<?php echo $ed['id']; ?>'">
-                        <i class="fas fa-eye"></i> View Details
-                    </button>
-                </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <!-- RIGHT: Manual Encode Delivery (Staff encodes actual receipt details) -->
+    <!-- LEFT: Manual Encode Delivery (Staff encodes actual receipt details) -->
     <div class="del-card">
         <div class="del-card-head">
             <div class="del-card-title">
@@ -767,6 +676,97 @@ textarea.form-control { resize: vertical; font-family: inherit; }
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- RIGHT: Expected Delivery Details (VIEW-ONLY - Reference for Staff) -->
+    <div class="del-card">
+        <div class="del-card-head">
+            <div class="del-card-title">
+                <i class="fas fa-clipboard-check"></i> <?php echo $selected_po ? 'Expected Delivery Details' : 'Expected Deliveries'; ?>
+            </div>
+            <?php if ($selected_po): ?>
+                <span style="font-size:12px;color:#6c757d;">Reference Only - Use Manual Encode ←</span>
+            <?php else: ?>
+                <span style="font-size:12px;color:#6c757d;">Based on Finalized POs</span>
+            <?php endif; ?>
+        </div>
+        <div class="del-card-body">
+            <?php if ($selected_po): ?>
+                <!-- VIEW-ONLY: PO Order Details for Reference -->
+                <div style="background:#e8f4fd;border:1px solid #b8d4f0;border-radius:8px;padding:20px;">
+                    <h4 style="margin:0 0 16px 0;color:#002F70;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;">
+                        <i class="fas fa-file-invoice"></i> Purchase Order Details
+                    </h4>
+                    
+                    <div style="display:grid;gap:12px;font-size:14px;">
+                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
+                            <span style="color:#6c757d;font-weight:500;">PO Number:</span>
+                            <strong style="color:#002F70;font-family:monospace;font-size:15px;"><?php echo htmlspecialchars($selected_po['source_ref'] ?? 'N/A'); ?></strong>
+                        </div>
+                        
+                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
+                            <span style="color:#6c757d;font-weight:500;">Product:</span>
+                            <strong style="color:#212529;"><?php echo htmlspecialchars($selected_po['product']); ?></strong>
+                        </div>
+                        
+                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
+                            <span style="color:#6c757d;font-weight:500;">Supplier:</span>
+                            <strong style="color:#212529;"><?php echo htmlspecialchars($selected_po['supplier']); ?></strong>
+                        </div>
+                        
+                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
+                            <span style="color:#6c757d;font-weight:500;">Expected Quantity:</span>
+                            <strong style="color:#002F70;font-size:16px;"><?php echo number_format($selected_po['quantity'], 2); ?> <span style="font-size:14px;color:#6c757d;"><?php echo htmlspecialchars($selected_po['unit']); ?></span></strong>
+                        </div>
+                        
+                        <?php if (!empty($selected_po['remarks'])): ?>
+                        <div style="padding:10px 0;">
+                            <span style="color:#6c757d;font-weight:500;display:block;margin-bottom:6px;">Notes:</span>
+                            <p style="margin:0;padding:10px;background:#fff;border-radius:6px;font-size:13px;color:#495057;"><?php echo htmlspecialchars($selected_po['remarks']); ?></p>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:14px;margin-top:20px;display:flex;align-items:flex-start;gap:10px;">
+                    <i class="fas fa-info-circle" style="color:#856404;margin-top:2px;font-size:18px;flex-shrink:0;"></i>
+                    <div style="font-size:13px;color:#856404;line-height:1.5;">
+                        <strong>Instructions:</strong> Use the <strong>"Manual Encode Delivery"</strong> form on the left to record the actual delivery receipt. Fill in the actual quantity received, DR number, and any remarks.
+                    </div>
+                </div>
+
+                <div style="margin-top:20px;text-align:center;">
+                    <a href="staff_record_delivery.php" style="background:#6c757d;color:#fff;border:none;padding:10px 20px;border-radius:6px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:background .2s;">
+                        <i class="fas fa-arrow-left"></i> Back to Expected Deliveries
+                    </a>
+                </div>
+
+            <?php elseif (empty($expected_deliveries)): ?>
+                <div style="text-align:center;padding:40px;color:#adb5bd;">
+                    <i class="fas fa-box-open" style="font-size:3em;margin-bottom:15px;display:block;"></i>
+                    <p style="margin-bottom:16px;">No expected merchandise deliveries at the moment.</p>
+                    <a href="staff_delivery_history.php" style="color:#002F70;text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:6px;">
+                        <i class="fas fa-history"></i> View Delivery History
+                    </a>
+                </div>
+            <?php else: ?>
+                <?php foreach ($expected_deliveries as $ed): ?>
+                <div class="expected-item">
+                     <div class="expected-info">
+                        <h4><?php echo htmlspecialchars($ed['product']); ?></h4>
+                        <div class="expected-meta">
+                            <span><i class="fas fa-hashtag"></i> PO: <span class="po-badge"><?php echo htmlspecialchars($ed['source_ref'] ?? 'N/A'); ?></span></span>
+                            <span><i class="fas fa-box"></i> Exp: <strong><?php echo number_format($ed['quantity'], 2) . ' ' . $ed['unit']; ?></strong></span>
+                            <span><i class="fas fa-building"></i> <?php echo htmlspecialchars($ed['supplier']); ?></span>
+                        </div>
+                     </div>
+                     <button class="btn-receive" onclick="window.location.href='staff_record_delivery.php?po_id=<?php echo $ed['id']; ?>'">
+                        <i class="fas fa-eye"></i> View Details
+                     </button>
+                </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
         </div>
     </div>
 </div>

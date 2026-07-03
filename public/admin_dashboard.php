@@ -1204,57 +1204,80 @@ include __DIR__ . '/../partials/header.php';
 
     .summary-grid {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 16px;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 15px;
         margin-bottom: 22px;
+    }
+    @media (max-width: 1024px) {
+        .summary-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+    @media (max-width: 600px) {
+        .summary-grid {
+            grid-template-columns: 1fr;
+        }
     }
 
     .admin-card {
-        min-height: 98px;
-        padding: 14px 16px;
-        border-left: 1px solid var(--line);
-        border-top: 3px solid var(--petron-blue);
+        background: #ffffff;
+        border-radius: 10px;
+        padding: 14px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+        border: 1px solid #e2e8f0;
         display: flex;
-        align-items: center;
         justify-content: space-between;
-        gap: 12px;
+        align-items: center;
+        transition: all 0.25s ease;
+    }
+
+    .admin-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    .admin-card > div:first-child {
+        flex: 1;
+        min-width: 0;
     }
 
     .admin-card h3 {
         margin: 0;
-        font-size: 11px;
-        color: #56647a;
-        font-weight: 800;
+        font-size: 10px;
+        font-weight: 700;
+        color: #64748b;
         text-transform: uppercase;
-        letter-spacing: 0;
+        letter-spacing: 0.4px;
+        line-height: 1.3;
     }
 
     .admin-card .metric {
-        margin-top: 6px;
-        color: #050b1f;
-        font-size: 21px;
+        font-size: 20px;
+        font-weight: 800;
+        color: #0f172a;
+        margin: 5px 0 0;
         line-height: 1.1;
-        font-weight: 900;
-        word-break: break-word;
     }
 
     .admin-card .card-note {
-        margin-top: 7px;
-        color: var(--muted);
-        font-size: 11.5px;
-        line-height: 1.45;
+        margin-top: 5px;
+        color: #64748b;
+        font-size: 9.5px;
+        line-height: 1.3;
     }
 
     .metric-icon {
-        width: 42px;
-        height: 42px;
-        border-radius: 8px;
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 15px;
         background: #eef4fb;
         color: var(--petron-blue);
-        display: grid;
-        place-items: center;
-        font-size: 17px;
         flex: 0 0 auto;
+        margin-left: 10px;
     }
 
     .health-list {
@@ -1672,7 +1695,7 @@ include __DIR__ . '/../partials/header.php';
     <section class="admin-page-header">
         <div>
             <h1>WELCOME, <?= adm_h(strtoupper($display_name)) ?>!</h1>
-            <div class="admin-kicker"><i class="fas fa-user-shield"></i> Admin Dashboard · <?= adm_h($station_label) ?></div>
+            <div class="admin-kicker"><i class="fas fa-user-shield"></i> Admin Dashboard</div>
             <p class="admin-subtext">Monitor overall station performance, users, inventory, financial operations, approvals, and system activities.</p>
         </div>
         <form class="admin-filter-form" method="get" action="admin_dashboard.php">
@@ -1682,61 +1705,61 @@ include __DIR__ . '/../partials/header.php';
     </section>
 
     <section class="summary-grid" aria-label="Admin summary cards">
-        <article class="admin-card">
+        <article class="admin-card" style="border-left: 4px solid #002F70;">
             <div>
                 <h3>Today's Revenue</h3>
                 <div class="metric"><?= adm_money($total_revenue) ?></div>
                 <div class="card-note">Fuel <?= adm_money($fuel_revenue) ?> · Merchandise <?= adm_money($merch_revenue) ?> · Services <?= adm_money($service_revenue) ?></div>
             </div>
-            <div class="metric-icon"><i class="fas fa-peso-sign"></i></div>
+            <div class="metric-icon" style="background: #eff6ff; color: #002F70;"><i class="fas fa-peso-sign"></i></div>
         </article>
 
-        <article class="admin-card">
+        <article class="admin-card" style="border-left: 4px solid #16a34a;">
             <div>
                 <h3>Today's Transactions</h3>
                 <div class="metric"><?= number_format($total_transactions) ?></div>
                 <div class="card-note">Fuel <?= number_format($fuel_count) ?> · Merchandise <?= number_format($merch_count) ?> · Services <?= number_format($service_count) ?></div>
             </div>
-            <div class="metric-icon"><i class="fas fa-right-left"></i></div>
+            <div class="metric-icon" style="background: #f0fdf4; color: #16a34a;"><i class="fas fa-right-left"></i></div>
         </article>
 
-        <article class="admin-card">
+        <article class="admin-card" style="border-left: 4px solid #0891b2;">
             <div>
                 <h3>Active Users</h3>
                 <div class="metric"><?= number_format($total_active_users) ?></div>
                 <div class="card-note"><?= number_format($active_admins) ?> Admin · <?= number_format($active_managers) ?> Manager · <?= number_format($active_staff) ?> Staff</div>
             </div>
-            <div class="metric-icon"><i class="fas fa-users"></i></div>
+            <div class="metric-icon" style="background: #ecfeff; color: #0891b2;"><i class="fas fa-users"></i></div>
         </article>
 
-        <article class="admin-card">
+        <article class="admin-card" style="border-left: 4px solid #eab308;">
             <div>
                 <h3>Pending Approvals</h3>
                 <div class="metric"><?= number_format($total_pending_approvals) ?></div>
                 <div class="card-note">Users <?= number_format($pending_user_accounts) ?> · Customers <?= number_format($pending_customer_requests) ?> · Inventory <?= number_format($pending_inventory_approvals) ?> · Pricing <?= number_format($pending_price_requests) ?></div>
             </div>
-            <div class="metric-icon"><i class="fas fa-clipboard-check"></i></div>
+            <div class="metric-icon" style="background: #fef9c3; color: #eab308;"><i class="fas fa-clipboard-check"></i></div>
         </article>
 
-        <article class="admin-card">
+        <article class="admin-card" style="border-left: 4px solid #dc2626;">
             <div>
                 <h3>Inventory Alerts</h3>
                 <div class="metric"><?= number_format($total_inventory_alerts) ?></div>
                 <div class="card-note">Low fuel <?= number_format($fuel_low_count) ?> · Low merchandise <?= number_format($merch_low_count) ?> · Critical <?= number_format($fuel_critical_count + $merch_critical_count) ?></div>
             </div>
-            <div class="metric-icon"><i class="fas fa-triangle-exclamation"></i></div>
+            <div class="metric-icon" style="background: #fef2f2; color: #dc2626;"><i class="fas fa-triangle-exclamation"></i></div>
         </article>
 
-        <article class="admin-card">
+        <article class="admin-card" style="border-left: 4px solid #ea580c;">
             <div>
                 <h3>Pending Deliveries</h3>
                 <div class="metric"><?= number_format($pending_deliveries_count) ?></div>
                 <div class="card-note">Awaiting receive, validation, or stock-in action.</div>
             </div>
-            <div class="metric-icon"><i class="fas fa-truck"></i></div>
+            <div class="metric-icon" style="background: #ffedd5; color: #ea580c;"><i class="fas fa-truck"></i></div>
         </article>
 
-        <article class="admin-card">
+        <article class="admin-card" style="border-left: 4px solid #64748b;">
             <div>
                 <h3>System Health</h3>
                 <div class="metric"><?= adm_h($system_health_value) ?></div>
@@ -1746,7 +1769,7 @@ include __DIR__ . '/../partials/header.php';
                     <span><i class="fas fa-circle <?= $backup_ok ? 'text-success' : 'text-warning' ?>"></i> Backup <?= adm_h($backup_label) ?></span>
                 </div>
             </div>
-            <div class="metric-icon"><i class="fas fa-server"></i></div>
+            <div class="metric-icon" style="background: #f1f5f9; color: #64748b;"><i class="fas fa-server"></i></div>
         </article>
     </section>
 

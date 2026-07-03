@@ -318,7 +318,7 @@ if ($active_tab === 'movement') {
     $mov_total = count($mov_rows);
 }
 
-include __DIR__ . '/../partials/header.php';
+include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 <style>
 /* == PAGE HEADER - matches standard Petron dashboard layout == */

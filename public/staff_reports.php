@@ -49,15 +49,33 @@ try {
 // ============================================================
 // SECTION & DATE RANGE LOGIC
 // ============================================================
-$valid_sections = ['sales', 'job_orders', 'deliveries', 'meter', 'payments', 'customers', 'activity'];
+$requested_section = trim($_GET['section'] ?? '');
+$requested_view = trim($_GET['view'] ?? '');
+if ($requested_section === 'job_orders' || $requested_view === 'jo_tracker') {
+    $redirect_date = trim($_GET['start'] ?? $_GET['date_start'] ?? $_GET['report_date'] ?? date('Y-m-d'));
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $redirect_date)) {
+        $redirect_date = date('Y-m-d');
+    }
+    header('Location: staff_fuel_sales_summary.php?' . http_build_query([
+        'report_date' => $redirect_date,
+        'tab' => 'merchandise',
+    ]));
+    exit;
+}
+
+$valid_sections = ['sales', 'deliveries', 'meter', 'payments', 'customers', 'activity'];
 $section = trim($_GET['section'] ?? 'sales');
+if ($section === 'job_orders') {
+    $section = 'sales';
+    $_GET['sub_tab'] = 'merch_sales';
+}
 if (!in_array($section, $valid_sections)) {
     // Check if legacy view parameter is used
     $view_param = trim($_GET['view'] ?? '');
     $legacy_map = [
         'daily_sales' => 'sales',
         'customer_linkage' => 'sales',
-        'jo_tracker' => 'job_orders',
+        'jo_tracker' => 'sales',
         'fuel_deliveries' => 'deliveries',
         'merch_deliveries' => 'deliveries',
         'meter_readings' => 'meter',
@@ -67,10 +85,12 @@ if (!in_array($section, $valid_sections)) {
         'audit_trail' => 'activity',
     ];
     $section = $legacy_map[$view_param] ?? 'sales';
+    if ($view_param === 'jo_tracker') {
+        $_GET['sub_tab'] = 'merch_sales';
+    }
 }
 
 $page_id = match($section) {
-    'job_orders' => 'report_jo_tracker',
     'deliveries' => 'report_deliveries',
     'meter'      => 'report_meter',
     'payments'   => 'report_payments',
@@ -85,12 +105,14 @@ if (!in_array($range, ['today', 'week', 'month', 'custom'])) $range = 'month';
 $sub_tab = trim($_GET['sub_tab'] ?? $_GET['sub'] ?? '');
 if (empty($sub_tab)) {
     if ($section === 'sales') $sub_tab = 'fuel_sales';
-    elseif ($section === 'job_orders') $sub_tab = 'jo_list';
     elseif ($section === 'deliveries') $sub_tab = 'fuel_deliveries';
     elseif ($section === 'meter') $sub_tab = 'readings';
     elseif ($section === 'payments') $sub_tab = 'status_breakdown';
     elseif ($section === 'customers') $sub_tab = 'customer_list';
     elseif ($section === 'activity') $sub_tab = 'staff_activity';
+}
+if ($section === 'sales' && in_array($sub_tab, ['jo_list', 'staff_perf'], true)) {
+    $sub_tab = 'merch_sales';
 }
 
 $today = date('Y-m-d');
@@ -114,6 +136,28 @@ switch ($range) {
         $date_start = $today;
         $date_end   = $today;
         break;
+}
+
+if ($section === 'sales' && $sub_tab === 'fuel_sales') {
+    $redirect_date = trim($_GET['report_date'] ?? $_GET['date'] ?? $date_end);
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $redirect_date)) {
+        $redirect_date = $date_end;
+    }
+    $redirect_params = [
+        'report_date' => $redirect_date,
+        'tab' => 'fuel',
+    ];
+    if (isset($_GET['export'])) {
+        $export = strtolower(trim((string)$_GET['export']));
+        if ($export === 'pdf') {
+            $redirect_params['export'] = 'pdf';
+        } elseif (in_array($export, ['excel', 'csv'], true)) {
+            $redirect_params['export'] = 'excel';
+            $redirect_params['type'] = 'fuel';
+        }
+    }
+    header('Location: staff_fuel_sales_summary.php?' . http_build_query($redirect_params));
+    exit;
 }
 
 $report_data = [];
@@ -2310,11 +2354,7 @@ require_once __DIR__ . '/../partials/header.php';
     $sub_tabs_def = [
         'sales' => [
             'fuel_sales'  => ['label' => 'Daily Fuel Sales Report',        'icon' => 'fa-gas-pump'],
-            'merch_sales' => ['label' => 'Daily Merchandise Sales Report',  'icon' => 'fa-boxes-stacked'],
-        ],
-        'job_orders' => [
-            'jo_list' => ['label' => 'Job Orders Tracker', 'icon' => 'fa-wrench'],
-            'staff_perf' => ['label' => 'Performance Report', 'icon' => 'fa-gauge-high']
+            'merch_sales' => ['label' => 'Daily Merchandise & Service Sales Report',  'icon' => 'fa-boxes-stacked'],
         ],
         'deliveries' => [
             'fuel_deliveries' => ['label' => 'Fuel Deliveries', 'icon' => 'fa-truck-field'],

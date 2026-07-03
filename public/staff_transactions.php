@@ -1238,8 +1238,13 @@ function printReceipt() {
     .then(data => {
         if (data.success) {
             alert(`Transaction processed successfully!\nTransaction ID: ${data.transaction_id}\nStatus: Pending Validation`);
+            const txnId = data.transaction_id;
             clearCart();
             clearForm();
+            if (confirm('Would you like to print a receipt?')) {
+                const receiptUrl = `receipt.php?id=${encodeURIComponent(txnId)}&type=merchandise`;
+                window.open(receiptUrl, '_blank');
+            }
             // Reload the page to refresh shift history
             setTimeout(() => {
                 window.location.reload();

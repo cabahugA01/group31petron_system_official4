@@ -68,9 +68,11 @@ function column_exists($pdo, $table, $column) {
 // Check available tables
 $has_fuel_deliveries = table_exists($pdo, 'fuel_deliveries');
 $has_merchandise_deliveries = table_exists($pdo, 'merchandise_deliveries');
+$has_deliveries_oversight = table_exists($pdo, 'deliveries_oversight');
 $has_suppliers = table_exists($pdo, 'suppliers');
 $has_fuel_types = table_exists($pdo, 'fuel_types');
 $has_products = table_exists($pdo, 'products');
+$has_purchase_orders = table_exists($pdo, 'purchase_orders');
 
 // Initialize data
 $fuel_deliveries = [];
@@ -133,8 +135,9 @@ if ($has_fuel_deliveries) {
 // ============================================================
 // FETCH MERCHANDISE DELIVERIES
 // ============================================================
-if ($has_merchandise_deliveries) {
+if ($has_deliveries_oversight || $has_merchandise_deliveries) {
     try {
+        if ($has_deliveries_oversight) {
         $sql = "SELECT 
                     md.id,
                     COALESCE(md.batch_id, '—') AS delivery_id,
@@ -158,6 +161,54 @@ if ($has_merchandise_deliveries) {
             WHERE md.station_id = ? AND md.delivery_type = 'merchandise'
                  AND DATE(md.delivery_date) BETWEEN ? AND ?
                  ORDER BY md.delivery_date DESC, md.created_at DESC";
+        } else {
+            $productSelect = $has_products ? "COALESCE(p.name, CONCAT('Product #', md.product_id))" : "CONCAT('Product #', md.product_id)";
+            $supplierSelect = $has_suppliers ? "COALESCE(s.name, CONCAT('Supplier #', md.supplier_id), 'N/A')" : "COALESCE(CONCAT('Supplier #', md.supplier_id), 'N/A')";
+            $unitPriceSelect = $has_purchase_orders
+                ? ($has_products ? "COALESCE(po.unit_price, p.cost, p.price, 0)" : "COALESCE(po.unit_price, 0)")
+                : ($has_products ? "COALESCE(p.cost, p.price, 0)" : "0");
+            $totalAmountSelect = $has_purchase_orders
+                ? "COALESCE(po.total_amount, md.quantity * {$unitPriceSelect}, 0)"
+                : "COALESCE(md.quantity * {$unitPriceSelect}, 0)";
+            $poReferenceSelect = $has_purchase_orders
+                ? "COALESCE(po.po_number, CONCAT('PO #', md.po_id), 'N/A')"
+                : "COALESCE(CONCAT('PO #', md.po_id), 'N/A')";
+
+            $sql = "SELECT
+                        md.id,
+                        CONCAT('MD-', md.id) AS delivery_id,
+                        {$supplierSelect} AS supplier,
+                        {$productSelect} AS product_name,
+                        md.quantity,
+                        {$unitPriceSelect} AS unit_price,
+                        {$totalAmountSelect} AS total_amount,
+                        md.delivery_date,
+                        {$poReferenceSelect} AS po_reference,
+                        md.quantity AS expected_quantity,
+                        md.quantity AS actual_quantity,
+                        0 AS variance,
+                        md.status,
+                        CASE WHEN HOUR(COALESCE(md.created_at, md.delivery_date)) >= 6 AND HOUR(COALESCE(md.created_at, md.delivery_date)) < 14 THEN 'Shift 1' ELSE 'Shift 2' END AS shift,
+                        COALESCE(md.remarks, md.manager_reason, md.notes, 'N/A') AS remarks,
+                        COALESCE(u.username, 'N/A') AS encoder,
+                        md.created_at
+                FROM merchandise_deliveries md
+                LEFT JOIN users u ON md.encoded_by = u.id ";
+
+            if ($has_products) {
+                $sql .= "LEFT JOIN products p ON p.id = md.product_id ";
+            }
+            if ($has_suppliers) {
+                $sql .= "LEFT JOIN suppliers s ON s.id = md.supplier_id ";
+            }
+            if ($has_purchase_orders) {
+                $sql .= "LEFT JOIN purchase_orders po ON po.id = md.po_id ";
+            }
+
+            $sql .= "WHERE md.station_id = ?
+                     AND DATE(md.delivery_date) BETWEEN ? AND ?
+                     ORDER BY md.delivery_date DESC, md.created_at DESC";
+        }
         
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$station_id, $date_start, $date_end]);

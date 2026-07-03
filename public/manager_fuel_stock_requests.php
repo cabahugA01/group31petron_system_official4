@@ -288,9 +288,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $requests = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT fsr.*, u.name AS staff_name, m.name AS manager_name
+        SELECT fsr.*, COALESCE(u.name, 'Unknown Staff') AS staff_name, m.name AS manager_name
         FROM fuel_stock_requests fsr
-        JOIN users u ON fsr.staff_id = u.id
+        LEFT JOIN users u ON fsr.staff_id = u.id
         LEFT JOIN users m ON fsr.manager_id = m.id
         WHERE fsr.station_id = ?
         ORDER BY
@@ -311,10 +311,10 @@ try {
 $merch_requests = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT sr.*, u.name AS staff_name, m.name AS manager_name,
+        SELECT sr.*, COALESCE(u.name, 'Unknown Staff') AS staff_name, m.name AS manager_name,
                po.id as po_id, po.po_number
         FROM stock_requests sr
-        JOIN users u ON sr.staff_id = u.id
+        LEFT JOIN users u ON sr.staff_id = u.id
         LEFT JOIN users m ON sr.manager_id = m.id
         LEFT JOIN purchase_orders po ON po.request_id = sr.id
         WHERE sr.station_id = ?
@@ -334,7 +334,7 @@ try {
 $pending_count = count(array_filter($requests, fn($r) => $r['status'] === 'Pending'));
 $validated_merch_count = count(array_filter($merch_requests, fn($r) => $r['status'] === 'Validated' && empty($r['po_id'])));
 
-include __DIR__ . '/../partials/header.php';
+include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 
 <div class="page-head">

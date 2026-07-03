@@ -216,6 +216,7 @@ function sfr_badge(string $status): string {
 }
 
 require_once __DIR__ . '/../partials/header.php';
+require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 
 <style>

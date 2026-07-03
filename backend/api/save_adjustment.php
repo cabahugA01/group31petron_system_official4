@@ -168,11 +168,15 @@ try {
 
     // Round total
     $new_total = round($new_total, 2);
+    $new_subtotal = round($new_total / 1.12, 2);
+    $new_vat = round($new_total - $new_subtotal, 2);
 
     // ── Update transaction header ─────────────────────────────────────────────
     $update_sql = "
         UPDATE merchandise_transactions SET
             total_amount       = ?,
+            subtotal_amount    = ?,
+            vat_amount         = ?,
             payment_method     = ?,
             payment_status     = ?,
             validation_status  = 'Adjusted',
@@ -185,6 +189,8 @@ try {
     ";
     $pdo->prepare($update_sql)->execute([
         $new_total,
+        $new_subtotal,
+        $new_vat,
         $payment_method ?: $txn['payment_method'],
         $payment_status ?: ($txn['payment_status'] ?? 'Paid'),
         $adjustment_reason,

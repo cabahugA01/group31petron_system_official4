@@ -227,15 +227,115 @@ $filter_staff_id = $_GET['staff_id'] ?? '';
 $filter_status = $_GET['status'] ?? '';
 $filter_shift = $_GET['shift'] ?? '';
 
+// ── FETCH VALIDATED BEGINNING READINGS FOR EACH PUMP (shift carry-over) ─────────────
+// Rule:
+//   Shift 2 (second) → fetch validated Ending from Shift 1 (first)
+//   Shift 1 (first)  → fetch validated Ending from Shift 2 (second)
+//   Status must be: verified / approved / adjusted / validated
+$last_readings_by_pump = [];     // pump_label => validated ending reading value
+$pump_missing_prev     = [];     // pump_label => true  (flag: no validated prev found)
+try {
+    // Determine which shift/day to look back at
+    // We detect current shift from session (fuel_shift_key is populated after line 318)
+    // Use a two-pass approach: run after shift detection (we'll re-run below after shift is known)
+    // Store a deferred closure pattern — actually set a flag, then run after shift variables are set
+    $__fetch_prev_readings = function() use ($pdo, $station_id) {
+        global $fuel_shift_key, $last_readings_by_pump, $pump_missing_prev;
+
+        if ($fuel_shift_key === 'second') {
+            $prev_shift = 'first';
+        } else {
+            $prev_shift = 'second';
+        }
+
+        // 1. Get the date of the most recent transaction for the previous shift (not rejected)
+        $target_date = null;
+        try {
+            $date_stmt = $pdo->prepare("
+                SELECT DATE(transaction_date) 
+                FROM fuel_transactions 
+                WHERE station_id = ? 
+                  AND shift_period = ? 
+                  AND (LOWER(status) NOT IN ('rejected','voided','cancelled','canceled') OR status IS NULL)
+                ORDER BY transaction_date DESC, id DESC LIMIT 1
+            ");
+            $date_stmt->execute([$station_id, $prev_shift]);
+            $target_date = $date_stmt->fetchColumn();
+        } catch (Exception $e) {}
+
+        if (!$target_date) {
+            return;
+        }
+
+        // 2. Fetch all transactions for that shift on that date (not rejected)
+        $tx_rows = [];
+        try {
+            $stmt = $pdo->prepare("
+                SELECT ft.id, COALESCE(fp.pump_number, ft.fuel_type) AS pump_label, ft.fuel_type, ft.present_reading
+                FROM fuel_transactions ft
+                LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
+                WHERE ft.station_id = ?
+                  AND (LOWER(ft.status) NOT IN ('rejected','voided','cancelled','canceled') OR ft.status IS NULL)
+                  AND ft.shift_period = ?
+                  AND DATE(ft.transaction_date) = ?
+                ORDER BY ft.id ASC
+            ");
+            $stmt->execute([$station_id, $prev_shift, $target_date]);
+            $tx_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {}
+
+        // 3. Map to pump labels
+        $nozzle_lists = [
+            'xcs plus' => ['XCS PLUS - 1', 'XCS PLUS - 2', 'XCS PLUS - 3', 'XCS PLUS - 4'],
+            'turbo diesel' => ['TURBO DIESEL - 1', 'TURBO DIESEL - 2'],
+            'xtra unl' => ['XTRA UNL 1 - 1', 'XTRA UNL 1 - 2', 'XTRA UNL 2 - 3', 'XTRA UNL 2 - 4'],
+            'diesel' => ['DIESEL 1 - 1', 'DIESEL 1 - 2', 'DIESEL 1 - 3', 'DIESEL 1 - 4', 'DIESEL 2 - 5', 'DIESEL 2 - 6'],
+            'kerosene' => ['KEROSENE - 1']
+        ];
+
+        $generic_counts = [];
+        foreach ($tx_rows as $row) {
+            $lbl = strtoupper(trim($row['pump_label'] ?? ''));
+            $fuel_type_lower = strtolower(trim($row['fuel_type'] ?? ''));
+
+            if (strpos($lbl, ' - ') !== false) {
+                $last_readings_by_pump[$lbl] = (float)$row['present_reading'];
+            } else {
+                $matched_key = null;
+                foreach ($nozzle_lists as $key => $list) {
+                    if (str_contains($fuel_type_lower, $key)) {
+                        $matched_key = $key;
+                        break;
+                    }
+                }
+                if ($matched_key !== null) {
+                    if (!isset($generic_counts[$matched_key])) {
+                        $generic_counts[$matched_key] = 0;
+                    }
+                    $idx = $generic_counts[$matched_key];
+                    if (isset($nozzle_lists[$matched_key][$idx])) {
+                        $target_nozzle = $nozzle_lists[$matched_key][$idx];
+                        $last_readings_by_pump[strtoupper($target_nozzle)] = (float)$row['present_reading'];
+                        $generic_counts[$matched_key]++;
+                    }
+                }
+            }
+        }
+    };
+} catch (Exception $e) {}
+
 // ── Detect current shift period — use active labor session first (matches dashboard) ──
 $merch_shift_key  = '';
 $merch_shift_name = '';
+$active_shift = []; // Array to hold full shift details including sort_order
 try {
     // Priority 1: use the shift from the staff's active clock-in session (same as dashboard)
     $active_sess = $pdo->prepare(
-        "SELECT shift_period, shift_name FROM labor_sessions
-         WHERE user_id = ? AND end_time IS NULL
-         ORDER BY start_time DESC LIMIT 1"
+        "SELECT ls.shift_period, ls.shift_name, sp.sort_order 
+         FROM labor_sessions ls
+         LEFT JOIN shift_periods sp ON ls.shift_period = sp.shift_key
+         WHERE ls.user_id = ? AND ls.end_time IS NULL
+         ORDER BY ls.start_time DESC LIMIT 1"
     );
     $active_sess->execute([$me['id']]);
     $active_row = $active_sess->fetch(PDO::FETCH_ASSOC);
@@ -243,32 +343,83 @@ try {
     if ($active_row && !empty($active_row['shift_period'])) {
         $merch_shift_key  = $active_row['shift_period'];
         $merch_shift_name = $active_row['shift_name'] ?: '';
+        $active_shift = [
+            'shift_key' => $active_row['shift_period'],
+            'shift_name' => $active_row['shift_name'],
+            'shift_order' => (int)($active_row['sort_order'] ?? 1)
+        ];
     } else {
         // Priority 2: fall back to time-based detection from DB
         $ct = date('H:i:s');
-        $sp = $pdo->prepare("SELECT shift_key, shift_name FROM shift_periods WHERE is_active = 1 AND start_time <= ? AND end_time >= ? ORDER BY sort_order ASC LIMIT 1");
+        $sp = $pdo->prepare("SELECT shift_key, shift_name, sort_order FROM shift_periods WHERE is_active = 1 AND start_time <= ? AND end_time >= ? ORDER BY sort_order ASC LIMIT 1");
         $sp->execute([$ct, $ct]);
         $sf = $sp->fetch(PDO::FETCH_ASSOC);
         if ($sf) {
             $merch_shift_key  = $sf['shift_key'];
             $merch_shift_name = $sf['shift_name'];
+            $active_shift = [
+                'shift_key' => $sf['shift_key'],
+                'shift_name' => $sf['shift_name'],
+                'shift_order' => (int)($sf['sort_order'] ?? 1)
+            ];
         } else {
             // Priority 3: first active shift from DB
-            $sp2 = $pdo->query("SELECT shift_key, shift_name FROM shift_periods WHERE is_active = 1 ORDER BY sort_order ASC LIMIT 1");
+            $sp2 = $pdo->query("SELECT shift_key, shift_name, sort_order FROM shift_periods WHERE is_active = 1 ORDER BY sort_order ASC LIMIT 1");
             $sf2 = $sp2 ? $sp2->fetch(PDO::FETCH_ASSOC) : null;
-            if ($sf2) { $merch_shift_key = $sf2['shift_key']; $merch_shift_name = $sf2['shift_name']; }
+            if ($sf2) { 
+                $merch_shift_key = $sf2['shift_key']; 
+                $merch_shift_name = $sf2['shift_name']; 
+                $active_shift = [
+                    'shift_key' => $sf2['shift_key'],
+                    'shift_name' => $sf2['shift_name'],
+                    'shift_order' => (int)($sf2['sort_order'] ?? 1)
+                ];
+            }
         }
     }
     // If still empty, last resort: any shift from DB
     if (empty($merch_shift_key)) {
-        $sp3 = $pdo->query("SELECT shift_key, shift_name FROM shift_periods ORDER BY sort_order ASC LIMIT 1");
+        $sp3 = $pdo->query("SELECT shift_key, shift_name, sort_order FROM shift_periods ORDER BY sort_order ASC LIMIT 1");
         $sf3 = $sp3 ? $sp3->fetch(PDO::FETCH_ASSOC) : null;
-        if ($sf3) { $merch_shift_key = $sf3['shift_key']; $merch_shift_name = $sf3['shift_name']; }
+        if ($sf3) { 
+            $merch_shift_key = $sf3['shift_key']; 
+            $merch_shift_name = $sf3['shift_name']; 
+            $active_shift = [
+                'shift_key' => $sf3['shift_key'],
+                'shift_name' => $sf3['shift_name'],
+                'shift_order' => (int)($sf3['sort_order'] ?? 1)
+            ];
+        }
     }
 } catch (Exception $e) {}
 // Fuel form uses the same shift
 $fuel_shift_key  = $merch_shift_key;
 $fuel_shift_name = $merch_shift_name;
+
+// ── NOW run the deferred validated-beginning-reading fetch (needs $fuel_shift_key) ──
+if (isset($__fetch_prev_readings) && is_callable($__fetch_prev_readings)) {
+    $__fetch_prev_readings();
+}
+
+// ── If current shift already submitted readings, reset beginning to 0 ──────────
+// Professional behavior: once Shift 2 submits, the form resets to 0 (clean slate).
+// The next shift will fetch today's endings as their beginning from the DB.
+$shift_already_submitted = false;
+try {
+    $subm_check = $pdo->prepare("
+        SELECT COUNT(*) FROM fuel_transactions
+        WHERE station_id = ?
+          AND shift_period = ?
+          AND DATE(transaction_date) = CURDATE()
+    ");
+    $subm_check->execute([$station_id, $fuel_shift_key]);
+    $shift_already_submitted = (int)$subm_check->fetchColumn() > 0;
+} catch (Exception $e) {}
+
+// Clear fetched readings so beginning renders as 0 (not re-populated from prev shift)
+if ($shift_already_submitted) {
+    $last_readings_by_pump = [];
+}
 
 // ── STAFF DASHBOARD KPI CARDS DATA ────────────────────────────────────────────
 $staff_kpi = [
@@ -727,7 +878,7 @@ if ($section === 'history' || $section === 'fuel_history') {
                    $mt_pstat_col  AS payment_status,
                    $mt_amtp_col   AS amount_paid,
                    $mt_bal_col    AS balance_due,
-                   COALESCE(u.name, u.username, 'Staff') AS encoder_name,
+                   COALESCE(NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''), u.username, 'Staff') AS encoder_name,
                    $mt_date_col   AS transaction_date,
                    mt.item_sku,
                    mt.quantity,
@@ -2585,8 +2736,8 @@ input[list] {
         <div class="txn-section-header">
             <div class="txn-section-title">
                 <div>
-                    <h1>Fuel Transaction</h1>
-                    <p style="font-size:14px;color:#666666;margin:3px 0 0;text-transform:uppercase;letter-spacing:0.3px;font-weight:500;">ENCODE DAILY PUMP READINGS AND FUEL TRANSACTIONS FOR MONITORING.</p>
+                    <h1>Meter Readings</h1>
+                    <p style="font-size:14px;color:#666666;margin:3px 0 0;text-transform:uppercase;letter-spacing:0.3px;font-weight:500;">ENCODE DAILY METER READINGS AND FUEL TRANSACTIONS FOR MONITORING.</p>
                 </div>
             </div>
             <div style="display:flex; flex-direction:column; gap:12px; align-items:flex-end;">
@@ -2855,6 +3006,7 @@ input[list] {
                 <input type="hidden" name="station_id"       value="<?= (int)$station_id ?>">
                 <input type="hidden" name="fuel_type"        value="<?= $ft_name_form ?>">
                 <input type="hidden" name="tanker_number"    value="<?= $tanker_num ?>">
+                <input type="hidden" name="pump_label"       value="<?= htmlspecialchars(strtoupper($group_name) . ' - ' . $tanker_num) ?>">
                 <input type="hidden" name="shift_period"     value="<?= htmlspecialchars($fuel_shift_key) ?>">
                 <input type="hidden" name="shift_name"       value="<?= htmlspecialchars($fuel_shift_name) ?>">
                 <input type="hidden" name="reading_date"     value="<?= date('Y-m-d') ?>">
@@ -2873,7 +3025,7 @@ input[list] {
                             <th colspan="6" style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:14px;font-weight:700;color:#fff;">METER READING</th>
                         </tr>
                         <tr style="background:#002F70;">
-                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">BEGINNING <span style="color:#f87171;">*</span><br><span style="font-size:9px;font-weight:400;color:#93c5fd;">(Required)</span></th>
+                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;" title="Auto-fetched from previous validated shift. Read-only."><i class="fas fa-lock" style="font-size:9px;opacity:0.8;margin-right:3px;"></i>BEGINNING<br><span style="font-size:9px;font-weight:400;color:#86efac;">(Auto-Fetched)</span></th>
                             <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">ENDING <span style="color:#f87171;">*</span><br><span style="font-size:9px;font-weight:400;color:#93c5fd;">(Required)</span></th>
                             <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">CALIBRATION<br><span style="font-size:9px;font-weight:400;color:#93c5fd;">(Default 0.00)</span></th>
                             <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">PRICE / LITER<br><span style="font-size:9px;font-weight:400;color:#93c5fd;">(Auto)</span></th>
@@ -2957,40 +3109,10 @@ input[list] {
                                 $ft_id = 'fuel_' . preg_replace('/[^a-z0-9]/i', '_', $group_name) . '_' . $idx . '_t' . $tanker_num;
                                 $display_name = strtoupper($group_name) . ' - ' . $tanker_num;
 
-                                // ── Continuous Meter Reading Cycle ──────────────────────────────────
-                                // Fetch the last present_reading for this specific pump (fuel_type + pump_id)
-                                // This becomes the pre-filled Beginning for the current shift.
-                                $pump_prev_reading = 0.00;
-                                try {
-                                    // Bulletproof: match pump_id whether it stores tanker_num OR the resolved fuel_pumps PK
-                                    // Get the most recent transaction (by date DESC, then id DESC) regardless of shift
-                                    $pump_prev_stmt = $pdo->prepare("
-                                        SELECT present_reading FROM fuel_transactions
-                                        WHERE station_id = ?
-                                          AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                                          AND (
-                                            pump_id = ?
-                                            OR pump_id = (
-                                                SELECT fp.id FROM fuel_pumps fp
-                                                JOIN fuel_types ftp ON ftp.id = fp.fuel_type_id
-                                                WHERE fp.station_id = ?
-                                                  AND fp.pump_number = ?
-                                                  AND LOWER(TRIM(ftp.name)) = LOWER(TRIM(?))
-                                                LIMIT 1
-                                            )
-                                          )
-                                          AND COALESCE(status, '') != 'Rejected'
-                                        ORDER BY transaction_date DESC, id DESC LIMIT 1
-                                    ");
-                                    $pump_prev_stmt->execute([
-                                        $station_id, $ft['fuel_type'], $tanker_num,
-                                        $station_id, (string)$tanker_num, $ft['fuel_type']
-                                    ]);
-                                    $pump_prev_val = $pump_prev_stmt->fetchColumn();
-                                    if ($pump_prev_val !== false && $pump_prev_val !== null) {
-                                        $pump_prev_reading = (float)$pump_prev_val;
-                                    }
-                                } catch (Exception $e) { /* fallback to 0 */ }
+                                // ── Validated shift carry-over lookup ──
+                                $lbl_key = strtoupper(trim($display_name));
+                                $pump_prev_reading   = isset($last_readings_by_pump[$lbl_key]) ? $last_readings_by_pump[$lbl_key] : null;
+                                $has_prev_reading    = ($pump_prev_reading !== null && $pump_prev_reading > 0);
                     ?>
                     <tr id="fuelRow_<?= $ft_id ?>" style="border-bottom:1px solid #e2e8f0;">
                         <!-- NAME Column (plain text, no icon) -->
@@ -2998,19 +3120,44 @@ input[list] {
                             <span style="font-weight:700;font-size:12px;color:#1e293b;"><?= $display_name ?></span>
                         </td>
 
-                        <!-- BEGINNING Column * — pre-filled from previous shift's Ending reading -->
+                        <!-- BEGINNING Column — READ-ONLY auto-fetched from previous validated shift -->
                         <td style="border:1px solid #e2e8f0;padding:6px;">
-                            <input type="text"
-                                   form="fuelForm_<?= $ft_id ?>"
-                                   name="beginning_reading"
-                                   id="beginning_<?= $ft_id ?>"
-                                   style="width:110px;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;<?= $pump_prev_reading > 0 ? 'background:#f0f9ff;font-weight:600;' : '' ?>"
-                                   value="<?= $pump_prev_reading > 0 ? number_format($pump_prev_reading, 2, '.', ',') : '' ?>"
-                                   placeholder="<?= $pump_prev_reading > 0 ? number_format($pump_prev_reading, 2, '.', ',') : '0.00' ?>"
-                                   autocomplete="off"
-                                   oninput="formatOnInput(this); updateFuelCalc('<?= $ft_id ?>')"
-                                   onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')"
-                                   required>
+                            <?php if ($has_prev_reading): ?>
+                                <input type="text"
+                                       form="fuelForm_<?= $ft_id ?>"
+                                       name="beginning_reading"
+                                       id="beginning_<?= $ft_id ?>"
+                                       style="width:110px;padding:8px;font-size:12px;border:1px solid #86efac;border-radius:4px;text-align:right;background:#f0fdf4;font-weight:700;color:#15803d;cursor:not-allowed;"
+                                       value="<?= number_format($pump_prev_reading, 2, '.', ',') ?>"
+                                       readonly
+                                       title="Auto-fetched from previous validated shift. Cannot be edited."
+                                       data-pump="<?= htmlspecialchars($display_name) ?>">
+                            <?php elseif ($shift_already_submitted): ?>
+                                <!-- Shift already submitted — reset to 0, no block -->
+                                <input type="text"
+                                       form="fuelForm_<?= $ft_id ?>"
+                                       name="beginning_reading"
+                                       id="beginning_<?= $ft_id ?>"
+                                       style="width:110px;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;background:#f8fafc;font-weight:600;color:#64748b;cursor:not-allowed;"
+                                       value="0.00"
+                                       readonly
+                                       placeholder="0.00"
+                                       title="Readings already submitted for this shift."
+                                       data-pump="<?= htmlspecialchars($display_name) ?>">
+                            <?php else: ?>
+                                <!-- No validated previous reading — block submission -->
+                                <input type="text"
+                                       form="fuelForm_<?= $ft_id ?>"
+                                       name="beginning_reading"
+                                       id="beginning_<?= $ft_id ?>"
+                                       style="width:110px;padding:8px;font-size:12px;border:1.5px solid #fca5a5;border-radius:4px;text-align:center;background:#fff1f1;font-size:10px;color:#b91c1c;cursor:not-allowed;"
+                                       value=""
+                                       readonly
+                                       placeholder="No prev. validated reading"
+                                       title="Previous validated meter reading not found. Cannot submit until available."
+                                       data-pump="<?= htmlspecialchars($display_name) ?>"
+                                       data-missing="1">
+                            <?php endif; ?>
                         </td>
 
                         <!-- ENDING Column * -->
@@ -3095,6 +3242,38 @@ input[list] {
                     </tbody>
                 </table>
             </div><!-- /fet-wrap -->
+
+            <?php
+            // ── Emit JS array of all ft_ids for page-load init ──
+            $all_ft_ids_js = [];
+            $rendered_for_js = [];
+            foreach ($fuel_types as $idx_js => $ft_js) {
+                $ft_lower_js = strtolower(trim($ft_js['fuel_type']));
+                $cfg_js = null; $key_js = null;
+                foreach ($tanker_config as $k => $g) {
+                    if (str_contains($ft_lower_js, $k)) { $cfg_js = $g; $key_js = $k; break; }
+                }
+                if ($key_js !== null) {
+                    if (in_array($key_js, $rendered_for_js)) continue;
+                    $rendered_for_js[] = $key_js;
+                }
+                if (!$cfg_js) $cfg_js = [['name' => $ft_js['fuel_type'], 'tankers' => [1]]];
+                foreach ($cfg_js as $grp_js) {
+                    foreach ($grp_js['tankers'] as $tn_js) {
+                        $all_ft_ids_js[] = 'fuel_' . preg_replace('/[^a-z0-9]/i', '_', $grp_js['name']) . '_' . $idx_js . '_t' . $tn_js;
+                    }
+                }
+            }
+            ?>
+            <script>
+            // ── On page load: run updateFuelCalc for every row so pre-filled values show totals ──
+            document.addEventListener('DOMContentLoaded', function() {
+                const fuelRows = <?= json_encode($all_ft_ids_js) ?>;
+                fuelRows.forEach(function(ftId) {
+                    if (typeof updateFuelCalc === 'function') updateFuelCalc(ftId);
+                });
+            });
+            </script>
 
             <!-- Submit/Reset Buttons - Bottom Right -->
             <div style="display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:16px;padding:0 8px;">
@@ -3373,6 +3552,15 @@ input[list] {
 
             if (!form) return false;
 
+            // ── Guard: beginning reading missing (no previous shift reading found at all) ──
+            const beginningEl = document.getElementById('beginning_' + ftId);
+            if (beginningEl && beginningEl.dataset.missing === '1') {
+                const pumpName = beginningEl.dataset.pump || ftId;
+                showRowMsg(msgEl, 'error',
+                    `⚠️ Cannot submit <strong>${pumpName}</strong>: No previous shift meter reading found. Please ensure the previous shift has submitted their readings.`);
+                return false;
+            }
+
             // Build FormData from the form
             const formData = new FormData(form);
 
@@ -3468,13 +3656,16 @@ input[list] {
 
                     const submittedEnding = parseFloat((endingEl?.value || '0').replace(/,/g, ''));
 
-                    // Update beginning to the ending we just submitted (with comma formatting)
-                    if (beginningEl && submittedEnding > 0) {
-                        const fmtEnding = submittedEnding.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-                        beginningEl.value = fmtEnding;
-                        beginningEl.placeholder = fmtEnding;
-                        beginningEl.style.background = '#f0f9ff';
-                        beginningEl.style.fontWeight  = '600';
+                    // After submission, reset beginning to 0 — professional clean reset.
+                    // The next shift will fetch this ending as their beginning from validated DB.
+                    if (beginningEl) {
+                        beginningEl.value = '0.00';
+                        beginningEl.placeholder = '0.00';
+                        delete beginningEl.dataset.missing;
+                        beginningEl.style.background = '#f8fafc';
+                        beginningEl.style.fontWeight = '600';
+                        beginningEl.style.color      = '#64748b';
+                        beginningEl.style.border     = '1px solid #cbd5e1';
                     }
 
                     // Clear ending and computed fields
@@ -3605,33 +3796,51 @@ input[list] {
             const allForms = document.querySelectorAll('form[id^="fuelForm_"]');
             const formsToSubmit = [];
 
-            let validationFailed = false;
-            // Collect ALL forms (even with 0 readings - valid for no sales shifts)
+            const skippedForms = []; // rows with errors — skipped but logged
+
+            // Categorize each form: valid to submit OR skip with reason
             allForms.forEach(form => {
                 const ftId = form.id.replace('fuelForm_', '');
-                const endingEl = document.getElementById(`ending_${ftId}`);
+                const endingEl    = document.getElementById(`ending_${ftId}`);
                 const beginningEl = document.getElementById(`beginning_${ftId}`);
-                const endingValue = parseFloat((endingEl?.value || '0').replace(/,/g, ''));
-                const beginningValue = parseFloat((beginningEl?.value || '0').replace(/,/g, ''));
-                
-                // Validate: ending cannot be less than beginning
-                if (endingValue < beginningValue) {
-                    showToast(`Invalid Reading for ${ftId.replace(/_/g, ' ').toUpperCase()}: Ending cannot be less than Beginning.`, 'error');
-                    const msgEl = document.getElementById('cardMsg_' + ftId);
-                    if (msgEl) showRowMsg(msgEl, 'error', 'Invalid Reading: Ending cannot be less than Beginning.');
-                    validationFailed = true;
+                const msgEl       = document.getElementById('cardMsg_' + ftId);
+                const pumpLabel   = (beginningEl?.dataset?.pump || ftId).replace(/_/g, ' ').toUpperCase();
+
+                // Skip: previous validated reading missing
+                if (beginningEl && beginningEl.dataset.missing === '1') {
+                    skippedForms.push({ ftId, reason: `No previous validated reading` });
+                    if (msgEl) showRowMsg(msgEl, 'error', 'Previous validated meter reading not found — skipped.');
+                    return; // skip this row
                 }
-                
-                // Add ALL forms to submit (including those with 0 readings)
+
+                const endingValue    = parseFloat((endingEl?.value    || '0').replace(/,/g, ''));
+                const beginningValue = parseFloat((beginningEl?.value || '0').replace(/,/g, ''));
+
+                // Skip: ending < beginning (only when ending was actually entered > 0)
+                if (endingValue > 0 && endingValue < beginningValue) {
+                    skippedForms.push({ ftId, reason: `Ending (${endingValue.toLocaleString()}) < Beginning (${beginningValue.toLocaleString()})` });
+                    if (msgEl) showRowMsg(msgEl, 'error', 'Ending cannot be less than Beginning — skipped.');
+                    return; // skip this row
+                }
+
+                // Valid — queue for submission
                 formsToSubmit.push({ ftId, form });
             });
 
-            if (validationFailed) return;
+            // Nothing valid to submit
+            if (formsToSubmit.length === 0) {
+                showToast('No valid readings to submit. Please correct the errors highlighted in red.', 'error');
+                return;
+            }
 
-            // Allow submission even if all readings are 0 (no sales during shift is valid)
+            // Build confirm message
+            let confirmMsg = `Submit ${formsToSubmit.length} fuel reading(s) for manager validation?`;
+            if (skippedForms.length > 0) {
+                confirmMsg += `\n\n⚠️ ${skippedForms.length} row(s) will be SKIPPED due to errors:\n` +
+                    skippedForms.map(s => `• ${s.ftId.replace(/_/g,' ').toUpperCase()}: ${s.reason}`).join('\n');
+            }
 
-            // Custom confirm instead of browser confirm()
-            const confirmed = await showConfirm(`Submit ${formsToSubmit.length} fuel reading(s) for manager validation?`);
+            const confirmed = await showConfirm(confirmMsg);
             if (!confirmed) return;
 
             let successCount = 0;
@@ -3671,12 +3880,16 @@ input[list] {
                         const amountEl    = document.getElementById(`amount_${ftId}`);
                         const amountValEl = document.getElementById(`amount_value_${ftId}`);
                         const submittedEnding = parseFloat((endingEl?.value || '0').replace(/,/g, ''));
-                        if (beginningEl && submittedEnding > 0) {
-                            const fmtEnding = submittedEnding.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-                            beginningEl.value = fmtEnding;
-                            beginningEl.placeholder = fmtEnding;
-                            beginningEl.style.background = '#f0f9ff';
-                            beginningEl.style.fontWeight  = '600';
+                        // After submission, reset beginning to 0 — professional clean reset.
+                        // The next shift will fetch this ending as their beginning from validated DB.
+                        if (beginningEl) {
+                            beginningEl.value = '0.00';
+                            beginningEl.placeholder = '0.00';
+                            delete beginningEl.dataset.missing;
+                            beginningEl.style.background = '#f8fafc';
+                            beginningEl.style.fontWeight = '600';
+                            beginningEl.style.color      = '#64748b';
+                            beginningEl.style.border     = '1px solid #cbd5e1';
                         }
                         if (endingEl)    endingEl.value    = '';
                         if (calEl)       calEl.value       = '0.00';
@@ -3704,11 +3917,12 @@ input[list] {
                 document.getElementById('globalFuelRemarks').value = '';
                 document.getElementById('globalRemarksTextarea').value = '';
                 document.getElementById('remarksButtonLabel').textContent = 'Add Remarks';
-                
-                showToast('✔ All meter readings for today\'s shift have been recorded.', 'success');
-                // Redirect to manager validation after short delay
+
+                showToast('✔ All meter readings for today\'s shift have been recorded. Pending manager validation.', 'success');
+                // Reload the page after a short delay so the form resets cleanly
+                // and the next shift will see their carry-over beginning readings
                 setTimeout(() => {
-                    window.location.href = 'manager_fuel_transaction_validation.php';
+                    window.location.reload();
                 }, 2800);
             } else {
                 showToast(
@@ -3839,6 +4053,51 @@ input[list] {
             const endIdx = Math.min(startIdx + window.todayEntriesPageSize, totalRows);
             const pageRows = rows.slice(startIdx, endIdx);
 
+            // Assign sequential labels using GROUP-level counter
+            function _getFuelGroup(ft) {
+                const f = (ft || '').toUpperCase().trim();
+                if (f.includes('TURBO') && f.includes('DIESEL')) return 'TURBO DIESEL';
+                if (f.includes('DIESEL')) return 'DIESEL';
+                if (f.includes('KEROSENE')) return 'KEROSENE';
+                if (f.includes('XCS') && f.includes('PLUS'))  return 'XCS PLUS';
+                if (f.includes('XTRA') && f.includes('UNL'))  return 'XTRA UNL';
+                return f;
+            }
+            function getFormattedFuelName(fuelType, seqNumber) {
+                const f = (fuelType || '').toUpperCase().trim();
+                if (f.includes('TURBO') && f.includes('DIESEL')) {
+                    return `TURBO DIESEL - ${seqNumber}`;
+                }
+                if (f.includes('DIESEL')) {
+                    if (seqNumber <= 4) {
+                        return `DIESEL 1 - ${seqNumber}`;
+                    } else {
+                        return `DIESEL 2 - ${seqNumber}`;
+                    }
+                }
+                if (f.includes('KEROSENE')) {
+                    return `KEROSENE - ${seqNumber}`;
+                }
+                if (f.includes('XCS') && f.includes('PLUS')) {
+                    return `XCS PLUS - ${seqNumber}`;
+                }
+                if (f.includes('XTRA') && f.includes('UNL')) {
+                    if (seqNumber <= 2) {
+                        return `XTRA UNL 1 - ${seqNumber}`;
+                    } else {
+                        return `XTRA UNL 2 - ${seqNumber}`;
+                    }
+                }
+                return `${f} - ${seqNumber}`;
+            }
+            const _grpCounters = {};
+            rows.forEach(r => {
+                const grp   = _getFuelGroup(r.fuel_type);
+                if (!_grpCounters[grp]) _grpCounters[grp] = 0;
+                _grpCounters[grp]++;
+                r._seq_label = getFormattedFuelName(r.fuel_type, _grpCounters[grp]);
+            });
+
             const statusMap = {
                 'pending validation': {color:'#d97706',label:'Pending Validation'},
                 'pending':            {color:'#d97706',label:'Pending Validation'},
@@ -3899,9 +4158,9 @@ input[list] {
             let html = `<div style="overflow-x:hidden; border-bottom:1px solid #e2e8f0; background:#ffffff;">
                 <table id="todayReadingsTable" style="width:100%; border-collapse:collapse; font-size:11px; text-align:left; table-layout:fixed;">
                     <colgroup>
-                        <col style="width: 8%;">  <!-- Date -->
+                        <col style="width: 7%;">  <!-- Date -->
                         <col style="width: 8%;">  <!-- Shift -->
-                        <col style="width: 10%;"> <!-- Pump / Fuel Type -->
+                        <col style="width: 14%;"> <!-- Name -->
                         <col style="width: 7%;">  <!-- Beginning -->
                         <col style="width: 7%;">  <!-- Ending -->
                         <col style="width: 7%;">  <!-- Calibration -->
@@ -3910,13 +4169,13 @@ input[list] {
                         <col style="width: 9%;">  <!-- Amount -->
                         <col style="width: 9%;">  <!-- Encoded By -->
                         <col style="width: 10%;"> <!-- Status -->
-                        <col style="width: 10%;"> <!-- Notes -->
+                        <col style="width: 7%;">  <!-- Notes -->
                     </colgroup>
                     <thead>
                         <tr style="background:#002F70; border-bottom:2px solid #001f4d;">
                             <th style="${TH}" title="Date">Date</th>
                             <th style="${TH}" title="Shift">Shift</th>
-                            <th style="${TH}" title="Pump / Fuel Type">Pump / Fuel Type</th>
+                            <th style="${TH}" title="Name">Name</th>
                             <th style="${THR}" title="Beginning">Beginning</th>
                             <th style="${THR}" title="Ending">Ending</th>
                             <th style="${THR}" title="Calibration">Calibration</th>
@@ -3950,13 +4209,13 @@ input[list] {
 
                 const dateStr = fmtDate(r.reading_date || r.transaction_date);
                 const shiftStr = fmtShift(r.shift_period, r.shift_name);
-                const fuelStr = r.fuel_type || '—';
+                const fuelStr = r._seq_label || (r.fuel_type || '—').toUpperCase();
                 const staffStr = r.staff_name || '—';
 
                 html += `<tr style="border-bottom:1px solid #f1f5f9; background:#ffffff; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='#f0f5ff';" onmouseout="this.style.backgroundColor='#ffffff';">
                     <td style="padding:6px 4px; color:#1e293b; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${dateStr}">${dateStr}</td>
                     <td style="padding:6px 4px; color:#334155; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${shiftStr}">${shiftStr}</td>
-                    <td style="padding:6px 4px; font-weight:700; color:#0f172a; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fuelStr}">${fuelStr}</td>
+                    <td style="padding:6px 4px; font-weight:700; color:#0f172a; font-size:11px; white-space:normal; word-break:break-word; vertical-align:middle;" title="${fuelStr}">${fuelStr}</td>
                     <td style="padding:6px 4px; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.beginning)}">${fmt(r.beginning)}</td>
                     <td style="padding:6px 4px; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; font-weight:600; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.ending)}">${fmt(r.ending)}</td>
                     <td style="padding:6px 4px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.cal,3)}">${fmt(r.cal,3)}</td>
@@ -9307,51 +9566,13 @@ input[list] {
             // Browsers strip '#...' from URLs, so use numeric joId in that case.
             var rid = (joRef && joRef.charAt(0) !== '#') ? encodeURIComponent(joRef) : joId;
             var url = 'receipt.php?id=' + rid + '&type=job_order';
-            
-            let iframe = document.getElementById('print-receipt-iframe');
-            if (!iframe) {
-                iframe = document.createElement('iframe');
-                iframe.id = 'print-receipt-iframe';
-                iframe.style.position = 'fixed';
-                iframe.style.right = '0';
-                iframe.style.bottom = '0';
-                iframe.style.width = '0';
-                iframe.style.height = '0';
-                iframe.style.border = '0';
-                document.body.appendChild(iframe);
-            }
-            iframe.src = url;
-            iframe.onload = function() {
-                setTimeout(function() {
-                    iframe.contentWindow.focus();
-                    iframe.contentWindow.print();
-                }, 250);
-            };
+            window.open(url, '_blank');
         }
         
         // Print Merchandise Receipt
         function printMerchandiseReceipt(txnId) {
             var url = 'receipt.php?id=' + encodeURIComponent(txnId) + '&type=merchandise';
-            
-            let iframe = document.getElementById('print-receipt-iframe');
-            if (!iframe) {
-                iframe = document.createElement('iframe');
-                iframe.id = 'print-receipt-iframe';
-                iframe.style.position = 'fixed';
-                iframe.style.right = '0';
-                iframe.style.bottom = '0';
-                iframe.style.width = '0';
-                iframe.style.height = '0';
-                iframe.style.border = '0';
-                document.body.appendChild(iframe);
-            }
-            iframe.src = url;
-            iframe.onload = function() {
-                setTimeout(function() {
-                    iframe.contentWindow.focus();
-                    iframe.contentWindow.print();
-                }, 250);
-            };
+            window.open(url, '_blank');
         }
         
         // View Merchandise Transaction Details

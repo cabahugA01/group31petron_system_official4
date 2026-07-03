@@ -1096,25 +1096,7 @@ async function submitTransaction() {
 
 function printReceipt(transactionId, transactionData) {
     var url = `receipt.php?id=${encodeURIComponent(transactionId)}&type=merchandise`;
-    let iframe = document.getElementById('print-receipt-iframe');
-    if (!iframe) {
-        iframe = document.createElement('iframe');
-        iframe.id = 'print-receipt-iframe';
-        iframe.style.position = 'fixed';
-        iframe.style.right = '0';
-        iframe.style.bottom = '0';
-        iframe.style.width = '0';
-        iframe.style.height = '0';
-        iframe.style.border = '0';
-        document.body.appendChild(iframe);
-    }
-    iframe.src = url;
-    iframe.onload = function() {
-        setTimeout(function() {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-        }, 250);
-    };
+    window.open(url, '_blank');
 }
 
 // ── Job Order lookup ──────────────────────────────────────────────────────────

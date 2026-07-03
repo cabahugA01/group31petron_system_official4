@@ -59,6 +59,31 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (Exception $e) {}
 
+// Ensure merchandise_batches table exists
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS merchandise_batches (
+        id                INT AUTO_INCREMENT PRIMARY KEY,
+        product_id        INT          NOT NULL,
+        station_id        INT          NOT NULL,
+        batch_number      VARCHAR(50)  NOT NULL,
+        delivery_id       INT          DEFAULT NULL,
+        quantity_received INT          NOT NULL DEFAULT 0,
+        remaining_qty     INT          NOT NULL DEFAULT 0,
+        unit_cost         DECIMAL(12,4) NOT NULL DEFAULT 0,
+        supplier          VARCHAR(200) DEFAULT NULL,
+        date_received     DATE         NOT NULL,
+        encoded_by        INT          DEFAULT NULL,
+        validated_by      INT          DEFAULT NULL,
+        validated_at      DATETIME     DEFAULT NULL,
+        status            ENUM('active','depleted','cancelled') NOT NULL DEFAULT 'active',
+        notes             TEXT         DEFAULT NULL,
+        created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_product (product_id),
+        INDEX idx_station (station_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (Exception $e) {}
+
 // Ensure fuel_stock_in table exists
 try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS fuel_stock_in (
@@ -330,6 +355,30 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
                         INSERT INTO station_inventory (product_id, station_id, stock_level, status, last_updated)
                         VALUES (?, ?, ?, 'active', NOW())
                     ")->execute([$item_product_id, $station_id, $qty_to_add]);
+                }
+
+                // Log to inventory_logs
+                try {
+                    $log_notes = "Stock-In Delivery - Batch: " . $effective_batch_id . " | PO Ref: " . ($po['po_number'] ?? '');
+                    if ($remarks) $log_notes .= " | Notes: " . $remarks;
+                    $pdo->prepare("
+                        INSERT INTO inventory_logs (
+                            station_id, product_id, user_id, action, 
+                            quantity_before, quantity_after, quantity_change, 
+                            reference_type, reference_id, notes, created_at
+                        ) VALUES (?, ?, ?, 'delivery', ?, ?, ?, 'stock_in', ?, ?, NOW())
+                    ")->execute([
+                        $station_id,
+                        $item_product_id,
+                        $me['id'],
+                        $stock_before,
+                        $stock_after,
+                        $qty_to_add,
+                        $delivery_id ?: $po_id,
+                        $log_notes
+                    ]);
+                } catch (Exception $logErr) {
+                    error_log("Inventory log insert error in Stock-In: " . $logErr->getMessage());
                 }
 
                 // Also update inventory_products.stock as fallback

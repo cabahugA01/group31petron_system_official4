@@ -130,9 +130,8 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="sub">Monitor and review all adjustments performed by Managers across the station.</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <a href="admin_transaction_overview.php" class="flt-btn flt-btn-reset"><i class="fas fa-arrow-left"></i> Back</a>
+        <a href="admin_all_transactions.php" class="flt-btn flt-btn-reset"><i class="fas fa-arrow-left"></i> Back</a>
         <a href="?<?=http_build_query(array_merge($_GET,['export'=>'excel']))?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
-        <a href="?<?=http_build_query(array_merge($_GET,['export'=>'csv']))?>"   class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</a>
         <button class="flt-btn flt-btn-pdf" onclick="window.print()"><i class="fas fa-file-pdf"></i> PDF</button>
     </div>
 </div>

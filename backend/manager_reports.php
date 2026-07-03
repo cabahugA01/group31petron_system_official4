@@ -38,7 +38,7 @@ class ManagerReports {
                 SUM(CASE WHEN jo.status = 'Completed' THEN jo.total_amount ELSE 0 END) as completed_jo_value,
                 ROUND(AVG(CASE WHEN jo.status = 'Completed' THEN 1.0 ELSE 0 END)*100, 1) as completion_rate
             FROM users u
-            LEFT JOIN transactions t ON t.created_by = u.id AND t.station_id = ?
+            LEFT JOIN merchandise_transactions t ON t.staff_id = u.id AND t.station_id = ?
             LEFT JOIN fuel_daily_readings fdr ON fdr.user_id = u.id AND fdr.station_id = ?
             LEFT JOIN job_orders jo ON (jo.created_by = u.id OR jo.assigned_mechanic_id = u.id) AND jo.station_id = ?
             WHERE u.station_id = ? AND u.role = 'staff'
@@ -115,7 +115,7 @@ class ManagerReports {
                 COUNT(jo.id) as jobs_30d,
                 AVG(DATEDIFF(clock_out, clock_in)) as avg_hours_shift
             FROM users u
-            LEFT JOIN transactions t ON t.created_by = u.id AND t.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            LEFT JOIN merchandise_transactions t ON t.staff_id = u.id AND t.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
             LEFT JOIN fuel_daily_readings fdr ON fdr.user_id = u.id AND fdr.reading_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)
             LEFT JOIN shift_reports sr ON sr.staff_id = u.id AND sr.shift_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)
             LEFT JOIN job_orders jo ON jo.created_by = u.id AND jo.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)

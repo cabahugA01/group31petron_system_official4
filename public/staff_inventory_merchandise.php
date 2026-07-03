@@ -66,7 +66,7 @@ try {
 try {
     $slStmt = $pdo->prepare("
         SELECT ti.product_id, SUM(ti.quantity) AS qty, MAX(t.created_at) AS mdate
-        FROM transaction_items ti JOIN transactions t ON t.id=ti.transaction_id
+        FROM merchandise_transaction_items ti JOIN merchandise_transactions t ON t.id=ti.transaction_id
         WHERE t.station_id=? AND ti.product_id IS NOT NULL GROUP BY ti.product_id
     ");
     $slStmt->execute([$station_id]);

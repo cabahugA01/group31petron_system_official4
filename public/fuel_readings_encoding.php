@@ -9,6 +9,104 @@ $me = current_user();
 $station_id = user_station_id();
 $role = role_key($me['role'] ?? '');
 
+// Helper for preceding shift & date mapping
+if (!function_exists('get_preceding_shift_and_date')) {
+    function get_preceding_shift_and_date($pdo, $shift_key, $date) {
+        $stmt = $pdo->query("SELECT shift_key FROM shift_periods WHERE is_active = 1 ORDER BY sort_order ASC");
+        $shifts = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        if (empty($shifts)) {
+            return null;
+        }
+        
+        $index = array_search(strtolower($shift_key), array_map('strtolower', $shifts));
+        if ($index === false) {
+            return null;
+        }
+        
+        if ($index > 0) {
+            return [
+                'shift_key' => $shifts[$index - 1],
+                'date' => $date
+            ];
+        } else {
+            $prev_date = date('Y-m-d', strtotime($date . ' -1 day'));
+            return [
+                'shift_key' => $shifts[count($shifts) - 1],
+                'date' => $prev_date
+            ];
+        }
+    }
+}
+
+// AJAX handler to fetch previous reading based on pump and shift
+if (isset($_GET['action']) && $_GET['action'] === 'get_previous_reading') {
+    header('Content-Type: application/json');
+    $pump_id = (int)($_GET['pump_id'] ?? 0);
+    $shift_period = trim($_GET['shift_period'] ?? '');
+    $date = trim($_GET['date'] ?? date('Y-m-d'));
+    
+    if ($pump_id <= 0 || empty($shift_period)) {
+        echo json_encode(['success' => false, 'reading' => 0.00]);
+        exit;
+    }
+    
+    $preceding = get_preceding_shift_and_date($pdo, $shift_period, $date);
+    $prev_reading = 0.00;
+    
+    if ($preceding) {
+        $stmt = $pdo->prepare("
+            SELECT present_reading 
+            FROM fuel_transactions 
+            WHERE station_id = ? 
+              AND pump_id = ? 
+              AND LOWER(shift_period) = LOWER(?) 
+              AND DATE(transaction_date) = ?
+              AND LOWER(status) IN ('verified', 'adjusted')
+            ORDER BY id DESC 
+            LIMIT 1
+        ");
+        $stmt->execute([$station_id, $pump_id, $preceding['shift_key'], $preceding['date']]);
+        $val = $stmt->fetchColumn();
+        if ($val !== false) {
+            $prev_reading = (float)$val;
+        } else {
+            $stmt_fallback = $pdo->prepare("
+                SELECT present_reading 
+                FROM fuel_transactions 
+                WHERE station_id = ? 
+                  AND pump_id = ? 
+                  AND LOWER(status) IN ('verified', 'adjusted')
+                ORDER BY transaction_date DESC, id DESC 
+                LIMIT 1
+            ");
+            $stmt_fallback->execute([$station_id, $pump_id]);
+            $val_fallback = $stmt_fallback->fetchColumn();
+            if ($val_fallback !== false) {
+                $prev_reading = (float)$val_fallback;
+            }
+        }
+    } else {
+        $stmt_fallback = $pdo->prepare("
+            SELECT present_reading 
+            FROM fuel_transactions 
+            WHERE station_id = ? 
+              AND pump_id = ? 
+              AND LOWER(status) IN ('verified', 'adjusted')
+            ORDER BY transaction_date DESC, id DESC 
+            LIMIT 1
+        ");
+        $stmt_fallback->execute([$station_id, $pump_id]);
+        $val_fallback = $stmt_fallback->fetchColumn();
+        if ($val_fallback !== false) {
+            $prev_reading = (float)$val_fallback;
+        }
+    }
+    
+    echo json_encode(['success' => true, 'reading' => $prev_reading]);
+    exit;
+}
+
 // ── Module gate ───────────────────────────────────────────────
 if (!in_array($role, ['superadmin','developer']) && !is_module_enabled('fuel_management')) {
     render_module_disabled_page('Fuel Management');
@@ -73,9 +171,10 @@ function fm_ensure_support_tables(PDO $pdo): void {
         INDEX idx_fuel_readings_status (status)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-    // Add status column to existing tables if it doesn't exist
+    // Add status & calibration columns to existing tables if they don't exist
     $pdo->exec("ALTER TABLE fuel_readings 
-                ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Pending Manager Validation'");
+                ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Pending Manager Validation',
+                ADD COLUMN IF NOT EXISTS calibration DECIMAL(10,2) NOT NULL DEFAULT 0.00");
     $pdo->exec("ALTER TABLE fuel_readings 
                 ADD INDEX IF NOT EXISTS idx_fuel_readings_status (status)");
 
@@ -169,14 +268,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action'])) {
         switch ($_POST['action']) {
             case 'encode_fuel_reading':
-                $fuel_type = trim($_POST['fuel_type'] ?? '');
-                $pump_number = trim($_POST['pump_number'] ?? '');
-                $present_reading = $_POST['present_reading'] ?? 0;
+                $pump_id = (int)($_POST['pump_id'] ?? 0);
+                $present_reading = (float)($_POST['present_reading'] ?? 0);
                 $shift_period = $_POST['shift_period'] ?? '';
                 
                 try {
-                    if ($fuel_type === '') {
-                        $_SESSION['error'] = 'Invalid fuel type selected.';
+                    if ($pump_id <= 0) {
+                        $_SESSION['error'] = 'Invalid pump selected.';
                         header('Location: fuel_readings_encoding.php');
                         exit;
                     }
@@ -187,47 +285,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         exit;
                     }
 
-                    $pump = fm_resolve_pump_for_fuel_type($pdo, (int)$station_id, $fuel_type);
+                    // Fetch the selected pump and its fuel type
+                    $stmt = $pdo->prepare("
+                        SELECT fp.*, ft.name AS fuel_type_name
+                        FROM fuel_pumps fp
+                        LEFT JOIN fuel_types ft ON fp.fuel_type_id = ft.id
+                        WHERE fp.id = ? AND fp.station_id = ?
+                    ");
+                    $stmt->execute([$pump_id, $station_id]);
+                    $pump = $stmt->fetch(PDO::FETCH_ASSOC);
                     
                     if (!$pump) {
-                        $_SESSION['error'] = 'No pump is configured for the selected fuel type.';
+                        $_SESSION['error'] = 'Selected pump not found.';
                         header('Location: fuel_readings_encoding.php');
                         exit;
                     }
                     
-                    $pump_number = $pump_number !== '' ? $pump_number : (string)$pump['pump_number'];
-                    $fuel_type = $pump['fuel_type'];
+                    $pump_number = $pump['pump_number'];
+                    $fuel_type = $pump['fuel_type_name'];
+                    $calibration_value = (float)($pump['calibration_value'] ?? 0);
                     
-                    // Get last VERIFIED/ADJUSTED transaction reading for this fuel type
-                    // (only manager-approved endings can be the beginning of the next shift)
+                    // Get last VERIFIED/ADJUSTED transaction reading for this pump
                     $stmt = $pdo->prepare("
                         SELECT present_reading
                         FROM fuel_transactions
                         WHERE station_id = ?
-                          AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                          AND pump_id = ?
                           AND LOWER(status) IN ('verified','adjusted')
                         ORDER BY transaction_date DESC, id DESC
                         LIMIT 1
                     ");
-                    $stmt->execute([$station_id, $fuel_type]);
+                    $stmt->execute([$station_id, $pump_id]);
                     $last_reading = $stmt->fetch(PDO::FETCH_ASSOC);
 
-                    // Fallback: try fuel_readings table (approved ones only)
+                    // Fallback: try fuel_readings table
                     if (!$last_reading) {
                         $stmt = $pdo->prepare("
                             SELECT present_reading
                             FROM fuel_readings
                             WHERE station_id = ?
-                              AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                              AND pump_number = ?
                               AND LOWER(status) IN ('verified','adjusted','approved','manager approved')
                             ORDER BY encoded_at DESC, id DESC
                             LIMIT 1
                         ");
-                        $stmt->execute([$station_id, $fuel_type]);
+                        $stmt->execute([$station_id, $pump_number]);
                         $last_reading = $stmt->fetch(PDO::FETCH_ASSOC);
                     }
 
-                    // If still no approved reading found, start from 0 (first ever reading)
+                    // If still no approved reading found, start from 0
                     $previous_reading = $last_reading['present_reading'] ?? 0;
 
                     // Validation
@@ -237,17 +343,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         exit;
                     }
                     
-                    // System compute difference
-                    $difference = $present_reading - $previous_reading;
-
-                    // ── INVENTORY DEDUCTION RULE: Staff Encoding ─────────────────────────────
-                    // Deduction does NOT happen here. Stock is only deducted upon Manager Approval.
-                    // Staff encode creates a 'Pending Manager Validation' record.
-                    // Reason: Reject = no deduction, Adjust = manager corrects liters first.
-                    // ─────────────────────────────────────────────────────────────────────────
+                    // Compute net liters sold (present - previous - calibration)
+                    $difference = max(0, $present_reading - $previous_reading - $calibration_value);
 
                     // Get current stock for projected low-stock warning (display only, no deduction)
-                    $stmt = $pdo->prepare("SELECT current_level AS current_stock FROM fuel_inventory WHERE station_id = ? AND fuel_type = ?");
+                    $stmt = $pdo->prepare("SELECT current_level AS current_stock FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
                     $stmt->execute([$station_id, $fuel_type]);
                     $stock_row = $stmt->fetch(PDO::FETCH_ASSOC);
                     $stock_before_amount = (float)($stock_row['current_stock'] ?? 0);
@@ -264,22 +364,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $pdo->prepare("
                         INSERT INTO fuel_readings (
                             pump_number, fuel_type, present_reading, previous_reading,
-                            difference, shift_period, status, station_id, encoded_by, encoded_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, 'Pending Manager Validation', ?, ?, NOW())
+                            difference, calibration, shift_period, status, station_id, encoded_by, encoded_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending Manager Validation', ?, ?, NOW())
                     ");
                     $stmt->execute([
                         $pump_number, $fuel_type, $present_reading, $previous_reading,
-                        $difference, $shift_period, $station_id, $me['id']
+                        $difference, $calibration_value, $shift_period, $station_id, $me['id']
                     ]);
                     $reading_id = $pdo->lastInsertId();
 
-                    // ── Also insert into fuel_transactions so manager approval queue picks it up ──
-                    // This ensures the Manager can approve/reject from manager_fuel_transactions.php
+                    // Insert into fuel_transactions so manager approval queue picks it up
                     $txn_id = 'FUEL' . date('Y') . str_pad($station_id, 3, '0', STR_PAD_LEFT)
                             . str_pad($reading_id, 6, '0', STR_PAD_LEFT);
                     $price_per_liter = 0.0;
                     try {
-                        $priceStmt = $pdo->prepare("SELECT price_per_liter FROM fuel_inventory WHERE station_id = ? AND fuel_type = ? LIMIT 1");
+                        $priceStmt = $pdo->prepare("SELECT price_per_liter FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) LIMIT 1");
                         $priceStmt->execute([$station_id, $fuel_type]);
                         $price_per_liter = (float)($priceStmt->fetchColumn() ?? 0);
                     } catch (Exception $e) {}
@@ -288,23 +387,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     try {
                         // Ensure required columns exist
                         $ftCols = array_column($pdo->query("SHOW COLUMNS FROM fuel_transactions")->fetchAll(PDO::FETCH_ASSOC), 'Field');
-                        foreach (['shift_period','shift_name','shift_id','notes','status','validated_by','validated_at','reject_reason'] as $rc) {
+                        foreach (['shift_period','shift_name','shift_id','notes','status','validated_by','validated_at','reject_reason','pump_id'] as $rc) {
                             if (!in_array($rc, $ftCols)) {
                                 $def = ($rc === 'status') ? "VARCHAR(50) NULL DEFAULT 'Pending Validation'" : "TEXT NULL";
+                                if ($rc === 'pump_id') {
+                                    $def = "INT NULL";
+                                }
                                 $pdo->exec("ALTER TABLE fuel_transactions ADD COLUMN `$rc` $def");
                             }
                         }
                         $pdo->prepare("
                             INSERT INTO fuel_transactions
-                                (transaction_id, station_id, fuel_type,
-                                 present_reading, previous_reading, calibration,
+                                (transaction_id, station_id, pump_id, fuel_type,
+                                 present_reading, previous_reading, calibration, staff_calibration,
                                  liters_sold, price_per_liter, total_amount,
                                  staff_id, transaction_date,
                                  shift_period, shift_name, shift_id, notes, status)
-                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Encoded via Reading Form','Pending Validation')
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Encoded via Reading Form','Pending Validation')
                         ")->execute([
-                            $txn_id, $station_id, $fuel_type,
-                            $present_reading, $previous_reading, 0,
+                            $txn_id, $station_id, $pump_id, $fuel_type,
+                            $present_reading, $previous_reading, $calibration_value, $calibration_value,
                             $difference, $price_per_liter, $total_amount,
                             $me['id'], date('Y-m-d H:i:s'),
                             $shift_period, '', null,
@@ -406,37 +508,35 @@ try {
         ? 'COALESCE(fi.last_updated, NOW())'
         : 'NOW()';
 
-    // Get fuel types for this station
-    // previous_reading = present_reading of the LAST VERIFIED/ADJUSTED transaction
-    // This ensures: ending of last approved shift = beginning of next encoding
+    // Get all pumps for this station with their respective last readings and calibration values
     $stmt = $pdo->prepare("
         SELECT 
-            fi.fuel_type,
-            COALESCE(MIN(fp_any.pump_number), fi.fuel_type) AS pump_number,
-            COALESCE(last_verified.present_reading, 0) AS previous_reading,
-            COALESCE(fi.current_level, 0) AS current_stock
-        FROM fuel_inventory fi
-        LEFT JOIN fuel_pumps fp_any
-            ON fp_any.station_id = fi.station_id
-        LEFT JOIN (
-            SELECT ft.station_id, ft.fuel_type, ft.present_reading
-            FROM fuel_transactions ft
-            INNER JOIN (
-                SELECT station_id, fuel_type, MAX(id) AS latest_id
-                FROM fuel_transactions
-                WHERE LOWER(status) IN ('verified','adjusted')
-                GROUP BY station_id, fuel_type
-            ) latest
-                ON latest.station_id = ft.station_id
-               AND LOWER(TRIM(latest.fuel_type)) = LOWER(TRIM(ft.fuel_type))
-               AND latest.latest_id = ft.id
-        ) last_verified
-            ON last_verified.station_id = fi.station_id
-           AND LOWER(TRIM(last_verified.fuel_type)) = LOWER(TRIM(fi.fuel_type))
-        WHERE fi.station_id = ?
-          AND COALESCE(fi.current_level, 0) > 0
-        GROUP BY fi.fuel_type, last_verified.present_reading, fi.current_level
-        ORDER BY fi.fuel_type
+            fp.id,
+            fp.pump_number,
+            fp.calibration_value,
+            ft.name AS fuel_type,
+            COALESCE(fi.current_level, 0) AS current_stock,
+            -- Get last reading for this specific pump
+            COALESCE(
+                (SELECT present_reading 
+                 FROM fuel_transactions 
+                 WHERE station_id = fp.station_id 
+                   AND pump_id = fp.id 
+                   AND LOWER(status) IN ('verified','adjusted') 
+                 ORDER BY transaction_date DESC, id DESC LIMIT 1),
+                (SELECT present_reading 
+                 FROM fuel_readings 
+                 WHERE station_id = fp.station_id 
+                   AND pump_number = fp.pump_number 
+                   AND LOWER(status) IN ('verified','adjusted','approved','manager approved') 
+                 ORDER BY encoded_at DESC, id DESC LIMIT 1),
+                0
+            ) AS previous_reading
+        FROM fuel_pumps fp
+        LEFT JOIN fuel_types ft ON fp.fuel_type_id = ft.id
+        LEFT JOIN fuel_inventory fi ON fi.fuel_type_id = fp.fuel_type_id AND fi.station_id = fp.station_id
+        WHERE fp.station_id = ?
+        ORDER BY fp.pump_number ASC
     ");
     $stmt->execute([$station_id]);
     $fuel_options = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -717,11 +817,16 @@ include __DIR__ . '/../partials/header.php';
     </div>
     
     
-<?php if($msg): ?>
-<div class="alert <?php echo $msg_type === 'error' ? 'alert-error' : 'alert-success'; ?>">
-    <?php echo $msg; ?>
-</div>
-<?php endif; ?>
+<?php
+// Toast bridge: convert $msg/$msg_type to SESSION for flash_toast
+if (!empty($msg)) {
+    if ($msg_type === 'success') $_SESSION['success'] = $msg;
+    else $_SESSION['error'] = $msg;
+    $msg = ''; $msg_type = '';
+}
+require __DIR__ . '/../partials/flash_toast.php';
+?>
+
 
     <!-- Low Stock Alerts -->
     <?php if (!empty($low_stock_alerts)): ?>
@@ -748,27 +853,29 @@ include __DIR__ . '/../partials/header.php';
                     
                     <div class="form-row">
                         <div class="form-group">
-                            <label class="form-label">Fuel Type</label>
-                            <select name="fuel_type" id="fuel_type" class="form-select" onchange="updatePreviousReading()" required>
-                                <option value="">Select fuel type</option>
+                            <label class="form-label">Select Pump</label>
+                            <select name="pump_id" id="pump_id" class="form-select" onchange="updatePreviousReading()" required>
+                                <option value="">Select pump</option>
                                 <?php foreach ($fuel_options as $fuel): ?>
                                     <option
-                                        value="<?php echo htmlspecialchars($fuel['fuel_type']); ?>"
+                                        value="<?php echo htmlspecialchars($fuel['id']); ?>"
                                         data-pump-number="<?php echo htmlspecialchars($fuel['pump_number']); ?>"
                                         data-fuel-type="<?php echo htmlspecialchars($fuel['fuel_type']); ?>"
                                         data-previous-reading="<?php echo number_format((float)($fuel['previous_reading'] ?? 0), 2, '.', ''); ?>"
+                                        data-calibration="<?php echo number_format((float)($fuel['calibration_value'] ?? 0), 2, '.', ''); ?>"
                                         data-current-stock="<?php echo number_format((float)($fuel['current_stock'] ?? 0), 2, '.', ''); ?>">
-                                        <?php echo htmlspecialchars($fuel['fuel_type']); ?>
+                                        <?php echo htmlspecialchars($fuel['pump_number']); ?> (<?php echo htmlspecialchars($fuel['fuel_type']); ?>)
                                     </option>
                                 <?php endforeach; ?>
                             </select>
                             <input type="hidden" name="pump_number" id="resolved_pump_number" value="">
+                            <div id="pump_selection_meta" style="font-size: 11.5px; color: #475569; margin-top: 5px; font-weight: 500;">Select a pump to load meta information.</div>
                         </div>
                         
                         <div class="form-group">
                             <label class="form-label">Present Reading</label>
                             <input type="number" name="present_reading" id="present_reading" 
-                                   class="form-input" step="0.01" min="0" required onchange="computeDifference()">
+                                   class="form-input" step="0.01" min="0" required onchange="computeDifference()" oninput="computeDifference()">
                         </div>
                     </div>
 
@@ -776,20 +883,34 @@ include __DIR__ . '/../partials/header.php';
                         <div class="form-group">
                             <label class="form-label">Previous Reading</label>
                             <input type="number" id="previous_reading" 
-                                   class="form-input auto-pulled" step="0.01" readonly>
+                                   class="form-input auto-pulled" step="0.01" readonly value="0.00">
                         </div>
                         
                         <div class="form-group">
-                            <label class="form-label">Difference</label>
+                            <label class="form-label">Gross Difference (L)</label>
                             <input type="number" id="computed_difference" 
-                                   class="form-input computed" step="0.01" readonly>
+                                   class="form-input computed" step="0.01" readonly value="0.00">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Calibration Value (L)</label>
+                            <input type="number" id="calibration_value" 
+                                   class="form-input auto-pulled" step="0.01" readonly value="0.00">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Net Liters Sold</label>
+                            <input type="number" id="computed_net_liters" 
+                                   class="form-input computed" step="0.01" readonly value="0.00">
                         </div>
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
                             <label class="form-label">Shift Period</label>
-                            <select name="shift_period" class="form-select" required>
+                            <select name="shift_period" id="shift_period" class="form-select" onchange="updatePreviousReading()" required>
                                 <option value="">Select shift period</option>
                                 <?php echo $shift_config->generateShiftSelectOptions(); ?>
                             </select>
@@ -821,51 +942,85 @@ include __DIR__ . '/../partials/header.php';
 <script>
 
 function updatePreviousReading() {
-    const fuelSelect = document.getElementById('fuel_type');
-    const selectedOption = fuelSelect.options[fuelSelect.selectedIndex];
+    const pumpSelect = document.getElementById('pump_id');
+    const shiftSelect = document.getElementById('shift_period');
+    const selectedOption = pumpSelect.options[pumpSelect.selectedIndex];
     const pumpMeta = document.getElementById('pump_selection_meta');
     const resolvedPumpInput = document.getElementById('resolved_pump_number');
     
     if (!selectedOption || !selectedOption.value) {
         document.getElementById('previous_reading').value = '0.00';
+        document.getElementById('calibration_value').value = '0.00';
         if (resolvedPumpInput) {
             resolvedPumpInput.value = '';
         }
         if (pumpMeta) {
-            pumpMeta.textContent = 'Select a fuel type to auto-load the last reading and current stock.';
+            pumpMeta.textContent = 'Select a pump to auto-load the last reading and current stock.';
         }
         computeDifference();
         return;
     }
 
-    const previousReading = parseFloat(selectedOption.dataset.previousReading || '0');
+    const pumpId = selectedOption.value;
+    const shiftPeriod = shiftSelect ? shiftSelect.value : '';
+    const calibration = parseFloat(selectedOption.dataset.calibration || '0');
     const currentStock = parseFloat(selectedOption.dataset.currentStock || '0');
     const fuelType = selectedOption.dataset.fuelType || 'Unknown';
     const pumpNumber = selectedOption.dataset.pumpNumber || '';
 
-    document.getElementById('previous_reading').value = previousReading.toFixed(2);
+    document.getElementById('calibration_value').value = calibration.toFixed(2);
     if (resolvedPumpInput) {
         resolvedPumpInput.value = pumpNumber;
     }
+
+    // Default reading from data-attribute first
+    let previousReading = parseFloat(selectedOption.dataset.previousReading || '0');
+    document.getElementById('previous_reading').value = previousReading.toFixed(2);
     if (pumpMeta) {
-        pumpMeta.textContent = `${fuelType} | Linked pump: #${pumpNumber || '-'} | Previous reading: ${previousReading.toFixed(2)} L | Current stock: ${currentStock.toFixed(2)} L`;
+        pumpMeta.textContent = `${fuelType} | Linked pump: ${pumpNumber || '-'} | Previous reading: ${previousReading.toFixed(2)} L | Calibration: ${calibration.toFixed(2)} L | Current stock: ${currentStock.toFixed(2)} L`;
     }
+
+    // If both pump and shift are selected, fetch dynamically via AJAX
+    if (pumpId && shiftPeriod) {
+        fetch(`fuel_readings_encoding.php?action=get_previous_reading&pump_id=${pumpId}&shift_period=${shiftPeriod}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const dynamicReading = parseFloat(data.reading);
+                    document.getElementById('previous_reading').value = dynamicReading.toFixed(2);
+                    if (pumpMeta) {
+                        pumpMeta.textContent = `${fuelType} | Linked pump: ${pumpNumber || '-'} | Dynamic previous reading (${shiftPeriod}): ${dynamicReading.toFixed(2)} L | Calibration: ${calibration.toFixed(2)} L | Current stock: ${currentStock.toFixed(2)} L`;
+                    }
+                    computeDifference();
+                }
+            })
+            .catch(err => {
+                console.error("Error fetching previous reading:", err);
+            });
+    }
+
     computeDifference();
 }
 
 function computeDifference() {
     const present = parseFloat(document.getElementById('present_reading').value) || 0;
     const previous = parseFloat(document.getElementById('previous_reading').value) || 0;
+    const calibration = parseFloat(document.getElementById('calibration_value').value) || 0;
     
     const difference = present - previous;
+    const netLiters = Math.max(0, difference - calibration);
+    
     document.getElementById('computed_difference').value = difference.toFixed(2);
+    document.getElementById('computed_net_liters').value = netLiters.toFixed(2);
 }
 
 function resetReadingForm() {
     if (confirm('Reset all form fields?')) {
         document.querySelector('form').reset();
         document.getElementById('previous_reading').value = '0.00';
+        document.getElementById('calibration_value').value = '0.00';
         document.getElementById('computed_difference').value = '0.00';
+        document.getElementById('computed_net_liters').value = '0.00';
     }
 }
 

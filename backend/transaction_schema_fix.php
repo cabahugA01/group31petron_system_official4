@@ -41,6 +41,9 @@ $fixes = [
     "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS balance_due       DECIMAL(12,2) DEFAULT NULL",
     "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS payment_status    VARCHAR(60)  DEFAULT 'Unpaid'",
     "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS updated_at        DATETIME     DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP",
+
+    // ── users generated column ────────────────────────────────────────────────
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR(255) GENERATED ALWAYS AS (TRIM(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')))) STORED",
 ];
 
 foreach ($fixes as $sql) {

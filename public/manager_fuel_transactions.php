@@ -67,21 +67,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
                     ")->execute([$transaction['liters_sold'], $transaction['liters_sold'], $station_id, $transaction['fuel_type']]);
 
-                    // -- Audit trail entry --
-                    $pdo->prepare("
-                        INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
-                        SELECT ?, fuel_type_id, 'verified_sale', ?, ?, ?, CURDATE()
-                        FROM fuel_inventory WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?))
-                        LIMIT 1
-                    ")->execute([
-                        $station_id,
-                        -abs($transaction['liters_sold']),
-                        "Approved by manager. Reading #{$reading_id}. Notes: {$notes}",
-                        $me['id'],
-                        $station_id,
-                        $transaction['fuel_type']
-                    ]);
-
                     // -- Auto-flag variance report if >5% --
                     if (abs($variance_liters) > 0.1) {
                         $vp = $transaction['liters_sold'] > 0 ? ($variance_liters / $transaction['liters_sold']) * 100 : 0;
@@ -98,19 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         }
                     }
                 } else {
-                    // -- Rejected: log for staff correction --
-                    $pdo->prepare("
-                        INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
-                        SELECT ?, fuel_type_id, 'rejected_reading', 0, ?, ?, CURDATE()
-                        FROM fuel_inventory WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?))
-                        LIMIT 1
-                    ")->execute([
-                        $station_id,
-                        "REJECTED by manager. Reading #{$reading_id}. Reason: {$notes}",
-                        $me['id'],
-                        $station_id,
-                        $transaction['fuel_type']
-                    ]);
+                    // Rejected: no inventory change, no audit adjustment record
                 }
 
                 // Sync status with fuel_readings table & record in fuel_audit_trail if transaction originated from there
@@ -206,6 +179,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     WHERE transaction_id = ? AND station_id = ?
                 ")->execute([$adjusted_liters, $me['id'], $reading_id, $station_id]);
 
+                // Retrieve current stock before update
+                $stmt_inv = $pdo->prepare("SELECT COALESCE(current_stock, current_level, 0) FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) LIMIT 1");
+                $stmt_inv->execute([$station_id, $transaction['fuel_type']]);
+                $previous_value = (float)($stmt_inv->fetchColumn() ?: 0.0);
+                $new_value = max(0.0, $previous_value - $adjusted_liters);
+
                 // Deduct adjusted liters from tank inventory
                 $pdo->prepare("
                     UPDATE fuel_inventory
@@ -216,16 +195,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ")->execute([$adjusted_liters, $adjusted_liters, $station_id, $transaction['fuel_type']]);
 
                 // Audit trail
-                $audit_reason = substr("ADJUSTED by manager. Reading #{$reading_id}. Original: {$original_liters} L ? Adjusted: {$adjusted_liters} L. Reason: {$adj_reason}", 0, 255);
+                $audit_reason = substr("ADJUSTED by manager. Reading #{$reading_id}. Original: {$original_liters} L → Adjusted: {$adjusted_liters} L. Reason: {$adj_reason}", 0, 255);
                 $pdo->prepare("
-                    INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
-                    SELECT ?, fuel_type_id, 'adjusted_reading', ?, ?, ?, CURDATE()
+                    INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, previous_value, new_value, reason, user_id, status, approved_by, approved_at, adjustment_date)
+                    SELECT ?, fuel_type_id, 'adjusted_reading', ?, ?, ?, ?, ?, 'Approved', ?, NOW(), CURDATE()
                     FROM fuel_inventory WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?))
                     LIMIT 1
                 ")->execute([
                     $station_id,
-                    -abs($adjusted_liters),
+                    -$adjusted_liters,
+                    $previous_value,
+                    $new_value,
                     $audit_reason,
+                    $me['id'],
                     $me['id'],
                     $station_id,
                     $transaction['fuel_type']
@@ -307,14 +289,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
                 ")->execute([$txn['liters_sold'], $txn['liters_sold'], $station_id, $txn['fuel_type']]);
 
-                // Audit trail
-                $reason = substr("Daily log approved. Txn #{$txn_id}. Notes: {$mgr_notes}", 0, 255);
-                $pdo->prepare("
-                    INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
-                    SELECT ?, fuel_type_id, 'daily_log_approved', ?, ?, ?, CURDATE()
-                    FROM fuel_inventory WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?)) LIMIT 1
-                ")->execute([$station_id, -abs($txn['liters_sold']), $reason, $me['id'], $station_id, $txn['fuel_type']]);
-
                 // Sync status with fuel_readings table & record in fuel_audit_trail if transaction originated from there
                 $reading_db_id = null;
                 if (strpos($txn_id, 'FUEL') === 0 && strlen($txn_id) >= 17) {
@@ -378,14 +352,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 // Mark as rejected
                 $pdo->prepare("UPDATE fuel_transactions SET status='Rejected', validated_by=?, validated_at=NOW() WHERE transaction_id=? AND station_id=?")->execute([$me['id'], $txn_id, $station_id]);
-
-                // Audit trail - no inventory change on reject
-                $reason = substr("Daily log REJECTED. Txn #{$txn_id}. Reason: {$rej_notes}", 0, 255);
-                $pdo->prepare("
-                    INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
-                    SELECT ?, fuel_type_id, 'daily_log_rejected', 0, ?, ?, CURDATE()
-                    FROM fuel_inventory WHERE station_id=? AND LOWER(TRIM(fuel_type))=LOWER(TRIM(?)) LIMIT 1
-                ")->execute([$station_id, $reason, $me['id'], $station_id, $txn['fuel_type']]);
 
                 // Sync status with fuel_readings table & record in fuel_audit_trail if transaction originated from there
                 $reading_db_id = null;
@@ -556,6 +522,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 $pdo->beginTransaction();
 
+                // Fetch previous stock level
+                $prev_stock = 0.0;
+                try {
+                    $invStmt = $pdo->prepare("SELECT COALESCE(current_stock, current_level, 0) FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) LIMIT 1");
+                    $invStmt->execute([$station_id, $fuel_type]);
+                    $prev_stock = (float)($invStmt->fetchColumn() ?: 0.0);
+                } catch (Exception $e) {}
+
                 if ($action === 'approve') {
                     $liters_to_add = $original_liters;
 
@@ -653,9 +627,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         $audit_reason = substr("Delivery #{$delivery_id} {$action}d. Added {$liters_to_add}L of {$fuel_type}.{$tank_note} Notes: {$val_notes}", 0, 255);
                         $pdo->prepare("
                             INSERT INTO fuel_adjustments
-                                (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
-                            VALUES (?, ?, 'delivery', ?, ?, ?, CURDATE())
-                        ")->execute([$station_id, $fuel_type_id, $liters_to_add, $audit_reason, $me['id']]);
+                                (station_id, fuel_type_id, adjustment_type, liters, previous_value, new_value, reason, user_id, status, approved_by, approved_at, adjustment_date)
+                            VALUES (?, ?, 'delivery', ?, ?, ?, ?, ?, 'Approved', ?, NOW(), CURDATE())
+                        ")->execute([
+                            $station_id,
+                            $fuel_type_id,
+                            $liters_to_add,
+                            $prev_stock,
+                            $new_tank_level !== null ? $new_tank_level : ($prev_stock + $liters_to_add),
+                            $audit_reason,
+                            $me['id'],
+                            $me['id']
+                        ]);
                     } catch (Exception $ae) {
                         error_log("fuel_adjustments insert failed: " . $ae->getMessage());
                     }
@@ -709,7 +692,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $pdo->prepare("UPDATE fuel_inventory SET current_level=?, current_stock=?, last_updated=NOW() WHERE station_id=? AND fuel_type_id=?")->execute([$new_level, $new_level, $station_id, $fuel_type_id]);
 
                 // Audit trail row
-                $pdo->prepare("INSERT INTO fuel_adjustments (station_id, fuel_type_id, fuel_type, adjustment_type, liters, reason, user_id, adjustment_date) VALUES (?,?,?,?,?,?,?,CURDATE())")->execute([$station_id, $fuel_type_id, $fuel_name, $adjustment_type, $difference, $reason_short, $me['id']]);
+                $pdo->prepare("INSERT INTO fuel_adjustments (station_id, fuel_type_id, fuel_type, adjustment_type, liters, previous_value, new_value, reason, user_id, status, approved_by, approved_at, adjustment_date) VALUES (?,?,?,?,?,?,?,?,'Approved',?,NOW(),CURDATE())")->execute([$station_id, $fuel_type_id, $fuel_name, $adjustment_type, $difference, $current['current_stock'], $new_level, $reason_short, $me['id'], $me['id']]);
 
                 log_activity($pdo, $me['id'], 'Adjust Tank Level', "Adjusted {$adjustment_type} for {$fuel_name}: {$difference} L (new level: {$new_level} L). Reason: {$reason}");
                 $pdo->commit();
@@ -904,7 +887,7 @@ try {
 
 try {
     $stmt = $pdo->prepare("
-        SELECT ft.*, COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') as staff_name,
+        SELECT ft.*, fp.pump_number, COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') as staff_name,
                fi.current_stock as tank_level,
                fi.latest_calibration as tank_calibration
         FROM fuel_transactions ft
@@ -912,6 +895,8 @@ try {
         LEFT JOIN fuel_inventory fi
             ON fi.station_id = ft.station_id
             AND LOWER(TRIM(fi.fuel_type)) = LOWER(TRIM(ft.fuel_type))
+        LEFT JOIN fuel_pumps fp
+            ON ft.pump_id = fp.id
         WHERE ft.station_id = ? AND (ft.status = 'pending' OR ft.status = 'Pending Validation' OR ft.status LIKE '%pending%')
         ORDER BY ft.transaction_date DESC, ft.created_at DESC
     ");
@@ -962,7 +947,7 @@ try {
     $stmt = $pdo->prepare("
         SELECT ft.transaction_id, ft.transaction_date, ft.fuel_type, ft.liters_sold,
                ft.status, ft.shift_period, ft.shift_name,
-               ft.pump_id, ft.previous_reading, ft.present_reading,
+               ft.pump_id, fp.pump_number, ft.previous_reading, ft.present_reading,
                ft.calibration, ft.price_per_liter, ft.total_amount,
                COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Unknown') as staff_name, u.id as staff_id,
                fi.current_stock as current_tank_level,
@@ -972,6 +957,8 @@ try {
         LEFT JOIN fuel_inventory fi
             ON fi.station_id = ft.station_id
             AND LOWER(TRIM(fi.fuel_type)) = LOWER(TRIM(ft.fuel_type))
+        LEFT JOIN fuel_pumps fp
+            ON ft.pump_id = fp.id
         WHERE ft.station_id = ?
         ORDER BY ft.transaction_date DESC, ft.created_at DESC
         LIMIT 50
@@ -1034,7 +1021,7 @@ $pending_cnt    = count($pending_readings);
 $open_variances = count(array_filter($variance_reports, fn($v) => strtolower($v['status']) === 'open'));
 $high_variances = count(array_filter($variance_reports, fn($v) => abs($v['variance_percent'] ?? 0) > 5));
 
-include __DIR__ . '/../partials/header.php';
+include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 
 <?php
@@ -1336,7 +1323,7 @@ function adjustColor($hex,$pct) {
     <table class="data-table">
         <thead><tr>
             <th>Transaction ID</th>
-            <th>Pump / Fuel Type</th>
+            <th>Fuel Type</th>
             <th>Previous Reading</th>
             <th>Present Reading</th>
             <th>Liters Sold</th>
@@ -1375,10 +1362,7 @@ function adjustColor($hex,$pct) {
         <tr style="<?php echo $is_flagged ? 'background:#fff8f0;' : ''; ?>">
             <td><strong style="font-size:.76rem;font-family:monospace;"><?php echo htmlspecialchars($r['transaction_id']); ?></strong></td>
             <td>
-                <div style="font-weight:700;font-size:.85rem;">
-                    Pump #<?php echo htmlspecialchars($r['pump_number'] ?? $r['pump_id'] ?? '-'); ?>
-                </div>
-                <div style="font-size:.75rem;color:#666;"><?php echo htmlspecialchars($r['fuel_type']); ?></div>
+                <div style="font-weight:700;font-size:.85rem;color:<?php echo $colors['primary']; ?>;"><?php echo htmlspecialchars($r['fuel_type']); ?></div>
             </td>
             <td style="text-align:right;">
                 <span style="font-size:.88rem;color:#555;"><?php echo $prev_reading > 0 ? number_format($prev_reading, 2) : '<span style="color:#bbb;">-</span>'; ?></span>
@@ -1549,7 +1533,7 @@ function adjustColor($hex,$pct) {
         <th>Daily Log ID</th>
         <th>Date</th>
         <th>Shift Period</th>
-        <th>Pump / Fuel Type</th>
+        <th>Fuel Type</th>
         <th>Sales Liters</th>
         <th>Tank Level</th>
         <th>Variance %</th>
@@ -1573,8 +1557,9 @@ function adjustColor($hex,$pct) {
             default => $shift_raw ? htmlspecialchars($shift_raw) : '-',
         };
 
-        // Pump display - only pump_id exists in fuel_transactions
-        $pump_display = $h['pump_id'] ?? null;
+        // Pump display - prefer joined pump_number, fallback to pump_id
+        $pump_display = $h['pump_number'] ?? ($h['pump_id'] ? 'ID:'.$h['pump_id'] : null);
+        $cal_display  = (float)($h['calibration'] ?? 0);
 
         // Tank level from inventory join
         $tank_lvl = (float)($h['current_tank_level'] ?? 0);
@@ -1606,10 +1591,10 @@ function adjustColor($hex,$pct) {
             </span>
         </td>
         <td>
-            <?php if ($pump_display): ?>
-            <div style="font-weight:700;font-size:.85rem;">Pump #<?php echo htmlspecialchars($pump_display); ?></div>
+            <div style="font-weight:700;font-size:.85rem;color:<?php echo $colors['primary']; ?>;"><?php echo htmlspecialchars($h['fuel_type']); ?></div>
+            <?php if ($cal_display > 0): ?>
+            <div style="font-size:.68rem;color:#888;">Cal: <?php echo number_format($cal_display, 3); ?> L</div>
             <?php endif; ?>
-            <div style="font-size:.78rem;color:#555;"><?php echo htmlspecialchars($h['fuel_type']); ?></div>
         </td>
         <td style="text-align:right;">
             <strong style="color:<?php echo $colors['primary']; ?>;"><?php echo number_format($liters_sold, 2); ?> L</strong>

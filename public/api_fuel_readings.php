@@ -18,6 +18,50 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 
+// ── Fuel display name helper function ────────────────────────
+function clean_fuel_display_name($fuel_type) {
+    $name = trim((string)$fuel_type);
+    // Remove pump/nozzle numbers pattern like "DIESEL 1 - 1" → "DIESEL"
+    $name = preg_replace('/\s+\d+\s*-\s*\d+$/', '', $name); // Remove " 1 - 1", " 2 - 3" at end
+    $name = preg_replace('/\s*-\s*\d+$/', '', $name); // Remove " - 1", " - 2" at end
+    $name = trim($name);
+    $normalized = strtoupper(preg_replace('/\s+/', ' ', $name));
+    if (strpos($normalized, 'TURBO') !== false && strpos($normalized, 'DIESEL') !== false) {
+        return 'Turbo Diesel';
+    }
+    if (strpos($normalized, 'KEROSENE') !== false) {
+        return 'Kerosene';
+    }
+    if (strpos($normalized, 'XCS') !== false) {
+        return 'XCS Plus';
+    }
+    if (strpos($normalized, 'XTRA') !== false && strpos($normalized, 'UNL') !== false) {
+        return 'Xtra UNL';
+    }
+    if (strpos($normalized, 'DIESEL') !== false) {
+        return 'Diesel';
+    }
+    return $name !== '' ? $name : 'Fuel';
+}
+
+function merge_clean_fuel_summary_rows(array $rows, bool $with_amount): array {
+    $merged = [];
+    foreach ($rows as $row) {
+        $fuel = clean_fuel_display_name($row['fuel_type'] ?? '');
+        if (!isset($merged[$fuel])) {
+            $merged[$fuel] = ['fuel_type' => $fuel, 'volume_sales' => 0.0];
+            if ($with_amount) {
+                $merged[$fuel]['amount_sales'] = 0.0;
+            }
+        }
+        $merged[$fuel]['volume_sales'] += (float)($row['volume_sales'] ?? 0);
+        if ($with_amount) {
+            $merged[$fuel]['amount_sales'] += (float)($row['amount_sales'] ?? 0);
+        }
+    }
+    return array_values($merged);
+}
+
 // Clean any stray output
 while (ob_get_level()) ob_end_clean();
 header('Content-Type: application/json');
@@ -111,6 +155,8 @@ try {
                 respond(false, 'Only staff can encode readings.');
 
             $fuel_type    = trim($_POST['fuel_type']      ?? '');
+            // pump_label: full formatted name e.g. "DIESEL 1 - 1" submitted by the form
+            $pump_label   = strtoupper(trim($_POST['pump_label'] ?? ''));
             // NOTE: the form submits 'ending_reading' (the ending meter) and 'beginning_reading' (the beginning meter)
             $present_raw  = $_POST['ending_reading']   ?? $_POST['present_reading'] ?? '0';
             $present      = (float)str_replace(',', '', $present_raw);   // Ending meter (remove commas)
@@ -324,36 +370,49 @@ try {
             $payment_method_safe = 'Internal';
 
             // ── Resolve actual pump_id from fuel_pumps table ──────────────────────────
-            // tanker_number is the pump_number string (e.g. "1", "2"), not the PK id.
-            // We must look up the real id to satisfy the FK constraint.
+            // pump_label (e.g. "DIESEL 1 - 1") is the formatted name submitted by the form.
+            // Priority: match by pump_label against pump_number in fuel_pumps.
             $resolved_pump_id = null;
+            $actual_pump_name = !empty($pump_label) ? $pump_label : $fuel_type; // Default to pump_label or fuel_type
             try {
-                $pump_stmt = $pdo->prepare("
-                    SELECT fp.id FROM fuel_pumps fp
-                    JOIN fuel_types ft ON ft.id = fp.fuel_type_id
-                    WHERE fp.station_id = ?
-                      AND fp.pump_number = ?
-                      AND LOWER(TRIM(ft.name)) = LOWER(TRIM(?))
-                    LIMIT 1
-                ");
-                $pump_stmt->execute([$station_id, (string)$tanker_num, $fuel_type]);
-                $pid = $pump_stmt->fetchColumn();
-                if ($pid !== false) $resolved_pump_id = (int)$pid;
+                if (!empty($pump_label)) {
+                    // Match directly by the exact pump_number label
+                    $pump_stmt = $pdo->prepare("
+                        SELECT id, pump_number FROM fuel_pumps
+                        WHERE station_id = ? AND UPPER(TRIM(pump_number)) = ?
+                        LIMIT 1
+                    ");
+                    $pump_stmt->execute([$station_id, $pump_label]);
+                    $pump_row = $pump_stmt->fetch(PDO::FETCH_ASSOC);
+                    if ($pump_row) {
+                        $resolved_pump_id = (int)$pump_row['id'];
+                        $actual_pump_name = $pump_row['pump_number'];
+                    }
+                }
             } catch (Exception $e) {}
 
-            // Fallback: match by station + pump_number only (ignores fuel_type)
+            // Fallback: match by fuel_type name + tanker_number via fuel_types join
             if ($resolved_pump_id === null) {
                 try {
                     $pump_stmt2 = $pdo->prepare("
-                        SELECT id FROM fuel_pumps
-                        WHERE station_id = ? AND pump_number = ?
+                        SELECT fp.id, fp.pump_number FROM fuel_pumps fp
+                        JOIN fuel_types ft ON ft.id = fp.fuel_type_id
+                        WHERE fp.station_id = ?
+                          AND fp.pump_number = ?
+                          AND LOWER(TRIM(ft.name)) = LOWER(TRIM(?))
                         LIMIT 1
                     ");
-                    $pump_stmt2->execute([$station_id, (string)$tanker_num]);
-                    $pid2 = $pump_stmt2->fetchColumn();
-                    if ($pid2 !== false) $resolved_pump_id = (int)$pid2;
+                    $pump_stmt2->execute([$station_id, (string)$tanker_num, $fuel_type]);
+                    $pump_row2 = $pump_stmt2->fetch(PDO::FETCH_ASSOC);
+                    if ($pump_row2) {
+                        $resolved_pump_id = (int)$pump_row2['id'];
+                        $actual_pump_name = $pump_row2['pump_number'];
+                    }
                 } catch (Exception $e) {}
             }
+
+            // Use the resolved pump name for saving — guarantees specific label is stored
+            $fuel_type_to_save = $actual_pump_name;
             // $resolved_pump_id is NULL if no match — FK allows NULL (ON DELETE SET NULL)
 
             try {
@@ -361,14 +420,14 @@ try {
                 $pdo->prepare("
                     INSERT INTO fuel_transactions
                         (transaction_id, station_id, fuel_type, pump_id,
-                         present_reading, previous_reading, calibration,
+                         present_reading, previous_reading, calibration, staff_calibration,
                          liters_sold, price_per_liter, total_amount,
                          payment_method, staff_id, transaction_date,
                          shift_period, shift_name, shift_id, notes, status)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Pending Validation')
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Pending Validation')
                 ")->execute([
-                    $txn_id, $station_id, $fuel_type, $resolved_pump_id,
-                    $present, $previous, $calibration,
+                    $txn_id, $station_id, $fuel_type_to_save, $resolved_pump_id,
+                    $present, $previous, $calibration, $calibration,
                     $liters_sold, $price, $total_amount,
                     $payment_method_safe, $me['id'], $reading_date . ' ' . date('H:i:s'),
                     $shift_period_safe, $shift_name_safe, $shift_id, $notes,
@@ -469,25 +528,6 @@ try {
                         WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
                     ")->execute([$txn['liters_sold'], $txn['liters_sold'], $station_id, $txn['fuel_type']]);
                 } catch (Exception $e) {}
-
-                // Audit trail entry
-                try {
-                    $pdo->prepare("
-                        INSERT INTO fuel_adjustments
-                            (station_id, fuel_type_id, adjustment_type, liters, reason, user_id, adjustment_date)
-                        SELECT ?, fuel_type_id, 'verified_sale', ?, ?, ?, CURDATE()
-                        FROM fuel_inventory
-                        WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                        LIMIT 1
-                    ")->execute([
-                        $station_id,
-                        -abs($txn['liters_sold']),
-                        "Approved via API. TXN {$txn_id}. {$txn['fuel_type']}: {$txn['liters_sold']} L",
-                        $me['id'],
-                        $station_id,
-                        $txn['fuel_type'],
-                    ]);
-                } catch (Exception $e) {}
             }
             $pdo->commit();
             log_activity($pdo, $me['id'], "Fuel Reading {$new_status}", "TXN {$txn_id} | {$txn['fuel_type']} | {$txn['liters_sold']} L");
@@ -519,19 +559,12 @@ try {
             if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_from)) $date_from = date('Y-m-d');
             if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to))   $date_to   = date('Y-m-d');
 
-            // Staff can only see their own entries; managers see all
+            // Staff can see all entries for their station (e.g. to see other shifts or what was recorded by others at the station)
             $is_manager = in_array($role, ['manager', 'admin', 'superadmin']);
 
-            $base_where  = "ft.station_id = ? AND DATE(ft.transaction_date) BETWEEN ? AND ?";
+            $base_where  = "ft.station_id = ? AND DATE(ft.transaction_date) BETWEEN ? AND ?
+                            AND LOWER(COALESCE(ft.status, '')) NOT IN ('voided','rejected','cancelled','canceled')";
             $base_params = [$station_id, $date_from, $date_to];
-
-            // Staff: see ALL their own entries (pending + approved) so they can
-            //        track what they submitted. Table A is their raw meter log.
-            // Manager: see all entries for the station across all staff.
-            if (!$is_manager) {
-                $base_where   .= " AND ft.staff_id = ?";
-                $base_params[] = $me['id'];
-            }
 
             // Additional filters
             if ($shift) {
@@ -555,6 +588,8 @@ try {
             $mr_sql = "
                 SELECT
                     ft.transaction_id,
+                    ft.pump_id,
+                    fp.pump_number,
                     ft.fuel_type,
                     ft.previous_reading   AS beginning,
                     ft.present_reading    AS ending,
@@ -573,14 +608,36 @@ try {
                     ft.validated_at,
                     CONCAT(vm.first_name, ' ', vm.last_name) AS validated_by_name
                 FROM fuel_transactions ft
-                LEFT JOIN users u  ON ft.staff_id    = u.id
-                LEFT JOIN users vm ON ft.validated_by = vm.id
+                LEFT JOIN users u        ON ft.staff_id    = u.id
+                LEFT JOIN users vm       ON ft.validated_by = vm.id
+                LEFT JOIN fuel_pumps fp  ON ft.pump_id     = fp.id
                 WHERE {$base_where}
-                ORDER BY ft.transaction_date DESC, ft.fuel_type ASC
+                ORDER BY
+                    CASE
+                        WHEN TRIM(UPPER(ft.fuel_type)) = 'DIESEL'                                          THEN 1
+                        WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 1%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 1%' THEN 2
+                        WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 2%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 2%' THEN 3
+                        WHEN UPPER(ft.fuel_type) LIKE '%TURBO%DIESEL%'                                      THEN 4
+                        WHEN UPPER(ft.fuel_type) LIKE '%KEROSENE%'                                          THEN 5
+                        WHEN UPPER(ft.fuel_type) LIKE '%XCS%PLUS%' OR UPPER(ft.fuel_type) LIKE 'XCS PLUS%' THEN 6
+                        WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%1%'                                       THEN 7
+                        WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%2%'                                       THEN 8
+                        WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%'                                         THEN 9
+                        WHEN UPPER(ft.fuel_type) LIKE '%DIESEL%'                                           THEN 10
+                        ELSE 99
+                    END ASC,
+                    ft.fuel_type ASC,
+                    fp.pump_number ASC,
+                    ft.transaction_date ASC
             ";
             $mr_stmt = $pdo->prepare($mr_sql);
             $mr_stmt->execute($base_params);
             $meter_readings = $mr_stmt->fetchAll(PDO::FETCH_ASSOC);
+            // Clean fuel names
+            foreach ($meter_readings as &$row) {
+                $row['fuel_type'] = clean_fuel_display_name($row['fuel_type'] ?? '');
+            }
+            unset($row);
 
             // ── TABLE 2: Volume Sales Summary (liters per fuel type) ─────────
             $vs_sql = "
@@ -594,7 +651,7 @@ try {
             ";
             $vs_stmt = $pdo->prepare($vs_sql);
             $vs_stmt->execute($base_params);
-            $vol_sales_summary = $vs_stmt->fetchAll(PDO::FETCH_ASSOC);
+            $vol_sales_summary = merge_clean_fuel_summary_rows($vs_stmt->fetchAll(PDO::FETCH_ASSOC), false);
 
             // ── TABLE 3: Volume & Amount Summary (liters + amount per fuel type) ──
             $va_sql = "
@@ -609,7 +666,7 @@ try {
             ";
             $va_stmt = $pdo->prepare($va_sql);
             $va_stmt->execute($base_params);
-            $vol_amt_summary = $va_stmt->fetchAll(PDO::FETCH_ASSOC);
+            $vol_amt_summary = merge_clean_fuel_summary_rows($va_stmt->fetchAll(PDO::FETCH_ASSOC), true);
 
             // ── Totals ────────────────────────────────────────────────────────
             $total_liters = array_sum(array_column($vol_amt_summary, 'volume_sales'));
@@ -643,7 +700,6 @@ try {
 
             $dr_where  = "ft.station_id = ? AND DATE(ft.transaction_date) = ?";
             $dr_params = [$station_id, $date];
-            if (!$is_manager) { $dr_where .= " AND ft.staff_id = ?"; $dr_params[] = $me['id']; }
 
             // Per-shift breakdown
             $shift_sql = "
@@ -662,7 +718,22 @@ try {
                 LEFT JOIN users u ON ft.staff_id = u.id
                 WHERE {$dr_where}
                 GROUP BY ft.shift_period, ft.shift_name, ft.fuel_type
-                ORDER BY ft.shift_period ASC, ft.fuel_type ASC
+                ORDER BY
+                    ft.shift_period ASC,
+                    CASE
+                        WHEN TRIM(UPPER(ft.fuel_type)) = 'DIESEL'                                          THEN 1
+                        WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 1%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 1%' THEN 2
+                        WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 2%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 2%' THEN 3
+                        WHEN UPPER(ft.fuel_type) LIKE '%TURBO%DIESEL%'                                      THEN 4
+                        WHEN UPPER(ft.fuel_type) LIKE '%KEROSENE%'                                          THEN 5
+                        WHEN UPPER(ft.fuel_type) LIKE '%XCS%PLUS%' OR UPPER(ft.fuel_type) LIKE 'XCS PLUS%' THEN 6
+                        WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%1%'                                       THEN 7
+                        WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%2%'                                       THEN 8
+                        WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%'                                         THEN 9
+                        WHEN UPPER(ft.fuel_type) LIKE '%DIESEL%'                                           THEN 10
+                        ELSE 99
+                    END ASC,
+                    ft.fuel_type ASC
             ";
             $shift_stmt = $pdo->prepare($shift_sql);
             $shift_stmt->execute($dr_params);
@@ -677,7 +748,22 @@ try {
                     SUM(ft.total_amount)     AS total_amount
                 FROM fuel_transactions ft
                 WHERE {$dr_where}
-                GROUP BY ft.fuel_type ORDER BY ft.fuel_type ASC
+                GROUP BY ft.fuel_type
+                ORDER BY
+                    CASE
+                        WHEN TRIM(UPPER(ft.fuel_type)) = 'DIESEL'                                          THEN 1
+                        WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 1%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 1%' THEN 2
+                        WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 2%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 2%' THEN 3
+                        WHEN UPPER(ft.fuel_type) LIKE '%TURBO%DIESEL%'                                      THEN 4
+                        WHEN UPPER(ft.fuel_type) LIKE '%KEROSENE%'                                          THEN 5
+                        WHEN UPPER(ft.fuel_type) LIKE '%XCS%PLUS%' OR UPPER(ft.fuel_type) LIKE 'XCS PLUS%' THEN 6
+                        WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%1%'                                       THEN 7
+                        WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%2%'                                       THEN 8
+                        WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%'                                         THEN 9
+                        WHEN UPPER(ft.fuel_type) LIKE '%DIESEL%'                                           THEN 10
+                        ELSE 99
+                    END ASC,
+                    ft.fuel_type ASC
             ";
             $day_stmt = $pdo->prepare($day_sql);
             $day_stmt->execute($dr_params);

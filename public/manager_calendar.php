@@ -321,7 +321,7 @@ try {
     
     // MANAGER SPECIFIC: Pending validations count
     try {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE station_id = ? AND validation_status = 'pending'");
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions WHERE station_id = ? AND validation_status = 'Pending'");
         $stmt->execute([$station_id]);
         $summary_stats['pending_validations'] += $stmt->fetchColumn();
         
@@ -563,10 +563,10 @@ try {
     // Auto-sync pending transactions awaiting validation
     try {
         $pending_tx = $pdo->prepare("SELECT t.id, t.transaction_date, t.customer_name, t.total_amount, t.payment_status, 
-            t.encoded_by, u.name AS staff_name
-            FROM transactions t
-            JOIN users u ON t.encoded_by = u.id
-            WHERE t.station_id = ? AND t.validation_status = 'pending' 
+            t.staff_id, u.name AS staff_name
+            FROM merchandise_transactions t
+            JOIN users u ON t.staff_id = u.id
+            WHERE t.station_id = ? AND t.validation_status = 'Pending' 
             AND DATE(t.transaction_date) BETWEEN ? AND ?
             ORDER BY t.transaction_date");
         $pending_tx->execute([$station_id, $view_start, $view_end]);

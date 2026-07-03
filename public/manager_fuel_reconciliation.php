@@ -259,7 +259,7 @@ if (in_array($export, ['excel', 'csv', 'pdf'])) {
     }
 }
 
-require_once __DIR__ . '/../partials/header.php';
+require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 
 <style>

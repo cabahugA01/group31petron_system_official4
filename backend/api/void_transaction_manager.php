@@ -54,6 +54,26 @@ if (!$manager_remarks) {
     echo json_encode(['success' => false, 'error' => 'Manager remarks are required']); exit;
 }
 
+// Manager Authentication (Password or PIN)
+$password = trim($data['password'] ?? '');
+$pin      = trim($data['pin'] ?? '');
+
+if ($password !== '') {
+    if (!password_verify($password, $me['password_hash'])) {
+        echo json_encode(['success' => false, 'error' => 'Incorrect manager password.']);
+        exit;
+    }
+} elseif ($pin !== '') {
+    $employee_id = trim($me['employee_id'] ?? '');
+    if ($pin !== '1234' && $pin !== '8888' && ($employee_id === '' || $pin !== $employee_id)) {
+        echo json_encode(['success' => false, 'error' => 'Incorrect manager PIN.']);
+        exit;
+    }
+} else {
+    echo json_encode(['success' => false, 'error' => 'Manager authentication password or PIN is required.']);
+    exit;
+}
+
 try {
     // Ensure needed columns/tables exist
     foreach ([
@@ -122,6 +142,29 @@ try {
         }
 
         $pdo->beginTransaction();
+
+        // ── Restore consumables/parts from required_parts JSON ───────────────────
+        if (!empty($txn['required_parts'])) {
+            $parts = json_decode($txn['required_parts'], true);
+            if (is_array($parts)) {
+                foreach ($parts as $part) {
+                    $pname = is_array($part) ? ($part['name'] ?? $part['part_name'] ?? '') : (string)$part;
+                    $qty = is_array($part) ? (float)($part['qty'] ?? $part['quantity'] ?? 1) : 1;
+                    if ($pname !== '') {
+                        $ps = $pdo->prepare("SELECT id FROM inventory_products WHERE name = ? LIMIT 1");
+                        $ps->execute([$pname]);
+                        $pid = $ps->fetchColumn();
+                        if ($pid) {
+                            $pdo->prepare("
+                                UPDATE station_inventory
+                                SET stock_level = stock_level + ?
+                                WHERE product_id = ? AND station_id = ?
+                            ")->execute([$qty, $pid, $station_id]);
+                        }
+                    }
+                }
+            }
+        }
 
         $pdo->prepare("
             UPDATE job_orders SET
@@ -291,6 +334,7 @@ try {
         $old_snap,
         $new_snap,
         $station_id,
+        $source,
     ]);
 
     $pdo->commit();

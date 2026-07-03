@@ -218,8 +218,8 @@ if (isset($_GET['single_id']) && $export === 'pdf') {
                     <div class="row"><label>Date:</label><span><?= date('M d, Y', strtotime($adj['adjustment_date'])) ?></span></div>
                     <div class="row"><label>Type:</label><span><?= htmlspecialchars($adj['adjustment_type']) ?></span></div>
                     <div class="row"><label>Fuel Type:</label><span><?= htmlspecialchars($adj['fuel_type']) ?></span></div>
-                    <div class="row"><label>Previous Value:</label><span><?= number_format($adj['previous_value'], 2) ?> L</span></div>
-                    <div class="row"><label>New Value:</label><span><?= number_format($adj['new_value'], 2) ?> L</span></div>
+                    <div class="row"><label>Previous Value:</label><span><?= number_format($adj['previous_value'] ?? 0, 2) ?> L</span></div>
+                    <div class="row"><label>New Value:</label><span><?= number_format($adj['new_value'] ?? 0, 2) ?> L</span></div>
                     <div class="total"><label>Difference:</label><span><?= ($adj['liters'] >= 0 ? '+' : '') . number_format($adj['liters'], 2) ?> L</span></div>
                     <div class="row"><label>Requested By:</label><span><?= htmlspecialchars($adj['requested_by_name']) ?></span></div>
                     <div class="row"><label>Approved By:</label><span><?= htmlspecialchars($adj['approved_by_name']) ?></span></div>
@@ -256,7 +256,10 @@ if ($filter_station > 0) {
 }
 
 // ── Summary & Fetch Query Construction ────────────────────────
-$where  = ["DATE(fa.adjustment_date) BETWEEN ? AND ?"];
+$where  = [
+    "DATE(fa.adjustment_date) BETWEEN ? AND ?",
+    "fa.adjustment_type NOT IN ('verified_sale', 'rejected_reading', 'daily_log_approved', 'daily_log_rejected')"
+];
 $params = [$date_from, $date_to];
 
 if ($filter_station > 0) {
@@ -360,8 +363,8 @@ if (in_array($export, ['excel','pdf'])) {
             $adj['adjustment_type'],
             $adj['fuel_type'],
             $tank_pump,
-            number_format($adj['previous_value'], 2),
-            number_format($adj['new_value'], 2),
+            number_format($adj['previous_value'] ?? 0, 2),
+            number_format($adj['new_value'] ?? 0, 2),
             $diff_str,
             $adj['reason'] ?? '—',
             $adj['requested_by_name'] ?? '—',
@@ -827,16 +830,7 @@ require_once __DIR__ . '/../partials/header.php';
 </div>
 
 <!-- == ALERTS == -->
-<?php if (!empty($_SESSION['success'])): ?>
-    <div style="padding: 12px 16px; background: #dcfce7; border: 1px solid #bbf7d0; color: #15803d; border-radius: 8px; margin-bottom: 16px; font-weight: 600;">
-        <i class="fas fa-check-circle"></i> <?= $_SESSION['success']; unset($_SESSION['success']); ?>
-    </div>
-<?php endif; ?>
-<?php if (!empty($_SESSION['error'])): ?>
-    <div style="padding: 12px 16px; background: #fee2e2; border: 1px solid #fecaca; color: #b91c1c; border-radius: 8px; margin-bottom: 16px; font-weight: 600;">
-        <i class="fas fa-exclamation-circle"></i> <?= $_SESSION['error']; unset($_SESSION['error']); ?>
-    </div>
-<?php endif; ?>
+<?php require __DIR__ . '/../partials/flash_toast.php'; ?>
 
 <!-- == SUMMARY CARDS == -->
 <div class="ato-cards">
@@ -1007,8 +1001,8 @@ require_once __DIR__ . '/../partials/header.php';
                             <td><span style="font-weight:600; color:#475569;"><?= htmlspecialchars($adj['adjustment_type']) ?></span></td>
                             <td style="font-weight:700; color:#00264D;"><?= htmlspecialchars($adj['fuel_type']) ?></td>
                             <td><span style="font-size:10px; color:#64748b;"><?= htmlspecialchars($tank_pump) ?></span></td>
-                            <td style="text-align:right; font-family:monospace;"><?= number_format($adj['previous_value'], 2) ?></td>
-                            <td style="text-align:right; font-family:monospace;"><?= number_format($adj['new_value'], 2) ?></td>
+                            <td style="text-align:right; font-family:monospace;"><?= number_format($adj['previous_value'] ?? 0, 2) ?></td>
+                            <td style="text-align:right; font-family:monospace;"><?= number_format($adj['new_value'] ?? 0, 2) ?></td>
                             <td style="text-align:right;" class="<?= $diff_class ?>"><?= $diff_str ?></td>
                             <td title="<?= htmlspecialchars($adj['reason']) ?>"><?= htmlspecialchars(substr($adj['reason'], 0, 40)) ?><?= strlen($adj['reason']) > 40 ? '...' : '' ?></td>
                             <td><?= htmlspecialchars($adj['requested_by_name']) ?></td>
@@ -1064,8 +1058,8 @@ function viewAdjDetails(id) {
                     <div class="details-item"><label>Adjustment Date</label><span>${data.adjustment_date}</span></div>
                     <div class="details-item"><label>Adjustment Type</label><span>${data.adjustment_type}</span></div>
                     <div class="details-item"><label>Fuel Type</label><span>${data.fuel_type}</span></div>
-                    <div class="details-item"><label>Previous Value</label><span>${parseFloat(data.previous_value).toLocaleString(undefined, {minimumFractionDigits:2})} L</span></div>
-                    <div class="details-item"><label>New Value</label><span>${parseFloat(data.new_value).toLocaleString(undefined, {minimumFractionDigits:2})} L</span></div>
+                    <div class="details-item"><label>Previous Value</label><span>${parseFloat(data.previous_value || 0).toLocaleString(undefined, {minimumFractionDigits:2})} L</span></div>
+                    <div class="details-item"><label>New Value</label><span>${parseFloat(data.new_value || 0).toLocaleString(undefined, {minimumFractionDigits:2})} L</span></div>
                     <div class="details-item"><label>Difference</label><span style="color:${diffColor}; font-weight:700;">${diffStr}</span></div>
                     <div class="details-item"><label>Requested By</label><span>${data.requested_by_name}</span></div>
                     <div class="details-item"><label>Approved By</label><span>${data.approved_by_name}</span></div>

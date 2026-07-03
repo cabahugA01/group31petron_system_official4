@@ -182,7 +182,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                       'total' => $item_total,
                       'unit' => $product['unit'],
                       'pump_id' => $pump_id,
-                      'nozzle_id' => $nozzle_id
+                      'nozzle_id' => $nozzle_id,
+                      'stock_before' => $stock
                   ];
                }
               
@@ -251,6 +252,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                           "POS sale: {$item['name']} x{$item['quantity']} @ P{$item['unit_price']}",
                           $me['id']
                       ]);
+
+                       // Record in inventory_logs for movement history
+                       try {
+                           $qtyBefore = (float)($item['stock_before'] ?? 0);
+                           $qtyAfter = $qtyBefore - $item['quantity'];
+                           $logStmt = $pdo->prepare("
+                               INSERT INTO inventory_logs (
+                                   station_id, product_id, user_id, action, 
+                                   quantity_before, quantity_after, quantity_change, 
+                                   reference_type, notes, created_at
+                               ) VALUES (?, ?, ?, 'sale', ?, ?, ?, 'sale', ?, NOW())
+                           ");
+                           $logStmt->execute([
+                               $station_id,
+                               $item['product_id'],
+                               $me['id'] ?? null,
+                               $qtyBefore,
+                               $qtyAfter,
+                               -$item['quantity'],
+                               "POS Sale (Multi) - Ref: " . $sale_id
+                           ]);
+                       } catch (Exception $logErr) {
+                           error_log("Inventory log insert error in pos_multi.php: " . $logErr->getMessage());
+                       }
                   }
                   
                    $pdo->commit();

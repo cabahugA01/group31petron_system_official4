@@ -277,11 +277,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_calibration'])
             <h1><i class="fas fa-gas-pump"></i> Pump Master - Calibration Management</h1>
         </div>
         
-        <?php if ($msg): ?>
-            <div class="alert alert-<?php echo strpos($msg, 'success') !== false ? 'success' : 'error'; ?>">
-                <?php echo htmlspecialchars($msg); ?>
-            </div>
-        <?php endif; ?>
+        <?php
+// Toast bridge: convert $msg/$msg_type to SESSION for flash_toast
+if (!empty($msg)) {
+    if ($msg_type === 'success') $_SESSION['success'] = $msg;
+    else $_SESSION['error'] = $msg;
+    $msg = ''; $msg_type = '';
+}
+require __DIR__ . '/../partials/flash_toast.php';
+?>
+
         
         <div class="calibration-form">
             <h2>Update Calibration</h2>
