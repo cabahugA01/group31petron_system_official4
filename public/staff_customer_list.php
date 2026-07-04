@@ -1,13 +1,13 @@
 <?php
 /**
  * Staff Customer Management Module
- * Complete customer CRUD with modals
+ * Standardized Fuel Management UI/UX and data retrieval integration
  */
-
 $page_id = 'customers';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
+header('Content-Type: text/html; charset=utf-8');
 
 $me = current_user();
 $role = role_key($me['role'] ?? '');
@@ -27,236 +27,644 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
+/* Header margin standardize */
+.int-head {
+    margin-top: 0px !important;
+}
+
 /* Modal Overlay */
-.modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:9999;}
-.modal-overlay.active{display:flex;}
-.modal-container{background:#fff;border-radius:12px;max-width:700px;width:95%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);}
-.modal-header{padding:20px 24px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;}
-.modal-header h3{margin:0;font-size:18px;font-weight:700;color:#002F70;}
-.modal-close{background:none;border:none;font-size:24px;color:#6b7280;cursor:pointer;padding:0;width:30px;height:30px;display:flex;align-items:center;justify-content:center;}
-.modal-close:hover{color:#002F70;}
-.modal-body{padding:24px;}
-.modal-footer{padding:16px 24px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:10px;background:#f9fafb;}
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(15, 23, 42, 0.6);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    backdrop-filter: blur(4px);
+}
+.modal-overlay.active {
+    display: flex;
+}
+.modal-container {
+    background: #ffffff;
+    border-radius: 12px;
+    max-width: 750px;
+    width: 95%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    border: 1px solid #e2e8f0;
+}
+.modal-header {
+    padding: 18px 24px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8fafc;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+}
+.modal-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: #0f172a;
+}
+.modal-close {
+    background: none !important;
+    background-color: transparent !important;
+    border: none !important;
+    font-size: 24px;
+    color: #64748b !important;
+    cursor: pointer;
+    box-shadow: none !important;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.modal-close:hover {
+    color: #0f172a !important;
+}
+.modal-body {
+    padding: 24px;
+}
+.modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    background: #f8fafc;
+    border-bottom-left-radius: 12px;
+    border-bottom-right-radius: 12px;
+}
+
+/* Global Button Override Fixes - excluding export buttons */
+.modal .btn,
+.modal-body .btn,
+.modal-footer .btn,
+.show .modal-footer .btn,
+.table .btn,
+.table-wrap .btn,
+.filter-bar .btn,
+.card-head .btn,
+.form-grid .btn,
+.action-btns .btn,
+.filters-bar button,
+.header-actions button:not(.btn-export-excel):not(.btn-export-csv):not(.btn-export-pdf) {
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    color: #334155 !important;
+    border: 1px solid #cbd5e1 !important;
+    font-weight: 600 !important;
+    transition: all 0.15s ease-in-out !important;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+.modal .btn:hover,
+.modal-body .btn:hover,
+.modal-footer .btn:hover,
+.table .btn:hover,
+.table-wrap .btn:hover,
+.filter-bar .btn:hover,
+.card-head .btn:hover,
+.form-grid .btn:hover,
+.action-btns .btn:hover,
+.filters-bar button:hover,
+.header-actions button:not(.btn-export-excel):not(.btn-export-csv):not(.btn-export-pdf):hover {
+    background-color: #f8fafc !important;
+    background: #f8fafc !important;
+    color: #1e293b !important;
+    border-color: #94a3b8 !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
+}
+
+/* Save / Primary Button Color exception inside modals & top bar */
+.modal .btn-primary,
+.modal-footer .btn-primary,
+.btn-save-customer,
+.btn-update-customer {
+    background-color: #002F70 !important;
+    background: #002F70 !important;
+    color: #ffffff !important;
+    border: 1px solid #002F70 !important;
+}
+.modal .btn-primary:hover,
+.modal-footer .btn-primary:hover,
+.btn-save-customer:hover,
+.btn-update-customer:hover {
+    background-color: #001f4d !important;
+    background: #001f4d !important;
+    border-color: #001f4d !important;
+}
 
 /* Form Styles */
-.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
-.form-grid.full{grid-template-columns:1fr;}
-.form-group label{display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;}
-.form-group label .required{color:#dc2626;margin-left:2px;}
-.form-group input, .form-group select, .form-group textarea{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;transition:0.2s;}
-.form-group input:focus, .form-group select:focus{outline:none;border-color:#002F70;box-shadow:0 0 0 3px rgba(0,47,112,0.1);}
-
-/* Type Selector */
-.type-selector{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:16px 0;}
-.type-option{border:2px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:0.2s;}
-.type-option:hover{border-color:#002F70;background:#f8fafc;}
-.type-option.selected{border-color:#002F70;background:#eff6ff;}
-.type-option i{font-size:28px;color:#002F70;display:block;margin-bottom:8px;}
-.type-option span{font-size:13px;font-weight:600;color:#374151;}
-
-/* Summary Cards */
-.summary-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:24px;}
-.summary-card{background:#fff;border-radius:10px;border:1px solid #e5e7eb;padding:20px;display:flex;align-items:center;gap:16px;}
-.summary-card-icon{width:50px;height:50px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:24px;}
-.summary-card-icon.blue{background:#eff6ff;color:#1d4ed8;}
-.summary-card-icon.green{background:#d1fae5;color:#059669;}
-.summary-card-icon.yellow{background:#fef3c7;color:#d97706;}
-.summary-card-icon.purple{background:#f5f3ff;color:#7c3aed;}
-.summary-card-content h3{margin:0;font-size:32px;font-weight:700;color:#002F70;}
-.summary-card-content p{margin:4px 0 0;font-size:13px;color:#6b7280;}
-
-/* Filters styling */
-.filters-bar{background:#fff;border-radius:10px;border:1px solid #e5e7eb;padding:20px;margin-bottom:20px;}
-.filters-grid{display:grid;grid-template-columns:2fr 1.2fr 1.2fr 1.2fr 1.2fr 1.8fr;gap:12px;align-items:flex-end;}
-
-/* Table */
-.table-container{background:#fff;border-radius:10px;border:1px solid #e5e7eb;padding:20px;}
-.customers-table{width:100%;border-collapse:collapse;}
-.customers-table thead{background:#f8fafc;}
-.customers-table th{padding:12px;text-align:left;font-size:12px;font-weight:700;color:#374151;border-bottom:2px solid #e5e7eb;}
-.customers-table td{padding:12px;border-bottom:1px solid #f1f5f9;color:#374151;font-size:14px;}
-.customers-table tbody tr:hover{background:#f8fafc;}
-
-/* Badges */
-.badge{display:inline-block;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;}
-.badge-walkin{background:#e0e7ff;color:#3730a3;}
-.badge-regular{background:#fef3c7;color:#92400e;}
-.badge-fleet{background:#dbeafe;color:#1e40af;}
-.badge-active{background:#d1fae5;color:#065f46;}
-.badge-inactive{background:#fee2e2;color:#991b1b;}
-
-/* Action Buttons - Solid Design - HORIZONTAL */
-.action-btns{display:flex;flex-direction:row;gap:6px;align-items:center;justify-content:center;}
-.btn-action{padding:8px 12px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px;transition:0.2s;color:white;white-space:nowrap;}
-.btn-view{background:#3b82f6;}
-.btn-view:hover{background:#2563eb;}
-.btn-edit{background:#f59e0b;}
-.btn-edit:hover{background:#d97706;}
-.btn-print{background:#6b7280;}
-.btn-print:hover{background:#4b5563;}
-
-/* Info Display in View Modal */
-.info-section{margin-bottom:24px;}
-.info-section h4{margin:0 0 12px;font-size:14px;font-weight:700;color:#002F70;border-bottom:2px solid #e5e7eb;padding-bottom:8px;}
-.info-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f3f4f6;}
-.info-row:last-child{border-bottom:none;}
-.info-label{font-size:13px;font-weight:600;color:#6b7280;}
-.info-value{font-size:14px;color:#1f2937;font-weight:500;}
-
-/* Transaction Summary */
-.tx-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin:16px 0;}
-.tx-card{background:linear-gradient(135deg,#f8fafc,#f1f5f9);border-radius:8px;padding:14px;text-align:center;border:1px solid #e2e8f0;}
-.tx-card .num{font-size:20px;font-weight:800;color:#002F70;}
-.tx-card .lbl{font-size:10px;color:#64748b;margin-top:4px;text-transform:uppercase;font-weight:bold;}
-
-/* Custom Export Buttons - Solid Design */
-.btn-export-pdf {
-    background: #dc2626 !important;
-    border: none !important;
-    color: white !important;
-    padding: 10px 16px;
-    border-radius: 6px;
+.form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.form-grid.full {
+    grid-template-columns: 1fr;
+}
+.form-group label {
+    display: block;
+    font-size: 13px;
     font-weight: 600;
+    color: #334155;
+    margin-bottom: 6px;
+}
+.form-group label .required {
+    color: #ef4444;
+    margin-left: 2px;
+}
+.form-group input, .form-group select, .form-group textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
     font-size: 14px;
+    transition: 0.2s;
+    background-color: #ffffff;
+}
+.form-group input:focus, .form-group select:focus {
+    outline: none;
+    border-color: #002F70;
+    box-shadow: 0 0 0 3px rgba(0, 47, 112, 0.15);
+}
+
+/* Customer Type Selector Options */
+.type-selector {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin: 14px 0 20px 0;
+}
+.type-option {
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
     cursor: pointer;
-    display: inline-flex;
+    transition: all 0.2s;
+    background: #ffffff;
+}
+.type-option:hover {
+    border-color: #002F70;
+    background: #f8fafc;
+}
+.type-option.selected {
+    border-color: #002F70;
+    background: #eff6ff;
+    box-shadow: 0 0 0 1px #002F70;
+}
+.type-option i {
+    font-size: 24px;
+    color: #002F70;
+    display: block;
+    margin-bottom: 6px;
+}
+.type-option span {
+    font-size: 13px;
+    font-weight: 600;
+    color: #334155;
+}
+
+/* Stats Cards Section */
+.summary-cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.summary-card {
+    background: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    padding: 18px;
+    display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 16px;
 }
-.btn-export-pdf:hover {
-    background: #b91c1c !important;
-}
-
-.btn-export-excel {
-    background: #16a34a !important;
-    border: none !important;
-    color: white !important;
-    padding: 10px 16px;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 14px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-}
-.btn-export-excel:hover {
-    background: #15803d !important;
-}
-
-.btn-export-csv {
-    background: #6b7280 !important;
-    border: none !important;
-    color: white !important;
-    padding: 10px 16px;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 14px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-}
-.btn-export-csv:hover {
-    background: #4b5563 !important;
-}
-
-.btn-add-customer {
-    background: #3b82f6 !important;
-    border: none !important;
-    color: white !important;
-    padding: 10px 16px;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 14px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-}
-.btn-add-customer:hover {
-    background: #2563eb !important;
-}
-
-/* Filter Buttons - Solid Design */
-.btn-filter-search {
-    flex: 1;
-    height: 42px;
-    padding: 0 16px;
-    background: #002F70 !important;
-    border: none !important;
-    color: white !important;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 14px;
-    cursor: pointer;
-    display: inline-flex;
+.summary-card-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    font-size: 20px;
 }
-.btn-filter-search:hover {
-    background: #001f4d !important;
+.summary-card-icon.blue { background: #eff6ff; color: #1d4ed8; }
+.summary-card-icon.green { background: #ecfdf5; color: #059669; }
+.summary-card-icon.yellow { background: #fef3c7; color: #d97706; }
+.summary-card-icon.purple { background: #f5f3ff; color: #7c3aed; }
+.summary-card-content h3 { margin: 0; font-size: 26px; font-weight: 700; color: #002F70; }
+.summary-card-content p { margin: 4px 0 0; font-size: 12px; color: #64748b; font-weight: 500; }
+
+/* Filters Area styling */
+.filters-bar {
+    background: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+}
+.filters-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1.2fr 1.2fr auto;
+    gap: 12px;
+    align-items: flex-end;
 }
 
-.btn-filter-reset {
-    flex: 1;
-    height: 42px;
-    padding: 0 16px;
-    background: #6b7280 !important;
-    border: none !important;
-    color: white !important;
-    border-radius: 6px;
+/* Customers Main List Table */
+.table-container {
+    background: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    padding: 16px;
+    overflow-x: auto;
+}
+.customers-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.customers-table thead {
+    background: #f8fafc;
+}
+.customers-table th {
+    padding: 12px 14px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    color: #475569;
+    border-bottom: 2px solid #e2e8f0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.customers-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #0f172a;
+    font-size: 13.5px;
+}
+.customers-table tbody tr:hover {
+    background: #f8fafc;
+}
+
+/* Type Badges */
+.badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 20px;
+    font-size: 11px;
     font-weight: 600;
-    font-size: 14px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+}
+.badge-walkin { background: #e0e7ff; color: #3730a3; }
+.badge-regular { background: #fef3c7; color: #92400e; }
+.badge-fleet { background: #dbeafe; color: #1e40af; }
+.badge-active { background: #d1fae5; color: #065f46; }
+.badge-inactive { background: #fee2e2; color: #991b1b; }
+
+/* Table Action Buttons row */
+.action-btns {
+    display: flex;
+    flex-direction: column;
     gap: 6px;
 }
-.btn-filter-reset:hover {
-    background: #4b5563 !important;
+.action-btns button {
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+    width: 100%;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    color: #334155 !important;
+    border: 1px solid #cbd5e1 !important;
+}
+.action-btns button:hover {
+    background-color: #f8fafc !important;
+    background: #f8fafc !important;
+    color: #1e293b !important;
+    border-color: #94a3b8 !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
 }
 
-/* Empty State */
-.empty-state{text-align:center;padding:60px 20px;}
-.empty-state i{font-size:48px;color:#d1d5db;margin-bottom:12px;}
-.empty-state p{color:#9ca3af;margin:8px 0 0;}
+/* Specific button colors for action buttons */
+.action-btns .btn-view,
+.action-btns button:first-child {
+    color: #64748b !important;
+    border-color: #64748b !important;
+}
+.action-btns .btn-view:hover,
+.action-btns button:first-child:hover {
+    background-color: #64748b !important;
+    color: #ffffff !important;
+    border-color: #64748b !important;
+}
 
-/* Alert Messages */
-.alert{padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:14px;display:none;}
-.alert.show{display:block;}
-.alert-success{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;}
-.alert-error{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;}
+.action-btns .btn-edit,
+.action-btns button:nth-child(2) {
+    color: #dc2626 !important;
+    border-color: #dc2626 !important;
+}
+.action-btns .btn-edit:hover,
+.action-btns button:nth-child(2):hover {
+    background-color: #dc2626 !important;
+    color: #ffffff !important;
+    border-color: #dc2626 !important;
+}
 
-/* Loading */
-.loading{text-align:center;padding:40px;color:#6b7280;}
-.loading i{font-size:32px;color:#002F70;margin-bottom:12px;}
+.action-btns .btn-print,
+.action-btns button:nth-child(3),
+.action-btns button:last-child {
+    color: #002F70 !important;
+    border-color: #002F70 !important;
+}
+.action-btns .btn-print:hover,
+.action-btns button:nth-child(3):hover,
+.action-btns button:last-child:hover {
+    background-color: #002F70 !important;
+    color: #ffffff !important;
+    border-color: #002F70 !important;
+}
+
+/* Info Section inside View Modal */
+.info-section {
+    margin-bottom: 24px;
+}
+.info-section h4 {
+    margin: 0 0 12px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #002F70;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 8px;
+}
+.info-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #f1f5f9;
+}
+.info-label {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #64748b;
+}
+.info-value {
+    font-size: 13px;
+    color: #0f172a;
+    font-weight: 500;
+}
+
+/* Transaction Card Summary */
+.tx-summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin: 14px 0;
+}
+.tx-card {
+    background: #f8fafc;
+    border-radius: 6px;
+    padding: 12px;
+    text-align: center;
+    border: 1px solid #e2e8f0;
+}
+.tx-card .num {
+    font-size: 20px;
+    font-weight: 800;
+    color: #002F70;
+}
+.tx-card .lbl {
+    font-size: 10px;
+    color: #64748b;
+    margin-top: 4px;
+    text-transform: uppercase;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+}
+
+/* Alerts styling */
+.alert {
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    display: none;
+    align-items: center;
+    gap: 8px;
+}
+.alert.show {
+    display: flex;
+}
+.alert-success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+.alert-error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+/* Empty Table State */
+.empty-state {
+    text-align: center;
+    padding: 48px 16px;
+}
+.empty-state i {
+    font-size: 40px;
+    color: #cbd5e1;
+    margin-bottom: 12px;
+}
+.empty-state p {
+    color: #64748b;
+    margin: 8px 0 0;
+    font-size: 14px;
+}
+
+/* Client Side Pagination for Transaction History */
+.pagination-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid #e2e8f0;
+}
+.pagination-info {
+    font-size: 12.5px;
+    color: #64748b;
+}
+.pagination-pages {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+.pagination-pages button {
+    padding: 5px 10px !important;
+    font-size: 12px !important;
+}
+
+/* Nested Detail Popup Styles */
+.detail-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.4);
+    z-index: 10000;
+    width: 90%;
+    max-width: 500px;
+    display: none;
+    border: 1px solid #cbd5e1;
+}
+.detail-popup.active {
+    display: block;
+}
+.detail-popup-header {
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 14px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+.detail-popup-header h4 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 14px;
+    font-weight: 700;
+}
+.detail-popup-body {
+    padding: 20px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+.detail-popup-footer {
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    padding: 12px 20px;
+    display: flex;
+    justify-content: flex-end;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
 
 @media(max-width:992px){
-    .filters-grid{grid-template-columns:1fr 1fr; gap:12px;}
+    .filters-grid{grid-template-columns: 1fr 1fr; gap:12px;}
+    .summary-cards{grid-template-columns: 1fr 1fr;}
 }
 @media(max-width:576px){
     .filters-grid{grid-template-columns:1fr;}
     .summary-cards{grid-template-columns:1fr;}
+    .type-selector{grid-template-columns:1fr;}
 }
+
+/* txn-btn styles for Add Customer button */
+.txn-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    padding: 7px 14px !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    border: 1px solid transparent !important;
+    transition: all 0.2s !important;
+    text-decoration: none !important;
+    white-space: nowrap !important;
+    background: #fff !important;
+}
+.txn-btn.primary {
+    color: #00264D !important;
+    border-color: #00264D !important;
+}
+.txn-btn.primary:hover {
+    background: #00264D !important;
+    color: #fff !important;
+}
+
+/* Export Buttons - Merchandise Inventory Style */
+.btn-export-pdf,
+.btn-export-excel,
+.btn-export-csv {
+    background: #ffffff !important;
+    border: 1px solid transparent !important;
+    border-radius: 7px !important;
+    padding: 0 16px !important;
+    height: 36px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    transition: all 0.15s !important;
+    min-width: 90px !important;
+    white-space: nowrap !important;
+    text-decoration: none !important;
+}
+
+.btn-export-excel {
+    color: #1d6f42 !important;
+    border-color: #1d6f42 !important;
+}
+.btn-export-excel:hover {
+    background: #1d6f42 !important;
+    color: #ffffff !important;
+}
+
+.btn-export-csv {
+    color: #002F70 !important;
+    border-color: #002F70 !important;
+}
+.btn-export-csv:hover {
+    background: #002F70 !important;
+    color: #ffffff !important;
+}
+
+.btn-export-pdf {
+    color: #dc2626 !important;
+    border-color: #dc2626 !important;
+}
+.btn-export-pdf:hover {
+    background: #dc2626 !important;
+    color: #ffffff !important;
+}
+
 </style>
 
-<div class="page-head" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-top: 0; margin-top: 0;">
+<div class="int-head" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 2px solid #e9ecef;">
     <div>
-        <h1 class="h1" style="margin: 0;"><i class="fas fa-users"></i> CUSTOMERS</h1>
-        <div class="sub" style="margin-top: 4px;">VIEW AND MANAGE CUSTOMERS AT YOUR STATION</div>
+        <h1 class="h1"><i class="fas fa-users"></i> CUSTOMERS</h1>
+        <div class="sub">VIEW AND MANAGE CUSTOMERS AT YOUR STATION</div>
     </div>
-    <div class="header-actions" style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end;">
-        <!-- Export Buttons Row -->
-        <div style="display: flex; gap: 8px;">
-            <button class="btn-export-pdf" onclick="exportCustomerData('pdf')"><i class="fas fa-file-pdf"></i> PDF</button>
-            <button class="btn-export-excel" onclick="exportCustomerData('excel')"><i class="fas fa-file-excel"></i> Excel</button>
-            <button class="btn-export-csv" onclick="exportCustomerData('csv')"><i class="fas fa-file-csv"></i> CSV</button>
-        </div>
-        <!-- Add Customer Button Below -->
-        <button class="btn-add-customer" onclick="openCustomerAddModal()"><i class="fas fa-plus"></i> Add Customer</button>
+    <div class="header-actions" style="display: flex; gap: 10px; align-items: center;">
+        <button onclick="exportCustomerData('excel')" class="btn-export-excel"><i class="fas fa-file-excel"></i> Excel</button>
+        <button onclick="exportCustomerData('csv')" class="btn-export-csv"><i class="fas fa-file-csv"></i> CSV</button>
+        <button onclick="exportCustomerData('pdf')" class="btn-export-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
     </div>
 </div>
 
@@ -292,26 +700,26 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- Filters -->
+<!-- Filters Bar -->
 <div class="filters-bar">
     <div class="filters-grid">
         <div class="form-group" style="margin-bottom: 0;">
             <label>Search Customer</label>
-            <input type="text" id="custSearchInput" placeholder="Search Customer ID, Name, or Contact Number...">
+            <input type="text" id="custSearchInput" placeholder="Customer ID / Name / Contact Number...">
         </div>
         <div class="form-group" style="margin-bottom: 0;">
             <label>Customer Type</label>
             <select id="custFilterType">
-                <option value="">All Types</option>
+                <option value="">All</option>
                 <option value="walk-in">Walk-in</option>
                 <option value="regular">Regular</option>
-                <option value="fleet">Fleet</option>
+                <option value="fleet">Fleet / Company</option>
             </select>
         </div>
         <div class="form-group" style="margin-bottom: 0;">
             <label>Status</label>
             <select id="custFilterStatus">
-                <option value="">All Status</option>
+                <option value="">All</option>
                 <option value="active" selected>Active</option>
                 <option value="inactive">Inactive</option>
             </select>
@@ -324,19 +732,29 @@ include __DIR__ . '/../partials/header.php';
             <label>Date Registered To</label>
             <input type="date" id="custFilterDateTo">
         </div>
-        <div style="margin-bottom: 0; display: flex; gap: 8px; flex-direction: row !important; align-items: flex-end; width: 100%;">
-            <button class="btn-filter-search" onclick="loadCustomerList()"><i class="fas fa-search"></i> Search</button>
-            <button class="btn-filter-reset" onclick="resetCustomerFilters()"><i class="fas fa-redo"></i> Reset</button>
+        <div style="margin-bottom: 0; display: flex; gap: 8px;">
+            <button class="btn-primary" onclick="loadCustomerList()"><i class="fas fa-search"></i> Search</button>
+            <button onclick="resetCustomerFilters()"><i class="fas fa-redo"></i> Reset</button>
         </div>
     </div>
 </div>
 
-<!-- Customers Table -->
+<!-- Customers Table Container -->
 <div class="table-container">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #e5e7eb;">
+        <div style="font-size:15px;font-weight:600;color:#1e293b;">
+            <i class="fas fa-users"></i> Customer Records
+        </div>
+        <div>
+            <button onclick="openCustomerModal('addCustomerModal')" class="txn-btn primary" style="height:36px;">
+                <i class="fas fa-user-plus"></i> Add Customer
+            </button>
+        </div>
+    </div>
     <div id="tableContent">
-        <div class="loading">
-            <i class="fas fa-spinner fa-spin"></i>
-            <p>Loading customers...</p>
+        <div class="loading" style="text-align:center; padding: 40px;">
+            <i class="fas fa-spinner fa-spin" style="font-size:24px; color:#002F70; margin-bottom:8px;"></i>
+            <p style="color:#64748b; margin:0;">Loading customers...</p>
         </div>
     </div>
 </div>
@@ -353,12 +771,10 @@ include __DIR__ . '/../partials/header.php';
             <div class="alert alert-error" id="addError"></div>
             
             <form id="addForm" enctype="multipart/form-data">
-                <!-- Auto-generated ID Notice -->
-                <div style="background:#f0f9ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:#1e40af;">
-                    <i class="fas fa-info-circle"></i> <strong>Customer ID</strong> will be auto-generated upon saving.
+                <div style="background:#f0f9ff; border:1px solid #bfdbfe; border-radius:8px; padding:12px; margin-bottom:16px; font-size:13px; color:#1e40af;">
+                    <i class="fas fa-info-circle"></i> <strong>Customer ID</strong> will be auto-generated.
                 </div>
                 
-                <!-- Name Fields -->
                 <div class="form-grid">
                     <div class="form-group">
                         <label>First Name <span class="required">*</span></label>
@@ -377,20 +793,18 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                     <div class="form-group">
                         <label>Contact Number <span class="required">*</span></label>
-                        <input type="text" name="contact_number" id="addContact" placeholder="09XX-XXX-XXXX" required>
+                        <input type="text" name="contact_number" id="addContact" placeholder="e.g. 09123456789" required>
                     </div>
                 </div>
                 
-                <!-- Address -->
                 <div class="form-grid full">
                     <div class="form-group">
                         <label>Address <span class="required">*</span></label>
-                        <input type="text" name="address" id="addAddress" placeholder="Complete address" required>
+                        <input type="text" name="address" id="addAddress" placeholder="Complete Address" required>
                     </div>
                 </div>
                 
-                <!-- Customer Type Selector -->
-                <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:8px;">
+                <label style="display:block; font-size:13px; font-weight:600; color:#334155; margin-bottom:8px;">
                     Customer Type <span class="required">*</span>
                 </label>
                 <div class="type-selector" id="addTypeSelector">
@@ -409,18 +823,15 @@ include __DIR__ . '/../partials/header.php';
                 </div>
                 <input type="hidden" name="customer_type" id="addCustomerType" value="walk-in">
                 
-                <!-- Government ID -->
                 <div class="form-grid">
                     <div class="form-group">
                         <label>Government ID Type</label>
                         <select name="gov_id_type" id="addGovIdType">
-                            <option value="">Select ID type...</option>
+                            <option value="">Select ID Type...</option>
                             <option>PhilSys ID</option>
                             <option>Driver's License</option>
                             <option>Passport</option>
-                            <option>Voter's ID</option>
-                            <option>SSS ID</option>
-                            <option>GSIS ID</option>
+                            <option>SSS / GSIS ID</option>
                             <option>PRC ID</option>
                             <option>Other</option>
                         </select>
@@ -431,7 +842,6 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                 </div>
                 
-                <!-- CR Document -->
                 <div class="form-grid full">
                     <div class="form-group">
                         <label>Upload Certificate of Registration (CR)</label>
@@ -439,34 +849,14 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                 </div>
                 
-                <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:10px;font-size:12px;color:#92400e;margin-top:12px;">
-                    <i class="fas fa-lock"></i> You can upload documents but cannot view or download them after saving.
+                <div style="background:#fef3c7; border:1px solid #fde68a; border-radius:8px; padding:10px 14px; font-size:12px; color:#92400e; margin-top:12px;">
+                    <i class="fas fa-lock"></i> Staff can upload the documents but cannot preview, open, or download them after saving.
                 </div>
             </form>
         </div>
         <div class="modal-footer">
-            <button class="btn btn-secondary" onclick="closeCustomerModal('addCustomerModal')"><i class="fas fa-times"></i> Cancel</button>
-            <button class="btn btn-primary" onclick="submitCustomerAdd()" id="addSubmitBtn"><i class="fas fa-save"></i> Save Customer</button>
-        </div>
-    </div>
-</div>
-
-<!-- VIEW CUSTOMER MODAL -->
-<div class="modal-overlay" id="viewCustomerModal">
-    <div class="modal-container" style="max-width:800px;">
-        <div class="modal-header">
-            <h3><i class="fas fa-eye"></i> Customer Profile</h3>
-            <button class="modal-close" onclick="closeCustomerModal('viewCustomerModal')">&times;</button>
-        </div>
-        <div class="modal-body" id="viewModalBody">
-            <div class="loading">
-                <i class="fas fa-spinner fa-spin"></i>
-                <p>Loading customer details...</p>
-            </div>
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-secondary" onclick="closeCustomerModal('viewCustomerModal')"><i class="fas fa-times"></i> Close</button>
-            <button class="btn btn-primary" onclick="printCustomerProfileFromModal()"><i class="fas fa-print"></i> Print Profile</button>
+            <button onclick="closeCustomerModal('addCustomerModal')"><i class="fas fa-times"></i> Cancel</button>
+            <button onclick="submitCustomerAdd()" id="addSubmitBtn" class="btn-primary"><i class="fas fa-save"></i> Save Customer</button>
         </div>
     </div>
 </div>
@@ -475,7 +865,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="modal-overlay" id="editCustomerModal">
     <div class="modal-container">
         <div class="modal-header">
-            <h3><i class="fas fa-edit"></i> Edit Customer</h3>
+            <h3><i class="fas fa-edit"></i> Edit Customer Details</h3>
             <button class="modal-close" onclick="closeCustomerModal('editCustomerModal')">&times;</button>
         </div>
         <div class="modal-body">
@@ -485,13 +875,11 @@ include __DIR__ . '/../partials/header.php';
             <form id="editForm">
                 <input type="hidden" name="customer_id" id="editCustomerId">
                 
-                <!-- Read-only Info -->
-                <div style="background:#f0f9ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:#1e40af;">
+                <div style="background:#f0f9ff; border:1px solid #bfdbfe; border-radius:8px; padding:12px; margin-bottom:16px; font-size:13px; color:#1e40af;">
                     <div style="margin-bottom:6px;"><i class="fas fa-id-card"></i> <strong>Customer ID:</strong> <span id="editCustIdDisplay"></span></div>
-                    <div><i class="fas fa-calendar"></i> <strong>Registered:</strong> <span id="editRegDateDisplay"></span></div>
+                    <div><i class="fas fa-calendar"></i> <strong>Date Registered:</strong> <span id="editRegDateDisplay"></span></div>
                 </div>
                 
-                <!-- Editable Name Fields -->
                 <div class="form-grid">
                     <div class="form-group">
                         <label>First Name <span class="required">*</span></label>
@@ -514,7 +902,6 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                 </div>
                 
-                <!-- Address -->
                 <div class="form-grid full">
                     <div class="form-group">
                         <label>Address <span class="required">*</span></label>
@@ -522,8 +909,7 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                 </div>
                 
-                <!-- Customer Type Selector -->
-                <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:8px;">
+                <label style="display:block; font-size:13px; font-weight:600; color:#334155; margin-bottom:8px;">
                     Customer Type <span class="required">*</span>
                 </label>
                 <div class="type-selector" id="editTypeSelector">
@@ -544,9 +930,196 @@ include __DIR__ . '/../partials/header.php';
             </form>
         </div>
         <div class="modal-footer">
-            <button class="btn btn-secondary" onclick="closeCustomerModal('editCustomerModal')"><i class="fas fa-times"></i> Cancel</button>
-            <button class="btn btn-primary" onclick="submitCustomerEdit()" id="editSubmitBtn"><i class="fas fa-save"></i> Update Customer</button>
+            <button onclick="closeCustomerModal('editCustomerModal')"><i class="fas fa-times"></i> Cancel</button>
+            <button onclick="submitCustomerEdit()" id="editSubmitBtn" class="btn-primary"><i class="fas fa-save"></i> Update Customer</button>
         </div>
+    </div>
+</div>
+
+<!-- VIEW CUSTOMER PROFILE MODAL -->
+<div class="modal-overlay" id="viewCustomerModal">
+    <div class="modal-container" style="max-width:850px;">
+        <div class="modal-header">
+            <h3><i class="fas fa-id-card"></i> Customer Profile View</h3>
+            <button class="modal-close" onclick="closeCustomerModal('viewCustomerModal')">&times;</button>
+        </div>
+        <div class="modal-body" style="padding-bottom:10px;">
+            <div id="viewModalLoader" style="text-align:center; padding:40px;">
+                <i class="fas fa-spinner fa-spin" style="font-size:24px; color:#002F70; margin-bottom:8px;"></i>
+                <p style="color:#64748b; margin:0;">Fetching profile data...</p>
+            </div>
+            
+            <div id="viewModalContent" style="display:none;">
+                <!-- Profile Header -->
+                <div style="background:linear-gradient(135deg,#002F70,#004c99); color:#ffffff; padding:20px; border-radius:8px; margin-bottom:20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                        <div>
+                            <h2 style="margin:0 0 4px; font-size:22px; color:#ffffff; font-weight:700;" id="profFullName"></h2>
+                            <p style="margin:0 0 10px; font-size:13px; opacity:0.9;" id="profCustId"></p>
+                            <div style="display:flex; gap:8px;">
+                                <span class="badge" id="profTypeBadge"></span>
+                                <span class="badge" id="profStatusBadge"></span>
+                            </div>
+                        </div>
+                        <div style="text-align:right; font-size:12px; opacity:0.85;">
+                            <div><strong>Registered:</strong> <span id="profRegDate"></span></div>
+                            <div style="margin-top:2px;"><strong>Last Visit:</strong> <span id="profLastDate"></span></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Profile Details -->
+                <div class="info-section">
+                    <h4><i class="fas fa-user"></i> Customer Information</h4>
+                    <div class="info-grid-2">
+                        <div>
+                            <div class="info-row"><span class="info-label">Customer ID</span><span class="info-value" id="valCustId"></span></div>
+                            <div class="info-row"><span class="info-label">Full Name</span><span class="info-value" id="valFullName"></span></div>
+                            <div class="info-row"><span class="info-label">Contact Number</span><span class="info-value" id="valContact"></span></div>
+                        </div>
+                        <div>
+                            <div class="info-row"><span class="info-label">Address</span><span class="info-value" id="valAddress"></span></div>
+                            <div class="info-row"><span class="info-label">Customer Type</span><span class="info-value" id="valType"></span></div>
+                            <div class="info-row"><span class="info-label">Status</span><span class="info-value" id="valStatus"></span></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Transaction Summary Cards -->
+                <div class="info-section">
+                    <h4><i class="fas fa-chart-bar"></i> Transaction Summary</h4>
+                    <div class="tx-summary">
+                        <div class="tx-card">
+                            <div class="num" id="statFuelCount">0</div>
+                            <div class="lbl">Fuel Transactions</div>
+                        </div>
+                        <div class="tx-card">
+                            <div class="num" id="statMerchCount">0</div>
+                            <div class="lbl">Merchandise</div>
+                        </div>
+                        <div class="tx-card">
+                            <div class="num" id="statServiceCount">0</div>
+                            <div class="lbl">Job Orders</div>
+                        </div>
+                        <div class="tx-card" style="background:#ecfdf5; border-color:#a7f3d0;">
+                            <div class="num" style="color:#059669;" id="statTotalSpent">\u20B10.00</div>
+                            <div class="lbl" style="color:#059669;">Total Amount Spent</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Staff Restricted Fields Notice -->
+                <div style="background:#fef3c7; border:1px solid #fde68a; border-radius:8px; padding:12px 16px; margin: 4px 0 12px; font-size:12px; color:#92400e;">
+                    <div style="display:flex; align-items:center; gap:8px; font-weight:700; margin-bottom:6px;">
+                        <i class="fas fa-lock"></i> Staff-Restricted Information
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:3px 16px;">
+                        <span><i class="fas fa-times-circle" style="color:#dc2626;"></i> Government ID Image</span>
+                        <span><i class="fas fa-times-circle" style="color:#dc2626;"></i> Certificate of Registration (CR)</span>
+                        <span><i class="fas fa-times-circle" style="color:#dc2626;"></i> Outstanding Balance</span>
+                        <span><i class="fas fa-times-circle" style="color:#dc2626;"></i> Credit Limit</span>
+                        <span><i class="fas fa-times-circle" style="color:#dc2626;"></i> Payment History</span>
+                        <span><i class="fas fa-times-circle" style="color:#dc2626;"></i> Verification Status</span>
+                    </div>
+                    <div style="margin-top:6px; font-style:italic;">These fields are accessible to Managers and Administrators only.</div>
+                </div>
+                
+                <!-- History Table with Filters -->
+                <div class="info-section">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
+                        <h4 style="margin:0; border:none; padding:0;"><i class="fas fa-history"></i> Transaction History</h4>
+                        
+                        <!-- Mini Inline Filters -->
+                        <div style="display:flex; gap:6px; align-items:center;">
+                            <input type="text" id="txFilterSearch" placeholder="Search Ref No..." style="padding:4px 8px; font-size:12px; border:1px solid #cbd5e1; border-radius:4px; width:130px;" oninput="onTxFilterChange()">
+                            <select id="txFilterModule" style="padding:4px 8px; font-size:12px; border:1px solid #cbd5e1; border-radius:4px;" onchange="onTxFilterChange()">
+                                <option value="">Module: All</option>
+                                <option value="Merchandise">Merchandise</option>
+                                <option value="Job Order">Job Order</option>
+                                <option value="Fuel">Fuel</option>
+                            </select>
+                            <select id="txFilterStatus" style="padding:4px 8px; font-size:12px; border:1px solid #cbd5e1; border-radius:4px;" onchange="onTxFilterChange()">
+                                <option value="">Status: All</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Pending">Pending</option>
+                            </select>
+                            <input type="date" id="txFilterDateFrom" style="padding:3px 6px; font-size:11px; border:1px solid #cbd5e1; border-radius:4px; width:105px;" onchange="onTxFilterChange()">
+                            <input type="date" id="txFilterDateTo" style="padding:3px 6px; font-size:11px; border:1px solid #cbd5e1; border-radius:4px; width:105px;" onchange="onTxFilterChange()">
+                        </div>
+                    </div>
+                    
+                    <div style="max-height: 280px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 6px;">
+                        <table class="customers-table" style="font-size:12px;">
+                            <thead style="position:sticky; top:0; z-index:10; background:#f8fafc;">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Reference No.</th>
+                                    <th>Module</th>
+                                    <th>Description</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="txHistoryTableBody">
+                                <!-- Dynamic rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Pagination footer -->
+                    <div class="pagination-controls">
+                        <div class="pagination-info" id="txPaginationInfo">Showing 0–0 of 0 transactions</div>
+                        <div class="pagination-pages">
+                            <span style="font-size:12px; color:#64748b; margin-right:4px;">Rows per page:</span>
+                            <select id="txRowsPerPage" style="padding:3px; font-size:12px; border:1px solid #cbd5e1; border-radius:4px; margin-right:12px;" onchange="onTxLimitChange()">
+                                <option value="10">10</option>
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                            </select>
+                            <button onclick="prevTxPage()"><i class="fas fa-chevron-left"></i> Previous</button>
+                            <button onclick="nextTxPage()">Next <i class="fas fa-chevron-right"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button onclick="printCustomerProfileFromModal()"><i class="fas fa-print"></i> Print Customer Profile</button>
+            <button onclick="closeCustomerModal('viewCustomerModal')"><i class="fas fa-times"></i> Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- READ-ONLY TRANSACTION DETAILS POPUP -->
+<div class="detail-popup" id="transactionDetailPopup">
+    <div class="detail-popup-header">
+        <h4 id="popTxTitle">Transaction Details</h4>
+        <button class="modal-close" onclick="closeTxDetailPopup()">&times;</button>
+    </div>
+    <div class="detail-popup-body">
+        <div id="popTxLoader" style="text-align:center; padding:20px; display:none;">
+            <i class="fas fa-spinner fa-spin" style="font-size:18px; color:#002F70;"></i>
+        </div>
+        <div id="popTxContent">
+            <!-- Dynamic fields -->
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:14px; background:#f8fafc; padding:10px; border-radius:6px; border:1px solid #e2e8f0;">
+                <div><strong>Ref No:</strong> <span id="popRefNo"></span></div>
+                <div><strong>Date:</strong> <span id="popDate"></span></div>
+                <div><strong>Module:</strong> <span id="popModule"></span></div>
+                <div><strong>Status:</strong> <span id="popStatus"></span></div>
+                <div><strong>Amount:</strong> <span id="popAmount" style="font-weight:700; color:#002F70;"></span></div>
+            </div>
+            
+            <div style="font-weight:700; font-size:12px; color:#64748b; margin-bottom:6px; text-transform:uppercase;">Item Breakdown / description</div>
+            <div id="popBreakdownContent" style="max-height:160px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:4px; padding:8px; font-size:12.5px;">
+                <!-- Table / list -->
+            </div>
+        </div>
+    </div>
+    <div class="detail-popup-footer">
+        <button onclick="closeTxDetailPopup()">Close</button>
     </div>
 </div>
 
@@ -555,12 +1128,17 @@ const STATION_ID = <?= (int)$station_id ?>;
 let currentCustomers = [];
 let currentViewingCustomerId = null;
 
-// Load customers on page load
+// Modal transaction variables
+let modalTransactions = [];
+let filteredTransactions = [];
+let txCurrentPage = 1;
+let txLimit = 10;
+
 document.addEventListener('DOMContentLoaded', () => {
     loadCustomerList();
 });
 
-// Load customers from API
+// Load customer directory list
 function loadCustomerList() {
     const search = document.getElementById('custSearchInput').value;
     const type = document.getElementById('custFilterType').value;
@@ -578,26 +1156,22 @@ function loadCustomerList() {
     });
     
     fetch(`staff_customer_operations.php?${params}`)
-        .then(res => {
-            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-            return res.json();
-        })
+        .then(res => res.json())
         .then(data => {
             if (data.success) {
                 currentCustomers = data.customers || [];
                 updateCustomerStats(data.stats || {});
                 renderCustomerTable(currentCustomers);
             } else {
-                showCustomerError('Failed to load customers: ' + (data.error || 'Unknown error'));
+                showCustomerError('Failed to load customer list.');
             }
         })
         .catch(err => {
-            console.error('Error loading customers:', err);
-            showCustomerError('Error loading customers. Please try again. ' + err.message);
+            console.error('Error:', err);
+            showCustomerError('Network error while loading customer records.');
         });
 }
 
-// Update summary stats
 function updateCustomerStats(stats) {
     document.getElementById('totalCustomersCount').textContent = formatNumber(stats.total || 0);
     document.getElementById('newCustomersCount').textContent = formatNumber(stats.new_today || 0);
@@ -605,7 +1179,6 @@ function updateCustomerStats(stats) {
     document.getElementById('fleetAccountsCount').textContent = formatNumber(stats.fleet || 0);
 }
 
-// Render customers table
 function renderCustomerTable(customers) {
     const container = document.getElementById('tableContent');
     
@@ -613,7 +1186,7 @@ function renderCustomerTable(customers) {
         container.innerHTML = `
             <div class="empty-state">
                 <i class="fas fa-users"></i>
-                <p>No customers found. Click "Add Customer" to get started.</p>
+                <p>No customers found matching the search/filter criteria.</p>
             </div>
         `;
         return;
@@ -654,15 +1227,9 @@ function renderCustomerTable(customers) {
                 <td><span class="badge badge-${statusClass}">${capitalize(c.status)}</span></td>
                 <td>
                     <div class="action-btns">
-                        <button class="btn-action btn-view" onclick="viewCustomerDetail(${c.id})" title="View Profile">
-                            <i class="fas fa-eye"></i> View
-                        </button>
-                        <button class="btn-action btn-edit" onclick="openCustomerEditModal(${c.id})" title="Edit Details">
-                            <i class="fas fa-edit"></i> Edit
-                        </button>
-                        <button class="btn-action btn-print" onclick="printCustomerProfile(${c.id})" title="Print Profile">
-                            <i class="fas fa-print"></i> Print
-                        </button>
+                        <button onclick="viewCustomerDetail(${c.id})"><i class="fas fa-eye"></i> View Profile</button>
+                        <button onclick="openCustomerEditModal(${c.id})"><i class="fas fa-edit"></i> Edit</button>
+                        <button onclick="printCustomerProfile(${c.id})"><i class="fas fa-print"></i> Print</button>
                     </div>
                 </td>
             </tr>
@@ -673,70 +1240,45 @@ function renderCustomerTable(customers) {
     container.innerHTML = html;
 }
 
-// Show error message
 function showCustomerError(message) {
-    const container = document.getElementById('tableContent');
-    container.innerHTML = `
+    document.getElementById('tableContent').innerHTML = `
         <div class="empty-state">
-            <i class="fas fa-exclamation-circle" style="color:#dc2626;"></i>
-            <p style="color:#dc2626;">${message}</p>
-            <button class="btn btn-primary" onclick="loadCustomerList()" style="margin-top:16px;">
-                <i class="fas fa-redo"></i> Try Again
-            </button>
+            <i class="fas fa-exclamation-circle" style="color:#ef4444;"></i>
+            <p style="color:#ef4444;">${message}</p>
         </div>
     `;
 }
 
-// Modal functions
-function openCustomerModal(modalId) {
-    document.getElementById(modalId).classList.add('active');
+// Modal helpers
+function openCustomerModal(id) {
+    document.getElementById(id).classList.add('active');
+}
+function closeCustomerModal(id) {
+    document.getElementById(id).classList.remove('active');
 }
 
-function closeCustomerModal(modalId) {
-    document.getElementById(modalId).classList.remove('active');
-    if (modalId === 'addCustomerModal') {
-        document.getElementById('addForm').reset();
-        selectCustomerType('add', 'walk-in');
-        hideCustomerAlert('addSuccess');
-        hideCustomerAlert('addError');
-    } else if (modalId === 'editCustomerModal') {
-        hideCustomerAlert('editSuccess');
-        hideCustomerAlert('editError');
-    }
-}
-
-// Customer type selector
+// Select Customer Type in Modal
 function selectCustomerType(mode, value) {
-    const selector = document.getElementById(`${mode}TypeSelector`);
-    const hiddenInput = document.getElementById(`${mode}CustomerType`);
-    
-    selector.querySelectorAll('.type-option').forEach(opt => {
-        if (opt.dataset.value === value) {
-            opt.classList.add('selected');
-        } else {
-            opt.classList.remove('selected');
-        }
+    const container = document.getElementById(`${mode}TypeSelector`);
+    container.querySelectorAll('.type-option').forEach(opt => {
+        if (opt.dataset.value === value) opt.classList.add('selected');
+        else opt.classList.remove('selected');
     });
-    
-    hiddenInput.value = value;
+    document.getElementById(`${mode}CustomerType`).value = value;
 }
 
-// Open add modal
+// Open Add Customer Modal
 function openCustomerAddModal() {
     document.getElementById('addForm').reset();
     selectCustomerType('add', 'walk-in');
-    hideCustomerAlert('addSuccess');
-    hideCustomerAlert('addError');
+    document.getElementById('addSuccess').classList.remove('show');
+    document.getElementById('addError').classList.remove('show');
     openCustomerModal('addCustomerModal');
 }
 
-// Submit add customer
 function submitCustomerAdd() {
     const form = document.getElementById('addForm');
-    if (!form.checkValidity()) {
-        form.reportValidity();
-        return;
-    }
+    if (!form.checkValidity()) { form.reportValidity(); return; }
     
     const formData = new FormData(form);
     formData.append('action', 'add');
@@ -749,212 +1291,52 @@ function submitCustomerAdd() {
         method: 'POST',
         body: formData
     })
-    .then(res => {
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        return res.json();
-    })
+    .then(res => res.json())
     .then(data => {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-save"></i> Save Customer';
-        
         if (data.success) {
-            showCustomerAlert('addSuccess', data.message || 'Customer added successfully!');
+            document.getElementById('addSuccess').textContent = data.message;
+            document.getElementById('addSuccess').classList.add('show');
             setTimeout(() => {
                 closeCustomerModal('addCustomerModal');
                 loadCustomerList();
-            }, 1500);
+            }, 1200);
         } else {
-            showCustomerAlert('addError', data.error || 'Failed to add customer');
+            document.getElementById('addError').textContent = data.error;
+            document.getElementById('addError').classList.add('show');
         }
     })
-    .catch(err => {
+    .catch(() => {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-save"></i> Save Customer';
-        showCustomerAlert('addError', 'Error adding customer: ' + err.message);
     });
 }
 
-// View customer
-function viewCustomerDetail(id) {
-    currentViewingCustomerId = id;
-    openCustomerModal('viewCustomerModal');
-    document.getElementById('viewModalBody').innerHTML = `
-        <div class="loading">
-            <i class="fas fa-spinner fa-spin"></i>
-            <p>Loading customer details...</p>
-        </div>
-    `;
-    
-    fetch(`staff_customer_operations.php?action=view&id=${id}`)
-        .then(res => {
-            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-            return res.json();
-        })
-        .then(data => {
-            if (data.success) {
-                renderCustomerViewModal(data.customer, data.transactions || {}, data.recent_transactions || []);
-            } else {
-                document.getElementById('viewModalBody').innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-exclamation-circle" style="color:#dc2626;"></i>
-                        <p style="color:#dc2626;">${data.error || 'Failed to load customer'}</p>
-                    </div>
-                `;
-            }
-        })
-        .catch(err => {
-            document.getElementById('viewModalBody').innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-exclamation-circle" style="color:#dc2626;"></i>
-                    <p style="color:#dc2626;">Error loading customer: ${err.message}</p>
-                </div>
-            `;
-        });
-}
-
-// Render view modal content
-function renderCustomerViewModal(customer, transactions, recent) {
-    const fullName = [customer.first_name, customer.middle_name, customer.last_name].filter(Boolean).join(' ');
-    const typeClass = customer.customer_type === 'walk-in' ? 'walkin' : (customer.customer_type === 'regular' ? 'regular' : 'fleet');
-    const statusClass = customer.status === 'active' ? 'active' : 'inactive';
-    const typeLabel = customer.customer_type === 'fleet' ? 'Fleet' : capitalize(customer.customer_type);
-    
-    let txRows = '';
-    if (recent && recent.length > 0) {
-        recent.forEach(r => {
-            txRows += `
-                <tr>
-                    <td>${formatDateTime(r.txn_date)}</td>
-                    <td><strong>${escapeHtml(r.reference_no)}</strong></td>
-                    <td><span class="badge badge-${r.module.toLowerCase()}">${escapeHtml(r.module)}</span></td>
-                    <td><strong>₱${formatNumber(r.amount)}</strong></td>
-                </tr>
-            `;
-        });
-    } else {
-        txRows = `<tr><td colspan="4" style="text-align:center;color:#6b7280;padding:16px;">No transactions found</td></tr>`;
-    }
-
-    let html = `
-        <div style="background:linear-gradient(135deg,#002F70,#0056b3);color:#fff;padding:20px;border-radius:8px;margin-bottom:20px;text-align:center;">
-            <div style="font-size:48px;margin-bottom:10px;">
-                <i class="fas fa-user-circle"></i>
-            </div>
-            <h2 style="margin:0 0 8px;font-size:24px;color:white;">${escapeHtml(fullName)}</h2>
-            <p style="margin:0;font-size:14px;opacity:0.9;">${escapeHtml(customer.customer_id || 'N/A')}</p>
-            <div style="display:flex;gap:8px;justify-content:center;margin-top:12px;">
-                <span class="badge badge-${typeClass}">${typeLabel}</span>
-                <span class="badge badge-${statusClass}">${capitalize(customer.status)}</span>
-            </div>
-        </div>
-        
-        <div class="info-section">
-            <h4><i class="fas fa-address-card"></i> Contact Information</h4>
-            <div class="info-row">
-                <span class="info-label">Contact Number</span>
-                <span class="info-value">${escapeHtml(customer.contact_number || 'N/A')}</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Address</span>
-                <span class="info-value">${escapeHtml(customer.address || 'N/A')}</span>
-            </div>
-            ${customer.gov_id_type ? `
-            <div class="info-row">
-                <span class="info-label">Government ID Type</span>
-                <span class="info-value">${escapeHtml(customer.gov_id_type)}</span>
-            </div>
-            ` : ''}
-        </div>
-        
-        <div class="info-section">
-            <h4><i class="fas fa-info-circle"></i> Registration Details</h4>
-            <div class="info-row">
-                <span class="info-label">Registered On</span>
-                <span class="info-value">${customer.registered_at ? formatDateTime(customer.registered_at) : 'N/A'}</span>
-            </div>
-            ${customer.registered_by_name ? `
-            <div class="info-row">
-                <span class="info-label">Registered By</span>
-                <span class="info-value">${escapeHtml(customer.registered_by_name)}</span>
-            </div>
-            ` : ''}
-        </div>
-        
-        <div class="info-section">
-            <h4><i class="fas fa-chart-bar"></i> Transaction Summary</h4>
-            <div class="tx-summary" style="grid-template-columns: repeat(3, 1fr);">
-                <div class="tx-card">
-                    <div class="num">${transactions.merch_count || 0}</div>
-                    <div class="lbl">Merchandise</div>
-                </div>
-                <div class="tx-card">
-                    <div class="num">${transactions.service_count || 0}</div>
-                    <div class="lbl">Job Orders</div>
-                </div>
-                <div class="tx-card" style="background: linear-gradient(135deg, #ecfdf5, #d1fae5);">
-                    <div class="num" style="color: #059669;">₱${formatNumber(transactions.total_amount || 0)}</div>
-                    <div class="lbl" style="color: #059669;">Total Spent</div>
-                </div>
-            </div>
-            ${transactions.last_transaction ? `
-            <div style="margin-top:12px;padding:10px;background:#f8fafc;border-radius:6px;font-size:13px;text-align:center;color:#6b7280;">
-                <i class="fas fa-calendar-check"></i> <strong>Last Transaction:</strong> ${formatDateTime(transactions.last_transaction)}
-            </div>
-            ` : ''}
-        </div>
-
-        <div class="info-section">
-            <h4><i class="fas fa-history"></i> Recent Transactions (Latest 10)</h4>
-            <table class="customers-table" style="margin-top: 8px;">
-                <thead>
-                    <tr>
-                        <th>Date & Time</th>
-                        <th>Reference Number</th>
-                        <th>Module</th>
-                        <th>Amount</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${txRows}
-                </tbody>
-            </table>
-        </div>
-    `;
-    
-    document.getElementById('viewModalBody').innerHTML = html;
-}
-
-// Open edit modal
+// Open Edit Customer Modal
 function openCustomerEditModal(id) {
-    const customer = currentCustomers.find(c => c.id === id);
-    if (!customer) {
-        alert('Customer not found');
-        return;
-    }
+    const c = currentCustomers.find(item => item.id === id);
+    if (!c) return;
     
-    document.getElementById('editCustomerId').value = customer.id;
-    document.getElementById('editCustIdDisplay').textContent = customer.customer_id || 'N/A';
-    document.getElementById('editRegDateDisplay').textContent = customer.registered_at ? formatDate(customer.registered_at) : 'N/A';
-    document.getElementById('editFirstName').value = customer.first_name || '';
-    document.getElementById('editMiddleName').value = customer.middle_name || '';
-    document.getElementById('editLastName').value = customer.last_name || '';
-    document.getElementById('editContact').value = customer.contact_number || '';
-    document.getElementById('editAddress').value = customer.address || '';
+    document.getElementById('editCustomerId').value = c.id;
+    document.getElementById('editCustIdDisplay').textContent = c.customer_id;
+    document.getElementById('editRegDateDisplay').textContent = formatDate(c.registered_at);
+    document.getElementById('editFirstName').value = c.first_name;
+    document.getElementById('editMiddleName').value = c.middle_name;
+    document.getElementById('editLastName').value = c.last_name;
+    document.getElementById('editContact').value = c.contact_number;
+    document.getElementById('editAddress').value = c.address || '';
     
-    selectCustomerType('edit', customer.customer_type || 'walk-in');
+    selectCustomerType('edit', c.customer_type);
     
-    hideCustomerAlert('editSuccess');
-    hideCustomerAlert('editError');
+    document.getElementById('editSuccess').classList.remove('show');
+    document.getElementById('editError').classList.remove('show');
     openCustomerModal('editCustomerModal');
 }
 
-// Submit edit customer
 function submitCustomerEdit() {
     const form = document.getElementById('editForm');
-    if (!form.checkValidity()) {
-        form.reportValidity();
-        return;
-    }
+    if (!form.checkValidity()) { form.reportValidity(); return; }
     
     const formData = new FormData(form);
     formData.append('action', 'update');
@@ -967,32 +1349,226 @@ function submitCustomerEdit() {
         method: 'POST',
         body: formData
     })
-    .then(res => {
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        return res.json();
-    })
+    .then(res => res.json())
     .then(data => {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-save"></i> Update Customer';
-        
         if (data.success) {
-            showCustomerAlert('editSuccess', data.message || 'Customer updated successfully!');
+            document.getElementById('editSuccess').textContent = data.message;
+            document.getElementById('editSuccess').classList.add('show');
             setTimeout(() => {
                 closeCustomerModal('editCustomerModal');
                 loadCustomerList();
-            }, 1500);
+            }, 1200);
         } else {
-            showCustomerAlert('editError', data.error || 'Failed to update customer');
+            document.getElementById('editError').textContent = data.error;
+            document.getElementById('editError').classList.add('show');
         }
     })
-    .catch(err => {
+    .catch(() => {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-save"></i> Update Customer';
-        showCustomerAlert('editError', 'Error updating customer: ' + err.message);
     });
 }
 
-// Print customer from action row
+// View Customer Profile Modal with complete Transaction History
+function viewCustomerDetail(id) {
+    currentViewingCustomerId = id;
+    openCustomerModal('viewCustomerModal');
+    
+    document.getElementById('viewModalLoader').style.display = 'block';
+    document.getElementById('viewModalContent').style.display = 'none';
+    
+    // Clear filters
+    document.getElementById('txFilterSearch').value = '';
+    document.getElementById('txFilterModule').value = '';
+    document.getElementById('txFilterStatus').value = '';
+    document.getElementById('txFilterDateFrom').value = '';
+    document.getElementById('txFilterDateTo').value = '';
+    
+    fetch(`staff_customer_operations.php?action=view&id=${id}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                const c = data.customer;
+                const tx = data.transactions;
+                
+                const fullName = [c.first_name, c.middle_name, c.last_name].filter(Boolean).join(' ');
+                
+                // Set text fields
+                document.getElementById('profFullName').textContent = fullName;
+                document.getElementById('profCustId').textContent = 'ID: ' + c.customer_id;
+                document.getElementById('profRegDate').textContent = formatDate(c.registered_at);
+                document.getElementById('profLastDate').textContent = tx.last_transaction ? formatDate(tx.last_transaction) : 'Never';
+                
+                // Badges
+                const typeClass = c.customer_type === 'walk-in' ? 'badge-walkin' : (c.customer_type === 'regular' ? 'badge-regular' : 'badge-fleet');
+                const statusClass = c.status === 'active' ? 'badge-active' : 'badge-inactive';
+                
+                document.getElementById('profTypeBadge').className = 'badge ' + typeClass;
+                document.getElementById('profTypeBadge').textContent = c.customer_type === 'fleet' ? 'Fleet' : capitalize(c.customer_type);
+                
+                document.getElementById('profStatusBadge').className = 'badge ' + statusClass;
+                document.getElementById('profStatusBadge').textContent = capitalize(c.status);
+                
+                // Profile Information Table
+                document.getElementById('valCustId').textContent = c.customer_id;
+                document.getElementById('valFullName').textContent = fullName;
+                document.getElementById('valContact').textContent = c.contact_number || '—';
+                document.getElementById('valAddress').textContent = c.address || '—';
+                document.getElementById('valType').textContent = c.customer_type === 'fleet' ? 'Fleet' : capitalize(c.customer_type);
+                document.getElementById('valStatus').textContent = capitalize(c.status);
+                
+                // Stats summary
+                document.getElementById('statFuelCount').textContent = formatNumber(tx.fuel_count || 0);
+                document.getElementById('statMerchCount').textContent = formatNumber(tx.merch_count || 0);
+                document.getElementById('statServiceCount').textContent = formatNumber(tx.service_count || 0);
+                document.getElementById('statTotalSpent').textContent = '\u20B1' + formatNumber(tx.total_amount || 0);
+                
+                // Save history to memory
+                modalTransactions = data.all_transactions || [];
+                filteredTransactions = [...modalTransactions];
+                txCurrentPage = 1;
+                
+                renderModalTransactionTable();
+                
+                document.getElementById('viewModalLoader').style.display = 'none';
+                document.getElementById('viewModalContent').style.display = 'block';
+            }
+        });
+}
+
+// Filter transaction list inside Modal
+function onTxFilterChange() {
+    const search = document.getElementById('txFilterSearch').value.toLowerCase();
+    const module = document.getElementById('txFilterModule').value;
+    const status = document.getElementById('txFilterStatus').value;
+    const dfrom = document.getElementById('txFilterDateFrom').value;
+    const dto = document.getElementById('txFilterDateTo').value;
+    
+    filteredTransactions = modalTransactions.filter(t => {
+        if (search && !(t.reference_no.toLowerCase().includes(search) || t.description.toLowerCase().includes(search))) return false;
+        if (module && t.module !== module) return false;
+        if (status && t.status.toLowerCase() !== status.toLowerCase()) return false;
+        if (dfrom && t.txn_date.substring(0, 10) < dfrom) return false;
+        if (dto && t.txn_date.substring(0, 10) > dto) return false;
+        return true;
+    });
+    
+    txCurrentPage = 1;
+    renderModalTransactionTable();
+}
+
+function onTxLimitChange() {
+    txLimit = parseInt(document.getElementById('txRowsPerPage').value);
+    txCurrentPage = 1;
+    renderModalTransactionTable();
+}
+
+function prevTxPage() {
+    if (txCurrentPage > 1) {
+        txCurrentPage--;
+        renderModalTransactionTable();
+    }
+}
+
+function nextTxPage() {
+    const totalPages = Math.ceil(filteredTransactions.length / txLimit);
+    if (txCurrentPage < totalPages) {
+        txCurrentPage++;
+        renderModalTransactionTable();
+    }
+}
+
+function renderModalTransactionTable() {
+    const tbody = document.getElementById('txHistoryTableBody');
+    tbody.innerHTML = '';
+    
+    if (filteredTransactions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#64748b; padding:16px;">No transactions recorded.</td></tr>';
+        document.getElementById('txPaginationInfo').textContent = 'Showing 0–0 of 0 transactions';
+        return;
+    }
+    
+    const start = (txCurrentPage - 1) * txLimit;
+    const end = Math.min(start + txLimit, filteredTransactions.length);
+    const paginated = filteredTransactions.slice(start, end);
+    
+    paginated.forEach(t => {
+        const tr = document.createElement('tr');
+        const stClass = t.status.toLowerCase().includes('complete') ? 'badge-active' : 'badge-inactive';
+        
+        tr.innerHTML = `
+            <td>${formatDate(t.txn_date)}</td>
+            <td><strong>${escapeHtml(t.reference_no)}</strong></td>
+            <td><span class="badge badge-regular" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;">${escapeHtml(t.module)}</span></td>
+            <td>${escapeHtml(t.description)}</td>
+            <td style="font-weight:700;">\u20B1${formatNumber(t.amount)}</td>
+            <td><span class="badge ${stClass}">${escapeHtml(t.status)}</span></td>
+            <td>
+                <button class="btn" style="padding:4px 8px !important; font-size:11px !important;" onclick="viewTxDetailPopup('${t.module}', ${t.source_id}, '${escapeHtml(t.reference_no)}', '${formatDate(t.txn_date)}', '\u20B1${formatNumber(t.amount)}', '${escapeHtml(t.status)}')">
+                    <i class="fas fa-eye"></i> View Transaction
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+    
+    document.getElementById('txPaginationInfo').textContent = `Showing ${start + 1}–${end} of ${filteredTransactions.length} transactions`;
+}
+
+// Read-Only Transaction Item Breakdown details Popup
+function viewTxDetailPopup(module, id, ref, date, amt, status) {
+    document.getElementById('popRefNo').textContent = ref;
+    document.getElementById('popDate').textContent = date;
+    document.getElementById('popModule').textContent = module;
+    document.getElementById('popStatus').textContent = status;
+    document.getElementById('popAmount').textContent = amt;
+    
+    document.getElementById('popTxLoader').style.display = 'block';
+    document.getElementById('popBreakdownContent').innerHTML = '';
+    document.getElementById('transactionDetailPopup').classList.add('active');
+    
+    let sourceParam = 'merchandise_transactions';
+    if (module === 'Job Order') sourceParam = 'job_orders';
+    
+    if (module === 'Fuel') {
+        document.getElementById('popTxLoader').style.display = 'none';
+        document.getElementById('popBreakdownContent').innerHTML = `
+            <div style="padding:10px; background:#f8fafc; border-radius:4px; font-weight:600; text-align:center;">
+                Fuel Transaction Sale Details: ${ref}
+            </div>
+        `;
+        return;
+    }
+    
+    fetch(`get_transaction_items.php?id=${id}&source=${sourceParam}`)
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('popTxLoader').style.display = 'none';
+            if (data.items && data.items.length > 0) {
+                let listHtml = '<table style="width:100%; border-collapse:collapse; font-size:12px;">';
+                listHtml += '<tr style="border-bottom:1px solid #cbd5e1; font-weight:700;"><td style="padding:4px;">Item / Service</td><td style="padding:4px; text-align:center;">Qty</td><td style="padding:4px; text-align:right;">Subtotal</td></tr>';
+                data.items.forEach(item => {
+                    listHtml += `<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:4px;">${escapeHtml(item.product_name)}</td><td style="padding:4px; text-align:center;">${item.quantity}</td><td style="padding:4px; text-align:right;">\u20B1${formatNumber(item.subtotal)}</td></tr>`;
+                });
+                listHtml += '</table>';
+                document.getElementById('popBreakdownContent').innerHTML = listHtml;
+            } else {
+                document.getElementById('popBreakdownContent').innerHTML = '<div style="color:#64748b; text-align:center; padding:10px;">No breakdown details available.</div>';
+            }
+        })
+        .catch(() => {
+            document.getElementById('popTxLoader').style.display = 'none';
+            document.getElementById('popBreakdownContent').innerHTML = '<div style="color:#ef4444; text-align:center; padding:10px;">Error loading items.</div>';
+        });
+}
+
+function closeTxDetailPopup() {
+    document.getElementById('transactionDetailPopup').classList.remove('active');
+}
+
+// Print Customer Profile with all transactions included (Print layout)
 function printCustomerProfile(id) {
     fetch(`staff_customer_operations.php?action=view&id=${id}`)
         .then(res => res.json())
@@ -1000,9 +1576,8 @@ function printCustomerProfile(id) {
             if (data.success) {
                 const c = data.customer;
                 const tx = data.transactions;
-                const rec = data.recent_transactions || [];
+                const rec = data.all_transactions || [];
                 
-                const printWin = window.open('', '_blank');
                 const fullName = [c.first_name, c.middle_name, c.last_name].filter(Boolean).join(' ');
                 
                 let txHtml = '';
@@ -1010,51 +1585,54 @@ function printCustomerProfile(id) {
                     rec.forEach(r => {
                         txHtml += `
                             <tr>
-                                <td>${formatDateTime(r.txn_date)}</td>
+                                <td>${formatDate(r.txn_date)}</td>
                                 <td><strong>${escapeHtml(r.reference_no)}</strong></td>
                                 <td>${escapeHtml(r.module)}</td>
-                                <td style="text-align: right;">₱${formatNumber(r.amount)}</td>
+                                <td>${escapeHtml(r.description)}</td>
+                                <td style="text-align: right; font-weight: bold;">\u20B1${formatNumber(r.amount)}</td>
+                                <td>${escapeHtml(r.status)}</td>
                             </tr>
                         `;
                     });
                 } else {
-                    txHtml = '<tr><td colspan="4" style="text-align: center; color: #888; padding: 10px;">No transactions recorded</td></tr>';
+                    txHtml = '<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 12px;">No transaction records found.</td></tr>';
                 }
                 
+                const printWin = window.open('', '_blank');
                 printWin.document.write(`
                     <!DOCTYPE html>
                     <html>
                     <head>
-                        <title>Print Customer Profile - ${c.customer_id}</title>
+                        <title>Customer Profile Summary - ${c.customer_id}</title>
                         <style>
-                            body { font-family: Arial, sans-serif; color: #333; margin: 20px; font-size: 13px; line-height: 1.4; }
-                            .header { display: flex; justify-content: space-between; border-bottom: 2px solid #002F70; padding-bottom: 10px; margin-bottom: 20px; }
-                            .header h1 { margin: 0; color: #002F70; font-size: 20px; }
-                            .station-info { text-align: right; font-size: 11px; color: #666; }
-                            .section { margin-bottom: 20px; }
-                            .section-title { font-size: 14px; font-weight: bold; color: #002F70; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 10px; }
-                            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; }
-                            .info-item { display: flex; justify-content: space-between; border-bottom: 1px solid #f1f1f1; padding: 4px 0; }
-                            .info-label { font-weight: bold; color: #666; }
-                            .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+                            body { font-family: 'Segoe UI', Arial, sans-serif; color: #1e293b; margin: 30px; font-size: 13px; line-height: 1.4; }
+                            .header { border-bottom: 2px solid #002F70; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; }
+                            .header h1 { margin: 0; color: #002F70; font-size: 20px; text-transform: uppercase; }
+                            .station-info { text-align: right; font-size: 11px; color: #64748b; }
+                            .section { margin-bottom: 24px; }
+                            .section-title { font-size: 13px; font-weight: 700; color: #002F70; border-bottom: 1.5px solid #cbd5e1; padding-bottom: 5px; margin-bottom: 12px; text-transform: uppercase; }
+                            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
+                            .info-item { display: flex; justify-content: space-between; border-bottom: 1px solid #f1f5f9; padding: 5px 0; }
+                            .info-label { font-weight: 600; color: #475569; }
+                            .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 15px; }
                             .stats-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; text-align: center; }
-                            .stats-card .num { font-size: 18px; font-weight: bold; color: #002F70; }
-                            .stats-card .lbl { font-size: 10px; color: #666; text-transform: uppercase; margin-top: 2px; }
+                            .stats-card .num { font-size: 18px; font-weight: 800; color: #002F70; }
+                            .stats-card .lbl { font-size: 9px; color: #64748b; text-transform: uppercase; margin-top: 2px; font-weight: bold; }
                             table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                            th { background: #002F70; color: white; padding: 8px; font-size: 11px; text-align: left; }
-                            td { padding: 8px; border-bottom: 1px solid #ddd; font-size: 11px; }
-                            tr:nth-child(even) { background: #f9f9f9; }
-                            .footer { margin-top: 30px; text-align: center; font-size: 10px; color: #999; border-top: 1px solid #ddd; padding-top: 10px; }
+                            th { background: #002F70; color: white; padding: 7px 10px; font-size: 11px; text-align: left; text-transform: uppercase; }
+                            td { padding: 7px 10px; border-bottom: 1px solid #e2e8f0; font-size: 11px; }
+                            tr:nth-child(even) { background: #f8fafc; }
+                            .footer { margin-top: 40px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 12px; }
                         </style>
                     </head>
                     <body>
                         <div class="header">
                             <div>
-                                <h1>PETRON CUSTOMER PROFILE</h1>
-                                <div><strong>ID:</strong> ${escapeHtml(c.customer_id)}</div>
+                                <h1>PETRON CUSTOMER PROFILE REPORT</h1>
+                                <div style="margin-top:4px;"><strong>ID:</strong> ${escapeHtml(c.customer_id)}</div>
                             </div>
                             <div class="station-info">
-                                <strong>Petron Station</strong><br>
+                                <strong>Petron Service Station</strong><br>
                                 Station ID: ${STATION_ID}
                             </div>
                         </div>
@@ -1062,34 +1640,37 @@ function printCustomerProfile(id) {
                         <div class="section">
                             <div class="section-title">Customer Information</div>
                             <div class="info-grid">
-                                <div class="info-item"><span class="info-label">Full Name:</span><span>${escapeHtml(fullName)}</span></div>
+                                <div class="info-item"><span class="info-label">Customer Name:</span><span>${escapeHtml(fullName)}</span></div>
                                 <div class="info-item"><span class="info-label">Customer Type:</span><span>${capitalize(c.customer_type)}</span></div>
                                 <div class="info-item"><span class="info-label">Contact Number:</span><span>${escapeHtml(c.contact_number)}</span></div>
                                 <div class="info-item"><span class="info-label">Status:</span><span>${capitalize(c.status)}</span></div>
                                 <div class="info-item" style="grid-column: span 2;"><span class="info-label">Address:</span><span>${escapeHtml(c.address)}</span></div>
-                                <div class="info-item"><span class="info-label">Registered On:</span><span>${formatDateTime(c.registered_at)}</span></div>
+                                <div class="info-item"><span class="info-label">Date Registered:</span><span>${formatDate(c.registered_at)}</span></div>
                             </div>
                         </div>
                         
                         <div class="section">
-                            <div class="section-title">Transaction Overview</div>
+                            <div class="section-title">Transaction Summary Overview</div>
                             <div class="stats-row">
+                                <div class="stats-card"><div class="num">${tx.fuel_count || 0}</div><div class="lbl">Fuel Transactions</div></div>
                                 <div class="stats-card"><div class="num">${tx.merch_count || 0}</div><div class="lbl">Merchandise</div></div>
                                 <div class="stats-card"><div class="num">${tx.service_count || 0}</div><div class="lbl">Job Orders</div></div>
-                                <div class="stats-card" style="background: #ecfdf5;"><div class="num" style="color: #059669;">₱${formatNumber(tx.total_amount || 0)}</div><div class="lbl" style="color: #059669;">Total Spent</div></div>
+                                <div class="stats-card" style="background: #ecfdf5; border-color:#a7f3d0;"><div class="num" style="color: #059669;">\u20B1${formatNumber(tx.total_amount || 0)}</div><div class="lbl" style="color: #059669;">Total Amount Spent</div></div>
                             </div>
-                            ${tx.last_transaction ? `<div style="text-align: center; margin-top: 10px; padding: 8px; background: #f8fafc; border-radius: 4px; font-size: 12px;"><i class="fas fa-calendar-check"></i> Last Transaction: ${formatDateTime(tx.last_transaction)}</div>` : ''}
+                            ${tx.last_transaction ? `<div style="text-align: center; font-size:12px; color:#475569; padding:6px; background:#f8fafc; border-radius:4px;"><strong>Last Transaction Date:</strong> ${formatDate(tx.last_transaction)}</div>` : ''}
                         </div>
                         
                         <div class="section">
-                            <div class="section-title">Recent Transactions (Latest 10)</div>
+                            <div class="section-title">Transaction History</div>
                             <table>
                                 <thead>
                                     <tr>
-                                        <th>Date & Time</th>
+                                        <th>Date</th>
                                         <th>Reference No.</th>
                                         <th>Module</th>
+                                        <th>Description</th>
                                         <th style="text-align: right;">Amount</th>
+                                        <th>Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1099,12 +1680,12 @@ function printCustomerProfile(id) {
                         </div>
                         
                         <div class="footer">
-                            Printed on: ${new Date().toLocaleString()} | Petron Management System
+                            Printed By: Staff User | Print Date: ${new Date().toLocaleString()} | System Generated Report
                         </div>
                         <script>
                             window.onload = function() {
                                 window.print();
-                                setTimeout(function() { window.close(); }, 500);
+                                setTimeout(function() { window.close(); }, 800);
                             };
                         <\/script>
                     </body>
@@ -1112,14 +1693,9 @@ function printCustomerProfile(id) {
                 `);
                 printWin.document.close();
             }
-        })
-        .catch(err => {
-            console.error('Error printing customer profile:', err);
-            alert('Failed to generate print layout');
         });
 }
 
-// Print profile from view modal
 function printCustomerProfileFromModal() {
     if (currentViewingCustomerId) {
         printCustomerProfile(currentViewingCustomerId);
@@ -1136,7 +1712,7 @@ function resetCustomerFilters() {
     loadCustomerList();
 }
 
-// Export data
+// Export redirect to server-side script
 function exportCustomerData(format) {
     const search = document.getElementById('custSearchInput').value;
     const type = document.getElementById('custFilterType').value;
@@ -1153,72 +1729,38 @@ function exportCustomerData(format) {
         date_to: dateTo
     });
     
-    window.location.href = `staff_customer_export.php?${params.toString()}`;
+    window.open(`staff_customer_export.php?${params.toString()}`, '_blank');
 }
 
-// Alert helpers
-function showCustomerAlert(id, message) {
-    const alert = document.getElementById(id);
-    alert.textContent = message;
-    alert.classList.add('show');
-}
-
-function hideCustomerAlert(id) {
-    const alert = document.getElementById(id);
-    alert.classList.remove('show');
-}
-
-// Formatting utilities
+// Formatting helpers
 function formatNumber(num) {
     return new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(num);
 }
-
 function formatDate(dateStr) {
     if (!dateStr) return 'Never';
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
-
-function formatDateTime(dateStr) {
-    if (!dateStr) return 'N/A';
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'short', 
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-    });
-}
-
 function capitalize(str) {
     if (!str) return '';
     return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 }
-
-// Close modals on ESC key
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-        document.querySelectorAll('.modal-overlay.active').forEach(modal => {
-            modal.classList.remove('active');
-        });
-    }
-});
-
-document.querySelectorAll('.modal-overlay').forEach(modal => {
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            modal.classList.remove('active');
-        }
-    });
-});
-
 function escapeHtml(text) {
     if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
+
+// Close modals on ESC
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-overlay.active').forEach(modal => {
+            modal.classList.remove('active');
+        });
+        closeTxDetailPopup();
+    }
+});
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

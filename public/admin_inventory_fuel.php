@@ -226,6 +226,30 @@ body, html { overflow-x:hidden !important; }
 .var-neg { color:#dc3545; font-weight:700; }
 
 /* Buttons */
+.flt-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 16px;
+    height: 36px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: all .15s;
+    background: white !important;
+    border: 1px solid transparent;
+}
+.flt-btn-excel { color: #1d6f42 !important; border-color: #1d6f42 !important; }
+.flt-btn-excel:hover { background: #1d6f42 !important; color: #fff !important; }
+.flt-btn-csv { color: #002F70 !important; border-color: #002F70 !important; }
+.flt-btn-csv:hover { background: #002F70 !important; color: #fff !important; }
+.flt-btn-pdf { color: #dc2626 !important; border-color: #dc2626 !important; }
+.flt-btn-pdf:hover { background: #dc2626 !important; color: #fff !important; }
+
 .int-btn-outline {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
     padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: 600;
@@ -357,6 +381,24 @@ body, html { overflow-x:hidden !important; }
     <h1><i class="fas fa-gas-pump"></i> Fuel Inventory Oversight</h1>
     <div class="sub">17-Tanker Overview &middot; Today: <?= date('F d, Y') ?></div>
   </div>
+  
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
+    <!-- Excel -->
+    <button onclick="exportTableToExcel('adminFuelInvTable','admin_fuel_inventory_<?= date('Ymd') ?>.xls')"
+            class="flt-btn flt-btn-excel" title="Export to Excel">
+      <i class="fas fa-file-excel"></i> Excel
+    </button>
+    <!-- CSV -->
+    <button onclick="exportTableToCSV('adminFuelInvTable','admin_fuel_inventory_<?= date('Ymd') ?>.csv')"
+            class="flt-btn flt-btn-csv" title="Export to CSV">
+      <i class="fas fa-file-csv"></i> CSV
+    </button>
+    <!-- PDF -->
+    <button onclick="exportTableToPDF('adminFuelInvTable','Fuel Inventory Oversight')"
+            class="flt-btn flt-btn-pdf" title="Export to PDF">
+      <i class="fas fa-file-pdf"></i> PDF
+    </button>
+  </div>
 </div>
 
 <?php if ($flash_ok): ?><div class="flash-ok"><?= htmlspecialchars($flash_ok) ?></div><?php endif; ?>
@@ -365,7 +407,7 @@ body, html { overflow-x:hidden !important; }
 <!-- Summary Cards -->
 <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:24px;">
     <!-- Total Tanks -->
-    <div style="background:#fff; border-left:5px solid #002F6C; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0; border-left-width:5px;">
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
         <div>
             <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Tanks</div>
             <div style="font-size:24px; font-weight:800; color:#002F6C; margin-top:4px;"><?= number_format($total_tanks) ?></div>
@@ -373,7 +415,7 @@ body, html { overflow-x:hidden !important; }
         <div style="background:#e8f4fd; color:#002F6C; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-database"></i></div>
     </div>
     <!-- Total Fuel Available -->
-    <div style="background:#fff; border-left:5px solid #0284c7; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0; border-left-width:5px;">
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
         <div>
             <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Fuel Available</div>
             <div style="font-size:24px; font-weight:800; color:#0284c7; margin-top:4px;"><?= number_format($total_fuel_available, 2) ?> L</div>
@@ -381,7 +423,7 @@ body, html { overflow-x:hidden !important; }
         <div style="background:#e0f2fe; color:#0284c7; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-gas-pump"></i></div>
     </div>
     <!-- Low Fuel Tanks -->
-    <div style="background:#fff; border-left:5px solid #fd7e14; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0; border-left-width:5px;">
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
         <div>
             <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Low Fuel Tanks</div>
             <div style="font-size:24px; font-weight:800; color:#fd7e14; margin-top:4px;"><?= number_format($total_low_fuel_tanks) ?></div>
@@ -389,7 +431,7 @@ body, html { overflow-x:hidden !important; }
         <div style="background:#fff3cd; color:#fd7e14; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
     <!-- Critical Fuel Tanks -->
-    <div style="background:#fff; border-left:5px solid #dc3545; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0; border-left-width:5px;">
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
         <div>
             <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Critical Fuel Tanks</div>
             <div style="font-size:24px; font-weight:800; color:#dc3545; margin-top:4px;"><?= number_format($total_critical_fuel_tanks) ?></div>
@@ -397,7 +439,7 @@ body, html { overflow-x:hidden !important; }
         <div style="background:#fce8e6; color:#dc3545; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-times-circle"></i></div>
     </div>
     <!-- Total Fuel Variance -->
-    <div style="background:#fff; border-left:5px solid <?= $var_color ?>; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0; border-left-width:5px;">
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
         <div>
             <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Fuel Variance</div>
             <div style="font-size:24px; font-weight:800; color:<?= $var_color ?>; margin-top:4px;"><?= $var_display ?></div>
@@ -407,43 +449,29 @@ body, html { overflow-x:hidden !important; }
 </div>
 
 <!-- Unified Top Controls & Filter Bar -->
-<div class="inv-filter-bar" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; background:#fff; padding:12px 16px; border:1px solid #e2e8f0; border-radius:8px;">
-  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-    <!-- Search Tank -->
-    <div style="position:relative;">
-      <i class="fas fa-search" style="position:absolute; left:10px; top:11px; color:#94a3b8; font-size:12px;"></i>
-      <input type="text" id="sq" placeholder="Search Tank..." oninput="filterFuelTable()" style="padding:7px 10px 7px 28px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; width:180px; outline:none;">
-    </div>
-    <!-- Filter Fuel Type -->
-    <select id="cf" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none; background:#fff;">
-      <option value="">All Fuel Types</option>
-      <option value="diesel">Diesel</option>
-      <option value="kerosene">Kerosene</option>
-      <option value="turbo diesel">Turbo Diesel</option>
-      <option value="xcs plus">XCS Plus</option>
-      <option value="xtra unl">XTRA UNL</option>
-    </select>
-    <!-- Filter Status -->
-    <select id="sf" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none; background:#fff;">
-      <option value="">All Statuses</option>
-      <option value="normal">🟢 Normal</option>
-      <option value="low">🟡 Low</option>
-      <option value="critical">🔴 Critical</option>
-      <option value="out of stock">🔴 Out of Stock</option>
-    </select>
+<div class="inv-filter-bar" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:20px; background:#fff; padding:12px 16px; border:1px solid #e2e8f0; border-radius:8px;">
+  <!-- Search Tank -->
+  <div style="position:relative;">
+    <i class="fas fa-search" style="position:absolute; left:10px; top:11px; color:#94a3b8; font-size:12px;"></i>
+    <input type="text" id="sq" placeholder="Search Tank..." oninput="filterFuelTable()" style="padding:7px 10px 7px 28px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; width:180px; outline:none;">
   </div>
-  
-  <div style="display:flex; align-items:center; gap:8px;">
-    <?php
-    $export_table_id       = 'adminFuelInvTable';
-    $export_filename       = 'admin_fuel_inventory_' . date('Ymd');
-    $export_title          = 'Fuel Inventory Oversight';
-    $export_rows_select_id = 'adminFuelRowsLimit';
-    $export_default_rows   = 20;
-    $export_back_url       = 'admin_dashboard.php';
-    require __DIR__ . '/../partials/export_buttons.php';
-    ?>
-  </div>
+  <!-- Filter Fuel Type -->
+  <select id="cf" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none; background:#fff;">
+    <option value="">All Fuel Types</option>
+    <option value="diesel">Diesel</option>
+    <option value="kerosene">Kerosene</option>
+    <option value="turbo diesel">Turbo Diesel</option>
+    <option value="xcs plus">XCS Plus</option>
+    <option value="xtra unl">XTRA UNL</option>
+  </select>
+  <!-- Filter Status -->
+  <select id="sf" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none; background:#fff;">
+    <option value="">All Statuses</option>
+    <option value="normal">🟢 Normal</option>
+    <option value="low">🟡 Low</option>
+    <option value="critical">🔴 Critical</option>
+    <option value="out of stock">🔴 Out of Stock</option>
+  </select>
 </div>
 
 <!-- Table Wrap -->

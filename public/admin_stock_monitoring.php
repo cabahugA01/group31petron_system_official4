@@ -85,7 +85,7 @@ $all_supps = $pdo->query("SELECT DISTINCT supplier FROM inventory_products WHERE
 // ── Fetch all items ──────────────────────────────────────────────
 $stmt = $pdo->prepare("
     SELECT ip.id, ip.sku, ip.product_name, ip.category, ip.supplier,
-           COALESCE(si.unit, ip.unit, 'pcs') AS unit,
+           COALESCE(si.unit, 'pcs') AS unit,
            COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
            COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
            COALESCE(si.capacity, ip.max_stock, 100) AS max_stock,

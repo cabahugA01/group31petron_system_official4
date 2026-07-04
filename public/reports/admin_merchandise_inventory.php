@@ -52,7 +52,7 @@ if ($is_standalone) {
 // Current stock per product
 $products = [];
 try {
-    $q = $pdo->prepare("SELECT si.*, ip.product_name, ip.sku, ip.category, ip.unit
+    $q = $pdo->prepare("SELECT si.*, ip.product_name, ip.sku, ip.category, si.unit
         FROM station_inventory si
         LEFT JOIN inventory_products ip ON ip.id = si.product_id
         WHERE si.station_id = ? AND si.status = 'active'

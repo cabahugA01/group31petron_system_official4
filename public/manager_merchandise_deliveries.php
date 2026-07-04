@@ -24,6 +24,11 @@ foreach ([
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
+/* Header standardization */
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:0px !important; }
+.int-head h1 { font-size:22px !important; font-weight:700 !important; color:#002F70 !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head .sub { font-size:13px; color:#64748b; margin-top:4px; }
+
 /* === Clean Merchandise Deliveries Design === */
 /* ── Workflow Steps Guide ── */
 .workflow-container {
@@ -199,6 +204,8 @@ include __DIR__ . '/../partials/header.php';
 .flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
 .flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
 .flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
+.flt-btn-csv    { color: #002F70 !important; border-color: #002F70 !important; }
+.flt-btn-csv:hover    { background: #002F70 !important; color: #fff !important; }
 .flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
 .flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
 
@@ -302,13 +309,36 @@ try {
         <h1><i class="fas fa-truck"></i> Merchandise Deliveries Validation</h1>
         <div class="sub">Validate staff-encoded merchandise deliveries &mdash; Verify, Reject, Return, or Adjust.</div>
     </div>
-    <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <a href="manager_dashboard.php" class="flt-btn flt-btn-reset" style="font-size:12px;"><i class="fas fa-arrow-left"></i> Back</a>
-        <div id="top-export-buttons" style="display:flex;gap:6px;">
-            <button onclick="exportCSV()" class="flt-btn flt-btn-excel" style="font-size:12px;"><i class="fas fa-file-csv"></i> CSV</button>
-            <button onclick="exportPDF()" class="flt-btn flt-btn-pdf" style="font-size:12px;"><i class="fas fa-file-pdf"></i> PDF</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <!-- Export buttons - shown on Manage Deliveries tab -->
+        <div id="export-buttons" style="display:flex;gap:8px;">
+            <button onclick="exportExcel()" class="flt-btn flt-btn-excel" title="Export to Excel">
+                <i class="fas fa-file-excel"></i> Excel
+            </button>
+            <button onclick="exportCSV()" class="flt-btn flt-btn-csv" title="Export to CSV">
+                <i class="fas fa-file-csv"></i> CSV
+            </button>
+            <button onclick="exportPDF()" class="flt-btn flt-btn-pdf" title="Export to PDF">
+                <i class="fas fa-file-pdf"></i> PDF
+            </button>
+        </div>
+        <!-- Back button - shown on History tab -->
+        <div id="back-button" style="display:none;gap:8px;">
+            <button onclick="switchTab('manage')" class="flt-btn flt-btn-search">
+                <i class="fas fa-arrow-left"></i> Back
+            </button>
         </div>
     </div>
+</div>
+
+<!-- Tabs for Manage vs History vs PO -->
+<div class="tab-container" style="margin-bottom:20px;">
+    <button class="tab-btn active" id="tab-manage" onclick="switchTab('manage')">
+        <i class="fas fa-clipboard-check"></i> Manage Deliveries <span class="badge" id="badge-pending">0</span>
+    </button>
+    <button class="tab-btn" id="tab-history" onclick="switchTab('history')">
+        <i class="fas fa-history"></i> Delivery History
+    </button>
 </div>
 
 <!-- 5 Summary Cards -->
@@ -367,19 +397,8 @@ try {
         </select>
     </div>
     <div class="fg" style="display:flex;align-items:flex-end;">
-        <button onclick="loadDeliveries()" class="flt-btn flt-btn-search" style="font-size:12px;"><i class="fas fa-search"></i> Search</button>
+        <button onclick="loadDeliveries()" class="flt-btn flt-btn-search"><i class="fas fa-search"></i> Search</button>
     </div>
-</div>
-
-<!-- Tabs for Manage vs History vs PO -->
-<div class="tab-container">
-    <button class="tab-btn active" id="tab-manage" onclick="switchTab('manage')">
-        <i class="fas fa-clipboard-check"></i> Manage Deliveries <span class="badge" id="badge-pending">0</span>
-    </button>
-    <button class="tab-btn" id="tab-history" onclick="switchTab('history')">
-        <i class="fas fa-history"></i> Delivery History
-    </button>
-
 </div>
 
 <div class="inv-card">
@@ -814,15 +833,14 @@ function badgeHtml(status) {
 // ── Status bucket mapping ─────────────────────────────────────────────────────
 function getDisplayStatus(raw) {
     var s = (raw || '').toLowerCase();
-    if (s.includes('pending manager') || s === 'pending validation' || s === 'pending verification' || s === 'pending') return 'Pending';
+    if (s.includes('pending manager') || s === 'pending validation' || s === 'pending verification' || s === 'pending' || s === 'pending admin oversight') return 'Pending';
     if (s === 'pending resolution') return 'Pending Resolution';
     if (s === 'awaiting replacement') return 'Awaiting Replacement';
-    if (s === 'ready for stock-in') return 'Ready for Stock-In';
-    if (s === 'confirmed' || s === 'approved' || s === 'validated') return 'Ready for Stock-In';
-    if (s === 'adjusted') return 'Adjusted';
-    if (s === 'returned') return 'Returned to Staff';
+    if (s === 'ready for stock-in' || s === 'confirmed' || s === 'approved' || s === 'validated' || s === 'verified' || s === 'stock-in complete' || s === 'partial delivery' || s === 'damaged items') return 'Verified';
+    if (s === 'adjusted' || s === 'adjusted — verified') return 'Adjusted — Verified';
+    if (s === 'returned' || s === 'returned to staff') return 'Returned to Staff';
     if (s === 'returned to supplier') return 'Returned to Supplier';
-    if (s === 'discrepancy' || s === 'flagged' || s === 'rejected') return 'Rejected';
+    if (s === 'discrepancy' || s === 'flagged' || s === 'rejected' || s === 'rejected delivery') return 'Rejected';
     if (s === 'closed') return 'Closed';
     return raw;
 }
@@ -843,6 +861,17 @@ function switchTab(tab) {
     var delPanel  = document.querySelector('.inv-card');
     if (filterRow) filterRow.style.display = '';
     if (delPanel)  delPanel.style.display  = '';
+
+    // Toggle export buttons vs back button
+    var exportBtns = document.getElementById('export-buttons');
+    var backBtn = document.getElementById('back-button');
+    if (tab === 'history') {
+        if (exportBtns) exportBtns.style.display = 'none';
+        if (backBtn) backBtn.style.display = 'flex';
+    } else {
+        if (exportBtns) exportBtns.style.display = 'flex';
+        if (backBtn) backBtn.style.display = 'none';
+    }
 
     // Update status filter dropdown options
     var sf = document.getElementById('f-status');
@@ -1379,6 +1408,12 @@ function openBatchDtl(batchId) {
 }
 
 // ── EXPORT ────────────────────────────────────────────────────────────────────
+function exportExcel() {
+    var s=document.getElementById('f-status').value, sup=document.getElementById('f-supplier').value;
+    var st=document.getElementById('f-start').value, en=document.getElementById('f-end').value;
+    window.open(API+'?action=export_excel&start='+encodeURIComponent(st)+'&end='+encodeURIComponent(en)+'&status='+encodeURIComponent(s)+'&supplier='+encodeURIComponent(sup),'_blank');
+    toast('Exporting to Excel...','success');
+}
 function exportCSV() {
     var s=document.getElementById('f-status').value, sup=document.getElementById('f-supplier').value;
     var st=document.getElementById('f-start').value, en=document.getElementById('f-end').value;

@@ -720,12 +720,12 @@ html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !impor
 .afto-table-hd { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #f1f5f9; flex-wrap: wrap; gap: 8px; }
 .afto-table-title { font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: .3px; margin: 0; }
 .afto-tbl-wrap { width: 100%; max-width: 100%; overflow-x: hidden !important; }
-.afto-tbl { width: 100%; max-width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
+.afto-tbl { width: 100%; max-width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
 .afto-tbl thead tr { background: #002F70; }
-.afto-tbl thead th { padding: 8px 6px; text-align: left; font-size: 10px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: .3px; border-bottom: 2px solid #001a3d; vertical-align: middle; white-space: nowrap; }
+.afto-tbl thead th { padding: 10px 8px; text-align: left; font-size: 12px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: .3px; border-bottom: 2px solid #001a3d; vertical-align: middle; white-space: nowrap; }
 .afto-tbl tbody tr { border-bottom: 1px solid #f1f5f9; transition: background .1s; }
 .afto-tbl tbody tr:hover td { background: #eff6ff; }
-.afto-tbl tbody td { padding: 8px 6px; color: #334155; vertical-align: middle; background: #fff; font-size: 10px; word-wrap: break-word; overflow: hidden; text-overflow: ellipsis; }
+.afto-tbl tbody td { padding: 10px 8px; color: #334155; vertical-align: middle; background: #fff; font-size: 13px; font-weight: 600; word-wrap: break-word; overflow-wrap: break-word; white-space: normal; overflow: visible; text-overflow: clip; }
 
 /* Status Badges */
 .afto-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; white-space: nowrap; text-transform: uppercase; }
@@ -1013,16 +1013,16 @@ input[type="checkbox"]:indeterminate {
                                         <span style="color: #cbd5e1;">—</span>
                                     <?php endif; ?>
                                 </td>
-                                <td style="font-weight: 600; color: #00264D; font-size: 9px;"><?= htmlspecialchars(substr($tx['transaction_id'], 0, 12)) ?></td>
-                                <td style="font-size: 9px;"><?= date('M d, Y', strtotime($tx['transaction_date'])) ?></td>
-                                <td style="font-size: 9px;"><?= htmlspecialchars($shift_display) ?></td>
-                                <td style="font-size: 9px; font-weight:700; color:#0f172a; white-space:normal; word-break:break-word;" title="<?= htmlspecialchars($tx['_seq_label']) ?>"><?= htmlspecialchars($tx['_seq_label']) ?></td>
-                                <td style="text-align: right; font-size: 9px;"><?= number_format($tx['previous_reading'], 2) ?></td>
-                                <td style="text-align: right; font-weight: 600; font-size: 9px;"><?= number_format($tx['present_reading'], 2) ?></td>
-                                <td style="text-align: right; font-size: 9px;"><?= number_format($tx['calibration'], 2) ?></td>
-                                <td style="text-align: right; font-weight: 700; color: #1e293b; font-size: 9px;"><?= number_format($tx['liters_sold'], 2) ?> L</td>
-                                <td style="text-align: right; font-weight: 800; color: #002F70; font-size: 9px;">₱<?= number_format($tx['total_amount'], 2) ?></td>
-                                <td style="font-size: 9px;"><?= htmlspecialchars(substr($tx['staff_name'] ?? '—', 0, 12)) ?></td>
+                                <td style="font-weight: 700; color: #00264D; font-size: 13px;"><?= htmlspecialchars($tx['transaction_id']) ?></td>
+                                <td style="font-size: 13px;"><?= date('M d, Y', strtotime($tx['transaction_date'])) ?></td>
+                                <td style="font-size: 13px;"><?= htmlspecialchars($shift_display) ?></td>
+                                <td style="font-size: 13px; font-weight:700; color:#0f172a; white-space:normal; word-break:break-word;" title="<?= htmlspecialchars($tx['_seq_label']) ?>"><?= htmlspecialchars($tx['_seq_label']) ?></td>
+                                <td style="text-align: right; font-size: 13px;"><?= number_format($tx['previous_reading'], 2) ?></td>
+                                <td style="text-align: right; font-weight: 700; font-size: 13px;"><?= number_format($tx['present_reading'], 2) ?></td>
+                                <td style="text-align: right; font-size: 13px;"><?= number_format($tx['calibration'], 2) ?></td>
+                                <td style="text-align: right; font-weight: 700; color: #1e293b; font-size: 13px;"><?= number_format($tx['liters_sold'], 2) ?> L</td>
+                                <td style="text-align: right; font-weight: 800; color: #002F70; font-size: 13px;">₱<?= number_format($tx['total_amount'], 2) ?></td>
+                                <td style="font-size: 13px;"><?= htmlspecialchars($tx['staff_name'] ?? '—') ?></td>
                                 <td><span class="afto-badge <?= getStatusBadgeClass($tx['status'] ?? '') ?>"><?= getStatusLabel($tx['status'] ?? '') ?></span></td>
                             </tr>
                         <?php endforeach; ?>

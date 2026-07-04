@@ -87,11 +87,11 @@ try {
     /* Map filter value to DB values */
     if ($filter_status !== '') {
         if ($filter_status === 'Pending Manager Approval') {
-            $where .= " AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation')";
+            $where .= " AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation','Pending Verification','Pending Admin Oversight')";
         } elseif ($filter_status === 'Confirmed') {
-            $where .= " AND do2.status IN ('Confirmed','Approved','Adjusted')";
+            $where .= " AND do2.status IN ('Confirmed','Approved','Adjusted','Validated','Verified','Ready for Stock-In','Stock-In Complete','Partial Delivery','Damaged Items')";
         } elseif ($filter_status === 'Discrepancy') {
-            $where .= " AND do2.status IN ('Discrepancy','Pending Resolution','Awaiting Replacement','Returned to Supplier')";
+            $where .= " AND do2.status IN ('Discrepancy','Pending Resolution','Awaiting Replacement','Returned to Supplier','Rejected','Rejected Delivery','Returned','Returned to Staff','Flagged')";
         } elseif ($filter_status === 'Closed') {
             $where .= " AND do2.status = 'Closed'";
         }
@@ -114,7 +114,17 @@ try {
                 'Discrepancy',
                 'Pending Manager Approval',
                 'Pending Manager Confirmation',
+                'Pending Validation',
+                'Pending Verification',
+                'Pending Admin Oversight',
                 'Confirmed',
+                'Approved',
+                'Validated',
+                'Verified',
+                'Ready for Stock-In',
+                'Stock-In Complete',
+                'Partial Delivery',
+                'Damaged Items',
                 'Closed'
             ),
             do2.delivery_date DESC
@@ -125,11 +135,11 @@ try {
     foreach ($deliveries as $r) {
         $s = $r['status'];
         $counts['Total']++;
-        if (in_array($s, ['Pending Manager Approval', 'Pending Manager Confirmation'])) {
+        if (in_array($s, ['Pending Manager Approval', 'Pending Manager Confirmation', 'Pending Validation', 'Pending Verification', 'Pending Admin Oversight'])) {
             $counts['Pending']++;
-        } elseif (in_array($s, ['Confirmed', 'Approved', 'Adjusted', 'Closed'])) {
+        } elseif (in_array($s, ['Confirmed', 'Approved', 'Validated', 'Verified', 'Ready for Stock-In', 'Adjusted', 'Stock-In Complete', 'Partial Delivery', 'Damaged Items', 'Closed'])) {
             $counts['Verified']++;
-        } elseif (in_array($s, ['Discrepancy', 'Pending Resolution', 'Awaiting Replacement', 'Returned to Supplier'])) {
+        } elseif (in_array($s, ['Discrepancy', 'Pending Resolution', 'Awaiting Replacement', 'Returned to Supplier', 'Rejected', 'Rejected Delivery', 'Returned', 'Returned to Staff', 'Flagged'])) {
             $counts['Rejected']++;
         }
     }
@@ -271,14 +281,18 @@ include __DIR__ . '/../partials/header.php';
 .txn-btn.warning:hover   { background-color:#b45309 !important; background:#b45309 !important; color:#ffffff !important; }
 .txn-btn.danger    { color:#dc2626 !important; background-color:#ffffff !important; background:#ffffff !important; border:1px solid #dc2626 !important; }
 .txn-btn.danger:hover    { background-color:#dc2626 !important; background:#dc2626 !important; color:#ffffff !important; }
+/* Header standardization */
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:0px !important; }
+.int-head h1 { font-size:22px !important; font-weight:700 !important; color:#002F70 !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head .sub { font-size:13px; color:#64748b; margin-top:4px; }
 </style>
 
-<div class="page-head">
+<div class="int-head">
     <div>
-        <h1 class="h1"><i class="fas fa-history"></i> Merchandise Delivery History</h1>
+        <h1><i class="fas fa-history"></i> Merchandise Delivery History</h1>
         <div class="sub">All merchandise deliveries for this station &mdash; Pending, Approved, Discrepancy, and Closed records.</div>
     </div>
-    <div class="header-actions"></div>
+    <div style="display:flex;gap:8px;align-items:center;"></div>
 </div>
 
 <?php if ($msg): ?>
@@ -388,16 +402,14 @@ include __DIR__ . '/../partials/header.php';
                 <tbody>
                 <?php foreach ($deliveries as $d):
                     $status      = $d['status'];
-                    $is_pending  = in_array($status, ['Pending Manager Approval', 'Pending Manager Confirmation']);
-                    $is_discrepancy = in_array($status, ['Discrepancy', 'Pending Resolution', 'Awaiting Replacement', 'Returned to Supplier']);
-                    $is_approved = in_array($status, ['Confirmed', 'Approved', 'Adjusted']);
+                    $is_pending  = in_array($status, ['Pending Manager Approval', 'Pending Manager Confirmation', 'Pending Validation', 'Pending Verification', 'Pending Admin Oversight']);
+                    $is_discrepancy = in_array($status, ['Discrepancy', 'Pending Resolution', 'Awaiting Replacement', 'Returned to Supplier', 'Rejected', 'Rejected Delivery', 'Returned', 'Returned to Staff', 'Flagged']);
+                    $is_approved = in_array($status, ['Confirmed', 'Approved', 'Validated', 'Verified', 'Ready for Stock-In', 'Adjusted', 'Stock-In Complete', 'Partial Delivery', 'Damaged Items']);
                     $is_closed   = ($status === 'Closed');
-                    $is_rejected = in_array($status, ['Rejected', 'Discrepancy']);
 
-                    // Badge class
                     if ($is_pending) {
                         $badge_class = 'badge-pending';
-                        $badge_label = 'Pending Approval';
+                        $badge_label = ($status === 'Pending Manager Confirmation') ? 'Pending Confirmation' : (($status === 'Pending Validation' || $status === 'Pending Verification' || $status === 'Pending Admin Oversight') ? 'Pending Verification' : 'Pending Approval');
                     } elseif ($status === 'Pending Resolution') {
                         $badge_class = 'badge-rejected';
                         $badge_label = 'Pending Resolution';
@@ -407,15 +419,27 @@ include __DIR__ . '/../partials/header.php';
                     } elseif ($status === 'Returned to Supplier') {
                         $badge_class = 'badge-closed';
                         $badge_label = 'Returned to Supplier';
+                    } elseif ($status === 'Returned' || $status === 'Returned to Staff') {
+                        $badge_class = 'badge-rejected';
+                        $badge_label = 'Returned to Staff';
                     } elseif ($status === 'Adjusted') {
                         $badge_class = 'badge-approved';
                         $badge_label = 'Adjusted';
+                    } elseif ($status === 'Stock-In Complete') {
+                        $badge_class = 'badge-approved';
+                        $badge_label = 'Stock-In Complete';
+                    } elseif ($status === 'Partial Delivery') {
+                        $badge_class = 'badge-approved';
+                        $badge_label = 'Partial Delivery';
+                    } elseif ($status === 'Damaged Items') {
+                        $badge_class = 'badge-rejected';
+                        $badge_label = 'Damaged Items';
+                    } elseif ($status === 'Rejected Delivery' || $status === 'Rejected') {
+                        $badge_class = 'badge-rejected';
+                        $badge_label = 'Rejected';
                     } elseif ($is_approved) {
                         $badge_class = 'badge-approved';
                         $badge_label = 'Approved';
-                    } elseif ($status === 'Discrepancy') {
-                        $badge_class = 'badge-rejected';
-                        $badge_label = 'Rejected';
                     } else {
                         $badge_class = 'badge-closed';
                         $badge_label = 'Closed';
@@ -476,10 +500,22 @@ const deliveryData = <?php echo json_encode(array_column($deliveries, null, 'id'
 
 const STATUS_LABELS = {
     'Pending Manager Approval':     'Pending Approval',
-    'Pending Manager Confirmation': 'Pending Approval',
+    'Pending Manager Confirmation': 'Pending Confirmation',
+    'Pending Validation':           'Pending Verification',
+    'Pending Verification':         'Pending Verification',
+    'Pending Admin Oversight':      'Pending Oversight',
     'Confirmed':   'Approved',
     'Approved':    'Approved',
+    'Validated':   'Approved',
+    'Verified':    'Approved',
+    'Ready for Stock-In': 'Ready for Stock-In',
     'Adjusted':    'Adjusted',
+    'Stock-In Complete': 'Stock-In Complete',
+    'Partial Delivery': 'Partial Delivery',
+    'Damaged Items': 'Damaged Items',
+    'Rejected Delivery': 'Rejected',
+    'Returned':    'Returned to Staff',
+    'Returned to Staff': 'Returned to Staff',
     'Discrepancy': 'Rejected',
     'Pending Resolution':   'Pending Resolution',
     'Awaiting Replacement': 'Awaiting Replacement',
@@ -489,9 +525,21 @@ const STATUS_LABELS = {
 const STATUS_COLORS = {
     'Pending Manager Approval':     '#856404',
     'Pending Manager Confirmation': '#856404',
+    'Pending Validation':           '#856404',
+    'Pending Verification':         '#856404',
+    'Pending Admin Oversight':      '#856404',
     'Confirmed':   '#155724',
     'Approved':    '#155724',
+    'Validated':   '#155724',
+    'Verified':    '#155724',
+    'Ready for Stock-In': '#155724',
     'Adjusted':    '#0c5460',
+    'Stock-In Complete': '#155724',
+    'Partial Delivery': '#155724',
+    'Damaged Items': '#721c24',
+    'Rejected Delivery': '#721c24',
+    'Returned':    '#721c24',
+    'Returned to Staff': '#721c24',
     'Discrepancy': '#721c24',
     'Pending Resolution':   '#7d4e00',
     'Awaiting Replacement': '#004085',
@@ -505,8 +553,8 @@ function viewDelivery(id) {
 
     const label      = STATUS_LABELS[d.status] || d.status;
     const color      = STATUS_COLORS[d.status] || '#333';
-    const isRejected = (d.status === 'Discrepancy');
-    const isDiscrepancy = ['Discrepancy','Pending Resolution','Awaiting Replacement','Returned to Supplier'].includes(d.status);
+    const isRejected = (d.status === 'Discrepancy' || d.status === 'Rejected');
+    const isDiscrepancy = ['Discrepancy','Pending Resolution','Awaiting Replacement','Returned to Supplier','Rejected','Rejected Delivery','Returned','Returned to Staff','Flagged'].includes(d.status);
 
     let html = '';
 

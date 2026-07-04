@@ -315,9 +315,18 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 .main-content { max-width: 100% !important; overflow-x: hidden !important; padding: 0 !important; }
 
 /* Petron clean headers */
-.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; margin-top: 8px !important; padding-top: 8px; width: 100%; }
+.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; margin-top: 0px !important; padding-top: 0px !important; width: 100%; }
 .int-head h1 { font-size: 22px !important; font-weight: 700 !important; color: #00264D !important; margin: 0 !important; text-transform: uppercase !important; display: flex; align-items: center; gap: 8px; line-height: 1.3; }
 .int-head .sub { font-size: 13px; color: #64748b; margin-top: 4px; line-height: 1.4; }
+
+/* Modal close button overrides to prevent global button background override */
+.modal-header button {
+    background: none !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
 
 /* Tabs system */
 .tabs-navigation { display: flex; gap: 10px; border-bottom: 2px solid #e2e8f0; margin-bottom: 22px; width: 100%; }
@@ -402,7 +411,6 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
             <div class="sub">Consolidated audit log of fuel transactions and deliveries adjustments made by managers.</div>
         </div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <a href="manager_dashboard.php" class="ato-btn ato-btn-back"><i class="fas fa-arrow-left"></i> Dashboard</a>
             <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'excel'])) ?>" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
             <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'pdf'])) ?>" class="ato-btn ato-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
         </div>

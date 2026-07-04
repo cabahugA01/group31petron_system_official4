@@ -26,7 +26,7 @@ try{
 }catch(Exception $e){}
 // Fix blank statuses
 try{ $pdo->exec("UPDATE deliveries_oversight SET status='Pending Manager Approval' WHERE status='' OR status IS NULL"); }catch(Exception $e){}
-if ($action === 'export_excel' || $action === 'export_pdf') {
+if ($action === 'export_excel' || $action === 'export_pdf' || $action === 'export_csv') {
     if (!$me || !in_array($role, ['admin','superadmin'])) { http_response_code(403); echo 'Access denied'; exit; }
     $station_id = (int)user_station_id();
     $start=$_GET['start']??date('Y-m-d',strtotime('-30 days')); $end=$_GET['end']??date('Y-m-d'); $sf=$_GET['status']??'';
@@ -38,9 +38,9 @@ if ($action === 'export_excel' || $action === 'export_pdf') {
         if($sf==='expected'){
             $w.=" AND do2.status='Expected Delivery'";
         }elseif($sf==='pending'){
-            $w.=" AND do2.status IN ('Pending Admin Oversight','Pending Manager Confirmation','Pending Validation','Pending Manager Approval')";
+            $w.=" AND do2.status IN ('Pending Admin Oversight','Pending Manager Confirmation','Pending Validation','Pending Verification','Pending Manager Approval')";
         }elseif($sf==='approved' || $sf==='cleared' || $sf==='validated'){
-            $w.=" AND do2.status IN ('Confirmed','Validated')";
+            $w.=" AND do2.status IN ('Confirmed','Validated','Verified','Ready for Stock-In','Stock-In Complete','Adjusted')";
         }elseif($sf==='flagged'){
             $w.=" AND do2.status IN ('Discrepancy','Flagged')";
         }elseif($sf==='partial'){
@@ -48,7 +48,7 @@ if ($action === 'export_excel' || $action === 'export_pdf') {
         }elseif($sf==='damaged'){
             $w.=" AND do2.status='Damaged Items'";
         }elseif($sf==='rejected'){
-            $w.=" AND do2.status IN ('Rejected','Rejected Delivery')";
+            $w.=" AND do2.status IN ('Rejected','Rejected Delivery','Returned','Returned to Staff','Returned to Supplier')";
         }else{
             $w.=' AND do2.status=?';$p[]=$sf;
         }
@@ -73,6 +73,38 @@ if ($action === 'export_excel' || $action === 'export_pdf') {
         ORDER BY do2.delivery_date DESC
     ");
     $st->execute($p); $rows=$st->fetchAll(PDO::FETCH_ASSOC);
+    
+    if($action==='export_csv'){
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="deliveries_'.date('Y-m-d').'.csv"');
+        $o=fopen('php://output','w');
+        if($tf === 'merchandise') {
+            fputcsv($o,['Delivery ID','Delivery Date','Batch ID','DR Number','Supplier','Item Name','Category','Quantity Delivered','Unit','Staff Receiver','Manager Verifier','Status','Verification Date','Remarks']);
+            foreach($rows as $r) {
+                fputcsv($o,[
+                    $r['delivery_ref'],
+                    $r['delivery_date'],
+                    $r['batch_id']??'',
+                    $r['dr_number']??'',
+                    $r['supplier'],
+                    $r['product'],
+                    $r['category']??'',
+                    $r['actual_quantity'] ?: $r['quantity'],
+                    $r['unit'],
+                    $r['received_by_name'] ?: $r['encoded_by_name'] ?: 'Unknown',
+                    $r['manager_name']??'',
+                    $r['status'],
+                    $r['manager_action_at']??'',
+                    $r['remarks'] ?: $r['manager_notes'] ?: $r['admin_notes'] ?: ''
+                ]);
+            }
+        } else {
+            fputcsv($o,['#','Ref','Type','DR','Supplier','Product','Qty','Unit','Date','Encoded By','Status','Notes']);
+            foreach($rows as $r) fputcsv($o,[$r['id'],$r['delivery_ref'],ucfirst($r['delivery_type']),$r['dr_number']??'',$r['supplier'],$r['product'],$r['quantity'],$r['unit'],$r['delivery_date'],$r['encoded_by_name']??'',$r['status'],$r['admin_notes']??'']);
+        }
+        fclose($o); exit;
+    }
+    
     if($action==='export_excel'){
         header('Content-Type: application/vnd.ms-excel; charset=utf-8');
         header('Content-Disposition: attachment; filename="deliveries_'.date('Y-m-d').'.xls"');
@@ -472,9 +504,9 @@ try {
                 if($sf==='expected'){
                     $w.=" AND do2.status='Expected Delivery'";
                 }elseif($sf==='pending'){
-                    $w.=" AND do2.status IN ('Pending Admin Oversight','Pending Manager Confirmation','Pending Validation','Pending Manager Approval')";
+                    $w.=" AND do2.status IN ('Pending Admin Oversight','Pending Manager Confirmation','Pending Validation','Pending Verification','Pending Manager Approval')";
                 }elseif($sf==='approved' || $sf==='cleared' || $sf==='validated'){
-                    $w.=" AND do2.status IN ('Confirmed','Validated')";
+                    $w.=" AND do2.status IN ('Confirmed','Validated','Verified','Ready for Stock-In','Stock-In Complete','Adjusted')";
                 }elseif($sf==='flagged'){
                     $w.=" AND do2.status IN ('Discrepancy','Flagged')";
                 }elseif($sf==='partial'){
@@ -482,7 +514,7 @@ try {
                 }elseif($sf==='damaged'){
                     $w.=" AND do2.status='Damaged Items'";
                 }elseif($sf==='rejected'){
-                    $w.=" AND do2.status IN ('Rejected','Rejected Delivery')";
+                    $w.=" AND do2.status IN ('Rejected','Rejected Delivery','Returned','Returned to Staff','Returned to Supplier')";
                 }else{
                     $w.=' AND do2.status=?';$p[]=$sf;
                 }
@@ -531,16 +563,16 @@ try {
             foreach($card_rows as $cr){
                 $s = $cr['status'];
                 // Verified/Received/Cleared statuses
-                if(in_array($s, ['Confirmed', 'Validated', 'Partial Delivery', 'Damaged Items'])){
+                if(in_array($s, ['Confirmed', 'Validated', 'Verified', 'Ready for Stock-In', 'Stock-In Complete', 'Adjusted', 'Partial Delivery', 'Damaged Items'])){
                     $verified_deliveries++;
                     $total_items_received += (float)($cr['actual_quantity'] ?: $cr['quantity'] ?: 0);
                 }
                 // Rejected statuses
-                elseif(in_array($s, ['Rejected', 'Rejected Delivery'])){
+                elseif(in_array($s, ['Rejected', 'Rejected Delivery', 'Returned', 'Returned to Staff', 'Returned to Supplier'])){
                     $rejected_deliveries++;
                 }
                 // Pending statuses
-                elseif(in_array($s, ['Pending Manager Approval', 'Pending Manager Confirmation', 'Pending Validation', 'Pending Admin Oversight'])){
+                elseif(in_array($s, ['Pending Manager Approval', 'Pending Manager Confirmation', 'Pending Validation', 'Pending Verification', 'Pending Admin Oversight'])){
                     $pending_deliveries++;
                 }
             }

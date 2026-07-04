@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * ADMIN CUSTOMER OVERSIGHT EXPORT UTILITY
  * Strictly view-only, with complete auditing.
@@ -364,12 +364,12 @@ function exportSingleProfilePdf($id, $station_name) {
         <div class="section">
             <h2>Activity & Spend Summary</h2>
             <table>
-                <tr><th>Total Amount Spent</th><td><strong>₱<?php echo number_format($totalAmountSpent, 2); ?></strong></td></tr>
-                <tr><th>Merchandise Purchases</th><td><?php echo $merchCount; ?> txn(s) (₱<?php echo number_format($merchSpent, 2); ?>)</td></tr>
-                <tr><th>Fuel Purchases</th><td><?php echo $fuelCount; ?> txn(s) (₱<?php echo number_format($fuelSpent, 2); ?>)</td></tr>
-                <tr><th>Job Orders / Services</th><td><?php echo $joCount; ?> order(s) (₱<?php echo number_format($joSpent, 2); ?>)</td></tr>
+                <tr><th>Total Amount Spent</th><td><strong>\u{20B1}<?php echo number_format($totalAmountSpent, 2); ?></strong></td></tr>
+                <tr><th>Merchandise Purchases</th><td><?php echo $merchCount; ?> txn(s) (\u{20B1}<?php echo number_format($merchSpent, 2); ?>)</td></tr>
+                <tr><th>Fuel Purchases</th><td><?php echo $fuelCount; ?> txn(s) (\u{20B1}<?php echo number_format($fuelSpent, 2); ?>)</td></tr>
+                <tr><th>Job Orders / Services</th><td><?php echo $joCount; ?> order(s) (\u{20B1}<?php echo number_format($joSpent, 2); ?>)</td></tr>
                 <tr><th>Last Transaction Date</th><td><?php echo $lastTxDate ? date('M d, Y g:i A', strtotime($lastTxDate)) : 'No Transactions'; ?></td></tr>
-                <tr><th>Outstanding Balance</th><td>₱<?php echo number_format($c['outstanding_balance'] ?? 0, 2); ?></td></tr>
+                <tr><th>Outstanding Balance</th><td>\u{20B1}<?php echo number_format($c['outstanding_balance'] ?? 0, 2); ?></td></tr>
             </table>
         </div>
     </div>
@@ -452,7 +452,7 @@ function exportSingleHistory($id, $format, $station_name) {
         try {
             $sql = "
                 SELECT mt.transaction_date AS txn_date, mt.transaction_id AS reference_no, 'Merchandise' AS module,
-                       CONCAT('Sale — ₱', FORMAT(mt.total_amount,2)) AS description, mt.total_amount AS amount,
+                       CONCAT('Sale — \u{20B1}', FORMAT(mt.total_amount,2)) AS description, mt.total_amount AS amount,
                        COALESCE(mt.validation_status, 'Completed') AS status, COALESCE(u.name, 'System') AS processed_by
                 FROM merchandise_transactions mt 
                 LEFT JOIN users u ON mt.staff_id = u.id 
@@ -596,7 +596,7 @@ function exportSingleHistory($id, $format, $station_name) {
                 <td><strong><?php echo htmlspecialchars($t['reference_no']); ?></strong></td>
                 <td><?php echo htmlspecialchars($t['module']); ?></td>
                 <td><?php echo htmlspecialchars($t['description']); ?></td>
-                <td>₱<?php echo number_format($t['amount'], 2); ?></td>
+                <td>\u{20B1}<?php echo number_format($t['amount'], 2); ?></td>
                 <td><?php echo ucfirst($t['status']); ?></td>
                 <td><?php echo htmlspecialchars($t['processed_by']); ?></td>
             </tr>

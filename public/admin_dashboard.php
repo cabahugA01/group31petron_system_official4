@@ -443,7 +443,7 @@ if (adm_table_exists($pdo, 'deliveries_oversight')) {
                 'oversight' AS source
          FROM deliveries_oversight
          WHERE {$station_sql}
-           AND LOWER(COALESCE(status, '')) NOT IN ('completed', 'received', 'cancelled', 'rejected', 'finalized')
+           AND LOWER(COALESCE(status, '')) IN ('pending manager approval', 'pending validation', 'pending verification', 'pending manager confirmation', 'pending admin oversight', 'discrepancy', 'flagged')
          ORDER BY created_at DESC
          LIMIT 12",
         $station_params

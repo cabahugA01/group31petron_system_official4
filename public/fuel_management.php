@@ -546,10 +546,117 @@ require_once __DIR__ . '/../partials/header.php';
 ?>
 <style>
 /* == PAGE HEADER - matches Transaction Module int-head standard == */
-.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:-12px !important; }
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:0px !important; }
 .int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
 .int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
 .int-head .actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+
+/* ══════════════════════════════════════════════════
+   FUEL MANAGEMENT – GLOBAL BUTTON OVERRIDE FIXES
+   Forces plain-white look for all action buttons since
+   partials/header.php applies !important dark-blue globally
+   ══════════════════════════════════════════════════ */
+
+/* 1. TAB PILL BUTTONS — transparent background, correct text color */
+.tabs.pills .tab,
+.tabs.pills button.tab {
+    background-color: transparent !important;
+    background: transparent !important;
+    color: #475569 !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+.tabs.pills .tab.active,
+.tabs.pills button.tab.active {
+    background-color: #002F70 !important;
+    background: #002F70 !important;
+    color: #ffffff !important;
+    border: none !important;
+}
+.tabs.pills .tab:not(.active):hover,
+.tabs.pills button.tab:not(.active):hover {
+    background-color: rgba(0,47,112,0.08) !important;
+    background: rgba(0,47,112,0.08) !important;
+    color: #002F70 !important;
+}
+
+/* 2. ALL BTN INSIDE MODALS — plain white with dark-blue border */
+.modal .btn,
+.modal-body .btn,
+.modal-footer .btn,
+.show .modal-footer .btn {
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    color: #002F70 !important;
+    border: 1px solid #002F70 !important;
+    font-weight: 600 !important;
+}
+.modal .btn:hover,
+.modal-body .btn:hover,
+.modal-footer .btn:hover {
+    background-color: #002F70 !important;
+    background: #002F70 !important;
+    color: #ffffff !important;
+}
+/* Special: primary/danger variants inside modals keep their distinct look */
+.modal .btn.primary {
+    background-color: #002F70 !important;
+    background: #002F70 !important;
+    color: #ffffff !important;
+    border: 1px solid #002F70 !important;
+}
+.modal .btn.danger {
+    background-color: #dc3545 !important;
+    background: #dc3545 !important;
+    color: #ffffff !important;
+    border: 1px solid #dc3545 !important;
+}
+
+/* 3. TABLE & CARD ACTION BUTTONS — plain white */
+.table .btn, 
+.table-wrap .btn,
+.filter-bar .btn,
+.card-head .btn,
+.form-grid .btn {
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    color: #002F70 !important;
+    border: 1px solid #002F70 !important;
+    font-weight: 600 !important;
+    transition: all 0.15s ease-in-out !important;
+}
+.table .btn:hover, 
+.table-wrap .btn:hover,
+.filter-bar .btn:hover,
+.card-head .btn:hover,
+.form-grid .btn:hover {
+    background-color: #002F70 !important;
+    background: #002F70 !important;
+    color: #ffffff !important;
+    border-color: #002F70 !important;
+}
+
+/* 4. MODAL CLOSE / ICON BUTTONS — no background at all */
+.icon-btn,
+.modal-close,
+.sr-modal-close,
+.modal-header .icon-btn,
+.modal-head .modal-close {
+    background: none !important;
+    background-color: transparent !important;
+    border: none !important;
+    color: #64748b !important;
+    box-shadow: none !important;
+}
+.icon-btn:hover,
+.modal-close:hover,
+.sr-modal-close:hover,
+.modal-header .icon-btn:hover,
+.modal-head .modal-close:hover {
+    background: none !important;
+    background-color: transparent !important;
+    color: #1e293b !important;
+}
 
 .fuel-badge { display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:600; }
 .fuel-badge.pending_review { background:#fff3cd;color:#856404; }

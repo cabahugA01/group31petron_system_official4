@@ -277,15 +277,25 @@ body,html{overflow-x:hidden;max-width:100%;}
 .txn-btn.secondary:hover{background:#475569!important;color:#fff!important;}
 .txn-btn.success{color:#16a34a!important;border-color:#16a34a!important;}
 .txn-btn.success:hover{background:#16a34a!important;color:#fff!important;}
-.txn-btn.info{color:#0284c7!important;border-color:#0284c7!important;}
-.txn-btn.info:hover{background:#0284c7!important;color:#fff!important;}
+.txn-btn.info{color:#002F70!important;border-color:#002F70!important;}
+.txn-btn.info:hover{background:#002F70!important;color:#fff!important;}
 .txn-btn.sm{padding:4px 9px!important;font-size:10px!important;}
 </style>
 
-<div class="page-head">
+<div class="page-head" style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:16px;border-bottom:2px solid #e9ecef;margin-bottom:20px;">
     <div>
         <h1 class="h1"><i class="fas fa-boxes"></i> Merchandise Inventory</h1>
         <div class="sub">MANAGE MERCHANDISE ITEMS AND MONITOR STOCK LEVELS.</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <?php
+        $export_table_id       = 'merchTable';
+        $export_filename       = 'merch_inventory_' . date('Ymd');
+        $export_title          = 'Merchandise Inventory';
+        $export_rows_select_id = 'merchRowsLimit';
+        $export_default_rows   = 25;
+        require __DIR__ . '/../partials/export_buttons.php';
+        ?>
     </div>
 </div>
 
@@ -333,14 +343,6 @@ body,html{overflow-x:hidden;max-width:100%;}
     <div class="inv-card-head">
         <div class="inv-card-title"><i class="fas fa-box"></i> Merchandise Stock</div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <?php
-            $export_table_id       = 'merchTable';
-            $export_filename       = 'merch_inventory_' . date('Ymd');
-            $export_title          = 'Merchandise Inventory';
-            $export_rows_select_id = 'merchRowsLimit';
-            $export_default_rows   = 25;
-            require __DIR__ . '/../partials/export_buttons.php';
-            ?>
             <button onclick="openSrModal()" class="txn-btn primary" style="height:36px;">
                 <i class="fas fa-box"></i> Stock Request
             </button>

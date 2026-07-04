@@ -11,7 +11,7 @@ ob_end_clean();
 
 require_login();
 
-header('Content-Type: application/json');
+header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-cache, must-revalidate');
 
 $me         = current_user();
@@ -27,13 +27,14 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 try {
     switch ($action) {
-        case 'list':         listCustomers();   break;
-        case 'view':         viewCustomer();    break;
-        case 'add':          addCustomer();     break;
-        case 'update':       updateCustomer();  break;
-        case 'verify':       verifyCustomer();  break;
-        case 'log_download': logDownload();     break;
-        default:             echo json_encode(['success' => false, 'error' => 'Invalid action']);
+        case 'list':                listCustomers();          break;
+        case 'view':                viewCustomer();           break;
+        case 'add':                 addCustomer();            break;
+        case 'update':              updateCustomer();         break;
+        case 'verify':              verifyCustomer();         break;
+        case 'log_download':        logDownload();            break;
+        case 'transaction_history': getTransactionHistory();  break;
+        default:                    echo json_encode(['success' => false, 'error' => 'Invalid action']);
     }
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
@@ -203,7 +204,7 @@ function viewCustomer() {
                CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS registered_by_name,
                CONCAT(COALESCE(v.first_name,''), ' ', COALESCE(v.last_name,'')) AS verified_by_name
         FROM customers c
-        LEFT JOIN users u ON c.verified_by = u.id
+        LEFT JOIN users u ON c.registered_by = u.id
         LEFT JOIN users v ON c.verified_by   = v.id
         WHERE c.id = ? AND c.station_id = ?
     ");
@@ -248,7 +249,7 @@ function viewCustomer() {
             SELECT transaction_date AS txn_date,
                    transaction_id   AS reference_no,
                    'Merchandise'    AS module,
-                   CONCAT('Sale — ₱', FORMAT(total_amount,2)) AS description,
+                   CONCAT('Sale — \u{20B1}', FORMAT(total_amount,2)) AS description,
                    total_amount     AS amount,
                    COALESCE(validation_status,'completed') AS txn_status
             FROM merchandise_transactions
@@ -549,5 +550,146 @@ function handleFileUpload($file, $type) {
         throw new Exception("Failed to save uploaded file.");
     }
     return 'uploads/customer_documents/' . $filename;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// TRANSACTION HISTORY (PAGINATED & FILTERABLE)
+// ─────────────────────────────────────────────────────────────────────
+function getTransactionHistory() {
+    global $pdo, $station_id;
+
+    $customerId = (int)($_GET['customer_id'] ?? 0);
+    if (!$customerId) {
+        echo json_encode(['success' => false, 'error' => 'Customer ID is required']);
+        return;
+    }
+
+    $search        = trim($_GET['search'] ?? '');
+    $module        = trim($_GET['module'] ?? '');
+    $txnStatus     = trim($_GET['txn_status'] ?? '');
+    $paymentStatus = trim($_GET['payment_status'] ?? '');
+    $dateFrom      = trim($_GET['date_from'] ?? '');
+    $dateTo        = trim($_GET['date_to'] ?? '');
+
+    $unionSql = "
+        SELECT
+            ft.id AS source_id,
+            ft.transaction_date AS txn_date,
+            ft.transaction_id AS reference_no,
+            'Fuel' AS module,
+            CONCAT(ft.fuel_type, ' — ', ft.liters_sold, 'L') AS description,
+            ft.total_amount AS amount,
+            CASE WHEN LOWER(ft.status) = 'completed' THEN 'paid' ELSE 'pending' END AS payment_status,
+            ft.status AS txn_status,
+            COALESCE(u.name, 'Staff') AS processed_by,
+            ft.customer_id,
+            ft.station_id
+        FROM fuel_transactions ft
+        LEFT JOIN users u ON ft.staff_id = u.id
+
+        UNION ALL
+
+        SELECT
+            mt.id AS source_id,
+            mt.transaction_date AS txn_date,
+            mt.transaction_id AS reference_no,
+            'Merchandise' AS module,
+            CONCAT('Sale — \u{20B1}', FORMAT(mt.total_amount,2)) AS description,
+            mt.total_amount AS amount,
+            COALESCE(mt.payment_status, 'pending') AS payment_status,
+            mt.validation_status AS txn_status,
+            COALESCE(u.name, 'Staff') AS processed_by,
+            mt.customer_id,
+            mt.station_id
+        FROM merchandise_transactions mt
+        LEFT JOIN users u ON mt.staff_id = u.id
+
+        UNION ALL
+
+        SELECT
+            jo.id AS source_id,
+            jo.created_at AS txn_date,
+            COALESCE(jo.job_order_id, jo.job_order_number, CONCAT('JO-', jo.id)) AS reference_no,
+            'Job Order' AS module,
+            COALESCE(jo.service_type, 'Service') AS description,
+            jo.total_cost AS amount,
+            COALESCE(jo.payment_status, 'pending') AS payment_status,
+            jo.status AS txn_status,
+            COALESCE(u.name, 'Staff') AS processed_by,
+            jo.customer_id,
+            jo.station_id
+        FROM job_orders jo
+        LEFT JOIN users u ON jo.created_by = u.id
+    ";
+
+    $where = ["t.customer_id = :customer_id", "t.station_id = :station_id"];
+    $binds = [
+        ':customer_id' => $customerId,
+        ':station_id'  => $station_id
+    ];
+
+    if ($search !== '') {
+        $where[] = "t.reference_no LIKE :search";
+        $binds[':search'] = "%$search%";
+    }
+    if ($module !== '') {
+        $where[] = "t.module = :module";
+        $binds[':module'] = $module;
+    }
+    if ($txnStatus !== '') {
+        $where[] = "LOWER(t.txn_status) = :txn_status";
+        $binds[':txn_status'] = strtolower($txnStatus);
+    }
+    if ($paymentStatus !== '') {
+        $where[] = "LOWER(t.payment_status) = :payment_status";
+        $binds[':payment_status'] = strtolower($paymentStatus);
+    }
+    if ($dateFrom !== '') {
+        $where[] = "DATE(t.txn_date) >= :date_from";
+        $binds[':date_from'] = $dateFrom;
+    }
+    if ($dateTo !== '') {
+        $where[] = "DATE(t.txn_date) <= :date_to";
+        $binds[':date_to'] = $dateTo;
+    }
+
+    $whereClause = implode(' AND ', $where);
+
+    try {
+        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM ($unionSql) t WHERE $whereClause");
+        foreach ($binds as $key => $val) {
+            $countStmt->bindValue($key, $val);
+        }
+        $countStmt->execute();
+        $totalRows = (int)$countStmt->fetchColumn();
+
+        $limit = (int)($_GET['limit'] ?? 10);
+        $page = (int)($_GET['page'] ?? 1);
+        $offset = ($page - 1) * $limit;
+
+        $dataStmt = $pdo->prepare("
+            SELECT t.* FROM ($unionSql) t
+            WHERE $whereClause
+            ORDER BY t.txn_date DESC
+            LIMIT :limit OFFSET :offset
+        ");
+        foreach ($binds as $key => $val) {
+            $dataStmt->bindValue($key, $val);
+        }
+        $dataStmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $dataStmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $dataStmt->execute();
+        $rows = $dataStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'success' => true,
+            'total'   => $totalRows,
+            'page'    => $page,
+            'limit'   => $limit,
+            'data'    => $rows
+        ]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
 }
 ?>

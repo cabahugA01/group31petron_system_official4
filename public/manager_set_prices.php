@@ -390,8 +390,8 @@ include __DIR__ . '/../partials/header.php';
     box-sizing: border-box;
 }
 .act-btn:last-child { margin-bottom: 0; }
-.act-btn-view  { color: #0284c7 !important; border-color: #0284c7 !important; }
-.act-btn-view:hover  { background: #0284c7 !important; color: #fff !important; }
+.act-btn-view  { color: #16a34a !important; border-color: #16a34a !important; }
+.act-btn-view:hover  { background: #16a34a !important; color: #fff !important; }
 .act-btn-edit  { color: #002F6C !important; border-color: #002F6C !important; }
 .act-btn-edit:hover  { background: #002F6C !important; color: #fff !important; }
 .act-btn-deactivate { color: #dc2626 !important; border-color: #dc2626 !important; }
@@ -415,62 +415,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- ── Summary Cards ─────────────────────────────────────────────────────────── -->
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:20px 0;">
-    <!-- Fuel Types Card -->
-    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:20px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-        <div style="color:#64748b;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
-            <i class="fas fa-gas-pump" style="margin-right:6px;"></i>Fuel Types
-        </div>
-        <div style="font-size:36px;font-weight:700;color:#002F6C;line-height:1;">
-            <?php echo $fuel_stats['total']; ?>
-        </div>
-    </div>
-    
-    <!-- Active Fuel Types Card -->
-    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:20px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-        <div style="color:#64748b;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
-            <i class="fas fa-check-circle" style="margin-right:6px;"></i>Active
-        </div>
-        <div style="font-size:36px;font-weight:700;color:#16a34a;line-height:1;">
-            <?php echo $fuel_stats['active']; ?>
-        </div>
-    </div>
-    
-    <!-- Price Updates Today Card -->
-    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:20px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-        <div style="color:#64748b;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
-            <i class="fas fa-edit" style="margin-right:6px;"></i>Price Updates
-        </div>
-        <div style="font-size:36px;font-weight:700;color:#0066cc;line-height:1;">
-            <?php echo $fuel_stats['updates_today']; ?>
-        </div>
-        <div style="color:#64748b;font-size:11px;margin-top:4px;">Today</div>
-    </div>
-    
-    <!-- Last Updated Card -->
-    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:20px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-        <div style="color:#64748b;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
-            <i class="fas fa-clock" style="margin-right:6px;"></i>Last Updated
-        </div>
-        <div style="font-size:16px;font-weight:700;color:#002F6C;line-height:1.3;">
-            <?php 
-            if ($fuel_stats['last_updated']) {
-                echo date('M d', strtotime($fuel_stats['last_updated']));
-            } else {
-                echo '&mdash;';
-            }
-            ?>
-        </div>
-        <div style="color:#64748b;font-size:13px;margin-top:4px;">
-            <?php 
-            if ($fuel_stats['last_updated']) {
-                echo date('g:i A', strtotime($fuel_stats['last_updated']));
-            }
-            ?>
-        </div>
-    </div>
-</div>
+
 
 <!-- ── Section Tabs ──────────────────────────────────────────────────── -->
 <input type="hidden" id="activeSection" value="<?php echo htmlspecialchars($active_tab); ?>">

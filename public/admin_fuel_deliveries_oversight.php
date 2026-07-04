@@ -24,7 +24,10 @@ if (isset($_GET['ajax_action'])) {
 
     if ($action === 'get_details') {
         try {
-            $stmt = $pdo->prepare("SELECT fd.*, 
+            $stmt = $pdo->prepare("SELECT fd.id, fd.delivery_date, fd.fuel_type, fd.supplier,
+                fd.invoice_no, fd.delivery_liters, fd.tanker_number, fd.status,
+                fd.notes, fd.created_at, fd.verified_at, NULL AS batch_id, fd.tank_assigned,
+                fd.received_by, fd.verified_by,
                 COALESCE(NULLIF(CONCAT(TRIM(COALESCE(staff.first_name,'')), ' ', TRIM(COALESCE(staff.last_name,''))), ' '), staff.username, 'Unknown') AS staff_name,
                 COALESCE(NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '), mgr.username, '—') AS manager_name,
                 s.name AS station_name
@@ -118,7 +121,10 @@ $export        = trim($_GET['export']    ?? '');
 if (isset($_GET['single_id']) && $export === 'pdf') {
     $single_id = (int)$_GET['single_id'];
     try {
-        $stmt = $pdo->prepare("SELECT fd.*, 
+        $stmt = $pdo->prepare("SELECT fd.id, fd.delivery_date, fd.fuel_type, fd.supplier,
+            fd.invoice_no, fd.delivery_liters, fd.tanker_number, fd.status,
+            fd.notes, fd.created_at, fd.verified_at, NULL AS batch_id, fd.tank_assigned,
+            fd.received_by, fd.verified_by,
             COALESCE(NULLIF(CONCAT(TRIM(COALESCE(staff.first_name,'')), ' ', TRIM(COALESCE(staff.last_name,''))), ' '), staff.username, 'Unknown') AS staff_name,
             COALESCE(NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '), mgr.username, '—') AS manager_name,
             s.name AS station_name
@@ -262,7 +268,7 @@ $deliveries = [];
 try {
     $stmt = $pdo->prepare("SELECT fd.id, fd.delivery_date, fd.fuel_type, fd.supplier,
         fd.invoice_no, fd.delivery_liters, fd.tanker_number, fd.status,
-        fd.notes, fd.created_at, fd.verified_at, fd.batch_id, fd.tank_assigned,
+        fd.notes, fd.created_at, fd.verified_at, NULL AS batch_id, fd.tank_assigned,
         COALESCE(NULLIF(CONCAT(TRIM(COALESCE(staff.first_name,'')), ' ', TRIM(COALESCE(staff.last_name,''))), ' '), staff.username, 'Unknown') AS received_by_name,
         COALESCE(NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '), mgr.username, '—') AS verified_by_name,
         s.name AS station_name

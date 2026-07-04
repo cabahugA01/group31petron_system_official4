@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'mgr_inv_po_gen';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -97,57 +97,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Fetch Purchase Orders from purchase_orders (merch) and fuel_purchase_orders (fuel) table
+// Fetch from stock_requests + fuel_stock_requests as primary source (same as stock review page)
+// LEFT JOIN purchase_orders/fuel_purchase_orders for PO details when manager has approved
 $pos = [];
 try {
+    // Merchandise: stock_requests LEFT JOIN purchase_orders
     $stmt = $pdo->prepare("
         SELECT 
             'merchandise' AS po_type,
-            po.id,
-            po.po_number,
-            po.product_name,
+            COALESCE(po.id, 0) AS id,
+            COALESCE(po.po_number, CONCAT('REQ-', LPAD(sr.id,4,'0'))) AS po_number,
+            sr.item_name AS product_name,
             po.batch_id,
-            po.supplier_name,
-            po.quantity,
+            COALESCE(sup.name, po.supplier_name) AS supplier_name,
+            COALESCE(po.quantity, sr.approved_quantity, sr.requested_quantity) AS quantity,
             po.unit_price,
             po.total_amount,
-            po.expected_delivery,
-            po.status,
-            po.created_at,
-            po.notes,
-            u.name AS created_by_name
-        FROM purchase_orders po
-        LEFT JOIN users u ON po.created_by = u.id
-        WHERE po.station_id = ? AND po.type = 'merch'
+            po.expected_delivery_date AS expected_delivery,
+            COALESCE(po.status, sr.status) AS status,
+            sr.created_at,
+            po.remarks AS notes,
+            COALESCE(u_mgr.name,
+                CONCAT(COALESCE(u_mgr.first_name,''), ' ', COALESCE(u_mgr.last_name,'')),
+                COALESCE(u_staff.name,
+                    CONCAT(COALESCE(u_staff.first_name,''), ' ', COALESCE(u_staff.last_name,'')),
+                '—')
+            ) AS created_by_name
+        FROM stock_requests sr
+        LEFT JOIN purchase_orders po ON po.request_id = sr.id AND po.type = 'merch'
+        LEFT JOIN users u_staff ON sr.staff_id = u_staff.id
+        LEFT JOIN users u_mgr   ON sr.manager_id = u_mgr.id
+        LEFT JOIN suppliers sup  ON po.supplier_id = sup.id
+        WHERE sr.station_id = ?
+          AND LOWER(COALESCE(sr.item_category,'')) != 'fuel'
+        ORDER BY sr.created_at DESC
+        LIMIT 200
+    ");
+    $stmt->execute([$station_id]);
+    $pos = array_merge($pos, $stmt->fetchAll(PDO::FETCH_ASSOC));
 
-        UNION ALL
-
+    // Fuel: fuel_stock_requests LEFT JOIN fuel_purchase_orders
+    $stmt2 = $pdo->prepare("
         SELECT 
             'fuel' AS po_type,
-            fpo.id,
-            fpo.po_number,
-            ft.name AS product_name,
+            COALESCE(fpo.id, 0) AS id,
+            COALESCE(fpo.po_number, CONCAT('FSR-', LPAD(fsr.id,4,'0'))) AS po_number,
+            COALESCE(fsr.fuel_type, COALESCE(ft.name,'Fuel')) AS product_name,
             fpo.batch_id,
-            s.name AS supplier_name,
-            fpo.volume AS quantity,
+            'Petron Corporation' AS supplier_name,
+            COALESCE(fpo.volume, fsr.requested_liters) AS quantity,
             fpo.unit_price,
             fpo.total_amount,
             fpo.expected_delivery_date AS expected_delivery,
-            fpo.status,
-            fpo.created_at,
+            COALESCE(fpo.status, fsr.status) AS status,
+            fsr.created_at,
             fpo.notes,
-            u.name AS created_by_name
-        FROM fuel_purchase_orders fpo
-        LEFT JOIN users u ON fpo.created_by = u.id
+            COALESCE(u_staff.name,
+                CONCAT(COALESCE(u_staff.first_name,''), ' ', COALESCE(u_staff.last_name,'')),
+            '—') AS created_by_name
+        FROM fuel_stock_requests fsr
+        LEFT JOIN fuel_purchase_orders fpo ON fpo.station_id = fsr.station_id
+            AND fpo.created_by = fsr.staff_id
+            AND DATE(fpo.created_at) = DATE(fsr.created_at)
         LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id
-        LEFT JOIN suppliers s ON fpo.supplier_id = s.id
-        WHERE fpo.station_id = ?
-
-        ORDER BY created_at DESC
+        LEFT JOIN users u_staff ON fsr.staff_id = u_staff.id
+        WHERE fsr.station_id = ?
+        ORDER BY fsr.created_at DESC
         LIMIT 200
     ");
-    $stmt->execute([$station_id, $station_id]);
-    $pos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt2->execute([$station_id]);
+    $pos = array_merge($pos, $stmt2->fetchAll(PDO::FETCH_ASSOC));
+
+    // Sort combined list by created_at desc
+    usort($pos, fn($a, $b) => strtotime($b['created_at'] ?? 0) - strtotime($a['created_at'] ?? 0));
 } catch (Exception $e) {
     $pos = [];
 }

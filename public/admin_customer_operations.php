@@ -385,7 +385,7 @@ function getCustomerTransactionHistory() {
                 SELECT mt.transaction_date AS txn_date,
                        mt.transaction_id   AS reference_no,
                        'Merchandise'       AS module,
-                       CONCAT('Sale — ₱', FORMAT(mt.total_amount,2)) AS description,
+                       CONCAT('Sale — \u{20B1}', FORMAT(mt.total_amount,2)) AS description,
                        mt.total_amount     AS amount,
                        COALESCE(mt.validation_status, 'Completed') AS status,
                        COALESCE(u.name, CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')), 'System') AS processed_by

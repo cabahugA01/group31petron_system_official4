@@ -374,7 +374,25 @@ body, html { overflow-x: hidden !important; }
 .sr-modal-box { background:#fff; border-radius:12px; width:100%; max-width:540px; box-shadow:0 10px 25px rgba(0,0,0,.2); display:flex; flex-direction:column; max-height:90vh; overflow:hidden; }
 .sr-modal-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e2e8f0; }
 .sr-modal-title { font-size:16px; font-weight:700; color:#002F70; }
-.sr-modal-close { background:none; border:none; font-size:24px; color:#64748b; cursor:pointer; }
+.sr-modal-close { background:none !important; background-color:transparent !important; border:none !important; font-size:24px; color:#64748b !important; cursor:pointer; box-shadow:none !important; }
+.sr-modal-close:hover { color:#1e293b !important; }
+
+/* Modal close and tab button overrides to prevent global button overrides */
+.modal-header button, 
+.sr-modal-head button,
+.modal-tab-btn {
+    background: none !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+.modal-tab-btn.active {
+    border-bottom: 2px solid #002F70 !important;
+    color: #002F70 !important;
+}
+.modal-tab-btn:not(.active) {
+    color: #64748b !important;
+}
 .sr-info-box { background:#eff6ff; border-left:4px solid #002F70; padding:12px 16px; margin:16px; border-radius:0 8px 8px 0; font-size:13px; color:#1e293b; line-height:1.5; }
 .fsr-select-bar { display:flex; align-items:center; padding:10px 20px; background:#f8fafc; border-bottom:1px solid #e2e8f0; font-size:13px; font-weight:600; }
 #fsrCheckList { overflow-y:auto; flex:1; padding:8px 16px; }
@@ -388,15 +406,17 @@ body, html { overflow-x: hidden !important; }
 .sr-modal-footer { display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:16px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; }
 
 /* Petron-clean flt-btn Styles */
-.flt-btn { display:inline-flex; align-items:center; gap:6px; padding:0 14px; height:35px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; text-decoration:none; border:1px solid transparent; background:#fff; transition:all .15s; }
-.flt-btn-search { color:#002F70; border-color:#002F70; }
-.flt-btn-search:hover { background:#002F70; color:#fff; }
-.flt-btn-reset { color:#6b7280; border-color:#6b7280; }
-.flt-btn-reset:hover { background:#6b7280; color:#fff; }
-.flt-btn-excel { color:#1d6f42; border-color:#1d6f42; }
-.flt-btn-excel:hover { background:#1d6f42; color:#fff; }
-.flt-btn-pdf { color:#dc2626; border-color:#dc2626; }
-.flt-btn-pdf:hover { background:#dc2626; color:#fff; }
+.flt-btn { display:inline-flex; align-items:center; gap:6px; padding:0 14px; height:35px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; text-decoration:none; border:1px solid transparent; background:#fff !important; transition:all .15s; }
+.flt-btn-search { color:#0891b2; border-color:#0891b2; background:#fff !important; }
+.flt-btn-search:hover { background:#0891b2 !important; color:#fff; }
+.flt-btn-reset { color:#6b7280; border-color:#6b7280; background:#fff !important; }
+.flt-btn-reset:hover { background:#6b7280 !important; color:#fff; }
+.flt-btn-excel { color:#1d6f42; border-color:#1d6f42; background:#fff !important; }
+.flt-btn-excel:hover { background:#1d6f42 !important; color:#fff; }
+.flt-btn-csv { color:#002F70; border-color:#002F70; background:#fff !important; }
+.flt-btn-csv:hover { background:#002F70 !important; color:#fff; }
+.flt-btn-pdf { color:#dc2626; border-color:#dc2626; background:#fff !important; }
+.flt-btn-pdf:hover { background:#dc2626 !important; color:#fff; }
 
 /* Custom Outlined Buttons for Petron-clean Look */
 .int-btn-outline {
@@ -517,10 +537,16 @@ body, html { overflow-x: hidden !important; }
 .txn-btn.secondary:hover { background-color:#475569 !important; background:#475569 !important; color:#ffffff !important; }
 </style>
 
-<div class="mif-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+<div class="mif-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap;padding-bottom:16px;border-bottom:2px solid #e9ecef;">
     <div>
         <h1 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#00264D;text-transform:uppercase;">Fuel Inventory</h1>
         <div style="font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.3px;">17-Tanker Overview &middot; Today: <?= date('F d, Y') ?></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <!-- Export Buttons -->
+        <button onclick="exportTableToExcel('fuelTable', 'fuel_inventory_' + new Date().toISOString().slice(0,10) + '.xls')" class="flt-btn flt-btn-excel" style="height:36px;"><i class="fas fa-file-excel"></i> Excel</button>
+        <button onclick="exportTableToCSV('fuelTable', 'fuel_inventory_' + new Date().toISOString().slice(0,10) + '.csv')" class="flt-btn flt-btn-csv" style="height:36px;"><i class="fas fa-file-csv"></i> CSV</button>
+        <button onclick="exportTableToPDF('fuelTable', 'Fuel Inventory')" class="flt-btn flt-btn-pdf" style="height:36px;"><i class="fas fa-file-pdf"></i> PDF</button>
     </div>
 </div>
 
@@ -533,7 +559,7 @@ body, html { overflow-x: hidden !important; }
 <!-- ══ Summary Cards ══ -->
 <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:24px;">
     <!-- Total Tanks -->
-    <div style="background:#fff; border-left:5px solid #002F6C; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0; border-left-width:5px;">
+    <div style="background:#fff; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Tanks</div>
             <div style="font-size:24px; font-weight:800; color:#002F6C; margin-top:4px;"><?= number_format($total_tanks) ?></div>
@@ -541,7 +567,7 @@ body, html { overflow-x: hidden !important; }
         <div style="background:#e8f4fd; color:#002F6C; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-database"></i></div>
     </div>
     <!-- Total Fuel Available -->
-    <div style="background:#fff; border-left:5px solid #0284c7; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0; border-left-width:5px;">
+    <div style="background:#fff; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Fuel Available</div>
             <div style="font-size:24px; font-weight:800; color:#0284c7; margin-top:4px;"><?= number_format($total_fuel_available, 2) ?> L</div>
@@ -549,7 +575,7 @@ body, html { overflow-x: hidden !important; }
         <div style="background:#e0f2fe; color:#0284c7; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-gas-pump"></i></div>
     </div>
     <!-- Low Fuel Tanks -->
-    <div style="background:#fff; border-left:5px solid #fd7e14; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0; border-left-width:5px;">
+    <div style="background:#fff; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Low Fuel Tanks</div>
             <div style="font-size:24px; font-weight:800; color:#fd7e14; margin-top:4px;"><?= number_format($total_low_fuel_tanks) ?></div>
@@ -557,7 +583,7 @@ body, html { overflow-x: hidden !important; }
         <div style="background:#fff3cd; color:#fd7e14; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
     <!-- Critical Fuel Tanks -->
-    <div style="background:#fff; border-left:5px solid #dc3545; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0; border-left-width:5px;">
+    <div style="background:#fff; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Critical Fuel Tanks</div>
             <div style="font-size:24px; font-weight:800; color:#dc3545; margin-top:4px;"><?= number_format($total_critical_fuel_tanks) ?></div>
@@ -595,13 +621,6 @@ body, html { overflow-x: hidden !important; }
       <span style="font-size:13px; color:#64748b; font-weight:500;">Date:</span>
       <input type="date" id="df" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none;">
     </div>
-  </div>
-  
-  <div style="display:flex; align-items:center; gap:8px;">
-    <!-- Standard Outlined Export Buttons -->
-    <button onclick="exportTableToExcel('fuelTable', 'fuel_inventory_' + new Date().toISOString().slice(0,10) + '.xls')" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
-    <button onclick="exportTableToCSV('fuelTable', 'fuel_inventory_' + new Date().toISOString().slice(0,10) + '.csv')" class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</button>
-    <button onclick="exportTableToPDF('fuelTable', 'Fuel Inventory')" class="flt-btn flt-btn-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
   </div>
 </div>
 
@@ -683,9 +702,6 @@ body, html { overflow-x: hidden !important; }
                             <div style="display:flex; flex-direction:column; gap:4px; width:100%;">
                                 <button class="int-btn-outline" onclick="viewTankDetails(<?= htmlspecialchars(json_encode($r)) ?>)" title="View Details">
                                     <i class="fas fa-eye" style="width:14px;"></i> View Tank Details
-                                </button>
-                                <button class="int-btn-outline" onclick="viewFuelMovement('<?= htmlspecialchars($r['fuel_type']) ?>', '<?= htmlspecialchars($r['label']) ?>')" title="View Movement">
-                                    <i class="fas fa-chart-bar" style="width:14px;"></i> View Fuel Transaction History
                                 </button>
                             </div>
                         </td>

@@ -852,7 +852,7 @@ include __DIR__ . '/../partials/header.php';
 
 .modal-tab-btn {
     border: none;
-    background: none;
+    background: none !important;
     padding: 10px 16px;
     font-size: 13px;
     font-weight: 600;
@@ -866,14 +866,43 @@ include __DIR__ . '/../partials/header.php';
 }
 .modal-tab-btn:hover {
     color: #002F70;
+    background: none !important;
 }
 .modal-tab-btn.active {
     color: #002F70;
     border-bottom-color: #002F70;
-    background: #f1f5f9;
-    border-top-left-radius: 6px;
-    border-top-right-radius: 6px;
+    background: none !important;
 }
+
+/* Export Buttons (Filter Button Style) */
+.flt-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+    height: 34px;
+    line-height: 1;
+    white-space: nowrap;
+    text-decoration: none;
+    background: white !important;
+}
+.flt-btn-search { color: #002F70 !important; border-color: #002F70 !important; }
+.flt-btn-search:hover { background: #002F70 !important; color: #fff !important; }
+.flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
+.flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
+.flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
+.flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
+.flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
+.flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
+.flt-btn-csv    { color: #002F70 !important; border-color: #002F70 !important; }
+.flt-btn-csv:hover    { background: #002F70 !important; color: #fff !important; }
 </style>
 
 <div class="int-head">
@@ -881,8 +910,23 @@ include __DIR__ . '/../partials/header.php';
         <h1><i class="fas fa-boxes"></i> Merchandise Inventory</h1>
         <div class="sub">Monitor real-time stock levels, alerts, movement history, and request approvals.</div>
     </div>
+    
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
-        <a href="manager_dashboard.php" class="ato-btn ato-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
+        <!-- Excel -->
+        <button onclick="exportTableToExcel('mgrMerchTable','manager_merch_inventory_<?= date('Ymd') ?>')"
+                class="flt-btn flt-btn-excel" title="Export to Excel">
+            <i class="fas fa-file-excel"></i> Excel
+        </button>
+        <!-- CSV -->
+        <button onclick="exportTableToCSV('mgrMerchTable','manager_merch_inventory_<?= date('Ymd') ?>.csv')"
+                class="flt-btn flt-btn-csv" title="Export to CSV">
+            <i class="fas fa-file-csv"></i> CSV
+        </button>
+        <!-- PDF -->
+        <button onclick="exportTableToPDF('mgrMerchTable','Merchandise Inventory')"
+                class="flt-btn flt-btn-pdf" title="Export to PDF">
+            <i class="fas fa-file-pdf"></i> PDF
+        </button>
     </div>
 </div>
 
@@ -922,44 +966,43 @@ include __DIR__ . '/../partials/header.php';
     </a>
     <?php endif; ?>
 </div>
-
 <!-- TAB CONTENT 1: Inventory Stock Catalog -->
 <?php if ($active_tab === 'inventory'): ?>
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;">
-    <div style="background:#fff;border-left:5px solid #002F6C;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Total Products</div>
-            <div style="font-size:24px;font-weight:800;color:#002F6C;margin-top:4px;"><?= number_format($summary_total) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_total) ?></div>
         </div>
-        <div style="background:#e8f4fd;color:#002F6C;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-boxes"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-boxes"></i></div>
     </div>
-    <div style="background:#fff;border-left:5px solid #28a745;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Available Products</div>
-            <div style="font-size:24px;font-weight:800;color:#28a745;margin-top:4px;"><?= number_format($summary_available) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_available) ?></div>
         </div>
-        <div style="background:#e6f4ea;color:#28a745;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-check-circle"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-check-circle"></i></div>
     </div>
-    <div style="background:#fff;border-left:5px solid #fd7e14;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Low Stock Products</div>
-            <div style="font-size:24px;font-weight:800;color:#fd7e14;margin-top:4px;"><?= number_format($summary_low) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_low) ?></div>
         </div>
-        <div style="background:#fff3cd;color:#fd7e14;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
-    <div style="background:#fff;border-left:5px solid #dc3545;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Out of Stock Products</div>
-            <div style="font-size:24px;font-weight:800;color:#dc3545;margin-top:4px;"><?= number_format($summary_out) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_out) ?></div>
         </div>
-        <div style="background:#fce8e6;color:#dc3545;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
     </div>
-    <div style="background:#fff;border-left:5px solid #6f42c1;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Products with Variance</div>
-            <div style="font-size:24px;font-weight:800;color:#6f42c1;margin-top:4px;"><?= number_format($summary_variance) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_variance) ?></div>
         </div>
-        <div style="background:#f3e8fd;color:#6f42c1;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-balance-scale"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-balance-scale"></i></div>
     </div>
 </div>
 
@@ -993,12 +1036,6 @@ include __DIR__ . '/../partials/header.php';
             <label style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none;">
                 <input type="checkbox" id="invVarianceOnly" onchange="filterInvTable()"> With Variance Only
             </label>
-            <button onclick="exportInvTablePDF()" class="int-btn-outline" style="border-color:#dc3545;color:#dc3545;font-size:12px;padding:5px 12px;height:32px;">
-                <i class="fas fa-file-pdf"></i> Export PDF
-            </button>
-            <button onclick="exportInvTableExcel()" class="int-btn-outline" style="border-color:#28a745;color:#28a745;font-size:12px;padding:5px 12px;height:32px;">
-                <i class="fas fa-file-excel"></i> Export Excel
-            </button>
         </div>
     </div>
     <div class="table-wrap">
@@ -1129,11 +1166,11 @@ include __DIR__ . '/../partials/header.php';
                     </td>
                     <td style="font-size:11px;color:#64748b;"><?php echo $timestamp; ?></td>
                     <td style="text-align:center;">
-                        <div style="display:flex; gap:4px; justify-content:center;">
-                            <button class="int-btn-outline" onclick="viewDetails(<?= (int)$item['id'] ?>, 'info')" title="View Details" style="font-size:11px; padding:6px 12px; height:30px;">
+                        <div style="display:flex; flex-direction:column; gap:4px; align-items:center;">
+                            <button class="int-btn-outline" onclick="viewDetails(<?= (int)$item['id'] ?>, 'info')" title="View Details" style="font-size:11px; padding:6px 12px; height:30px; width:100px;">
                                 <i class="fas fa-eye"></i> View
                             </button>
-                            <button class="int-btn-outline" style="border-color:#6f42c1; color:#6f42c1; font-size:11px; padding:6px 12px; height:30px;" onclick="openAdjustmentModal(<?= (int)$item['id'] ?>, '<?= htmlspecialchars(addslashes($item['name'])) ?>', <?= (float)$stock ?>, '<?= htmlspecialchars(addslashes($unit)) ?>')" title="Adjust Stock">
+                            <button class="int-btn-outline" style="border-color:#28a745; color:#28a745; font-size:11px; padding:6px 12px; height:30px; width:100px;" onclick="openAdjustmentModal(<?= (int)$item['id'] ?>, '<?= htmlspecialchars(addslashes($item['name'])) ?>', <?= (float)$stock ?>, '<?= htmlspecialchars(addslashes($unit)) ?>')" title="Adjust Stock">
                                 <i class="fas fa-balance-scale"></i> Adjust
                             </button>
                         </div>
@@ -1153,33 +1190,21 @@ include __DIR__ . '/../partials/header.php';
 
 <!-- Stock Alerts Summary Cards -->
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:20px;">
-    <div style="background:#fff;border-left:5px solid #fd7e14;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,.07);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Low Stock Items</div>
-            <div style="font-size:26px;font-weight:800;color:#fd7e14;margin-top:4px;"><?= number_format($summary_alert_low) ?></div>
-        </div>
-        <div style="background:#fff3cd;color:#fd7e14;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;"><i class="fas fa-exclamation-triangle"></i></div>
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Low Stock Items</div>
+        <div style="font-size:26px;font-weight:800;color:#002F70;margin-top:4px;"><?= number_format($summary_alert_low) ?></div>
     </div>
-    <div style="background:#fff;border-left:5px solid #dc3545;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,.07);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Critical Stock Items</div>
-            <div style="font-size:26px;font-weight:800;color:#dc3545;margin-top:4px;"><?= number_format($summary_alert_critical) ?></div>
-        </div>
-        <div style="background:#fce8e6;color:#dc3545;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;"><i class="fas fa-fire"></i></div>
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Critical Stock Items</div>
+        <div style="font-size:26px;font-weight:800;color:#002F70;margin-top:4px;"><?= number_format($summary_alert_critical) ?></div>
     </div>
-    <div style="background:#fff;border-left:5px solid #343a40;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,.07);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Out of Stock Items</div>
-            <div style="font-size:26px;font-weight:800;color:#343a40;margin-top:4px;"><?= number_format($summary_out) ?></div>
-        </div>
-        <div style="background:#e2e8f0;color:#343a40;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;"><i class="fas fa-times-circle"></i></div>
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Out of Stock Items</div>
+        <div style="font-size:26px;font-weight:800;color:#002F70;margin-top:4px;"><?= number_format($summary_out) ?></div>
     </div>
-    <div style="background:#fff;border-left:5px solid #6f42c1;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,.07);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Variance Alerts</div>
-            <div style="font-size:26px;font-weight:800;color:#6f42c1;margin-top:4px;"><?= number_format($summary_variance) ?></div>
-        </div>
-        <div style="background:#ede7f6;color:#6f42c1;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;"><i class="fas fa-balance-scale"></i></div>
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Variance Alerts</div>
+        <div style="font-size:26px;font-weight:800;color:#002F70;margin-top:4px;"><?= number_format($summary_variance) ?></div>
     </div>
 </div>
 <!-- Stock Alerts Table Card -->
@@ -1207,12 +1232,6 @@ include __DIR__ . '/../partials/header.php';
                 <option value="out of stock">Out of Stock</option>
                 <option value="variance detected">Variance Detected</option>
             </select>
-            <button onclick="exportAlertTablePDF()" class="int-btn-outline" style="border-color:#dc3545;color:#dc3545;font-size:12px;padding:5px 12px;height:32px;">
-                <i class="fas fa-file-pdf"></i> Export PDF
-            </button>
-            <button onclick="exportAlertTableExcel()" class="int-btn-outline" style="border-color:#28a745;color:#28a745;font-size:12px;padding:5px 12px;height:32px;">
-                <i class="fas fa-file-excel"></i> Export Excel
-            </button>
         </div>
     </div>
     <div class="table-wrap">
@@ -1252,9 +1271,9 @@ include __DIR__ . '/../partials/header.php';
                     $variance = $item['variance'];
                     $has_variance = ($variance !== null && (float)$variance != 0);
                     if ($has_variance && $stock > $reorder) {
-                        $st='Variance Detected'; $sc='#6f42c1'; $icon='fa-balance-scale';
+                        $st='Variance Detected'; $sc='#28a745'; $icon='fa-balance-scale';
                         $recommended='Conduct Physical Count';
-                        $rec_icon='fa-clipboard-check'; $rec_color='#6f42c1'; $alert_type_cls='variance detected';
+                        $rec_icon='fa-clipboard-check'; $rec_color='#28a745'; $alert_type_cls='variance detected';
                     } elseif ($stock <= 0) {
                         $st='Out of Stock'; $sc='#343a40'; $icon='fa-times-circle';
                         $recommended='Immediate Restock Required';
@@ -1320,58 +1339,33 @@ include __DIR__ . '/../partials/header.php';
 <!-- Stock Movement History Summary Cards -->
 <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:16px;margin-bottom:20px;">
     <!-- Card 1: Total Movements -->
-    <div style="background:#fff;border-radius:10px;padding:16px 20px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Total Movements</div>
-            <div style="font-size:24px;font-weight:800;color:#002F70;margin-top:4px;"><?php echo number_format($mov_total_count); ?></div>
-        </div>
-        <div style="background:#f1f5f9;color:#475569;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;">
-            <i class="fas fa-box"></i>
-        </div>
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Total Movements</div>
+        <div style="font-size:24px;font-weight:800;color:#002F70;margin-top:4px;"><?php echo number_format($mov_total_count); ?></div>
     </div>
     
     <!-- Card 2: Deliveries -->
-    <div style="background:#fff;border-radius:10px;padding:16px 20px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Deliveries</div>
-            <div style="font-size:24px;font-weight:800;color:#16a34a;margin-top:4px;"><?php echo number_format($mov_delivery_count); ?></div>
-        </div>
-        <div style="background:#d1fae5;color:#16a34a;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;">
-            <i class="fas fa-download"></i>
-        </div>
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Deliveries</div>
+        <div style="font-size:24px;font-weight:800;color:#002F70;margin-top:4px;"><?php echo number_format($mov_delivery_count); ?></div>
     </div>
 
     <!-- Card 3: Releases/Sales -->
-    <div style="background:#fff;border-radius:10px;padding:16px 20px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Releases / Sales</div>
-            <div style="font-size:24px;font-weight:800;color:#ea580c;margin-top:4px;"><?php echo number_format($mov_sale_count); ?></div>
-        </div>
-        <div style="background:#ffedd5;color:#ea580c;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;">
-            <i class="fas fa-upload"></i>
-        </div>
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Releases / Sales</div>
+        <div style="font-size:24px;font-weight:800;color:#002F70;margin-top:4px;"><?php echo number_format($mov_sale_count); ?></div>
     </div>
 
     <!-- Card 4: Adjustments -->
-    <div style="background:#fff;border-radius:10px;padding:16px 20px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Adjustments</div>
-            <div style="font-size:24px;font-weight:800;color:#2563eb;margin-top:4px;"><?php echo number_format($mov_adjustment_count); ?></div>
-        </div>
-        <div style="background:#dbeafe;color:#2563eb;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;">
-            <i class="fas fa-balance-scale"></i>
-        </div>
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Adjustments</div>
+        <div style="font-size:24px;font-weight:800;color:#002F70;margin-top:4px;"><?php echo number_format($mov_adjustment_count); ?></div>
     </div>
 
     <!-- Card 5: Variance Cases -->
-    <div style="background:#fff;border-radius:10px;padding:16px 20px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Variance Cases</div>
-            <div style="font-size:24px;font-weight:800;color:#7c3aed;margin-top:4px;"><?php echo number_format($mov_variance_count); ?></div>
-        </div>
-        <div style="background:#f3e8ff;color:#7c3aed;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;">
-            <i class="fas fa-exclamation-triangle"></i>
-        </div>
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Variance Cases</div>
+        <div style="font-size:24px;font-weight:800;color:#002F70;margin-top:4px;"><?php echo number_format($mov_variance_count); ?></div>
     </div>
 </div>
 
@@ -1390,9 +1384,6 @@ include __DIR__ . '/../partials/header.php';
                 <option value="stock_request">📋 Stock Request</option>
                 <option value="correction">🔄 Correction</option>
             </select>
-            <!-- Export Buttons -->
-            <button onclick="exportMovTableExcel()" class="exp-btn exp-btn-excel" style="height:32px;padding:4px 10px;font-size:12px;"><i class="fas fa-file-excel"></i> Excel</button>
-            <button onclick="exportMovTablePDF()" class="exp-btn exp-btn-pdf" style="height:32px;padding:4px 10px;font-size:12px;"><i class="fas fa-file-pdf"></i> PDF</button>
         </div>
     </div>
     <div class="table-wrap">
@@ -1670,7 +1661,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="modal-box" style="max-width:650px; width:95%; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,0.3);">
         <div class="modal-head" style="padding:16px 20px; background:#002F70; color:#fff; display:flex; align-items:center; justify-content:space-between;">
             <div class="modal-title" style="font-size:1.1rem; font-weight:700; color:#fff !important;"><i class="fas fa-file-alt"></i> Stock Request Details (<span id="modalReqIdText"></span>)</div>
-            <button class="modal-close" onclick="closeReqDetailsModal()" style="background:none; border:none; color:#fff; font-size:24px; cursor:pointer;">&times;</button>
         </div>
         <div class="modal-body" style="padding:20px; max-height:80vh; overflow-y:auto;">
             <!-- Details Grid -->
@@ -1778,7 +1768,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="modal-box" style="max-width:850px; width:95%;">
         <div class="modal-head">
             <div class="modal-title"><i class="fas fa-info-circle"></i> Merchandise Product Details</div>
-            <button class="modal-close" onclick="closeDetailsModal()">&times;</button>
         </div>
         <div id="detailsContent" style="padding:10px 0;">
             <!-- Loaded via AJAX -->
@@ -1793,8 +1782,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="modal-overlay" id="adjustmentModal">
     <div class="modal-box" style="max-width:500px; width:95%;">
         <div class="modal-head">
-            <div class="modal-title"><i class="fas fa-edit" style="color:#6f42c1;"></i> Request Inventory Adjustment</div>
-            <button class="modal-close" onclick="closeAdjustmentModal()">&times;</button>
+            <div class="modal-title"><i class="fas fa-edit" style="color:#28a745;"></i> Request Inventory Adjustment</div>
         </div>
         <form method="post" action="manager_inventory_merchandise.php">
             <input type="hidden" name="action" value="request_adjustment">
@@ -1824,7 +1812,7 @@ include __DIR__ . '/../partials/header.php';
             </div>
             <div class="modal-actions" style="margin-top:16px;display:flex;justify-content:flex-end;gap:10px;">
                 <button type="button" onclick="closeAdjustmentModal()" class="ato-btn ato-btn-back">Cancel</button>
-                <button type="submit" class="ato-btn" style="background:#6f42c1 !important;color:#fff !important;"><i class="fas fa-save"></i> Submit Adjustment</button>
+                <button type="submit" class="ato-btn" style="background:#28a745 !important;color:#fff !important;"><i class="fas fa-save"></i> Submit Adjustment</button>
             </div>
         </form>
     </div>
@@ -1835,7 +1823,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="modal-box" style="max-width:480px;">
         <div class="modal-head">
             <div class="modal-title"><i class="fas fa-check-circle" style="color:#28a745;"></i> Approve Stock Request</div>
-            <button class="modal-close" onclick="closeApproveRequest()">&times;</button>
         </div>
         <form method="post" action="manager_inventory_merchandise.php">
             <input type="hidden" name="action" value="approve_request">
@@ -1865,7 +1852,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="modal-box" style="max-width:480px;">
         <div class="modal-head">
             <div class="modal-title"><i class="fas fa-times-circle" style="color:#dc3545;"></i> Reject Stock Request</div>
-            <button class="modal-close" onclick="closeRejectRequest()">&times;</button>
         </div>
         <form method="post" action="manager_inventory_merchandise.php">
             <input type="hidden" name="action" value="reject_request">
@@ -1891,7 +1877,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="modal-box" style="max-width:480px;">
         <div class="modal-head">
             <div class="modal-title"><i class="fas fa-check-double" style="color:#28a745;"></i> Verify Merchandise Delivery</div>
-            <button class="modal-close" onclick="closeValidateDelivery()">&times;</button>
         </div>
         <form method="post" action="manager_inventory_merchandise.php">
             <input type="hidden" name="action" value="validate_delivery">
@@ -1931,7 +1916,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="modal-box" style="max-width:480px;">
         <div class="modal-head">
             <div class="modal-title"><i class="fas fa-exclamation-triangle" style="color:#dc3545;"></i> Flag Delivery Issue</div>
-            <button class="modal-close" onclick="closeFlagIssue()">&times;</button>
         </div>
         <form method="post" action="manager_inventory_merchandise.php">
             <input type="hidden" name="action" value="flag_delivery_issue">
@@ -1963,7 +1947,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="modal-box" style="max-width:500px; width:95%;">
         <div class="modal-head">
             <div class="modal-title"><i class="fas fa-file-alt" style="color:#002F70;"></i> Create Stock replenishment Request</div>
-            <button class="modal-close" onclick="closeCreateStockRequest()">&times;</button>
         </div>
         <form method="post" action="manager_inventory_merchandise.php">
             <input type="hidden" name="action" value="create_stock_request">
@@ -2003,7 +1986,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="modal-box" style="max-width:500px; width:95%;">
         <div class="modal-head">
             <div class="modal-title"><i class="fas fa-history" style="color:#002F70;"></i> Stock Movement Details</div>
-            <button class="modal-close" onclick="closeViewMovement()">&times;</button>
         </div>
         <div style="background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #cbd5e1;margin-bottom:16px;">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">

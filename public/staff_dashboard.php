@@ -747,12 +747,27 @@ foreach ($raw_weekly as $row) {
 $weekly_chart_labels = array_keys($weekly_days);
 $weekly_chart_data = array_values($weekly_days);
 
-// Chart 6: Fuel Tank Levels (Progress Bars)
+// Chart 6: Fuel Tank Levels (Progress Bars) - Show all 17 individual pump nozzles mapped to tanks
 $tank_levels = dashboard_fetch_all($pdo, "
-    SELECT fuel_type, SUM(current_level) AS current_stock, SUM(capacity) AS total_capacity
-    FROM fuel_inventory
-    WHERE station_id = ?
-    GROUP BY fuel_type
+    SELECT 
+        fp.id,
+        fp.pump_number AS tank_label,
+        SUBSTRING_INDEX(fp.pump_number, ' - ', 1) AS fuel_type,
+        fi.current_level AS current_stock, 
+        fi.capacity AS total_capacity
+    FROM fuel_pumps fp
+    LEFT JOIN fuel_inventory fi ON fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fi.station_id
+    WHERE fp.station_id = ?
+    ORDER BY 
+        CASE 
+            WHEN fp.pump_number LIKE 'DIESEL%' THEN 1
+            WHEN fp.pump_number LIKE 'KEROSENE%' THEN 2
+            WHEN fp.pump_number LIKE 'TURBO%' THEN 3
+            WHEN fp.pump_number LIKE 'XCS%' THEN 4
+            WHEN fp.pump_number LIKE 'XTRA%' THEN 5
+            ELSE 6
+        END,
+        fp.pump_number ASC
 ", [$station_id]);
 
 foreach ($tank_levels as &$tl) {
@@ -873,11 +888,6 @@ include __DIR__ . '/../partials/header.php';
         margin-bottom: 25px;
         flex-wrap: wrap;
         gap: 15px;
-        background: #ffffff;
-        padding: 20px 24px;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-        border: 1px solid #e2e8f0;
     }
     .welcome-meta h2 {
         margin: 0;
@@ -1236,7 +1246,7 @@ include __DIR__ . '/../partials/header.php';
 <!-- 8 Summary Cards Grid -->
 <div class="summary-cards-grid">
     <!-- Today's Transactions -->
-    <div class="summary-metric-card" style="border-left: 4px solid #002F70;">
+    <div class="summary-metric-card">
         <div class="metric-details">
             <h4>Today's Transactions</h4>
             <div class="metric-value"><?= number_format($todays_transactions) ?></div>
@@ -1246,7 +1256,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
     <!-- Today's Sales -->
-    <div class="summary-metric-card" style="border-left: 4px solid #16a34a;">
+    <div class="summary-metric-card">
         <div class="metric-details">
             <h4>Today's Sales</h4>
             <div class="metric-value">&#8369;<?= number_format($todays_sales, 2) ?></div>
@@ -1256,7 +1266,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
     <!-- Fuel Sold Today (Liters) -->
-    <div class="summary-metric-card" style="border-left: 4px solid #dc2626;">
+    <div class="summary-metric-card">
         <div class="metric-details">
             <h4>Fuel Sold Today (Liters)</h4>
             <div class="metric-value"><?= number_format($fuel_sold_liters, 2) ?> L</div>
@@ -1266,7 +1276,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
     <!-- Service Queue -->
-    <div class="summary-metric-card" style="border-left: 4px solid #eab308;">
+    <div class="summary-metric-card">
         <div class="metric-details">
             <h4>Service Queue</h4>
             <div class="metric-value"><?= number_format($service_queue_count) ?></div>
@@ -1276,7 +1286,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
     <!-- Fuel Stock Alerts -->
-    <div class="summary-metric-card" style="border-left: 4px solid #b91c1c;">
+    <div class="summary-metric-card">
         <div class="metric-details">
             <h4>Fuel Stock Alerts</h4>
             <div class="metric-value"><?= number_format($fuel_stock_alerts_count) ?></div>
@@ -1286,7 +1296,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
     <!-- Merchandise Stock Alerts -->
-    <div class="summary-metric-card" style="border-left: 4px solid #ea580c;">
+    <div class="summary-metric-card">
         <div class="metric-details">
             <h4>Merchandise Stock Alerts</h4>
             <div class="metric-value"><?= number_format($merch_stock_alerts_count) ?></div>
@@ -1296,7 +1306,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
     <!-- Pending Stock Requests -->
-    <div class="summary-metric-card" style="border-left: 4px solid #0891b2;">
+    <div class="summary-metric-card">
         <div class="metric-details">
             <h4>Pending Stock Requests</h4>
             <div class="metric-value"><?= number_format($pending_stock_requests) ?></div>
@@ -1306,7 +1316,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
     <!-- Current Shift -->
-    <div class="summary-metric-card" style="border-left: 4px solid #64748b;">
+    <div class="summary-metric-card">
         <div class="metric-details">
             <h4>Current Shift</h4>
             <div class="metric-value" style="font-size: 14px; font-weight: 700; margin-top: 10px;"><?= htmlspecialchars($current_shift_label) ?></div>
@@ -1359,35 +1369,66 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
 
-    <!-- Fuel Tank Levels Progress Bars -->
-    <div class="chart-panel-card">
+    <!-- Fuel Tank Levels Card Grid -->
+    <div class="chart-panel-card" style="grid-column: 1 / -1;">
         <h3><i class="fas fa-tachometer-alt"></i> Fuel Tank Levels</h3>
-        <div style="padding: 10px 0;">
+        <div style="padding: 20px 0;">
             <?php if (empty($tank_levels)): ?>
                 <div style="text-align:center; padding: 40px 0; color:#64748b;">
                     <i class="fas fa-gas-pump" style="font-size:32px; margin-bottom:10px; display:block;"></i>
                     No tank level readings available.
                 </div>
             <?php else: ?>
-                <?php foreach ($tank_levels as $tl):
-                    $pct = $tl['pct'];
-                    $color = '#22c55e'; // Green
-                    if ($pct <= 10) {
-                        $color = '#ef4444'; // Red
-                    } elseif ($pct <= 25) {
-                        $color = '#f97316'; // Orange
-                    }
-                ?>
-                    <div class="tank-progress-item">
-                        <div class="tank-meta-row">
-                            <span><?= htmlspecialchars($tl['fuel_type']) ?></span>
-                            <span class="volume-text"><?= number_format($tl['current_stock'], 2) ?> / <?= number_format($tl['total_capacity'], 2) ?> L (<?= $pct ?>%)</span>
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px;">
+                    <?php foreach ($tank_levels as $tl):
+                        $pct = $tl['pct'];
+                        $status_text = 'Available';
+                        $status_color = '#22c55e'; // Green
+                        $status_bg = '#f0fdf4';
+                        
+                        if ($pct <= 0 && $tl['total_capacity'] <= 0) {
+                            $status_text = 'No Data';
+                            $status_color = '#94a3b8';
+                            $status_bg = '#f1f5f9';
+                        } elseif ($pct <= 10) {
+                            $status_text = 'Critical';
+                            $status_color = '#ef4444'; // Red
+                            $status_bg = '#fef2f2';
+                        } elseif ($pct <= 25) {
+                            $status_text = 'Low Stock';
+                            $status_color = '#f97316'; // Orange
+                            $status_bg = '#fff7ed';
+                        }
+                        
+                        // Extract just the fuel type name without "Underground Tank #ID"
+                        $display_name = $tl['fuel_type'] ?? $tl['tank_label'];
+                    ?>
+                        <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                            <div style="font-weight: 700; font-size: 13px; color: #1e293b; margin-bottom: 8px; text-transform: uppercase;"><?= htmlspecialchars($display_name) ?></div>
+                            <div style="font-size: 11px; color: #64748b; margin-bottom: 12px;"><?= htmlspecialchars($tl['tank_label']) ?></div>
+                            
+                            <div style="font-size: 24px; font-weight: 700; color: #0f172a; margin-bottom: 4px;">
+                                <?= number_format($tl['current_stock'], 0) ?> L
+                            </div>
+                            <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">
+                                / <?= number_format($tl['total_capacity'], 0) ?> L
+                            </div>
+                            
+                            <div style="background: #f1f5f9; height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 12px;">
+                                <div style="width: <?= $pct ?>%; height: 100%; background: <?= $status_color ?>; transition: width 0.3s ease;"></div>
+                            </div>
+                            
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 12px; background: <?= $status_bg ?>; color: <?= $status_color ?>;">
+                                    <?= $status_text ?>
+                                </span>
+                                <span style="font-size: 13px; font-weight: 700; color: #475569;">
+                                    <?= $pct ?>% full
+                                </span>
+                            </div>
                         </div>
-                        <div class="progress-bar-outer">
-                            <div class="progress-bar-inner" style="width: <?= $pct ?>%; background: <?= $color ?>;"></div>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
+                    <?php endforeach; ?>
+                </div>
             <?php endif; ?>
         </div>
     </div>

@@ -418,18 +418,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 ];
                 $filtered_menu[] = $filtered_item;
                 
-                // Add standalone Product & Pricing Management after Inventory
-                $filtered_menu[] = [
-                    'id' => 'mgr_product_pricing',
-                    'label' => 'Product & Pricing Management',
-                    'ico' => 'fas fa-tags',
-                    'href' => 'manager_set_prices.php',
-                    'permissions' => ['manage_inventory', 'view_inventory'],
-                    'station_specific' => true,
-                    'desc' => 'View consolidated product list, current prices, and inventory snapshot.'
-                ];
-                
-                // Add standalone Customers after Product & Pricing
+                // Add standalone Customers after Inventory
                 $filtered_menu[] = [
                     'id' => 'mgr_customers',
                     'label' => 'Customers',
@@ -438,6 +427,17 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     'permissions' => ['approve_transactions', 'manage_job_orders'],
                     'station_specific' => true,
                     'desc' => 'Manage and verify customer accounts and review outstanding balances.'
+                ];
+                
+                // Add standalone Product & Pricing Management after Customers
+                $filtered_menu[] = [
+                    'id' => 'mgr_product_pricing',
+                    'label' => 'Product & Pricing Management',
+                    'ico' => 'fas fa-tags',
+                    'href' => 'manager_set_prices.php',
+                    'permissions' => ['manage_inventory', 'view_inventory'],
+                    'station_specific' => true,
+                    'desc' => 'View consolidated product list, current prices, and inventory snapshot.'
                 ];
                 continue;
             }

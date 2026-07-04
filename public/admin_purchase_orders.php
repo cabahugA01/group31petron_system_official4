@@ -46,6 +46,10 @@ foreach ([
     "ALTER TABLE fuel_purchase_orders ADD COLUMN IF NOT EXISTS updated_at DATETIME NULL",
 ] as $sql) { try { $pdo->exec($sql); } catch (Exception $e) {} }
 
+// Drop unique constraints on po_number to allow batch updates
+try { $pdo->exec("ALTER TABLE purchase_orders DROP INDEX uk_po_number"); } catch (Exception $e) {}
+try { $pdo->exec("ALTER TABLE fuel_purchase_orders DROP INDEX uk_po_number"); } catch (Exception $e) {}
+
 // Ensure purchase_orders status ENUM contains all needed values
 try {
     $pdo->exec("ALTER TABLE purchase_orders MODIFY COLUMN status
@@ -133,6 +137,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $sup_id = $pdo->lastInsertId();
             }
 
+            // Clear existing po_number/batch_id for items being updated to prevent duplicate key errors
+            if ($po_type === 'merch') {
+                $item_ids = array_keys($items_input);
+                if (!empty($item_ids)) {
+                    $placeholders = implode(',', array_fill(0, count($item_ids), '?'));
+                    $pdo->prepare("UPDATE purchase_orders SET po_number = NULL, batch_id = NULL WHERE id IN ($placeholders)")->execute($item_ids);
+                }
+            } else if ($po_type === 'fuel') {
+                $item_ids = array_keys($items_input);
+                if (!empty($item_ids)) {
+                    $placeholders = implode(',', array_fill(0, count($item_ids), '?'));
+                    $pdo->prepare("UPDATE fuel_purchase_orders SET po_number = NULL, batch_id = NULL WHERE id IN ($placeholders)")->execute($item_ids);
+                }
+            }
+
             // If finalizing, prevent duplicates in deliveries_oversight by removing any old drafts
             if (!$is_draft) {
                 $pdo->prepare("DELETE FROM deliveries_oversight WHERE batch_id = ?")->execute([$batch_id]);
@@ -178,7 +197,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             batch_id = ?,
                             po_number = ?,
                             supplier_id = ?,
-                            supplier_name = 'Petron Corporation',
                             status = ?,
                             updated_at = NOW()
                         WHERE id = ?
@@ -367,67 +385,84 @@ $filter_date   = trim($_GET['filter_date'] ?? '');
 $filter_status = trim($_GET['filter_status'] ?? '');
 $filter_search = strtolower(trim($_GET['search'] ?? ''));
 
-// ── FETCH ALL POs (MERGED, GROUPED BY BATCH/DATE) ────────────────────────────
+// ── FETCH ALL POs — use stock_requests + fuel_stock_requests as source of truth
+// (same as manager view), LEFT JOIN purchase_orders for PO details
 $all_pos = [];
 
-// Merchandise POs — group by batch_id if finalized, else by date+status
+// Merchandise: from stock_requests (all, any status except fuel category)
 try {
     $stmt = $pdo->prepare("
         SELECT
-            COALESCE(po.batch_id,
-                CONCAT('POM-', DATE_FORMAT(MIN(po.created_at),'%Y%m%d'), '-', LPAD(MIN(po.id),4,'0'))) AS po_no,
+            COALESCE(po.po_number,
+                CONCAT('REQ-', LPAD(sr.id,4,'0'))
+            ) AS po_no,
             po.batch_id,
-            DATE(MIN(po.created_at)) AS group_date,
-            'Petron Corporation'   AS supplier,
-            'Merchandise'          AS category,
-            MIN(po.created_at)     AS date_created,
-            COUNT(*)               AS total_items,
-            SUM(COALESCE(po.total_amount,0)) AS total_amount,
-            CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS created_by,
-            MAX(po.status)         AS status,
-            MIN(po.id)             AS id,
-            MAX(po.stock_in_done)  AS stock_in_done,
-            'merch'                AS po_type,
-            GROUP_CONCAT(po.product_name ORDER BY po.id SEPARATOR ', ') AS detail,
-            MAX(po.admin_notes)    AS notes
-        FROM purchase_orders po
-        LEFT JOIN users u ON po.created_by = u.id
-        WHERE po.station_id = ?
-        GROUP BY
-            COALESCE(po.batch_id, CONCAT(DATE(po.created_at), '-', po.status))
-        ORDER BY MIN(po.created_at) DESC
+            DATE(sr.created_at) AS group_date,
+            COALESCE(sup.name, 'Petron Corporation') AS supplier,
+            'Merchandise' AS category,
+            sr.created_at  AS date_created,
+            1              AS total_items,
+            COALESCE(po.total_amount, 0) AS total_amount,
+            COALESCE(u_mgr.name,
+                CONCAT(COALESCE(u_mgr.first_name,''), ' ', COALESCE(u_mgr.last_name,'')),
+                COALESCE(u_staff.name,
+                    CONCAT(COALESCE(u_staff.first_name,''), ' ', COALESCE(u_staff.last_name,'')),
+                '—')
+            ) AS created_by,
+            COALESCE(po.status, sr.status) AS status,
+            COALESCE(po.id, 0) AS id,
+            COALESCE(po.stock_in_done, 0) AS stock_in_done,
+            'merch' AS po_type,
+            sr.item_name AS detail,
+            po.admin_notes AS notes,
+            COALESCE(po.quantity, sr.approved_quantity, sr.requested_quantity) AS quantity,
+            sr.id AS sr_id
+        FROM stock_requests sr
+        LEFT JOIN purchase_orders po ON po.request_id = sr.id AND po.type = 'merch'
+        LEFT JOIN users u_staff ON sr.staff_id = u_staff.id
+        LEFT JOIN users u_mgr   ON sr.manager_id = u_mgr.id
+        LEFT JOIN suppliers sup  ON po.supplier_id = sup.id
+        WHERE sr.station_id = ?
+          AND LOWER(COALESCE(sr.item_category,'')) != 'fuel'
+        ORDER BY sr.created_at DESC
     ");
     $stmt->execute([$station_id]);
     $all_pos = array_merge($all_pos, $stmt->fetchAll(PDO::FETCH_ASSOC));
 } catch (Exception $e) {}
 
-// Fuel POs — group by batch_id if finalized, else by date+status
+// Fuel: from fuel_stock_requests, LEFT JOIN fuel_purchase_orders
 try {
     $stmt2 = $pdo->prepare("
         SELECT
-            COALESCE(fpo.batch_id,
-                CONCAT('POF-', DATE_FORMAT(MIN(fpo.created_at),'%Y%m%d'), '-', LPAD(MIN(fpo.id),4,'0'))) AS po_no,
+            COALESCE(fpo.po_number,
+                CONCAT('FSR-', LPAD(fsr.id,4,'0'))
+            ) AS po_no,
             fpo.batch_id,
-            DATE(MIN(fpo.created_at)) AS group_date,
-            'Petron Corporation'   AS supplier,
-            'Fuel'                 AS category,
-            MIN(fpo.created_at)    AS date_created,
-            COUNT(*)               AS total_items,
-            SUM(COALESCE(fpo.total_amount,0)) AS total_amount,
-            COALESCE(MAX(u.name), CONCAT(COALESCE(MAX(u.first_name),''), ' ', COALESCE(MAX(u.last_name),''))) AS created_by,
-            MAX(fpo.status)        AS status,
-            MIN(fpo.id)            AS id,
-            0                      AS stock_in_done,
-            'fuel'                 AS po_type,
-            GROUP_CONCAT(COALESCE(ft.name,'Fuel') ORDER BY fpo.id SEPARATOR ', ') AS detail,
-            MAX(fpo.notes)         AS notes
-        FROM fuel_purchase_orders fpo
-        LEFT JOIN users u ON fpo.created_by = u.id
+            DATE(fsr.created_at) AS group_date,
+            'Petron Corporation' AS supplier,
+            'Fuel' AS category,
+            fsr.created_at AS date_created,
+            1              AS total_items,
+            COALESCE(fpo.total_amount, 0) AS total_amount,
+            COALESCE(u_staff.name,
+                CONCAT(COALESCE(u_staff.first_name,''), ' ', COALESCE(u_staff.last_name,'')),
+            '—') AS created_by,
+            COALESCE(fpo.status, fsr.status) AS status,
+            COALESCE(fpo.id, 0) AS id,
+            0 AS stock_in_done,
+            'fuel' AS po_type,
+            COALESCE(fsr.fuel_type, COALESCE(ft.name,'Fuel')) AS detail,
+            fpo.notes AS notes,
+            COALESCE(fpo.volume, fsr.requested_liters) AS quantity,
+            fsr.id AS sr_id
+        FROM fuel_stock_requests fsr
+        LEFT JOIN fuel_purchase_orders fpo ON fpo.station_id = fsr.station_id
+            AND fpo.created_by = fsr.staff_id
+            AND DATE(fpo.created_at) = DATE(fsr.created_at)
         LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id
-        WHERE fpo.station_id = ?
-        GROUP BY
-            COALESCE(fpo.batch_id, CONCAT(DATE(fpo.created_at), '-', fpo.status))
-        ORDER BY MIN(fpo.created_at) DESC
+        LEFT JOIN users u_staff ON fsr.staff_id = u_staff.id
+        WHERE fsr.station_id = ?
+        ORDER BY fsr.created_at DESC
     ");
     $stmt2->execute([$station_id]);
     $all_pos = array_merge($all_pos, $stmt2->fetchAll(PDO::FETCH_ASSOC));
@@ -479,7 +514,7 @@ $display_pos = array_values($display_pos);
 $pending_merch_items = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT po.*, CONCAT(u_mgr.first_name, ' ', u_mgr.last_name) AS manager_name,
+        SELECT po.*, COALESCE(u_mgr.name, CONCAT(COALESCE(u_mgr.first_name,''), ' ', COALESCE(u_mgr.last_name,'')), '—') AS manager_name,
                sr.item_sku, sr.item_category, sr.remarks AS sr_remarks, sr.current_stock
         FROM purchase_orders po
         LEFT JOIN users u_mgr ON po.created_by = u_mgr.id
@@ -502,7 +537,7 @@ foreach ($pending_merch_items as $item) {
 $pending_fuel_items = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT fpo.*, ft.name AS fuel_name, CONCAT(u_mgr.first_name, ' ', u_mgr.last_name) AS manager_name
+        SELECT fpo.*, ft.name AS fuel_name, COALESCE(u_mgr.name, CONCAT(COALESCE(u_mgr.first_name,''), ' ', COALESCE(u_mgr.last_name,'')), '—') AS manager_name
         FROM fuel_purchase_orders fpo
         LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id
         LEFT JOIN users u_mgr ON fpo.created_by = u_mgr.id
@@ -527,8 +562,8 @@ $total_pending_count = count($grouped_pending_merch) + count($grouped_pending_fu
 $finalized_merch_items = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT po.*, CONCAT(u_mgr.first_name, ' ', u_mgr.last_name) AS manager_name, 
-               CONCAT(u_adm.first_name, ' ', u_adm.last_name) AS admin_name,
+        SELECT po.*, COALESCE(u_mgr.name, CONCAT(COALESCE(u_mgr.first_name,''), ' ', COALESCE(u_mgr.last_name,'')), '—') AS manager_name,
+               COALESCE(u_adm.name, CONCAT(COALESCE(u_adm.first_name,''), ' ', COALESCE(u_adm.last_name,'')), '—') AS admin_name,
                sr.item_sku
         FROM purchase_orders po
         LEFT JOIN users u_mgr ON po.created_by = u_mgr.id
@@ -551,8 +586,8 @@ foreach ($finalized_merch_items as $item) {
 $finalized_fuel_items = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT fpo.*, ft.name AS fuel_name, CONCAT(u_mgr.first_name, ' ', u_mgr.last_name) AS manager_name, 
-               CONCAT(u_adm.first_name, ' ', u_adm.last_name) AS admin_name
+        SELECT fpo.*, ft.name AS fuel_name, COALESCE(u_mgr.name, CONCAT(COALESCE(u_mgr.first_name,''), ' ', COALESCE(u_mgr.last_name,'')), '—') AS manager_name,
+               COALESCE(u_adm.name, CONCAT(COALESCE(u_adm.first_name,''), ' ', COALESCE(u_adm.last_name,'')), '—') AS admin_name
         FROM fuel_purchase_orders fpo
         LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id
         LEFT JOIN users u_mgr ON fpo.created_by = u_mgr.id

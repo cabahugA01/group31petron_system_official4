@@ -1,9 +1,10 @@
-<?php
+﻿<?php
 // ── Auth & role gate ──────────────────────────────────────────────────────────
 $page_id = 'admin_customers';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
 require_login();
+header('Content-Type: text/html; charset=utf-8');
 
 $user = current_user();
 $role = role_key($user['role'] ?? '');
@@ -324,9 +325,9 @@ require_once __DIR__ . '/../partials/header.php';
                         <h4><i class="fas fa-chart-line"></i> Transaction Summary</h4>
                         <div class="info-row"><span class="label">Total Merchandise Transactions</span><span class="value" id="sum-merch-count">0</span></div>
                         <div class="info-row"><span class="label">Total Job Orders</span><span class="value" id="sum-jo-count">0</span></div>
-                        <div class="info-row"><span class="label">Total Amount Spent</span><span class="value" style="font-weight:700; color:#0f172a;" id="sum-total-spent">₱0.00</span></div>
+                        <div class="info-row"><span class="label">Total Amount Spent</span><span class="value" style="font-weight:700; color:#0f172a;" id="sum-total-spent">\u20B10.00</span></div>
                         <div class="info-row"><span class="label">Last Transaction Date</span><span class="value" id="sum-last-txn">-</span></div>
-                        <div class="info-row"><span class="label">Outstanding Balance</span><span class="value" style="color:#b91c1c; font-weight:700;" id="info-outstanding">₱0.00</span></div>
+                        <div class="info-row"><span class="label">Outstanding Balance</span><span class="value" style="color:#b91c1c; font-weight:700;" id="info-outstanding">\u20B10.00</span></div>
                     </div>
 
                     <div class="info-block">
@@ -600,9 +601,9 @@ require_once __DIR__ . '/../partials/header.php';
 
                 document.getElementById('sum-merch-count').textContent = sum.total_merchandise_txns;
                 document.getElementById('sum-jo-count').textContent = sum.total_job_orders;
-                document.getElementById('sum-total-spent').textContent = '₱' + fmt(sum.total_amount_spent);
+                document.getElementById('sum-total-spent').textContent = '\u20B1' + fmt(sum.total_amount_spent);
                 document.getElementById('sum-last-txn').textContent = sum.last_transaction_date ? fmtDateTime(sum.last_transaction_date) : 'No transactions yet';
-                document.getElementById('info-outstanding').textContent = '₱' + fmt(c.balance || c.current_balance || 0);
+                document.getElementById('info-outstanding').textContent = '\u20B1' + fmt(c.balance || c.current_balance || 0);
 
                 // Handle documents (if fields exist)
                 const govIdCont = document.getElementById('doc-govid-container');
@@ -691,7 +692,7 @@ require_once __DIR__ . '/../partials/header.php';
                         <td><strong>${esc(t.reference_no)}</strong></td>
                         <td><span class="badge ${modBadge}">${t.module}</span></td>
                         <td>${esc(t.description)}</td>
-                        <td><strong>₱${fmt(t.amount)}</strong></td>
+                        <td><strong>\u20B1${fmt(t.amount)}</strong></td>
                         <td><span class="badge ${t.status.toLowerCase() === 'completed' ? 'badge-verified':'badge-pending'}">${t.status}</span></td>
                         <td>${esc(t.processed_by)}</td>
                     </tr>`;

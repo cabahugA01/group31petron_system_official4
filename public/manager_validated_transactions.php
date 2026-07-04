@@ -769,7 +769,7 @@ try {
                             <?= $shift_time_label ?>
                         </span>
                     </td>
-                    <td style="white-space:nowrap;font-size:10px;color:#64748b;">
+                    <td style="white-space:nowrap;font-size:12px;color:#1e293b;font-weight:600;">
                         <?php echo date('M d, H:i', strtotime($r['txn_date'])); ?>
                     </td>
                     <td style="font-size:10px;color:#64748b;"><?php echo htmlspecialchars(substr($r['staff_name'], 0, 12)); ?></td>
@@ -780,7 +780,7 @@ try {
                         </button>
                         <?php if ($vst !== 'voided'): ?>
                             <?php if ($r['_source'] === 'merchandise_transactions'): ?>
-                            <button class="vt-btn-action" style="color:#d97706;border-color:#d97706;background:white;padding:3px 6px;font-size:9px;width:100%;" onclick="openAdjustModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['entry_type'])) ?>', '<?= htmlspecialchars(addslashes($r['txn_date'])) ?>', '<?= htmlspecialchars(addslashes($r['staff_name'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_method'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_status'] ?? 'Paid')) ?>')" title="Adjust">
+                            <button class="vt-btn-action" style="color:#16a34a;border-color:#16a34a;background:white;padding:3px 6px;font-size:9px;width:100%;" onclick="openAdjustModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['entry_type'])) ?>', '<?= htmlspecialchars(addslashes($r['txn_date'])) ?>', '<?= htmlspecialchars(addslashes($r['staff_name'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_method'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_status'] ?? 'Paid')) ?>')" title="Adjust">
                                 <i class="fas fa-pen"></i> Adjust
                             </button>
                             <?php endif; ?>
@@ -1212,15 +1212,10 @@ html, body {
     color: #002F70;
     line-height: 1.1;
 }
-.txn-kpi-card.blue { border-left-color: #0369a1; }
 .txn-kpi-card.blue .txn-kpi-val { color: #0369a1; }
-.txn-kpi-card.purple { border-left-color: #7c3aed; }
 .txn-kpi-card.purple .txn-kpi-val { color: #7c3aed; }
-.txn-kpi-card.green { border-left-color: #16a34a; }
 .txn-kpi-card.green .txn-kpi-val { color: #16a34a; }
-.txn-kpi-card.orange { border-left-color: #ea580c; }
 .txn-kpi-card.orange .txn-kpi-val { color: #ea580c; }
-.txn-kpi-card.danger { border-left-color: #dc2626; }
 .txn-kpi-card.danger .txn-kpi-val { color: #dc2626; }
 
 /* Special Gradient Card for Total Amount */

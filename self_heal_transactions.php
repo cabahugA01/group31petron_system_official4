@@ -1,0 +1,36 @@
+<?php
+require_once __DIR__ . '/public/db_connect.php';
+
+try {
+    echo "Starting transaction tables self-heal...\n";
+    
+    // 1. Check fuel_transactions
+    $stmt = $pdo->query("SHOW COLUMNS FROM fuel_transactions LIKE 'customer_id'");
+    if ($stmt->rowCount() === 0) {
+        echo "Adding customer_id column to fuel_transactions...\n";
+        $pdo->exec("ALTER TABLE fuel_transactions ADD COLUMN customer_id INT(11) DEFAULT NULL");
+        $pdo->exec("ALTER TABLE fuel_transactions ADD INDEX idx_ft_customer_id (customer_id)");
+    } else {
+        echo "fuel_transactions already has customer_id column.\n";
+    }
+    
+    // 2. Check merchandise_transactions
+    $stmt = $pdo->query("SHOW COLUMNS FROM merchandise_transactions LIKE 'customer_id'");
+    if ($stmt->rowCount() === 0) {
+        echo "Adding customer_id column to merchandise_transactions...\n";
+        $pdo->exec("ALTER TABLE merchandise_transactions ADD COLUMN customer_id INT(11) DEFAULT NULL");
+        $pdo->exec("ALTER TABLE merchandise_transactions ADD INDEX idx_mt_customer_id (customer_id)");
+        
+        // Populate customer_id with credit_customer_id where available
+        echo "Populating customer_id from credit_customer_id in merchandise_transactions...\n";
+        $pdo->exec("UPDATE merchandise_transactions SET customer_id = credit_customer_id WHERE credit_customer_id IS NOT NULL AND credit_customer_id > 0");
+    } else {
+        echo "merchandise_transactions already has customer_id column.\n";
+    }
+    
+    echo "SUCCESS: Transaction tables self-heal completed!\n";
+    
+} catch (Exception $e) {
+    echo "ERROR: " . $e->getMessage() . "\n";
+}
+?>

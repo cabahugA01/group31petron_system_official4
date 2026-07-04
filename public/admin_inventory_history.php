@@ -47,7 +47,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_product_details') {
     try {
         // Fetch product info
         $stmt = $pdo->prepare("
-            SELECT ip.id, ip.sku, ip.product_name, ip.category, ip.unit, ip.supplier,
+            SELECT ip.id, ip.sku, ip.product_name, ip.category, COALESCE(si.unit, 'pcs') AS unit, ip.supplier,
                    COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
                    COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
                    COALESCE(si.capacity, ip.max_stock, 100) AS max_stock,
@@ -547,15 +547,33 @@ include __DIR__ . '/../partials/header.php';
 .int-head .sub { font-size:13px; color:#64748b; margin-top:4px; }
 
 /* Custom Outlined Buttons for Petron-clean Look */
-.flt-btn { display:inline-flex; align-items:center; gap:6px; padding:0 14px; height:35px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; text-decoration:none; border:1px solid transparent; background:#fff; transition:all .15s; }
-.flt-btn-search { color:#002F70; border-color:#002F70; }
-.flt-btn-search:hover { background:#002F70; color:#fff; }
-.flt-btn-reset { color:#6b7280; border-color:#6b7280; }
-.flt-btn-reset:hover { background:#6b7280; color:#fff; }
-.flt-btn-excel { color:#1d6f42; border-color:#1d6f42; }
-.flt-btn-excel:hover { background:#1d6f42; color:#fff; }
-.flt-btn-pdf { color:#dc2626; border-color:#dc2626; }
-.flt-btn-pdf:hover { background:#dc2626; color:#fff; }
+.flt-btn { 
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 16px;
+    height: 36px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: all .15s;
+    background: white !important;
+    border: 1px solid transparent;
+}
+.flt-btn-search { color:#002F70 !important; border-color:#002F70 !important; }
+.flt-btn-search:hover { background:#002F70 !important; color:#fff !important; }
+.flt-btn-reset { color:#6b7280 !important; border-color:#6b7280 !important; }
+.flt-btn-reset:hover { background:#6b7280 !important; color:#fff !important; }
+.flt-btn-excel { color:#1d6f42 !important; border-color:#1d6f42 !important; }
+.flt-btn-excel:hover { background:#1d6f42 !important; color:#fff !important; }
+.flt-btn-csv { color:#002F70 !important; border-color:#002F70 !important; }
+.flt-btn-csv:hover { background:#002F70 !important; color:#fff !important; }
+.flt-btn-pdf { color:#dc2626 !important; border-color:#dc2626 !important; }
+.flt-btn-pdf:hover { background:#dc2626 !important; color:#fff !important; }
 
 /* Tabs Layout */
 .tab-nav { display:flex; gap:0; border-bottom:2px solid #e2e8f0; margin-bottom:22px; }
@@ -565,16 +583,18 @@ include __DIR__ . '/../partials/header.php';
 
 /* Summary Cards */
 .sm-cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:20px; }
-.sm-card { background:#fff; border-radius:8px; padding:16px; display:flex; align-items:center; justify-content:space-between; border-left:4px solid #cbd5e1; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
-.sm-card.blue { border-left-color:#002F70; }
-.sm-card.green { border-left-color:#16a34a; }
-.sm-card.red { border-left-color:#dc2626; }
-.sm-card.yellow { border-left-color:#ea580c; }
-.sm-card.amber { border-left-color:#d97706; }
+.sm-card { background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 1px 3px rgba(0,0,0,0.05); text-decoration:none !important; }
 .sm-card .det { display:flex; flex-direction:column; }
-.sm-card .det span:first-child { font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700; letter-spacing:0.5px; }
-.sm-card .det span:last-child { font-size:22px; font-weight:800; color:#1e293b; margin-top:4px; line-height:1; }
+.sm-card .det span:first-child { font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700; letter-spacing:0.5px; text-decoration:none !important; }
+.sm-card .det span:last-child { font-size:22px; font-weight:800; color:#1e293b; margin-top:4px; line-height:1; text-decoration:none !important; }
 .sm-card i { font-size:24px; color:#94a3b8; opacity:0.6; }
+
+/* Card icon colors - removed border colors */
+.sm-card.blue i { color:#002F70; }
+.sm-card.green i { color:#16a34a; }
+.sm-card.red i { color:#dc2626; }
+.sm-card.yellow i { color:#ea580c; }
+.sm-card.amber i { color:#d97706; }
 
 /* Filter Bar */
 .filter-bar { background:#fff; border-radius:8px; padding:14px 16px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); border:1px solid #e2e8f0; }
@@ -586,12 +606,26 @@ include __DIR__ . '/../partials/header.php';
 
 /* Table design */
 .po-table-wrap { background:#fff; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.05); overflow:hidden; border:1px solid #e2e8f0; }
-.po-table { width:100%; border-collapse:collapse; font-size:11.5px; }
+.po-table { width:100%; border-collapse:collapse; font-size:11px; table-layout:fixed; }
 .po-table thead tr { background:#002F70; }
-.po-table thead th { padding:8px 10px; text-align:left; font-size:10.5px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.4px; border-bottom:2px solid #001a3d; vertical-align:middle; }
+.po-table thead th { padding:6px 8px; text-align:left; font-size:10px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.3px; border-bottom:2px solid #001a3d; vertical-align:middle; }
 .po-table tbody tr { border-bottom:1px solid #f1f5f9; transition:background .1s; }
 .po-table tbody tr:hover td { background:#eff6ff; }
-.po-table tbody td { padding:7px 9px; color:#334155; vertical-align:middle; font-size:11.5px; line-height:1.35; }
+.po-table tbody td { padding:6px 8px; color:#334155; vertical-align:middle; font-size:10.5px; line-height:1.3; overflow:hidden; text-overflow:ellipsis; }
+
+/* Column widths - optimized to fit screen */
+.po-table th:nth-child(1), .po-table td:nth-child(1) { width: 8%; } /* Movement ID */
+.po-table th:nth-child(2), .po-table td:nth-child(2) { width: 11%; } /* Date & Time */
+.po-table th:nth-child(3), .po-table td:nth-child(3) { width: 8%; } /* Reference No */
+.po-table th:nth-child(4), .po-table td:nth-child(4) { width: 15%; } /* Product Name */
+.po-table th:nth-child(5), .po-table td:nth-child(5) { width: 10%; } /* Movement Type */
+.po-table th:nth-child(6), .po-table td:nth-child(6) { width: 7%; text-align:right; } /* Quantity */
+.po-table th:nth-child(7), .po-table td:nth-child(7) { width: 8%; text-align:right; } /* Previous Stock */
+.po-table th:nth-child(8), .po-table td:nth-child(8) { width: 7%; text-align:right; } /* New Stock */
+.po-table th:nth-child(9), .po-table td:nth-child(9) { width: 10%; } /* Performed By */
+.po-table th:nth-child(10), .po-table td:nth-child(10) { width: 9%; } /* Status */
+.po-table th:nth-child(11), .po-table td:nth-child(11) { width: 7%; text-align:center; } /* Actions */
+
 .nowrap { white-space:nowrap; }
 .right { text-align:right; }
 .badge { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:700; text-transform:uppercase; }
@@ -606,8 +640,8 @@ include __DIR__ . '/../partials/header.php';
 .txn-btn { display:inline-flex; align-items:center; justify-content:center; gap:4px; padding:4px 6px; border-radius:4px; font-size:10.5px; font-weight:600; cursor:pointer; text-decoration:none; transition:all 0.15s; border:1px solid transparent; background:none; width:100%; box-sizing:border-box; }
 .txn-btn-view { color:#002F70; border-color:#002F70; }
 .txn-btn-view:hover { background:#002F70; color:#fff; }
-.txn-btn-print { color:#475569; border-color:#94a3b8; }
-.txn-btn-print:hover { background:#475569; color:#fff; border-color:#475569; }
+.txn-btn-adjust { color:#16a34a; border-color:#16a34a; background:#fff; }
+.txn-btn-adjust:hover { background:#16a34a; color:#fff; border-color:#16a34a; }
 
 /* Modal overlay */
 .modal-ov { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:9999; align-items:center; justify-content:center; padding:16px; }
@@ -626,11 +660,16 @@ include __DIR__ . '/../partials/header.php';
         <h1><i class="fas fa-history"></i> Inventory History</h1>
         <div class="sub">Full ledger of all fuel and merchandise inventory movements — deliveries, sales, and adjustments.</div>
     </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <a href="admin_dashboard.php" class="flt-btn flt-btn-reset"><i class="fas fa-arrow-left"></i> Back</a>
-        <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'excel'])) ?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
-        <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'csv'])) ?>"   class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</a>
-        <button class="flt-btn flt-btn-pdf" onclick="window.open('?<?= http_build_query(array_merge($_GET, ['tab' => $active_tab, 'print' => '1'])) ?>')"><i class="fas fa-file-pdf"></i> PDF</button>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
+        <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'excel'])) ?>" class="flt-btn flt-btn-excel" title="Export to Excel">
+            <i class="fas fa-file-excel"></i> Excel
+        </a>
+        <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'csv'])) ?>" class="flt-btn flt-btn-csv" title="Export to CSV">
+            <i class="fas fa-file-csv"></i> CSV
+        </a>
+        <button class="flt-btn flt-btn-pdf" onclick="printInventoryHistory()" title="Export to PDF">
+            <i class="fas fa-file-pdf"></i> PDF
+        </button>
     </div>
 </div>
 
@@ -815,11 +854,11 @@ include __DIR__ . '/../partials/header.php';
                                         'date_time' => date('M d, Y g:i A', strtotime($row['date_time'])),
                                         'remarks' => $row['remarks'] ?: '—'
                                     ])) ?>)">
-                                        <i class="fas fa-eye"></i> Details
+                                        <i class="fas fa-eye"></i> View
                                     </button>
-                                    <a href="?tab=merch&print=1&start=<?= $start_date ?>&end=<?= $end_date ?>&search=<?= urlencode($row['movement_id']) ?>" target="_blank" class="txn-btn txn-btn-print">
-                                        <i class="fas fa-print"></i> Print
-                                    </a>
+                                    <button class="txn-btn txn-btn-adjust" onclick="alert('Adjust functionality coming soon')">
+                                        <i class="fas fa-edit"></i> Adjust
+                                    </button>
                                 </div>
                             </td>
                         </tr>
@@ -918,11 +957,11 @@ include __DIR__ . '/../partials/header.php';
                                         'date_time' => date('M d, Y g:i A', strtotime($row['date_time'])),
                                         'remarks' => $row['remarks'] ?: '—'
                                     ])) ?>)">
-                                        <i class="fas fa-eye"></i> Details
+                                        <i class="fas fa-eye"></i> View
                                     </button>
-                                    <a href="?tab=fuel&print=1&start=<?= $start_date ?>&end=<?= $end_date ?>&search=<?= urlencode($row['movement_id']) ?>" target="_blank" class="txn-btn txn-btn-print">
-                                        <i class="fas fa-print"></i> Print
-                                    </a>
+                                    <button class="txn-btn txn-btn-adjust" onclick="alert('Adjust functionality coming soon')">
+                                        <i class="fas fa-edit"></i> Adjust
+                                    </button>
                                 </div>
                             </td>
                         </tr>
@@ -1109,10 +1148,54 @@ function exportData(type) {
     window.location.href = 'admin_inventory_history.php?export=' + type + '&' + params;
 }
 
+function printInventoryHistory() {
+    const activeTab = '<?= $active_tab ?>';
+    const startDate = '<?= htmlspecialchars($start_date) ?>';
+    const endDate = '<?= htmlspecialchars($end_date) ?>';
+    const search = '<?= htmlspecialchars($search) ?>';
+    const category = '<?= htmlspecialchars($category) ?>';
+    const fuelType = '<?= htmlspecialchars($fuel_type) ?>';
+    const moveType = '<?= htmlspecialchars($move_type) ?>';
+    const perfBy = '<?= htmlspecialchars($perf_by) ?>';
+    
+    // Build URL with all current filters
+    let url = 'admin_inventory_history.php?print=1&tab=' + activeTab;
+    url += '&start=' + encodeURIComponent(startDate);
+    url += '&end=' + encodeURIComponent(endDate);
+    if (search) url += '&search=' + encodeURIComponent(search);
+    if (category) url += '&category=' + encodeURIComponent(category);
+    if (fuelType) url += '&fuel_type=' + encodeURIComponent(fuelType);
+    if (moveType) url += '&move_type=' + encodeURIComponent(moveType);
+    if (perfBy) url += '&perf_by=' + encodeURIComponent(perfBy);
+    
+    // Create or reuse hidden iframe for seamless printing
+    let iframe = document.getElementById('printFrame');
+    if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'printFrame';
+        iframe.style.position = 'absolute';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = 'none';
+        iframe.style.visibility = 'hidden';
+        document.body.appendChild(iframe);
+    }
+    
+    // Load print content and trigger print dialog
+    iframe.onload = function() {
+        try {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        } catch (e) {
+            // Fallback to opening in new window if iframe printing fails
+            window.open(url, '_blank');
+        }
+    };
+    iframe.src = url;
+}
+
 function printReport() {
-    const form = document.getElementById('filterForm');
-    const params = new URLSearchParams(new FormData(form)).toString();
-    window.open('admin_inventory_history.php?print=1&' + params, '_blank');
+    printInventoryHistory();
 }
 </script>
 

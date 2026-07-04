@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/../backend/lib.php';
 require_login();
 
@@ -203,6 +203,81 @@ if ($type === 'job_order') {
         }
     } catch (Exception $e) {
         error_log("Receipt JO fetch error: " . $e->getMessage());
+    }
+
+} elseif (in_array($type, ['fuel', 'Fuel'])) {
+    require_once __DIR__ . '/db_connect.php';
+    try {
+        $stmt = $pdo->prepare("
+            SELECT ft.*,
+                   COALESCE(u.name, 'Staff') AS staff_name,
+                   COALESCE(s.name, 'Petron Station') AS station_name,
+                   COALESCE(s.location, '') AS station_location,
+                   COALESCE(s.address, 'Vamenta Blvd., Carmen, CDO') AS station_address,
+                   COALESCE(s.vat_tin, '236-002-207-0000') AS station_vat_tin
+            FROM fuel_transactions ft
+            LEFT JOIN users u ON ft.staff_id = u.id
+            LEFT JOIN stations s ON ft.station_id = s.id
+            WHERE ft.transaction_id = ?
+               OR ft.id = ?
+            LIMIT 1
+        ");
+        $numeric_id = is_numeric($id) ? (int)$id : 0;
+        $stmt->execute([$id, $numeric_id]);
+        $ft = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($ft) {
+            $ft_items = [
+                [
+                    'product_name' => ($ft['fuel_type'] ?? 'Fuel') . ' Fuel',
+                    'category'     => 'Fuel',
+                    'size_variant' => '',
+                    'quantity'     => (float)($ft['liters_sold'] ?? 0),
+                    'unit_price'   => (float)($ft['price_per_liter'] ?? 0),
+                    'subtotal'     => (float)($ft['total_amount'] ?? 0),
+                    'item_type'    => 'fuel',
+                ]
+            ];
+            
+            $sale = [
+                'transaction_id'      => $ft['transaction_id'],
+                'id'                  => $ft['id'],
+                'created_at'          => $ft['transaction_date'] ?? $ft['created_at'],
+                'staff_name'          => $ft['staff_name'],
+                'customer_name'       => 'Credit Customer',
+                'customer_first_name' => '',
+                'customer_last_name'  => '',
+                'payment_method'      => $ft['payment_method'] ?? 'Cash',
+                'payment_status'      => strtolower($ft['status'] ?? '') === 'completed' ? 'paid' : 'pending',
+                'amount_paid'         => (float)($ft['total_amount'] ?? 0),
+                'balance_due'         => 0.0,
+                'total_amount'        => (float)($ft['total_amount'] ?? 0),
+                'subtotal_amount'     => round((float)$ft['total_amount'] / 1.12, 2),
+                'vat_amount'          => round((float)$ft['total_amount'] - ((float)$ft['total_amount'] / 1.12), 2),
+                'amount_tendered'     => (float)($ft['total_amount'] ?? 0),
+                'change_amount'       => 0.0,
+                'card_reference'      => '',
+                'remarks'             => $ft['notes'] ?? '',
+                'validation_status'   => $ft['status'] ?? 'Completed',
+                'station_name'        => $ft['station_name'],
+                'station_address'     => $ft['station_address'],
+                'station_location'    => $ft['station_location'],
+                'station_vat_tin'     => $ft['station_vat_tin'],
+                'items'               => $ft_items,
+                'transaction_type'    => 'fuel',
+            ];
+            
+            if (!empty($ft['customer_id'])) {
+                $c_stmt = $pdo->prepare("SELECT name, first_name, last_name FROM customers WHERE id = ?");
+                $c_stmt->execute([$ft['customer_id']]);
+                $cust = $c_stmt->fetch(PDO::FETCH_ASSOC);
+                if ($cust) {
+                    $sale['customer_name'] = trim(($cust['first_name'] ?? '') . ' ' . ($cust['last_name'] ?? '')) ?: ($cust['name'] ?? 'Customer');
+                }
+            }
+        }
+    } catch (Exception $e) {
+        error_log("Receipt Fuel fetch error: " . $e->getMessage());
     }
 
 } elseif ($type === 'merchandise') {

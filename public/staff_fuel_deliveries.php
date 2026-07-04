@@ -47,31 +47,21 @@ $FT_STYLE = [
 ];
 
 // ── Auto batch ID (Same date = Same batch for FUEL) ─────
-// Prefix: FBATCH- to distinguish from merchandise (MBATCH-)
-function genBatch(PDO $pdo, string $d, int $station_id): string {
-    $pfx = 'FBATCH-'.date('Ymd', strtotime($d)).'-';
+// Generate a simple reference number instead of batch_id
+function genDeliveryRef(PDO $pdo, string $d, int $station_id): string {
+    $pfx = 'FDEL-'.date('Ymd', strtotime($d)).'-';
     
-    // Check if a fuel batch already exists for this date at this station
+    // Get count of deliveries for this date
     $s = $pdo->prepare("
-        SELECT batch_id 
+        SELECT COUNT(*) 
         FROM fuel_deliveries 
-        WHERE batch_id LIKE ? 
-          AND station_id = ? 
-          AND DATE(delivery_date) = ? 
-        LIMIT 1
+        WHERE station_id = ? 
+          AND DATE(delivery_date) = ?
     ");
-    $s->execute([$pfx.'%', $station_id, $d]);
-    $existing = $s->fetchColumn();
+    $s->execute([$station_id, $d]);
+    $count = (int)$s->fetchColumn() + 1;
     
-    if ($existing) {
-        // Reuse existing fuel batch for this date
-        return $existing;
-    }
-    
-    // Create new fuel batch for this date
-    $s = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(batch_id,'-',-1) AS UNSIGNED)) FROM fuel_deliveries WHERE batch_id LIKE ?");
-    $s->execute([$pfx.'%']);
-    return $pfx.str_pad((int)$s->fetchColumn()+1,3,'0',STR_PAD_LEFT);
+    return $pfx.str_pad($count, 3, '0', STR_PAD_LEFT);
 }
 
 // ── Fetch Selected PO ──────────────────────────────────
@@ -103,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action']??'')==='record_fuel
     if (!$has_entry) { $_SESSION['error']='Enter liters for at least one tank.'; header('Location: staff_fuel_deliveries.php'); exit; }
 
     try {
-        $batch_id = genBatch($pdo, $delivery_date, $station_id);
+        $delivery_ref = genDeliveryRef($pdo, $delivery_date, $station_id);
         $pdo->beginTransaction();
         $saved = 0;
         foreach ($TANK_CONFIG as $i => $tank) {
@@ -111,11 +101,11 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action']??'')==='record_fuel
             if ($liters <= 0) continue;
             $pdo->prepare("
                 INSERT INTO fuel_deliveries
-                    (batch_id,station_id,delivery_date,fuel_type,supplier,invoice_no,
+                    (station_id,delivery_date,fuel_type,supplier,invoice_no,
                      delivery_liters,tank_assigned,tanker_number,received_by,notes,status,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,'Pending Manager Validation',NOW())
+                VALUES(?,?,?,?,?,?,?,?,?,?,'Pending Manager Validation',NOW())
             ")->execute([
-                $batch_id,$station_id,$delivery_date,$tank['fuel_type'],
+                $station_id,$delivery_date,$tank['fuel_type'],
                 $supplier,$invoice_no,$liters,$tank['tank'],$tanker_number,$me['id'],$remarks
             ]);
             $saved++;
@@ -123,16 +113,16 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action']??'')==='record_fuel
 
         // If PO was selected, update its status in deliveries_oversight so it's no longer expected
         if ($post_po_id > 0) {
-            $pdo->prepare("UPDATE deliveries_oversight SET status = 'Received', dr_number = ?, batch_id = ?, updated_at = NOW() WHERE id = ? AND station_id = ?")
-                ->execute([$invoice_no, $batch_id, $post_po_id, $station_id]);
+            $pdo->prepare("UPDATE deliveries_oversight SET status = 'Received', dr_number = ?, updated_at = NOW() WHERE id = ? AND station_id = ?")
+                ->execute([$invoice_no, $post_po_id, $station_id]);
         }
 
         $pdo->commit();
         try {
             $pdo->prepare("INSERT INTO audit_logs(user_id,log_type,action_type,action_details,entity_type,status,ip_address,created_at)VALUES(?,'transaction','Create',?,'fuel_deliveries','Success',?,NOW())")
-                ->execute([$me['id'],"Fuel delivery | Batch:{$batch_id} | Tanks:{$saved} | Invoice:{$invoice_no} | Tanker:{$tanker_number}",$_SERVER['REMOTE_ADDR']??'']);
+                ->execute([$me['id'],"Fuel delivery | Ref:{$delivery_ref} | Tanks:{$saved} | Invoice:{$invoice_no} | Tanker:{$tanker_number}",$_SERVER['REMOTE_ADDR']??'']);
         } catch(Exception $e){}
-        $_SESSION['success'] = "__DELIVERY_SAVED__|{$saved}|{$batch_id}";
+        $_SESSION['success'] = "__DELIVERY_SAVED__|{$saved}|{$delivery_ref}";
     } catch(Exception $e) {
         if($pdo->inTransaction()) $pdo->rollBack();
         $_SESSION['error'] = 'Error: '.$e->getMessage();
@@ -398,7 +388,7 @@ body{overflow-x:hidden;max-width:100vw}
             <div style="font-size:15px;font-weight:700;">Delivery Recorded Successfully</div>
             <div style="font-size:12px;opacity:.85;margin-top:2px;"><?= $saved_count ?> tank record(s) saved &mdash; Batch: <strong><?= $batch_str ?></strong></div>
         </div>
-        <button onclick="document.getElementById('deliverySavedAlert').remove()" style="margin-left:auto;background:none;border:none;color:#fff;font-size:18px;cursor:pointer;opacity:.7;">&times;</button>
+        <button onclick="document.getElementById('deliverySavedAlert').remove()" style="margin-left:auto;background:none !important;border:none !important;color:#fff !important;font-size:18px;cursor:pointer;opacity:.7;">&times;</button>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid #c3e6cb;">
         <div style="padding:14px 18px;display:flex;align-items:center;gap:10px;border-right:1px solid #c3e6cb;">
@@ -791,7 +781,7 @@ body{overflow-x:hidden;max-width:100vw}
                             <?php else: ?>
                                 <button type="button"
                                     onclick="selectPO(<?= $po['raw_id'] ?>, '<?= htmlspecialchars(addslashes($po['product'])) ?>', '<?= htmlspecialchars(addslashes($po['supplier'])) ?>', '<?= htmlspecialchars(addslashes($po['po_no'])) ?>', <?= $po['liters'] ?>)"
-                                    style="background:#fff;color:#002F70;border:1px solid #002F70;padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap;">
+                                    style="background:#fff !important;color:#002F70 !important;border:1px solid #002F70 !important;padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap;">
                                     <i class="fas fa-link"></i> Link
                                 </button>
                             <?php endif; ?>

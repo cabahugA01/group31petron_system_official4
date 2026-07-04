@@ -296,7 +296,7 @@ include __DIR__ . '/../partials/header.php';
     background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
     padding: 16px 18px; text-align: center;
 }
-.summary-card .s-num  { font-size: 28px; font-weight: 700; line-height: 1; }
+.summary-card .s-num  { font-size: 28px; font-weight: 700; line-height: 1; text-decoration: none !important; }
 .summary-card .s-lbl  { font-size: 12px; color: #64748b; margin-top: 4px; font-weight: 500; }
 .summary-card.s-total  .s-num { color: #002F6C; }
 .summary-card.s-valid  .s-num { color: #16a34a; }

@@ -438,14 +438,7 @@ require_once __DIR__ . '/../partials/header.php';
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     position: relative;
     overflow: hidden;
-}
-.afto-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 4px;
-    height: 100%;
+    text-decoration: none !important;
 }
 .afto-card-info {
     display: flex;
@@ -458,29 +451,25 @@ require_once __DIR__ . '/../partials/header.php';
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 4px;
+    text-decoration: none !important;
 }
 .afto-card-val {
     font-size: 18px;
     font-weight: 800;
     color: #1e293b;
+    text-decoration: none !important;
 }
 .afto-card-icon {
     font-size: 22px;
     opacity: 0.85;
 }
 
-/* Card variants */
-.afto-card.blue::before   { background-color: #2563eb; }
+/* Card variants - removed colored borders */
 .afto-card.blue .afto-card-icon { color: #2563eb; }
-.afto-card.green::before  { background-color: #16a34a; }
 .afto-card.green .afto-card-icon { color: #16a34a; }
-.afto-card.yellow::before { background-color: #d97706; }
 .afto-card.yellow .afto-card-icon { color: #d97706; }
-.afto-card.red::before    { background-color: #dc2626; }
 .afto-card.red .afto-card-icon { color: #dc2626; }
-.afto-card.purple::before  { background-color: #7c3aed; }
 .afto-card.purple .afto-card-icon { color: #7c3aed; }
-.afto-card.orange::before  { background-color: #ea580c; }
 .afto-card.orange .afto-card-icon { color: #ea580c; }
 
 /* == FILTER BAR == */
@@ -730,10 +719,6 @@ require_once __DIR__ . '/../partials/header.php';
                 class="flt-btn flt-btn-pdf" title="Export to PDF">
             <i class="fas fa-file-pdf"></i> PDF
         </button>
-        <!-- Back -->
-        <a href="admin_dashboard.php" class="flt-btn flt-btn-reset" style="color: #475569 !important; border-color: #cbd5e1 !important;" title="Back to Dashboard">
-            <i class="fas fa-arrow-left"></i> Back
-        </a>
     </div>
 </div>
 

@@ -92,7 +92,7 @@ include __DIR__ . '/../partials/header.php';
     border-radius: 12px;
     padding: 20px;
     box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
-    border-left: 5px solid var(--card-color);
+    border: 1px solid #e2e8f0;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -122,15 +122,14 @@ include __DIR__ . '/../partials/header.php';
 }
 .summary-card-icon {
     font-size: 28px;
-    color: var(--card-color);
-    opacity: 0.8;
+    opacity: 0.85;
 }
 
-.card-blue { --card-color: var(--blue); }
-.card-green { --card-color: var(--green); }
-.card-red { --card-color: var(--red); }
-.card-yellow { --card-color: var(--orange); }
-.card-purple { --card-color: var(--purple); }
+.card-blue .summary-card-icon { color: #2563eb; }
+.card-green .summary-card-icon { color: #16a34a; }
+.card-red .summary-card-icon { color: #dc2626; }
+.card-yellow .summary-card-icon { color: #d97706; }
+.card-purple .summary-card-icon { color: #7c3aed; }
 
 /* == Card & Table Container == */
 .card {
@@ -291,6 +290,8 @@ include __DIR__ . '/../partials/header.php';
 .flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
 .flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
 .flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
+.flt-btn-csv    { color: #002F70 !important; border-color: #002F70 !important; }
+.flt-btn-csv:hover    { background: #002F70 !important; color: #fff !important; }
 .flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
 .flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
 
@@ -510,8 +511,20 @@ table.dt tr:hover td { background: #f1f7ff; }
       Verify, validate, and monitor supplier merchandise deliveries, track quantities, and process payment calculations.
     </div>
   </div>
-  <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-    <button class="flt-btn flt-btn-reset" onclick="loadDeliveries()"><i class="fas fa-sync-alt"></i> Refresh</button>
+  
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
+    <!-- Excel -->
+    <button onclick="exportReport('excel')" class="flt-btn flt-btn-excel" title="Export to Excel">
+      <i class="fas fa-file-excel"></i> Excel
+    </button>
+    <!-- CSV -->
+    <button onclick="exportReport('csv')" class="flt-btn flt-btn-csv" title="Export to CSV">
+      <i class="fas fa-file-csv"></i> CSV
+    </button>
+    <!-- PDF -->
+    <button onclick="exportReport('pdf')" class="flt-btn flt-btn-pdf" title="Export to PDF">
+      <i class="fas fa-file-pdf"></i> PDF
+    </button>
   </div>
 </div>
 
@@ -618,10 +631,6 @@ table.dt tr:hover td { background: #f1f7ff; }
       <div style="margin-top:auto; display:flex; gap:8px; align-items:center;">
         <button class="flt-btn flt-btn-search" onclick="loadDeliveries()"><i class="fas fa-search"></i> Search</button>
         <button class="flt-btn flt-btn-reset" onclick="resetFilters()"><i class="fas fa-undo"></i> Reset</button>
-      </div>
-      <div style="margin-top:auto; margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-        <button class="flt-btn flt-btn-excel" onclick="exportReport('excel')"><i class="fas fa-file-excel"></i> Export Excel</button>
-        <button class="flt-btn flt-btn-pdf" onclick="exportReport('pdf')"><i class="fas fa-file-pdf"></i> Export PDF</button>
       </div>
     </div>
     
@@ -915,14 +924,24 @@ function buildRow(r) {
         'Pending Manager Approval': 'Pending Manager',
         'Pending Manager Confirmation': 'Pending Confirmation',
         'Pending Validation': 'Pending Validation',
+        'Pending Verification': 'Pending Validation',
         'Pending Admin Oversight': 'Pending Oversight',
         'Confirmed': 'Cleared',
         'Validated': 'Cleared',
+        'Verified': 'Cleared',
+        'Ready for Stock-In': 'Cleared',
+        'Stock-In Complete': 'Cleared',
+        'Adjusted': 'Adjusted',
         'Discrepancy': 'Flagged',
         'Flagged': 'Flagged',
         'Partial Delivery': 'Partial',
         'Damaged Items': 'Damaged',
         'Rejected Delivery': 'Rejected',
+        'Rejected': 'Rejected',
+        'Returned': 'Returned',
+        'Returned to Supplier': 'Returned to Supplier',
+        'Returned to Staff': 'Returned',
+        'Closed': 'Closed',
     };
     const displayStatus = statusMap[r.status] || r.status;
 
@@ -933,10 +952,14 @@ function buildRow(r) {
         'Pending Validation': '<span class="badge badge-pending">Pending Validation</span>',
         'Pending Oversight': '<span class="badge badge-pending">Pending Oversight</span>',
         'Cleared': '<span class="badge badge-approved">Cleared</span>',
+        'Adjusted': '<span class="badge badge-approved">Adjusted</span>',
         'Flagged': '<span class="badge badge-flagged">Flagged</span>',
         'Partial': '<span class="badge badge-partial">Partial</span>',
         'Damaged': '<span class="badge badge-damaged">Damaged</span>',
         'Rejected': '<span class="badge badge-rejected">Rejected</span>',
+        'Returned': '<span class="badge badge-rejected">Returned to Staff</span>',
+        'Returned to Supplier': '<span class="badge badge-rejected">Returned to Supplier</span>',
+        'Closed': '<span class="badge badge-rejected">Closed</span>',
     }[displayStatus] || `<span class="badge">${esc(displayStatus)}</span>`;
 
     const qty = parseFloat(r.actual_quantity || r.quantity || 0);
@@ -949,14 +972,13 @@ function buildRow(r) {
     const dateDelivered = fmtDate(r.delivery_date);
     
     // Action flags
-    const canReopen = ['Confirmed', 'Validated', 'Partial Delivery', 'Damaged Items', 'Rejected Delivery', 'Flagged', 'Discrepancy'].includes(r.status);
-    const canPrint = ['Confirmed', 'Validated', 'Partial Delivery', 'Damaged Items', 'Rejected Delivery', 'Flagged', 'Discrepancy'].includes(r.status);
-    const canProcess = ['Pending Validation', 'Pending Admin Oversight', 'Pending Manager Confirmation'].includes(r.status);
+    const canReopen = ['Confirmed', 'Validated', 'Verified', 'Ready for Stock-In', 'Stock-In Complete', 'Adjusted', 'Partial Delivery', 'Damaged Items', 'Rejected Delivery', 'Rejected', 'Flagged', 'Discrepancy'].includes(r.status);
+    const canPrint = ['Confirmed', 'Validated', 'Verified', 'Ready for Stock-In', 'Stock-In Complete', 'Adjusted', 'Partial Delivery', 'Damaged Items', 'Rejected Delivery', 'Rejected', 'Flagged', 'Discrepancy'].includes(r.status);
+    const canProcess = ['Pending Validation', 'Pending Verification', 'Pending Admin Oversight', 'Pending Manager Confirmation', 'Pending Manager Approval'].includes(r.status);
 
     // Build vertical act-wrap — matched to manager_merchandise_deliveries.php pattern
     var acts = '';
     acts += `<button class="btn-act btn-view" onclick="showDetail(${r.id})"><i class="fas fa-eye"></i> View</button>`;
-    acts += `<button class="btn-act" style="border:1px solid #6f42c1!important;color:#6f42c1!important;" onclick="showAudit(${r.id})" onmouseover="this.style.background='#6f42c1';this.style.color='#fff'" onmouseout="this.style.background='#fff';this.style.color='#6f42c1'"><i class="fas fa-history"></i> Log</button>`;
     if (canProcess) {
         acts += `<button class="btn-act btn-approve" onclick="openProcess(${r.id})"><i class="fas fa-check-double"></i> Verify</button>`;
     }

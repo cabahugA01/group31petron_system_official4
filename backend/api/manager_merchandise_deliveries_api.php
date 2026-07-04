@@ -95,12 +95,16 @@ function map_status_display(string $status): array {
         case 'Pending Manager Confirmation':
         case 'Pending Validation':
         case 'Pending Verification':
+        case 'Pending Admin Oversight':
             return ['bucket' => 'Pending',  'label' => 'Pending'];
         case 'Confirmed':
         case 'Approved':
         case 'Validated':
         case 'Verified':
         case 'Ready for Stock-In':
+        case 'Stock-In Complete':
+        case 'Partial Delivery':
+        case 'Damaged Items':
             return ['bucket' => 'Approved', 'label' => 'Verified'];
         case 'Adjusted':
             return ['bucket' => 'Approved', 'label' => 'Adjusted — Verified'];
@@ -113,8 +117,10 @@ function map_status_display(string $status): array {
         case 'Discrepancy':
         case 'Flagged':
         case 'Rejected':
+        case 'Rejected Delivery':
             return ['bucket' => 'Rejected', 'label' => 'Rejected'];
         case 'Returned':
+        case 'Returned to Staff':
             return ['bucket' => 'Rejected', 'label' => 'Returned to Staff'];
         case 'Closed':
             return ['bucket' => 'Closed',   'label' => 'Closed'];
@@ -149,30 +155,30 @@ try {
             // Map UI filter bucket → actual DB status values
             if ($status_f !== '' && $status_f !== 'active' && $status_f !== 'history') {
                 if ($status_f === 'Pending') {
-                    $where .= " AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation','Pending Verification')";
+                    $where .= " AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation','Pending Verification','Pending Admin Oversight')";
                 } elseif ($status_f === 'Verified' || $status_f === 'Ready for Stock-In') {
-                    $where .= " AND do2.status IN ('Ready for Stock-In','Confirmed','Approved','Validated','Verified')";
-                } elseif ($status_f === 'Adjusted') {
+                    $where .= " AND do2.status IN ('Ready for Stock-In','Confirmed','Approved','Validated','Verified','Stock-In Complete','Partial Delivery','Damaged Items')";
+                } elseif ($status_f === 'Adjusted' || $status_f === 'Adjusted — Verified') {
                     $where .= " AND do2.status = 'Adjusted'";
                 } elseif ($status_f === 'Pending Resolution') {
                     $where .= " AND do2.status = 'Pending Resolution'";
                 } elseif ($status_f === 'Awaiting Replacement') {
                     $where .= " AND do2.status = 'Awaiting Replacement'";
                 } elseif ($status_f === 'Returned to Staff') {
-                    $where .= " AND do2.status = 'Returned'";
+                    $where .= " AND do2.status IN ('Returned','Returned to Staff')";
                 } elseif ($status_f === 'Returned to Supplier') {
                     $where .= " AND do2.status = 'Returned to Supplier'";
                 } elseif ($status_f === 'Rejected') {
-                    $where .= " AND do2.status IN ('Discrepancy','Rejected','Flagged')";
+                    $where .= " AND do2.status IN ('Discrepancy','Rejected','Flagged','Rejected Delivery')";
                 } elseif ($status_f === 'Closed') {
                     $where .= " AND do2.status = 'Closed'";
                 }
             } elseif ($status_f === 'active') {
                 // All Active = pending validation + pending resolution + awaiting replacement
-                $where .= " AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation','Pending Verification','Pending Resolution','Awaiting Replacement')";
+                $where .= " AND do2.status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation','Pending Verification','Pending Admin Oversight','Pending Resolution','Awaiting Replacement')";
             } elseif ($status_f === 'history') {
                 // History = all processed
-                $where .= " AND do2.status IN ('Ready for Stock-In','Confirmed','Approved','Validated','Verified','Adjusted','Returned','Returned to Supplier','Rejected','Discrepancy','Flagged','Closed','Stock-In Complete')";
+                $where .= " AND do2.status IN ('Ready for Stock-In','Confirmed','Approved','Validated','Verified','Adjusted','Returned','Returned to Staff','Returned to Supplier','Rejected','Rejected Delivery','Discrepancy','Flagged','Closed','Stock-In Complete','Partial Delivery','Damaged Items')";
             }
             if ($supplier_f !== '') {
                 $where   .= " AND do2.supplier LIKE ?";
@@ -268,7 +274,7 @@ try {
                 SELECT COUNT(*) FROM deliveries_oversight
                 WHERE station_id = ?
                   AND delivery_type = 'merchandise'
-                  AND status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation','Pending Verification')
+                  AND status IN ('Pending Manager Approval','Pending Manager Confirmation','Pending Validation','Pending Verification','Pending Admin Oversight')
             ");
             $stmt->execute([$station_id]);
             echo json_encode(['success' => true, 'count' => (int)$stmt->fetchColumn()]);
@@ -289,12 +295,12 @@ try {
             $cnt_p = 0; $cnt_v = 0; $cnt_r = 0; $total_qty_v = 0; $total_rec = count($all_sc);
             foreach ($all_sc as $sc_row) {
                 $sl = strtolower($sc_row['status']);
-                if (in_array($sl, ['pending manager approval','pending manager confirmation','pending validation','pending verification','pending resolution','awaiting replacement'])) {
+                if (in_array($sl, ['pending manager approval','pending manager confirmation','pending validation','pending verification','pending admin oversight','pending resolution','awaiting replacement'])) {
                     $cnt_p++;
-                } elseif (in_array($sl, ['confirmed','approved','validated','verified','ready for stock-in','adjusted','stock-in complete'])) {
+                } elseif (in_array($sl, ['confirmed','approved','validated','verified','ready for stock-in','adjusted','stock-in complete','partial delivery','damaged items','closed'])) {
                     $cnt_v++;
                     $total_qty_v += (float)$sc_row['quantity'];
-                } elseif (in_array($sl, ['discrepancy','rejected','flagged','returned','returned to supplier'])) {
+                } elseif (in_array($sl, ['discrepancy','rejected','rejected delivery','flagged','returned','returned to staff','returned to supplier'])) {
                     $cnt_r++;
                 }
             }

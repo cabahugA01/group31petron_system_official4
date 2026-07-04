@@ -259,6 +259,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $ft_stmt = $pdo->prepare("SELECT id FROM fuel_types WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1");
                 $ft_stmt->execute([$req['fuel_type']]);
                 $fuel_type_id = (int)($ft_stmt->fetchColumn() ?: 0);
+                
+                // If fuel type not found, create it
+                if ($fuel_type_id === 0) {
+                    $pdo->prepare("INSERT INTO fuel_types (name) VALUES (?)")->execute([$req['fuel_type']]);
+                    $fuel_type_id = (int)$pdo->lastInsertId();
+                }
+                
+                // Ensure we have a valid fuel_type_id
+                if ($fuel_type_id === 0) {
+                    throw new Exception("Unable to resolve or create fuel type: " . $req['fuel_type']);
+                }
 
                 // Check if existing PO exists
                 $stmtPO = $pdo->prepare("SELECT id FROM fuel_purchase_orders WHERE po_number = ? AND station_id = ?");
@@ -630,16 +641,14 @@ include __DIR__ . '/../partials/header.php';
     text-decoration: none;
     box-sizing: border-box;
 }
+.txn-btn-info { color: #6b7280 !important; border-color: #6b7280 !important; }
+.txn-btn-info:hover { background: #6b7280 !important; color: #fff !important; }
+.txn-btn-secondary { color: #002F6C !important; border-color: #002F6C !important; }
+.txn-btn-secondary:hover { background: #002F6C !important; color: #fff !important; }
 .txn-btn-approve { color: #16a34a !important; border-color: #16a34a !important; }
 .txn-btn-approve:hover { background: #16a34a !important; color: #fff !important; }
 .txn-btn-reject { color: #dc2626 !important; border-color: #dc2626 !important; }
 .txn-btn-reject:hover { background: #dc2626 !important; color: #fff !important; }
-.txn-btn-adjust { color: #f59e0b !important; border-color: #f59e0b !important; }
-.txn-btn-adjust:hover { background: #f59e0b !important; color: #fff !important; }
-.txn-btn-info { color: #0284c7 !important; border-color: #0284c7 !important; }
-.txn-btn-info:hover { background: #0284c7 !important; color: #fff !important; }
-.txn-btn-secondary { color: #6b7280 !important; border-color: #6b7280 !important; }
-.txn-btn-secondary:hover { background: #6b7280 !important; color: #fff !important; }
 
 /* Modals */
 .modal-overlay {
@@ -653,6 +662,8 @@ include __DIR__ . '/../partials/header.php';
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;
+    padding: 20px;
+    overflow-y: auto;
 }
 .modal-overlay.open {
     opacity: 1;
@@ -662,9 +673,14 @@ include __DIR__ . '/../partials/header.php';
     background: #fff;
     border-radius: 8px;
     box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
-    max-width: 95%;
+    width: 90%;
+    max-width: 720px;
     max-height: 90vh;
-    overflow-y: auto;
+    overflow: hidden;
+    margin: auto;
+    position: relative;
+    display: flex;
+    flex-direction: column;
 }
 .modal-header {
     padding: 16px 20px;
@@ -672,6 +688,7 @@ include __DIR__ . '/../partials/header.php';
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-shrink: 0;
 }
 .modal-header h3 {
     margin: 0;
@@ -681,6 +698,9 @@ include __DIR__ . '/../partials/header.php';
 }
 .modal-body {
     padding: 20px;
+    overflow-y: auto;
+    max-height: calc(90vh - 140px);
+    flex: 1;
 }
 .modal-footer {
     padding: 12px 20px;
@@ -688,6 +708,8 @@ include __DIR__ . '/../partials/header.php';
     display: flex;
     justify-content: flex-end;
     gap: 8px;
+    flex-shrink: 0;
+    background: #fff;
 }
 .btn-cancel {
     background: #fff;
@@ -702,6 +724,107 @@ include __DIR__ . '/../partials/header.php';
 .btn-cancel:hover {
     background: #f8fafc;
 }
+/* Modal Action Buttons - Dark Blue Style */
+.btn-primary-modal {
+    background: #002F6C;
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.btn-primary-modal:hover {
+    background: #001f4d;
+}
+.btn-approve-confirm {
+    background: #002F6C;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 9px 22px;
+    font-weight: 800;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+.btn-approve-confirm:hover {
+    background: #001f4d;
+}
+.btn-reject-confirm {
+    background: #002F6C;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.btn-reject-confirm:hover {
+    background: #001f4d;
+}
+
+/* Modal Button Custom Overrides - Plain White Background with Outlines */
+.modal-box .btn-cancel,
+.modal-box .btn-primary-modal,
+.modal-box .btn-approve-confirm,
+.modal-box .btn-reject-confirm {
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    border-style: solid !important;
+    border-width: 1px !important;
+    border-radius: 6px !important;
+    padding: 8px 16px !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    height: auto !important;
+    box-shadow: none !important;
+    transition: all 0.15s ease !important;
+}
+
+/* Specific button style variants for readability */
+.modal-box .btn-cancel {
+    color: #475569 !important;
+    border-color: #cbd5e1 !important;
+}
+.modal-box .btn-cancel:hover {
+    background-color: #f8fafc !important;
+    border-color: #94a3b8 !important;
+    color: #1e293b !important;
+}
+
+.modal-box .btn-primary-modal,
+.modal-box .btn-approve-confirm {
+    color: #002F6C !important;
+    border-color: #002F6C !important;
+}
+.modal-box .btn-primary-modal:hover,
+.modal-box .btn-approve-confirm:hover {
+    background-color: #002F6C !important;
+    border-color: #002F6C !important;
+    color: #fff !important;
+}
+
+.modal-box .btn-reject-confirm {
+    color: #dc2626 !important;
+    border-color: #dc2626 !important;
+}
+.modal-box .btn-reject-confirm:hover {
+    background-color: #dc2626 !important;
+    border-color: #dc2626 !important;
+    color: #fff !important;
+}
 </style>
 
 <!-- ══ Page Title / Header ══ -->
@@ -709,9 +832,6 @@ include __DIR__ . '/../partials/header.php';
     <div>
         <h1><i class="fas fa-clipboard-check"></i> Purchase Request Review</h1>
         <div class="sub">Manage and validate store merchandise replenishment requests.</div>
-    </div>
-    <div style="display:flex;align-items:center;gap:10px;">
-        <a href="manager_dashboard.php" class="ato-btn ato-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
 </div>
 
@@ -730,44 +850,44 @@ include __DIR__ . '/../partials/header.php';
 <!-- ══ Summary Cards ══ -->
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;">
     <!-- Total Requests -->
-    <div style="background:#fff;border-left:5px solid #002F6C;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Total Requests</div>
-            <div style="font-size:24px;font-weight:800;color:#002F6C;margin-top:4px;"><?= number_format($summary_total_requests) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_total_requests) ?></div>
         </div>
-        <div style="background:#e8f4fd;color:#002F6C;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-list-ol"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-list-ol"></i></div>
     </div>
     <!-- Pending Requests -->
-    <div style="background:#fff;border-left:5px solid #fd7e14;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Pending Requests</div>
-            <div style="font-size:24px;font-weight:800;color:#fd7e14;margin-top:4px;"><?= number_format($summary_pending_requests) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_pending_requests) ?></div>
         </div>
-        <div style="background:#fff3cd;color:#fd7e14;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-hourglass-half"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-hourglass-half"></i></div>
     </div>
     <!-- Approved Requests -->
-    <div style="background:#fff;border-left:5px solid #28a745;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Approved Requests</div>
-            <div style="font-size:24px;font-weight:800;color:#28a745;margin-top:4px;"><?= number_format($summary_approved_requests) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_approved_requests) ?></div>
         </div>
-        <div style="background:#e6f4ea;color:#28a745;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-check-circle"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-check-circle"></i></div>
     </div>
     <!-- Rejected Requests -->
-    <div style="background:#fff;border-left:5px solid #dc3545;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Rejected Requests</div>
-            <div style="font-size:24px;font-weight:800;color:#dc3545;margin-top:4px;"><?= number_format($summary_rejected_requests) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_rejected_requests) ?></div>
         </div>
-        <div style="background:#fce8e6;color:#dc3545;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
     </div>
     <!-- Total Requested Items -->
-    <div style="background:#fff;border-left:5px solid #6f42c1;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Total Requested Items</div>
-            <div style="font-size:24px;font-weight:800;color:#6f42c1;margin-top:4px;"><?= number_format($summary_total_items) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_total_items) ?></div>
         </div>
-        <div style="background:#f3e8fd;color:#6f42c1;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-boxes"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-boxes"></i></div>
     </div>
 </div>
 
@@ -909,12 +1029,6 @@ include __DIR__ . '/../partials/header.php';
                 <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:5px;">Search</label>
                 <input type="text" id="reqSearch" placeholder="Search ID / Product..." oninput="filterReqTable()" style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; width:100%; box-sizing:border-box;">
             </div>
-        </div>
-
-        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
-            <button onclick="exportReqTablePDF()" class="flt-btn flt-btn-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
-            <button onclick="exportReqTableExcel()" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
-            <button onclick="exportReqTableCSV()" class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</button>
         </div>
     </div>
 
@@ -1124,7 +1238,9 @@ include __DIR__ . '/../partials/header.php';
               <span style="color:<?= $stock_cls ?>;font-size:10px;font-weight:700;display:block;"><?= htmlspecialchars($fr['stock_status']) ?></span>
             <?php endif; ?>
           </td>
-          <td style="text-align:center;font-weight:800;color:#002F70;"><?= number_format($fr['requested_liters'] ?? 0, 2) ?></td>
+          <td style="text-align:center;font-weight:800;color:#002F70;">
+            <?= number_format($fr['approved_liters'] ?? $fr['requested_liters'] ?? 0, 2) ?>
+          </td>
           <td style="text-align:center;">
             <?php if ($fr['approved_liters'] !== null): ?>
               <strong style="color:#28a745;"><?= number_format($fr['approved_liters'], 2) ?></strong>
@@ -1179,7 +1295,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="modal-box" style="width:500px;">
         <div class="modal-header">
             <h3><i class="fas fa-eye"></i> Fuel Request Details</h3>
-            <button onclick="closeFuelModal('fuelDetailsModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;">&times;</button>
         </div>
         <div class="modal-body">
             <table style="width:100%; border-collapse:collapse; font-size:13px;">
@@ -1206,7 +1321,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="modal-box" style="width:450px;">
         <div class="modal-header">
             <h3><i class="fas fa-comment-dots"></i> Review Remarks</h3>
-            <button onclick="closeFuelModal('fuelRemarksModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;">&times;</button>
         </div>
         <form action="manager_stock_request_review.php?subtab=fuel" method="POST">
             <input type="hidden" name="action" value="fuel_add_remarks">
@@ -1222,7 +1336,7 @@ include __DIR__ . '/../partials/header.php';
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="submit" style="background:#002F6C; color:#fff; border:none; padding:8px 16px; border-radius:6px; font-weight:700; font-size:13px; cursor:pointer;">Save Remarks</button>
+                <button type="submit" class="btn-primary-modal">Save Remarks</button>
                 <button type="button" onclick="closeFuelModal('fuelRemarksModal')" class="btn-cancel">Cancel</button>
             </div>
         </form>
@@ -1231,18 +1345,17 @@ include __DIR__ . '/../partials/header.php';
 
 <!-- ── Fuel Purchase Order Form Modal (Generate PO) ── -->
 <div class="modal-overlay" id="fuelPOModal">
-    <div class="modal-box" style="width:620px; padding:0; overflow:hidden; border-radius:10px;">
-        <div style="background:#795548; color:#fff; padding:16px 24px; display:flex; align-items:center; justify-content:space-between;">
+    <div class="modal-box" style="width:620px; max-height:90vh; padding:0; overflow:hidden; border-radius:10px; display:flex; flex-direction:column;">
+        <div style="background:#fff; color:#002F6C; padding:16px 24px; border-bottom:2px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
             <div>
-                <h3 style="margin:0; font-size:16px; font-weight:800; letter-spacing:0.5px; color:#fff;">Fuel Purchase Order Form</h3>
-                <div style="font-size:11px; opacity:0.85; margin-top:2px; font-weight:700; letter-spacing:1px;">FUEL PURCHASE ORDER</div>
+                <h3 style="margin:0; font-size:16px; font-weight:800; letter-spacing:0.5px; color:#002F6C;"><i class='fas fa-gas-pump' style='margin-right:8px;'></i>Fuel Purchase Order Form</h3>
+                <div style="font-size:11px; color:#64748b; margin-top:2px; font-weight:600; letter-spacing:0.5px;">Generate fuel PO &amp; forward to Admin for final approval</div>
             </div>
-            <button onclick="closeFuelModal('fuelPOModal')" style="background:none; border:none; color:#fff; font-size:24px; cursor:pointer;">&times;</button>
         </div>
-        <form action="manager_stock_request_review.php?subtab=fuel" method="POST" style="margin:0;">
+        <form action="manager_stock_request_review.php?subtab=fuel" method="POST" style="margin:0; display:flex; flex-direction:column; flex:1; min-height:0;">
             <input type="hidden" name="action" value="fuel_generate_po">
             <input type="hidden" name="request_id" id="fuelPOReqId">
-            <div style="padding:20px; max-height:75vh; overflow-y:auto;">
+            <div style="padding:20px; overflow-y:auto; flex:1;">
                 
                 <!-- Form Fields Grid -->
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; background:#fdfbf7; padding:16px; border-radius:8px; border:1px solid #ebd8c8;">
@@ -1320,7 +1433,7 @@ include __DIR__ . '/../partials/header.php';
             </div>
             <div style="padding:12px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:10px;">
                 <button type="button" onclick="closeFuelModal('fuelPOModal')" class="btn-cancel">Cancel</button>
-                <button type="submit" style="background:#16a34a; color:#fff; border:none; border-radius:6px; padding:9px 22px; font-weight:800; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                <button type="submit" class="btn-approve-confirm">
                     <i class="fas fa-check-circle"></i> Generate PO
                 </button>
             </div>
@@ -1333,7 +1446,6 @@ include __DIR__ . '/../partials/header.php';
   <div class="modal-box" style="width:440px;">
     <div class="modal-header">
       <h3><i class="fas fa-times-circle" style="color:#dc3545;"></i> Reject Fuel Request</h3>
-      <button onclick="closeFuelModal('fuelRejectModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;">&times;</button>
     </div>
     <form method="post" action="manager_stock_request_review.php?subtab=fuel">
       <div class="modal-body">
@@ -1362,7 +1474,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="modal-box" style="width:500px;">
         <div class="modal-header">
             <h3><i class="fas fa-eye"></i> Purchase Request Details</h3>
-            <button onclick="closeDetailsModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;">&times;</button>
         </div>
         <div class="modal-body">
             <table style="width:100%; border-collapse:collapse; font-size:13px;">
@@ -1388,18 +1499,17 @@ include __DIR__ . '/../partials/header.php';
 
 <!-- ══ Modal 2: Purchase Order Form (Approve & Generate PO Modal) ══ -->
 <div class="modal-overlay" id="approvePOModal">
-    <div class="modal-box" style="width:620px; padding:0; overflow:hidden; border-radius:10px;">
-        <div style="background:#002F6C; color:#fff; padding:16px 24px; display:flex; align-items:center; justify-content:space-between;">
+    <div class="modal-box" style="width:620px; max-height:90vh; padding:0; overflow:hidden; border-radius:10px; display:flex; flex-direction:column;">
+        <div style="background:#fff; color:#002F6C; padding:16px 24px; border-bottom:2px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
             <div>
-                <h3 style="margin:0; font-size:16px; font-weight:800; letter-spacing:0.5px; color:#fff;">Purchase Order Form</h3>
-                <div style="font-size:11px; opacity:0.85; margin-top:2px; font-weight:700; letter-spacing:1px;">PURCHASE ORDER</div>
+                <h3 style="margin:0; font-size:16px; font-weight:800; letter-spacing:0.5px; color:#002F6C;"><i class='fas fa-file-invoice' style='margin-right:8px;'></i>Purchase Order Form</h3>
+                <div style="font-size:11px; color:#64748b; margin-top:2px; font-weight:600; letter-spacing:0.5px;">Generate &amp; forward to Admin for final approval</div>
             </div>
-            <button onclick="closeApprovePOModal()" style="background:none; border:none; color:#fff; font-size:24px; cursor:pointer;">&times;</button>
         </div>
-        <form action="" method="POST" style="margin:0;">
+        <form action="" method="POST" style="margin:0; display:flex; flex-direction:column; flex:1; min-height:0;">
             <input type="hidden" name="action" value="approve_generate_po">
             <input type="hidden" name="request_id" id="poReqId">
-            <div style="padding:20px; max-height:75vh; overflow-y:auto;">
+            <div style="padding:20px; overflow-y:auto; flex:1;">
                 
                 <!-- Form Fields Grid -->
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; background:#f8fafc; padding:16px; border-radius:8px; border:1px solid #e2e8f0;">
@@ -1478,7 +1588,7 @@ include __DIR__ . '/../partials/header.php';
             </div>
             <div style="padding:12px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:10px;">
                 <button type="button" onclick="closeApprovePOModal()" class="btn-cancel">Cancel</button>
-                <button type="submit" style="background:#16a34a; color:#fff; border:none; border-radius:6px; padding:9px 22px; font-weight:800; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                <button type="submit" class="btn-approve-confirm">
                     <i class="fas fa-check-circle"></i> Generate PO
                 </button>
             </div>
@@ -1491,7 +1601,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="modal-box" style="width:450px;">
         <div class="modal-header">
             <h3 style="color:#dc3545;"><i class="fas fa-times-circle"></i> Reject Purchase Request</h3>
-            <button onclick="closeRejectModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;">&times;</button>
         </div>
         <form action="" method="POST">
             <input type="hidden" name="action" value="reject_request">
@@ -1508,7 +1617,7 @@ include __DIR__ . '/../partials/header.php';
             </div>
             <div class="modal-footer">
                 <button type="button" onclick="closeRejectModal()" class="btn-cancel">Cancel</button>
-                <button type="submit" style="background:#dc3545;color:#fff;border:none;border-radius:6px;padding:8px 16px;font-weight:700;cursor:pointer;">Confirm Rejection</button>
+                <button type="submit" class="btn-reject-confirm">Confirm Rejection</button>
             </div>
         </form>
     </div>
@@ -1519,7 +1628,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="modal-box" style="width:450px;">
         <div class="modal-header">
             <h3><i class="fas fa-comment-dots"></i> Add / Edit Remarks</h3>
-            <button onclick="closeRemarksModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;">&times;</button>
         </div>
         <form action="" method="POST">
             <input type="hidden" name="action" value="add_remarks">
@@ -1536,7 +1644,7 @@ include __DIR__ . '/../partials/header.php';
             </div>
             <div class="modal-footer">
                 <button type="button" onclick="closeRemarksModal()" class="btn-cancel">Cancel</button>
-                <button type="submit" style="background:#002F70;color:#fff;border:none;border-radius:6px;padding:8px 16px;font-weight:700;cursor:pointer;">Save Remarks</button>
+                <button type="submit" class="btn-primary-modal">Save Remarks</button>
             </div>
         </form>
     </div>

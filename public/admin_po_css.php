@@ -6,13 +6,17 @@
 .po-int-head h1{font-size:22px;font-weight:700;color:#00264D;margin:0;text-transform:uppercase;display:flex;align-items:center;gap:8px;}
 .po-int-head .sub{font-size:13px;color:#666;margin-top:4px;}
 .po-sum-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px;}
-.po-sum-card{background:#fff;border-radius:10px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.07);border:1px solid #e2e8f0;border-left:5px solid #cbd5e1;display:flex;align-items:center;justify-content:space-between;}
-.po-sum-card.blue{border-left-color:#002F70;} .po-sum-card.orange{border-left-color:#fd7e14;}
-.po-sum-card.green{border-left-color:#28a745;} .po-sum-card.teal{border-left-color:#17a2b8;}
-.po-sum-card.red{border-left-color:#dc3545;}
+.po-sum-card{background:#fff;border-radius:10px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.07);border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;}
 .po-sum-label{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;}
-.po-sum-val{font-size:26px;font-weight:800;color:#002F70;margin-top:2px;}
+.po-sum-val{font-size:26px;font-weight:800;color:#002F70;margin-top:2px;text-decoration:none !important;}
 .po-sum-icon{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;}
+
+/* Icon colors for different card types */
+.po-sum-card.blue .po-sum-icon{color:#002F70;}
+.po-sum-card.orange .po-sum-icon{color:#fd7e14;}
+.po-sum-card.green .po-sum-icon{color:#28a745;}
+.po-sum-card.teal .po-sum-icon{color:#17a2b8;}
+.po-sum-card.red .po-sum-icon{color:#dc3545;}
 .po-filter-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:18px;}
 .po-filter-bar input,.po-filter-bar select{padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;color:#334155;outline:none;}
 .po-filter-bar input:focus,.po-filter-bar select:focus{border-color:#002F70;}

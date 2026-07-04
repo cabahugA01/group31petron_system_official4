@@ -17,7 +17,6 @@ $station_id = user_station_id();
 if (!in_array($role, ['manager', 'admin', 'superadmin', 'developer'])) {
     die('Unauthorized');
 }
-
 $format      = strtolower(trim($_GET['format'] ?? 'excel'));
 $search      = trim($_GET['search'] ?? '');
 $type        = trim($_GET['type'] ?? '');
@@ -27,6 +26,11 @@ $payment     = trim($_GET['payment'] ?? '');
 $dateFrom    = trim($_GET['date_from'] ?? '');
 $dateTo      = trim($_GET['date_to'] ?? '');
 $profileId   = (int)($_GET['profile_id'] ?? 0);
+
+if ($format === 'pdf' || $profileId > 0) {
+    header('Content-Type: text/html; charset=utf-8');
+}
+
 
 // Station name
 $station_name = '';
@@ -193,8 +197,8 @@ tr:nth-child(even) td{background:#f8fafc;}
         <td><?php echo ucfirst($c['customer_type']); ?></td>
         <td><?php echo htmlspecialchars($c['company_name'] ?: '—'); ?></td>
         <td><?php echo htmlspecialchars($c['contact_number']); ?></td>
-        <td>₱<?php echo number_format($c['outstanding_balance'], 2); ?></td>
-        <td>₱<?php echo number_format($c['credit_limit'], 2); ?></td>
+        <td>&#x20B1;<?php echo number_format($c['outstanding_balance'], 2); ?></td>
+        <td>&#x20B1;<?php echo number_format($c['credit_limit'], 2); ?></td>
         <td><?php echo ucfirst($c['verification_status']); ?></td>
         <td><?php echo ucfirst($c['payment_status']); ?></td>
         <td><?php echo ucfirst($c['status']); ?></td>
@@ -281,12 +285,12 @@ td{padding:5px 8px;border:1px solid #ddd;font-size:10px;}
 <div class="section">
 <h2>Financial Information</h2>
 <table>
-<tr><th>Outstanding Balance</th><td><strong>₱<?php echo number_format($ob, 2); ?></strong></td></tr>
-<tr><th>Credit Limit</th><td>₱<?php echo number_format($c['credit_limit'] ?? 0, 2); ?></td></tr>
-<tr><th>Total Purchased</th><td>₱<?php echo number_format($totalPurchased, 2); ?></td></tr>
-<tr><th>Fuel Transactions</th><td>₱<?php echo number_format($fuelAmt, 2); ?></td></tr>
-<tr><th>Merchandise</th><td>₱<?php echo number_format($merchAmt, 2); ?></td></tr>
-<tr><th>Job Orders</th><td>₱<?php echo number_format($jobAmt, 2); ?></td></tr>
+<tr><th>Outstanding Balance</th><td><strong>&#x20B1;<?php echo number_format($ob, 2); ?></strong></td></tr>
+<tr><th>Credit Limit</th><td>&#x20B1;<?php echo number_format($c['credit_limit'] ?? 0, 2); ?></td></tr>
+<tr><th>Total Purchased</th><td>&#x20B1;<?php echo number_format($totalPurchased, 2); ?></td></tr>
+<tr><th>Fuel Transactions</th><td>&#x20B1;<?php echo number_format($fuelAmt, 2); ?></td></tr>
+<tr><th>Merchandise</th><td>&#x20B1;<?php echo number_format($merchAmt, 2); ?></td></tr>
+<tr><th>Job Orders</th><td>&#x20B1;<?php echo number_format($jobAmt, 2); ?></td></tr>
 </table>
 </div>
 </div>

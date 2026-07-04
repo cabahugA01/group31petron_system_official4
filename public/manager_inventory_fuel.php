@@ -453,6 +453,48 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     color: white !important;
 }
 
+/* Export Button Styles */
+.flt-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid;
+    background: white !important;
+    transition: all 0.2s;
+    white-space: nowrap;
+    text-decoration: none;
+}
+.flt-btn-excel {
+    color: #1d6f42 !important;
+    border-color: #1d6f42 !important;
+}
+.flt-btn-excel:hover {
+    background: #1d6f42 !important;
+    color: #fff !important;
+}
+.flt-btn-csv {
+    color: #002F70 !important;
+    border-color: #002F70 !important;
+}
+.flt-btn-csv:hover {
+    background: #002F70 !important;
+    color: #fff !important;
+}
+.flt-btn-pdf {
+    color: #dc2626 !important;
+    border-color: #dc2626 !important;
+}
+.flt-btn-pdf:hover {
+    background: #dc2626 !important;
+    color: #fff !important;
+}
+
 /* == MODAL OVERLAY == */
 .modal-overlay {
     display: none;
@@ -484,7 +526,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     border-bottom: 1px solid #e2e8f0;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     background: #f8fafc;
 }
 .modal-header h3 {
@@ -528,6 +570,21 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     border-bottom: 1px solid #f1f5f9;
     color: #334155;
 }
+
+/* Modal tab button overrides to prevent global button overrides */
+.modal-tab-btn {
+    background: none !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+.modal-tab-btn.active {
+    border-bottom: 2px solid #002F70 !important;
+    color: #002F70 !important;
+}
+.modal-tab-btn:not(.active) {
+    color: #64748b !important;
+}
 </style>
 
 <!-- ══ Page Header ══ -->
@@ -536,9 +593,38 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
         <h1><i class="fas fa-gas-pump"></i> Fuel Inventory Monitoring</h1>
         <div class="sub">Monitor real-time tank volumes, capacity, and movements.</div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;">
-        <a href="manager_dashboard.php" class="ato-btn ato-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
+    
+    <?php if ($active_tab === 'overview'): ?>
+    <!-- Export Buttons (Overview Tab Only) -->
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
+        <button onclick="exportTableToExcel('fuelTanksTable','manager_fuel_inventory_<?= date('Ymd') ?>')"
+                class="flt-btn flt-btn-excel" title="Export to Excel">
+            <i class="fas fa-file-excel"></i> Excel
+        </button>
+        <button onclick="exportTableToCSV('fuelTanksTable','manager_fuel_inventory_<?= date('Ymd') ?>.csv')"
+                class="flt-btn flt-btn-csv" title="Export to CSV">
+            <i class="fas fa-file-csv"></i> CSV
+        </button>
+        <button onclick="exportTableToPDF('fuelTanksTable','Fuel Inventory Monitoring')"
+                class="flt-btn flt-btn-pdf" title="Export to PDF">
+            <i class="fas fa-file-pdf"></i> PDF
+        </button>
     </div>
+    <?php elseif ($active_tab === 'alerts'): ?>
+    <!-- Back Button (Alerts Tab) -->
+    <div>
+        <a href="manager_inventory_fuel.php?tab=overview" class="ato-btn ato-btn-back">
+            <i class="fas fa-arrow-left"></i> Back
+        </a>
+    </div>
+    <?php elseif ($active_tab === 'movement'): ?>
+    <!-- Back Button (Movement Tab) -->
+    <div>
+        <a href="manager_inventory_fuel.php?tab=overview" class="ato-btn ato-btn-back">
+            <i class="fas fa-arrow-left"></i> Back
+        </a>
+    </div>
+    <?php endif; ?>
 </div>
 
 <!-- ══ Sub-Tab Navigation ══ -->
@@ -561,44 +647,44 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 <!-- ══ Summary Cards (Overview) ══ -->
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;">
     <!-- Total Tanks -->
-    <div style="background:#fff;border-left:5px solid #002F6C;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Total Tanks</div>
-            <div style="font-size:24px;font-weight:800;color:#002F6C;margin-top:4px;"><?= number_format($total_tanks) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($total_tanks) ?></div>
         </div>
-        <div style="background:#e8f4fd;color:#002F6C;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-database"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-database"></i></div>
     </div>
     <!-- Normal Tanks -->
-    <div style="background:#fff;border-left:5px solid #28a745;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Normal Tanks</div>
-            <div style="font-size:24px;font-weight:800;color:#28a745;margin-top:4px;"><?= number_format($normal_tanks) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($normal_tanks) ?></div>
         </div>
-        <div style="background:#e6f4ea;color:#28a745;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-check-circle"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-check-circle"></i></div>
     </div>
     <!-- Low Fuel Tanks -->
-    <div style="background:#fff;border-left:5px solid #fd7e14;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Low Fuel Tanks</div>
-            <div style="font-size:24px;font-weight:800;color:#fd7e14;margin-top:4px;"><?= number_format($low_tanks) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($low_tanks) ?></div>
         </div>
-        <div style="background:#fff3cd;color:#fd7e14;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
     <!-- Critical Fuel Tanks -->
-    <div style="background:#fff;border-left:5px solid #dc3545;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Critical Fuel Tanks</div>
-            <div style="font-size:24px;font-weight:800;color:#dc3545;margin-top:4px;"><?= number_format($critical_tanks) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($critical_tanks) ?></div>
         </div>
-        <div style="background:#fce8e6;color:#dc3545;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
     </div>
     <!-- Total Fuel Volume -->
-    <div style="background:#fff;border-left:5px solid #6f42c1;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Total Fuel Volume</div>
-            <div style="font-size:24px;font-weight:800;color:#6f42c1;margin-top:4px;"><?= number_format($total_fuel_volume, 0) ?> L</div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($total_fuel_volume, 0) ?> L</div>
         </div>
-        <div style="background:#f3e8fd;color:#6f42c1;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-gas-pump"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-gas-pump"></i></div>
     </div>
 </div>
 
@@ -627,13 +713,6 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
                 <option value="critical">🔴 Critical</option>
                 <option value="out of stock">🔴 Out of Stock</option>
             </select>
-
-            <button onclick="exportFuelTablePDF()" class="int-btn-outline" style="border-color:#dc3545;color:#dc3545;font-size:12px;padding:5px 12px;height:32px;">
-                <i class="fas fa-file-pdf"></i> Export PDF
-            </button>
-            <button onclick="exportFuelTableExcel()" class="int-btn-outline" style="border-color:#28a745;color:#28a745;font-size:12px;padding:5px 12px;height:32px;">
-                <i class="fas fa-file-excel"></i> Export Excel
-            </button>
         </div>
     </div>
 
@@ -691,36 +770,36 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 <!-- ══ Summary Cards (Alerts) ══ -->
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;">
     <!-- Low Fuel Tanks -->
-    <div style="background:#fff;border-left:5px solid #fd7e14;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Low Fuel Tanks</div>
-            <div style="font-size:24px;font-weight:800;color:#fd7e14;margin-top:4px;"><?= number_format($alert_low_tanks) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($alert_low_tanks) ?></div>
         </div>
-        <div style="background:#fff3cd;color:#fd7e14;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
     <!-- Critical Fuel Tanks -->
-    <div style="background:#fff;border-left:5px solid #dc3545;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Critical Fuel Tanks</div>
-            <div style="font-size:24px;font-weight:800;color:#dc3545;margin-top:4px;"><?= number_format($alert_critical_tanks) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($alert_critical_tanks) ?></div>
         </div>
-        <div style="background:#fce8e6;color:#dc3545;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
     </div>
     <!-- Empty Tanks -->
-    <div style="background:#fff;border-left:5px solid #000;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Empty Tanks</div>
-            <div style="font-size:24px;font-weight:800;color:#000;margin-top:4px;"><?= number_format($alert_empty_tanks) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($alert_empty_tanks) ?></div>
         </div>
-        <div style="background:#e2e8f0;color:#000;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-ban"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-ban"></i></div>
     </div>
     <!-- Tanks Needing Delivery -->
-    <div style="background:#fff;border-left:5px solid #d9534f;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Tanks Needing Delivery</div>
-            <div style="font-size:24px;font-weight:800;color:#d9534f;margin-top:4px;"><?= number_format($alert_needing_delivery) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($alert_needing_delivery) ?></div>
         </div>
-        <div style="background:#fce8e6;color:#d9534f;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-truck-loading"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-truck-loading"></i></div>
     </div>
 </div>
 
@@ -749,15 +828,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
                 <option value="empty tank">Empty Tank</option>
             </select>
 
-            <button onclick="exportAlertTablePDF()" class="int-btn-outline" style="border-color:#dc3545;color:#dc3545;font-size:12px;padding:5px 12px;height:32px;">
-                <i class="fas fa-file-pdf"></i> PDF
-            </button>
-            <button onclick="exportAlertTableExcel()" class="int-btn-outline" style="border-color:#28a745;color:#28a745;font-size:12px;padding:5px 12px;height:32px;">
-                <i class="fas fa-file-excel"></i> Excel
-            </button>
-            <button onclick="exportAlertTableCSV()" class="int-btn-outline" style="border-color:#002F70;color:#002F70;font-size:12px;padding:5px 12px;height:32px;">
-                <i class="fas fa-file-csv"></i> CSV
-            </button>
+
         </div>
     </div>
 
@@ -815,33 +886,33 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 <?php elseif ($active_tab === 'movement'): ?>
 <!-- ══ Summary Cards (Movement) ══ -->
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;">
-    <div style="background:#fff;border-left:5px solid #002F6C;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Total Movements</div>
-            <div style="font-size:24px;font-weight:800;color:#002F6C;margin-top:4px;"><?= number_format($mov_total) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($mov_total) ?></div>
         </div>
-        <div style="background:#e8f4fd;color:#002F6C;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-exchange-alt"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-exchange-alt"></i></div>
     </div>
-    <div style="background:#fff;border-left:5px solid #28a745;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Fuel Deliveries</div>
-            <div style="font-size:24px;font-weight:800;color:#28a745;margin-top:4px;"><?= number_format($mov_deliveries) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($mov_deliveries) ?></div>
         </div>
-        <div style="background:#e6f4ea;color:#28a745;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-truck"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-truck"></i></div>
     </div>
-    <div style="background:#fff;border-left:5px solid #dc3545;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Fuel Sales</div>
-            <div style="font-size:24px;font-weight:800;color:#dc3545;margin-top:4px;"><?= number_format($mov_sales) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($mov_sales) ?></div>
         </div>
-        <div style="background:#fce8e6;color:#dc3545;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-gas-pump"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-gas-pump"></i></div>
     </div>
-    <div style="background:#fff;border-left:5px solid #6f42c1;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Fuel Adjustments</div>
-            <div style="font-size:24px;font-weight:800;color:#6f42c1;margin-top:4px;"><?= number_format($mov_adjustments) ?></div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($mov_adjustments) ?></div>
         </div>
-        <div style="background:#f3e8fd;color:#6f42c1;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-balance-scale"></i></div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-balance-scale"></i></div>
     </div>
 </div>
 
@@ -867,9 +938,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
                 <option value="sale">Sale</option>
                 <option value="adjustment">Adjustment</option>
             </select>
-            <button onclick="exportMovTablePDF()" class="int-btn-outline" style="border-color:#dc3545;color:#dc3545;font-size:12px;padding:5px 12px;height:32px;"><i class="fas fa-file-pdf"></i> PDF</button>
-            <button onclick="exportMovTableExcel()" class="int-btn-outline" style="border-color:#28a745;color:#28a745;font-size:12px;padding:5px 12px;height:32px;"><i class="fas fa-file-excel"></i> Excel</button>
-            <button onclick="exportMovTableCSV()" class="int-btn-outline" style="border-color:#002F70;color:#002F70;font-size:12px;padding:5px 12px;height:32px;"><i class="fas fa-file-csv"></i> CSV</button>
+
         </div>
     </div>
     <div class="table-wrap">
@@ -939,7 +1008,6 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     <div class="modal-box" style="width:500px;">
         <div class="modal-header">
             <h3 id="tankModalTitle">Tank Details</h3>
-            <button onclick="closeTankModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;">&times;</button>
         </div>
         <div class="modal-body">
             <table style="width:100%;font-size:13px;border-collapse:collapse;">
@@ -965,7 +1033,6 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     <div class="modal-box" style="width:750px;">
         <div class="modal-header">
             <h3 id="movementModalTitle">Fuel Movement History</h3>
-            <button onclick="closeMovementModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;">&times;</button>
         </div>
         <div class="modal-body" style="padding:0;">
             <div style="display:flex;border-bottom:2px solid #e2e8f0;background:#f8fafc;padding:0 10px;">
@@ -1236,6 +1303,28 @@ function exportFuelTableExcel() {
     } else {
         alert('Excel export not supported on this page.');
     }
+}
+
+function exportFuelTableCSV() {
+    var rows = document.querySelectorAll('#mgrFuelTable tr');
+    var csv = [];
+    rows.forEach(function(row) {
+        if (row.style.display === 'none') return;
+        var cells = row.querySelectorAll('td, th');
+        var data = [];
+        cells.forEach(function(cell) {
+            var text = cell.innerText.trim().replace(/"/g, '""');
+            data.push('"' + text + '"');
+        });
+        if (data.length) csv.push(data.join(','));
+    });
+    var blob = new Blob([csv.join('\n')], {type: 'text/csv'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'fuel_tanks_overview_' + new Date().toISOString().slice(0,10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
 }
 
 // ── Alert Table Filter ──
@@ -1540,7 +1629,6 @@ function exportMovTableCSV() {
     <div class="modal-box" style="width:520px;">
         <div class="modal-header">
             <h3><i class="fas fa-clipboard-list" style="color:#002F70;"></i> Create Fuel Delivery Request</h3>
-            <button onclick="closeCreateFuelRequest()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;">&times;</button>
         </div>
         <div class="modal-body">
             <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;">
@@ -1598,7 +1686,6 @@ function exportMovTableCSV() {
     <div class="modal-box" style="width:540px;">
         <div class="modal-header">
             <h3><i class="fas fa-exchange-alt" style="color:#002F70;"></i> Movement Details</h3>
-            <button onclick="closeMovDetailModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;">&times;</button>
         </div>
         <div class="modal-body">
             <table style="width:100%;font-size:13px;border-collapse:collapse;">

@@ -685,7 +685,6 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
             <div class="sub">Verify and reconcile shift-based pump meter readings and calibration amounts.</div>
         </div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <a href="manager_dashboard.php" class="ato-btn ato-btn-back"><i class="fas fa-arrow-left"></i> Dashboard</a>
             <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'excel'])) ?>" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
             <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'pdf'])) ?>" class="ato-btn ato-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
         </div>

@@ -254,12 +254,12 @@ function get_fuel_tank_label($fuel_type) {
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
-.ssr-wrap { max-width:1800px; margin:0 auto; padding:24px; }
+.ssr-wrap { width: 100%; margin: 0; padding: 0; }
 
-/* Header */
-.ssr-header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
-.ssr-title h1 { font-size:22px; font-weight:700; margin:0 0 4px 0; color:#00264D; display:flex; align-items:center; gap:9px; }
-.ssr-title p  { font-size:13px; color:#6b7280; margin:0; text-transform:uppercase; letter-spacing:0.3px; }
+/* Header standardization */
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:0px !important; }
+.int-head h1 { font-size:22px !important; font-weight:700 !important; color:#002F70 !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head .sub { font-size:13px; color:#64748b; margin-top:4px; }
 
 /* Alert messages styling */
 .ssr-alert { border-radius:8px; padding:12px 18px; margin-bottom:20px; font-size:13px; display:flex; align-items:center; gap:10px; }
@@ -276,13 +276,13 @@ include __DIR__ . '/../partials/header.php';
 .ssr-stat-val { font-size:24px; font-weight:800; line-height:1; color:#0f172a; }
 
 /* Status-specific card borders and colors */
-.card-pending  { border-left:4px solid #f59e0b; }
+.card-pending  { }
 .card-pending  .ssr-stat-icon { background:#fffbeb; color:#d97706; }
-.card-approved { border-left:4px solid #10b981; }
+.card-approved { }
 .card-approved .ssr-stat-icon { background:#ecfdf5; color:#059669; }
-.card-rejected { border-left:4px solid #ef4444; }
+.card-rejected { }
 .card-rejected .ssr-stat-icon { background:#fef2f2; color:#dc2626; }
-.card-total    { border-left:4px solid #3b82f6; }
+.card-total    { }
 .card-total    .ssr-stat-icon { background:#eff6ff; color:#2563eb; }
 
 /* Tabs Layout */
@@ -350,7 +350,7 @@ include __DIR__ . '/../partials/header.php';
 .flt-btn-secondary:hover { background:#f1f5f9; color:#334155; }
 .flt-btn-danger    { color:#dc2626; border-color:#fca5a5; }
 .flt-btn-danger:hover    { background:#dc2626; color:#fff; border-color:#dc2626; }
-.flt-btn-info      { color:#0284c7; border-color:#7dd3fc; }
+.flt-btn-info      { color:#0284c7; border-color:#0284c7; background:#fff; }
 .flt-btn-info:hover      { background:#0284c7; color:#fff; border-color:#0284c7; }
 
 /* Modals layout structures */
@@ -378,15 +378,61 @@ include __DIR__ . '/../partials/header.php';
 .ssr-detail-val { font-size:13.5px; font-weight:600; color:#0f172a; }
 .ssr-detail-full { grid-column: span 2; }
 .ssr-detail-notes { background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px 14px; font-size:12.5px; color:#334155; margin-top:4px; line-height:1.5; }
+
+/* Export button styles */
+.exp-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    height: 36px !important;
+    padding: 7px 14px !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    text-decoration: none !important;
+    border: 1px solid transparent !important;
+    transition: all .2s ease-in-out !important;
+    white-space: nowrap !important;
+    background: #fff !important;
+}
+.exp-btn-excel {
+    color: #16a34a !important;
+    border-color: #16a34a !important;
+}
+.exp-btn-excel:hover {
+    background: #16a34a !important;
+    color: #fff !important;
+}
+.exp-btn-csv {
+    color: #002F70 !important;
+    border-color: #002F70 !important;
+}
+.exp-btn-csv:hover {
+    background: #002F70 !important;
+    color: #fff !important;
+}
+.exp-btn-pdf {
+    color: #dc2626 !important;
+    border-color: #dc2626 !important;
+}
+.exp-btn-pdf:hover {
+    background: #dc2626 !important;
+    color: #fff !important;
+}
 </style>
 
 <div class="ssr-wrap">
 
     <!-- Header -->
-    <div class="ssr-header">
-        <div class="ssr-title">
+    <div class="int-head" style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:16px;border-bottom:2px solid #e9ecef;margin-bottom:20px;">
+        <div>
             <h1><i class="fas fa-history"></i> Stock Requests</h1>
-            <p>History &amp; tracking of your submitted stock requests. To create a new request, use the <strong>Stock Request</strong> button in Fuel Inventory or Merchandise Inventory.</p>
+            <div class="sub">History &amp; tracking of your submitted stock requests. To create a new request, use the <strong>Stock Request</strong> button in Fuel Inventory or Merchandise Inventory.</div>
+        </div>
+        <div id="export-buttons-container" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <!-- Export buttons will be dynamically updated based on active tab -->
         </div>
     </div>
 
@@ -466,16 +512,6 @@ include __DIR__ . '/../partials/header.php';
         <div class="ssr-card">
             <div class="ssr-card-head">
                 <div class="ssr-card-title"><i class="fas fa-gas-pump"></i> Fuel Requests Log</div>
-                <div style="display:flex;align-items:center;gap:10px;">
-                    <?php
-                    $export_table_id       = 'fuelSrTable';
-                    $export_filename       = 'fuel_stock_requests_' . date('Ymd');
-                    $export_title          = 'Fuel Stock Requests';
-                    $export_rows_select_id = 'fuelSrRowsLimit';
-                    $export_default_rows   = 10;
-                    require __DIR__ . '/../partials/export_buttons.php';
-                    ?>
-                </div>
             </div>
             <div class="ssr-card-body">
                 <div class="ssr-filter-row">
@@ -587,16 +623,6 @@ include __DIR__ . '/../partials/header.php';
         <div class="ssr-card">
             <div class="ssr-card-head">
                 <div class="ssr-card-title"><i class="fas fa-shopping-basket"></i> Merchandise Requests Log</div>
-                <div style="display:flex;align-items:center;gap:10px;">
-                    <?php
-                    $export_table_id       = 'merchSrTable';
-                    $export_filename       = 'merch_stock_requests_' . date('Ymd');
-                    $export_title          = 'Merchandise Stock Requests';
-                    $export_rows_select_id = 'merchSrRowsLimit';
-                    $export_default_rows   = 10;
-                    require __DIR__ . '/../partials/export_buttons.php';
-                    ?>
-                </div>
             </div>
             <div class="ssr-card-body">
                 
@@ -965,7 +991,39 @@ function switchTab(tab) {
     document.getElementById('tab-' + tab).classList.add('active');
     document.getElementById('panel-' + tab).classList.add('active');
     
+    // Update export buttons based on active tab
+    updateExportButtons(tab);
+    
     history.replaceState(null, '', '#tab-' + tab);
+}
+
+// Update export buttons dynamically
+function updateExportButtons(tab) {
+    var container = document.getElementById('export-buttons-container');
+    if (!container) return;
+    
+    var tableId, filename, title;
+    if (tab === 'fuel') {
+        tableId = 'fuelSrTable';
+        filename = 'fuel_stock_requests_<?= date('Ymd') ?>';
+        title = 'Fuel Stock Requests';
+    } else {
+        tableId = 'merchSrTable';
+        filename = 'merch_stock_requests_<?= date('Ymd') ?>';
+        title = 'Merchandise Stock Requests';
+    }
+    
+    container.innerHTML = `
+        <button onclick="exportTableToExcel('${tableId}', '${filename}.xls')" class="exp-btn exp-btn-excel" style="height:36px;">
+            <i class="fas fa-file-excel"></i> Excel
+        </button>
+        <button onclick="exportTableToCSV('${tableId}', '${filename}.csv')" class="exp-btn exp-btn-csv" style="height:36px;">
+            <i class="fas fa-file-csv"></i> CSV
+        </button>
+        <button onclick="exportTableToPDF('${tableId}', '${title}')" class="exp-btn exp-btn-pdf" style="height:36px;">
+            <i class="fas fa-file-pdf"></i> PDF
+        </button>
+    `;
 }
 
 document.addEventListener('DOMContentLoaded', function() {

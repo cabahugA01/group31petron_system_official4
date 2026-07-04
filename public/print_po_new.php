@@ -30,12 +30,13 @@ $po_items   = [];
 // ── Fetch PO with all related data ────────────────────────────────────────
 try {
     // Helper select columns for sup and st
+    // NOTE: stations table has no 'contact' column; fall back to NULL
     $select_fields = "
         st.name AS station_name,
         st.location AS station_location,
         st.address AS station_address,
         st.vat_tin AS station_vat_tin,
-        st.contact_number AS station_contact,
+        NULL AS station_contact,
         sup.name AS supplier_name,
         sup.contact_person AS supplier_contact_person,
         sup.phone AS supplier_phone,
@@ -395,7 +396,6 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:12px;
 <body>
 
 <div class="btn-print-bar">
-    <a href="admin_purchase_orders.php" class="btn-print btn-back">Back to Oversight</a>
     <button onclick="window.print()" class="btn-print">Print Purchase Order</button>
 </div>
 

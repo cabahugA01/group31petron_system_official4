@@ -278,7 +278,7 @@ $pending_encoded_deliveries = mgr_table_exists($pdo, 'deliveries_oversight')
         $pdo,
         "SELECT COUNT(*) FROM deliveries_oversight
          WHERE {$station_sql}
-           AND LOWER(status) IN ('pending manager approval', 'pending validation', 'approved - ready for stock-in', 'adjusted - ready for stock-in')",
+           AND LOWER(status) IN ('pending manager approval', 'pending validation', 'pending verification', 'pending manager confirmation', 'approved - ready for stock-in', 'adjusted - ready for stock-in')",
         $station_params
     )
     : 0;
@@ -608,7 +608,7 @@ if (mgr_table_exists($pdo, 'deliveries_oversight')) {
                 'staff_stock_in.php' AS stock_url
          FROM deliveries_oversight
          WHERE {$station_sql}
-           AND LOWER(status) IN ('pending manager approval', 'pending validation', 'approved - ready for stock-in', 'adjusted - ready for stock-in')
+           AND LOWER(status) IN ('pending manager approval', 'pending validation', 'pending verification', 'pending manager confirmation', 'approved - ready for stock-in', 'adjusted - ready for stock-in')
          ORDER BY delivery_date ASC, created_at DESC
          LIMIT 8",
         $station_params
@@ -975,7 +975,6 @@ include __DIR__ . '/../partials/header.php';
         color: #0f172a;
     }
 
-    .mgr-page-header,
     .mgr-card,
     .mgr-panel {
         background: #ffffff;
@@ -990,8 +989,8 @@ include __DIR__ . '/../partials/header.php';
         justify-content: space-between;
         flex-wrap: wrap;
         gap: 18px;
-        padding: 22px 24px;
         margin-bottom: 22px;
+        padding: 20px 24px;
     }
 
     .mgr-title-block {
@@ -1078,13 +1077,6 @@ include __DIR__ . '/../partials/header.php';
         padding: 18px;
         overflow: hidden;
     }
-
-    .mgr-card[data-tone="blue"] { border-left: 4px solid #002f70; }
-    .mgr-card[data-tone="green"] { border-left: 4px solid #128143; }
-    .mgr-card[data-tone="amber"] { border-left: 4px solid #d97706; }
-    .mgr-card[data-tone="red"] { border-left: 4px solid #c81e2d; }
-    .mgr-card[data-tone="violet"] { border-left: 4px solid #6d3bd1; }
-    .mgr-card[data-tone="cyan"] { border-left: 4px solid #087990; }
 
     .mgr-card-label {
         color: #56657a;
@@ -1509,7 +1501,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="mgr-page-header">
         <div class="mgr-title-block">
             <h1>Welcome, <?= mgr_h($display_name) ?>!</h1>
-            <p>Monitor station operations, approve requests, manage inventory, pricing, and track daily business performance for <?= mgr_h($station_label) ?>.</p>
+            <p>Monitor station operations, approve requests, manage inventory, pricing, and track daily business performance.</p>
         </div>
         <form method="get" class="mgr-filter-form">
             <input type="date" name="date" value="<?= mgr_h($date_filter) ?>" required>

@@ -9,10 +9,6 @@
       <input type="hidden" id="modalPoType" name="po_type" value="">
       <input type="hidden" id="modalPoDate" name="po_date" value="">
       
-      <div class="po-info-box" style="margin-bottom:12px;">
-        <i class="fas fa-info-circle"></i> Review order details, select delivery schedule, and specify delivery instructions.
-      </div>
-      
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:14px; text-align:left;">
         
         <!-- LEFT COLUMN: PO info & Schedule & Payment -->
@@ -139,19 +135,9 @@
         <!-- Cancel -->
         <button type="button" class="po-ctrl-btn po-btn-back" onclick="document.getElementById('finalizeModal').classList.remove('show')">Cancel</button>
         
-        <!-- Save Draft -->
-        <button type="submit" class="po-ctrl-btn po-btn-back" style="padding:8px 16px;" onclick="setSubmitAction('save_draft')">
-          <i class="fas fa-save"></i> Save Draft
-        </button>
-        
         <!-- Finalize -->
         <button type="submit" class="po-ctrl-btn po-btn-fin" style="padding:8px 16px;" onclick="setSubmitAction('finalize_po')">
           <i class="fas fa-check-circle"></i> Finalize Purchase Order
-        </button>
-        
-        <!-- Print -->
-        <button type="submit" class="po-ctrl-btn po-btn-exp" style="padding:8px 16px; font-weight:700;" onclick="setSubmitAction('print_po')">
-          <i class="fas fa-print"></i> Print Purchase Order
         </button>
       </div>
     </form>

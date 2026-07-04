@@ -494,14 +494,18 @@ textarea.form-control { resize: vertical; font-family: inherit; }
     background: #dc2626 !important;
     color: #ffffff !important;
 }
+/* Header standardization */
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:0px !important; }
+.int-head h1 { font-size:22px !important; font-weight:700 !important; color:#002F70 !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head .sub { font-size:13px; color:#64748b; margin-top:4px; }
 </style>
 
-<div class="page-head">
+<div class="int-head">
     <div>
-        <h1 class="h1"><i class="fas fa-boxes"></i> Record Delivery Receipt</h1>
+        <h1><i class="fas fa-boxes"></i> Record Delivery Receipt</h1>
         <div class="sub">Encode actual delivery details: DR number, Batch ID, received items, quantity, and date received.</div>
     </div>
-    <div class="header-actions">
+    <div style="display:flex;gap:8px;align-items:center;">
         <a href="staff_dashboard.php" class="txn-btn secondary">
             <i class="fas fa-arrow-left"></i> Back to Dashboard
         </a>

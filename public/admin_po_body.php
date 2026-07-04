@@ -16,9 +16,6 @@ $active_tab = $_GET['tab'] ?? 'merch'; // default to merch tab
     <h1><i class="fas fa-file-invoice"></i> Purchase Orders Oversight</h1>
     <div class="sub">Monitor, review and manage all purchase orders for this station.</div>
   </div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;">
-    <a href="admin_dashboard.php" class="po-ctrl-btn po-btn-back"><i class="fas fa-arrow-left"></i> Back</a>
-  </div>
 </div>
 
 <!-- SUMMARY CARDS -->
@@ -61,9 +58,6 @@ $active_tab = $_GET['tab'] ?? 'merch'; // default to merch tab
   <?php if ($filter_date || $filter_status || ($filter_search !== '')): ?>
     <a href="admin_purchase_orders.php?tab=<?= htmlspecialchars($active_tab) ?>" class="po-ctrl-btn po-btn-back"><i class="fas fa-times"></i> Clear</a>
   <?php endif; ?>
-  <div style="flex:1;"></div>
-  <button type="button" class="po-ctrl-btn po-btn-exp" onclick="exportCurrentTabTable()"><i class="fas fa-file-excel"></i> Excel</button>
-  <button type="button" class="po-ctrl-btn po-btn-exp" onclick="printCurrentTabTable()"><i class="fas fa-file-pdf"></i> PDF</button>
 </form>
 
 <!-- ── TAB NAVIGATION ─────────────────────────────────────────────────────── -->
@@ -94,9 +88,10 @@ function renderPoTable($pos, $table_id, $PENDING_ST, $APPROVED_ST, $DELIVERED_ST
     <thead>
       <tr>
         <th style="text-align:left;padding-left:18px;">PO No.</th>
+        <th><?= $is_fuel ? 'Fuel Type' : 'Product' ?></th>
         <th>Supplier</th>
         <th>Date Created</th>
-        <th>Total Items</th>
+        <th>Quantity</th>
         <th>Total Amount</th>
         <th>Created By</th>
         <th>Status</th>
@@ -106,7 +101,7 @@ function renderPoTable($pos, $table_id, $PENDING_ST, $APPROVED_ST, $DELIVERED_ST
     <tbody>
     <?php if (empty($pos)): ?>
       <tr class="no-paginate">
-        <td colspan="8" style="text-align:center;padding:48px;color:#94a3b8;">
+        <td colspan="9" style="text-align:center;padding:48px;color:#94a3b8;">
           <i class="fas <?= $is_fuel ? 'fa-gas-pump' : 'fa-boxes' ?>" style="font-size:2.5rem;display:block;margin-bottom:12px;opacity:.2;"></i>
           No <?= $empty_label ?> purchase orders found.
         </td>
@@ -156,19 +151,20 @@ function renderPoTable($pos, $table_id, $PENDING_ST, $APPROVED_ST, $DELIVERED_ST
         <td style="text-align:left;padding-left:18px;">
           <code style="font-weight:800;font-size:12px;color:#002F70;"><?= htmlspecialchars($po['po_no']) ?></code>
         </td>
+        <td style="font-size:12px;font-weight:600;"><?= htmlspecialchars($po['detail']) ?></td>
         <td style="font-size:12px;"><?= htmlspecialchars($po['supplier']) ?></td>
         <td style="font-size:12px;white-space:nowrap;"><?= $date_fmt ?></td>
-        <td style="font-weight:700;"><?= (int)$po['total_items'] ?> item(s)</td>
+        <td style="font-weight:700;"><?= number_format((float)($po['quantity'] ?? 1), 2) ?> <?= $ptype === 'fuel' ? 'L' : 'pcs' ?></td>
         <td style="font-weight:700;">&#8369;<?= number_format((float)$po['total_amount'], 2) ?></td>
         <td style="font-size:12px;"><?= htmlspecialchars(trim($po['created_by']) ?: '—') ?></td>
         <td><span class="po-badge <?= $badgeCls ?>"><?= $badgeLbl ?></span></td>
         <td>
           <div style="display:flex;flex-direction:column;gap:5px;">
-            <a href="<?= htmlspecialchars($print_url) ?>"
-               target="_blank"
+            <a href="javascript:void(0)"
+               onclick="printPurchaseOrder('<?= htmlspecialchars($print_url, ENT_QUOTES) ?>')"
                class="po-ctrl-btn po-btn-exp"
                style="font-size:11px;padding:6px 10px;justify-content:center;text-decoration:none;display:flex;"
-               title="Print all items in this PO">
+               title="Print this PO">
               <i class="fas fa-print"></i>&nbsp;Print PO
             </a>
             <?php if ($isp): ?>
@@ -229,6 +225,33 @@ function switchTab(tab) {
     var url = new URL(window.location.href);
     url.searchParams.set('tab', tab);
     history.replaceState(null, '', url.toString());
+}
+
+function printPurchaseOrder(printUrl) {
+    // Create or reuse hidden iframe for seamless printing
+    let iframe = document.getElementById('printFramePO');
+    if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'printFramePO';
+        iframe.style.position = 'absolute';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = 'none';
+        iframe.style.visibility = 'hidden';
+        document.body.appendChild(iframe);
+    }
+    
+    // Load print content and trigger print dialog
+    iframe.onload = function() {
+        try {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        } catch (e) {
+            // Fallback to opening in new window if iframe printing fails
+            window.open(printUrl, '_blank');
+        }
+    };
+    iframe.src = printUrl;
 }
 
 function exportCurrentTabTable() {

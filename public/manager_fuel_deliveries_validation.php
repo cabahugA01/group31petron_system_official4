@@ -396,12 +396,12 @@ html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !impor
 .afto-table-hd { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #f1f5f9; flex-wrap: wrap; gap: 8px; }
 .afto-table-title { font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: .3px; margin: 0; }
 .afto-tbl-wrap { width: 100%; max-width: 100%; overflow-x: hidden !important; }
-.afto-tbl { width: 100%; max-width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
+.afto-tbl { width: 100%; max-width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
 .afto-tbl thead tr { background: #002F70; }
-.afto-tbl thead th { padding: 8px 6px; text-align: left; font-size: 10px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: .3px; border-bottom: 2px solid #001a3d; vertical-align: middle; white-space: nowrap; }
+.afto-tbl thead th { padding: 10px 8px; text-align: left; font-size: 12px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: .3px; border-bottom: 2px solid #001a3d; vertical-align: middle; white-space: nowrap; }
 .afto-tbl tbody tr { border-bottom: 1px solid #f1f5f9; transition: background .1s; }
 .afto-tbl tbody tr:hover td { background: #eff6ff; }
-.afto-tbl tbody td { padding: 8px 6px; color: #334155; vertical-align: middle; background: #fff; font-size: 10px; word-wrap: break-word; overflow: hidden; text-overflow: ellipsis; }
+.afto-tbl tbody td { padding: 10px 8px; color: #334155; vertical-align: middle; background: #fff; font-size: 13px; font-weight: 600; word-wrap: break-word; overflow-wrap: break-word; white-space: normal; overflow: visible; text-overflow: clip; }
 
 /* Status Badges */
 .afto-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; white-space: nowrap; text-transform: uppercase; }
@@ -596,31 +596,31 @@ html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !impor
                             $tank_display = !empty($d['tank_assigned']) ? $d['tank_assigned'] : '—';
                         ?>
                             <tr id="del_row_<?= $d['id'] ?>">
-                                <td style="font-weight: 600; color: #00264D; font-size: 9px;"><?= $del_label ?></td>
-                                <td style="font-size: 9px;"><?= date('M d, Y', strtotime($d['delivery_date'])) ?></td>
-                                <td style="font-size: 9px;"><?= htmlspecialchars(substr($batch_display, 0, 12)) ?></td>
-                                <td style="font-size: 9px;"><?= htmlspecialchars(substr($dr_display, 0, 10)) ?></td>
-                                <td style="font-size: 9px;"><?= htmlspecialchars(substr($tanker_display, 0, 10)) ?></td>
-                                <td style="font-size: 9px;"><?= htmlspecialchars(substr($d['fuel_type'], 0, 8)) ?></td>
-                                <td style="font-size: 9px;"><?= htmlspecialchars(substr($tank_display, 0, 10)) ?></td>
-                                <td style="text-align: right; font-weight: 700; color: #1e293b; font-size: 9px;"><?= number_format($d['delivery_liters'], 2) ?> L</td>
-                                <td style="font-size: 9px;"><?= htmlspecialchars(substr($d['staff_name'] ?? '—', 0, 10)) ?></td>
+                                <td style="font-weight: 700; color: #00264D; font-size: 13px;"><?= $del_label ?></td>
+                                <td style="font-size: 13px;"><?= date('M d, Y', strtotime($d['delivery_date'])) ?></td>
+                                <td style="font-size: 13px;"><?= htmlspecialchars($batch_display) ?></td>
+                                <td style="font-size: 13px;"><?= htmlspecialchars($dr_display) ?></td>
+                                <td style="font-size: 13px;"><?= htmlspecialchars($tanker_display) ?></td>
+                                <td style="font-size: 13px;"><?= htmlspecialchars($d['fuel_type']) ?></td>
+                                <td style="font-size: 13px;"><?= htmlspecialchars($tank_display) ?></td>
+                                <td style="text-align: right; font-weight: 700; color: #1e293b; font-size: 13px;"><?= number_format($d['delivery_liters'], 2) ?> L</td>
+                                <td style="font-size: 13px;"><?= htmlspecialchars($d['staff_name'] ?? '—') ?></td>
                                 <td><span class="afto-badge <?= getStatusBadgeClass($d['status'] ?? '') ?>"><?= getStatusLabel($d['status'] ?? '') ?></span></td>
-                                <td style="font-size: 9px;"><?= $d['verified_at'] ? date('M d, H:i', strtotime($d['verified_at'])) : '—' ?></td>
+                                <td style="font-size: 13px;"><?= $d['verified_at'] ? date('M d, H:i', strtotime($d['verified_at'])) : '—' ?></td>
                                 <td style="text-align: center;">
                                     <div style="display: flex; flex-direction: column; gap: 2px;">
-                                        <button type="button" class="row-btn row-btn-info" onclick="viewDetails(<?= htmlspecialchars(json_encode($d)) ?>)" title="View Details" style="width: 100%; font-size: 9px;">
+                                        <button type="button" class="row-btn row-btn-info" onclick="viewDetails(<?= htmlspecialchars(json_encode($d)) ?>)" title="View Details" style="width: 100%; font-size: 11px;">
                                             <i class="fas fa-eye"></i> View
                                         </button>
                                         <?php if (in_array(strtolower(trim($d['status'] ?? '')), ['pending', 'pending validation', 'pending manager approval', 'pending manager validation'])): ?>
-                                            <button type="button" class="row-btn row-btn-success" onclick="openValidate(<?= $d['id'] ?>, '<?= $del_label ?>')" title="Verify Delivery" style="width: 100%; font-size: 9px;">
+                                            <button type="button" class="row-btn row-btn-success" onclick="openValidate(<?= $d['id'] ?>, '<?= $del_label ?>')" title="Verify Delivery" style="width: 100%; font-size: 11px;">
                                                 <i class="fas fa-check"></i> Verify
                                             </button>
-                                            <button type="button" class="row-btn row-btn-danger" onclick="openReject(<?= $d['id'] ?>, '<?= $del_label ?>')" title="Reject Delivery" style="width: 100%; font-size: 9px;">
+                                            <button type="button" class="row-btn row-btn-danger" onclick="openReject(<?= $d['id'] ?>, '<?= $del_label ?>')" title="Reject Delivery" style="width: 100%; font-size: 11px;">
                                                 <i class="fas fa-times"></i> Reject
                                             </button>
                                         <?php endif; ?>
-                                        <button type="button" class="row-btn row-btn-print" onclick="printSingleDelivery(<?= htmlspecialchars(json_encode($d)) ?>)" title="Print Delivery Receipt" style="width: 100%; font-size: 9px;">
+                                        <button type="button" class="row-btn row-btn-print" onclick="printSingleDelivery(<?= htmlspecialchars(json_encode($d)) ?>)" title="Print Delivery Receipt" style="width: 100%; font-size: 11px;">
                                             <i class="fas fa-print"></i> Print
                                         </button>
                                     </div>
