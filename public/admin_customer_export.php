@@ -1,9 +1,8 @@
-﻿<?php
+<?php
 /**
  * ADMIN CUSTOMER OVERSIGHT EXPORT UTILITY
  * Strictly view-only, with complete auditing.
  */
-
 ob_start();
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -12,24 +11,15 @@ ob_end_clean();
 require_login();
 $me         = current_user();
 $role       = role_key($me['role'] ?? '');
-$station_id = user_station_id();
+$station_id = (int)user_station_id();
 
 if (!in_array($role, ['admin', 'superadmin', 'developer'])) {
     die('Unauthorized');
 }
 
-$format       = strtolower(trim($_GET['format'] ?? 'excel'));
-$search       = trim($_GET['search'] ?? '');
-$type         = trim($_GET['type'] ?? '');
-$status       = trim($_GET['status'] ?? '');
-$registeredBy = trim($_GET['registered_by'] ?? '');
-$dateRegFrom  = trim($_GET['date_reg_from'] ?? '');
-$dateRegTo    = trim($_GET['date_reg_to'] ?? '');
-$dateTxFrom   = trim($_GET['date_tx_from'] ?? '');
-$dateTxTo     = trim($_GET['date_tx_to'] ?? '');
-
-$profileId    = (int)($_GET['profile_id'] ?? 0);
-$exportType   = trim($_GET['export_type'] ?? 'list'); // 'list' or 'history'
+$format    = strtolower(trim($_GET['format'] ?? 'excel'));
+$profileId = (int)($_GET['profile_id'] ?? 0);
+$exportType = trim($_GET['export_type'] ?? 'list'); // 'list' or 'history'
 
 // Station details
 $station_name = '';
@@ -54,84 +44,107 @@ if ($profileId > 0) {
 // ─────────────────────────────────────────────────────────────────────
 // 2. EXPORT CUSTOMER REGISTRY LIST (WITH ACTIVE FILTERS)
 // ─────────────────────────────────────────────────────────────────────
-$where  = ['c.station_id = ?'];
-$params = [$station_id];
+$search    = trim($_GET['search']      ?? '');
+$cid       = trim($_GET['customer_id'] ?? '');
+$cname     = trim($_GET['cname']       ?? '');
+$contact   = trim($_GET['contact']     ?? '');
+$ctype     = trim($_GET['ctype']       ?? '');
+$status    = trim($_GET['status']      ?? '');
+$verif     = trim($_GET['verif']       ?? '');
+$regBy     = trim($_GET['reg_by']      ?? '');
+$verBy     = trim($_GET['ver_by']      ?? '');
+$payStatus = trim($_GET['pay_status']  ?? '');
+$regFrom   = trim($_GET['reg_from']    ?? '');
+$regTo     = trim($_GET['reg_to']      ?? '');
+$txFrom    = trim($_GET['tx_from']     ?? '');
+$txTo      = trim($_GET['tx_to']       ?? '');
+
+$where = [];
+$params = [];
+
+if ($role === 'admin' && $station_id > 0) {
+    $where[] = 'c.station_id = ?';
+    $params[] = $station_id;
+}
 
 if ($search !== '') {
-    $where[] = "(CAST(c.id AS CHAR) LIKE ? OR c.name LIKE ? OR c.contact_number LIKE ?)";
+    $where[] = "(CAST(c.id AS CHAR) LIKE ? OR COALESCE(c.customer_id,'') LIKE ? OR c.name LIKE ? OR COALESCE(c.contact_number,'') LIKE ?)";
     $s = "%$search%";
-    array_push($params, $s, $s, $s);
+    array_push($params, $s, $s, $s, $s);
 }
-if ($type !== '') {
-    $where[] = "c.type = ?";
-    $params[] = $type;
-}
-if ($status !== '') {
-    $where[] = "c.status = ?";
-    $params[] = $status;
-}
-if ($registeredBy !== '') {
-    $where[] = "c.verified_by = ?";
-    $params[] = (int)$registeredBy;
-}
-if ($dateRegFrom !== '') {
-    $where[] = "DATE(c.created_at) >= ?";
-    $params[] = $dateRegFrom;
-}
-if ($dateRegTo !== '') {
-    $where[] = "DATE(c.created_at) <= ?";
-    $params[] = $dateRegTo;
-}
+if ($cid  !== '') { $where[] = "COALESCE(c.customer_id,'') LIKE ?"; $params[] = "%$cid%"; }
+if ($cname!== '') { $where[] = "c.name LIKE ?"; $params[] = "%$cname%"; }
+if ($contact!=='') { $where[] = "COALESCE(c.contact_number,c.phone,'') LIKE ?"; $params[] = "%$contact%"; }
+if ($ctype!== '') { $where[] = "COALESCE(c.customer_type,c.type,'') = ?"; $params[] = $ctype; }
+if ($status!=='') { $where[] = "c.status = ?"; $params[] = $status; }
+if ($verif!== '') { $where[] = "COALESCE(c.verification_status,'pending') = ?"; $params[] = $verif; }
+if ($regBy!== '') { $where[] = "c.registered_by = ?"; $params[] = (int)$regBy; }
+if ($verBy!== '') { $where[] = "c.verified_by = ?"; $params[] = (int)$verBy; }
+if ($regFrom!=='') { $where[] = "DATE(COALESCE(c.registered_at,c.created_at)) >= ?"; $params[] = $regFrom; }
+if ($regTo  !=='') { $where[] = "DATE(COALESCE(c.registered_at,c.created_at)) <= ?"; $params[] = $regTo; }
 
-$whereClause = implode(' AND ', $where);
+$wc = $where ? implode(' AND ', $where) : '1=1';
 
 $stmt = $pdo->prepare("
-    SELECT c.id, c.id AS customer_id,
-           c.name AS display_name,
-           c.contact_number, c.type AS customer_type, c.status,
-           c.created_at AS registered_at,
-           CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS registered_by_name
+    SELECT c.id,
+           COALESCE(c.customer_id, CONCAT('CUST-',LPAD(c.id,5,'0'))) AS customer_id_display,
+           c.name,
+           COALESCE(c.contact_number, c.phone, '') AS contact_number,
+           COALESCE(c.customer_type, c.type, 'walk-in') AS ctype,
+           c.status,
+           COALESCE(c.verification_status,'pending') AS verification_status,
+           COALESCE(c.current_balance, c.balance, 0) AS outstanding_balance,
+           COALESCE(c.credit_limit, 0) AS credit_limit,
+           COALESCE(c.registered_at, c.created_at) AS reg_date,
+           TRIM(CONCAT(COALESCE(rb.first_name,''),' ',COALESCE(rb.last_name,''))) AS registered_by_name,
+           TRIM(CONCAT(COALESCE(vb.first_name,''),' ',COALESCE(vb.last_name,''))) AS verified_by_name,
+           c.verified_at
     FROM customers c
-    LEFT JOIN users u ON c.verified_by = u.id
-    WHERE $whereClause
-    ORDER BY c.created_at DESC
+    LEFT JOIN users rb ON c.registered_by = rb.id
+    LEFT JOIN users vb ON c.verified_by   = vb.id
+    WHERE $wc
+    ORDER BY COALESCE(c.registered_at,c.created_at) DESC
 ");
 $stmt->execute($params);
-$rawCustomers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$raw = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Date Last Transaction PHP Filter
+// Perform PHP-side filter checks for Payment Status and Last Transaction Date
 $filteredCustomers = [];
-foreach ($rawCustomers as $c) {
-    $lastTxDate = null;
-    try {
-        $q = $pdo->prepare("SELECT MAX(transaction_date) FROM fuel_transactions WHERE customer_id = ? AND station_id = ?");
-        $q->execute([$c['id'], $station_id]);
-        $d = $q->fetchColumn();
-        if ($d) $lastTxDate = $d;
-    } catch (Exception $e) {}
-    try {
-        $q = $pdo->prepare("SELECT MAX(transaction_date) FROM merchandise_transactions WHERE customer_id = ? AND station_id = ?");
-        $q->execute([$c['id'], $station_id]);
-        $d = $q->fetchColumn();
-        if ($d) $lastTxDate = $lastTxDate ? max($lastTxDate, $d) : $d;
-    } catch (Exception $e) {}
-    try {
-        $q = $pdo->prepare("SELECT MAX(created_at) FROM job_orders WHERE customer_id = ? AND station_id = ?");
-        $q->execute([$c['id'], $station_id]);
-        $d = $q->fetchColumn();
-        if ($d) $lastTxDate = $lastTxDate ? max($lastTxDate, $d) : $d;
-    } catch (Exception $e) {}
+foreach ($raw as $c) {
+    $lastTx = null;
+    $totalSpent = 0.0;
 
-    if ($lastTxDate) {
-        $txDateOnly = date('Y-m-d', strtotime($lastTxDate));
-        if ($dateTxFrom !== '' && $txDateOnly < $dateTxFrom) continue;
-        if ($dateTxTo !== '' && $txDateOnly > $dateTxTo) continue;
-    } else {
-        if ($dateTxFrom !== '' || $dateTxTo !== '') continue;
+    foreach ([
+        ["SELECT MAX(transaction_date), COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE customer_id=? AND station_id=?", $station_id],
+        ["SELECT MAX(transaction_date), COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE customer_id=? AND station_id=?", $station_id],
+        ["SELECT MAX(created_at), COALESCE(SUM(total_cost),0) FROM job_orders WHERE customer_id=? AND station_id=?", $station_id],
+    ] as [$sql, $sid]) {
+        try {
+            $q = $pdo->prepare($sql);
+            $q->execute([$c['id'], $sid]);
+            [$ld, $tot] = $q->fetch(PDO::FETCH_NUM) ?: [null, 0];
+            if ($ld) $lastTx = $lastTx ? max($lastTx, $ld) : $ld;
+            $totalSpent += (float)$tot;
+        } catch (Exception $e) {}
     }
 
-    $c['last_transaction_date'] = $lastTxDate;
-    $filteredCustomers[] = $c;
+    // Last transaction date filter
+    if ($txFrom !== '' || $txTo !== '') {
+        if (!$lastTx) continue;
+        $d = date('Y-m-d', strtotime($lastTx));
+        if ($txFrom !== '' && $d < $txFrom) continue;
+        if ($txTo   !== '' && $d > $txTo)   continue;
+    }
+
+    // Payment Status filter
+    $ob = (float)$c['outstanding_balance'];
+    $ps = $ob <= 0 ? 'paid' : ($totalSpent > 0 && $ob < $totalSpent ? 'partial' : 'unpaid');
+    if ($payStatus !== '' && $ps !== $payStatus) continue;
+
+    $c['last_transaction'] = $lastTx;
+    $c['total_spent']      = $totalSpent;
+    $c['payment_status']   = $ps;
+    $filteredCustomers[]   = $c;
 }
 
 $filename = 'admin_customer_registry_' . date('Y-m-d_His');
@@ -145,16 +158,18 @@ if ($format === 'csv') {
     header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
     $out = fopen('php://output', 'w');
     fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
-    fputcsv($out, ['Customer ID', 'Customer Name', 'Type', 'Contact Number', 'Registered By', 'Date Registered', 'Last Transaction', 'Status']);
+    fputcsv($out, ['Customer ID', 'Customer Name', 'Type', 'Contact Number', 'Registered By', 'Verified By', 'Date Registered', 'Last Transaction', 'Outstanding Balance', 'Status']);
     foreach ($filteredCustomers as $c) {
         fputcsv($out, [
-            $c['customer_id'],
-            $c['display_name'],
-            ucfirst($c['customer_type']),
+            $c['customer_id_display'],
+            $c['name'],
+            ucfirst($c['ctype']),
             $c['contact_number'],
             $c['registered_by_name'] ?: 'System',
-            date('M d, Y', strtotime($c['registered_at'])),
-            $c['last_transaction_date'] ? date('M d, Y', strtotime($c['last_transaction_date'])) : 'N/A',
+            $c['verified_by_name'] ?: '—',
+            date('M d, Y', strtotime($c['reg_date'])),
+            $c['last_transaction'] ? date('M d, Y', strtotime($c['last_transaction'])) : 'N/A',
+            number_format($c['outstanding_balance'], 2, '.', ''),
             ucfirst($c['status'])
         ]);
     }
@@ -172,17 +187,19 @@ if ($format === 'excel') {
     echo '<h3>Customer Registry Report — ' . htmlspecialchars($station_name) . '</h3>';
     echo '<p>Generated: ' . date('M d, Y g:i A') . '</p>';
     echo '<table><thead><tr>
-        <th>Customer ID</th><th>Customer Name</th><th>Type</th><th>Contact Number</th><th>Registered By</th><th>Date Registered</th><th>Last Transaction</th><th>Status</th>
+        <th>Customer ID</th><th>Customer Name</th><th>Type</th><th>Contact Number</th><th>Registered By</th><th>Verified By</th><th>Date Registered</th><th>Last Transaction</th><th>Outstanding Balance</th><th>Status</th>
     </tr></thead><tbody>';
     foreach ($filteredCustomers as $c) {
         echo '<tr>';
-        echo '<td>' . htmlspecialchars($c['customer_id']) . '</td>';
-        echo '<td>' . htmlspecialchars($c['display_name']) . '</td>';
-        echo '<td>' . ucfirst($c['customer_type']) . '</td>';
+        echo '<td>' . htmlspecialchars($c['customer_id_display']) . '</td>';
+        echo '<td>' . htmlspecialchars($c['name']) . '</td>';
+        echo '<td>' . ucfirst($c['ctype']) . '</td>';
         echo '<td>' . htmlspecialchars($c['contact_number']) . '</td>';
         echo '<td>' . htmlspecialchars($c['registered_by_name'] ?: 'System') . '</td>';
-        echo '<td>' . date('Y-m-d', strtotime($c['registered_at'])) . '</td>';
-        echo '<td>' . ($c['last_transaction_date'] ? date('Y-m-d', strtotime($c['last_transaction_date'])) : 'N/A') . '</td>';
+        echo '<td>' . htmlspecialchars($c['verified_by_name'] ?: '—') . '</td>';
+        echo '<td>' . date('Y-m-d', strtotime($c['reg_date'])) . '</td>';
+        echo '<td>' . ($c['last_transaction'] ? date('Y-m-d', strtotime($c['last_transaction'])) : 'N/A') . '</td>';
+        echo '<td>' . number_format($c['outstanding_balance'], 2, '.', '') . '</td>';
         echo '<td>' . ucfirst($c['status']) . '</td>';
         echo '</tr>';
     }
@@ -231,24 +248,28 @@ header('Content-Type: text/html; charset=utf-8');
             <th>Type</th>
             <th>Contact Number</th>
             <th>Registered By</th>
+            <th>Verified By</th>
             <th>Date Registered</th>
             <th>Last Transaction</th>
+            <th>Outstanding Balance</th>
             <th>Status</th>
         </tr>
     </thead>
     <tbody>
     <?php if (empty($filteredCustomers)): ?>
-        <tr><td colspan="8" style="text-align:center;color:#94a3b8;">No records found.</td></tr>
+        <tr><td colspan="10" style="text-align:center;color:#94a3b8;">No records found.</td></tr>
     <?php else: ?>
         <?php foreach ($filteredCustomers as $c): ?>
         <tr>
-            <td><strong><?php echo htmlspecialchars($c['customer_id']); ?></strong></td>
-            <td><?php echo htmlspecialchars($c['display_name']); ?></td>
-            <td><?php echo ucfirst($c['customer_type']); ?></td>
+            <td><strong><?php echo htmlspecialchars($c['customer_id_display']); ?></strong></td>
+            <td><?php echo htmlspecialchars($c['name']); ?></td>
+            <td><?php echo ucfirst($c['ctype']); ?></td>
             <td><?php echo htmlspecialchars($c['contact_number']); ?></td>
             <td><?php echo htmlspecialchars($c['registered_by_name'] ?: 'System'); ?></td>
-            <td><?php echo date('M d, Y', strtotime($c['registered_at'])); ?></td>
-            <td><?php echo $c['last_transaction_date'] ? date('M d, Y', strtotime($c['last_transaction_date'])) : '—'; ?></td>
+            <td><?php echo htmlspecialchars($c['verified_by_name'] ?: '—'); ?></td>
+            <td><?php echo date('M d, Y', strtotime($c['reg_date'])); ?></td>
+            <td><?php echo $c['last_transaction'] ? date('M d, Y', strtotime($c['last_transaction'])) : '—'; ?></td>
+            <td>&#x20B1;<?php echo number_format($c['outstanding_balance'], 2); ?></td>
             <td><?php echo ucfirst($c['status']); ?></td>
         </tr>
         <?php endforeach; ?>
@@ -268,9 +289,13 @@ function exportSingleProfilePdf($id, $station_name) {
 
     $stmt = $pdo->prepare("
         SELECT c.*,
-               CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS registered_by_name
+               COALESCE(c.customer_id, CONCAT('CUST-',LPAD(c.id,5,'0'))) AS customer_id_display,
+               COALESCE(c.current_balance, c.balance, 0) AS outstanding_balance,
+               TRIM(CONCAT(COALESCE(rb.first_name,''),' ',COALESCE(rb.last_name,''))) AS registered_by_name,
+               TRIM(CONCAT(COALESCE(vb.first_name,''),' ',COALESCE(vb.last_name,''))) AS verified_by_name
         FROM customers c
-        LEFT JOIN users u ON c.registered_by = u.id
+        LEFT JOIN users rb ON c.registered_by = rb.id
+        LEFT JOIN users vb ON c.verified_by   = vb.id
         WHERE c.id = ? AND c.station_id = ?
     ");
     $stmt->execute([$id, $station_id]);
@@ -312,7 +337,7 @@ function exportSingleProfilePdf($id, $station_name) {
     $totalAmountSpent = $merchSpent + $joSpent + $fuelSpent;
 
     // Audit Log entry
-    try { write_audit_log($pdo, 'Export', "Admin exported single customer profile PDF: $fullName ({$c['customer_id']})", 'customers', $id, 'customer'); } catch(Exception $e){}
+    try { write_audit_log($pdo, 'Export', "Admin exported single customer profile PDF: $fullName ({$c['customer_id_display']})", 'customers', $id, 'customer'); } catch(Exception $e){}
 
     header('Content-Type: text/html; charset=utf-8');
     ?>
@@ -345,17 +370,17 @@ function exportSingleProfilePdf($id, $station_name) {
     </div>
     <div class="hdr">
         <h1>CUSTOMER PROFILE (ADMIN OVERSIGHT) — <?php echo htmlspecialchars($fullName); ?></h1>
-        <div class="sub"><?php echo htmlspecialchars($c['customer_id']); ?> &nbsp;|&nbsp; <?php echo htmlspecialchars($station_name); ?> &nbsp;|&nbsp; Generated: <?php echo date('M d, Y g:i A'); ?></div>
+        <div class="sub"><?php echo htmlspecialchars($c['customer_id_display']); ?> &nbsp;|&nbsp; <?php echo htmlspecialchars($station_name); ?> &nbsp;|&nbsp; Generated: <?php echo date('M d, Y g:i A'); ?></div>
     </div>
     <div class="grid">
         <div class="section">
             <h2>Customer Information</h2>
             <table>
-                <tr><th>Customer ID</th><td><?php echo htmlspecialchars($c['customer_id']); ?></td></tr>
+                <tr><th>Customer ID</th><td><?php echo htmlspecialchars($c['customer_id_display']); ?></td></tr>
                 <tr><th>Full Name</th><td><?php echo htmlspecialchars($fullName); ?></td></tr>
                 <tr><th>Contact Number</th><td><?php echo htmlspecialchars($c['contact_number']); ?></td></tr>
                 <tr><th>Address</th><td><?php echo htmlspecialchars($c['address'] ?? '—'); ?></td></tr>
-                <tr><th>Customer Type</th><td><?php echo ucfirst($c['customer_type']); ?></td></tr>
+                <tr><th>Customer Type</th><td><?php echo ucfirst($c['customer_type'] ?: $c['type']); ?></td></tr>
                 <tr><th>Date Registered</th><td><?php echo date('M d, Y', strtotime($c['registered_at'] ?? $c['created_at'])); ?></td></tr>
                 <tr><th>Registered By</th><td><?php echo htmlspecialchars($c['registered_by_name'] ?: 'System'); ?></td></tr>
                 <tr><th>Status</th><td><?php echo ucfirst($c['status']); ?></td></tr>
@@ -364,16 +389,16 @@ function exportSingleProfilePdf($id, $station_name) {
         <div class="section">
             <h2>Activity & Spend Summary</h2>
             <table>
-                <tr><th>Total Amount Spent</th><td><strong>\u{20B1}<?php echo number_format($totalAmountSpent, 2); ?></strong></td></tr>
-                <tr><th>Merchandise Purchases</th><td><?php echo $merchCount; ?> txn(s) (\u{20B1}<?php echo number_format($merchSpent, 2); ?>)</td></tr>
-                <tr><th>Fuel Purchases</th><td><?php echo $fuelCount; ?> txn(s) (\u{20B1}<?php echo number_format($fuelSpent, 2); ?>)</td></tr>
-                <tr><th>Job Orders / Services</th><td><?php echo $joCount; ?> order(s) (\u{20B1}<?php echo number_format($joSpent, 2); ?>)</td></tr>
+                <tr><th>Total Amount Spent</th><td><strong>&#x20B1;<?php echo number_format($totalAmountSpent, 2); ?></strong></td></tr>
+                <tr><th>Merchandise Purchases</th><td><?php echo $merchCount; ?> txn(s) (&#x20B1;<?php echo number_format($merchSpent, 2); ?>)</td></tr>
+                <tr><th>Fuel Purchases</th><td><?php echo $fuelCount; ?> txn(s) (&#x20B1;<?php echo number_format($fuelSpent, 2); ?>)</td></tr>
+                <tr><th>Job Orders / Services</th><td><?php echo $joCount; ?> order(s) (&#x20B1;<?php echo number_format($joSpent, 2); ?>)</td></tr>
                 <tr><th>Last Transaction Date</th><td><?php echo $lastTxDate ? date('M d, Y g:i A', strtotime($lastTxDate)) : 'No Transactions'; ?></td></tr>
-                <tr><th>Outstanding Balance</th><td>\u{20B1}<?php echo number_format($c['outstanding_balance'] ?? 0, 2); ?></td></tr>
+                <tr><th>Outstanding Balance</th><td>&#x20B1;<?php echo number_format($c['outstanding_balance'] ?? 0, 2); ?></td></tr>
             </table>
         </div>
     </div>
-    <?php if ($c['customer_type'] === 'fleet' && $c['company_name']): ?>
+    <?php if (($c['customer_type'] === 'fleet' || $c['type'] === 'credit') && $c['company_name']): ?>
     <div class="section">
         <h2>Fleet / Company Information</h2>
         <table>
@@ -387,9 +412,10 @@ function exportSingleProfilePdf($id, $station_name) {
     <div class="section">
         <h2>Submitted Documents Verification</h2>
         <table>
-            <tr><th>Government ID Type</th><td><?php echo htmlspecialchars($c['gov_id_type'] ?? 'None'); ?></td></tr>
-            <tr><th>Verification Status</th><td><?php echo ucfirst($c['verification_status']); ?></td></tr>
-            <tr><th>Remarks</th><td><?php echo htmlspecialchars($c['verification_remarks'] ?? '—'); ?></td></tr>
+            <tr><th>Government ID Type</th><td><?php echo htmlspecialchars($c['id_type'] ?? 'None'); ?></td></tr>
+            <tr><th>Verification Status</th><td><?php echo ucfirst($c['verification_status'] ?? 'pending'); ?></td></tr>
+            <tr><th>Verified By</th><td><?php echo htmlspecialchars($c['verified_by_name'] ?? '—'); ?></td></tr>
+            <tr><th>Remarks</th><td><?php echo htmlspecialchars($c['mgr_notes'] ?? '—'); ?></td></tr>
         </table>
     </div>
     <div class="footer">
@@ -407,7 +433,7 @@ function exportSingleProfilePdf($id, $station_name) {
 function exportSingleHistory($id, $format, $station_name) {
     global $pdo;
 
-    $stmt = $pdo->prepare("SELECT customer_id, first_name, last_name, name FROM customers WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT id, COALESCE(customer_id, CONCAT('CUST-',LPAD(id,5,'0'))) AS customer_id_display, first_name, last_name, name FROM customers WHERE id = ?");
     $stmt->execute([$id]);
     $c = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$c) die('Customer not found');
@@ -452,7 +478,7 @@ function exportSingleHistory($id, $format, $station_name) {
         try {
             $sql = "
                 SELECT mt.transaction_date AS txn_date, mt.transaction_id AS reference_no, 'Merchandise' AS module,
-                       CONCAT('Sale — \u{20B1}', FORMAT(mt.total_amount,2)) AS description, mt.total_amount AS amount,
+                       CONCAT('Sale') AS description, mt.total_amount AS amount,
                        COALESCE(mt.validation_status, 'Completed') AS status, COALESCE(u.name, 'System') AS processed_by
                 FROM merchandise_transactions mt 
                 LEFT JOIN users u ON mt.staff_id = u.id 
@@ -489,10 +515,10 @@ function exportSingleHistory($id, $format, $station_name) {
         return strtotime($b['txn_date']) - strtotime($a['txn_date']);
     });
 
-    $filename = 'customer_history_' . $c['customer_id'] . '_' . date('Ymd_His');
+    $filename = 'customer_history_' . $c['customer_id_display'] . '_' . date('Ymd_His');
 
     // Audit Log entry
-    try { write_audit_log($pdo, 'Export', "Admin exported transaction history table for customer {$c['customer_id']} ($format)", 'customers', $id, 'customer'); } catch(Exception $e){}
+    try { write_audit_log($pdo, 'Export', "Admin exported transaction history table for customer {$c['customer_id_display']} ($format)", 'customers', $id, 'customer'); } catch(Exception $e){}
 
     if ($format === 'csv') {
         header('Content-Type: text/csv');
@@ -521,7 +547,7 @@ function exportSingleHistory($id, $format, $station_name) {
         echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8">
         <style>th{background:#002F70;color:#fff;font-weight:bold;padding:5px;}td,th{border:1px solid #ccc;}</style>
         </head><body>';
-        echo '<h3>Transaction History — ' . htmlspecialchars($fullName) . ' (' . htmlspecialchars($c['customer_id']) . ')</h3>';
+        echo '<h3>Transaction History — ' . htmlspecialchars($fullName) . ' (' . htmlspecialchars($c['customer_id_display']) . ')</h3>';
         echo '<p>Station: ' . htmlspecialchars($station_name) . ' | Generated: ' . date('M d, Y g:i A') . '</p>';
         echo '<table><thead><tr>
             <th>Date</th><th>Reference No.</th><th>Module</th><th>Description</th><th>Amount</th><th>Status</th><th>Processed By</th>
@@ -570,7 +596,7 @@ function exportSingleHistory($id, $format, $station_name) {
     </div>
     <div class="hdr">
         <div>
-            <h1>TRANSACTION HISTORY — <?php echo htmlspecialchars($fullName); ?> (<?php echo htmlspecialchars($c['customer_id']); ?>)</h1>
+            <h1>TRANSACTION HISTORY — <?php echo htmlspecialchars($fullName); ?> (<?php echo htmlspecialchars($c['customer_id_display']); ?>)</h1>
             <div class="sub">Station: <?php echo htmlspecialchars($station_name); ?> &nbsp;|&nbsp; Generated: <?php echo date('M d, Y g:i A'); ?></div>
         </div>
     </div>
@@ -596,12 +622,12 @@ function exportSingleHistory($id, $format, $station_name) {
                 <td><strong><?php echo htmlspecialchars($t['reference_no']); ?></strong></td>
                 <td><?php echo htmlspecialchars($t['module']); ?></td>
                 <td><?php echo htmlspecialchars($t['description']); ?></td>
-                <td>\u{20B1}<?php echo number_format($t['amount'], 2); ?></td>
+                <td>&#x20B1;<?php echo number_format($t['amount'], 2); ?></td>
                 <td><?php echo ucfirst($t['status']); ?></td>
                 <td><?php echo htmlspecialchars($t['processed_by']); ?></td>
             </tr>
             <?php endforeach; ?>
-        <?php endif; ?>
+            <?php endif; ?>
         </tbody>
     </table>
     </body>

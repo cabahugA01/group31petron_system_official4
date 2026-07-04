@@ -969,7 +969,7 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
     .mgr-dashboard {
-        padding: 24px 28px 72px;
+        padding: 0 0 72px;
         background: #f6f8fb;
         min-height: calc(100vh - 110px);
         color: #0f172a;
@@ -990,7 +990,8 @@ include __DIR__ . '/../partials/header.php';
         flex-wrap: wrap;
         gap: 18px;
         margin-bottom: 22px;
-        padding: 20px 24px;
+        padding: 0 0 18px 0;
+        border-bottom: 2px solid #e2e9f3;
     }
 
     .mgr-title-block {

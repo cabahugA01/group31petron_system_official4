@@ -30,39 +30,166 @@ try {
     $station_name = $stmt2->fetchColumn() ?: 'Unknown Station';
 } catch (Exception $e) { /* silent */ }
 
+// Helper function to get the canonical 5 fuel types
+function get_canonical_fuel_name($name) {
+    $name_lower = strtolower(trim($name));
+    if (strpos($name_lower, 'turbo') !== false) {
+        return 'Turbo Diesel';
+    } elseif (strpos($name_lower, 'diesel') !== false) {
+        return 'Diesel';
+    } elseif (strpos($name_lower, 'kerosene') !== false) {
+        return 'Kerosene';
+    } elseif (strpos($name_lower, 'xcs') !== false) {
+        return 'XCS Plus';
+    } elseif (strpos($name_lower, 'xtra') !== false || strpos($name_lower, 'unl') !== false) {
+        return 'Xtra UNL';
+    }
+    return $name;
+}
+
 // ── Fetch fuel inventory ─────────────────────────────────────────────────────
 $fuel_products = [];
 $fuel_stats = ['total' => 0, 'active' => 0, 'inactive' => 0, 'last_updated' => null, 'updates_today' => 0];
 try {
-    // Get fuel for this station; if none, fall back to station 1
-    $stmt = $pdo->prepare("
-        SELECT f.id, f.fuel_type, f.price_per_liter, f.current_level, f.capacity,
-               f.critical_level, f.status, f.last_updated, f.updated_by,
-               p.new_value  AS pending_price,
-               p.status     AS approval_status,
-               p.id         AS approval_id
-        FROM fuel_inventory f
-        LEFT JOIN pending_price_approvals p
-               ON p.fuel_type_id = f.id
-              AND p.product_type IN ('fuel', 'fuel_inventory')
-              AND p.status = 'pending'
-              AND p.station_id = f.station_id
-        WHERE f.station_id = ?
-        ORDER BY f.fuel_type
-    ");
-    $stmt->execute([$station_id]);
-    $fuel_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $TANK_CONFIG_17 = [
+        ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 1',     'tank'=>'Underground Tank #1',  'tanker_num'=>1,  'capacity'=>50000],
+        ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 2',     'tank'=>'Underground Tank #2',  'tanker_num'=>2,  'capacity'=>50000],
+        ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 3',     'tank'=>'Underground Tank #3',  'tanker_num'=>3,  'capacity'=>50000],
+        ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 4',     'tank'=>'Underground Tank #4',  'tanker_num'=>4,  'capacity'=>50000],
+        ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 5',     'tank'=>'Underground Tank #5',  'tanker_num'=>5,  'capacity'=>50000],
+        ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 6',     'tank'=>'Underground Tank #6',  'tanker_num'=>6,  'capacity'=>50000],
+        ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'Underground Tank #7',  'tanker_num'=>7,  'capacity'=>20000],
+        ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'Underground Tank #8',  'tanker_num'=>8,  'capacity'=>45000],
+        ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 2', 'tank'=>'Underground Tank #9',  'tanker_num'=>9,  'capacity'=>45000],
+        ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'Underground Tank #10', 'tanker_num'=>10, 'capacity'=>20000],
+        ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 2',     'tank'=>'Underground Tank #11', 'tanker_num'=>11, 'capacity'=>20000],
+        ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 3',     'tank'=>'Underground Tank #12', 'tanker_num'=>12, 'capacity'=>20000],
+        ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 4',     'tank'=>'Underground Tank #13', 'tanker_num'=>13, 'capacity'=>20000],
+        ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 1',  'tank'=>'Underground Tank #14', 'tanker_num'=>14, 'capacity'=>20000],
+        ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 2',  'tank'=>'Underground Tank #15', 'tanker_num'=>15, 'capacity'=>20000],
+        ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 3',  'tank'=>'Underground Tank #16', 'tanker_num'=>16, 'capacity'=>20000],
+        ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 4',  'tank'=>'Underground Tank #17', 'tanker_num'=>17, 'capacity'=>20000],
+    ];
 
-    // If no records for this station, try station 1 (CDO)
-    if (empty($fuel_products)) {
-        $stmt->execute([1]);
-        $fuel_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $fi_lookup = [];
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, reorder_level, critical_level FROM fuel_inventory WHERE station_id = ?");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $fi_lookup[strtolower(trim($row['fuel_type']))] = $row;
+    }
+
+    $del_lookup = [];
+    $s = $pdo->prepare("SELECT tank_assigned, fuel_type, SUM(delivery_liters) AS total_del FROM fuel_deliveries WHERE station_id = ? AND DATE(delivery_date) = CURDATE() AND status = 'Verified' GROUP BY tank_assigned, fuel_type");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $del_lookup[strtolower(trim($row['tank_assigned']))] = (float)$row['total_del'];
+    }
+
+    $sales_lookup = [];
+    $s = $pdo->prepare("SELECT fuel_type, SUM(liters_sold) AS total_sales FROM fuel_transactions WHERE station_id = ? AND DATE(transaction_date) = CURDATE() AND status = 'Verified' GROUP BY fuel_type");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $sales_lookup[strtolower(trim($row['fuel_type']))] = (float)$row['total_sales'];
+    }
+
+    $adj_lookup = [];
+    $s = $pdo->prepare("SELECT fi.fuel_type, COALESCE(SUM(fa.liters),0) AS total_adj FROM fuel_adjustments fa JOIN fuel_inventory fi ON fa.fuel_type_id = fi.fuel_type_id AND fi.station_id = fa.station_id WHERE fa.station_id = ? AND DATE(fa.adjustment_date) = CURDATE() GROUP BY fi.fuel_type");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $adj_lookup[strtolower(trim($row['fuel_type']))] = (float)$row['total_adj'];
+    }
+
+    $price_lookup = [];
+    $s = $pdo->prepare("SELECT ft.name AS fuel_type, fp.price_per_liter FROM fuel_pricing fp JOIN fuel_types ft ON fp.fuel_type_id = ft.id WHERE fp.station_id = ? AND fp.is_active = 1 ORDER BY fp.effective_date DESC");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $key = strtolower(trim($row['fuel_type']));
+        if (!isset($price_lookup[$key])) $price_lookup[$key] = (float)$row['price_per_liter'];
+    }
+
+    $pending_approvals = [];
+    $s = $pdo->prepare("SELECT fuel_type_id, new_value, status, id AS approval_id FROM pending_price_approvals WHERE station_id = ? AND product_type IN ('fuel', 'fuel_inventory') AND status = 'pending'");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $p_row) {
+        $pending_approvals[(int)$p_row['fuel_type_id']] = $p_row;
+    }
+
+    foreach ($TANK_CONFIG_17 as $tc) {
+        $ft_key   = strtolower(trim($tc['fuel_type']));
+        if ($ft_key === 'xtra unl') {
+            if (strpos(strtolower($tc['label']), 'xtra unl 1') !== false) {
+                $ft_key = 'xtra unl 1';
+            } elseif (strpos(strtolower($tc['label']), 'xtra unl 2') !== false) {
+                $ft_key = 'xtra unl 2';
+            }
+        }
+        $tank_key = strtolower(trim($tc['tank']));
+        $inv      = $fi_lookup[$ft_key] ?? null;
+
+        $capacity  = (float)$tc['capacity'];
+        $cur_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
+
+        $same_type_count = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key) {
+            $k = strtolower(trim($t['fuel_type']));
+            if ($k === 'xtra unl') {
+                if (strpos(strtolower($t['label']), 'xtra unl 1') !== false) {
+                    $k = 'xtra unl 1';
+                } elseif (strpos(strtolower($t['label']), 'xtra unl 2') !== false) {
+                    $k = 'xtra unl 2';
+                }
+            }
+            return $k === $ft_key;
+        }));
+        $purchases = $del_lookup[$tank_key] ?? 0;
+
+        $sales_total = $sales_lookup[$ft_key] ?? 0;
+        $adj_total   = $adj_lookup[$ft_key] ?? 0;
+        $sales       = $same_type_count > 0 ? round($sales_total / $same_type_count, 2) : 0;
+        $calibration = $same_type_count > 0 ? round($adj_total / $same_type_count, 2) : 0;
+
+        $beginning = $same_type_count > 0 ? round($cur_level / $same_type_count, 2) : 0;
+        $total_available = $beginning + $purchases;
+        $ending_system   = max(0, $total_available - $sales - $calibration);
+
+        $fill_pct = $capacity > 0 ? ($ending_system / $capacity) * 100 : 0;
+        if ($ending_system <= 0) {
+            $status = 'Out of Stock';
+        } elseif ($fill_pct <= 10) {
+            $status = 'Critical';
+        } elseif ($fill_pct <= 25) {
+            $status = 'Low';
+        } else {
+            $status = 'Normal';
+        }
+
+        $price = $price_lookup[$ft_key] ?? ($inv ? (float)($inv['price_per_liter'] ?? 0) : 0);
+        $timestamp = $inv['last_updated'] ?? null;
+        $critical_level = $inv ? (float)($inv['critical_level'] ?? 0) : 300;
+
+        $inv_id = $inv['id'] ?? null;
+        $app = $inv_id ? ($pending_approvals[(int)$inv_id] ?? null) : null;
+
+        $fuel_products[] = [
+            'id'             => $inv_id,
+            'pump_id'        => $tc['tanker_num'],
+            'tank_label'     => $tc['label'],
+            'raw_fuel_type'  => $tc['fuel_type'],
+            'capacity'       => $capacity,
+            'current_stock'  => $ending_system,
+            'critical_level' => $critical_level,
+            'status'         => $status,
+            'last_updated'   => $timestamp,
+            'price_per_liter'=> $price,
+            'pending_price'  => $app ? (float)$app['new_value'] : null,
+            'approval_status'=> $app ? $app['status'] : null,
+            'approval_id'    => $app ? $app['approval_id'] : null
+        ];
     }
 
     // Calculate stats
     $fuel_stats['total'] = count($fuel_products);
     foreach ($fuel_products as $f) {
-        if (strtolower($f['status'] ?? 'active') === 'active') {
+        if (strtolower($f['status'] ?? 'normal') === 'normal') {
             $fuel_stats['active']++;
         } else {
             $fuel_stats['inactive']++;
@@ -440,6 +567,7 @@ include __DIR__ . '/../partials/header.php';
             <table class="pricing-table">
                 <thead>
                     <tr>
+                        <th>Tank Name</th>
                         <th>Fuel Type</th>
                         <th>Price / Liter (&#8369;)</th>
                         <th>Stock Level (L)</th>
@@ -453,39 +581,38 @@ include __DIR__ . '/../partials/header.php';
                 <tbody>
                 <?php if (empty($fuel_products)): ?>
                     <tr>
-                        <td colspan="8" style="text-align:center;padding:28px;color:#94a3b8;">
+                        <td colspan="9" style="text-align:center;padding:28px;color:#94a3b8;">
                             <i class="fas fa-info-circle"></i> No fuel inventory records found for this station.
                         </td>
                     </tr>
                 <?php else: ?>
-                    <?php foreach ($fuel_products as $f):
-                        $level    = (float)($f['current_level'] ?? 0);
-                        $critical = (float)($f['critical_level'] ?? 0);
-                        $capacity = (float)($f['capacity'] ?? 0);
+                    <?php 
+                    foreach ($fuel_products as $f):
+                        $level    = $f['current_stock'];
+                        $critical = $f['critical_level'];
+                        $capacity = $f['capacity'];
                         
-                        if ($level <= 0) {
-                            $status_label = 'Critical';
-                            $status_class = 'badge-critical';
-                            $bar_color = '#dc2626';
-                        } elseif ($level <= $critical * 0.5) {
-                            $status_label = 'Critical';
-                            $status_class = 'badge-critical';
-                            $bar_color = '#dc2626';
-                        } elseif ($level <= $critical) {
-                            $status_label = 'Low Stock';
+                        $status_label = $f['status'];
+                        if ($status_label === 'Normal') {
+                            $status_class = 'badge-normal';
+                            $bar_color = '#16a34a';
+                        } elseif ($status_label === 'Low') {
                             $status_class = 'badge-low';
                             $bar_color = '#ef4444';
                         } else {
-                            $status_label = 'Normal';
-                            $status_class = 'badge-normal';
-                            $bar_color = '#16a34a';
+                            $status_class = 'badge-critical';
+                            $bar_color = '#dc2626';
                         }
                         
                         $pct = $capacity > 0 ? min(100, round($level / $capacity * 100)) : 0;
+                        $canonical_type = get_canonical_fuel_name($f['raw_fuel_type']);
                     ?>
                     <tr>
                         <td>
-                            <strong><?php echo htmlspecialchars($f['fuel_type']); ?></strong>
+                            <strong><?php echo htmlspecialchars($f['tank_label']); ?></strong>
+                        </td>
+                        <td>
+                            <strong><?php echo htmlspecialchars($canonical_type); ?></strong>
                         </td>
                         <td>
                             <strong style="color:#002F6C;">&#8369;<?php echo number_format((float)($f['price_per_liter'] ?? 0), 2); ?></strong>
@@ -506,8 +633,10 @@ include __DIR__ . '/../partials/header.php';
                         <td>
                             <?php if ($status_label === 'Critical'): ?>
                                 <span class="badge <?php echo $status_class; ?>">&#9888; Critical</span>
-                            <?php elseif ($status_label === 'Low Stock'): ?>
+                            <?php elseif ($status_label === 'Low' || $status_label === 'Low Stock'): ?>
                                 <span class="badge <?php echo $status_class; ?>">&#9888; Low Stock</span>
+                            <?php elseif ($status_label === 'Out of Stock'): ?>
+                                <span class="badge <?php echo $status_class; ?>">&#9888; Out of Stock</span>
                             <?php else: ?>
                                 <span class="badge <?php echo $status_class; ?>">&#10003; Normal</span>
                             <?php endif; ?>
@@ -517,15 +646,19 @@ include __DIR__ . '/../partials/header.php';
                         </td>
                         <td>
                             <div class="act-btn-wrap">
-                                <button onclick="viewFuelDetails(<?php echo $f['id']; ?>)" class="act-btn act-btn-view">
-                                    <i class="fas fa-eye"></i> View
-                                </button>
-                                <button onclick="openEditPriceModal(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars($f['fuel_type']); ?>', <?php echo (float)($f['price_per_liter'] ?? 0); ?>)" class="act-btn act-btn-edit">
-                                    <i class="fas fa-edit"></i> Edit
-                                </button>
-                                <button onclick="deactivateFuel(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars($f['fuel_type']); ?>')" class="act-btn act-btn-deactivate">
-                                    <i class="fas fa-ban"></i> Deactivate
-                                </button>
+                                <?php if (!empty($f['id'])): ?>
+                                    <button onclick="viewFuelDetails(<?php echo $f['id']; ?>)" class="act-btn act-btn-view">
+                                        <i class="fas fa-eye"></i> View
+                                    </button>
+                                    <button onclick="openEditPriceModal(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars($f['raw_fuel_type']); ?>', <?php echo (float)($f['price_per_liter'] ?? 0); ?>)" class="act-btn act-btn-edit">
+                                        <i class="fas fa-edit"></i> Edit
+                                    </button>
+                                    <button onclick="deactivateFuel(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars($f['raw_fuel_type']); ?>')" class="act-btn act-btn-deactivate">
+                                        <i class="fas fa-ban"></i> Deactivate
+                                    </button>
+                                <?php else: ?>
+                                    <span style="font-size:11px;color:#94a3b8;font-style:italic;">No Actions</span>
+                                <?php endif; ?>
                             </div>
                         </td>
                     </tr>

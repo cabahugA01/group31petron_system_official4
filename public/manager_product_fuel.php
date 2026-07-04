@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'mgr_prod_fuel';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -130,52 +130,151 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// Helper function to get the canonical 5 fuel types
+if (!function_exists('get_canonical_fuel_name')) {
+    function get_canonical_fuel_name($name) {
+        $name_lower = strtolower(trim($name));
+        if (strpos($name_lower, 'turbo') !== false) {
+            return 'Turbo Diesel';
+        } elseif (strpos($name_lower, 'diesel') !== false) {
+            return 'Diesel';
+        } elseif (strpos($name_lower, 'kerosene') !== false) {
+            return 'Kerosene';
+        } elseif (strpos($name_lower, 'xcs') !== false) {
+            return 'XCS Plus';
+        } elseif (strpos($name_lower, 'xtra') !== false || strpos($name_lower, 'unl') !== false) {
+            return 'Xtra UNL';
+        }
+        return $name;
+    }
+}
+
 // ── Load data ──────────────────────────────────────────────────────────────
-$required_fuel_types = ['Diesel', 'Kerosene', 'Turbo Diesel', 'XCS Plus', 'XTRA UNL'];
 $fuel_products = [];
 $msg = '';
 
 try {
-    $stmt = $pdo->prepare("SELECT * FROM fuel_inventory WHERE station_id=? ORDER BY fuel_type");
-    $stmt->execute([$station_id]);
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    if (empty($rows)) {
-        $stmt = $pdo->query("SELECT * FROM fuel_inventory ORDER BY fuel_type");
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $TANK_CONFIG_17 = [
+        ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 1',     'tank'=>'Underground Tank #1',  'tanker_num'=>1,  'capacity'=>50000],
+        ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 2',     'tank'=>'Underground Tank #2',  'tanker_num'=>2,  'capacity'=>50000],
+        ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 3',     'tank'=>'Underground Tank #3',  'tanker_num'=>3,  'capacity'=>50000],
+        ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 4',     'tank'=>'Underground Tank #4',  'tanker_num'=>4,  'capacity'=>50000],
+        ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 5',     'tank'=>'Underground Tank #5',  'tanker_num'=>5,  'capacity'=>50000],
+        ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 6',     'tank'=>'Underground Tank #6',  'tanker_num'=>6,  'capacity'=>50000],
+        ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'Underground Tank #7',  'tanker_num'=>7,  'capacity'=>20000],
+        ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'Underground Tank #8',  'tanker_num'=>8,  'capacity'=>45000],
+        ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 2', 'tank'=>'Underground Tank #9',  'tanker_num'=>9,  'capacity'=>45000],
+        ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'Underground Tank #10', 'tanker_num'=>10, 'capacity'=>20000],
+        ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 2',     'tank'=>'Underground Tank #11', 'tanker_num'=>11, 'capacity'=>20000],
+        ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 3',     'tank'=>'Underground Tank #12', 'tanker_num'=>12, 'capacity'=>20000],
+        ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 4',     'tank'=>'Underground Tank #13', 'tanker_num'=>13, 'capacity'=>20000],
+        ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 1',  'tank'=>'Underground Tank #14', 'tanker_num'=>14, 'capacity'=>20000],
+        ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 2',  'tank'=>'Underground Tank #15', 'tanker_num'=>15, 'capacity'=>20000],
+        ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 3',  'tank'=>'Underground Tank #16', 'tanker_num'=>16, 'capacity'=>20000],
+        ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 4',  'tank'=>'Underground Tank #17', 'tanker_num'=>17, 'capacity'=>20000],
+    ];
+
+    $fi_lookup = [];
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, reorder_level FROM fuel_inventory WHERE station_id = ?");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $fi_lookup[strtolower(trim($row['fuel_type']))] = $row;
     }
-    foreach ($required_fuel_types as $ft) {
-        $found = false;
-        foreach ($rows as $row) {
-            if (strcasecmp(trim($row['fuel_type']), $ft) === 0) {
-                $fuel_products[] = [
-                    'id'             => $row['id'],
-                    'product_name'   => $ft,
-                    'unit_cost'      => (float)($row['price_per_liter'] ?? 0),
-                    'unit_price'     => (float)($row['price_per_liter'] ?? 0),
-                    'quantity'       => (float)($row['current_level']   ?? 0),
-                    'status'         => strtolower($row['status'] ?? 'normal') === 'normal' ? 'active' : 'inactive',
-                    'display_status' => $row['status'] ?? 'Normal',
-                    'source'         => 'fuel_inventory',
-                ];
-                $found = true; break;
+
+    $del_lookup = [];
+    $s = $pdo->prepare("SELECT tank_assigned, fuel_type, SUM(delivery_liters) AS total_del FROM fuel_deliveries WHERE station_id = ? AND DATE(delivery_date) = CURDATE() AND status = 'Verified' GROUP BY tank_assigned, fuel_type");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $del_lookup[strtolower(trim($row['tank_assigned']))] = (float)$row['total_del'];
+    }
+
+    $sales_lookup = [];
+    $s = $pdo->prepare("SELECT fuel_type, SUM(liters_sold) AS total_sales FROM fuel_transactions WHERE station_id = ? AND DATE(transaction_date) = CURDATE() AND status = 'Verified' GROUP BY fuel_type");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $sales_lookup[strtolower(trim($row['fuel_type']))] = (float)$row['total_sales'];
+    }
+
+    $adj_lookup = [];
+    $s = $pdo->prepare("SELECT fi.fuel_type, COALESCE(SUM(fa.liters),0) AS total_adj FROM fuel_adjustments fa JOIN fuel_inventory fi ON fa.fuel_type_id = fi.fuel_type_id AND fi.station_id = fa.station_id WHERE fa.station_id = ? AND DATE(fa.adjustment_date) = CURDATE() GROUP BY fi.fuel_type");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $adj_lookup[strtolower(trim($row['fuel_type']))] = (float)$row['total_adj'];
+    }
+
+    $price_lookup = [];
+    $s = $pdo->prepare("SELECT ft.name AS fuel_type, fp.price_per_liter FROM fuel_pricing fp JOIN fuel_types ft ON fp.fuel_type_id = ft.id WHERE fp.station_id = ? AND fp.is_active = 1 ORDER BY fp.effective_date DESC");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $key = strtolower(trim($row['fuel_type']));
+        if (!isset($price_lookup[$key])) $price_lookup[$key] = (float)$row['price_per_liter'];
+    }
+
+    foreach ($TANK_CONFIG_17 as $tc) {
+        $ft_key   = strtolower(trim($tc['fuel_type']));
+        if ($ft_key === 'xtra unl') {
+            if (strpos(strtolower($tc['label']), 'xtra unl 1') !== false) {
+                $ft_key = 'xtra unl 1';
+            } elseif (strpos(strtolower($tc['label']), 'xtra unl 2') !== false) {
+                $ft_key = 'xtra unl 2';
             }
         }
-        if (!$found) {
-            // fallback from inventory_products
-            $stmt2 = $pdo->prepare("SELECT * FROM inventory_products WHERE category='Fuel' AND product_name=? LIMIT 1");
-            $stmt2->execute([$ft]);
-            $ip = $stmt2->fetch(PDO::FETCH_ASSOC);
-            $fuel_products[] = [
-                'id'             => $ip['id'] ?? null,
-                'product_name'   => $ft,
-                'unit_cost'      => (float)($ip['unit_cost']  ?? 0),
-                'unit_price'     => (float)($ip['unit_price'] ?? 0),
-                'quantity'       => (float)($ip['stock']      ?? 0),
-                'status'         => $ip['status'] ?? 'inactive',
-                'display_status' => 'Missing',
-                'source'         => 'inventory_products',
-            ];
+        $tank_key = strtolower(trim($tc['tank']));
+        $inv      = $fi_lookup[$ft_key] ?? null;
+
+        $capacity  = (float)$tc['capacity'];
+        $cur_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
+
+        $same_type_count = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key) {
+            $k = strtolower(trim($t['fuel_type']));
+            if ($k === 'xtra unl') {
+                if (strpos(strtolower($t['label']), 'xtra unl 1') !== false) {
+                    $k = 'xtra unl 1';
+                } elseif (strpos(strtolower($t['label']), 'xtra unl 2') !== false) {
+                    $k = 'xtra unl 2';
+                }
+            }
+            return $k === $ft_key;
+        }));
+        $purchases = $del_lookup[$tank_key] ?? 0;
+
+        $sales_total = $sales_lookup[$ft_key] ?? 0;
+        $adj_total   = $adj_lookup[$ft_key] ?? 0;
+        $sales       = $same_type_count > 0 ? round($sales_total / $same_type_count, 2) : 0;
+        $calibration = $same_type_count > 0 ? round($adj_total / $same_type_count, 2) : 0;
+
+        $beginning = $same_type_count > 0 ? round($cur_level / $same_type_count, 2) : 0;
+        $total_available = $beginning + $purchases;
+        $ending_system   = max(0, $total_available - $sales - $calibration);
+
+        $fill_pct = $capacity > 0 ? ($ending_system / $capacity) * 100 : 0;
+        if ($ending_system <= 0) {
+            $status = 'Out of Stock';
+        } elseif ($fill_pct <= 10) {
+            $status = 'Critical';
+        } elseif ($fill_pct <= 25) {
+            $status = 'Low';
+        } else {
+            $status = 'Normal';
         }
+
+        $price = $price_lookup[$ft_key] ?? ($inv ? (float)($inv['price_per_liter'] ?? 0) : 0);
+        $timestamp = $inv['last_updated'] ?? null;
+        $critical_level = $inv ? (float)($inv['critical_level'] ?? 0) : 300;
+
+        $fuel_products[] = [
+            'id'             => $inv['id'] ?? null,
+            'pump_id'        => $tc['tanker_num'],
+            'tank_label'     => $tc['label'],
+            'raw_fuel_type'  => $tc['fuel_type'],
+            'product_name'   => get_canonical_fuel_name($tc['fuel_type']),
+            'unit_cost'      => $price,
+            'unit_price'     => $price,
+            'quantity'       => $ending_system,
+            'status'         => $status === 'Normal' ? 'active' : 'inactive',
+            'display_status' => $status,
+            'source'         => 'fuel_inventory',
+        ];
     }
 } catch (Exception $e) {
     $msg = 'Error loading fuel products: ' . $e->getMessage();
@@ -245,8 +344,8 @@ include __DIR__ . '/../partials/header.php';
             <table class="table pm-table">
                 <thead>
                     <tr>
-                        <th>ID</th>
-                        <th>Name</th>
+                        <th>Tank Name</th>
+                        <th>Fuel Type</th>
                         <th>Category</th>
                         <th>Unit Price</th>
                         <th>Stock Level</th>
@@ -257,18 +356,24 @@ include __DIR__ . '/../partials/header.php';
                 </thead>
                 <tbody id="fuelTableBody">
                 <?php foreach ($fuel_products as $p):
-                    $isNormal     = strtolower($p['display_status']) === 'normal';
+                    $isNormal     = $p['display_status'] === 'Normal';
                     $toggleTarget = $isNormal ? 'inactive' : 'active';
                     $toggleLabel  = $isNormal ? 'Deactivate' : 'Activate';
                     $toggleClass  = $isNormal ? 'btn-danger' : 'btn-success';
                     $stockLevel   = $p['quantity'];
-                    $stockColor   = $stockLevel <= 500 ? '#dc3545' : ($stockLevel <= 2000 ? '#ff9500' : '#28a745');
-                    $statusColor  = $isNormal ? '#28a745' : '#dc3545';
-                    if (stripos($p['display_status'], 'low') !== false)      $statusColor = '#ff9500';
-                    if (stripos($p['display_status'], 'critical') !== false) $statusColor = '#dc3545';
+                    if ($p['display_status'] === 'Normal') {
+                        $stockColor  = '#28a745';
+                        $statusColor = '#28a745';
+                    } elseif ($p['display_status'] === 'Low') {
+                        $stockColor  = '#ff9500';
+                        $statusColor = '#ff9500';
+                    } else {
+                        $stockColor  = '#dc3545';
+                        $statusColor = '#dc3545';
+                    }
                 ?>
                 <tr data-name="<?php echo strtolower(htmlspecialchars($p['product_name'])); ?>">
-                    <td><?php echo $p['id'] ? '#'.$p['id'] : 'N/A'; ?></td>
+                    <td><strong><?php echo htmlspecialchars($p['tank_label']); ?></strong></td>
                     <td><?php echo htmlspecialchars($p['product_name']); ?></td>
                     <td><span style="color:#ff6b35;font-weight:700;">Fuel</span></td>
                     <td>₱<?php echo number_format($p['unit_cost'], 2); ?></td>

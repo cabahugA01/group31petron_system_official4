@@ -1,486 +1,408 @@
 <?php
 /**
- * ADMIN CUSTOMER OVERSIGHT OPERATIONS API
- * Strictly view-only, no modifications, with complete search/filters and paginated transaction history.
+ * ADMIN CUSTOMER OVERSIGHT — OPERATIONS API
+ * View-only. No add, edit, verify, or delete.
  */
-
 ob_start();
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 ob_end_clean();
 
 require_login();
-
-header('Content-Type: application/json');
+header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-cache, must-revalidate');
 
 $me         = current_user();
 $role       = role_key($me['role'] ?? '');
-$station_id = user_station_id();
+$station_id = (int)user_station_id();
 
-// Strictly Admin, SuperAdmin, Developer roles
-if (!in_array($role, ['admin', 'superadmin', 'developer'])) {
-    echo json_encode(['success' => false, 'error' => 'Unauthorized access']);
-    exit;
+if (!in_array($role, ['admin','superadmin','developer'])) {
+    echo json_encode(['success'=>false,'error'=>'Unauthorized']); exit;
 }
 
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 try {
     switch ($action) {
-        case 'list':
-            listCustomers();
-            break;
-        case 'view':
-            viewCustomer();
-            break;
-        case 'transaction_history':
-            getCustomerTransactionHistory();
-            break;
-
-        case 'log_document_access':
-            logDocumentAccess();
-            break;
-        default:
-            echo json_encode(['success' => false, 'error' => 'Invalid action']);
+        case 'list':               listCustomers();        break;
+        case 'view':               viewCustomer();         break;
+        case 'transaction_history':txnHistory();           break;
+        case 'analytics':          getAnalytics();         break;
+        case 'staff_list':         getStaffList();         break;
+        case 'manager_list':       getManagerList();       break;
+        default: echo json_encode(['success'=>false,'error'=>'Invalid action']);
     }
 } catch (Exception $e) {
-    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    echo json_encode(['success'=>false,'error'=>$e->getMessage()]);
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// LIST CUSTOMERS (WITH FILTERS AND SUMMARY STATS)
-// ─────────────────────────────────────────────────────────────────────
+/* ─── helpers ─────────────────────────────────────────────────────── */
+function sid() { global $station_id, $role; return ($role==='admin') ? $station_id : 0; }
+
+function emptyStats() {
+    return ['total'=>0,'new_today'=>0,'regular'=>0,'fleet'=>0,'active'=>0,'inactive'=>0,
+            'verified'=>0,'pending_v'=>0,'outstanding_count'=>0,'outstanding_total'=>0];
+}
+
+/* ─── LIST ────────────────────────────────────────────────────────── */
 function listCustomers() {
     global $pdo, $station_id, $role;
 
-    $search       = trim($_GET['search'] ?? '');
-    $type         = trim($_GET['type'] ?? '');
-    $status       = trim($_GET['status'] ?? '');
-    $registeredBy = trim($_GET['registered_by'] ?? '');
-    $dateRegFrom  = trim($_GET['date_reg_from'] ?? '');
-    $dateRegTo    = trim($_GET['date_reg_to'] ?? '');
-    $dateTxFrom   = trim($_GET['date_tx_from'] ?? '');
-    $dateTxTo     = trim($_GET['date_tx_to'] ?? '');
+    $search    = trim($_GET['search']      ?? '');
+    $cid       = trim($_GET['customer_id'] ?? '');
+    $cname     = trim($_GET['cname']       ?? '');
+    $contact   = trim($_GET['contact']     ?? '');
+    $ctype     = trim($_GET['ctype']       ?? '');
+    $status    = trim($_GET['status']      ?? '');
+    $verif     = trim($_GET['verif']       ?? '');
+    $regBy     = trim($_GET['reg_by']      ?? '');
+    $verBy     = trim($_GET['ver_by']      ?? '');
+    $payStatus = trim($_GET['pay_status']  ?? '');
+    $regFrom   = trim($_GET['reg_from']    ?? '');
+    $regTo     = trim($_GET['reg_to']      ?? '');
+    $txFrom    = trim($_GET['tx_from']     ?? '');
+    $txTo      = trim($_GET['tx_to']       ?? '');
 
-    $where  = [];
-    $params = [];
-    
-    // Only filter by station if admin role (not superadmin or developer)
-    if ($role === 'admin' && $station_id > 0) {
-        $where[] = 'c.station_id = ?';
-        $params[] = $station_id;
-    }
+    $where = []; $params = [];
+    if ($role === 'admin' && $station_id > 0) { $where[] = 'c.station_id = ?'; $params[] = $station_id; }
 
     if ($search !== '') {
-        $where[] = "(CAST(c.id AS CHAR) LIKE ? OR c.name LIKE ? OR c.contact_number LIKE ?)";
-        $s = "%$search%";
-        array_push($params, $s, $s, $s);
+        $where[] = "(CAST(c.id AS CHAR) LIKE ? OR COALESCE(c.customer_id,'') LIKE ? OR c.name LIKE ? OR COALESCE(c.contact_number,'') LIKE ?)";
+        $s = "%$search%"; array_push($params,$s,$s,$s,$s);
     }
+    if ($cid  !== '') { $where[] = "COALESCE(c.customer_id,'') LIKE ?"; $params[] = "%$cid%"; }
+    if ($cname!== '') { $where[] = "c.name LIKE ?"; $params[] = "%$cname%"; }
+    if ($contact!=='') { $where[] = "COALESCE(c.contact_number,c.phone,'') LIKE ?"; $params[] = "%$contact%"; }
+    if ($ctype!== '') { $where[] = "COALESCE(c.customer_type,c.type,'') = ?"; $params[] = $ctype; }
+    if ($status!=='') { $where[] = "c.status = ?"; $params[] = $status; }
+    if ($verif!== '') { $where[] = "COALESCE(c.verification_status,'pending') = ?"; $params[] = $verif; }
+    if ($regBy!== '') { $where[] = "c.registered_by = ?"; $params[] = (int)$regBy; }
+    if ($verBy!== '') { $where[] = "c.verified_by = ?"; $params[] = (int)$verBy; }
+    if ($regFrom!=='') { $where[] = "DATE(COALESCE(c.registered_at,c.created_at)) >= ?"; $params[] = $regFrom; }
+    if ($regTo  !=='') { $where[] = "DATE(COALESCE(c.registered_at,c.created_at)) <= ?"; $params[] = $regTo; }
 
-    if ($type !== '') {
-        $where[] = "c.type = ?";
-        $params[] = $type;
-    }
+    $wc = $where ? implode(' AND ',$where) : '1=1';
 
-    if ($status !== '') {
-        $where[] = "c.status = ?";
-        $params[] = $status;
-    }
-
-    if ($registeredBy !== '') {
-        $where[] = "c.registered_by = ?";
-        $params[] = (int)$registeredBy;
-    }
-
-    if ($dateRegFrom !== '') {
-        $where[] = "DATE(c.created_at) >= ?";
-        $params[] = $dateRegFrom;
-    }
-    if ($dateRegTo !== '') {
-        $where[] = "DATE(c.created_at) <= ?";
-        $params[] = $dateRegTo;
-    }
-
-    $whereClause = !empty($where) ? implode(' AND ', $where) : '1=1';
-
-    // Fetch customers
     $stmt = $pdo->prepare("
-        SELECT
-            c.id,
-            c.id AS customer_id,
-            c.name AS display_name,
-            c.contact_number,
-            c.type AS customer_type,
-            c.status,
-            c.verification_status,
-            c.created_at AS registered_at,
-            CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS registered_by_name
+        SELECT c.id,
+               COALESCE(c.customer_id, CONCAT('CUST-',LPAD(c.id,5,'0'))) AS customer_id_display,
+               c.name,
+               COALESCE(c.contact_number, c.phone, '') AS contact_number,
+               COALESCE(c.customer_type, c.type, 'walk-in') AS ctype,
+               c.status,
+               COALESCE(c.verification_status,'pending') AS verification_status,
+               COALESCE(c.current_balance, c.balance, 0) AS outstanding_balance,
+               COALESCE(c.credit_limit, 0) AS credit_limit,
+               COALESCE(c.registered_at, c.created_at) AS reg_date,
+               TRIM(CONCAT(COALESCE(rb.first_name,''),' ',COALESCE(rb.last_name,''))) AS registered_by_name,
+               TRIM(CONCAT(COALESCE(vb.first_name,''),' ',COALESCE(vb.last_name,''))) AS verified_by_name,
+               c.verified_at
         FROM customers c
-        LEFT JOIN users u ON c.registered_by = u.id
-        WHERE $whereClause
-        ORDER BY c.created_at DESC
+        LEFT JOIN users rb ON c.registered_by = rb.id
+        LEFT JOIN users vb ON c.verified_by   = vb.id
+        WHERE $wc
+        ORDER BY COALESCE(c.registered_at,c.created_at) DESC
     ");
     $stmt->execute($params);
-    $rawCustomers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $raw = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Fetch last transaction and perform PHP-side filtering for Date Last Transaction
-    $filteredCustomers = [];
-    foreach ($rawCustomers as $c) {
-        $lastTxDate = null;
-
-        // Fuel Transactions
-        try {
-            $q = $pdo->prepare("SELECT MAX(transaction_date) FROM fuel_transactions WHERE customer_id = ? AND station_id = ?");
-            $q->execute([$c['id'], $station_id]);
-            $d = $q->fetchColumn();
-            if ($d) $lastTxDate = $lastTxDate ? max($lastTxDate, $d) : $d;
-        } catch (Exception $e) {}
-
-        // Merchandise Transactions
-        try {
-            $q = $pdo->prepare("SELECT MAX(transaction_date) FROM merchandise_transactions WHERE customer_id = ? AND station_id = ?");
-            $q->execute([$c['id'], $station_id]);
-            $d = $q->fetchColumn();
-            if ($d) $lastTxDate = $lastTxDate ? max($lastTxDate, $d) : $d;
-        } catch (Exception $e) {}
-
-        // Job Orders
-        try {
-            $q = $pdo->prepare("SELECT MAX(created_at) FROM job_orders WHERE customer_id = ? AND station_id = ?");
-            $q->execute([$c['id'], $station_id]);
-            $d = $q->fetchColumn();
-            if ($d) $lastTxDate = $lastTxDate ? max($lastTxDate, $d) : $d;
-        } catch (Exception $e) {}
-
-        // Last Transaction Date Filter
-        if ($lastTxDate) {
-            $txDateOnly = date('Y-m-d', strtotime($lastTxDate));
-            if ($dateTxFrom !== '' && $txDateOnly < $dateTxFrom) continue;
-            if ($dateTxTo !== '' && $txDateOnly > $dateTxTo) continue;
-        } else {
-            // If filtering by transaction date and customer has none, exclude
-            if ($dateTxFrom !== '' || $dateTxTo !== '') continue;
+    // Per-customer last tx + payment status + date filter
+    $result = [];
+    foreach ($raw as $c) {
+        $lastTx = null; $totalSpent = 0.0;
+        foreach ([
+            ["SELECT MAX(transaction_date),COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE customer_id=? AND station_id=?", $station_id],
+            ["SELECT MAX(transaction_date),COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE customer_id=? AND station_id=?", $station_id],
+            ["SELECT MAX(created_at),COALESCE(SUM(total_cost),0) FROM job_orders WHERE customer_id=? AND station_id=?", $station_id],
+        ] as [$sql, $sid]) {
+            try {
+                $q = $pdo->prepare($sql);
+                $q->execute([$c['id'], $sid]);
+                [$ld, $tot] = $q->fetch(PDO::FETCH_NUM) ?: [null,0];
+                if ($ld) $lastTx = $lastTx ? max($lastTx,$ld) : $ld;
+                $totalSpent += (float)$tot;
+            } catch (Exception $e) {}
         }
 
-        $c['last_transaction_date'] = $lastTxDate;
-        $filteredCustomers[] = $c;
+        // Last tx date filter
+        if ($txFrom !== '' || $txTo !== '') {
+            if (!$lastTx) continue;
+            $d = date('Y-m-d', strtotime($lastTx));
+            if ($txFrom !== '' && $d < $txFrom) continue;
+            if ($txTo   !== '' && $d > $txTo)   continue;
+        }
+
+        // Payment status
+        $ob = (float)$c['outstanding_balance'];
+        $ps = $ob <= 0 ? 'paid' : ($totalSpent > 0 && $ob < $totalSpent ? 'partial' : 'unpaid');
+        if ($payStatus !== '' && $ps !== $payStatus) continue;
+
+        $c['last_transaction'] = $lastTx;
+        $c['total_spent']      = $totalSpent;
+        $c['payment_status']   = $ps;
+        $result[] = $c;
     }
 
-    // Dynamic Summary Stats (Calculated on customers - filtered by station for admin only)
-    $statsWhere = ($role === 'admin' && $station_id > 0) ? 'WHERE station_id = ?' : 'WHERE 1=1';
-    $statsParams = ($role === 'admin' && $station_id > 0) ? [$station_id] : [];
-    
-    $statsStmt = $pdo->prepare("
-        SELECT
-            COUNT(*) AS total_customers,
-            SUM(CASE WHEN DATE(COALESCE(registered_at, created_at)) = CURDATE() THEN 1 ELSE 0 END) AS new_registered,
-            SUM(CASE WHEN type = 'cash' THEN 1 ELSE 0 END) AS cash_customers,
-            SUM(CASE WHEN type = 'credit' THEN 1 ELSE 0 END) AS credit_customers,
-            SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active_customers,
-            SUM(CASE WHEN status IN ('inactive', 'suspended') THEN 1 ELSE 0 END) AS inactive_customers
-        FROM customers
-        $statsWhere
+    // Stats (full station, unfiltered)
+    $sw = ($role==='admin' && $station_id>0) ? 'WHERE station_id=?' : 'WHERE 1=1';
+    $sp = ($role==='admin' && $station_id>0) ? [$station_id] : [];
+    $st = $pdo->prepare("
+        SELECT COUNT(*) AS total,
+               SUM(CASE WHEN DATE(COALESCE(registered_at,created_at))=CURDATE() THEN 1 ELSE 0 END) AS new_today,
+               SUM(CASE WHEN COALESCE(customer_type,type,'walk-in')='walk-in'  THEN 1 ELSE 0 END) AS walkin,
+               SUM(CASE WHEN COALESCE(customer_type,type,'walk-in')='regular'  THEN 1 ELSE 0 END) AS regular,
+               SUM(CASE WHEN COALESCE(customer_type,type,'walk-in')='fleet'    THEN 1 ELSE 0 END) AS fleet,
+               SUM(CASE WHEN status='active'   THEN 1 ELSE 0 END) AS active,
+               SUM(CASE WHEN status!='active'  THEN 1 ELSE 0 END) AS inactive,
+               SUM(CASE WHEN COALESCE(verification_status,'pending')='verified' THEN 1 ELSE 0 END) AS verified,
+               SUM(CASE WHEN COALESCE(verification_status,'pending')='pending'  THEN 1 ELSE 0 END) AS pending_v,
+               SUM(CASE WHEN COALESCE(current_balance,balance,0)>0 THEN 1 ELSE 0 END) AS outstanding_count,
+               COALESCE(SUM(COALESCE(current_balance,balance,0)),0) AS outstanding_total
+        FROM customers $sw
     ");
-    $statsStmt->execute($statsParams);
-    $stats = $statsStmt->fetch(PDO::FETCH_ASSOC) ?: [
-        'total_customers' => 0,
-        'new_registered' => 0,
-        'cash_customers' => 0,
-        'credit_customers' => 0,
-        'active_customers' => 0,
-        'inactive_customers' => 0
-    ];
+    $st->execute($sp);
+    $stats = $st->fetch(PDO::FETCH_ASSOC) ?: emptyStats();
 
-    echo json_encode([
-        'success'   => true,
-        'customers' => $filteredCustomers,
-        'stats'     => $stats
-    ]);
+    echo json_encode(['success'=>true,'customers'=>$result,'stats'=>$stats,'count'=>count($result)]);
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// VIEW SINGLE CUSTOMER PROFILE (DETAILS & SUMMARIES)
-// ─────────────────────────────────────────────────────────────────────
+/* ─── VIEW ────────────────────────────────────────────────────────── */
 function viewCustomer() {
-    global $pdo, $station_id;
-
+    global $pdo, $station_id, $role;
     $id = (int)($_GET['id'] ?? 0);
-    if (!$id) throw new Exception('Customer ID is required');
+    if (!$id) throw new Exception('ID required');
+
+    $w = ($role==='admin' && $station_id>0) ? 'c.id=? AND c.station_id=?' : 'c.id=?';
+    $p = ($role==='admin' && $station_id>0) ? [$id,$station_id] : [$id];
 
     $stmt = $pdo->prepare("
         SELECT c.*,
-               CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS registered_by_name
+               COALESCE(c.customer_id, CONCAT('CUST-',LPAD(c.id,5,'0'))) AS customer_id_display,
+               COALESCE(c.current_balance,c.balance,0) AS outstanding_balance,
+               TRIM(CONCAT(COALESCE(rb.first_name,''),' ',COALESCE(rb.last_name,''))) AS registered_by_name,
+               TRIM(CONCAT(COALESCE(vb.first_name,''),' ',COALESCE(vb.last_name,''))) AS verified_by_name
         FROM customers c
-        LEFT JOIN users u ON c.registered_by = u.id
-        WHERE c.id = ? AND c.station_id = ?
+        LEFT JOIN users rb ON c.registered_by = rb.id
+        LEFT JOIN users vb ON c.verified_by   = vb.id
+        WHERE $w
     ");
-    $stmt->execute([$id, $station_id]);
-    $customer = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt->execute($p);
+    $c = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$c) throw new Exception('Customer not found');
+    unset($c['password']);
 
-    if (!$customer) throw new Exception('Customer not found');
+    // Tx summary
+    $mCnt=0; $mAmt=0.0; $jCnt=0; $jAmt=0.0; $fCnt=0; $fAmt=0.0; $last=null;
+    foreach ([
+        ['merchandise_transactions','transaction_date','total_amount',&$mCnt,&$mAmt],
+        ['job_orders','created_at','total_cost',&$jCnt,&$jAmt],
+        ['fuel_transactions','transaction_date','total_amount',&$fCnt,&$fAmt],
+    ] as [$tbl,$dt,$amt,&$cnt,&$sum]) {
+        try {
+            $q=$pdo->prepare("SELECT COUNT(*),COALESCE(SUM($amt),0),MAX($dt) FROM $tbl WHERE customer_id=? AND station_id=?");
+            $q->execute([$id,$station_id]);
+            [$n,$s,$ld]=$q->fetch(PDO::FETCH_NUM);
+            $cnt=(int)$n; $sum=(float)$s;
+            if ($ld) $last=$last?max($last,$ld):$ld;
+        } catch (Exception $e) {}
+    }
 
-    // Clean up sensitive DB field values just in case
-    unset($customer['password']);
-
-    // Summary counts & financial totals
-    $merchCount  = 0;
-    $merchSpent  = 0.0;
-    $joCount     = 0;
-    $joSpent     = 0.0;
-    $fuelCount   = 0;
-    $fuelSpent   = 0.0;
-    $lastTxDate  = null;
-
-    // Merchandise transactions summary
-    try {
-        $q = $pdo->prepare("
-            SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount), 0) as tot, MAX(transaction_date) as last_d
-            FROM merchandise_transactions
-            WHERE customer_id = ? AND station_id = ?
-        ");
-        $q->execute([$id, $station_id]);
-        $res = $q->fetch(PDO::FETCH_ASSOC);
-        if ($res) {
-            $merchCount = (int)$res['cnt'];
-            $merchSpent = (float)$res['tot'];
-            if ($res['last_d']) $lastTxDate = $res['last_d'];
-        }
-    } catch (Exception $e) {}
-
-    // Job Orders summary
-    try {
-        $q = $pdo->prepare("
-            SELECT COUNT(*) as cnt, COALESCE(SUM(total_cost), 0) as tot, MAX(created_at) as last_d
-            FROM job_orders
-            WHERE customer_id = ? AND station_id = ?
-        ");
-        $q->execute([$id, $station_id]);
-        $res = $q->fetch(PDO::FETCH_ASSOC);
-        if ($res) {
-            $joCount = (int)$res['cnt'];
-            $joSpent = (float)$res['tot'];
-            if ($res['last_d']) $lastTxDate = $lastTxDate ? max($lastTxDate, $res['last_d']) : $res['last_d'];
-        }
-    } catch (Exception $e) {}
-
-    // Fuel transactions summary (added for complete spend picture)
-    try {
-        $q = $pdo->prepare("
-            SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount), 0) as tot, MAX(transaction_date) as last_d
-            FROM fuel_transactions
-            WHERE customer_id = ? AND station_id = ?
-        ");
-        $q->execute([$id, $station_id]);
-        $res = $q->fetch(PDO::FETCH_ASSOC);
-        if ($res) {
-            $fuelCount = (int)$res['cnt'];
-            $fuelSpent = (float)$res['tot'];
-            if ($res['last_d']) $lastTxDate = $lastTxDate ? max($lastTxDate, $res['last_d']) : $res['last_d'];
-        }
-    } catch (Exception $e) {}
-
-    $summary = [
-        'total_merchandise_txns' => $merchCount,
-        'total_job_orders'        => $joCount,
-        'total_fuel_txns'         => $fuelCount,
-        'total_amount_spent'      => $merchSpent + $joSpent + $fuelSpent,
-        'last_transaction_date'   => $lastTxDate
-    ];
+    $totalSpent=$mAmt+$jAmt+$fAmt;
+    $ob=(float)$c['outstanding_balance'];
+    $payStatus=$ob<=0?'Paid':($totalSpent>0&&$ob<$totalSpent?'Partial':'Unpaid');
+    $availCredit=max(0,(float)$c['credit_limit']-$ob);
+    $avg=$mCnt+$jCnt+$fCnt>0 ? round($totalSpent/($mCnt+$jCnt+$fCnt),2) : 0;
 
     echo json_encode([
         'success'  => true,
-        'customer' => $customer,
-        'summary'  => $summary
+        'customer' => $c,
+        'summary'  => [
+            'merch_count'      => $mCnt, 'merch_amount'   => $mAmt,
+            'jo_count'         => $jCnt, 'jo_amount'      => $jAmt,
+            'fuel_count'       => $fCnt, 'fuel_amount'    => $fAmt,
+            'total_count'      => $mCnt+$jCnt+$fCnt,
+            'total_spent'      => $totalSpent,
+            'last_transaction' => $last,
+            'payment_status'   => $payStatus,
+            'available_credit' => $availCredit,
+            'avg_transaction'  => $avg,
+        ]
     ]);
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// GET PAGINATED TRANSACTION HISTORY FOR PROFILE VIEW
-// ─────────────────────────────────────────────────────────────────────
-function getCustomerTransactionHistory() {
+/* ─── TRANSACTION HISTORY ─────────────────────────────────────────── */
+function txnHistory() {
     global $pdo, $station_id;
+    $id      = (int)($_GET['id']       ?? 0); if (!$id) throw new Exception('ID required');
+    $search  = trim($_GET['search']    ?? '');
+    $module  = trim($_GET['module']    ?? '');
+    $payS    = trim($_GET['pay_status']?? '');
+    $txnS    = trim($_GET['txn_status']?? '');
+    $dFrom   = trim($_GET['date_from'] ?? '');
+    $dTo     = trim($_GET['date_to']   ?? '');
+    $limit   = max(10,min(100,(int)($_GET['limit']??10)));
+    $page    = max(1,(int)($_GET['page']??1));
+    $offset  = ($page-1)*$limit;
 
-    $id       = (int)($_GET['id'] ?? 0);
-    $search   = trim($_GET['search'] ?? '');
-    $module   = trim($_GET['module'] ?? '');
-    $status   = trim($_GET['status'] ?? '');
-    $dateFrom = trim($_GET['date_from'] ?? '');
-    $dateTo   = trim($_GET['date_to'] ?? '');
+    $all = [];
 
-    $limit    = max(10, min(100, (int)($_GET['limit'] ?? 10)));
-    $page     = max(1, (int)($_GET['page'] ?? 1));
-    $offset   = ($page - 1) * $limit;
-
-    if (!$id) throw new Exception('Customer ID is required');
-
-    $allTx = [];
-
-    // 1. Fetch Fuel Transactions
-    if ($module === '' || $module === 'Fuel') {
-        $where = ['ft.customer_id = ?', 'ft.station_id = ?'];
-        $params = [$id, $station_id];
-
-        if ($search !== '') {
-            $where[] = "ft.transaction_id LIKE ?";
-            $params[] = "%$search%";
-        }
-        if ($status !== '') {
-            $where[] = "ft.status = ?";
-            $params[] = $status;
-        }
-        if ($dateFrom !== '') {
-            $where[] = "DATE(ft.transaction_date) >= ?";
-            $params[] = $dateFrom;
-        }
-        if ($dateTo !== '') {
-            $where[] = "DATE(ft.transaction_date) <= ?";
-            $params[] = $dateTo;
-        }
-
-        $wClause = implode(' AND ', $where);
+    if ($module===''||$module==='Fuel') {
+        $w=['ft.customer_id=?','ft.station_id=?']; $p=[$id,$station_id];
+        if ($search!=='') { $w[]="ft.transaction_id LIKE ?"; $p[]="%$search%"; }
+        if ($txnS  !=='') { $w[]="ft.status=?"; $p[]=$txnS; }
+        if ($dFrom !=='') { $w[]="DATE(ft.transaction_date)>=?"; $p[]=$dFrom; }
+        if ($dTo   !=='') { $w[]="DATE(ft.transaction_date)<=?"; $p[]=$dTo; }
         try {
-            $q = $pdo->prepare("
-                SELECT ft.transaction_date AS txn_date,
-                       ft.transaction_id   AS reference_no,
-                       'Fuel'              AS module,
-                       CONCAT(ft.fuel_type, ' — ', ft.liters_sold, 'L') AS description,
-                       ft.total_amount     AS amount,
-                       COALESCE(ft.status, 'Completed') AS status,
-                       COALESCE(u.name, CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')), 'System') AS processed_by
-                FROM fuel_transactions ft
-                LEFT JOIN users u ON ft.staff_id = u.id
-                WHERE $wClause
-            ");
-            $q->execute($params);
-            $allTx = array_merge($allTx, $q->fetchAll(PDO::FETCH_ASSOC));
+            $q=$pdo->prepare("SELECT ft.transaction_date AS txn_date, ft.transaction_id AS reference_no,
+                'Fuel' AS module, CONCAT(ft.fuel_type,' — ',ft.liters_sold,'L') AS description,
+                ft.total_amount AS amount, 'N/A' AS pay_status,
+                COALESCE(ft.status,'Completed') AS txn_status,
+                COALESCE(u.name,CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')),'System') AS processed_by
+                FROM fuel_transactions ft LEFT JOIN users u ON ft.staff_id=u.id
+                WHERE ".implode(' AND ',$w));
+            $q->execute($p);
+            $all=array_merge($all,$q->fetchAll(PDO::FETCH_ASSOC));
         } catch (Exception $e) {}
     }
 
-    // 2. Fetch Merchandise Transactions
-    if ($module === '' || $module === 'Merchandise') {
-        $where = ['mt.customer_id = ?', 'mt.station_id = ?'];
-        $params = [$id, $station_id];
-
-        if ($search !== '') {
-            $where[] = "mt.transaction_id LIKE ?";
-            $params[] = "%$search%";
-        }
-        if ($status !== '') {
-            $where[] = "mt.validation_status = ?";
-            $params[] = $status;
-        }
-        if ($dateFrom !== '') {
-            $where[] = "DATE(mt.transaction_date) >= ?";
-            $params[] = $dateFrom;
-        }
-        if ($dateTo !== '') {
-            $where[] = "DATE(mt.transaction_date) <= ?";
-            $params[] = $dateTo;
-        }
-
-        $wClause = implode(' AND ', $where);
+    if ($module===''||$module==='Merchandise') {
+        $w=['mt.customer_id=?','mt.station_id=?']; $p=[$id,$station_id];
+        if ($search!=='') { $w[]="mt.transaction_id LIKE ?"; $p[]="%$search%"; }
+        if ($txnS  !=='') { $w[]="mt.validation_status=?"; $p[]=$txnS; }
+        if ($dFrom !=='') { $w[]="DATE(mt.transaction_date)>=?"; $p[]=$dFrom; }
+        if ($dTo   !=='') { $w[]="DATE(mt.transaction_date)<=?"; $p[]=$dTo; }
         try {
-            $q = $pdo->prepare("
-                SELECT mt.transaction_date AS txn_date,
-                       mt.transaction_id   AS reference_no,
-                       'Merchandise'       AS module,
-                       CONCAT('Sale — \u{20B1}', FORMAT(mt.total_amount,2)) AS description,
-                       mt.total_amount     AS amount,
-                       COALESCE(mt.validation_status, 'Completed') AS status,
-                       COALESCE(u.name, CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')), 'System') AS processed_by
-                FROM merchandise_transactions mt
-                LEFT JOIN users u ON mt.staff_id = u.id
-                WHERE $wClause
-            ");
-            $q->execute($params);
-            $allTx = array_merge($allTx, $q->fetchAll(PDO::FETCH_ASSOC));
+            $q=$pdo->prepare("SELECT mt.transaction_date AS txn_date, mt.transaction_id AS reference_no,
+                'Merchandise' AS module, CONCAT('Merchandise Sale') AS description,
+                mt.total_amount AS amount, COALESCE(mt.payment_status,'N/A') AS pay_status,
+                COALESCE(mt.validation_status,'Completed') AS txn_status,
+                COALESCE(u.name,CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')),'System') AS processed_by
+                FROM merchandise_transactions mt LEFT JOIN users u ON mt.staff_id=u.id
+                WHERE ".implode(' AND ',$w));
+            $q->execute($p);
+            $all=array_merge($all,$q->fetchAll(PDO::FETCH_ASSOC));
         } catch (Exception $e) {}
     }
 
-    // 3. Fetch Job Orders
-    if ($module === '' || $module === 'Job Order') {
-        $where = ['jo.customer_id = ?', 'jo.station_id = ?'];
-        $params = [$id, $station_id];
-
-        if ($search !== '') {
-            $where[] = "(jo.job_order_id LIKE ? OR jo.job_order_number LIKE ?)";
-            $params[] = "%$search%";
-            $params[] = "%$search%";
-        }
-        if ($status !== '') {
-            $where[] = "jo.status = ?";
-            $params[] = $status;
-        }
-        if ($dateFrom !== '') {
-            $where[] = "DATE(jo.created_at) >= ?";
-            $params[] = $dateFrom;
-        }
-        if ($dateTo !== '') {
-            $where[] = "DATE(jo.created_at) <= ?";
-            $params[] = $dateTo;
-        }
-
-        $wClause = implode(' AND ', $where);
+    if ($module===''||$module==='Job Order') {
+        $w=['jo.customer_id=?','jo.station_id=?']; $p=[$id,$station_id];
+        if ($search!=='') { $w[]="(COALESCE(jo.job_order_id,'') LIKE ? OR COALESCE(jo.job_order_number,'') LIKE ?)"; $p[]="%$search%"; $p[]="%$search%"; }
+        if ($txnS  !=='') { $w[]="jo.status=?"; $p[]=$txnS; }
+        if ($dFrom !=='') { $w[]="DATE(jo.created_at)>=?"; $p[]=$dFrom; }
+        if ($dTo   !=='') { $w[]="DATE(jo.created_at)<=?"; $p[]=$dTo; }
         try {
-            $q = $pdo->prepare("
-                SELECT jo.created_at       AS txn_date,
-                       COALESCE(jo.job_order_id, jo.job_order_number, CONCAT('JO-', jo.id)) AS reference_no,
-                       'Job Order'         AS module,
-                       COALESCE(jo.service_type, 'Auto Service') AS description,
-                       jo.total_cost       AS amount,
-                       COALESCE(jo.status, 'Pending') AS status,
-                       COALESCE(u.name, CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')), 'System') AS processed_by
-                FROM job_orders jo
-                LEFT JOIN users u ON jo.created_by = u.id
-                WHERE $wClause
-            ");
-            $q->execute($params);
-            $allTx = array_merge($allTx, $q->fetchAll(PDO::FETCH_ASSOC));
+            $q=$pdo->prepare("SELECT jo.created_at AS txn_date,
+                COALESCE(jo.job_order_id,jo.job_order_number,CONCAT('JO-',jo.id)) AS reference_no,
+                'Job Order' AS module, COALESCE(jo.service_type,'Auto Service') AS description,
+                COALESCE(jo.total_cost,0) AS amount, COALESCE(jo.payment_status,'N/A') AS pay_status,
+                COALESCE(jo.status,'Pending') AS txn_status,
+                COALESCE(u.name,CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')),'System') AS processed_by
+                FROM job_orders jo LEFT JOIN users u ON jo.created_by=u.id
+                WHERE ".implode(' AND ',$w));
+            $q->execute($p);
+            $all=array_merge($all,$q->fetchAll(PDO::FETCH_ASSOC));
         } catch (Exception $e) {}
     }
 
-    // Sort combined records descending by date
-    usort($allTx, function($a, $b) {
-        return strtotime($b['txn_date']) - strtotime($a['txn_date']);
-    });
+    // Pay status filter
+    if ($payS!=='') $all=array_filter($all,fn($t)=>strtolower($t['pay_status']===$payS));
 
-    $totalRecords = count($allTx);
-    $paginatedTx  = array_slice($allTx, $offset, $limit);
-    $totalPages   = ceil($totalRecords / $limit);
+    usort($all,fn($a,$b)=>strtotime($b['txn_date'])-strtotime($a['txn_date']));
+    $total=count($all);
+    $pages=max(1,(int)ceil($total/$limit));
 
     echo json_encode([
-        'success'      => true,
-        'history'      => $paginatedTx,
-        'total_rows'   => $totalRecords,
-        'total_pages'  => $totalPages,
-        'current_page' => $page,
-        'limit'        => $limit
+        'success'=>true,'history'=>array_values(array_slice($all,$offset,$limit)),
+        'total'=>$total,'pages'=>$pages,'page'=>$page,'limit'=>$limit
     ]);
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// LOG DOCUMENT ACCESS FOR AUDIT
-// ─────────────────────────────────────────────────────────────────────
-function logDocumentAccess() {
-    global $pdo, $station_id;
+/* ─── ANALYTICS ───────────────────────────────────────────────────── */
+function getAnalytics() {
+    global $pdo, $station_id, $role;
+    $sw = ($role==='admin' && $station_id>0) ? 'AND station_id=?' : '';
+    $sp = ($role==='admin' && $station_id>0) ? [$station_id]      : [];
 
-    $id      = (int)($_POST['id'] ?? 0);
-    $docType = trim($_POST['doc_type'] ?? '');
+    // Monthly registrations (last 12 months)
+    $monthly = [];
+    try {
+        $q=$pdo->prepare("SELECT DATE_FORMAT(COALESCE(registered_at,created_at),'%Y-%m') AS mo,
+            COUNT(*) AS cnt FROM customers WHERE COALESCE(registered_at,created_at)>=DATE_SUB(NOW(),INTERVAL 12 MONTH) $sw
+            GROUP BY mo ORDER BY mo ASC");
+        $q->execute($sp); $monthly=$q->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
 
-    if (!$id || !in_array($docType, ['gov_id', 'cr'])) {
-        throw new Exception('Invalid document access parameters');
-    }
+    // Type distribution
+    $typeDist = [];
+    try {
+        $q=$pdo->prepare("SELECT COALESCE(customer_type,type,'walk-in') AS ctype, COUNT(*) AS cnt
+            FROM customers WHERE 1=1 $sw GROUP BY ctype");
+        $q->execute($sp); $typeDist=$q->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
 
-    $stmt = $pdo->prepare("SELECT name FROM customers WHERE id = ? AND station_id = ?");
-    $stmt->execute([$id, $station_id]);
-    $c = $stmt->fetch(PDO::FETCH_ASSOC);
+    // Top 10 spenders
+    $topSpenders = [];
+    try {
+        $q=$pdo->prepare("SELECT c.id, c.name,
+            COALESCE(SUM(mt.total_amount),0)+COALESCE(SUM(jt.total_cost),0) AS total_spent
+            FROM customers c
+            LEFT JOIN merchandise_transactions mt ON mt.customer_id=c.id " . ($station_id>0&&$role==='admin'?"AND mt.station_id=$station_id":"") . "
+            LEFT JOIN job_orders jt ON jt.customer_id=c.id " . ($station_id>0&&$role==='admin'?"AND jt.station_id=$station_id":"") . "
+            WHERE 1=1 $sw
+            GROUP BY c.id, c.name ORDER BY total_spent DESC LIMIT 10");
+        $q->execute($sp); $topSpenders=$q->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
 
-    if ($c) {
-        write_audit_log($pdo, 'View', "Admin viewed $docType document for customer: {$c['name']}", 'customers', $id, 'customer');
-        echo json_encode(['success' => true]);
-    } else {
-        echo json_encode(['success' => false, 'error' => 'Customer record not found']);
-    }
+    // Monthly spending (last 6 months)
+    $monthlySpend = [];
+    try {
+        $q=$pdo->prepare("SELECT DATE_FORMAT(transaction_date,'%Y-%m') AS mo,
+            COALESCE(SUM(total_amount),0) AS tot FROM merchandise_transactions
+            WHERE transaction_date>=DATE_SUB(NOW(),INTERVAL 6 MONTH) " . ($station_id>0&&$role==='admin'?"AND station_id=$station_id":"") . "
+            GROUP BY mo ORDER BY mo ASC");
+        $q->execute([]); $monthlySpend=$q->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+
+    // Summary KPIs
+    $kpis = ['new_this_month'=>0,'inactive'=>0,'total_revenue'=>0,'avg_spend'=>0,'fleet_spend'=>0];
+    try {
+        $q=$pdo->prepare("SELECT
+            SUM(CASE WHEN DATE_FORMAT(COALESCE(registered_at,created_at),'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m') THEN 1 ELSE 0 END) AS new_month,
+            SUM(CASE WHEN status!='active' THEN 1 ELSE 0 END) AS inactive
+            FROM customers WHERE 1=1 $sw");
+        $q->execute($sp); $r=$q->fetch(PDO::FETCH_ASSOC);
+        $kpis['new_this_month']=(int)($r['new_month']??0);
+        $kpis['inactive']=(int)($r['inactive']??0);
+    } catch (Exception $e) {}
+
+    echo json_encode(['success'=>true,'monthly'=>$monthly,'type_dist'=>$typeDist,
+        'top_spenders'=>$topSpenders,'monthly_spend'=>$monthlySpend,'kpis'=>$kpis]);
 }
-?>
+
+/* ─── STAFF LIST ──────────────────────────────────────────────────── */
+function getStaffList() {
+    global $pdo, $station_id, $role;
+    $sw = ($role==='admin'&&$station_id>0) ? 'AND station_id=?' : '';
+    $sp = ($role==='admin'&&$station_id>0) ? [$station_id] : [];
+    try {
+        $q=$pdo->prepare("SELECT DISTINCT u.id,
+            TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) AS name
+            FROM customers c JOIN users u ON c.registered_by=u.id WHERE 1=1 $sw ORDER BY name");
+        $q->execute($sp);
+        echo json_encode(['success'=>true,'list'=>$q->fetchAll(PDO::FETCH_ASSOC)]);
+    } catch (Exception $e) { echo json_encode(['success'=>true,'list',[]]); }
+}
+
+/* ─── MANAGER LIST ────────────────────────────────────────────────── */
+function getManagerList() {
+    global $pdo, $station_id, $role;
+    $sw = ($role==='admin'&&$station_id>0) ? 'AND station_id=?' : '';
+    $sp = ($role==='admin'&&$station_id>0) ? [$station_id] : [];
+    try {
+        $q=$pdo->prepare("SELECT DISTINCT u.id,
+            TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) AS name
+            FROM customers c JOIN users u ON c.verified_by=u.id WHERE c.verified_by IS NOT NULL $sw ORDER BY name");
+        $q->execute($sp);
+        echo json_encode(['success'=>true,'list'=>$q->fetchAll(PDO::FETCH_ASSOC)]);
+    } catch (Exception $e) { echo json_encode(['success'=>true,'list'=>[]]); }
+}

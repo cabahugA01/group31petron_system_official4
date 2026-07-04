@@ -1063,8 +1063,7 @@ include __DIR__ . '/../partials/header.php';
         --danger: #dc2626;
         --info: #0e7490;
         color: var(--ink);
-        padding: 24px;
-        padding-bottom: 70px;
+        padding: 0 0 70px;
         background: var(--page);
         min-height: calc(100vh - 120px);
     }
@@ -1077,7 +1076,6 @@ include __DIR__ . '/../partials/header.php';
         text-decoration: none;
     }
 
-    .admin-page-header,
     .admin-card,
     .admin-panel {
         background: var(--card);
@@ -1091,8 +1089,9 @@ include __DIR__ . '/../partials/header.php';
         align-items: center;
         justify-content: space-between;
         gap: 18px;
-        padding: 22px 28px;
+        padding: 0 0 18px 0;
         margin-bottom: 22px;
+        border-bottom: 2px solid var(--line);
     }
 
     .admin-kicker {
@@ -1645,7 +1644,7 @@ include __DIR__ . '/../partials/header.php';
 
     @media (max-width: 900px) {
         .admin-dashboard {
-            padding: 16px;
+            padding: 0;
             padding-bottom: 70px;
         }
 

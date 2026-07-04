@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Developer Dashboard - Complete Technical Control Center
  * System Health, Integration Monitoring, Database Management, Security, Audit Trail, Developer Tools
@@ -244,11 +244,11 @@ include __DIR__ . '/../partials/header.php';
 .dev-header {
     background: transparent;
     color: var(--dark-slate);
-    padding: 0 24px;
+    padding: 0 0 18px 0;
     margin-top: -12px;
     box-shadow: none;
     position: relative;
-    border-bottom: none;
+    border-bottom: 2px solid var(--border-color);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -306,7 +306,7 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .dev-content {
-    padding: 12px 24px 24px 24px;
+    padding: 18px 0 24px 0;
     display: grid;
     grid-template-columns: repeat(12, 1fr);
     gap: 24px;

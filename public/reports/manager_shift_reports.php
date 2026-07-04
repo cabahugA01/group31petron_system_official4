@@ -152,17 +152,17 @@ ksort($shifts);
 .sr-table thead tr {
     border-top: 2px solid #00264D;
     border-bottom: 1px solid #e2e8f0;
-    background: #002F70;
+    background: #f8fafc;
 }
 .sr-table thead th {
     padding: 10px 8px;
     text-align: left;
     font-weight: 700;
-    color: #ffffff;
+    color: #475569;
     font-size: 11px;
     text-transform: uppercase;
     white-space: nowrap;
-    background: #002F70;
+    background: #f8fafc;
 }
 .sr-table tbody tr { border-bottom: 1px solid #f1f5f9; }
 .sr-table tbody tr:hover { background: #f8fafc; }
@@ -229,7 +229,6 @@ ksort($shifts);
         'merchandise'     => ['label'=>'Merchandise Sales Report',   'ico'=>'fas fa-shopping-cart'],
         'service_income'  => ['label'=>'Service Income Report',      'ico'=>'fas fa-wrench'],
         'payments'        => ['label'=>'Payments Report',            'ico'=>'fas fa-money-bill-wave'],
-        'job_orders'      => ['label'=>'Job Orders Report',          'ico'=>'fas fa-clipboard-list'],
         'customers'       => ['label'=>'Customers Report',           'ico'=>'fas fa-users'],
     ];
     foreach ($tabs as $key => $tab): ?>
@@ -988,10 +987,9 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
     <?php
     $report_titles = [
         'fuel_sales'     => ['title'=>'FUEL SALES REPORT',          'sub'=>'SHIFT SUMMARY'],
-        'merchandise'    => ['title'=>'MERCHANDISE SALES REPORT',    'sub'=>'SHIFT SUMMARY'],
+        'merchandise'    => ['title'=>'DAILY MERCHANDISE & SERVICE SALES REPORT',    'sub'=>'24-HOUR SUMMARY'],
         'service_income' => ['title'=>'SERVICE INCOME REPORT',       'sub'=>'SHIFT SUMMARY'],
         'payments'       => ['title'=>'PAYMENTS REPORT',             'sub'=>'SHIFT SUMMARY'],
-        'job_orders'     => ['title'=>'JOB ORDERS REPORT',           'sub'=>'SHIFT SUMMARY'],
         'customers'      => ['title'=>'CUSTOMERS REPORT',            'sub'=>'SHIFT SUMMARY'],
     ];
     $rt = $report_titles[$sec_key] ?? ['title'=>strtoupper($tab['label']),'sub'=>'SHIFT SUMMARY'];
@@ -1080,36 +1078,209 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
             <?php endif; ?>
         </table>
 
-        <?php elseif ($sec_key === 'merchandise'): ?>
-        <table class="sr-table">
-            <thead><tr>
-                <th>Category</th><th>Product</th><th>Beg Stock</th><th>Stock In</th>
-                <th>Stock Out</th><th>End Stock</th><th>Unit Price</th><th>Amount</th><th>Encoder</th>
-            </tr></thead>
-            <tbody>
-            <?php if (empty($rows)): ?><tr><td colspan="9" class="sr-empty">No merchandise sales for this shift</td></tr>
-            <?php else: $ta=0; foreach($rows as $r): $ta+=$r['amount']; ?>
-                <tr>
-                    <td><?=htmlspecialchars($r['category'])?></td>
-                    <td><?=htmlspecialchars($r['product_name'])?></td>
-                    <td><?=number_format($r['beg_stock'])?></td>
-                    <td><?=number_format($r['stock_in'])?></td>
-                    <td><?=number_format($r['stock_out'])?></td>
-                    <td><?=number_format($r['end_stock'])?></td>
-                    <td>₱<?=number_format($r['unit_price'],2)?></td>
-                    <td>₱<?=number_format($r['amount'],2)?></td>
-                    <td><?=htmlspecialchars($r['encoder'])?></td>
-                </tr>
-            <?php endforeach; endif; ?>
-            </tbody>
-            <?php if (!empty($rows)): ?>
-            <tfoot><tr>
-                <td colspan="7" style="text-align:right;"><strong>SHIFT TOTALS:</strong></td>
-                <td><strong>₱<?=number_format($ta,2)?></strong></td>
-                <td></td>
-            </tr></tfoot>
-            <?php endif; ?>
-        </table>
+        <?php elseif ($sec_key === 'merchandise'): 
+            // NEW 6-SECTION MERCHANDISE & SERVICE REPORT
+            // Include the new data fetching function
+            require_once __DIR__ . '/merchandise_service_report_new.php';
+            
+            // Fetch comprehensive report data (no shift filter for daily report)
+            $reportData = fetchMerchandiseServiceReport($pdo, $station_id, $date_start, $date_end, null);
+        ?>
+        
+        <!-- SECTION 1: MERCHANDISE SALES -->
+        <div style="margin-bottom: 24px;">
+            <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">
+                1. MERCHANDISE SALES
+            </div>
+            <table class="sr-table">
+                <thead><tr>
+                    <th>Receipt No.</th><th>Customer</th><th>Category</th><th>Product</th>
+                    <th>Qty</th><th>Unit Price</th><th>Amount</th><th>Encoder</th>
+                </tr></thead>
+                <tbody>
+                <?php if (empty($reportData['merchandise_sales'])): ?>
+                    <tr><td colspan="8" class="sr-empty">No merchandise sales for this period</td></tr>
+                <?php else: $ta=0; foreach($reportData['merchandise_sales'] as $r): $ta+=$r['amount']; ?>
+                    <tr>
+                        <td><?=htmlspecialchars($r['receipt_no'])?></td>
+                        <td><?=htmlspecialchars($r['customer'])?></td>
+                        <td><?=htmlspecialchars($r['category'])?></td>
+                        <td><?=htmlspecialchars($r['product'])?></td>
+                        <td><?=number_format($r['qty'])?></td>
+                        <td>₱<?=number_format($r['unit_price'],2)?></td>
+                        <td>₱<?=number_format($r['amount'],2)?></td>
+                        <td><?=htmlspecialchars($r['encoder'])?></td>
+                    </tr>
+                <?php endforeach; endif; ?>
+                </tbody>
+                <?php if (!empty($reportData['merchandise_sales'])): ?>
+                <tfoot><tr>
+                    <td colspan="6" style="text-align:right;"><strong>Total Merchandise Sales:</strong></td>
+                    <td><strong>₱<?=number_format($ta,2)?></strong></td>
+                    <td></td>
+                </tr></tfoot>
+                <?php endif; ?>
+            </table>
+        </div>
+
+        <!-- SECTION 2: JOB ORDER / SERVICE SALES -->
+        <div style="margin-bottom: 24px;">
+            <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">
+                2. JOB ORDER / SERVICE SALES
+            </div>
+            <table class="sr-table">
+                <thead><tr>
+                    <th>JO No.</th><th>Customer</th><th>Vehicle</th><th>Service Type</th>
+                    <th>Labor Fee</th><th>Parts Cost</th><th>Total Amount</th><th>Encoder</th>
+                </tr></thead>
+                <tbody>
+                <?php if (empty($reportData['job_orders'])): ?>
+                    <tr><td colspan="8" class="sr-empty">No job orders for this period</td></tr>
+                <?php else: $labor=0; $total=0; foreach($reportData['job_orders'] as $r): $labor+=$r['labor_fee']; $total+=$r['total_amount']; ?>
+                    <tr>
+                        <td><?=htmlspecialchars($r['jo_no'])?></td>
+                        <td><?=htmlspecialchars($r['customer'])?></td>
+                        <td><?=htmlspecialchars($r['vehicle'])?></td>
+                        <td><?=htmlspecialchars($r['service_type'])?></td>
+                        <td>₱<?=number_format($r['labor_fee'],2)?></td>
+                        <td>₱<?=number_format($r['parts_cost'],2)?></td>
+                        <td>₱<?=number_format($r['total_amount'],2)?></td>
+                        <td><?=htmlspecialchars($r['encoder'])?></td>
+                    </tr>
+                <?php endforeach; endif; ?>
+                </tbody>
+                <?php if (!empty($reportData['job_orders'])): ?>
+                <tfoot>
+                    <tr>
+                        <td colspan="4" style="text-align:right;"><strong>Total Service Income (Labor):</strong></td>
+                        <td><strong>₱<?=number_format($labor,2)?></strong></td>
+                        <td colspan="3"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="4" style="text-align:right;"><strong>Total Job Order Sales:</strong></td>
+                        <td colspan="2"><strong>₱<?=number_format($total,2)?></strong></td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+                <?php endif; ?>
+            </table>
+        </div>
+
+        <!-- SECTION 3: PARTS USED IN JOB ORDERS -->
+        <div style="margin-bottom: 24px;">
+            <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">
+                3. PARTS USED IN JOB ORDERS (FROM MERCHANDISE PRODUCTS)
+            </div>
+            <p style="font-size: 11px; color: #64748b; margin: 0 0 8px 0; font-style: italic;">Source: Merchandise Inventory Products</p>
+            <table class="sr-table">
+                <thead><tr>
+                    <th>JO No.</th><th>Customer</th><th>Product Name</th><th>Category</th>
+                    <th>Qty Used</th><th>Unit Price</th><th>Total Cost</th>
+                </tr></thead>
+                <tbody>
+                <?php if (empty($reportData['parts_used'])): ?>
+                    <tr><td colspan="7" class="sr-empty">No parts used in job orders for this period</td></tr>
+                <?php else: $qty=0; $cost=0; foreach($reportData['parts_used'] as $r): $qty+=$r['qty_used']; $cost+=$r['total_cost']; ?>
+                    <tr>
+                        <td><?=htmlspecialchars($r['jo_no'])?></td>
+                        <td><?=htmlspecialchars($r['customer'])?></td>
+                        <td><?=htmlspecialchars($r['product_name'])?></td>
+                        <td><?=htmlspecialchars($r['category'])?></td>
+                        <td><?=number_format($r['qty_used'])?></td>
+                        <td>₱<?=number_format($r['unit_price'],2)?></td>
+                        <td>₱<?=number_format($r['total_cost'],2)?></td>
+                    </tr>
+                <?php endforeach; endif; ?>
+                </tbody>
+                <?php if (!empty($reportData['parts_used'])): ?>
+                <tfoot><tr>
+                    <td colspan="4" style="text-align:right;"><strong>Total Parts Used:</strong></td>
+                    <td><strong><?=number_format($qty)?></strong></td>
+                    <td style="text-align:right;"><strong>Total Cost:</strong></td>
+                    <td><strong>₱<?=number_format($cost,2)?></strong></td>
+                </tr></tfoot>
+                <?php endif; ?>
+            </table>
+        </div>
+
+        <!-- SECTION 4: PAYMENT BREAKDOWN -->
+        <div style="margin-bottom: 24px;">
+            <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">
+                4. PAYMENT BREAKDOWN
+            </div>
+            <table class="sr-table">
+                <thead><tr>
+                    <th>Payment Method</th><th>Transactions</th><th>Amount</th>
+                </tr></thead>
+                <tbody>
+                <?php if (empty($reportData['payment_breakdown'])): ?>
+                    <tr><td colspan="3" class="sr-empty">No payment data for this period</td></tr>
+                <?php else: $txn=0; $amt=0; foreach($reportData['payment_breakdown'] as $r): $txn+=$r['transactions']; $amt+=$r['amount']; ?>
+                    <tr>
+                        <td><?=htmlspecialchars($r['payment_method'])?></td>
+                        <td><?=number_format($r['transactions'])?></td>
+                        <td>₱<?=number_format($r['amount'],2)?></td>
+                    </tr>
+                <?php endforeach; endif; ?>
+                </tbody>
+                <?php if (!empty($reportData['payment_breakdown'])): ?>
+                <tfoot><tr>
+                    <td style="text-align:right;"><strong>TOTAL:</strong></td>
+                    <td><strong><?=number_format($txn)?></strong></td>
+                    <td><strong>₱<?=number_format($amt,2)?></strong></td>
+                </tr></tfoot>
+                <?php endif; ?>
+            </table>
+        </div>
+
+        <!-- SECTION 5: SHIFT SALES SUMMARY -->
+        <div style="margin-bottom: 24px;">
+            <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">
+                5. SHIFT SALES SUMMARY
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <!-- Shift 1 -->
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px;">
+                    <div style="font-weight: 700; margin-bottom: 8px;">Shift 1 (6:00 AM – 2:00 PM)</div>
+                    <table style="width: 100%; font-size: 11px;">
+                        <tr><td>Merchandise Sales</td><td style="text-align: right;">₱<?=number_format($reportData['shift_summary']['shift1']['merchandise_sales']??0,2)?></td></tr>
+                        <tr><td>Labor Income</td><td style="text-align: right;">₱<?=number_format($reportData['shift_summary']['shift1']['labor_income']??0,2)?></td></tr>
+                        <tr><td>Parts Sales</td><td style="text-align: right;">₱<?=number_format($reportData['shift_summary']['shift1']['parts_sales']??0,2)?></td></tr>
+                        <tr style="border-top: 2px solid #00264D; font-weight: 700;"><td>Grand Total</td><td style="text-align: right;">₱<?=number_format($reportData['shift_summary']['shift1']['grand_total']??0,2)?></td></tr>
+                    </table>
+                </div>
+                <!-- Shift 2 -->
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px;">
+                    <div style="font-weight: 700; margin-bottom: 8px;">Shift 2 (2:00 PM – 12:00 AM)</div>
+                    <table style="width: 100%; font-size: 11px;">
+                        <tr><td>Merchandise Sales</td><td style="text-align: right;">₱<?=number_format($reportData['shift_summary']['shift2']['merchandise_sales']??0,2)?></td></tr>
+                        <tr><td>Labor Income</td><td style="text-align: right;">₱<?=number_format($reportData['shift_summary']['shift2']['labor_income']??0,2)?></td></tr>
+                        <tr><td>Parts Sales</td><td style="text-align: right;">₱<?=number_format($reportData['shift_summary']['shift2']['parts_sales']??0,2)?></td></tr>
+                        <tr style="border-top: 2px solid #00264D; font-weight: 700;"><td>Grand Total</td><td style="text-align: right;">₱<?=number_format($reportData['shift_summary']['shift2']['grand_total']??0,2)?></td></tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 6: OVERALL DAILY SUMMARY -->
+        <div style="margin-bottom: 24px;">
+            <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">
+                6. OVERALL DAILY SUMMARY
+            </div>
+            <table class="sr-table">
+                <thead><tr>
+                    <th>Description</th><th style="text-align: right;">Amount</th>
+                </tr></thead>
+                <tbody>
+                    <tr><td>Merchandise Sales</td><td style="text-align: right;">₱<?=number_format($reportData['daily_summary']['merchandise_sales'],2)?></td></tr>
+                    <tr><td>Labor Income</td><td style="text-align: right;">₱<?=number_format($reportData['daily_summary']['labor_income'],2)?></td></tr>
+                    <tr><td>Parts Used (Merchandise Products)</td><td style="text-align: right;">₱<?=number_format($reportData['daily_summary']['parts_used'],2)?></td></tr>
+                    <tr style="background: #f0f4ff;"><td><strong>Grand Total Sales</strong></td><td style="text-align: right;"><strong>₱<?=number_format($reportData['daily_summary']['grand_total'],2)?></strong></td></tr>
+                    <tr><td>Total Transactions</td><td style="text-align: right;"><?=number_format($reportData['daily_summary']['total_transactions'])?></td></tr>
+                    <tr><td>Customers Served</td><td style="text-align: right;"><?=number_format($reportData['daily_summary']['customers_served'])?></td></tr>
+                </tbody>
+            </table>
+        </div>
 
         <?php elseif ($sec_key === 'service_income'): ?>
         <table class="sr-table">

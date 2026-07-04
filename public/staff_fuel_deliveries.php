@@ -19,23 +19,23 @@ if (isset($_SESSION['error']))   { $msg = $_SESSION['error'];   $msg_type = 'err
 
 // ── All 17 tank entries (matches image exactly) ────────
 $TANK_CONFIG = [
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 1',     'tank'=>'Underground Tank #1'],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 2',     'tank'=>'Underground Tank #2'],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 3',     'tank'=>'Underground Tank #3'],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 4',     'tank'=>'Underground Tank #4'],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 5',     'tank'=>'Underground Tank #5'],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 6',     'tank'=>'Underground Tank #6'],
-    ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'Underground Tank #7'],
-    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'Underground Tank #8'],
-    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 2', 'tank'=>'Underground Tank #9'],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'Underground Tank #10'],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 2',     'tank'=>'Underground Tank #11'],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 3',     'tank'=>'Underground Tank #12'],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 4',     'tank'=>'Underground Tank #13'],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 1',  'tank'=>'Underground Tank #14'],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 2',  'tank'=>'Underground Tank #15'],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 3',  'tank'=>'Underground Tank #16'],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 4',  'tank'=>'Underground Tank #17'],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 1',     'tank'=>'Underground Tank #1',  'tanker_num'=>1,  'capacity'=>50000],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 2',     'tank'=>'Underground Tank #2',  'tanker_num'=>2,  'capacity'=>50000],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 3',     'tank'=>'Underground Tank #3',  'tanker_num'=>3,  'capacity'=>50000],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 4',     'tank'=>'Underground Tank #4',  'tanker_num'=>4,  'capacity'=>50000],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 5',     'tank'=>'Underground Tank #5',  'tanker_num'=>5,  'capacity'=>50000],
+    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 6',     'tank'=>'Underground Tank #6',  'tanker_num'=>6,  'capacity'=>50000],
+    ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'Underground Tank #7',  'tanker_num'=>7,  'capacity'=>20000],
+    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'Underground Tank #8',  'tanker_num'=>8,  'capacity'=>45000],
+    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 2', 'tank'=>'Underground Tank #9',  'tanker_num'=>9,  'capacity'=>45000],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'Underground Tank #10', 'tanker_num'=>10, 'capacity'=>20000],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 2',     'tank'=>'Underground Tank #11', 'tanker_num'=>11, 'capacity'=>20000],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 3',     'tank'=>'Underground Tank #12', 'tanker_num'=>12, 'capacity'=>20000],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 4',     'tank'=>'Underground Tank #13', 'tanker_num'=>13, 'capacity'=>20000],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 1',  'tank'=>'Underground Tank #14', 'tanker_num'=>14, 'capacity'=>20000],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 2',  'tank'=>'Underground Tank #15', 'tanker_num'=>15, 'capacity'=>20000],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 3',  'tank'=>'Underground Tank #16', 'tanker_num'=>16, 'capacity'=>20000],
+    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 4',  'tank'=>'Underground Tank #17', 'tanker_num'=>17, 'capacity'=>20000],
 ];
 
 $FT_STYLE = [
@@ -161,34 +161,105 @@ try {
     $expected_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch(Exception $e){}
 
-// ── Fetch Tank Levels (View Only) ─────────────────────────────
-$tank_levels = [];
+// ── Fetch Tank Levels with split calculations (View Only) ─────────────
+$fi_lookup = [];
 try {
-    $stmt = $pdo->prepare("
-        SELECT fi.id, fi.fuel_type,
-               COALESCE(fi.current_stock, fi.current_level, 0) AS current_level,
-               fi.capacity,
-               fi.critical_level,
-               fi.reorder_level,
-               fi.status,
-               fi.last_updated,
-               ft.name AS fuel_type_name
-        FROM fuel_inventory fi
-        LEFT JOIN fuel_types ft ON fi.fuel_type_id = ft.id
-        WHERE fi.station_id = ?
-        ORDER BY ft.name ASC
-    ");
-    $stmt->execute([$station_id]);
-    $tank_levels = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch(Exception $e){}
-
-// Build a lookup map: fuel_type name => inventory row
-$tank_inv_map = [];
-foreach ($tank_levels as $tl) {
-    $key = strtolower(trim($tl['fuel_type_name'] ?? $tl['fuel_type'] ?? ''));
-    if (!isset($tank_inv_map[$key])) {
-        $tank_inv_map[$key] = $tl;
+    $s = $pdo->prepare("SELECT fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated FROM fuel_inventory WHERE station_id = ?");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $fi_lookup[strtolower(trim($row['fuel_type']))] = $row;
     }
+} catch (Exception $e) {}
+
+$del_lookup = [];
+try {
+    $s = $pdo->prepare("SELECT tank_assigned, fuel_type, SUM(delivery_liters) AS total_del FROM fuel_deliveries WHERE station_id=? AND DATE(delivery_date)=CURDATE() AND status='Verified' GROUP BY tank_assigned, fuel_type");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $del_lookup[strtolower(trim($row['tank_assigned']))] = (float)$row['total_del'];
+    }
+} catch (Exception $e) {}
+
+$sales_lookup = [];
+try {
+    $s = $pdo->prepare("SELECT fuel_type, SUM(liters_sold) AS total_sales FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date)=CURDATE() AND status='Verified' GROUP BY fuel_type");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $sales_lookup[strtolower(trim($row['fuel_type']))] = (float)$row['total_sales'];
+    }
+} catch (Exception $e) {}
+
+$adj_lookup = [];
+try {
+    $s = $pdo->prepare("SELECT fi.fuel_type, COALESCE(SUM(fa.liters),0) AS total_adj FROM fuel_adjustments fa JOIN fuel_inventory fi ON fa.fuel_type_id=fi.fuel_type_id AND fi.station_id=fa.station_id WHERE fa.station_id=? AND DATE(fa.adjustment_date)=CURDATE() GROUP BY fi.fuel_type");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $adj_lookup[strtolower(trim($row['fuel_type']))] = (float)$row['total_adj'];
+    }
+} catch (Exception $e) {}
+
+// Calculate 17 tanks
+$computed_tanks = [];
+foreach ($TANK_CONFIG as $tc) {
+    $ft_key   = strtolower(trim($tc['fuel_type']));
+    // XTRA UNL split: distinguish sub-groups by label
+    if ($ft_key === 'xtra unl') {
+        if (strpos(strtolower($tc['label']), 'xtra unl 1') !== false) {
+            $ft_key = 'xtra unl 1';
+        } elseif (strpos(strtolower($tc['label']), 'xtra unl 2') !== false) {
+            $ft_key = 'xtra unl 2';
+        }
+    }
+    $tank_key = strtolower(trim($tc['tank']));
+    $inv      = $fi_lookup[$ft_key] ?? null;
+
+    $capacity  = (float)$tc['capacity'];
+    $cur_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
+
+    // Number of tanks for this fuel sub-group (respecting XTRA UNL split)
+    $same_type_count = count(array_filter($TANK_CONFIG, function($t) use ($ft_key) {
+        $k = strtolower(trim($t['fuel_type']));
+        if ($k === 'xtra unl') {
+            if (strpos(strtolower($t['label']), 'xtra unl 1') !== false) {
+                $k = 'xtra unl 1';
+            } elseif (strpos(strtolower($t['label']), 'xtra unl 2') !== false) {
+                $k = 'xtra unl 2';
+            }
+        }
+        return $k === $ft_key;
+    }));
+
+    // Deliveries: per tank_assigned
+    $purchases = $del_lookup[$tank_key] ?? 0;
+
+    // Sales & Calibration: split equally
+    $sales_total = $sales_lookup[$ft_key] ?? 0;
+    $adj_total   = $adj_lookup[$ft_key] ?? 0;
+    $sales       = $same_type_count > 0 ? round($sales_total / $same_type_count, 2) : 0;
+    $calibration_adj = $same_type_count > 0 ? round($adj_total / $same_type_count, 2) : 0;
+
+    // Beginning Balance
+    $beginning = $same_type_count > 0 ? round($cur_level / $same_type_count, 2) : 0;
+
+    $total_available = $beginning + $purchases;
+    $ending_system   = max(0, $total_available - $sales - $calibration_adj);
+
+    $current_level_tank = $ending_system;
+
+    // Status
+    $fill_pct = $capacity > 0 ? ($current_level_tank / $capacity) * 100 : 0;
+    if      ($current_level_tank <= 0)  { $status = 'Out of Stock'; $sc = '#dc2626'; }
+    elseif  ($fill_pct <= 10)           { $status = 'Critical';     $sc = '#dc2626'; }
+    elseif  ($fill_pct <= 25)           { $status = 'Low Stock';    $sc = '#d97706'; }
+    else                                { $status = 'Available';    $sc = '#16a34a'; }
+
+    $computed_tanks[] = [
+        'level'        => $current_level_tank,
+        'capacity'     => $capacity,
+        'status'       => $status,
+        'status_color' => $sc,
+        'pct'          => min(100, round($fill_pct, 1))
+    ];
 }
 
 include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
@@ -447,30 +518,17 @@ body{overflow-x:hidden;max-width:100vw}
     <!-- Tank Cards Grid — all 17 tanks in order -->
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;">
     <?php foreach ($TANK_CONFIG as $tank_num => $tank_cfg):
-        $ft_raw   = $tank_cfg['fuel_type'];
-        $ft_key_l = strtolower(trim($ft_raw));
-        $tk       = $tank_inv_map[$ft_key_l] ?? null;
-
-        $tank_label  = $tank_cfg['label'];
-        $tank_assign = $tank_cfg['tank'];
-        $sty         = $FT_STYLE[$ft_raw] ?? ['color'=>'#334155','icon'=>'fas fa-gas-pump'];
-
-        $level    = $tk ? (float)($tk['current_level'] ?? 0) : 0;
-        $capacity = $tk ? (float)($tk['capacity']      ?? 0) : 0;
-        $critical = $tk ? (float)($tk['critical_level']?? 0) : 0;
-        $reorder  = $tk ? (float)($tk['reorder_level'] ?? 0) : 0;
-        $last_upd = $tk ? ($tk['last_updated'] ?? null) : null;
-        $pct      = $capacity > 0 ? min(100, round($level / $capacity * 100, 1)) : 0;
-
-        if (!$tk) {
-            $bar_color = '#94a3b8'; $status_label = 'No Data'; $status_color = '#64748b';
-        } elseif ($level <= $critical) {
-            $bar_color = '#dc2626'; $status_label = 'Critical'; $status_color = '#dc2626';
-        } elseif ($level <= $reorder) {
-            $bar_color = '#d97706'; $status_label = 'Low Stock'; $status_color = '#d97706';
-        } else {
-            $bar_color = '#16a34a'; $status_label = 'Available'; $status_color = '#16a34a';
-        }
+        $ft_raw       = $tank_cfg['fuel_type'];
+        $tank_label   = $tank_cfg['label'];
+        $tank_assign  = $tank_cfg['tank'];
+        
+        $ct           = $computed_tanks[$tank_num];
+        $level        = $ct['level'];
+        $capacity     = $ct['capacity'];
+        $pct          = $ct['pct'];
+        $status_label = $ct['status'];
+        $status_color = $ct['status_color'];
+        $bar_color    = $status_color;
     ?>
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:11px 13px;box-shadow:0 1px 3px rgba(0,0,0,.04);">
 
@@ -511,17 +569,11 @@ body{overflow-x:hidden;max-width:100vw}
     <!-- Summary Bar -->
     <?php
         $total_tanks  = count($TANK_CONFIG);
-        $critical_cnt = 0; $low_cnt = 0; $ok_cnt = 0; $nodata_cnt = 0;
-        foreach ($TANK_CONFIG as $tc) {
-            $key = strtolower(trim($tc['fuel_type']));
-            $inv = $tank_inv_map[$key] ?? null;
-            if (!$inv) { $nodata_cnt++; continue; }
-            $lv = (float)($inv['current_level'] ?? 0);
-            $cr = (float)($inv['critical_level'] ?? 0);
-            $re = (float)($inv['reorder_level'] ?? 0);
-            if ($lv <= $cr) $critical_cnt++;
-            elseif ($lv <= $re) $low_cnt++;
-            else $ok_cnt++;
+        $critical_cnt = 0; $low_cnt = 0; $ok_cnt = 0;
+        foreach ($computed_tanks as $ct) {
+            if ($ct['status'] === 'Available') $ok_cnt++;
+            elseif ($ct['status'] === 'Low Stock') $low_cnt++;
+            else $critical_cnt++;
         }
     ?>
     <div style="margin-top:14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 18px;display:flex;align-items:center;flex-wrap:wrap;gap:16px;">

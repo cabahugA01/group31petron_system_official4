@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'mgr_customers';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -14,6 +14,21 @@ if (!in_array($role, ['manager', 'admin', 'superadmin', 'developer'])) {
     exit;
 }
 
+/*
+ |  MANAGER CUSTOMER MODULE — PERMISSION BOUNDARY
+ |  ─────────────────────────────────────────────
+ |  ✅ Allowed : Add Customer, Edit Customer, View Complete Profile,
+ |               View Gov ID, View CR, Download Documents,
+ |               Verify Customer, View Outstanding Balance,
+ |               View Payment Status, View Complete Transaction History,
+ |               Print Customer Profile, Export Customer Records
+ |
+ |  ❌ Blocked : Delete Customer, Restore Customer, Permanently Delete,
+ |               Manage User Permissions, Access System Audit Logs,
+ |               Reverse Customer Transactions, Manually Edit Balance
+ */
+
+
 $station_name = '';
 try {
     $sn = $pdo->prepare("SELECT name FROM stations WHERE id = ?");
@@ -25,7 +40,7 @@ include __DIR__ . '/../partials/header.php';
 ?>
 <style>
 /* ── Page Layout ──────────────────────────────────────────── */
-.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; }
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; padding-bottom:16px; border-bottom:2px solid #e9ecef; }
 .int-head h1 { font-size:22px!important; font-weight:700!important; color:#00264D!important; margin:0!important; text-transform:uppercase!important; display:flex; align-items:center; gap:8px; }
 .int-head .sub { font-size:13px; color:#64748b; margin-top:4px; }
 
@@ -43,7 +58,7 @@ include __DIR__ . '/../partials/header.php';
 .cc-purple .cc-val { color:#7c3aed; }
 
 /* ── Filter Bar ───────────────────────────────────────────── */
-.cust-filter-bar { background:#fff; border-radius:10px; padding:14px 16px; box-shadow:0 1px 4px rgba(0,0,0,.07); margin-bottom:16px; display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
+.cust-filter-bar { background:transparent; border-radius:0; padding:0; box-shadow:none; margin-bottom:16px; display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
 .cust-filter-bar .fg { display:flex; flex-direction:column; gap:4px; }
 .cust-filter-bar label { font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.4px; }
 .cust-filter-bar input, .cust-filter-bar select { padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; color:#1e293b; font-family:inherit; outline:none; min-width:130px; }
@@ -64,15 +79,46 @@ include __DIR__ . '/../partials/header.php';
 .cust-btn-gray      { background:#64748b; color:#fff!important; border-color:#64748b; }
 .cust-btn-gray:hover { background:#475569; }
 
-/* Export and Add Customer Buttons - Plain White Style */
-.btn-export-pdf,
-.btn-export-excel,
-.btn-export-csv,
+/* Export Buttons (Filter Button Style) - Matches Sales Report */
+.flt-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #00264D;
+    transition: all 0.2s;
+    height: auto;
+    line-height: 1;
+    white-space: nowrap;
+    text-decoration: none;
+    background: white !important;
+    color: #00264D !important;
+}
+.flt-btn:hover {
+    background: #00264D !important;
+    color: white !important;
+}
+.flt-btn-excel, .flt-btn-pdf, .flt-btn-csv {
+    background: white !important;
+    color: #00264D !important;
+    border-color: #00264D !important;
+}
+.flt-btn-excel:hover, .flt-btn-pdf:hover, .flt-btn-csv:hover {
+    background: #00264D !important;
+    color: white !important;
+}
+
+/* Add Customer Button */
 .btn-add-customer {
     background-color: #ffffff !important;
     background: #ffffff !important;
-    color: #64748b !important;
-    border: 1px solid #cbd5e1 !important;
+    color: #002F70 !important;
+    border: 1px solid #002F70 !important;
     font-weight: 600 !important;
     transition: all 0.15s ease-in-out !important;
     border-radius: 6px !important;
@@ -83,19 +129,19 @@ include __DIR__ . '/../partials/header.php';
     align-items: center !important;
     justify-content: center !important;
     gap: 6px !important;
-    width: 100% !important;
     height: 34px !important;
     text-decoration: none !important;
 }
-.btn-export-pdf:hover,
-.btn-export-excel:hover,
-.btn-export-csv:hover,
 .btn-add-customer:hover {
-    background-color: #f8fafc !important;
-    background: #f8fafc !important;
-    color: #334155 !important;
-    border-color: #94a3b8 !important;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
+    background-color: #002F70 !important;
+    background: #002F70 !important;
+    color: #ffffff !important;
+}
+}
+.btn-add-customer:hover {
+    background-color: #001f4d !important;
+    background: #001f4d !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
 }
 
 /* ── Table ────────────────────────────────────────────────── */
@@ -103,8 +149,8 @@ include __DIR__ . '/../partials/header.php';
 .cust-table-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px 12px; border-bottom:1px solid #f1f5f9; }
 .cust-table-header h3 { font-size:14px; font-weight:700; color:#002F70; margin:0; }
 .cust-table { width:100%; border-collapse:collapse; }
-.cust-table thead tr { background:#002F70; }
-.cust-table thead th { padding:10px 12px; text-align:left; font-size:11px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.4px; white-space:nowrap; }
+.cust-table thead tr { background:#f8fafc; }
+.cust-table thead th { padding:10px 12px; text-align:left; font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:.4px; white-space:nowrap; border-bottom:2px solid #e2e8f0; }
 .cust-table tbody tr { border-bottom:1px solid #f1f5f9; transition:background .1s; }
 .cust-table tbody tr:hover td { background:#f8faff; }
 .cust-table tbody td { padding:10px 12px; color:#334155; font-size:12px; vertical-align:middle; white-space:nowrap; background:#fff; }
@@ -125,11 +171,12 @@ include __DIR__ . '/../partials/header.php';
 .badge-unpaid    { background:#fff1f2; color:#e11d48; }
 
 /* ── Action Buttons ───────────────────────────────────────── */
-.act-btn { display:inline-flex; align-items:center; justify-content:center; gap:4px; padding:8px 12px; height:auto; border-radius:6px; border:none; cursor:pointer; font-size:12px; font-weight:600; transition:all .15s; color:#fff; text-decoration:none; white-space:nowrap; }
-.act-view    { background:#3b82f6; } .act-view:hover    { background:#2563eb; }
-.act-edit    { background:#f59e0b; } .act-edit:hover    { background:#d97706; }
-.act-verify  { background:#16a34a; } .act-verify:hover  { background:#15803d; }
-.act-print   { background:#6b7280; } .act-print:hover   { background:#4b5563; }
+.act-btn { display:inline-flex; align-items:center; justify-content:center; gap:4px; padding:6px 10px; height:auto; border-radius:6px; border:1px solid #cbd5e1; cursor:pointer; font-size:12px; font-weight:600; transition:all .15s; background:#fff !important; color:#334155; text-decoration:none; white-space:nowrap; width:100%; box-sizing:border-box; }
+.act-btn:hover { background:#f8fafc !important; border-color:#94a3b8; box-shadow:0 2px 4px rgba(0,0,0,0.05); }
+.act-view    { background:#fff !important; color:#002F70  !important; border-color:#002F70  !important; } .act-view:hover    { background:#002F70  !important; color:#fff !important; }
+.act-edit    { background:#fff !important; color:#64748b  !important; border-color:#64748b  !important; } .act-edit:hover    { background:#64748b  !important; color:#fff !important; }
+.act-verify  { background:#fff !important; color:#16a34a  !important; border-color:#16a34a  !important; } .act-verify:hover  { background:#16a34a  !important; color:#fff !important; }
+.act-print   { background:#fff !important; color:#64748b  !important; border-color:#64748b  !important; } .act-print:hover   { background:#64748b  !important; color:#fff !important; }
 
 /* ── Modals ───────────────────────────────────────────────── */
 .modal-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:9999; align-items:center; justify-content:center; }
@@ -190,15 +237,19 @@ include __DIR__ . '/../partials/header.php';
     <div class="int-head" style="display: flex !important; justify-content: space-between !important; align-items: flex-start !important;">
         <div>
             <h1><i class="fas fa-users"></i> Customer Management</h1>
-            <div class="sub">Manage, verify, and monitor customer accounts — <?php echo htmlspecialchars($station_name); ?></div>
+            <div class="sub">Manage, verify, and monitor customer accounts</div>
         </div>
-        <div style="display: flex !important; flex-direction: column !important; gap: 8px !important; align-items: flex-end !important;">
-            <!-- Add Customer Button First -->
-            <button class="cust-btn btn-add-customer" onclick="openAddModal()"><i class="fas fa-plus"></i> Add Customer</button>
-            <!-- Export Buttons Below -->
-            <a class="cust-btn btn-export-pdf" href="manager_customer_export.php?format=pdf" target="_blank" onclick="passFiltersToExport(this,'pdf')"><i class="fas fa-file-pdf"></i> PDF</a>
-            <a class="cust-btn btn-export-excel" href="manager_customer_export.php?format=excel" onclick="passFiltersToExport(this,'excel')"><i class="fas fa-file-excel"></i> Excel</a>
-            <a class="cust-btn btn-export-csv" href="manager_customer_export.php?format=csv" onclick="passFiltersToExport(this,'csv')"><i class="fas fa-file-csv"></i> CSV</a>
+        <div style="display: flex !important; gap: 10px !important; align-items: center !important; flex-wrap: wrap !important;">
+            <!-- Export Buttons Only -->
+            <a class="cust-btn flt-btn flt-btn-excel" href="manager_customer_export.php?format=excel" onclick="passFiltersToExport(this,'excel')" title="Export to Excel">
+                <i class="fas fa-file-excel"></i> Excel
+            </a>
+            <a class="cust-btn flt-btn flt-btn-csv" href="manager_customer_export.php?format=csv" onclick="passFiltersToExport(this,'csv')" title="Export to CSV">
+                <i class="fas fa-file-csv"></i> CSV
+            </a>
+            <a class="cust-btn flt-btn flt-btn-pdf" href="manager_customer_export.php?format=pdf" target="_blank" onclick="passFiltersToExport(this,'pdf')" title="Export to PDF">
+                <i class="fas fa-file-pdf"></i> PDF
+            </a>
         </div>
     </div>
 
@@ -290,8 +341,15 @@ include __DIR__ . '/../partials/header.php';
     <!-- Customer Table -->
     <div class="cust-table-wrap">
         <div class="cust-table-header">
-            <h3><i class="fas fa-list"></i> Customer Registry</h3>
-            <span id="count-label" style="font-size:12px;color:#64748b;"></span>
+            <div>
+                <h3><i class="fas fa-list"></i> Customer Registry</h3>
+                <span id="count-label" style="font-size:12px;color:#64748b;"></span>
+            </div>
+            <div>
+                <button class="cust-btn btn-add-customer" onclick="openAddModal()" style="height:36px;">
+                    <i class="fas fa-user-plus"></i> Add Customer
+                </button>
+            </div>
         </div>
         <div style="overflow-x:auto;">
             <table class="cust-table">
@@ -587,7 +645,14 @@ include __DIR__ . '/../partials/header.php';
       <div class="form-section-title"><i class="fas fa-wallet"></i> Financial Information</div>
       <div class="form-row">
         <div class="form-group"><label>Credit Limit (&#x20B1;)</label><input type="number" step="0.01" min="0" name="credit_limit" id="fc-credit-limit" value="0"></div>
-        <div class="form-group"><label>Outstanding Balance (&#x20B1;)</label><input type="number" step="0.01" min="0" name="outstanding_balance" id="fc-outstanding" value="0"></div>
+        <div class="form-group">
+          <label>Outstanding Balance</label>
+          <div style="background:#f1f5f9; border:1px solid #e2e8f0; border-radius:6px; padding:9px 11px; font-size:13px; color:#64748b; display:flex; align-items:center; gap:6px;">
+            <i class="fas fa-lock" style="color:#94a3b8;"></i>
+            <span>System-managed — not editable by Manager</span>
+          </div>
+          <small style="color:#94a3b8; font-size:10px; margin-top:4px; display:block;">Balance is updated automatically through customer transactions.</small>
+        </div>
       </div>
       <div class="modal-actions">
         <button type="button" class="cust-btn cust-btn-gray" onclick="closeModal('modal-customer')">Cancel</button>
@@ -713,7 +778,7 @@ function renderTable(customers) {
       <td>${lastTx}</td>
       <td><span class="badge ${statusBadge}">${c.status}</span></td>
       <td>
-        <div style="display:flex;flex-direction:column;gap:6px;">
+        <div style="display:flex;flex-direction:column;gap:5px;min-width:90px;">
           <button class="act-btn act-view" onclick="viewProfile(${c.id})" title="View Profile"><i class="fas fa-eye"></i> View</button>
           <button class="act-btn act-edit" onclick="openEditModal(${c.id})" title="Edit Customer"><i class="fas fa-edit"></i> Edit</button>
           <button class="act-btn act-verify" data-cid="${c.id}" data-name="${esc(fullName).replace(/"/g,'&quot;')}" data-govid="${c.gov_id_image||''}" data-crdoc="${c.cr_document||''}" onclick="openVerifyFromBtn(this)" title="Verify Customer"><i class="fas fa-check-circle"></i> Verify</button>

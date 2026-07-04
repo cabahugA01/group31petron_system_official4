@@ -77,10 +77,10 @@ require_once __DIR__ . '/../partials/header.php';
     display: flex !important;
     align-items: center !important;
     gap: 10px !important;
-    padding: 14px 18px !important;
-    background: #f8f9fa !important;
-    border-radius: 6px !important;
-    border: 1px solid #e2e8f0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    border: none !important;
     margin-bottom: 24px !important;
     flex-wrap: wrap !important;
 }
@@ -102,9 +102,9 @@ require_once __DIR__ . '/../partials/header.php';
 
 .rpt-filter-bar button {
     padding: 7px 16px !important;
-    background: #00264D !important;
-    color: white !important;
-    border: none !important;
+    background: #ffffff !important;
+    color: #00264D !important;
+    border: 1px solid #00264D !important;
     border-radius: 4px !important;
     font-size: 12px !important;
     font-weight: 600 !important;
@@ -113,7 +113,8 @@ require_once __DIR__ . '/../partials/header.php';
 }
 
 .rpt-filter-bar button:hover {
-    background: #003d7a !important;
+    background: #00264D !important;
+    color: #ffffff !important;
 }
 
 .rpt-filter-bar button i {
@@ -128,19 +129,46 @@ require_once __DIR__ . '/../partials/header.php';
 
 .rpt-export-btn {
     padding: 7px 14px !important;
-    background: white !important;
-    color: #00264D !important;
-    border: 1px solid #00264D !important;
     border-radius: 4px !important;
     font-size: 11px !important;
     font-weight: 600 !important;
     cursor: pointer !important;
     transition: all 0.2s !important;
+    border: 1px solid !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    background: #ffffff !important;
 }
 
-.rpt-export-btn:hover {
-    background: #00264D !important;
-    color: white !important;
+/* Excel Button - Green Border */
+.rpt-export-btn:nth-child(1) {
+    color: #16a34a !important;
+    border-color: #16a34a !important;
+}
+.rpt-export-btn:nth-child(1):hover {
+    background: #16a34a !important;
+    color: #ffffff !important;
+}
+
+/* CSV Button - Dark Blue Border */
+.rpt-export-btn:nth-child(2) {
+    color: #1e3a8a !important;
+    border-color: #1e3a8a !important;
+}
+.rpt-export-btn:nth-child(2):hover {
+    background: #1e3a8a !important;
+    color: #ffffff !important;
+}
+
+/* PDF Button - Red Border */
+.rpt-export-btn:nth-child(3) {
+    color: #dc2626 !important;
+    border-color: #dc2626 !important;
+}
+.rpt-export-btn:nth-child(3):hover {
+    background: #dc2626 !important;
+    color: #ffffff !important;
 }
 
 .rpt-export-btn i {
@@ -191,17 +219,17 @@ require_once __DIR__ . '/../partials/header.php';
 .fr-table thead tr {
     border-top: 2px solid #00264D;
     border-bottom: 1px solid #e2e8f0;
-    background: #002F70;
+    background: #f8fafc;
 }
 
 .fr-table thead th {
     padding: 10px 8px;
     text-align: left;
     font-weight: 700;
-    color: #ffffff;
+    color: #475569;
     font-size: 11px;
     text-transform: uppercase;
-    background: #002F70;
+    background: #f8fafc;
 }
 
 .fr-table tbody tr { border-bottom: 1px solid #f1f5f9; }
@@ -246,13 +274,13 @@ require_once __DIR__ . '/../partials/header.php';
             
             <div class="rpt-export-actions">
                 <button type="button" class="rpt-export-btn" onclick="exportReport('excel')">
-                    <i class="fas fa-file-excel"></i> Export Excel
+                    <i class="fas fa-file-excel"></i> Excel
                 </button>
                 <button type="button" class="rpt-export-btn" onclick="exportReport('csv')">
-                    <i class="fas fa-file-csv"></i> Export CSV
+                    <i class="fas fa-file-csv"></i> CSV
                 </button>
                 <button type="button" class="rpt-export-btn" onclick="printReport()">
-                    <i class="fas fa-print"></i> Print Report
+                    <i class="fas fa-file-pdf"></i> PDF
                 </button>
             </div>
         </form>
@@ -395,7 +423,7 @@ require_once __DIR__ . '/../partials/header.php';
                                 echo '<td>' . number_format($row['txn_count']) . '</td>';
                                 echo '<td>₱' . number_format($row['total_amount'], 2) . '</td>';
                                 echo '<td>' . number_format($pct, 1) . '%</td>';
-                                echo '<td><button class="rpt-export-btn" style="padding:4px 10px;font-size:10px;">Confirm</button></td>';
+                                echo '<td>Confirm</td>';
                                 echo '</tr>';
                             }
                         }
@@ -480,7 +508,7 @@ require_once __DIR__ . '/../partials/header.php';
                                 echo '<td>₱' . number_format($row['total_value'], 2) . '</td>';
                                 echo '<td>₱' . number_format($row['payable_amount'], 2) . '</td>';
                                 echo '<td>₱' . number_format($row['variance'], 2) . '</td>';
-                                echo '<td><button class="rpt-export-btn" style="padding:4px 10px;font-size:10px;">Approve</button></td>';
+                                echo '<td>Approve</td>';
                                 echo '</tr>';
                             }
                         }
@@ -585,7 +613,7 @@ require_once __DIR__ . '/../partials/header.php';
                                 <?= $variance > 0 ? '(Short)' : '(Over)' ?>
                             </td>
                             <td><?= abs($variance) < 100 ? 'Reconciled' : 'Variance' ?></td>
-                            <td><button class="rpt-export-btn" style="padding:4px 10px;font-size:10px;">Confirm</button></td>
+                            <td>Confirm</td>
                         </tr>
                         <tr>
                             <td><strong>Accounts Payable (Suppliers)</strong></td>
@@ -593,7 +621,7 @@ require_once __DIR__ . '/../partials/header.php';
                             <td>₱<?= number_format($total_payables, 2) ?></td>
                             <td>—</td>
                             <td>Outstanding</td>
-                            <td><button class="rpt-export-btn" style="padding:4px 10px;font-size:10px;">Approve</button></td>
+                            <td>Approve</td>
                         </tr>
                         <tr>
                             <td><strong>Net Financial Position</strong></td>

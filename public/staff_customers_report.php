@@ -116,6 +116,37 @@ require_once __DIR__ . '/../partials/header.php';
     .btn:hover { background: #f5f5f5; }
     .btn-primary { background: #000; color: #fff; }
     .btn-primary:hover { background: #333; }
+    
+    /* Export Buttons (Filter Button Style) */
+    .flt-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 6px 14px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        border: 1px solid transparent;
+        transition: all 0.15s;
+        height: 34px;
+        line-height: 1;
+        white-space: nowrap;
+        text-decoration: none;
+        background: white !important;
+    }
+    .flt-btn-search { color: #002F70 !important; border-color: #002F70 !important; }
+    .flt-btn-search:hover { background: #002F70 !important; color: #fff !important; }
+    .flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
+    .flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
+    .flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
+    .flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
+    .flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
+    .flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
+    .flt-btn-csv    { color: #002F70 !important; border-color: #002F70 !important; }
+    .flt-btn-csv:hover    { background: #002F70 !important; color: #fff !important; }
+    
     .print-area { background: #fff; }
     .header {
         background: #fff;
@@ -240,9 +271,20 @@ require_once __DIR__ . '/../partials/header.php';
         <button type="submit" class="btn btn-primary">Apply</button>
     </form>
     <div class="action-controls">
-        <button type="button" class="btn" onclick="window.print()">Print</button>
-        <a href="<?= staff_customer_report_h($excel_url) ?>" class="btn">Excel</a>
-        <a href="<?= staff_customer_report_h($pdf_url) ?>" class="btn" target="_blank">PDF</a>
+        <!-- Excel -->
+        <a href="<?= staff_customer_report_h($excel_url) ?>" 
+           class="flt-btn flt-btn-excel" title="Export to Excel">
+            <i class="fas fa-file-excel"></i> Excel
+        </a>
+        <!-- CSV -->
+        <button onclick="exportTableToCSV('customersTable','customers_report_<?= date('Ymd') ?>.csv')"
+                class="flt-btn flt-btn-csv" title="Export to CSV">
+            <i class="fas fa-file-csv"></i> CSV
+        </button>
+        <!-- PDF -->
+        <button type="button" onclick="window.print()" class="flt-btn flt-btn-pdf" title="Print / Export PDF">
+            <i class="fas fa-file-pdf"></i> PDF
+        </button>
     </div>
 </div>
 

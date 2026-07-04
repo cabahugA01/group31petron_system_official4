@@ -483,11 +483,15 @@ try {
     $fuel_sold_liters = (float)$stmt->fetchColumn();
 } catch (Exception $e) {}
 
-// 4. Service Queue
+// 4. Service Queue — all open jobs regardless of date (active queue, not date-filtered)
 $service_queue_count = 0;
 try {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND DATE({$job_dt_expr}) BETWEEN ? AND ? AND status IN ('Pending','Reviewed','In Progress','Awaiting Parts')");
-    $stmt->execute([$station_id, $date_from, $date_to]);
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) FROM job_orders
+        WHERE station_id = ?
+          AND status IN ('Pending','Reviewed','In Progress','Awaiting Parts')
+    ");
+    $stmt->execute([$station_id]);
     $service_queue_count = (int)$stmt->fetchColumn();
 } catch (Exception $e) {}
 
@@ -747,35 +751,64 @@ foreach ($raw_weekly as $row) {
 $weekly_chart_labels = array_keys($weekly_days);
 $weekly_chart_data = array_values($weekly_days);
 
-// Chart 6: Fuel Tank Levels (Progress Bars) - Show all 17 individual pump nozzles mapped to tanks
+// Chart 6: Fuel Tank Levels — one card per PUMP NOZZLE (17 total)
+// JOIN: fuel_pumps at station × fuel_inventory by fuel_type_id at user's station
+// This gives each pump nozzle its own card with the shared tank's current level.
 $tank_levels = dashboard_fetch_all($pdo, "
-    SELECT 
-        fp.id,
-        fp.pump_number AS tank_label,
-        SUBSTRING_INDEX(fp.pump_number, ' - ', 1) AS fuel_type,
-        fi.current_level AS current_stock, 
-        fi.capacity AS total_capacity
+    SELECT
+        fp.id                                                   AS pump_id,
+        fp.pump_number                                          AS tank_label,
+        COALESCE(fi.fuel_type, SUBSTRING_INDEX(fp.pump_number,' - ',1)) AS fuel_type_name,
+        GREATEST(COALESCE(fi.current_level, 0), 0)             AS current_stock,
+        COALESCE(fi.capacity, 0)                               AS total_capacity,
+        COALESCE(fi.reorder_level, 0)                          AS reorder_level,
+        COALESCE(fi.critical_level, 0)                         AS critical_level
     FROM fuel_pumps fp
-    LEFT JOIN fuel_inventory fi ON fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fi.station_id
+    LEFT JOIN fuel_inventory fi
+        ON fi.fuel_type_id = fp.fuel_type_id
+       AND fi.station_id   = ?
     WHERE fp.station_id = ?
-    ORDER BY 
-        CASE 
-            WHEN fp.pump_number LIKE 'DIESEL%' THEN 1
-            WHEN fp.pump_number LIKE 'KEROSENE%' THEN 2
-            WHEN fp.pump_number LIKE 'TURBO%' THEN 3
-            WHEN fp.pump_number LIKE 'XCS%' THEN 4
-            WHEN fp.pump_number LIKE 'XTRA%' THEN 5
-            ELSE 6
+    ORDER BY
+        CASE
+            WHEN fp.pump_number LIKE 'DIESEL 1%'  THEN 1
+            WHEN fp.pump_number LIKE 'DIESEL 2%'  THEN 2
+            WHEN fp.pump_number LIKE 'DIESEL%'    THEN 3
+            WHEN fp.pump_number LIKE 'KEROSENE%'  THEN 4
+            WHEN fp.pump_number LIKE 'TURBO%'     THEN 5
+            WHEN fp.pump_number LIKE 'XCS%'       THEN 6
+            WHEN fp.pump_number LIKE 'XTRA%'      THEN 7
+            ELSE 8
         END,
         fp.pump_number ASC
-", [$station_id]);
+", [$station_id, $station_id]);
+
+// If no pumps registered for the user's station, fall back to fuel_inventory only
+if (empty($tank_levels)) {
+    $tank_levels = dashboard_fetch_all($pdo, "
+        SELECT
+            id                                      AS pump_id,
+            fuel_type                               AS tank_label,
+            fuel_type                               AS fuel_type_name,
+            GREATEST(COALESCE(current_level,0),0)   AS current_stock,
+            COALESCE(capacity,0)                    AS total_capacity,
+            COALESCE(reorder_level,0)               AS reorder_level,
+            COALESCE(critical_level,0)              AS critical_level
+        FROM fuel_inventory
+        WHERE station_id = ?
+        ORDER BY fuel_type ASC
+    ", [$station_id]);
+}
 
 foreach ($tank_levels as &$tl) {
-    $current = (float)$tl['current_stock'];
-    $capacity = (float)$tl['total_capacity'];
-    $tl['pct'] = $capacity > 0 ? round(($current / $capacity) * 100, 1) : 0;
+    $current         = max(0.0, (float)$tl['current_stock']);
+    $capacity        = (float)$tl['total_capacity'];
+    $display_current = $capacity > 0 ? min($current, $capacity) : $current;
+    $tl['current_stock'] = $current;
+    $tl['display_stock'] = $display_current;
+    $tl['pct'] = $capacity > 0 ? min(100.0, round(($display_current / $capacity) * 100, 1)) : 0;
 }
 unset($tl);
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TABLES QUERY BLOCK
@@ -800,15 +833,25 @@ $recent_transactions = dashboard_fetch_all($pdo, "
     LIMIT 10
 ", [$station_id, $station_id, $station_id]);
 
-// Table 2: Active Service Queue
+// Table 2: Active Service Queue — all open jobs (no date restriction)
 $active_services = dashboard_fetch_all($pdo, "
-    SELECT job_order_number AS service_no, customer_name AS customer, 
-           CONCAT(vehicle_plate, ' (', vehicle_type, ')') AS vehicle, 
-           service_type AS service, status 
-    FROM job_orders 
-    WHERE station_id = ? AND DATE({$job_dt_expr}) BETWEEN ? AND ? AND status IN ('Pending', 'Reviewed', 'In Progress', 'Awaiting Parts')
+    SELECT
+        COALESCE(job_order_number, job_order_id, CONCAT('JO-', id)) AS service_no,
+        COALESCE(customer_name, 'Walk-in')                          AS customer,
+        CONCAT(
+            COALESCE(NULLIF(vehicle_plate,''), '—'),
+            CASE WHEN vehicle_type != '' AND vehicle_type IS NOT NULL
+                 THEN CONCAT(' (', vehicle_type, ')') ELSE '' END
+        )                                                           AS vehicle,
+        COALESCE(service_type, service_description, 'Service')      AS service,
+        status,
+        {$job_dt_expr}                                              AS created_at
+    FROM job_orders
+    WHERE station_id = ?
+      AND status IN ('Pending','Reviewed','In Progress','Awaiting Parts')
     ORDER BY {$job_dt_expr} DESC
-", [$station_id, $date_from, $date_to]);
+    LIMIT 25
+", [$station_id]);
 
 // Table 3: Fuel Stock Alerts
 $fuel_stock_alerts = dashboard_fetch_all($pdo, "
@@ -1379,52 +1422,69 @@ include __DIR__ . '/../partials/header.php';
                     No tank level readings available.
                 </div>
             <?php else: ?>
-                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px;">
                     <?php foreach ($tank_levels as $tl):
-                        $pct = $tl['pct'];
-                        $status_text = 'Available';
-                        $status_color = '#22c55e'; // Green
-                        $status_bg = '#f0fdf4';
-                        
-                        if ($pct <= 0 && $tl['total_capacity'] <= 0) {
-                            $status_text = 'No Data';
+                        $pct        = $tl['pct'];
+                        $current    = (float)$tl['current_stock'];
+                        $capacity   = (float)$tl['total_capacity'];
+                        $reorder    = (float)$tl['reorder_level'];
+                        $critical   = (float)$tl['critical_level'];
+                        $pump_name  = $tl['tank_label'];        // e.g. "DIESEL 1 - 1"
+                        $fuel_name  = $tl['fuel_type_name'];    // e.g. "Diesel 1"
+
+                        // Status driven by actual DB thresholds
+                        if ($capacity <= 0) {
+                            $status_text  = 'No Data';
                             $status_color = '#94a3b8';
-                            $status_bg = '#f1f5f9';
-                        } elseif ($pct <= 10) {
-                            $status_text = 'Critical';
-                            $status_color = '#ef4444'; // Red
-                            $status_bg = '#fef2f2';
-                        } elseif ($pct <= 25) {
-                            $status_text = 'Low Stock';
-                            $status_color = '#f97316'; // Orange
-                            $status_bg = '#fff7ed';
+                            $status_bg    = '#f1f5f9';
+                        } elseif ($current <= 0 || ($critical > 0 && $current <= $critical)) {
+                            $status_text  = 'Critical';
+                            $status_color = '#ef4444';
+                            $status_bg    = '#fef2f2';
+                        } elseif ($reorder > 0 && $current <= $reorder) {
+                            $status_text  = 'Low Stock';
+                            $status_color = '#f97316';
+                            $status_bg    = '#fff7ed';
+                        } elseif ($pct >= 80) {
+                            $status_text  = 'Full';
+                            $status_color = '#16a34a';
+                            $status_bg    = '#f0fdf4';
+                        } else {
+                            $status_text  = 'Available';
+                            $status_color = '#22c55e';
+                            $status_bg    = '#f0fdf4';
                         }
-                        
-                        // Extract just the fuel type name without "Underground Tank #ID"
-                        $display_name = $tl['fuel_type'] ?? $tl['tank_label'];
                     ?>
-                        <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                            <div style="font-weight: 700; font-size: 13px; color: #1e293b; margin-bottom: 8px; text-transform: uppercase;"><?= htmlspecialchars($display_name) ?></div>
-                            <div style="font-size: 11px; color: #64748b; margin-bottom: 12px;"><?= htmlspecialchars($tl['tank_label']) ?></div>
-                            
-                            <div style="font-size: 24px; font-weight: 700; color: #0f172a; margin-bottom: 4px;">
-                                <?= number_format($tl['current_stock'], 0) ?> L
+                        <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,0.07);">
+                            <!-- Pump label (primary) -->
+                            <div style="font-weight:800; font-size:11px; color:#1e293b; margin-bottom:2px; text-transform:uppercase; letter-spacing:0.4px;">
+                                <?= htmlspecialchars($pump_name) ?>
                             </div>
-                            <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">
-                                / <?= number_format($tl['total_capacity'], 0) ?> L
+                            <!-- Fuel type (secondary) -->
+                            <div style="font-size:10px; color:#94a3b8; margin-bottom:10px;">
+                                <?= htmlspecialchars($fuel_name) ?>
                             </div>
-                            
-                            <div style="background: #f1f5f9; height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 12px;">
-                                <div style="width: <?= $pct ?>%; height: 100%; background: <?= $status_color ?>; transition: width 0.3s ease;"></div>
+
+                            <!-- Level -->
+                            <div style="font-size:22px; font-weight:800; color:#0f172a; line-height:1; margin-bottom:2px;">
+                                <?= number_format($current, 1) ?> L
                             </div>
-                            
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span style="font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 12px; background: <?= $status_bg ?>; color: <?= $status_color ?>;">
+                            <div style="font-size:10px; color:#94a3b8; margin-bottom:10px;">
+                                / <?= number_format($capacity, 0) ?> L
+                                <?php if ($reorder > 0): ?>&nbsp;·&nbsp;reorder <?= number_format($reorder, 0) ?>L<?php endif; ?>
+                            </div>
+
+                            <!-- Progress bar -->
+                            <div style="background:#f1f5f9; height:8px; border-radius:4px; overflow:hidden; margin-bottom:10px;">
+                                <div style="width:<?= $pct ?>%; height:100%; background:<?= $status_color ?>; border-radius:4px; transition:width 0.4s ease;"></div>
+                            </div>
+
+                            <!-- Status + % -->
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:20px; background:<?= $status_bg ?>; color:<?= $status_color ?>;">
                                     <?= $status_text ?>
                                 </span>
-                                <span style="font-size: 13px; font-weight: 700; color: #475569;">
-                                    <?= $pct ?>% full
-                                </span>
+                                <span style="font-size:11px; font-weight:700; color:#64748b;"><?= $pct ?>%</span>
                             </div>
                         </div>
                     <?php endforeach; ?>
@@ -1669,163 +1729,283 @@ include __DIR__ . '/../partials/header.php';
 
 <!-- Chart Script Logic -->
 <script>
-    // Chart.js global theme configurations
+    // ── Chart.js Global Defaults ───────────────────────────────────────
     Chart.defaults.font.family = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
-    Chart.defaults.font.size = 12;
-    Chart.defaults.color = '#475569';
+    Chart.defaults.font.size   = 12;
+    Chart.defaults.color       = '#475569';
 
-    // Chart 1: Hourly Transactions Line Chart
-    const hourlyCtx = document.getElementById('hourlyTransactionsChart').getContext('2d');
-    new Chart(hourlyCtx, {
-        type: 'line',
-        data: {
-            labels: <?= json_encode($hourly_chart_labels) ?>,
-            datasets: [{
-                label: 'Transactions count',
-                data: <?= json_encode($hourly_chart_data) ?>,
-                borderColor: '#002F70',
-                backgroundColor: 'rgba(0, 47, 112, 0.1)',
-                tension: 0.3,
-                fill: true,
-                borderWidth: 2,
-                pointBackgroundColor: '#002F70'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: { stepSize: 1 }
-                }
-            }
+    // ── Utility: Generate a palette of N distinct colors ──────────────
+    function generatePalette(n) {
+        const base = [
+            '#3b82f6','#ef4444','#eab308','#8b5cf6','#64748b',
+            '#16a34a','#f97316','#06b6d4','#ec4899','#a855f7',
+            '#0891b2','#d97706','#14b8a6','#6366f1','#84cc16'
+        ];
+        const result = [];
+        for (let i = 0; i < n; i++) result.push(base[i % base.length]);
+        return result;
+    }
+
+    // ── Utility: Integer-only Y-axis ticks ────────────────────────────
+    const integerTicks = {
+        beginAtZero: true,
+        ticks: {
+            stepSize: 1,
+            callback: (v) => Number.isInteger(v) ? v : null
         }
-    });
+    };
 
-    // Chart 2: Fuel Sales by Product Bar Chart
-    const fuelCtx = document.getElementById('fuelSalesChart').getContext('2d');
-    new Chart(fuelCtx, {
-        type: 'bar',
-        data: {
-            labels: <?= json_encode($fuel_chart_labels) ?>,
-            datasets: [{
-                label: 'Liters Sold',
-                data: <?= json_encode($fuel_chart_data) ?>,
-                backgroundColor: [
-                    '#3b82f6', // Diesel - Blue
-                    '#ef4444', // XCS - Red
-                    '#eab308', // XTRA Unleaded - Yellow
-                    '#8b5cf6', // Turbo Diesel - Purple
-                    '#64748b'  // Kerosene - Slate
-                ],
-                borderRadius: 6
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
-            }
+    // ── Utility: Show empty-state placeholder instead of canvas ───────
+    function showEmptyState(canvasId, icon, message) {
+        const wrapper = document.getElementById(canvasId).parentElement;
+        wrapper.innerHTML =
+            `<div style="display:flex;flex-direction:column;align-items:center;
+                         justify-content:center;height:100%;color:#94a3b8;gap:10px;">
+                <i class="fas fa-${icon}" style="font-size:32px;"></i>
+                <span style="font-size:13px;font-weight:600;text-align:center;">${message}</span>
+             </div>`;
+    }
+
+    // ── Chart 1: Hourly Transactions (Line) ───────────────────────────
+    (function () {
+        const labels = <?= json_encode($hourly_chart_labels) ?>;
+        const data   = <?= json_encode($hourly_chart_data) ?>;
+        const total  = data.reduce((a, b) => a + b, 0);
+
+        if (total === 0) {
+            showEmptyState('hourlyTransactionsChart', 'chart-line',
+                'No transactions recorded during the current shift');
+            return;
         }
-    });
 
-    // Chart 3: Merchandise Sales by Category Bar Chart
-    const merchLabels = <?= json_encode($merch_chart_labels) ?>;
-    const merchData   = <?= json_encode($merch_chart_data) ?>;
-    const merchCtx = document.getElementById('merchSalesChart').getContext('2d');
-    const hasAnySales = merchData.some(v => Number(v) > 0);
-    if (!hasAnySales) {
-        const el = document.getElementById('merchSalesChart').parentElement;
-        el.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#94a3b8;"><i class="fas fa-shopping-basket" style="font-size:32px;margin-bottom:10px;"></i><span style="font-size:13px;font-weight:600;">No merchandise sales for this period</span></div>';
-    } else {
-        const barColors = ['#16a34a','#2563eb','#ea580c','#8b5cf6','#0891b2','#eab308'];
-        new Chart(merchCtx, {
+        new Chart(document.getElementById('hourlyTransactionsChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Transactions',
+                    data,
+                    borderColor: '#002F70',
+                    backgroundColor: 'rgba(0,47,112,0.08)',
+                    tension: 0.35,
+                    fill: true,
+                    borderWidth: 2.5,
+                    pointBackgroundColor: '#002F70',
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ` ${ctx.parsed.y} transaction${ctx.parsed.y !== 1 ? 's' : ''}`
+                        }
+                    }
+                },
+                scales: { y: integerTicks }
+            }
+        });
+    })();
+
+    // ── Chart 2: Fuel Sales by Product (Bar) ──────────────────────────
+    (function () {
+        const labels = <?= json_encode($fuel_chart_labels) ?>;
+        const data   = <?= json_encode($fuel_chart_data) ?>;
+        const total  = data.reduce((a, b) => a + b, 0);
+
+        if (total === 0) {
+            showEmptyState('fuelSalesChart', 'gas-pump',
+                'No fuel transactions for the selected date range');
+            return;
+        }
+
+        const maxVal = Math.max(...data);
+        // Round up to a nice value for the Y axis
+        const niceMax = maxVal < 10 ? Math.ceil(maxVal + 1)
+                       : maxVal < 100 ? Math.ceil(maxVal / 10) * 10 + 10
+                       : Math.ceil(maxVal / 100) * 100 + 100;
+
+        new Chart(document.getElementById('fuelSalesChart').getContext('2d'), {
             type: 'bar',
             data: {
-                labels: merchLabels,
+                labels,
                 datasets: [{
-                    label: 'Sales (₱)',
-                    data: merchData,
-                    backgroundColor: merchLabels.map((_,i) => barColors[i % barColors.length]),
-                    borderRadius: 6
+                    label: 'Liters Sold',
+                    data,
+                    backgroundColor: generatePalette(labels.length),
+                    borderRadius: 6,
+                    borderSkipped: false
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: { y: { beginAtZero: true } }
-            }
-        });
-    }
-
-    // Chart 4: Service Status Distribution Doughnut Chart
-    const svcData   = <?= json_encode($status_chart_data) ?>;
-    const svcLabels = <?= json_encode($status_chart_labels) ?>;
-    const serviceCtx = document.getElementById('serviceStatusChart').getContext('2d');
-    if (svcData.every(v => v === 0)) {
-        const el2 = document.getElementById('serviceStatusChart').parentElement;
-        el2.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#94a3b8;"><i class="fas fa-tools" style="font-size:32px;margin-bottom:10px;"></i><span style="font-size:13px;font-weight:600;">No service orders for this period</span></div>';
-    } else {
-        new Chart(serviceCtx, {
-            type: 'doughnut',
-            data: {
-                labels: svcLabels,
-                datasets: [{
-                    data: svcData,
-                    backgroundColor: ['#eab308','#3b82f6','#16a34a','#64748b'],
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'right', labels: { boxWidth: 12 } } }
-            }
-        });
-    }
-
-    // Chart 5: Weekly Transaction Trend Line Chart
-    const weeklyCtx = document.getElementById('weeklyTrendChart').getContext('2d');
-    new Chart(weeklyCtx, {
-        type: 'line',
-        data: {
-            labels: <?= json_encode($weekly_chart_labels) ?>,
-            datasets: [{
-                label: 'Transactions count',
-                data: <?= json_encode($weekly_chart_data) ?>,
-                borderColor: '#16a34a',
-                backgroundColor: 'rgba(22, 163, 74, 0.05)',
-                tension: 0.3,
-                fill: true,
-                borderWidth: 2,
-                pointBackgroundColor: '#16a34a'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: { stepSize: 1 }
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ` ${Number(ctx.parsed.y).toLocaleString('en-PH', {minimumFractionDigits:2})} L`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 0,
+                            font: { size: 10 }
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        max: niceMax,
+                        ticks: {
+                            callback: v => Number(v).toLocaleString('en-PH', {minimumFractionDigits:0}) + ' L'
+                        }
+                    }
                 }
             }
+        });
+    })();
+
+    // ── Chart 3: Merchandise Sales by Category (Bar) ──────────────────
+    (function () {
+        const labels = <?= json_encode($merch_chart_labels) ?>;
+        const data   = <?= json_encode($merch_chart_data) ?>;
+        const total  = data.reduce((a, b) => a + b, 0);
+
+        if (total === 0) {
+            showEmptyState('merchSalesChart', 'shopping-basket',
+                'No merchandise sales for the selected date range');
+            return;
         }
-    });
+
+        new Chart(document.getElementById('merchSalesChart').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Sales',
+                    data,
+                    backgroundColor: generatePalette(labels.length),
+                    borderRadius: 6,
+                    borderSkipped: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ` ₱${Number(ctx.parsed.y).toLocaleString('en-PH',{minimumFractionDigits:2})}`
+                        }
+                    }
+                },
+                scales: {
+                    x: { ticks: { maxRotation: 40, font: { size: 10 } } },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: v => '₱' + Number(v).toLocaleString('en-PH',{minimumFractionDigits:0})
+                        }
+                    }
+                }
+            }
+        });
+    })();
+
+    // ── Chart 4: Service Status Distribution (Doughnut) ───────────────
+    (function () {
+        const labels = <?= json_encode($status_chart_labels) ?>;
+        const data   = <?= json_encode($status_chart_data) ?>;
+        const total  = data.reduce((a, b) => a + b, 0);
+
+        if (total === 0) {
+            showEmptyState('serviceStatusChart', 'tools',
+                'No service orders for the selected date range');
+            return;
+        }
+
+        new Chart(document.getElementById('serviceStatusChart').getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels,
+                datasets: [{
+                    data,
+                    backgroundColor: ['#eab308','#3b82f6','#16a34a','#64748b'],
+                    borderWidth: 2,
+                    borderColor: '#fff',
+                    hoverOffset: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: { boxWidth: 12, padding: 14 }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ` ${ctx.label}: ${ctx.parsed} order${ctx.parsed !== 1 ? 's' : ''}`
+                        }
+                    }
+                }
+            }
+        });
+    })();
+
+    // ── Chart 5: Weekly Transaction Trend (Line) ──────────────────────
+    (function () {
+        const labels = <?= json_encode($weekly_chart_labels) ?>;
+        const data   = <?= json_encode($weekly_chart_data) ?>;
+        const total  = data.reduce((a, b) => a + b, 0);
+
+        if (total === 0) {
+            showEmptyState('weeklyTrendChart', 'calendar-week',
+                'No transactions recorded this week');
+            return;
+        }
+
+        new Chart(document.getElementById('weeklyTrendChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Transactions',
+                    data,
+                    borderColor: '#16a34a',
+                    backgroundColor: 'rgba(22,163,74,0.06)',
+                    tension: 0.35,
+                    fill: true,
+                    borderWidth: 2.5,
+                    pointBackgroundColor: '#16a34a',
+                    pointRadius: 5,
+                    pointHoverRadius: 7
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ` ${ctx.parsed.y} transaction${ctx.parsed.y !== 1 ? 's' : ''}`
+                        }
+                    }
+                },
+                scales: { y: integerTicks }
+            }
+        });
+    })();
 
     const staffDashboardVersion = <?= json_encode($dashboard_version) ?>;
     let staffDashboardRefreshInFlight = false;

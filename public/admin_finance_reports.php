@@ -278,9 +278,15 @@ require_once __DIR__ . '/../partials/header.php';
 .fr-filter-bar { display:flex; align-items:center; gap:10px; padding:14px 18px; background:#f8f9fa; border-bottom:1px solid #e2e8f0; flex-wrap:wrap; }
 .fr-filter-bar label { font-size:12px; font-weight:600; color:#00264D; margin:0; }
 .fr-filter-bar input[type="date"] { padding:7px 10px; border:1px solid #cbd5e1; border-radius:4px; font-size:12px; }
-.fr-filter-bar button { padding:7px 16px; background:#00264D; color:white; border:none; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer; }
-.fr-export-btn { padding:7px 14px; background:white; color:#00264D; border:1px solid #00264D; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; margin-left:auto; }
-.fr-export-btn:hover { background:#00264D; color:white; }
+.fr-filter-bar button { padding:7px 16px; background:#ffffff; color:#00264D; border:1px solid #00264D; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer; transition:all .2s; }
+.fr-filter-bar button:hover { background:#00264D; color:#ffffff; }
+.fr-export-btn { padding:7px 14px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; transition:all .2s; border:1px solid; display:inline-flex; align-items:center; gap:6px; background:#ffffff; }
+.fr-export-btn:nth-child(1) { color:#16a34a; border-color:#16a34a; }
+.fr-export-btn:nth-child(1):hover { background:#16a34a; color:#ffffff; }
+.fr-export-btn:nth-child(2) { color:#1e3a8a; border-color:#1e3a8a; }
+.fr-export-btn:nth-child(2):hover { background:#1e3a8a; color:#ffffff; }
+.fr-export-btn:nth-child(3) { color:#dc2626; border-color:#dc2626; }
+.fr-export-btn:nth-child(3):hover { background:#dc2626; color:#ffffff; }
 .fr-tabs { display:flex; border-bottom:2px solid #e2e8f0; overflow:hidden; }
 .fr-tab { padding:13px 20px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; color:#64748b; background:#f8f9fa; border:none; border-bottom:3px solid transparent; cursor:pointer; white-space:nowrap; transition:all .2s; }
 .fr-tab:hover { background:#fff; color:#00264D; }
@@ -336,13 +342,13 @@ require_once __DIR__ . '/../partials/header.php';
         <button type="submit"><i class="fas fa-sync-alt"></i> Apply</button>
         <div style="display:flex;gap:6px;margin-left:auto;">
             <button type="button" class="fr-export-btn" onclick="frExport('excel')">
-                <i class="fas fa-file-excel"></i> Export Excel
+                <i class="fas fa-file-excel"></i> Excel
             </button>
             <button type="button" class="fr-export-btn" onclick="frExport('csv')">
-                <i class="fas fa-file-csv"></i> Export CSV
+                <i class="fas fa-file-csv"></i> CSV
             </button>
             <button type="button" class="fr-export-btn" onclick="frPrint()">
-                <i class="fas fa-print"></i> Print Report
+                <i class="fas fa-file-pdf"></i> PDF
             </button>
         </div>
     </form>

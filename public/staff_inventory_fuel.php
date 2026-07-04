@@ -179,14 +179,32 @@ $msg = '';
 try {
     foreach ($TANK_CONFIG_17 as $tc) {
         $ft_key   = strtolower(trim($tc['fuel_type']));
+        // ── XTRA UNL split: distinguish sub-groups by label ──
+        if ($ft_key === 'xtra unl') {
+            if (strpos(strtolower($tc['label']), 'xtra unl 1') !== false) {
+                $ft_key = 'xtra unl 1';
+            } elseif (strpos(strtolower($tc['label']), 'xtra unl 2') !== false) {
+                $ft_key = 'xtra unl 2';
+            }
+        }
         $tank_key = strtolower(trim($tc['tank']));
         $inv      = $fi_lookup[$ft_key] ?? null;
 
         $capacity  = (float)$tc['capacity'];
         $cur_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
 
-        // Number of tanks for this fuel type
-        $same_type_count = count(array_filter($TANK_CONFIG_17, fn($t) => strtolower($t['fuel_type']) === $ft_key));
+        // Number of tanks for this fuel sub-group (respecting XTRA UNL split)
+        $same_type_count = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key) {
+            $k = strtolower(trim($t['fuel_type']));
+            if ($k === 'xtra unl') {
+                if (strpos(strtolower($t['label']), 'xtra unl 1') !== false) {
+                    $k = 'xtra unl 1';
+                } elseif (strpos(strtolower($t['label']), 'xtra unl 2') !== false) {
+                    $k = 'xtra unl 2';
+                }
+            }
+            return $k === $ft_key;
+        }));
 
         // Deliveries: per tank_assigned
         $purchases = $del_lookup[$tank_key] ?? 0;

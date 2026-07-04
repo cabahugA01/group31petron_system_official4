@@ -2388,15 +2388,13 @@ input[list] {
     align-items: center;
     justify-content: center;
     gap: 6px;
-    padding: 0 16px;
-    height: 36px;
-    min-width: 140px;
-    border-radius: 7px;
-    font-size: 13px;
+    padding: 7px 14px;
+    border-radius: 4px;
+    font-size: 11px;
     font-weight: 600;
     cursor: pointer;
     border: 1px solid transparent;
-    transition: all .18s;
+    transition: all .2s;
     text-decoration: none;
     white-space: nowrap;
     background: white !important;
@@ -2404,38 +2402,38 @@ input[list] {
 
 .txn-btn.primary {
     background: white !important;
-    color: #003d7a !important;
-    border: 1px solid #003d7a !important;
+    color: #00264D !important;
+    border-color: #00264D !important;
 }
 .txn-btn.primary:hover {
-    background: #003d7a !important;
+    background: #00264D !important;
     color: white !important;
 }
 
 .txn-btn.success {
     background: white !important;
-    color: #1d6f42 !important;
-    border: 1px solid #1d6f42 !important;
+    color: #16a34a !important;
+    border-color: #16a34a !important;
 }
 .txn-btn.success:hover {
-    background: #1d6f42 !important;
+    background: #16a34a !important;
     color: white !important;
 }
 
 .txn-btn.secondary {
     background: white !important;
-    color: #6b7280 !important;
-    border: 1px solid #6b7280 !important;
+    color: #475569 !important;
+    border-color: #475569 !important;
 }
 .txn-btn.secondary:hover {
-    background: #6b7280 !important;
+    background: #475569 !important;
     color: white !important;
 }
 
 .txn-btn.danger {
     background: white !important;
     color: #dc2626 !important;
-    border: 1px solid #dc2626 !important;
+    border-color: #dc2626 !important;
 }
 .txn-btn.danger:hover {
     background: #dc2626 !important;
@@ -2738,20 +2736,6 @@ input[list] {
                 <div>
                     <h1>Meter Readings</h1>
                     <p style="font-size:14px;color:#666666;margin:3px 0 0;text-transform:uppercase;letter-spacing:0.3px;font-weight:500;">ENCODE DAILY METER READINGS AND FUEL TRANSACTIONS FOR MONITORING.</p>
-                </div>
-            </div>
-            <div style="display:flex; flex-direction:column; gap:12px; align-items:flex-end;">
-                <button type="button" onclick="window.location.href='staff_dashboard.php'" 
-                        class="txn-btn secondary" title="Back to Staff Dashboard">
-                    <i class="fas fa-arrow-left"></i> <span>Back</span>
-                </button>
-                <div style="display:inline-flex; align-items:center; gap:8px;">
-                    <button onclick="exportTodayReadings('excel');" class="txn-btn success">
-                        <i class="fas fa-file-excel"></i> Excel
-                    </button>
-                    <button onclick="exportTodayReadings('csv');" class="txn-btn primary">
-                        <i class="fas fa-file-csv"></i> CSV
-                    </button>
                 </div>
             </div>
         </div>
@@ -3329,9 +3313,23 @@ input[list] {
 
         <!-- ── TODAY'S ENTRIES — Meter Reading History ──────────── -->
         <div class="txn-card" id="todayEntriesCard" style="margin-top:8px; margin-bottom:80px; background:#fff; border:1.5px solid #e2e8f0; border-radius:12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);">
-            <div class="txn-card-header" style="background:#fff; border-bottom:1.5px solid #e2e8f0; border-top-left-radius:12px; border-top-right-radius:12px; padding: 16px 20px;">
-                <i class="fas fa-history" style="color:var(--petron-blue); font-size:18px;"></i>
-                <h3 style="font-size:16px; font-weight:700; color:#0f172a; margin:0;">Meter Reading History</h3>
+            <div class="txn-card-header" style="background:#fff; border-bottom:1.5px solid #e2e8f0; border-top-left-radius:12px; border-top-right-radius:12px; padding: 16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <i class="fas fa-history" style="color:var(--petron-blue); font-size:18px;"></i>
+                    <h3 style="font-size:16px; font-weight:700; color:#0f172a; margin:0;">Meter Reading History</h3>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <button type="button" onclick="window.location.href='staff_dashboard.php'" 
+                            class="txn-btn secondary" title="Back to Staff Dashboard">
+                        <i class="fas fa-arrow-left"></i> <span>Back</span>
+                    </button>
+                    <button onclick="exportTodayReadings('excel');" class="txn-btn success">
+                        <i class="fas fa-file-excel"></i> Excel
+                    </button>
+                    <button onclick="exportTodayReadings('csv');" class="txn-btn primary">
+                        <i class="fas fa-file-csv"></i> CSV
+                    </button>
+                </div>
             </div>
 
             <!-- Summary Cards Row -->

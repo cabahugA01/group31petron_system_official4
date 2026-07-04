@@ -135,15 +135,55 @@ try {
     }
 } catch (Exception $e) {}
 
+// Helper function to get the canonical 5 fuel types
+if (!function_exists('get_canonical_fuel_name')) {
+    function get_canonical_fuel_name($name) {
+        $name_lower = strtolower(trim($name));
+        if (strpos($name_lower, 'turbo') !== false) {
+            return 'Turbo Diesel';
+        } elseif (strpos($name_lower, 'diesel') !== false) {
+            return 'Diesel';
+        } elseif (strpos($name_lower, 'kerosene') !== false) {
+            return 'Kerosene';
+        } elseif (strpos($name_lower, 'xcs') !== false) {
+            return 'XCS Plus';
+        } elseif (strpos($name_lower, 'xtra') !== false || strpos($name_lower, 'unl') !== false) {
+            return 'Xtra UNL';
+        }
+        return $name;
+    }
+}
+
 // ── Build 17 rows ──────────────────────────────────────────────────
 $rows = [];
 foreach ($TANK_CONFIG_17 as $tc) {
-    $ft_key   = strtolower(trim($tc['fuel_type']));
+    $ft_key = strtolower(trim($tc['fuel_type']));
+    if ($ft_key === 'xcs plus') {
+        $ft_key = 'xcs plus';
+    } elseif ($ft_key === 'xtra unl') {
+        if (strpos(strtolower($tc['label']), 'xtra unl 1') !== false) {
+            $ft_key = 'xtra unl 1';
+        } elseif (strpos(strtolower($tc['label']), 'xtra unl 2') !== false) {
+            $ft_key = 'xtra unl 2';
+        }
+    }
     $tank_key = strtolower(trim($tc['tank']));
     $inv      = $fi_lookup[$ft_key] ?? null;
     $capacity = (float)$tc['capacity'];
-    $cur_level= $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
-    $same_n   = count(array_filter($TANK_CONFIG_17, fn($t) => strtolower($t['fuel_type']) === $ft_key));
+    $cur_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
+    
+    $same_n = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key) {
+        $k = strtolower(trim($t['fuel_type']));
+        if ($k === 'xtra unl') {
+            if (strpos(strtolower($t['label']), 'xtra unl 1') !== false) {
+                $k = 'xtra unl 1';
+            } elseif (strpos(strtolower($t['label']), 'xtra unl 2') !== false) {
+                $k = 'xtra unl 2';
+            }
+        }
+        return $k === $ft_key;
+    }));
+    
     $purchases   = $del_lookup[$tank_key] ?? 0;
     $sales       = $same_n > 0 ? round(($sales_lookup[$ft_key] ?? 0) / $same_n, 2) : 0;
     $calibration = $same_n > 0 ? round(($adj_lookup[$ft_key]  ?? 0) / $same_n, 2) : 0;
@@ -152,11 +192,22 @@ foreach ($TANK_CONFIG_17 as $tc) {
     $ending      = max(0, $total_avail - $sales - $calibration);
     $actual_dip  = $ending;
     $variance    = 0; // computed locally or pulled from reconciliation if needed
-    $fill_pct    = $capacity > 0 ? ($ending / $capacity) * 100 : 0;
-    if      ($ending <= 0)     { $status = 'Out of Stock'; $sc = '#dc3545'; }
-    elseif  ($fill_pct <= 10)  { $status = 'Critical';     $sc = '#dc3545'; }
-    elseif  ($fill_pct <= 25)  { $status = 'Low';          $sc = '#fd7e14'; }
-    else                       { $status = 'Normal';       $sc = '#28a745'; }
+    
+    $fill_pct = $capacity > 0 ? ($ending / $capacity) * 100 : 0;
+    if ($ending <= 0) {
+        $status = 'Out of Stock';
+        $sc = '#dc3545';
+    } elseif ($fill_pct <= 10) {
+        $status = 'Critical';
+        $sc = '#dc3545';
+    } elseif ($fill_pct <= 25) {
+        $status = 'Low';
+        $sc = '#fd7e14';
+    } else {
+        $status = 'Normal';
+        $sc = '#28a745';
+    }
+    
     $price   = $price_lookup[$ft_key] ?? ($inv ? (float)($inv['price_per_liter'] ?? 0) : 0);
     $revenue = round($sales * $price, 2);
     $rows[]  = [

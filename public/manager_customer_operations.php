@@ -26,6 +26,20 @@ if (!in_array($role, ['manager', 'admin', 'superadmin', 'developer'])) {
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 try {
+    // ── Manager Permission Boundary ──────────────────────────────────
+    // The following actions are EXPLICITLY DENIED for the manager role.
+    // Even if a request is crafted manually, these will return a 403.
+    $denied_actions = ['delete', 'restore', 'permanent_delete', 'reverse_transaction',
+                       'manual_balance', 'manage_permissions', 'audit_logs'];
+    if (in_array($action, $denied_actions)) {
+        http_response_code(403);
+        echo json_encode([
+            'success' => false,
+            'error'   => 'Access denied. Managers are not permitted to perform this action.'
+        ]);
+        exit;
+    }
+
     switch ($action) {
         case 'list':                listCustomers();          break;
         case 'view':                viewCustomer();           break;
@@ -336,7 +350,8 @@ function addCustomer() {
     $statusVal   = $_POST['status']        ?? 'active';
     $govIdType   = trim($_POST['gov_id_type'] ?? '') ?: null;
     $creditLimit = (float)($_POST['credit_limit'] ?? 0);
-    $outstanding = (float)($_POST['outstanding_balance'] ?? 0);
+    // NOTE: Managers are NOT permitted to manually set or edit outstanding_balance.
+    // Balance is system-managed through transactions only.
 
     $companyName          = trim($_POST['company_name']           ?? '') ?: null;
     $companyAddress       = trim($_POST['company_address']        ?? '') ?: null;
@@ -360,6 +375,7 @@ function addCustomer() {
     $customerId = generateCustomerId($station_id);
     $fullName   = trim("$firstName $middleName $lastName");
 
+    // outstanding_balance starts at 0 — managers cannot set it manually.
     $stmt = $pdo->prepare("
         INSERT INTO customers (
             customer_id, station_id,
@@ -369,7 +385,7 @@ function addCustomer() {
             company_name, company_address, company_contact_person, company_contact_number,
             credit_limit, outstanding_balance, verification_status,
             registered_by, registered_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NOW())
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'pending', ?, NOW())
     ");
     $stmt->execute([
         $customerId, $station_id,
@@ -377,7 +393,7 @@ function addCustomer() {
         $contactNo, $address, $custType, $statusVal,
         $govIdType, $govIdImage, $crDocument,
         $companyName, $companyAddress, $companyContactPerson, $companyContactNumber,
-        $creditLimit, $outstanding,
+        $creditLimit,
         $me['id']
     ]);
 

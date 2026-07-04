@@ -119,13 +119,30 @@ $total_fuel_volume = 0;
 
 foreach ($TANK_CONFIG_17 as $tc) {
     $ft_key   = strtolower(trim($tc['fuel_type']));
+    if ($ft_key === 'xtra unl') {
+        if (strpos(strtolower($tc['label']), 'xtra unl 1') !== false) {
+            $ft_key = 'xtra unl 1';
+        } elseif (strpos(strtolower($tc['label']), 'xtra unl 2') !== false) {
+            $ft_key = 'xtra unl 2';
+        }
+    }
     $tank_key = strtolower(trim($tc['tank']));
     $inv      = $fi_lookup[$ft_key] ?? null;
 
     $capacity  = (float)$tc['capacity'];
     $cur_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
 
-    $same_type_count = count(array_filter($TANK_CONFIG_17, fn($t) => strtolower($t['fuel_type']) === $ft_key));
+    $same_type_count = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key) {
+        $k = strtolower(trim($t['fuel_type']));
+        if ($k === 'xtra unl') {
+            if (strpos(strtolower($t['label']), 'xtra unl 1') !== false) {
+                $k = 'xtra unl 1';
+            } elseif (strpos(strtolower($t['label']), 'xtra unl 2') !== false) {
+                $k = 'xtra unl 2';
+            }
+        }
+        return $k === $ft_key;
+    }));
     $purchases = $del_lookup[$tank_key] ?? 0;
 
     $sales_total = $sales_lookup[$ft_key] ?? 0;
@@ -189,8 +206,25 @@ $alert_rows = [];
 foreach ($rows as $r) {
     if (in_array($r['status'], ['Low', 'Critical', 'Out of Stock'])) {
         $ft_key = strtolower(trim($r['fuel_type']));
+        if ($ft_key === 'xtra unl') {
+            if (strpos(strtolower($r['tank_name']), 'xtra unl 1') !== false) {
+                $ft_key = 'xtra unl 1';
+            } elseif (strpos(strtolower($r['tank_name']), 'xtra unl 2') !== false) {
+                $ft_key = 'xtra unl 2';
+            }
+        }
         $inv = $fi_lookup[$ft_key] ?? null;
-        $same_type_count = count(array_filter($TANK_CONFIG_17, fn($t) => strtolower($t['fuel_type']) === $ft_key));
+        $same_type_count = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key) {
+            $k = strtolower(trim($t['fuel_type']));
+            if ($k === 'xtra unl') {
+                if (strpos(strtolower($t['label']), 'xtra unl 1') !== false) {
+                    $k = 'xtra unl 1';
+                } elseif (strpos(strtolower($t['label']), 'xtra unl 2') !== false) {
+                    $k = 'xtra unl 2';
+                }
+            }
+            return $k === $ft_key;
+        }));
         
         $reorder_level_per_tank = $inv ? (float)$inv['reorder_level'] / $same_type_count : 0.25 * $r['capacity'];
         

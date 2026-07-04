@@ -565,6 +565,36 @@ require_once __DIR__ . '/../partials/header.php';
         background: #333;
     }
     
+    /* Export Buttons (Filter Button Style) */
+    .flt-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 6px 14px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        border: 1px solid transparent;
+        transition: all 0.15s;
+        height: 34px;
+        line-height: 1;
+        white-space: nowrap;
+        text-decoration: none;
+        background: white !important;
+    }
+    .flt-btn-search { color: #002F70 !important; border-color: #002F70 !important; }
+    .flt-btn-search:hover { background: #002F70 !important; color: #fff !important; }
+    .flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
+    .flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
+    .flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
+    .flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
+    .flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
+    .flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
+    .flt-btn-csv    { color: #002F70 !important; border-color: #002F70 !important; }
+    .flt-btn-csv:hover    { background: #002F70 !important; color: #fff !important; }
+    
     .print-area {
         background: #fff;
     }
@@ -797,11 +827,8 @@ require_once __DIR__ . '/../partials/header.php';
 <!-- Module Page Header - matches Transaction module int-head standard -->
 <div class="int-head">
     <div>
-        <h1><i class="fas fa-truck"></i> Merchandise Deliveries</h1>
+        <h1><i class="fas fa-truck"></i> Deliveries</h1>
         <div class="sub">View and track merchandise and fuel delivery records for this station.</div>
-    </div>
-    <div class="actions">
-        <a href="staff_dashboard.php" class="btn" style="border-color:#00264D;color:#00264D;"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
 </div>
 
@@ -817,9 +844,21 @@ require_once __DIR__ . '/../partials/header.php';
             <button class="btn btn-primary" onclick="applyFilters()">Apply</button>
         </div>
         
-        <div>
-            <button class="btn" onclick="window.print()">Print Report</button>
-            <a href="?date_start=<?= urlencode($date_start) ?>&date_end=<?= urlencode($date_end) ?>&export=excel" class="btn">Export Excel</a>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <!-- Excel -->
+            <a href="?date_start=<?= urlencode($date_start) ?>&date_end=<?= urlencode($date_end) ?>&export=excel" 
+               class="flt-btn flt-btn-excel" title="Export to Excel">
+                <i class="fas fa-file-excel"></i> Excel
+            </a>
+            <!-- CSV -->
+            <button onclick="exportTableToCSV('deliveriesTable','deliveries_report_<?= date('Ymd') ?>.csv')"
+                    class="flt-btn flt-btn-csv" title="Export to CSV">
+                <i class="fas fa-file-csv"></i> CSV
+            </button>
+            <!-- PDF -->
+            <button onclick="window.print()" class="flt-btn flt-btn-pdf" title="Print / Export PDF">
+                <i class="fas fa-file-pdf"></i> PDF
+            </button>
         </div>
     </div>
     
