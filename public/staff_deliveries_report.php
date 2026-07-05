@@ -825,12 +825,6 @@ require_once __DIR__ . '/../partials/header.php';
 </style>
 
 <!-- Module Page Header - matches Transaction module int-head standard -->
-<div class="int-head">
-    <div>
-        <h1><i class="fas fa-truck"></i> Deliveries</h1>
-        <div class="sub">View and track merchandise and fuel delivery records for this station.</div>
-    </div>
-</div>
 
 <!-- Main Content Wrapper -->
 <div class="main-content">
@@ -876,7 +870,7 @@ require_once __DIR__ . '/../partials/header.php';
             <div class="section-title">FUEL DELIVERIES</div>
                 
                 <div class="table-container">
-                    <table>
+                    <table id="deliveriesTable">
                         <thead>
                             <tr>
                                 <th>DEL ID</th>

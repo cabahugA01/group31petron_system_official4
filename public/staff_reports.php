@@ -2231,11 +2231,11 @@ require_once __DIR__ . '/../partials/header.php';
 }
 .btn-act:hover { transform:none; opacity:1; }
 .btn-act-excel  { color: #16a34a !important; border: 1px solid #16a34a !important; }
-.btn-act-excel:hover  { background: #16a34a !important; color: #ffffff !important; }
-.btn-act-csv    { color: #00264D !important; border: 1px solid #00264D !important; }
-.btn-act-csv:hover    { background: #00264D !important; color: #ffffff !important; }
+.btn-act-excel:hover  { background: #f0fdf4 !important; border-color: #15803d !important; }
+.btn-act-csv    { color: #2563eb !important; border: 1px solid #2563eb !important; }
+.btn-act-csv:hover    { background: #eff6ff !important; border-color: #1d4ed8 !important; }
 .btn-act-pdf    { color: #dc2626 !important; border: 1px solid #dc2626 !important; }
-.btn-act-pdf:hover    { background: #dc2626 !important; color: #ffffff !important; }
+.btn-act-pdf:hover    { background: #fef2f2 !important; border-color: #b91c1c !important; }
 .btn-act-back   { color: #475569 !important; border: 1px solid #475569 !important; }
 .btn-act-back:hover   { background: #475569 !important; color: #ffffff !important; }
 

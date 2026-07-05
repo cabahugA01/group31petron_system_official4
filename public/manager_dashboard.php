@@ -1057,11 +1057,31 @@ include __DIR__ . '/../partials/header.php';
         text-decoration: none;
     }
 
-    .mgr-btn-blue { background: #002f70; color: #ffffff; }
-    .mgr-btn-gray { background: #edf2f7; color: #26364c; border-color: #dbe3ee; }
-    .mgr-btn-green { background: #128143; color: #ffffff; }
-    .mgr-btn-red { background: #c81e2d; color: #ffffff; }
-    .mgr-btn-amber { background: #c97800; color: #ffffff; }
+    /* ── Action button variants: outline style (no fill, border + colored text) ── */
+    .mgr-btn-blue  { background: transparent; color: #002f70; border-color: #002f70; }
+    .mgr-btn-blue:hover { background: #002f70; color: #ffffff; }
+
+    /* ── Filter button: solid filled style to match staff ── */
+    .mgr-filter-form .mgr-btn-blue {
+        background: #002F70 !important;
+        color: #ffffff !important;
+        border: none !important;
+    }
+    .mgr-filter-form .mgr-btn-blue:hover {
+        background: #001f4d !important;
+    }
+
+    .mgr-btn-gray  { background: transparent; color: #475569; border-color: #94a3b8; }
+    .mgr-btn-gray:hover { background: #f1f5f9; color: #1e293b; }
+
+    .mgr-btn-green { background: transparent; color: #128143; border-color: #128143; }
+    .mgr-btn-green:hover { background: #128143; color: #ffffff; }
+
+    .mgr-btn-red   { background: transparent; color: #c81e2d; border-color: #c81e2d; }
+    .mgr-btn-red:hover { background: #c81e2d; color: #ffffff; }
+
+    .mgr-btn-amber { background: transparent; color: #b45309; border-color: #b45309; }
+    .mgr-btn-amber:hover { background: #b45309; color: #ffffff; }
 
     .mgr-summary-grid {
         display: grid;
@@ -1306,65 +1326,107 @@ include __DIR__ . '/../partials/header.php';
         font-weight: 700;
     }
 
+    /* ── Quick Actions Grid — matches staff dashboard style ── */
     .mgr-quick-grid {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 10px;
+        gap: 14px;
     }
 
     .mgr-quick-grid .mgr-btn {
         position: relative;
         width: 100%;
-        min-height: 88px;
-        align-items: stretch;
-        justify-content: flex-start;
+        min-height: 90px;
+        display: flex;
         flex-direction: column;
-        padding: 13px 14px;
-        text-align: left;
-        white-space: normal;
+        align-items: center;
+        justify-content: center;
         gap: 9px;
+        padding: 16px 12px;
+        text-align: center;
+        white-space: normal;
+        /* Staff-style: white bg, light border, no color fill */
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        color: #334155;
+        font-weight: 700;
+        font-size: 12px;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04);
+        transition: all 0.25s ease;
+        text-decoration: none;
+        cursor: pointer;
+    }
+
+    /* Override color variants to all use white bg */
+    .mgr-quick-grid .mgr-btn-blue,
+    .mgr-quick-grid .mgr-btn-green,
+    .mgr-quick-grid .mgr-btn-red,
+    .mgr-quick-grid .mgr-btn-amber,
+    .mgr-quick-grid .mgr-btn-gray {
+        background: #ffffff;
+        color: #334155;
+        border-color: #e2e8f0;
+    }
+
+    .mgr-quick-grid .mgr-btn:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+        border-color: #002f70;
+        color: #002f70;
+        background: #ffffff;
     }
 
     .mgr-quick-main {
         display: flex;
-        align-items: flex-start;
-        gap: 9px;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
         min-width: 0;
         width: 100%;
-        padding-right: 36px;
+        padding-right: 0;
     }
 
     .mgr-quick-main i {
-        flex: 0 0 18px;
-        width: 18px;
-        margin-top: 1px;
-        text-align: center;
+        font-size: 20px;
+        color: #002f70;
+        transition: transform 0.25s ease;
+        flex: unset;
+        width: unset;
+        margin-top: 0;
+    }
+
+    .mgr-quick-grid .mgr-btn:hover .mgr-quick-main i {
+        transform: scale(1.15);
     }
 
     .mgr-quick-label {
         min-width: 0;
-        line-height: 1.25;
+        line-height: 1.3;
+        font-size: 12px;
+        font-weight: 700;
+        color: inherit;
     }
 
     .mgr-action-count {
         position: absolute;
-        top: 10px;
-        right: 10px;
+        top: 8px;
+        right: 8px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-width: 25px;
-        height: 25px;
-        padding: 0 8px;
+        min-width: 22px;
+        height: 22px;
+        padding: 0 6px;
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.94);
-        color: #071225;
-        font-size: 11px;
+        background: #002f70;
+        color: #ffffff;
+        font-size: 10px;
         font-weight: 900;
         line-height: 1;
-        box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
     }
 
+    /* Neutralise count badge override from colored variants */
     .mgr-btn-gray .mgr-action-count {
         background: #002f70;
         color: #ffffff;
@@ -1372,11 +1434,11 @@ include __DIR__ . '/../partials/header.php';
 
     .mgr-action-meta {
         display: block;
-        color: currentColor;
-        font-size: 11px;
-        font-weight: 700;
+        font-size: 10px;
+        font-weight: 600;
         line-height: 1.35;
-        opacity: .82;
+        color: #64748b;
+        opacity: 1;
     }
 
     .mgr-calendar-list {
@@ -1502,14 +1564,15 @@ include __DIR__ . '/../partials/header.php';
     <div class="mgr-page-header">
         <div class="mgr-title-block">
             <h1>Welcome, <?= mgr_h($display_name) ?>!</h1>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:4px; margin-bottom:8px;">
+                <i class="fas fa-tachometer-alt" style="color:#64748b; font-size:14px;"></i>
+                <span style="color:#64748b; font-size:13px; font-weight:600;">Manager Dashboard</span>
+            </div>
             <p>Monitor station operations, approve requests, manage inventory, pricing, and track daily business performance.</p>
         </div>
         <form method="get" class="mgr-filter-form">
             <input type="date" name="date" value="<?= mgr_h($date_filter) ?>" required>
             <button class="mgr-btn mgr-btn-blue" type="submit"><i class="fas fa-filter"></i> Filter</button>
-            <?php if ($date_filter !== date('Y-m-d')): ?>
-                <a class="mgr-btn mgr-btn-gray" href="manager_dashboard.php"><i class="fas fa-rotate-left"></i> Reset</a>
-            <?php endif; ?>
         </form>
     </div>
 

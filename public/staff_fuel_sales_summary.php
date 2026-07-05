@@ -1859,7 +1859,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
             <div class="right-column">
                 <h3 style="text-align: center; font-size: 10pt; margin-bottom: 8px; text-decoration: underline;">METER READING TABLE</h3>
                 
-                <table class="meter-table">
+                <table class="meter-table" id="salesTable">
                     <thead>
                         <tr>
                             <th>PUMP</th>

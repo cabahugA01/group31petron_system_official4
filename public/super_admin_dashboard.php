@@ -339,52 +339,96 @@ include __DIR__ . '/../partials/header.php';
     padding-bottom: 12px;
 }
 
-/* Metric Widgets */
-.metric-row {
+/* Summary Grid & Card Layout Standardized */
+.mgr-summary-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 16px;
-    margin-bottom: 16px;
+    margin-bottom: 22px;
 }
 
-.metric-widget {
-    background: #f8fafc;
+@media (max-width: 1300px) {
+    .mgr-summary-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 900px) {
+    .mgr-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 720px) {
+    .mgr-summary-grid {
+        grid-template-columns: repeat(1, minmax(0, 1fr));
+    }
+}
+
+.mgr-card {
+    min-height: 126px;
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 18px;
+    overflow: hidden;
+    background: #ffffff;
+    border: 1px solid #dbe3ee;
     border-radius: 8px;
-    padding: 16px;
-    border: 1px solid var(--border-color);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.mgr-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
+.mgr-card > div:first-child {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
 }
 
-.metric-title {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #64748b;
+.mgr-card-label {
+    color: #56657a;
+    font-size: 11px;
+    font-weight: 900;
     text-transform: uppercase;
-    margin-bottom: 6px;
+    letter-spacing: 0;
+    line-height: 1.25;
 }
 
-.metric-big-value {
-    font-size: 1.35rem;
-    font-weight: 800;
-    color: var(--dark-slate);
-    line-height: 1.2;
-    word-break: break-word;
+.mgr-card-value {
+    margin-top: 8px;
+    color: #071225;
+    font-size: 25px;
+    line-height: 1.15;
+    font-weight: 900;
 }
 
-.metric-meta {
-    font-size: 0.75rem;
-    color: #94a3b8;
-    margin-top: 6px;
-    white-space: normal;
-    word-break: break-word;
+.mgr-card-sub {
+    margin-top: 8px;
+    color: #6b7a90;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.45;
 }
 
-.metric-meta .badge {
-    white-space: normal;
-    display: inline-block;
-    word-break: break-word;
+.mgr-icon {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 18px;
+    background: #eef4ff;
+    color: #002f70;
+    margin-left: 10px;
 }
 
 /* Layout Assignments */
@@ -637,38 +681,68 @@ include __DIR__ . '/../partials/header.php';
             <h2 class="section-title">
                 <i class="fas fa-heartbeat" style="color: var(--success);"></i> System Health Overview
             </h2>
-            <div class="metric-row">
-                <div class="metric-widget">
-                    <div class="metric-title">Server Uptime</div>
-                    <div class="metric-big-value" style="font-size: 1.25rem;"><?php echo $uptime; ?></div>
-                    <div class="metric-meta"><span class="badge badge-success">Downtime: <?php echo $downtime; ?></span></div>
-                </div>
-                <div class="metric-widget <?php echo $cpu_usage > 75 ? 'metric-danger' : ($cpu_usage > 50 ? 'metric-warning' : 'metric-success'); ?>">
-                    <div class="metric-title">CPU Utilization</div>
-                    <div class="metric-big-value"><?php echo $cpu_usage; ?>%</div>
-                    <div class="progress-bar-container">
-                        <div class="progress-bar" style="width: <?php echo $cpu_usage; ?>%; background-color: <?php echo $cpu_usage > 75 ? 'var(--danger)' : ($cpu_usage > 50 ? 'var(--warning)' : 'var(--success)'); ?>;"></div>
+            <div class="mgr-summary-grid">
+                <div class="mgr-card">
+                    <div>
+                        <div class="mgr-card-label">Server Uptime</div>
+                        <div class="mgr-card-value" style="font-size: 1.25rem;"><?php echo $uptime; ?></div>
+                        <div class="mgr-card-sub">Downtime: <?php echo $downtime; ?></div>
+                    </div>
+                    <div class="mgr-icon" style="background: #eff6ff; color: #002F70;">
+                        <i class="fas fa-server"></i>
                     </div>
                 </div>
-                <div class="metric-widget">
-                    <div class="metric-title">Memory Allocation</div>
-                    <div class="metric-big-value" style="font-size: 1.15rem;"><?php echo $memory_usage; ?></div>
-                    <div class="metric-meta">Peak Memory usage checked</div>
+                <div class="mgr-card">
+                    <div>
+                        <div class="mgr-card-label">CPU Utilization</div>
+                        <div class="mgr-card-value"><?php echo $cpu_usage; ?>%</div>
+                        <div class="progress-bar-container" style="margin-top: 8px;">
+                            <div class="progress-bar" style="width: <?php echo $cpu_usage; ?>%; background-color: <?php echo $cpu_usage > 75 ? 'var(--danger)' : ($cpu_usage > 50 ? 'var(--warning)' : 'var(--success)'); ?>;"></div>
+                        </div>
+                    </div>
+                    <div class="mgr-icon" style="background: <?php echo $cpu_usage > 75 ? '#fef2f2' : ($cpu_usage > 50 ? '#fef9c3' : '#f0fdf4'); ?>; color: <?php echo $cpu_usage > 75 ? '#dc2626' : ($cpu_usage > 50 ? '#eab308' : '#16a34a'); ?>;">
+                        <i class="fas fa-microchip"></i>
+                    </div>
                 </div>
-                <div class="metric-widget">
-                    <div class="metric-title">DB Connections</div>
-                    <div class="metric-big-value"><?php echo $db_connections; ?></div>
-                    <div class="metric-meta"><span class="badge badge-success">Connected Threads</span></div>
+                <div class="mgr-card">
+                    <div>
+                        <div class="mgr-card-label">Memory Allocation</div>
+                        <div class="mgr-card-value" style="font-size: 1.15rem;"><?php echo $memory_usage; ?></div>
+                        <div class="mgr-card-sub">Peak Memory check</div>
+                    </div>
+                    <div class="mgr-icon" style="background: #ecfeff; color: #0891b2;">
+                        <i class="fas fa-memory"></i>
+                    </div>
                 </div>
-                <div class="metric-widget">
-                    <div class="metric-title">Avg Query Speed</div>
-                    <div class="metric-big-value"><?php echo $query_speed; ?> ms</div>
-                    <div class="metric-meta">Optimized Query Execution</div>
+                <div class="mgr-card">
+                    <div>
+                        <div class="mgr-card-label">DB Connections</div>
+                        <div class="mgr-card-value"><?php echo $db_connections; ?></div>
+                        <div class="mgr-card-sub">Connected threads</div>
+                    </div>
+                    <div class="mgr-icon" style="background: #eef4ff; color: #002f70;">
+                        <i class="fas fa-database"></i>
+                    </div>
                 </div>
-                <div class="metric-widget <?php echo $error_count > 0 ? 'metric-danger' : 'metric-success'; ?>">
-                    <div class="metric-title">Anomaly Alerts (24h)</div>
-                    <div class="metric-big-value"><?php echo $error_count; ?></div>
-                    <div class="metric-meta">Errors flagged: <?php echo $error_count; ?></div>
+                <div class="mgr-card">
+                    <div>
+                        <div class="mgr-card-label">Avg Query Speed</div>
+                        <div class="mgr-card-value"><?php echo $query_speed; ?> ms</div>
+                        <div class="mgr-card-sub">Optimized execution</div>
+                    </div>
+                    <div class="mgr-icon" style="background: #ffedd5; color: #ea580c;">
+                        <i class="fas fa-bolt"></i>
+                    </div>
+                </div>
+                <div class="mgr-card">
+                    <div>
+                        <div class="mgr-card-label">Anomaly Alerts (24h)</div>
+                        <div class="mgr-card-value"><?php echo $error_count; ?></div>
+                        <div class="mgr-card-sub">Errors flagged: <?php echo $error_count; ?></div>
+                    </div>
+                    <div class="mgr-icon" style="background: <?php echo $error_count > 0 ? '#fef2f2' : '#f0fdf4'; ?>; color: <?php echo $error_count > 0 ? '#dc2626' : '#16a34a'; ?>;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
                 </div>
             </div>
         </div>
@@ -678,21 +752,36 @@ include __DIR__ . '/../partials/header.php';
             <h2 class="section-title">
                 <i class="fas fa-plug" style="color: var(--info);"></i> Integration Monitoring
             </h2>
-            <div class="metric-row">
-                <div class="metric-widget metric-success">
-                    <div class="metric-title">API Interfaces</div>
-                    <div class="metric-big-value"><?php echo $api_status; ?></div>
-                    <div class="metric-meta">Fleet Card & ERP Gateways</div>
+            <div class="mgr-summary-grid" style="grid-template-columns: repeat(3, minmax(0, 1fr));">
+                <div class="mgr-card" style="min-height: 105px; padding: 12px 14px;">
+                    <div>
+                        <div class="mgr-card-label">API Interfaces</div>
+                        <div class="mgr-card-value" style="font-size: 1.15rem; margin-top: 4px;"><?php echo $api_status; ?></div>
+                        <div class="mgr-card-sub" style="margin-top: 4px;">Fleet & ERP Gateways</div>
+                    </div>
+                    <div class="mgr-icon" style="background: #f0fdf4; color: #16a34a; width: 36px; height: 36px; flex: 0 0 36px; font-size: 14px; margin-left: 4px;">
+                        <i class="fas fa-link"></i>
+                    </div>
                 </div>
-                <div class="metric-widget">
-                    <div class="metric-title">Git Activity (7d)</div>
-                    <div class="metric-big-value"><?php echo $git_commits_7d; ?></div>
-                    <div class="metric-meta">Merges: <?php echo $git_merges_7d; ?> | main</div>
+                <div class="mgr-card" style="min-height: 105px; padding: 12px 14px;">
+                    <div>
+                        <div class="mgr-card-label">Git Activity (7d)</div>
+                        <div class="mgr-card-value" style="font-size: 1.15rem; margin-top: 4px;"><?php echo $git_commits_7d; ?></div>
+                        <div class="mgr-card-sub" style="margin-top: 4px;">Merges: <?php echo $git_merges_7d; ?></div>
+                    </div>
+                    <div class="mgr-icon" style="background: #eff6ff; color: #002F70; width: 36px; height: 36px; flex: 0 0 36px; font-size: 14px; margin-left: 4px;">
+                        <i class="fab fa-git-alt"></i>
+                    </div>
                 </div>
-                <div class="metric-widget">
-                    <div class="metric-title">Sync Jobs Executed</div>
-                    <div class="metric-big-value"><?php echo $sync_jobs_completed_24h; ?></div>
-                    <div class="metric-meta">Errors flagged: <?php echo $sync_errors_24h; ?></div>
+                <div class="mgr-card" style="min-height: 105px; padding: 12px 14px;">
+                    <div>
+                        <div class="mgr-card-label">Sync Jobs Executed</div>
+                        <div class="mgr-card-value" style="font-size: 1.15rem; margin-top: 4px;"><?php echo $sync_jobs_completed_24h; ?></div>
+                        <div class="mgr-card-sub" style="margin-top: 4px;">Errors: <?php echo $sync_errors_24h; ?></div>
+                    </div>
+                    <div class="mgr-icon" style="background: #ffedd5; color: #ea580c; width: 36px; height: 36px; flex: 0 0 36px; font-size: 14px; margin-left: 4px;">
+                        <i class="fas fa-sync"></i>
+                    </div>
                 </div>
             </div>
             
@@ -726,21 +815,36 @@ include __DIR__ . '/../partials/header.php';
             <h2 class="section-title">
                 <i class="fas fa-database" style="color: var(--petron-blue);"></i> Database Management Quick View
             </h2>
-            <div class="metric-row">
-                <div class="metric-widget">
-                    <div class="metric-title">Compliance Rating</div>
-                    <div class="metric-big-value" style="font-size: 0.813rem; line-height: 1.4;"><?php echo $backup_compliance; ?></div>
-                    <div class="metric-meta">Last backup: <?php echo $last_backup_time ? date('Y-m-d H:i', strtotime($last_backup_time)) : 'N/A'; ?></div>
+            <div class="mgr-summary-grid" style="grid-template-columns: repeat(3, minmax(0, 1fr));">
+                <div class="mgr-card" style="min-height: 105px; padding: 12px 14px;">
+                    <div>
+                        <div class="mgr-card-label">Compliance Rating</div>
+                        <div class="mgr-card-value" style="font-size: 0.9rem; margin-top: 4px;"><?php echo $backup_compliance; ?></div>
+                        <div class="mgr-card-sub" style="margin-top: 4px;">Last: <?php echo $last_backup_time ? date('Y-m-d H:i', strtotime($last_backup_time)) : 'N/A'; ?></div>
+                    </div>
+                    <div class="mgr-icon" style="background: #eff6ff; color: #002F70; width: 36px; height: 36px; flex: 0 0 36px; font-size: 14px; margin-left: 4px;">
+                        <i class="fas fa-shield-alt"></i>
+                    </div>
                 </div>
-                <div class="metric-widget">
-                    <div class="metric-title">Schema Migrations</div>
-                    <div class="metric-big-value"><?php echo $migrations_applied; ?></div>
-                    <div class="metric-meta">Applied migrations</div>
+                <div class="mgr-card" style="min-height: 105px; padding: 12px 14px;">
+                    <div>
+                        <div class="mgr-card-label">Schema Migrations</div>
+                        <div class="mgr-card-value" style="font-size: 1.15rem; margin-top: 4px;"><?php echo $migrations_applied; ?></div>
+                        <div class="mgr-card-sub" style="margin-top: 4px;">Applied migrations</div>
+                    </div>
+                    <div class="mgr-icon" style="background: #ecfeff; color: #0891b2; width: 36px; height: 36px; flex: 0 0 36px; font-size: 14px; margin-left: 4px;">
+                        <i class="fas fa-code-branch"></i>
+                    </div>
                 </div>
-                <div class="metric-widget">
-                    <div class="metric-title">Recent Import Actions</div>
-                    <div class="metric-big-value"><?php echo $restore_actions_30d; ?></div>
-                    <div class="metric-meta">Restores in 30 days</div>
+                <div class="mgr-card" style="min-height: 105px; padding: 12px 14px;">
+                    <div>
+                        <div class="mgr-card-label">Recent Imports</div>
+                        <div class="mgr-card-value" style="font-size: 1.15rem; margin-top: 4px;"><?php echo $restore_actions_30d; ?></div>
+                        <div class="mgr-card-sub" style="margin-top: 4px;">Restores in 30 days</div>
+                    </div>
+                    <div class="mgr-icon" style="background: #fef9c3; color: #eab308; width: 36px; height: 36px; flex: 0 0 36px; font-size: 14px; margin-left: 4px;">
+                        <i class="fas fa-file-import"></i>
+                    </div>
                 </div>
             </div>
             
@@ -782,21 +886,36 @@ include __DIR__ . '/../partials/header.php';
             <h2 class="section-title">
                 <i class="fas fa-shield-alt" style="color: var(--danger);"></i> Security Monitoring
             </h2>
-            <div class="metric-row">
-                <div class="metric-widget">
-                    <div class="metric-title">Login Attempts (24h)</div>
-                    <div class="metric-big-value" style="font-size: 1.15rem;"><?php echo $successful_logins_24h; ?> OK / <?php echo $failed_logins_24h; ?> Fail</div>
-                    <div class="metric-meta">Active Login Security check</div>
+            <div class="mgr-summary-grid" style="grid-template-columns: repeat(3, minmax(0, 1fr));">
+                <div class="mgr-card" style="min-height: 105px; padding: 12px 14px;">
+                    <div>
+                        <div class="mgr-card-label">Login Attempts (24h)</div>
+                        <div class="mgr-card-value" style="font-size: 0.95rem; margin-top: 4px;"><?php echo $successful_logins_24h; ?> OK / <?php echo $failed_logins_24h; ?> Fail</div>
+                        <div class="mgr-card-sub" style="margin-top: 4px;">Security active</div>
+                    </div>
+                    <div class="mgr-icon" style="background: #eff6ff; color: #002F70; width: 36px; height: 36px; flex: 0 0 36px; font-size: 14px; margin-left: 4px;">
+                        <i class="fas fa-user-shield"></i>
+                    </div>
                 </div>
-                <div class="metric-widget <?php echo $access_violations_24h > 0 ? 'metric-danger' : ''; ?>">
-                    <div class="metric-title">Access Violations</div>
-                    <div class="metric-big-value"><?php echo $access_violations_24h; ?></div>
-                    <div class="metric-meta">Unauthorized actions blocked</div>
+                <div class="mgr-card" style="min-height: 105px; padding: 12px 14px;">
+                    <div>
+                        <div class="mgr-card-label">Access Violations</div>
+                        <div class="mgr-card-value" style="font-size: 1.15rem; margin-top: 4px;"><?php echo $access_violations_24h; ?></div>
+                        <div class="mgr-card-sub" style="margin-top: 4px;">Actions blocked</div>
+                    </div>
+                    <div class="mgr-icon" style="background: <?php echo $access_violations_24h > 0 ? '#fef2f2' : '#f0fdf4'; ?>; color: <?php echo $access_violations_24h > 0 ? '#dc2626' : '#16a34a'; ?>; width: 36px; height: 36px; flex: 0 0 36px; font-size: 14px; margin-left: 4px;">
+                        <i class="fas fa-ban"></i>
+                    </div>
                 </div>
-                <div class="metric-widget <?php echo $suspicious_alerts_count > 0 ? 'metric-warning' : ''; ?>">
-                    <div class="metric-title">Suspicious Alerts</div>
-                    <div class="metric-big-value"><?php echo $suspicious_alerts_count; ?></div>
-                    <div class="metric-meta">Active open alerts</div>
+                <div class="mgr-card" style="min-height: 105px; padding: 12px 14px;">
+                    <div>
+                        <div class="mgr-card-label">Suspicious Alerts</div>
+                        <div class="mgr-card-value" style="font-size: 1.15rem; margin-top: 4px;"><?php echo $suspicious_alerts_count; ?></div>
+                        <div class="mgr-card-sub" style="margin-top: 4px;">Active alerts</div>
+                    </div>
+                    <div class="mgr-icon" style="background: <?php echo $suspicious_alerts_count > 0 ? '#fef9c3' : '#f0fdf4'; ?>; color: <?php echo $suspicious_alerts_count > 0 ? '#eab308' : '#16a34a'; ?>; width: 36px; height: 36px; flex: 0 0 36px; font-size: 14px; margin-left: 4px;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
                 </div>
             </div>
             

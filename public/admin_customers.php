@@ -267,53 +267,53 @@ require_once __DIR__ . '/../partials/header.php';
         border-color: #002F70 !important;
     }
 
-    /* ── EXPORT BUTTONS — matches staff_customer_list.php exactly ───────── */
+    /* ── EXPORT BUTTONS — colored borders design ───────── */
     .btn-export-pdf,
     .btn-export-excel,
     .btn-export-csv {
         background: #ffffff !important;
-        border: 1px solid transparent !important;
-        border-radius: 7px !important;
-        padding: 0 16px !important;
-        height: 36px !important;
+        border: 2px solid !important;
+        border-radius: 8px !important;
+        padding: 8px 16px !important;
+        height: 38px !important;
         font-size: 13px !important;
         font-weight: 600 !important;
         cursor: pointer !important;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        gap: 6px !important;
+        gap: 8px !important;
         transition: all 0.15s !important;
-        min-width: 90px !important;
+        min-width: 100px !important;
         white-space: nowrap !important;
         text-decoration: none !important;
     }
     /* Excel — green */
     .btn-export-excel {
-        color: #1d6f42 !important;
-        border-color: #1d6f42 !important;
+        color: #16a34a !important;
+        border-color: #16a34a !important;
     }
     .btn-export-excel:hover {
-        background: #1d6f42 !important;
-        color: #ffffff !important;
+        background: #f0fdf4 !important;
+        border-color: #15803d !important;
     }
-    /* CSV — petron blue */
+    /* CSV — blue */
     .btn-export-csv {
-        color: #002F70 !important;
-        border-color: #002F70 !important;
+        color: #1e40af !important;
+        border-color: #1e40af !important;
     }
     .btn-export-csv:hover {
-        background: #002F70 !important;
-        color: #ffffff !important;
+        background: #dbeafe !important;
+        border-color: #1e3a8a !important;
     }
-    /* Print Report (PDF) — red */
+    /* PDF — red */
     .btn-export-pdf {
         color: #dc2626 !important;
         border-color: #dc2626 !important;
     }
     .btn-export-pdf:hover {
-        background: #dc2626 !important;
-        color: #ffffff !important;
+        background: #fef2f2 !important;
+        border-color: #b91c1c !important;
     }
     /* Apply Filters / Apply search (primary) — blue */
     .btn-filter-primary {
@@ -461,6 +461,12 @@ require_once __DIR__ . '/../partials/header.php';
         <h2 style="margin:0; text-transform:uppercase; font-weight:700; color:var(--petron-blue); font-size:20px;">
             <i class="fas fa-users-cog me-2"></i>Customers Oversight Panel
         </h2>
+        <!-- Export Buttons - Moved to Top -->
+        <div style="display:flex; gap:10px;">
+            <button class="btn-export-excel" onclick="exportDirectory('excel')"><i class="fas fa-file-excel"></i> Excel</button>
+            <button class="btn-export-csv" onclick="exportDirectory('csv')"><i class="fas fa-file-csv"></i> CSV</button>
+            <button class="btn-export-pdf" onclick="exportDirectory('pdf')"><i class="fas fa-file-pdf"></i> PDF</button>
+        </div>
     </div>
 
     <!-- Navigation Tabs -->
@@ -641,11 +647,6 @@ require_once __DIR__ . '/../partials/header.php';
                     <button class="btn-filter-primary" onclick="fetchDirectoryList()"><i class="fas fa-filter"></i> Apply Filters</button>
                     <button class="btn-action-outline" onclick="resetAllFilters()"><i class="fas fa-undo"></i> Reset Filters</button>
                     <button class="btn-action-outline" onclick="fetchDirectoryList()"><i class="fas fa-sync"></i> Refresh</button>
-                </div>
-                <div style="display:flex; gap:10px;">
-                    <button class="btn-export-pdf" onclick="exportDirectory('pdf')"><i class="fas fa-file-pdf"></i> Print Report</button>
-                    <button class="btn-export-excel" onclick="exportDirectory('excel')"><i class="fas fa-file-excel"></i> Excel</button>
-                    <button class="btn-export-csv" onclick="exportDirectory('csv')"><i class="fas fa-file-csv"></i> CSV</button>
                 </div>
             </div>
         </div>

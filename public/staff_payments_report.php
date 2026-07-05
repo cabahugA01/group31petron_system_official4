@@ -705,7 +705,7 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="content">
             <div class="section-title">PAYMENTS</div>
             <div class="table-container">
-                <table>
+                <table id="paymentsTable">
                     <thead>
                         <tr>
                             <th>TRANSACTION ID</th>

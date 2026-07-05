@@ -1076,7 +1076,6 @@ include __DIR__ . '/../partials/header.php';
         text-decoration: none;
     }
 
-    .admin-card,
     .admin-panel {
         background: var(--card);
         border: 1px solid var(--line);
@@ -1201,81 +1200,76 @@ include __DIR__ . '/../partials/header.php';
         border: 1px solid #fecaca;
     }
 
-    .summary-grid {
+    .mgr-summary-grid {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 15px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
         margin-bottom: 22px;
     }
-    @media (max-width: 1024px) {
-        .summary-grid {
-            grid-template-columns: repeat(2, 1fr);
-        }
-    }
-    @media (max-width: 600px) {
-        .summary-grid {
-            grid-template-columns: 1fr;
-        }
-    }
 
-    .admin-card {
-        background: #ffffff;
-        border-radius: 10px;
-        padding: 14px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
-        border: 1px solid #e2e8f0;
+    .mgr-card {
+        min-height: 126px;
         display: flex;
         justify-content: space-between;
-        align-items: center;
-        transition: all 0.25s ease;
+        gap: 14px;
+        padding: 18px;
+        overflow: hidden;
+        background: #ffffff;
+        border: 1px solid #dbe3ee;
+        border-radius: 8px;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
+        transition: transform 0.25s ease, box-shadow 0.25s ease;
     }
 
-    .admin-card:hover {
+    .mgr-card:hover {
         transform: translateY(-2px);
-        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
     }
 
-    .admin-card > div:first-child {
+    .mgr-card > div:first-child {
         flex: 1;
         min-width: 0;
-    }
-
-    .admin-card h3 {
-        margin: 0;
-        font-size: 10px;
-        font-weight: 700;
-        color: #64748b;
-        text-transform: uppercase;
-        letter-spacing: 0.4px;
-        line-height: 1.3;
-    }
-
-    .admin-card .metric {
-        font-size: 20px;
-        font-weight: 800;
-        color: #0f172a;
-        margin: 5px 0 0;
-        line-height: 1.1;
-    }
-
-    .admin-card .card-note {
-        margin-top: 5px;
-        color: #64748b;
-        font-size: 9.5px;
-        line-height: 1.3;
-    }
-
-    .metric-icon {
-        width: 38px;
-        height: 38px;
-        border-radius: 50%;
         display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    .mgr-card-label {
+        color: #56657a;
+        font-size: 11px;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0;
+        line-height: 1.25;
+    }
+
+    .mgr-card-value {
+        margin-top: 8px;
+        color: #071225;
+        font-size: 25px;
+        line-height: 1.15;
+        font-weight: 900;
+    }
+
+    .mgr-card-sub {
+        margin-top: 8px;
+        color: #6b7a90;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1.45;
+    }
+
+    .mgr-icon {
+        width: 44px;
+        height: 44px;
+        flex: 0 0 44px;
+        display: inline-flex;
         align-items: center;
         justify-content: center;
-        font-size: 15px;
-        background: #eef4fb;
-        color: var(--petron-blue);
-        flex: 0 0 auto;
+        border-radius: 50%;
+        font-size: 18px;
+        background: #eef4ff;
+        color: #002f70;
         margin-left: 10px;
     }
 
@@ -1445,20 +1439,38 @@ include __DIR__ . '/../partials/header.php';
         font-size: 12px;
         font-weight: 900;
         color: var(--petron-blue);
-        background: #eef4fb;
-        border: 1px solid #cfe0f3;
+        background: transparent;
+        border: 1px solid var(--petron-blue);
+        text-decoration: none;
+        transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    .tiny-btn:hover {
+        background: var(--petron-blue);
+        color: #ffffff;
+        text-decoration: none;
     }
 
     .tiny-btn.success {
         color: #116b3a;
-        background: #e9f8ef;
-        border-color: #bbe7cb;
+        background: transparent;
+        border-color: #116b3a;
+    }
+
+    .tiny-btn.success:hover {
+        background: #116b3a;
+        color: #ffffff;
     }
 
     .tiny-btn.danger {
         color: #9f1239;
-        background: #fff1f2;
-        border-color: #fecdd3;
+        background: transparent;
+        border-color: #9f1239;
+    }
+
+    .tiny-btn.danger:hover {
+        background: #9f1239;
+        color: #ffffff;
     }
 
     .badge {
@@ -1520,48 +1532,64 @@ include __DIR__ . '/../partials/header.php';
     }
 
     .quick-action {
-        min-height: 92px;
-        border: 1px solid #d7e2ef;
-        border-radius: 8px;
-        background: #fff;
-        color: var(--petron-blue);
+        min-height: 90px;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        background: #ffffff;
+        color: #334155;
         display: flex;
+        flex-direction: column;
         align-items: center;
-        gap: 13px;
-        padding: 16px;
-        font-weight: 900;
-        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
-        transition: transform 0.16s ease, border-color 0.16s ease;
-        text-align: left;
+        justify-content: center;
+        gap: 9px;
+        padding: 16px 12px;
+        font-weight: 700;
+        font-size: 12px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.04);
+        transition: all 0.25s ease;
+        text-align: center;
         width: 100%;
         cursor: pointer;
+        text-decoration: none;
+        box-sizing: border-box;
     }
 
     .quick-action:hover {
-        transform: translateY(-2px);
+        transform: translateY(-3px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
         border-color: var(--petron-blue);
+        color: var(--petron-blue);
     }
 
     .quick-action i {
-        width: 42px;
-        height: 42px;
-        border-radius: 8px;
-        display: grid;
-        place-items: center;
-        background: #eef4fb;
-        flex: 0 0 auto;
+        font-size: 20px;
+        color: var(--petron-blue);
+        transition: transform 0.25s ease;
+        background: transparent;
+        width: auto;
+        height: auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .quick-action:hover i {
+        transform: scale(1.15);
     }
 
     .quick-action span {
         display: block;
+        line-height: 1.3;
+        font-size: 12px;
+        font-weight: 700;
     }
 
     .quick-action small {
         display: block;
         margin-top: 4px;
-        color: var(--muted);
-        font-size: 12px;
-        font-weight: 800;
+        color: #64748b;
+        font-size: 10px;
+        font-weight: 600;
     }
 
     .quick-form {
@@ -1631,7 +1659,7 @@ include __DIR__ . '/../partials/header.php';
     }
 
     @media (max-width: 1300px) {
-        .summary-grid,
+        .mgr-summary-grid,
         .quick-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
@@ -1669,7 +1697,7 @@ include __DIR__ . '/../partials/header.php';
             width: 100%;
         }
 
-        .summary-grid,
+        .mgr-summary-grid,
         .chart-grid,
         .management-grid,
         .quick-grid {
@@ -1703,73 +1731,73 @@ include __DIR__ . '/../partials/header.php';
         </form>
     </section>
 
-    <section class="summary-grid" aria-label="Admin summary cards">
-        <article class="admin-card" style="border-left: 4px solid #002F70;">
+    <section class="mgr-summary-grid" aria-label="Admin summary cards">
+        <div class="mgr-card" data-tone="blue">
             <div>
-                <h3>Today's Revenue</h3>
-                <div class="metric"><?= adm_money($total_revenue) ?></div>
-                <div class="card-note">Fuel <?= adm_money($fuel_revenue) ?> · Merchandise <?= adm_money($merch_revenue) ?> · Services <?= adm_money($service_revenue) ?></div>
+                <div class="mgr-card-label">Today's Revenue</div>
+                <div class="mgr-card-value"><?= adm_money($total_revenue) ?></div>
+                <div class="mgr-card-sub">Fuel <?= adm_money($fuel_revenue) ?> · Merchandise <?= adm_money($merch_revenue) ?> · Services <?= adm_money($service_revenue) ?></div>
             </div>
-            <div class="metric-icon" style="background: #eff6ff; color: #002F70;"><i class="fas fa-peso-sign"></i></div>
-        </article>
+            <div class="mgr-icon" style="background: #eff6ff; color: #002F70;"><i class="fas fa-peso-sign"></i></div>
+        </div>
 
-        <article class="admin-card" style="border-left: 4px solid #16a34a;">
+        <div class="mgr-card" data-tone="green">
             <div>
-                <h3>Today's Transactions</h3>
-                <div class="metric"><?= number_format($total_transactions) ?></div>
-                <div class="card-note">Fuel <?= number_format($fuel_count) ?> · Merchandise <?= number_format($merch_count) ?> · Services <?= number_format($service_count) ?></div>
+                <div class="mgr-card-label">Today's Transactions</div>
+                <div class="mgr-card-value"><?= number_format($total_transactions) ?></div>
+                <div class="mgr-card-sub">Fuel <?= number_format($fuel_count) ?> · Merchandise <?= number_format($merch_count) ?> · Services <?= number_format($service_count) ?></div>
             </div>
-            <div class="metric-icon" style="background: #f0fdf4; color: #16a34a;"><i class="fas fa-right-left"></i></div>
-        </article>
+            <div class="mgr-icon" style="background: #f0fdf4; color: #16a34a;"><i class="fas fa-right-left"></i></div>
+        </div>
 
-        <article class="admin-card" style="border-left: 4px solid #0891b2;">
+        <div class="mgr-card" data-tone="cyan">
             <div>
-                <h3>Active Users</h3>
-                <div class="metric"><?= number_format($total_active_users) ?></div>
-                <div class="card-note"><?= number_format($active_admins) ?> Admin · <?= number_format($active_managers) ?> Manager · <?= number_format($active_staff) ?> Staff</div>
+                <div class="mgr-card-label">Active Users</div>
+                <div class="mgr-card-value"><?= number_format($total_active_users) ?></div>
+                <div class="mgr-card-sub"><?= number_format($active_admins) ?> Admin · <?= number_format($active_managers) ?> Manager · <?= number_format($active_staff) ?> Staff</div>
             </div>
-            <div class="metric-icon" style="background: #ecfeff; color: #0891b2;"><i class="fas fa-users"></i></div>
-        </article>
+            <div class="mgr-icon" style="background: #ecfeff; color: #0891b2;"><i class="fas fa-users"></i></div>
+        </div>
 
-        <article class="admin-card" style="border-left: 4px solid #eab308;">
+        <div class="mgr-card" data-tone="amber">
             <div>
-                <h3>Pending Approvals</h3>
-                <div class="metric"><?= number_format($total_pending_approvals) ?></div>
-                <div class="card-note">Users <?= number_format($pending_user_accounts) ?> · Customers <?= number_format($pending_customer_requests) ?> · Inventory <?= number_format($pending_inventory_approvals) ?> · Pricing <?= number_format($pending_price_requests) ?></div>
+                <div class="mgr-card-label">Pending Approvals</div>
+                <div class="mgr-card-value"><?= number_format($total_pending_approvals) ?></div>
+                <div class="mgr-card-sub">Users <?= number_format($pending_user_accounts) ?> · Customers <?= number_format($pending_customer_requests) ?> · Inventory <?= number_format($pending_inventory_approvals) ?> · Pricing <?= number_format($pending_price_requests) ?></div>
             </div>
-            <div class="metric-icon" style="background: #fef9c3; color: #eab308;"><i class="fas fa-clipboard-check"></i></div>
-        </article>
+            <div class="mgr-icon" style="background: #fef9c3; color: #eab308;"><i class="fas fa-clipboard-check"></i></div>
+        </div>
 
-        <article class="admin-card" style="border-left: 4px solid #dc2626;">
+        <div class="mgr-card" data-tone="red">
             <div>
-                <h3>Inventory Alerts</h3>
-                <div class="metric"><?= number_format($total_inventory_alerts) ?></div>
-                <div class="card-note">Low fuel <?= number_format($fuel_low_count) ?> · Low merchandise <?= number_format($merch_low_count) ?> · Critical <?= number_format($fuel_critical_count + $merch_critical_count) ?></div>
+                <div class="mgr-card-label">Inventory Alerts</div>
+                <div class="mgr-card-value"><?= number_format($total_inventory_alerts) ?></div>
+                <div class="mgr-card-sub">Low fuel <?= number_format($fuel_low_count) ?> · Low merchandise <?= number_format($merch_low_count) ?> · Critical <?= number_format($fuel_critical_count + $merch_critical_count) ?></div>
             </div>
-            <div class="metric-icon" style="background: #fef2f2; color: #dc2626;"><i class="fas fa-triangle-exclamation"></i></div>
-        </article>
+            <div class="mgr-icon" style="background: #fef2f2; color: #dc2626;"><i class="fas fa-triangle-exclamation"></i></div>
+        </div>
 
-        <article class="admin-card" style="border-left: 4px solid #ea580c;">
+        <div class="mgr-card" data-tone="orange">
             <div>
-                <h3>Pending Deliveries</h3>
-                <div class="metric"><?= number_format($pending_deliveries_count) ?></div>
-                <div class="card-note">Awaiting receive, validation, or stock-in action.</div>
+                <div class="mgr-card-label">Pending Deliveries</div>
+                <div class="mgr-card-value"><?= number_format($pending_deliveries_count) ?></div>
+                <div class="mgr-card-sub">Awaiting receive, validation, or stock-in action.</div>
             </div>
-            <div class="metric-icon" style="background: #ffedd5; color: #ea580c;"><i class="fas fa-truck"></i></div>
-        </article>
+            <div class="mgr-icon" style="background: #ffedd5; color: #ea580c;"><i class="fas fa-truck"></i></div>
+        </div>
 
-        <article class="admin-card" style="border-left: 4px solid #64748b;">
+        <div class="mgr-card" data-tone="gray">
             <div>
-                <h3>System Health</h3>
-                <div class="metric"><?= adm_h($system_health_value) ?></div>
+                <div class="mgr-card-label">System Health</div>
+                <div class="mgr-card-value"><?= adm_h($system_health_value) ?></div>
                 <div class="health-list">
                     <span><i class="fas fa-circle <?= $db_connected ? 'text-success' : 'text-danger' ?>"></i> Database <?= $db_connected ? 'Connected' : 'Issue' ?></span>
                     <span><i class="fas fa-circle <?= $server_running ? 'text-success' : 'text-danger' ?>"></i> Server <?= $server_running ? 'Running' : 'Issue' ?></span>
                     <span><i class="fas fa-circle <?= $backup_ok ? 'text-success' : 'text-warning' ?>"></i> Backup <?= adm_h($backup_label) ?></span>
                 </div>
             </div>
-            <div class="metric-icon" style="background: #f1f5f9; color: #64748b;"><i class="fas fa-server"></i></div>
-        </article>
+            <div class="mgr-icon" style="background: #f1f5f9; color: #64748b;"><i class="fas fa-server"></i></div>
+        </div>
     </section>
 
     <section class="chart-grid" aria-label="Admin charts">

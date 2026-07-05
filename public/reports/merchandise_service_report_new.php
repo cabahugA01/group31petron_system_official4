@@ -77,8 +77,7 @@ function fetchMerchandiseServiceReport($pdo, $station_id, $date_start, $date_end
                 COALESCE(jo.job_order_number, CONCAT('JO-', LPAD(jo.id, 5, '0'))) AS jo_no,
                 COALESCE(NULLIF(jo.customer_name, ''), 'Walk-in') AS customer,
                 COALESCE(
-                    NULLIF(CONCAT_WS(' ', NULLIF(jo.vehicle_make, ''), NULLIF(jo.vehicle_model, '')), ''),
-                    NULLIF(jo.vehicle_plate, ''),
+                    NULLIF(CONCAT_WS(' ', NULLIF(jo.vehicle_type, ''), NULLIF(jo.vehicle_plate, '')), ''),
                     '—'
                 ) AS vehicle,
                 COALESCE(NULLIF(jo.service_type, ''), NULLIF(jo.service_description, ''), 'Service') AS service_type,

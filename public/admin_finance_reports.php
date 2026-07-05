@@ -280,13 +280,13 @@ require_once __DIR__ . '/../partials/header.php';
 .fr-filter-bar input[type="date"] { padding:7px 10px; border:1px solid #cbd5e1; border-radius:4px; font-size:12px; }
 .fr-filter-bar button { padding:7px 16px; background:#ffffff; color:#00264D; border:1px solid #00264D; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer; transition:all .2s; }
 .fr-filter-bar button:hover { background:#00264D; color:#ffffff; }
-.fr-export-btn { padding:7px 14px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; transition:all .2s; border:1px solid; display:inline-flex; align-items:center; gap:6px; background:#ffffff; }
-.fr-export-btn:nth-child(1) { color:#16a34a; border-color:#16a34a; }
-.fr-export-btn:nth-child(1):hover { background:#16a34a; color:#ffffff; }
-.fr-export-btn:nth-child(2) { color:#1e3a8a; border-color:#1e3a8a; }
-.fr-export-btn:nth-child(2):hover { background:#1e3a8a; color:#ffffff; }
-.fr-export-btn:nth-child(3) { color:#dc2626; border-color:#dc2626; }
-.fr-export-btn:nth-child(3):hover { background:#dc2626; color:#ffffff; }
+.fr-export-btn { padding:7px 14px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; transition:all .2s; border:1px solid; display:inline-flex; align-items:center; gap:6px; background:#ffffff !important; }
+.fr-export-btn:nth-child(1) { color:#16a34a !important; border-color:#16a34a !important; }
+.fr-export-btn:nth-child(1):hover { background:#f0fdf4 !important; border-color:#15803d !important; color:#16a34a !important; }
+.fr-export-btn:nth-child(2) { color:#1e40af !important; border-color:#1e40af !important; }
+.fr-export-btn:nth-child(2):hover { background:#dbeafe !important; border-color:#1e3a8a !important; color:#1e40af !important; }
+.fr-export-btn:nth-child(3) { color:#dc2626 !important; border-color:#dc2626 !important; }
+.fr-export-btn:nth-child(3):hover { background:#fef2f2 !important; border-color:#b91c1c !important; color:#dc2626 !important; }
 .fr-tabs { display:flex; border-bottom:2px solid #e2e8f0; overflow:hidden; }
 .fr-tab { padding:13px 20px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; color:#64748b; background:#f8f9fa; border:none; border-bottom:3px solid transparent; cursor:pointer; white-space:nowrap; transition:all .2s; }
 .fr-tab:hover { background:#fff; color:#00264D; }

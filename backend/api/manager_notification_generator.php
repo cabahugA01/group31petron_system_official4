@@ -3,18 +3,20 @@
  * Manager Notification Generator
  * backend/api/manager_notification_generator.php
  *
- * Deeper, manager-scoped notifications. Covers all 8 modules with
- * approval/oversight triggers that staff don't see.
+ * Generates real-time oversight alerts for the manager dashboard.
+ * Schema-verified against the actual database structure.
  *
- * Sources:
- *  1. Transactions  — pending approval, completed by staff
- *  2. Job Orders    — awaiting validation, completed by staff
- *  3. Fuel Mgmt     — low tank levels, refill requests, invalid readings
- *  4. Inventory     — threshold crossed, encoding errors flagged
- *  5. Customers     — pending ID validation, invalid upload format
- *  6. Deliveries    — en route, delayed, awaiting manager action
- *  7. Calendar      — shift conflicts, new schedule entries
- *  8. Reports       — weekly/monthly reports ready
+ * Notification Sources:
+ *  1. Fuel Transactions  — fuel_transactions (Pending Validation)
+ *  2. Job Orders         — job_orders (awaiting validation/completed)
+ *  3. Fuel Management    — fuel_inventory (low tanks ≤ 20%)
+ *  4. Fuel Readings      — fuel_daily_readings (negative variance)
+ *  5. Inventory          — station_inventory (low stock)
+ *  6. Stock Requests     — stock_requests (flagged/pending)
+ *  7. Customers          — customers (pending validation)
+ *  8. Deliveries         — deliveries_oversight (awaiting manager action)
+ *  9. Calendar           — calendar_events (today's events)
+ * 10. Reports            — activity_logs (weekly/monthly reports)
  */
 
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -33,7 +35,7 @@ if ($role !== 'manager') {
 }
 
 $station_id = (int)($me['station_id'] ?? 0);
-$sw = $station_id ? $station_id : 0; // shorthand for inline use
+$sw = $station_id ? $station_id : 0;
 
 // ── Ensure notifications table exists ────────────────────────
 try {
@@ -89,64 +91,38 @@ function mgr_push(
 }
 
 // ════════════════════════════════════════════════════════════
-// 1. TRANSACTIONS — pending manager approval
+// 1. FUEL TRANSACTIONS — Pending Validation (48h)
+//    Column verified: status='Pending Validation', station_id, staff_id
 // ════════════════════════════════════════════════════════════
-
-// Merchandise transactions pending approval
-try {
-    $s = $sw ? "AND mt.station_id = {$sw}" : '';
-    $rows = $pdo->query(
-        "SELECT mt.id, mt.transaction_id, mt.status, mt.created_at,
-                u.name AS staff_name, mt.total_amount
-         FROM merchandise_transactions mt
-         LEFT JOIN users u ON u.id = mt.staff_id
-         WHERE mt.status IN ('Pending Approval','pending_approval','Pending','pending')
-           AND mt.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
-           {$s}
-         ORDER BY mt.created_at DESC LIMIT 15"
-    )->fetchAll(PDO::FETCH_ASSOC);
-
-    foreach ($rows as $r) {
-        $txn  = $r['transaction_id'] ?? ('#' . $r['id']);
-        $staff = $r['staff_name'] ?? 'Staff';
-        $amt  = $r['total_amount'] ? '₱' . number_format($r['total_amount'], 2) : '';
-        $key  = 'mgr_txn_approval_' . $r['id'];
-        $generated += mgr_push($pdo, $user_id, 'warning', 'transaction', 'medium',
-            "Transaction {$txn} Pending Your Approval",
-            "Transaction {$txn}{$amt} submitted by {$staff} is pending your approval.",
-            $key, 'transactions.php'
-        );
-    }
-} catch (Exception $e) {}
-
-// Fuel transactions pending approval
 try {
     $s = $sw ? "AND ft.station_id = {$sw}" : '';
     $rows = $pdo->query(
-        "SELECT ft.id, ft.status, ft.fuel_type, ft.transaction_date,
-                u.name AS staff_name, ft.liters_sold
+        "SELECT ft.id, ft.transaction_id, ft.status, ft.fuel_type,
+                ft.transaction_date, ft.liters_sold, u.name AS staff_name
          FROM fuel_transactions ft
          LEFT JOIN users u ON u.id = ft.staff_id
-         WHERE ft.status IN ('Pending Approval','pending_approval','Pending','pending')
+         WHERE ft.status IN ('Pending Validation','pending_validation','Pending','pending')
            AND ft.transaction_date >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
            {$s}
-         ORDER BY ft.transaction_date DESC LIMIT 10"
+         ORDER BY ft.transaction_date DESC LIMIT 15"
     )->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($rows as $r) {
-        $staff = $r['staff_name'] ?? 'Staff';
+        $staff  = $r['staff_name'] ?? 'Staff';
         $liters = $r['liters_sold'] ? number_format($r['liters_sold'], 2) . 'L' : '';
-        $key  = 'mgr_fuel_txn_approval_' . $r['id'];
+        $ts     = date('M d, H:i', strtotime($r['transaction_date']));
+        $key    = 'mgr_fuel_txn_' . $r['id'];
         $generated += mgr_push($pdo, $user_id, 'warning', 'transaction', 'medium',
-            "Fuel Transaction #{$r['id']} Pending Approval",
-            "Fuel Transaction #{$r['id']} ({$r['fuel_type']} {$liters}) by {$staff} pending your approval.",
-            $key, 'manager_fuel_management_complete.php#fuel-transactions'
+            "Fuel Transaction #{$r['id']} Pending Validation",
+            "Fuel Transaction #{$r['id']} ({$r['fuel_type']} {$liters}) by {$staff} pending validation at {$ts}.",
+            $key, 'manager_fuel_transaction_validation.php'
         );
     }
 } catch (Exception $e) {}
 
 // ════════════════════════════════════════════════════════════
-// 2. JOB ORDERS — awaiting validation, completed by staff
+// 2. JOB ORDERS — awaiting validation, completed, cancelled
+//    Column verified: job_order_id, status, validation_status, customer_name, service_type, created_by
 // ════════════════════════════════════════════════════════════
 try {
     $s = $sw ? "AND jo.station_id = {$sw}" : '';
@@ -166,31 +142,28 @@ try {
         $status = $r['status'] ?? '';
         $val    = $r['validation_status'] ?? '';
         $staff  = $r['staff_name'] ?? 'Staff';
+        $cust   = $r['customer_name'] ?? 'Customer';
+        $svc    = $r['service_type'] ?? 'Service';
 
-        // Awaiting validation
         if (in_array(strtolower($val), ['pending validation', 'pending'])) {
             $key = 'mgr_jo_validation_' . $r['id'];
             $generated += mgr_push($pdo, $user_id, 'warning', 'job_order', 'high',
                 "Job Order {$jo_num} Awaiting Validation",
-                "Job Order {$jo_num} ({$r['service_type']}) for {$r['customer_name']} is awaiting your validation.",
+                "Job Order {$jo_num} ({$svc}) for {$cust} is awaiting your validation.",
                 $key, 'manager_job_orders.php'
             );
-        }
-        // Completed by staff
-        elseif (in_array(strtolower($status), ['completed', 'done', 'finished'])) {
+        } elseif (in_array(strtolower($status), ['completed', 'done', 'finished'])) {
             $key = 'mgr_jo_completed_' . $r['id'] . '_' . date('Ymd');
             $generated += mgr_push($pdo, $user_id, 'success', 'job_order', 'low',
                 "Job Order {$jo_num} Completed",
-                "Staff {$staff} completed Job Order {$jo_num} ({$r['service_type']}) for {$r['customer_name']}.",
+                "Staff {$staff} completed Job Order {$jo_num} ({$svc}) for {$cust}.",
                 $key, 'manager_job_orders.php'
             );
-        }
-        // Cancelled/rejected
-        elseif (in_array(strtolower($status), ['cancelled', 'rejected', 'canceled'])) {
+        } elseif (in_array(strtolower($status), ['cancelled', 'rejected', 'canceled'])) {
             $key = 'mgr_jo_cancelled_' . $r['id'];
             $generated += mgr_push($pdo, $user_id, 'error', 'job_order', 'medium',
                 "Job Order {$jo_num} {$status}",
-                "Job Order {$jo_num} for {$r['customer_name']} was {$status}.",
+                "Job Order {$jo_num} for {$cust} was {$status}.",
                 $key, 'manager_job_orders.php'
             );
         }
@@ -198,17 +171,15 @@ try {
 } catch (Exception $e) {}
 
 // ════════════════════════════════════════════════════════════
-// 3. FUEL MANAGEMENT — low tank levels, refill requests, invalid readings
+// 3. FUEL MANAGEMENT — low fuel inventory (≤ 20%)
+//    Column verified: fuel_type, current_level, capacity, station_id
 // ════════════════════════════════════════════════════════════
-
-// Low fuel inventory
 try {
     $s = $sw ? "AND fi.station_id = {$sw}" : '';
     $rows = $pdo->query(
-        "SELECT fi.id, fi.fuel_type, fi.current_level, fi.capacity,
-                fi.station_id
+        "SELECT fi.id, fi.fuel_type, fi.current_level, fi.capacity
          FROM fuel_inventory fi
-         WHERE fi.current_level > 0
+         WHERE fi.current_level >= 0
            AND fi.capacity > 0
            AND fi.current_level <= (fi.capacity * 0.20)
            {$s}
@@ -217,91 +188,66 @@ try {
 
     foreach ($rows as $r) {
         $pct  = $r['capacity'] > 0 ? round(($r['current_level'] / $r['capacity']) * 100) : 0;
+        $sev  = $pct <= 5 ? 'critical' : ($pct <= 10 ? 'high' : 'medium');
+        $type = $pct <= 5 ? 'error' : 'warning';
         $key  = 'mgr_fuel_low_' . $r['id'] . '_' . date('Ymd');
-        $sev  = $pct <= 10 ? 'critical' : 'high';
-        $type = $pct <= 10 ? 'error' : 'warning';
         $generated += mgr_push($pdo, $user_id, $type, 'fuel_management', $sev,
-            "Low Stock Alert: {$r['fuel_type']}",
-            "Low stock alert: {$r['fuel_type']} at {$pct}% capacity ({$r['current_level']}L remaining).",
-            $key, 'manager_fuel_management_complete.php'
+            "Low Fuel Alert: {$r['fuel_type']}",
+            "{$r['fuel_type']} is at {$pct}% capacity ({$r['current_level']}L remaining). Refill needed.",
+            $key, 'manager_inventory_fuel.php'
         );
     }
 } catch (Exception $e) {}
 
-// Invalid meter readings (negative variance)
+// ════════════════════════════════════════════════════════════
+// 4. FUEL DAILY READINGS — negative variance / invalid readings
+//    Column verified: fuel_type, pump_id, reading_date (no pump_number)
+// ════════════════════════════════════════════════════════════
 try {
     $s = $sw ? "AND station_id = {$sw}" : '';
     $rows = $pdo->query(
-        "SELECT id, pump_number, computed_liters, reading_date
+        "SELECT id, fuel_type, pump_id, reading_date,
+                (current_reading - previous_reading - liters_sold) AS variance
          FROM fuel_daily_readings
          WHERE reading_date >= DATE_SUB(CURDATE(), INTERVAL 3 DAY)
-           AND computed_liters < 0
+           AND (current_reading - previous_reading - liters_sold) < 0
            {$s}
          ORDER BY reading_date DESC LIMIT 10"
     )->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($rows as $r) {
-        $pump = $r['pump_number'] ?? $r['id'];
-        $key  = 'mgr_fuel_invalid_' . $r['id'];
+        $pump     = $r['pump_id'] ?? $r['id'];
+        $variance = number_format((float)$r['variance'], 2);
+        $key      = 'mgr_fuel_invalid_' . $r['id'];
         $generated += mgr_push($pdo, $user_id, 'error', 'fuel_management', 'high',
-            "Invalid Meter Input — Pump #{$pump}",
-            "Fuel Pump #{$pump} has a negative variance ({$r['computed_liters']}L) on {$r['reading_date']}. Verify reading.",
-            $key, 'manager_fuel_management_complete.php'
-        );
-    }
-} catch (Exception $e) {}
-
-// Refill requests pending
-try {
-    $s = $sw ? "AND station_id = {$sw}" : '';
-    $rows = $pdo->query(
-        "SELECT id, pump_id, created_at
-         FROM fuel_refill_requests
-         WHERE status IN ('pending','Pending')
-           AND created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
-           {$s}
-         ORDER BY created_at DESC LIMIT 10"
-    )->fetchAll(PDO::FETCH_ASSOC);
-
-    foreach ($rows as $r) {
-        $ts  = date('M d, Y H:i', strtotime($r['created_at']));
-        $key = 'mgr_fuel_refill_' . $r['id'];
-        $generated += mgr_push($pdo, $user_id, 'warning', 'fuel_management', 'medium',
-            "Fuel Pump #{$r['pump_id']} Refill Request Pending",
-            "Fuel Pump #{$r['pump_id']} refill request pending since {$ts}.",
-            $key, 'manager_fuel_management_complete.php'
+            "Invalid Meter Reading — {$r['fuel_type']} Pump #{$pump}",
+            "{$r['fuel_type']} Pump #{$pump} has a variance of {$variance}L on {$r['reading_date']}. Verify reading.",
+            $key, 'manager_fuel_transaction_validation.php'
         );
     }
 } catch (Exception $e) {}
 
 // ════════════════════════════════════════════════════════════
-// 4. INVENTORY — threshold crossed, encoding errors
+// 5. INVENTORY — low stock alerts (station_inventory)
+//    Column verified: si.reorder_level (station_inventory), ip.min_stock (inventory_products)
 // ════════════════════════════════════════════════════════════
 try {
     if ($sw) {
         $stmt = $pdo->prepare(
             "SELECT ip.id, ip.product_name, ip.sku, si.stock_level,
-                    COALESCE(ip.reorder_level, 10) AS reorder_level
+                    COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level
              FROM station_inventory si
              INNER JOIN inventory_products ip ON ip.id = si.product_id
              WHERE si.station_id = ?
-               AND si.stock_level > 0
-               AND si.stock_level <= COALESCE(ip.reorder_level, 10)
-               AND ip.category NOT IN ('Fuel')
+               AND si.stock_level >= 0
+               AND si.stock_level <= COALESCE(si.reorder_level, ip.min_stock, 10)
+               AND LOWER(ip.category) NOT IN ('fuel', 'fuels')
              ORDER BY si.stock_level ASC LIMIT 15"
         );
         $stmt->execute([$sw]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } else {
-        $rows = $pdo->query(
-            "SELECT id, product_name, sku, stock AS stock_level,
-                    COALESCE(reorder_level, 10) AS reorder_level
-             FROM inventory_products
-             WHERE stock > 0
-               AND stock <= COALESCE(reorder_level, 10)
-               AND category NOT IN ('Fuel')
-             ORDER BY stock ASC LIMIT 15"
-        )->fetchAll(PDO::FETCH_ASSOC);
+        $rows = [];
     }
 
     foreach ($rows as $r) {
@@ -312,22 +258,25 @@ try {
         $label = $stock <= 0 ? 'Out of stock' : "Low stock ({$stock} remaining)";
         $key   = 'mgr_inv_low_' . $r['id'] . '_' . date('Ymd');
         $generated += mgr_push($pdo, $user_id, $type, 'inventory', $sev,
-            "Inventory Threshold Crossed: {$r['product_name']}",
-            "Inventory threshold crossed: {$r['product_name']} ({$code}) — {$label}.",
+            "Inventory Alert: {$r['product_name']}",
+            "{$r['product_name']} ({$code}) — {$label}.",
             $key, 'manager_inventory_merchandise.php'
         );
     }
 } catch (Exception $e) {}
 
-// Encoding errors flagged by staff (stock_requests with issues)
+// ════════════════════════════════════════════════════════════
+// 6. STOCK REQUESTS — pending/flagged
+//    Column verified: stock_requests.status, staff_id, station_id
+// ════════════════════════════════════════════════════════════
 try {
     $s = $sw ? "AND sr.station_id = {$sw}" : '';
     $rows = $pdo->query(
-        "SELECT sr.id, sr.product_name, sr.status, sr.created_at,
+        "SELECT sr.id, sr.item_name, sr.status, sr.created_at,
                 u.name AS staff_name
          FROM stock_requests sr
          LEFT JOIN users u ON u.id = sr.staff_id
-         WHERE sr.status IN ('flagged','error','Error','Flagged','rejected','Rejected')
+         WHERE sr.status IN ('pending','Pending')
            AND sr.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
            {$s}
          ORDER BY sr.created_at DESC LIMIT 10"
@@ -335,22 +284,23 @@ try {
 
     foreach ($rows as $r) {
         $staff = $r['staff_name'] ?? 'Staff';
-        $key   = 'mgr_inv_error_' . $r['id'];
-        $generated += mgr_push($pdo, $user_id, 'error', 'inventory', 'medium',
-            "Encoding Error Flagged: {$r['product_name']}",
-            "Encoding error flagged by {$staff} for {$r['product_name']} (Request #{$r['id']}).",
+        $key   = 'mgr_stock_req_' . $r['id'];
+        $generated += mgr_push($pdo, $user_id, 'warning', 'inventory', 'medium',
+            "Stock Request Pending: {$r['item_name']}",
+            "Staff {$staff} has a pending stock request for {$r['item_name']} (Request #{$r['id']}).",
             $key, 'manager_inventory_stock_requests.php'
         );
     }
 } catch (Exception $e) {}
 
 // ════════════════════════════════════════════════════════════
-// 5. CUSTOMERS — pending ID validation, invalid upload format
+// 7. CUSTOMERS — pending validation (7d)
+//    Column verified: customers.status
 // ════════════════════════════════════════════════════════════
 try {
     $s = $sw ? "AND station_id = {$sw}" : '';
     $rows = $pdo->query(
-        "SELECT id, name, status, id_picture, created_at
+        "SELECT id, name, status, created_at
          FROM customers
          WHERE status IN ('pending','Pending','pending_validation','Pending Validation')
            AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
@@ -359,155 +309,92 @@ try {
     )->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($rows as $r) {
-        $key = 'mgr_cust_pending_' . $r['id'];
+        $cust = $r['name'] ?? ('Customer #' . $r['id']);
+        $key  = 'mgr_cust_pending_' . $r['id'];
         $generated += mgr_push($pdo, $user_id, 'info', 'customer', 'low',
             "Customer Pending Validation",
-            "Customer {$r['name']} uploaded ID — pending validation.",
-            $key, 'manager_customers.php?section=validation'
-        );
-    }
-} catch (Exception $e) {}
-
-// Customers with invalid picture format
-try {
-    $s = $sw ? "AND station_id = {$sw}" : '';
-    $rows = $pdo->query(
-        "SELECT id, name, id_picture, created_at
-         FROM customers
-         WHERE id_picture IS NOT NULL
-           AND id_picture != ''
-           AND id_picture NOT REGEXP '\\.(jpg|jpeg|png|gif|webp)$'
-           AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-           {$s}
-         ORDER BY created_at DESC LIMIT 10"
-    )->fetchAll(PDO::FETCH_ASSOC);
-
-    foreach ($rows as $r) {
-        $key = 'mgr_cust_invalid_pic_' . $r['id'];
-        $generated += mgr_push($pdo, $user_id, 'warning', 'customer', 'medium',
-            "Invalid Upload Format",
-            "Customer {$r['name']}'s picture has an invalid format. Please review.",
-            $key, 'manager_customers.php?section=validation'
+            "Customer {$cust} uploaded ID — pending validation.",
+            $key, 'manager_customers.php'
         );
     }
 } catch (Exception $e) {}
 
 // ════════════════════════════════════════════════════════════
-// 6. DELIVERIES — en route, delayed, awaiting manager action
+// 8. DELIVERIES — awaiting manager action (72h)
+//    Column verified: status, supplier, delivery_date, station_id
 // ════════════════════════════════════════════════════════════
 try {
     $s = $sw ? "AND do2.station_id = {$sw}" : '';
     $rows = $pdo->query(
         "SELECT do2.id, do2.status, do2.supplier, do2.delivery_date,
-                do2.delivery_type, do2.updated_at,
-                u.name AS staff_name
+                do2.delivery_type, do2.updated_at
          FROM deliveries_oversight do2
-         LEFT JOIN users u ON u.id = do2.encoded_by
          WHERE do2.updated_at >= DATE_SUB(NOW(), INTERVAL 72 HOUR)
            {$s}
          ORDER BY do2.updated_at DESC LIMIT 20"
     )->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($rows as $r) {
-        $status = $r['status'] ?? '';
-        $dt     = $r['delivery_date'] ? date('M d, Y', strtotime($r['delivery_date'])) : 'TBD';
-        $staff  = $r['staff_name'] ?? 'Staff';
-
-        $type = 'info'; $sev = 'low'; $msg = '';
+        $status   = $r['status'] ?? '';
+        $supplier = $r['supplier'] ?? 'Supplier';
+        $dt       = $r['delivery_date'] ? date('M d, Y', strtotime($r['delivery_date'])) : 'TBD';
 
         if (in_array($status, ['Pending Manager Approval', 'Pending Manager Confirmation'])) {
-            $type = 'warning'; $sev = 'high';
-            $msg  = "Delivery #{$r['id']} from {$r['supplier']} is awaiting your action ({$status}).";
-            $key  = 'mgr_del_action_' . $r['id'] . '_' . md5($status);
-            $generated += mgr_push($pdo, $user_id, $type, 'delivery', $sev,
-                "Delivery #{$r['id']} Awaiting Manager Action",
-                $msg, $key, 'manager_deliveries_management.php'
-            );
-        } elseif (in_array($status, ['En Route', 'In Transit', 'Dispatched'])) {
-            $key = 'mgr_del_enroute_' . $r['id'];
-            $generated += mgr_push($pdo, $user_id, 'info', 'delivery', 'low',
-                "Delivery #{$r['id']} En Route",
-                "Delivery #{$r['id']} from {$r['supplier']} is en route. Expected: {$dt}.",
-                $key, 'manager_deliveries_management.php'
+            $key = 'mgr_del_action_' . $r['id'] . '_' . md5($status);
+            $generated += mgr_push($pdo, $user_id, 'warning', 'delivery', 'high',
+                "Delivery #{$r['id']} Awaiting Your Action",
+                "Delivery #{$r['id']} from {$supplier} is awaiting your action ({$status}).",
+                $key, 'manager_merchandise_deliveries.php'
             );
         } elseif (in_array($status, ['Discrepancy', 'Flagged', 'Delayed'])) {
             $key = 'mgr_del_issue_' . $r['id'] . '_' . md5($status);
             $generated += mgr_push($pdo, $user_id, 'error', 'delivery', 'high',
                 "Delivery #{$r['id']} — {$status}",
-                "Delivery #{$r['id']} from {$r['supplier']} is {$status} — awaiting manager action.",
-                $key, 'manager_deliveries_management.php'
+                "Delivery #{$r['id']} from {$supplier} is {$status} — awaiting manager action.",
+                $key, 'manager_merchandise_deliveries.php'
+            );
+        } elseif (in_array($status, ['En Route', 'In Transit', 'Dispatched', 'Expected Delivery'])) {
+            $key = 'mgr_del_enroute_' . $r['id'];
+            $generated += mgr_push($pdo, $user_id, 'info', 'delivery', 'low',
+                "Delivery #{$r['id']} — {$status}",
+                "Delivery #{$r['id']} from {$supplier} is {$status}. Expected: {$dt}.",
+                $key, 'manager_merchandise_deliveries.php'
             );
         }
     }
 } catch (Exception $e) {}
 
 // ════════════════════════════════════════════════════════════
-// 7. CALENDAR — shift conflicts, new schedule entries
+// 9. CALENDAR — today's events
+//    Column verified: event_date, event_time, event_type, status
 // ════════════════════════════════════════════════════════════
-
-// Today's events for this station
 try {
     $s = $sw ? "AND (ce.station_id = {$sw} OR ce.station_id IS NULL)" : '';
     $rows = $pdo->query(
-        "SELECT ce.id, ce.title, ce.start_time, ce.end_time,
-                ce.event_type, u.name AS assigned_name
+        "SELECT ce.id, ce.event_date, ce.event_time, ce.event_type,
+                ce.work_description, ce.status, u.name AS assigned_name
          FROM calendar_events ce
-         LEFT JOIN users u ON u.id = ce.user_id
-         WHERE DATE(ce.start_time) = CURDATE()
+         LEFT JOIN users u ON u.id = ce.staff_assigned
+         WHERE ce.event_date = CURDATE()
            {$s}
-         ORDER BY ce.start_time ASC LIMIT 10"
+         ORDER BY ce.event_time ASC LIMIT 10"
     )->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($rows as $r) {
-        $start = date('h:i A', strtotime($r['start_time']));
-        $end   = $r['end_time'] ? date('h:i A', strtotime($r['end_time'])) : 'TBD';
-        $title = $r['title'] ?: ucfirst($r['event_type'] ?? 'Event');
+        $time  = $r['event_time'] ? date('h:i A', strtotime($r['event_time'])) : 'All Day';
+        $title = $r['work_description'] ?: ucfirst($r['event_type'] ?? 'Event');
         $who   = $r['assigned_name'] ? " — {$r['assigned_name']}" : '';
         $key   = 'mgr_cal_today_' . $r['id'] . '_' . date('Ymd');
         $generated += mgr_push($pdo, $user_id, 'info', 'calendar', 'low',
             "Schedule: {$title}",
-            "New schedule entry: {$title}{$who} at {$start} – {$end} today.",
-            $key, 'manager_calendar.php'
-        );
-    }
-} catch (Exception $e) {}
-
-// Shift conflicts — same user booked twice in overlapping time
-try {
-    $s = $sw ? "AND (ce1.station_id = {$sw} OR ce1.station_id IS NULL)" : '';
-    $rows = $pdo->query(
-        "SELECT ce1.id AS id1, ce2.id AS id2,
-                ce1.user_id, u.name AS staff_name,
-                ce1.start_time, ce1.end_time,
-                ce2.start_time AS start2, ce2.end_time AS end2
-         FROM calendar_events ce1
-         INNER JOIN calendar_events ce2
-                 ON ce1.user_id = ce2.user_id
-                AND ce1.id < ce2.id
-                AND ce1.start_time < ce2.end_time
-                AND ce2.start_time < ce1.end_time
-         LEFT JOIN users u ON u.id = ce1.user_id
-         WHERE DATE(ce1.start_time) >= CURDATE()
-           AND DATE(ce1.start_time) <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
-           {$s}
-         LIMIT 5"
-    )->fetchAll(PDO::FETCH_ASSOC);
-
-    foreach ($rows as $r) {
-        $staff = $r['staff_name'] ?? 'Staff';
-        $t1    = date('h:i A', strtotime($r['start_time']));
-        $t2    = date('h:i A', strtotime($r['start2']));
-        $key   = 'mgr_cal_conflict_' . $r['id1'] . '_' . $r['id2'];
-        $generated += mgr_push($pdo, $user_id, 'error', 'calendar', 'high',
-            "Shift Conflict: {$staff}",
-            "Shift conflict detected: {$staff} is double-booked at {$t1} and {$t2}.",
+            "Schedule entry: {$title}{$who} at {$time} today.",
             $key, 'manager_calendar.php'
         );
     }
 } catch (Exception $e) {}
 
 // ════════════════════════════════════════════════════════════
-// 8. REPORTS — weekly/monthly reports ready
+// 10. REPORTS — weekly/monthly reports ready
 // ════════════════════════════════════════════════════════════
 try {
     $s = $sw ? "AND (al.station_id = {$sw} OR al.station_id IS NULL)" : '';
@@ -518,9 +405,7 @@ try {
              OR al.action LIKE '%Monthly%Report%'
              OR al.action LIKE '%Report%Generated%'
              OR al.action LIKE '%Sales%Report%'
-             OR al.action LIKE '%Fuel%Report%'
-             OR al.details LIKE '%weekly%report%'
-             OR al.details LIKE '%monthly%report%'
+             OR al.action LIKE '%Daily%Summary%'
              OR al.details LIKE '%report%ready%')
            AND al.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
            {$s}
@@ -538,32 +423,7 @@ try {
     }
 } catch (Exception $e) {}
 
-// Daily transaction summary
-try {
-    $s = $sw ? "AND (al.station_id = {$sw} OR al.station_id IS NULL)" : '';
-    $rows = $pdo->query(
-        "SELECT al.id, al.action, al.details, al.created_at
-         FROM activity_logs al
-         WHERE (al.action LIKE '%Daily%Summary%'
-             OR al.details LIKE '%daily summary%'
-             OR al.details LIKE '%daily transaction%')
-           AND DATE(al.created_at) = CURDATE()
-           {$s}
-         ORDER BY al.created_at DESC LIMIT 5"
-    )->fetchAll(PDO::FETCH_ASSOC);
-
-    foreach ($rows as $r) {
-        $ts  = date('h:i A', strtotime($r['created_at']));
-        $key = 'mgr_daily_summary_' . $r['id'];
-        $generated += mgr_push($pdo, $user_id, 'success', 'report', 'low',
-            "Daily Transaction Summary Ready",
-            "Daily transaction summary ready for viewing at {$ts}.",
-            $key, 'manager_reports.php'
-        );
-    }
-} catch (Exception $e) {}
-
-// ── Cleanup old read notifications (>14 days) ────────────────
+// ── Cleanup old read notifications (> 14 days) ─────────────────
 try {
     $stmt = $pdo->prepare(
         "DELETE FROM notifications

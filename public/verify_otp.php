@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 session_start();
 ob_start();
 
@@ -16,6 +16,7 @@ header("Pragma: no-cache");
 
 // EMAIL ONLY - No phone support
 $email = trim($_GET['email'] ?? $_POST['email'] ?? $_SESSION['reset_email'] ?? '');
+$email_failed = isset($_GET['email_failed']) && $_GET['email_failed'] === '1';
 
 // Store email in session for resend functionality
 if (!empty($email)) {
@@ -25,14 +26,11 @@ if (!empty($email)) {
 // Handle RESEND OTP request
 if (isset($_GET['resend']) && $_GET['resend'] === '1' && !empty($email)) {
     try {
-        // Auto-detect column names
-        $cols = array_column($pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_ASSOC), 'Field');
         $uid_col = 'id';
-        $status_active = in_array('Active', $pdo->query("SELECT DISTINCT status FROM users")->fetchAll(PDO::FETCH_COLUMN)) ? 'Active' : 'active';
 
         // Find user by email
-        $stmt = $pdo->prepare("SELECT `{$uid_col}` AS user_id, username, TRIM(email) AS email FROM users WHERE TRIM(email) = ? AND status = ? LIMIT 1");
-        $stmt->execute([$email, $status_active]);
+        $stmt = $pdo->prepare("SELECT `{$uid_col}` AS user_id, username, TRIM(email) AS email FROM users WHERE LOWER(TRIM(email)) = LOWER(?) AND LOWER(TRIM(status)) = 'active' LIMIT 1");
+        $stmt->execute([$email]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($user) {
@@ -44,9 +42,14 @@ if (isset($_GET['resend']) && $_GET['resend'] === '1' && !empty($email)) {
             $pdo->prepare("INSERT INTO password_reset_tokens (user_id, token, token_type, expires_at, ip_address) VALUES (?, ?, 'reset', DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)")
                 ->execute([$user['user_id'], $otp_code, $_SERVER['REMOTE_ADDR']]);
 
-            // Send new OTP via email
+            // Send new OTP via email with extended timeout
+            $resend_sent = false;
             if (function_exists('sendPasswordResetOTP')) {
-                sendPasswordResetOTP($user['email'], $otp_code);
+                @set_time_limit(60);
+                $resend_sent = (bool) sendPasswordResetOTP($user['email'], $otp_code);
+                if (!$resend_sent) {
+                    error_log("OTP resend email FAILED for user_id={$user['user_id']} email={$user['email']}");
+                }
             }
 
             // Log resend attempt
@@ -55,7 +58,13 @@ if (isset($_GET['resend']) && $_GET['resend'] === '1' && !empty($email)) {
                     ->execute([$user['user_id'], "OTP resent to: {$email}", $_SERVER['REMOTE_ADDR']]);
             } catch (Exception $e) {}
 
-            $success = "A new OTP has been sent to your email. Please check your inbox.";
+            if ($resend_sent) {
+                $email_failed = false;
+                $success = "A new OTP has been sent to your email. Please check your inbox.";
+            } else {
+                $email_failed = true;
+                $error = "Could not send email. Use the OTP shown below.";
+            }
         } else {
             $error = "Unable to resend OTP. Please start the password reset process again.";
         }
@@ -90,12 +99,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['otp'])) {
                     JOIN   users u ON prt.user_id = u.`{$uid_col}`
                     WHERE  prt.token      = ?
                       AND  prt.token_type = 'reset'
-                      AND  u.status       = ?
-                      AND  TRIM(u.email)  = ?
+                      AND  LOWER(TRIM(u.status)) = 'active'
+                      AND  LOWER(TRIM(u.email)) = LOWER(?)
                     ORDER BY prt.id DESC
                     LIMIT  1
                 ");
-                $stmt->execute([$otp, $status_active, $email]);
+                $stmt->execute([$otp, $email]);
                 $token_data = $stmt->fetch(PDO::FETCH_ASSOC);
 
                 if ($token_data) {
@@ -465,10 +474,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['otp'])) {
         <?php endif; ?>
 
         <!-- Info Banner -->
-        <?php if (empty($error) && empty($success) && !empty($email)): ?>
+        <?php if (empty($error) && empty($success) && !empty($email) && !$email_failed): ?>
             <div class="info-banner">
                 <i class="fas fa-envelope"></i>
                 <span>We sent a 6-digit OTP to <strong><?php echo htmlspecialchars($email); ?></strong>. Please check your inbox.</span>
+            </div>
+        <?php endif; ?>
+
+        <!-- Email Failed Warning -->
+        <?php if ($email_failed): ?>
+            <div style="background:rgba(239,68,68,.15);border:1.5px solid rgba(239,68,68,.45);border-radius:12px;padding:12px 16px;font-size:13px;font-weight:600;margin-bottom:20px;color:#fca5a5;display:flex;align-items:center;gap:12px;">
+                <i class="fas fa-exclamation-circle"></i>
+                <span>Email delivery failed. Please click <strong>Resend OTP</strong> below or contact your administrator.</span>
             </div>
         <?php endif; ?>
 

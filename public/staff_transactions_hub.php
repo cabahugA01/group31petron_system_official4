@@ -26,6 +26,10 @@ $station_id = user_station_id();
 $role       = role_key($me['role'] ?? '');
 
 // ── Generate a per-request API token so AJAX calls don't depend on session cookies ──
+if (empty($_SESSION['api_token'])) {
+    $_SESSION['api_token'] = bin2hex(random_bytes(32));
+}
+$_api_token = $_SESSION['api_token'];
 
 // ── Module gate ───────────────────────────────────────────────
 if (!in_array($role, ['superadmin','developer']) && !is_module_enabled('transactions')) {
@@ -172,10 +176,10 @@ try {
             c.contact_number, 
             c.credit_limit, 
             c.balance,
-            c.vehicle_type,
-            c.vehicle_brand,
-            c.vehicle_model,
-            c.plate_number
+            NULL AS vehicle_type,
+            NULL AS vehicle_brand,
+            NULL AS vehicle_model,
+            NULL AS plate_number
         FROM customers c
         WHERE c.station_id = ? AND c.status = 'active' 
         ORDER BY c.name
@@ -449,8 +453,8 @@ try {
     $staff_kpi['total_amount'] = (float)$stmt->fetchColumn();
     
     // Completed Job Orders
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE staff_id = ? AND status = 'Completed' AND DATE(completed_at) = CURDATE()");
-    $stmt->execute([$me['id']]);
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE (user_id = ? OR created_by = ?) AND status = 'Completed' AND DATE(completed_at) = CURDATE()");
+    $stmt->execute([$me['id'], $me['id']]);
     $staff_kpi['completed_jobs'] = (int)$stmt->fetchColumn();
 } catch (Exception $e) {
     error_log("Staff KPI error: " . $e->getMessage());

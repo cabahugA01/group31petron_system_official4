@@ -31,13 +31,13 @@ if (!in_array($role, ['admin', 'superadmin']) || $user_id === 0) {
     exit;
 }
 
-// ── Ensure notifications table ────────────────────────────────
+// ── Ensure notifications table exists ────────────────────────
 try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS notifications (
         id           INT AUTO_INCREMENT PRIMARY KEY,
         user_id      INT NOT NULL,
         type         ENUM('success','warning','error','info') NOT NULL DEFAULT 'info',
-        title        VARCHAR(255) NOT NULL,
+        title        VARCHAR(255) NOT NULL DEFAULT '',
         message      TEXT NOT NULL,
         event_type   VARCHAR(80) NOT NULL DEFAULT 'general',
         severity     ENUM('low','medium','high','critical') NOT NULL DEFAULT 'medium',
@@ -45,12 +45,38 @@ try {
         redirect_url VARCHAR(500) NULL,
         status       ENUM('unread','read') NOT NULL DEFAULT 'unread',
         created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        read_at      TIMESTAMP NULL,
-        INDEX idx_user_status (user_id, status),
-        INDEX idx_source_key  (source_key),
-        INDEX idx_created_at  (created_at)
+        read_at      TIMESTAMP NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (Exception $e) {}
+
+// ── Migrate: safely add missing columns to older table schemas ─
+// Fixes: "Unknown column 'source_key' in 'where clause'" on legacy tables
+foreach ([
+    'event_type'   => "ALTER TABLE notifications ADD COLUMN event_type   VARCHAR(80)   NOT NULL DEFAULT 'general' AFTER message",
+    'severity'     => "ALTER TABLE notifications ADD COLUMN severity     ENUM('low','medium','high','critical') NOT NULL DEFAULT 'medium' AFTER event_type",
+    'source_key'   => "ALTER TABLE notifications ADD COLUMN source_key   VARCHAR(200)  NULL AFTER severity",
+    'redirect_url' => "ALTER TABLE notifications ADD COLUMN redirect_url VARCHAR(500)  NULL AFTER source_key",
+    'read_at'      => "ALTER TABLE notifications ADD COLUMN read_at      TIMESTAMP     NULL AFTER created_at",
+] as $col => $alter_sql) {
+    try {
+        $chk = $pdo->prepare(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = ?"
+        );
+        $chk->execute([$col]);
+        if (!(bool)$chk->fetchColumn()) {
+            $pdo->exec($alter_sql);
+        }
+    } catch (Exception $e) {}
+}
+// Ensure indexes exist (silently ignore if already present)
+foreach ([
+    "CREATE INDEX IF NOT EXISTS idx_notif_user_status ON notifications (user_id, status)",
+    "CREATE INDEX IF NOT EXISTS idx_notif_source_key  ON notifications (source_key(100))",
+    "CREATE INDEX IF NOT EXISTS idx_notif_created_at  ON notifications (created_at)",
+] as $idx_sql) {
+    try { $pdo->exec($idx_sql); } catch (Exception $e) {}
+}
 
 // ── Helpers ───────────────────────────────────────────────────
 function adm_count(PDO $pdo, string $sql, array $p = []): int {
@@ -121,8 +147,6 @@ $action = $_GET['action'] ?? 'seed';
 if ($action === 'seed') {
 
     // ── 1. Deliveries Awaiting Admin Oversight ───────────────
-    // Only notify Admin about deliveries that have PASSED Manager validation.
-    // 'Pending Manager Approval' records are still in the Manager queue — not Admin's concern yet.
     $pending_admin_del = adm_count($pdo,
         "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status='Pending Admin Oversight'",
         [$station_id]);
@@ -154,9 +178,7 @@ if ($action === 'seed') {
         ]);
     }
 
-    // ── 2. Transactions Awaiting Admin Oversight ──────────────
-    // Admin only sees manager-validated transactions (Approved/Adjusted/Rejected).
-    // Raw 'Pending' staff encodings belong to Manager — do NOT notify Admin about those.
+    // ── 2. Official Transactions Today ───────────────────────
     $admin_tx = adm_count($pdo,
         "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND validation_status IN ('Official','Completed','Approved','Adjusted') AND DATE(COALESCE(transaction_date,created_at))=CURDATE()",
         [$station_id]);
@@ -188,8 +210,7 @@ if ($action === 'seed') {
         ]);
     }
 
-    // ── 4. Job Orders Awaiting Admin Oversight ────────────────
-    // Admin sees manager-validated JOs (Approved/In Progress/Completed), not raw Pending Validation.
+    // ── 4. Official Job Orders Today ─────────────────────────
     $admin_jo = adm_count($pdo,
         "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND validation_status IN ('Official','Completed','Approved','Adjusted') AND DATE(created_at)=CURDATE()",
         [$station_id]);
@@ -227,21 +248,21 @@ if ($action === 'seed') {
         ]);
     }
 
-    // ── 6. Accounts Receivable Overdue ────────────────────────
+    // ── 6. Accounts Receivable Outstanding ───────────────────
     $ar_overdue = adm_count($pdo,
-        "SELECT COUNT(*) FROM customers WHERE station_id=? AND outstanding_balance>0",
+        "SELECT COUNT(*) FROM customers WHERE station_id=? AND COALESCE(current_balance, balance, 0) > 0",
         [$station_id]);
     if ($ar_overdue > 0) {
         $ar_total = 0;
         try {
-            $as = $pdo->prepare("SELECT COALESCE(SUM(outstanding_balance),0) FROM customers WHERE station_id=? AND outstanding_balance>0");
+            $as = $pdo->prepare("SELECT COALESCE(SUM(COALESCE(current_balance, balance, 0)),0) FROM customers WHERE station_id=? AND COALESCE(current_balance, balance, 0) > 0");
             $as->execute([$station_id]);
             $ar_total = (float)$as->fetchColumn();
         } catch (Exception $e) {}
         upsert_notif($pdo, $user_id, [
             'type'        => 'warning',
             'title'       => 'Accounts Receivable Outstanding',
-            'message'     => "{$ar_overdue} customer(s) with outstanding balance. Total: ₱".number_format($ar_total,2).".",
+            'message'     => "{$ar_overdue} customer(s) with outstanding balance. Total: &#8369;".number_format($ar_total,2).".",
             'event_type'  => 'customer',
             'severity'    => 'high',
             'source_key'  => "ar_overdue_{$station_id}",
@@ -269,8 +290,8 @@ if ($action === 'seed') {
     try {
         $mgr_actions = $pdo->prepare(
             "SELECT COUNT(*) FROM audit_logs al
-             JOIN users u ON u.user_id=al.user_id
-             WHERE u.station_id=? AND u.role IN ('manager','supervisor')
+             JOIN users u ON u.id = al.user_id
+             WHERE u.station_id=? AND LOWER(u.role) IN ('manager','supervisor')
              AND al.action_type IN ('Approved','Rejected','Adjusted')
              AND al.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)"
         );
@@ -293,7 +314,7 @@ if ($action === 'seed') {
     try {
         $suspicious = $pdo->prepare(
             "SELECT COUNT(*) FROM audit_logs al
-             JOIN users u ON u.user_id=al.user_id
+             JOIN users u ON u.id = al.user_id
              WHERE u.station_id=? AND al.action_type IN ('Delete','Bulk Delete','Override','Force Approve')
              AND al.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)"
         );
@@ -323,7 +344,7 @@ if ($action === 'seed') {
             upsert_notif($pdo, $user_id, [
                 'type'        => 'warning',
                 'title'       => 'Low Inventory Alert',
-                'message'     => "{$low_cnt} product(s) at or below minimum stock level (≤20 units). Reorder required.",
+                'message'     => "{$low_cnt} product(s) at or below minimum stock level (20 units). Reorder required.",
                 'event_type'  => 'inventory',
                 'severity'    => 'high',
                 'source_key'  => "low_inv_{$station_id}",

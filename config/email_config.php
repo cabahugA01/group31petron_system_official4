@@ -4,7 +4,7 @@ $email_config = [
     'host' => 'smtp.gmail.com',        // SMTP server
     'port' => 587,                   // SMTP port
     'username' => 'christianval0813@gmail.com', // Your Gmail
-    'password_hash' => 'ojgy ravy ufed qgfl',   // App password (not regular password)
+    'password_hash' => 'ojgyravyufedqgfl',   // App password (no spaces)
     'from_email' => 'christianval0813@gmail.com',
     'from_name' => 'Petron Management System',
     'encryption' => 'tls'
@@ -21,65 +21,115 @@ require_once __DIR__ . '/../includes/PHPMailer/src/SMTP.php';
 function sendPasswordResetOTP($to_email, $otp) {
     global $email_config;
     
+    // Enable detailed error reporting
+    error_log("=== OTP Email Send Attempt ===");
+    error_log("To: {$to_email}");
+    error_log("OTP: {$otp}");
+    
     try {
         $mail = new PHPMailer(true);
+        
+        // Enable verbose debug output
+        $mail->SMTPDebug = 2; // Show detailed debug info
+        $mail->Debugoutput = function($str, $level) {
+            error_log("PHPMailer DEBUG [{$level}]: {$str}");
+        };
+        
         $mail->isSMTP();
-        $mail->Host = $email_config['host'];
-        $mail->SMTPAuth = true;
-        $mail->Username = $email_config['username'];
-        $mail->Password = $email_config['password_hash'];
-        $mail->SMTPSecure = $email_config['encryption'];
-        $mail->Port = $email_config['port'];
+        $mail->Host          = $email_config['host'];
+        $mail->SMTPAuth      = true;
+        $mail->Username      = $email_config['username'];
+        $mail->Password      = $email_config['password_hash'];
+        $mail->SMTPSecure    = $email_config['encryption'];
+        $mail->Port          = $email_config['port'];
+        $mail->Timeout       = 30;
+        $mail->SMTPKeepAlive = false;
+        $mail->CharSet       = 'UTF-8';
+        
+        error_log("SMTP Config - Host: {$mail->Host}, Port: {$mail->Port}, User: {$mail->Username}");
         
         $mail->setFrom($email_config['from_email'], $email_config['from_name']);
         $mail->addAddress($to_email);
         
+        // Bypass SSL certificate verification for local environments
+        $mail->SMTPOptions = array(
+            'ssl' => array(
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true
+            )
+        );
+        
         $mail->isHTML(true);
         $mail->Subject = 'Password Reset OTP - Petron Management System';
-        
-        // Embed the Petron logo
+
+        // Embed logo via standard AddEmbeddedImage to maximize deliverability
         $logo_path = __DIR__ . '/../assets/img/Petron Logo.png';
         if (file_exists($logo_path)) {
-            $mail->AddEmbeddedImage($logo_path, 'petron_logo', 'Petron Logo.png');
-            $logo_src = 'cid:petron_logo';
+            $mail->AddEmbeddedImage($logo_path, 'petron_logo_otp', 'Petron Logo.png');
+            $logo_src = 'cid:petron_logo_otp';
         } else {
-            // Fallback to base64 if logo file not found
-            $logo_src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+            $logo_src = '';
+            error_log("Logo not found at: {$logo_path}");
         }
         
+        $logo_img = $logo_src
+            ? "<img src='{$logo_src}' alt='Petron' style='height:72px;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto;' />"
+            : "<div style='font-size:32px;font-weight:900;color:#fff;margin-bottom:8px;'>PETRON</div>";
+
         $mail->Body = "
-            <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #dee2e6;'>
-                <div style='background: linear-gradient(135deg, #002F6C 0%, #004a9e 100%); color: white; padding: 40px 20px; text-align: center;'>
-                    <img src='{$logo_src}' alt='Petron Logo' style='height: 70px; margin-bottom: 20px; display: block; margin-left: auto; margin-right: auto;' />
-                    <h1 style='margin: 0; font-size: 26px; font-weight: 700; letter-spacing: 0.5px;'>Station Management System</h1>
+            <div style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #dee2e6;border-radius:4px;overflow:hidden;'>
+                <div style='background:linear-gradient(135deg,#002F6C 0%,#004a9e 100%);color:white;padding:36px 20px 28px;text-align:center;'>
+                    {$logo_img}
+                    <h1 style='margin:0;font-size:22px;font-weight:700;letter-spacing:0.5px;opacity:0.95;'>Station Management System</h1>
                 </div>
-                <div style='padding: 40px 30px; background-color: #ffffff;'>
-                    <h2 style='color: #002F6C; margin-top: 0; font-size: 24px; font-weight: 600;'>Password Reset Request</h2>
-                    <p style='color: #333; line-height: 1.6;'>Hello,</p>
-                    <p style='color: #333; line-height: 1.6;'>You requested to reset your password for the Petron Management System.</p>
-                    <p style='color: #333; line-height: 1.6;'>Please use the following 6-digit OTP (One-Time Password) to reset your password:</p>
-                    <div style='background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); padding: 25px; border-radius: 8px; margin: 30px 0; border-left: 5px solid #002F6C; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                        <span style='font-size: 36px; font-weight: 700; letter-spacing: 8px; color: #002F6C; font-family: monospace;'>$otp</span>
+                <div style='padding:40px 30px;background-color:#ffffff;'>
+                    <h2 style='color:#002F6C;margin-top:0;font-size:22px;font-weight:700;'>Password Reset Request</h2>
+                    <p style='color:#333;line-height:1.7;'>Hello,</p>
+                    <p style='color:#333;line-height:1.7;'>You requested to reset your password for the <strong>Petron Station Management System</strong>.</p>
+                    <p style='color:#333;line-height:1.7;'>Use the following 6-digit OTP to reset your password:</p>
+                    <div style='background:linear-gradient(135deg,#f8f9fa 0%,#e9ecef 100%);padding:28px;border-radius:8px;margin:28px 0;border-left:5px solid #002F6C;text-align:center;box-shadow:0 2px 4px rgba(0,0,0,0.08);'>
+                        <span style='font-size:40px;font-weight:800;letter-spacing:10px;color:#002F6C;font-family:monospace;'>{$otp}</span>
                     </div>
-                    <div style='background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; border-radius: 5px; margin: 20px 0;'>
-                        <p style='margin: 0; color: #856404; font-weight: 600;'>⏱ This OTP will expire in 5 minutes.</p>
+                    <div style='background-color:#fff3cd;border-left:4px solid #ffc107;padding:14px 16px;border-radius:5px;margin:20px 0;'>
+                        <p style='margin:0;color:#856404;font-weight:700;'>&#9200; This OTP will expire in <strong>5 minutes</strong>.</p>
                     </div>
-                    <p style='color: #6c757d; font-size: 14px; line-height: 1.6;'>If you didn't request this, please ignore this email and your password will remain unchanged.</p>
+                    <p style='color:#6c757d;font-size:13px;line-height:1.6;'>If you did not request this, please ignore this email. Your password will remain unchanged.</p>
                 </div>
-                <div style='background-color: #002F6C; color: white; padding: 25px 20px; text-align: center; font-size: 13px;'>
-                    <p style='margin: 0 0 8px 0; opacity: 0.9;'>This is an automated message. Please do not reply to this email.</p>
-                    <p style='margin: 0; font-weight: 600;'>&copy; 2026 Petron Management System. All rights reserved.</p>
+                <div style='background-color:#002F6C;color:rgba(255,255,255,0.85);padding:22px 20px;text-align:center;font-size:12px;'>
+                    <p style='margin:0 0 6px;'>This is an automated message. Please do not reply.</p>
+                    <p style='margin:0;font-weight:700;color:#fff;'>&copy; 2026 Petron Station &amp; Service Center Management System</p>
                 </div>
             </div>
         ";
+
+        // Plain text fallback
+        $mail->AltBody = "Password Reset OTP - Petron Management System\n\n"
+            . "Your OTP code is: {$otp}\n\n"
+            . "This OTP will expire in 5 minutes.\n\n"
+            . "If you did not request this, please ignore this email.\n\n"
+            . "-- Petron Station Management System";
         
-        return $mail->send();
+        error_log("Attempting to send email...");
+        $sent = $mail->send();
         
+        if ($sent) {
+            error_log("✓ Email sent SUCCESSFULLY to {$to_email}");
+        } else {
+            error_log("✗ Email send FAILED: " . $mail->ErrorInfo);
+        }
+        
+        return $sent;
+
     } catch (Exception $e) {
-        error_log("Email sending failed: " . $mail->ErrorInfo);
+        error_log("✗ OTP email EXCEPTION: " . $e->getMessage());
+        if (isset($mail)) {
+            error_log("✗ PHPMailer Error: " . $mail->ErrorInfo);
+        }
         return false;
     }
 }
+
 
 // Function to send admin credentials email
 function sendAdminCredentialsEmail($to_email, $full_name, $station_name, $username, $password, $created_by_role = 'Admin', $role = 'Staff', $employee_id = '') {
@@ -102,6 +152,15 @@ function sendAdminCredentialsEmail($to_email, $full_name, $station_name, $userna
 
         $mail->setFrom($email_config['from_email'], $email_config['from_name']);
         $mail->addAddress($to_email);
+
+        // Bypass SSL certificate verification for local environments
+        $mail->SMTPOptions = array(
+            'ssl' => array(
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true
+            )
+        );
 
         $mail->isHTML(true);
         $mail->Subject = 'Petron Station Management System - Your Account Credentials';

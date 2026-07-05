@@ -465,7 +465,8 @@ include __DIR__ . '/../partials/header.php';
         } catch (e) { console.error(e); }
         
         if (url && url !== '#') {
-            window.location.href = url;
+            const resolvedUrl = typeof window.resolveRedirectUrl === 'function' ? window.resolveRedirectUrl(url) : url;
+            window.location.href = resolvedUrl;
         } else {
             window.location.reload();
         }

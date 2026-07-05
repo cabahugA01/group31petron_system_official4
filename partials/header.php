@@ -1285,7 +1285,9 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         background: white;
         border-radius: 12px;
         box-shadow: 0 8px 32px rgba(0,0,0,0.12);
-        width: 380px;
+        width: 380px !important;
+        min-width: 380px !important;
+        max-width: 380px !important;
         z-index: 9999;
         border: 1px solid rgba(0,0,0,0.08);
         margin-top: 12px;
@@ -2882,8 +2884,33 @@ require_once __DIR__ . '/rbac_menu.php';
     window.pageData = {
         role: '<?php echo htmlspecialchars($role); ?>',
         userId: '<?php echo htmlspecialchars($user['id'] ?? ''); ?>',
-        stationId: '<?php echo htmlspecialchars($station_id ?? ''); ?>'
+        stationId: '<?php echo htmlspecialchars($station_id ?? $myStationId ?? ''); ?>',
+        appBasePath: '<?php echo htmlspecialchars($app_base_path ?? ""); ?>'
     };
+
+    window.resolveRedirectUrl = function(url) {
+        if (!url || url === '#' || url === '') return '#';
+        const base = window.pageData && window.pageData.appBasePath ? window.pageData.appBasePath : '';
+        // Already an absolute /public/ path
+        if (url.startsWith('/public/')) {
+            return base + url;
+        }
+        // Relative public/ path
+        if (url.startsWith('public/')) {
+            return base + '/' + url;
+        }
+        // Already a full URL (http/https)
+        if (url.startsWith('http://') || url.startsWith('https://')) {
+            return url;
+        }
+        // Bare filename (e.g. "manager_job_orders.php", "manager_reports.php?tab=foo")
+        // → resolve to /public/<filename>
+        if (url.match(/^[a-zA-Z0-9_\-]+\.php/)) {
+            return base + '/public/' + url;
+        }
+        return url;
+    };
+
 
     // Simple Dropdown Toggle Logic
     document.addEventListener('DOMContentLoaded', function() {
@@ -3209,7 +3236,7 @@ require_once __DIR__ . '/rbac_menu.php';
                                     row.onclick = function(e) {
                                         e.preventDefault();
                                         if (item.link && item.link !== '#') {
-                                            window.location.href = item.link;
+                                            window.location.href = window.resolveRedirectUrl(item.link);
                                         }
                                     };
                                     
@@ -3273,7 +3300,7 @@ require_once __DIR__ . '/rbac_menu.php';
         $notif_generator    = $is_superadmin_role
             ? '../backend/api/superadmin_notification_generator.php'
             : ($is_admin_role
-                ? '../backend/api/admin_notifications_seeder.php?action=seed'
+                ? '../backend/api/admin_notification_generator.php'
                 : ($is_manager_role
                     ? '../backend/api/manager_notification_generator.php'
                     : '../backend/api/staff_notification_generator.php'));
@@ -3409,7 +3436,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 if (url && url !== '#' && url.trim() !== '') {
                     // Add a small delay to ensure the mark-read completes
                     setTimeout(function() {
-                        window.location.href = url;
+                        window.location.href = window.resolveRedirectUrl(url);
                     }, 100);
                 } else {
                     loadNotifications();
@@ -3595,7 +3622,7 @@ require_once __DIR__ . '/rbac_menu.php';
                     await fetch(API_LIST + '?action=mark_read', { method: 'POST', body: fd });
                 } catch (e) {}
                 if (url && url !== '#' && url !== '') {
-                    window.location.href = url;
+                    window.location.href = window.resolveRedirectUrl(url);
                 } else {
                     loadNotifications();
                 }

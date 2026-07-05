@@ -34,7 +34,7 @@ try {
 
 // Active section tab
 $section = $_GET['section'] ?? 'fuel_sales';
-$valid_sections = ['fuel_sales','merchandise','service_income','payments','job_orders','customers'];
+$valid_sections = ['fuel_sales','merchandise','service_income','payments','customers'];
 if (!in_array($section, $valid_sections)) $section = 'fuel_sales';
 
 // Active shift filter
@@ -49,10 +49,8 @@ $shifts = [
 // Sort by key to ensure Shift 1 comes first, then Shift 2
 ksort($shifts);
 
-// Reuse the production-grade manager shift report data layer/rendering to avoid duplicate report logic.
-// The output contains neutral report titles and live station-scoped data, so it is safe for Admin Reports too.
-require __DIR__ . '/manager_shift_reports.php';
-return;
+// Admin reports use their own full 8-section rendering for the merchandise tab.
+// Other tabs (fuel, service_income, payments, customers) use the same data-fetch function below.
 ?>
 
 <style>
@@ -105,11 +103,11 @@ return;
     white-space: nowrap;
     transition: all 0.2s;
 }
-.sr-section-tab:hover { background: #fff; color: #00264D; }
+.sr-section-tab:hover { background: #fff; color: #002F70; }
 .sr-section-tab.active {
     background: #fff;
-    color: #00264D;
-    border-bottom-color: #00264D;
+    color: #002F70;
+    border-bottom-color: #002F70;
     font-weight: 800;
 }
 /* Shift Filter Buttons */
@@ -131,7 +129,7 @@ return;
     transition: all 0.2s;
 }
 .sr-shift-btn:hover { background: #f0f4ff; }
-.sr-shift-btn.active { background: #00264D; color: white; }
+.sr-shift-btn.active { background: #002F70; color: white; border-color: #002F70; }
 /* Section Content */
 .sr-section-panel { display: none; }
 .sr-section-panel.active { display: block; }
@@ -239,10 +237,9 @@ return;
     <?php
     $tabs = [
         'fuel_sales'      => ['label'=>'Fuel Sales Report',         'ico'=>'fas fa-gas-pump'],
-        'merchandise'     => ['label'=>'Merchandise Sales Report',   'ico'=>'fas fa-shopping-cart'],
+        'merchandise'     => ['label'=>'Daily Merchandise & Service Sales Report',   'ico'=>'fas fa-shopping-cart'],
         'service_income'  => ['label'=>'Service Income Report',      'ico'=>'fas fa-wrench'],
         'payments'        => ['label'=>'Payments Report',            'ico'=>'fas fa-money-bill-wave'],
-        'job_orders'      => ['label'=>'Job Orders Report',          'ico'=>'fas fa-clipboard-list'],
         'customers'       => ['label'=>'Customers Report',           'ico'=>'fas fa-users'],
     ];
     foreach ($tabs as $key => $tab): ?>
@@ -455,33 +452,6 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                 } catch (Exception $e2) { /* keep fuel-only rows */ }
                 break;
 
-            case 'job_orders':
-                $is_s1 = ($shift_start_t === '06:00:00');
-                if ($is_s1) {
-                    $shift_cond = "(TIME(jo.created_at) >= '06:00:00' AND TIME(jo.created_at) < '14:00:00')";
-                } else {
-                    $shift_cond = "NOT (TIME(jo.created_at) >= '06:00:00' AND TIME(jo.created_at) < '14:00:00')";
-                }
-
-                $q = $pdo->prepare("
-                    SELECT
-                        COALESCE(jo.status, 'Pending') AS status,
-                        COALESCE(jo.service_type, '—')  AS service_type,
-                        COALESCE(jo.actual_parts_cost, jo.estimated_parts_cost, 0) AS parts_used,
-                        COALESCE(jo.actual_labor_cost, jo.estimated_labor_cost, 0) AS labor_fee,
-                        COALESCE(jo.total_cost, jo.estimated_cost, 0) AS total_amount,
-                        TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS encoder
-                    FROM job_orders jo
-                    LEFT JOIN users u ON jo.created_by = u.id
-                    WHERE jo.station_id = ?
-                      AND DATE(jo.created_at) BETWEEN ? AND ?
-                      AND $shift_cond
-                    ORDER BY FIELD(jo.status,'Pending','In Progress','Completed','Cancelled'), jo.created_at DESC
-                ");
-                $q->execute([$station_id, $date_start, $date_end]);
-                $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                break;
-
             case 'customers':
                 // Check if customer_id FK exists in merchandise_transactions
                 try {
@@ -572,10 +542,9 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
     <?php
     $report_titles = [
         'fuel_sales'     => ['title'=>'FUEL SALES REPORT',          'sub'=>'SHIFT SUMMARY'],
-        'merchandise'    => ['title'=>'MERCHANDISE SALES REPORT',    'sub'=>'SHIFT SUMMARY'],
+        'merchandise'    => ['title'=>'DAILY MERCHANDISE & SERVICE SALES REPORT',    'sub'=>'24-HOUR SUMMARY'],
         'service_income' => ['title'=>'SERVICE INCOME REPORT',       'sub'=>'SHIFT SUMMARY'],
         'payments'       => ['title'=>'PAYMENTS REPORT',             'sub'=>'SHIFT SUMMARY'],
-        'job_orders'     => ['title'=>'JOB ORDERS REPORT',           'sub'=>'SHIFT SUMMARY'],
         'customers'      => ['title'=>'CUSTOMERS REPORT',            'sub'=>'SHIFT SUMMARY'],
     ];
     $rt = $report_titles[$sec_key] ?? ['title'=>strtoupper($tab['label']),'sub'=>'SHIFT SUMMARY'];
@@ -605,7 +574,7 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
     </div>
 
     <?php foreach ($shifts as $snum => $sdef):
-        $rows = srFetch($pdo, $station_id, $date_start, $date_end, $sdef['start'], $sdef['end'], $sec_key);
+        $rows = srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $sdef['start'], $sdef['end'], $sec_key);
     ?>
     <div class="sr-shift-block <?= ($active_shift!==0 && $active_shift!==$snum)?'hidden':'' ?>" data-shift="<?=$snum?>" data-section="<?=$sec_key?>">
         <div class="sr-shift-heading"><?= $sdef['label'] ?></div>
@@ -662,33 +631,481 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
             <?php endif; ?>
         </table>
 
-        <?php elseif ($sec_key === 'merchandise'): ?>
+        <?php elseif ($sec_key === 'merchandise'): 
+            // COMPREHENSIVE DAILY MERCHANDISE & SERVICE SALES REPORT (ADMIN ONLY)
+            // 8 Sections with detailed breakdown
+            
+            // Section 1: Merchandise Sales (from merchandise_transaction_items)
+            $merch_sales = [];
+            try {
+                $q = $pdo->prepare("
+                    SELECT mt.transaction_id AS receipt_no,
+                           COALESCE(mt.customer_name, 'Walk-in') AS customer_name,
+                           COALESCE(mti.category, '—') AS category,
+                           COALESCE(mti.product_name, '—') AS product_name,
+                           COALESCE(mti.quantity, 0) AS quantity,
+                           COALESCE(mti.unit_price, 0) AS unit_price,
+                           COALESCE(mti.subtotal, mti.quantity * mti.unit_price, 0) AS total_amount,
+                           TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS staff_encoder
+                    FROM merchandise_transaction_items mti
+                    JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
+                    LEFT JOIN users u ON mt.staff_id = u.id
+                    WHERE mt.station_id = ?
+                      AND DATE(mt.created_at) BETWEEN ? AND ?
+                      AND mti.item_type = 'merchandise'
+                    ORDER BY mt.created_at, mti.id
+                ");
+                $q->execute([$station_id, $date_start, $date_end]);
+                $merch_sales = $q->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Exception $e) { error_log('Admin merch_sales: '.$e->getMessage()); }
+            
+            // Section 2: Job Order / Service Sales
+            $job_orders = [];
+            try {
+                $q = $pdo->prepare("
+                    SELECT COALESCE(jo.job_order_number, jo.job_order_id, CONCAT('JO-',jo.id)) AS jo_number,
+                           COALESCE(jo.customer_name, '—') AS customer_name,
+                           COALESCE(jo.vehicle_plate, '—') AS vehicle_plate,
+                           COALESCE(jo.service_type, 'General Service') AS service_type,
+                           COALESCE(jo.actual_labor_cost, jo.estimated_labor_cost, 0) AS labor_fee,
+                           COALESCE(jo.actual_parts_cost, jo.estimated_parts_cost, 0) AS parts_cost,
+                           COALESCE(jo.total_cost, jo.estimated_cost,
+                               COALESCE(jo.actual_labor_cost,0) + COALESCE(jo.actual_parts_cost,0), 0) AS total_amount,
+                           TRIM(CONCAT(COALESCE(m.first_name,''), ' ', COALESCE(m.last_name,''))) AS mechanic,
+                           TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS staff_encoder
+                    FROM job_orders jo
+                    LEFT JOIN users m ON jo.assigned_mechanic_id = m.id
+                    LEFT JOIN users u ON jo.created_by = u.id
+                    WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ?
+                    ORDER BY jo.created_at
+                ");
+                $q->execute([$station_id, $date_start, $date_end]);
+                $job_orders = $q->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Exception $e) { error_log('Admin job_orders: '.$e->getMessage()); }
+            
+            // Section 3: Parts Used in Job Orders
+            $jo_parts = [];
+            try {
+                $q = $pdo->prepare("
+                    SELECT COALESCE(jo.job_order_number, jo.job_order_id, CONCAT('JO-',jo.id)) AS jo_number,
+                           COALESCE(jo.customer_name, '—') AS customer_name,
+                           COALESCE(p.name, '—') AS product_name,
+                           COALESCE(pc.name, '—') AS category,
+                           COALESCE(jop.quantity_used, 0) AS quantity_used,
+                           COALESCE(jop.unit_cost, 0) AS unit_price,
+                           COALESCE(jop.total_cost, jop.quantity_used * jop.unit_cost, 0) AS total_cost
+                    FROM job_order_parts jop
+                    JOIN job_orders jo ON jop.job_order_id = jo.id
+                    LEFT JOIN products p ON jop.product_id = p.id
+                    LEFT JOIN product_categories pc ON p.category_id = pc.id
+                    WHERE jo.station_id = ?
+                      AND DATE(COALESCE(jop.created_at, jo.created_at)) BETWEEN ? AND ?
+                    ORDER BY jop.id
+                ");
+                $q->execute([$station_id, $date_start, $date_end]);
+                $jo_parts = $q->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Exception $e) { error_log('Admin jo_parts: '.$e->getMessage()); }
+            
+            // Section 4: Payment Breakdown
+            $payment_breakdown = [];
+            try {
+                $q = $pdo->prepare("
+                    SELECT COALESCE(NULLIF(payment_method,''),'Cash') AS payment_method,
+                           COUNT(*) AS txn_count,
+                           SUM(COALESCE(total_amount,0)) AS total_amount
+                    FROM (
+                        SELECT payment_method, total_amount FROM merchandise_transactions
+                        WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?
+                        UNION ALL
+                        SELECT payment_method,
+                               COALESCE(total_cost, actual_labor_cost + actual_parts_cost, estimated_cost, 0) AS total_amount
+                        FROM job_orders
+                        WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?
+                    ) combined
+                    GROUP BY payment_method
+                    ORDER BY total_amount DESC
+                ");
+                $q->execute([$station_id, $date_start, $date_end, $station_id, $date_start, $date_end]);
+                $payment_breakdown = $q->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Exception $e) { error_log('Admin payment_breakdown: '.$e->getMessage()); }
+            
+            // Section 5: Staff Performance
+            $staff_performance = [];
+            try {
+                $q = $pdo->prepare("
+                    SELECT CONCAT(u.first_name, ' ', u.last_name) as staff_name,
+                           COUNT(DISTINCT mt.id) as merch_txn,
+                           COUNT(DISTINCT jo.id) as jo_count,
+                           COALESCE(SUM(mt.total_amount), 0) as total_sales,
+                           COALESCE(SUM(mt.total_amount), 0) + COALESCE(SUM(jo.labor_fee + jo.parts_cost), 0) as total_collection
+                    FROM users u
+                    LEFT JOIN merchandise_transactions mt ON u.id = mt.staff_id 
+                          AND mt.station_id = ? AND DATE(mt.created_at) BETWEEN ? AND ?
+                    LEFT JOIN job_orders jo ON u.id = jo.created_by 
+                          AND jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ?
+                    WHERE u.role = 'staff' AND u.station_id = ?
+                    GROUP BY u.id
+                    HAVING merch_txn > 0 OR jo_count > 0
+                    ORDER BY total_collection DESC
+                ");
+                $q->execute([$station_id, $date_start, $date_end, $station_id, $date_start, $date_end, $station_id]);
+                $staff_performance = $q->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Exception $e) {}
+            
+            // Section 6: Inventory Impact Summary (from station_inventory + merchandise_transaction_items)
+            $inventory_impact = [];
+            try {
+                $q = $pdo->prepare("
+                    SELECT p.name AS product_name, COALESCE(p.sku,'—') AS sku,
+                           COALESCE(si.stock_level, p.current_stock, 0) AS beginning_stock,
+                           COALESCE(SUM(CASE WHEN mti.item_type='merchandise' THEN mti.quantity ELSE 0 END), 0) AS sold,
+                           COALESCE(SUM(CASE WHEN mti.item_type='service' THEN mti.quantity ELSE 0 END), 0) AS used_in_jo,
+                           COALESCE(si.stock_level, p.current_stock, 0)
+                               - COALESCE(SUM(CASE WHEN mti.item_type='merchandise' THEN mti.quantity ELSE 0 END), 0)
+                               AS ending_stock
+                    FROM products p
+                    LEFT JOIN station_inventory si ON p.id = si.product_id AND si.station_id = ?
+                    LEFT JOIN merchandise_transaction_items mti ON mti.product_id = p.id
+                    LEFT JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
+                          AND mt.station_id = ? AND DATE(mt.created_at) BETWEEN ? AND ?
+                    WHERE (p.station_id = ? OR si.station_id = ?)
+                    GROUP BY p.id, p.name, p.sku, si.stock_level, p.current_stock
+                    HAVING sold > 0 OR used_in_jo > 0
+                    ORDER BY p.name
+                ");
+                $q->execute([$station_id, $station_id, $date_start, $date_end, $station_id, $station_id]);
+                $inventory_impact = $q->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Exception $e) { error_log('Admin inventory_impact: '.$e->getMessage()); }
+            
+            // Section 7: Daily Collection Summary
+            $collection_summary = [];
+            try {
+                // Merchandise sales (merchandise items only)
+                $q1 = $pdo->prepare("
+                    SELECT COALESCE(SUM(mti.subtotal), 0)
+                    FROM merchandise_transaction_items mti
+                    JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
+                    WHERE mt.station_id = ? AND DATE(mt.created_at) BETWEEN ? AND ?
+                      AND mti.item_type = 'merchandise'
+                ");
+                $q1->execute([$station_id, $date_start, $date_end]);
+                $merch_sales_total = (float)$q1->fetchColumn();
+
+                // Service items sold through POS
+                $q1b = $pdo->prepare("
+                    SELECT COALESCE(SUM(mti.subtotal), 0)
+                    FROM merchandise_transaction_items mti
+                    JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
+                    WHERE mt.station_id = ? AND DATE(mt.created_at) BETWEEN ? AND ?
+                      AND mti.item_type = 'service'
+                ");
+                $q1b->execute([$station_id, $date_start, $date_end]);
+                $service_pos_total = (float)$q1b->fetchColumn();
+
+                // Labor income from job orders
+                $q2 = $pdo->prepare("SELECT COALESCE(SUM(COALESCE(actual_labor_cost, estimated_labor_cost, 0)), 0) FROM job_orders WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?");
+                $q2->execute([$station_id, $date_start, $date_end]);
+                $labor_income_total = (float)$q2->fetchColumn();
+
+                // Parts from job orders
+                $q3 = $pdo->prepare("SELECT COALESCE(SUM(COALESCE(actual_parts_cost, estimated_parts_cost, 0)), 0) FROM job_orders WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?");
+                $q3->execute([$station_id, $date_start, $date_end]);
+                $parts_sales_total = (float)$q3->fetchColumn();
+
+                $gross_sales = $merch_sales_total + $service_pos_total + $labor_income_total + $parts_sales_total;
+
+                $collection_summary = [
+                    'merchandise_sales' => $merch_sales_total,
+                    'service_pos'       => $service_pos_total,
+                    'labor_income'      => $labor_income_total,
+                    'parts_sales'       => $parts_sales_total,
+                    'gross_sales'       => $gross_sales,
+                    'discounts'         => 0,
+                    'net_collection'    => $gross_sales,
+                ];
+            } catch (Exception $e) { error_log('Admin collection_summary: '.$e->getMessage()); }
+            
+            // Section 8: Transaction Audit Summary
+            $audit_summary = [];
+            try {
+                // Merchandise count
+                $qa = $pdo->prepare("SELECT COUNT(DISTINCT id) FROM merchandise_transactions WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ?");
+                $qa->execute([$station_id, $date_start, $date_end]);
+                $merch_txn_count = (int)$qa->fetchColumn();
+
+                // Job order count
+                $qb = $pdo->prepare("SELECT COUNT(DISTINCT id) FROM job_orders WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ?");
+                $qb->execute([$station_id, $date_start, $date_end]);
+                $jo_count = (int)$qb->fetchColumn();
+
+                // Voided/cancelled via validation_status
+                $qc = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ? AND LOWER(COALESCE(validation_status,''))='rejected'");
+                $qc->execute([$station_id, $date_start, $date_end]);
+                $cancelled_txn = (int)$qc->fetchColumn();
+
+                $audit_summary = [
+                    'merch_txn'      => $merch_txn_count,
+                    'jo_count'       => $jo_count,
+                    'cancelled_txn'  => $cancelled_txn,
+                    'voided_txn'     => 0,
+                    'refunded_txn'   => 0,
+                ];
+            } catch (Exception $e) { error_log('Admin audit_summary: '.$e->getMessage()); }
+        ?>
+        
+        <!-- Section 1: Merchandise Sales -->
+        <h3 style="margin-top:24px; font-size:14px; font-weight:700; color:#00264D; border-bottom:2px solid #e2e8f0; padding-bottom:8px;">
+            MERCHANDISE SALES
+        </h3>
         <table class="sr-table">
             <thead><tr>
-                <th>Category / Product</th><th>Beg. Stock</th><th>Stock-In</th>
-                <th>Stock-Out</th><th>End Stock</th><th>Unit Price</th><th>Amount</th><th>Encoder</th>
+                <th>Receipt No.</th><th>Customer</th><th>Category</th><th>Product</th>
+                <th>Qty</th><th>Unit Price</th><th>Amount</th><th>Staff Encoder</th>
             </tr></thead>
             <tbody>
-            <?php if (empty($rows)): ?><tr><td colspan="8" class="sr-empty">No merchandise sales for this shift</td></tr>
-            <?php else: $ta=0; foreach($rows as $r): $ta+=$r['amount']; ?>
+            <?php if (empty($merch_sales)): ?>
+                <tr><td colspan="8" class="sr-empty">No merchandise sales for this period</td></tr>
+            <?php else: $total_merch = 0; foreach($merch_sales as $m): $total_merch += $m['total_amount']; ?>
                 <tr>
-                    <td><?=htmlspecialchars($r['category'])?> / <?=htmlspecialchars($r['product_name'])?></td>
-                    <td><?=number_format($r['beg_stock'])?></td>
-                    <td><?=number_format($r['stock_in'])?></td>
-                    <td><?=number_format($r['stock_out'])?></td>
-                    <td><?=number_format($r['end_stock'])?></td>
-                    <td>₱<?=number_format($r['unit_price'],2)?></td>
-                    <td>₱<?=number_format($r['amount'],2)?></td>
-                    <td><?=htmlspecialchars($r['encoder'])?></td>
+                    <td><?=htmlspecialchars($m['receipt_no'])?></td>
+                    <td><?=htmlspecialchars($m['customer_name'])?></td>
+                    <td><?=htmlspecialchars($m['category'])?></td>
+                    <td><?=htmlspecialchars($m['product_name'])?></td>
+                    <td><?=number_format($m['quantity'])?></td>
+                    <td>₱<?=number_format($m['unit_price'],2)?></td>
+                    <td>₱<?=number_format($m['total_amount'],2)?></td>
+                    <td><?=htmlspecialchars($m['staff_encoder'])?></td>
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
-            <?php if(!empty($rows)): ?>
+            <?php if(!empty($merch_sales)): ?>
             <tfoot><tr>
-                <td colspan="6">TOTAL</td><td>₱<?=number_format($ta,2)?></td><td></td>
+                <td colspan="6"><strong>Total Merchandise Sales</strong></td>
+                <td><strong>₱<?=number_format($total_merch,2)?></strong></td>
+                <td></td>
             </tr></tfoot>
             <?php endif; ?>
         </table>
+
+        <!-- Section 2: Job Order / Service Sales -->
+        <h3 style="margin-top:24px; font-size:14px; font-weight:700; color:#00264D; border-bottom:2px solid #e2e8f0; padding-bottom:8px;">
+            JOB ORDER / SERVICE SALES
+        </h3>
+        <table class="sr-table">
+            <thead><tr>
+                <th>JO No.</th><th>Customer</th><th>Vehicle</th><th>Service Type</th>
+                <th>Labor Fee</th><th>Parts Cost</th><th>Total Amount</th>
+                <th>Mechanic</th><th>Staff Encoder</th>
+            </tr></thead>
+            <tbody>
+            <?php if (empty($job_orders)): ?>
+                <tr><td colspan="9" class="sr-empty">No job orders for this period</td></tr>
+            <?php else: $total_labor = 0; $total_parts = 0; $total_jo = 0; 
+                foreach($job_orders as $jo): 
+                    $total_labor += $jo['labor_fee']; 
+                    $total_parts += $jo['parts_cost']; 
+                    $total_jo += $jo['total_amount']; 
+            ?>
+                <tr>
+                    <td><?=htmlspecialchars($jo['jo_number'])?></td>
+                    <td><?=htmlspecialchars($jo['customer_name'])?></td>
+                    <td><?=htmlspecialchars($jo['vehicle_plate'])?></td>
+                    <td><?=htmlspecialchars($jo['service_type'])?></td>
+                    <td>₱<?=number_format($jo['labor_fee'],2)?></td>
+                    <td>₱<?=number_format($jo['parts_cost'],2)?></td>
+                    <td>₱<?=number_format($jo['total_amount'],2)?></td>
+                    <td><?=htmlspecialchars($jo['mechanic'])?></td>
+                    <td><?=htmlspecialchars($jo['staff_encoder'])?></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+            <?php if(!empty($job_orders)): ?>
+            <tfoot><tr>
+                <td colspan="4"><strong>Total Service Income</strong></td>
+                <td><strong>₱<?=number_format($total_labor,2)?></strong></td>
+                <td><strong>₱<?=number_format($total_parts,2)?></strong></td>
+                <td><strong>₱<?=number_format($total_jo,2)?></strong></td>
+                <td colspan="2"></td>
+            </tr></tfoot>
+            <?php endif; ?>
+        </table>
+
+        <!-- Section 3: Merchandise Products Used as JO Parts -->
+        <h3 style="margin-top:24px; font-size:14px; font-weight:700; color:#00264D; border-bottom:2px solid #e2e8f0; padding-bottom:8px;">
+            MERCHANDISE PRODUCTS USED AS JOB ORDER PARTS
+            <span style="font-size:11px; font-weight:400; color:#64748b;">(Source: Merchandise Inventory)</span>
+        </h3>
+        <table class="sr-table">
+            <thead><tr>
+                <th>JO No.</th><th>Customer</th><th>Product</th><th>Category</th>
+                <th>Qty Used</th><th>Unit Price</th><th>Total Cost</th>
+            </tr></thead>
+            <tbody>
+            <?php if (empty($jo_parts)): ?>
+                <tr><td colspan="7" class="sr-empty">No merchandise parts used in job orders</td></tr>
+            <?php else: $total_parts_cost = 0; foreach($jo_parts as $jp): $total_parts_cost += $jp['total_cost']; ?>
+                <tr>
+                    <td><?=htmlspecialchars($jp['jo_number'])?></td>
+                    <td><?=htmlspecialchars($jp['customer_name'])?></td>
+                    <td><?=htmlspecialchars($jp['product_name'])?></td>
+                    <td><?=htmlspecialchars($jp['category'])?></td>
+                    <td><?=number_format($jp['quantity_used'])?></td>
+                    <td>₱<?=number_format($jp['unit_price'],2)?></td>
+                    <td>₱<?=number_format($jp['total_cost'],2)?></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+            <?php if(!empty($jo_parts)): ?>
+            <tfoot><tr>
+                <td colspan="6"><strong>Total Parts Used / Total Parts Cost</strong></td>
+                <td><strong>₱<?=number_format($total_parts_cost,2)?></strong></td>
+            </tr></tfoot>
+            <?php endif; ?>
+        </table>
+
+        <!-- Section 4: Payment Breakdown -->
+        <h3 style="margin-top:24px; font-size:14px; font-weight:700; color:#00264D; border-bottom:2px solid #e2e8f0; padding-bottom:8px;">
+            PAYMENT BREAKDOWN
+        </h3>
+        <table class="sr-table">
+            <thead><tr>
+                <th>Payment Method</th><th>No. of Transactions</th><th>Amount</th>
+            </tr></thead>
+            <tbody>
+            <?php if (empty($payment_breakdown)): ?>
+                <tr><td colspan="3" class="sr-empty">No payment transactions</td></tr>
+            <?php else: $total_pay = 0; foreach($payment_breakdown as $pb): $total_pay += $pb['total_amount']; ?>
+                <tr>
+                    <td><?=htmlspecialchars($pb['payment_method'])?></td>
+                    <td><?=number_format($pb['txn_count'])?></td>
+                    <td>₱<?=number_format($pb['total_amount'],2)?></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+            <?php if(!empty($payment_breakdown)): ?>
+            <tfoot><tr>
+                <td colspan="2"><strong>Total</strong></td>
+                <td><strong>₱<?=number_format($total_pay,2)?></strong></td>
+            </tr></tfoot>
+            <?php endif; ?>
+        </table>
+
+        <!-- Section 5: Staff Performance -->
+        <h3 style="margin-top:24px; font-size:14px; font-weight:700; color:#00264D; border-bottom:2px solid #e2e8f0; padding-bottom:8px;">
+            STAFF PERFORMANCE
+        </h3>
+        <table class="sr-table">
+            <thead><tr>
+                <th>Staff</th><th>Merchandise Transactions</th><th>Job Orders</th>
+                <th>Total Sales</th><th>Total Collection</th>
+            </tr></thead>
+            <tbody>
+            <?php if (empty($staff_performance)): ?>
+                <tr><td colspan="5" class="sr-empty">No staff performance data</td></tr>
+            <?php else: foreach($staff_performance as $sp): ?>
+                <tr>
+                    <td><?=htmlspecialchars($sp['staff_name'])?></td>
+                    <td><?=number_format($sp['merch_txn'])?></td>
+                    <td><?=number_format($sp['jo_count'])?></td>
+                    <td>₱<?=number_format($sp['total_sales'],2)?></td>
+                    <td>₱<?=number_format($sp['total_collection'],2)?></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+        </table>
+
+        <!-- Section 6: Inventory Impact Summary -->
+        <h3 style="margin-top:24px; font-size:14px; font-weight:700; color:#00264D; border-bottom:2px solid #e2e8f0; padding-bottom:8px;">
+            INVENTORY IMPACT SUMMARY
+        </h3>
+        <table class="sr-table">
+            <thead><tr>
+                <th>Product</th><th>Beginning Stock</th><th>Sold</th>
+                <th>Used in Job Orders</th><th>Ending Stock</th>
+            </tr></thead>
+            <tbody>
+            <?php if (empty($inventory_impact)): ?>
+                <tr><td colspan="5" class="sr-empty">No inventory data available</td></tr>
+            <?php else: foreach($inventory_impact as $ii): ?>
+                <tr>
+                    <td><?=htmlspecialchars($ii['product_name'])?></td>
+                    <td><?=number_format($ii['beginning_stock'])?></td>
+                    <td><?=number_format($ii['sold'])?></td>
+                    <td><?=number_format($ii['used_in_jo'])?></td>
+                    <td><?=number_format($ii['ending_stock'])?></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+        </table>
+
+        <!-- Section 7: Daily Collection Summary -->
+        <h3 style="margin-top:24px; font-size:14px; font-weight:700; color:#00264D; border-bottom:2px solid #e2e8f0; padding-bottom:8px;">
+            DAILY COLLECTION SUMMARY
+        </h3>
+        <table class="sr-table">
+            <thead><tr>
+                <th>Description</th><th>Amount</th>
+            </tr></thead>
+            <tbody>
+                <tr>
+                    <td>Merchandise Sales</td>
+                    <td>&#x20B1;<?=number_format($collection_summary['merchandise_sales'] ?? 0,2)?></td>
+                </tr>
+                <tr>
+                    <td>Service / POS Service Items</td>
+                    <td>&#x20B1;<?=number_format($collection_summary['service_pos'] ?? 0,2)?></td>
+                </tr>
+                <tr>
+                    <td>Labor Income (Job Orders)</td>
+                    <td>&#x20B1;<?=number_format($collection_summary['labor_income'] ?? 0,2)?></td>
+                </tr>
+                <tr>
+                    <td>Parts Cost (Job Orders)</td>
+                    <td>&#x20B1;<?=number_format($collection_summary['parts_sales'] ?? 0,2)?></td>
+                </tr>
+                <tr style="background:#f8fafc; font-weight:600;">
+                    <td>Gross Sales</td>
+                    <td>&#x20B1;<?=number_format($collection_summary['gross_sales'] ?? 0,2)?></td>
+                </tr>
+            </tbody>
+            <tfoot><tr>
+                <td><strong>Net Collection</strong></td>
+                <td><strong>&#x20B1;<?=number_format($collection_summary['net_collection'] ?? 0,2)?></strong></td>
+            </tr></tfoot>
+        </table>
+
+        <!-- Section 8: Transaction Audit Summary -->
+        <h3 style="margin-top:24px; font-size:14px; font-weight:700; color:#00264D; border-bottom:2px solid #e2e8f0; padding-bottom:8px;">
+            TRANSACTION AUDIT SUMMARY
+        </h3>
+        <table class="sr-table">
+            <thead><tr>
+                <th>Description</th><th>Count</th>
+            </tr></thead>
+            <tbody>
+                <tr>
+                    <td>Merchandise Transactions</td>
+                    <td><?=number_format($audit_summary['merch_txn'] ?? 0)?></td>
+                </tr>
+                <tr>
+                    <td>Job Orders</td>
+                    <td><?=number_format($audit_summary['jo_count'] ?? 0)?></td>
+                </tr>
+                <tr>
+                    <td>Cancelled Transactions</td>
+                    <td><?=number_format($audit_summary['cancelled_txn'] ?? 0)?></td>
+                </tr>
+                <tr>
+                    <td>Voided Transactions</td>
+                    <td><?=number_format($audit_summary['voided_txn'] ?? 0)?></td>
+                </tr>
+                <tr>
+                    <td>Refunded Transactions</td>
+                    <td><?=number_format($audit_summary['refunded_txn'] ?? 0)?></td>
+                </tr>
+            </tbody>
+        </table>
+        <?php // End of merchandise section ?>
 
         <?php elseif ($sec_key === 'service_income'): ?>
         <table class="sr-table">
@@ -733,38 +1150,6 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
             <?php if(!empty($rows)): ?>
             <tfoot><tr>
                 <td>TOTAL</td><td><?=number_format($tc)?></td><td>₱<?=number_format($ta,2)?></td>
-            </tr></tfoot>
-            <?php endif; ?>
-        </table>
-
-        <?php elseif ($sec_key === 'job_orders'): 
-            $status_colors=['Pending'=>'#f59e0b','In Progress'=>'#3b82f6','Completed'=>'#22c55e','Cancelled'=>'#ef4444'];
-        ?>
-        <table class="sr-table">
-            <thead><tr>
-                <th>Status</th><th>Service Type</th><th>Parts Used</th>
-                <th>Labor Fee</th><th>Total Service Amount</th><th>Encoder</th>
-            </tr></thead>
-            <tbody>
-            <?php if (empty($rows)): ?><tr><td colspan="6" class="sr-empty">No job orders for this shift</td></tr>
-            <?php else: $tp=0;$tl=0;$ta=0; foreach($rows as $r): $tp+=$r['parts_used'];$tl+=$r['labor_fee'];$ta+=$r['total_amount'];
-                $sc=$status_colors[$r['status']]??'#64748b'; ?>
-                <tr>
-                    <td><span class="sr-status" style="background:<?=$sc?>"><?=htmlspecialchars($r['status'])?></span></td>
-                    <td><?=htmlspecialchars($r['service_type'])?></td>
-                    <td>₱<?=number_format($r['parts_used'],2)?></td>
-                    <td>₱<?=number_format($r['labor_fee'],2)?></td>
-                    <td>₱<?=number_format($r['total_amount'],2)?></td>
-                    <td><?=htmlspecialchars($r['encoder'])?></td>
-                </tr>
-            <?php endforeach; endif; ?>
-            </tbody>
-            <?php if(!empty($rows)): ?>
-            <tfoot><tr>
-                <td colspan="2">TOTAL</td>
-                <td>₱<?=number_format($tp,2)?></td>
-                <td>₱<?=number_format($tl,2)?></td>
-                <td>₱<?=number_format($ta,2)?></td><td></td>
             </tr></tfoot>
             <?php endif; ?>
         </table>

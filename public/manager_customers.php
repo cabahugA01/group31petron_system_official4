@@ -79,38 +79,54 @@ include __DIR__ . '/../partials/header.php';
 .cust-btn-gray      { background:#64748b; color:#fff!important; border-color:#64748b; }
 .cust-btn-gray:hover { background:#475569; }
 
-/* Export Buttons (Filter Button Style) - Matches Sales Report */
-.flt-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 7px 14px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
-    border: 1px solid #00264D;
-    transition: all 0.2s;
-    height: auto;
-    line-height: 1;
-    white-space: nowrap;
-    text-decoration: none;
-    background: white !important;
-    color: #00264D !important;
+/* Export Buttons - Colored Borders Design matching admin_customers.php */
+.flt-btn,
+.flt-btn-excel,
+.flt-btn-pdf,
+.flt-btn-csv {
+    background: #ffffff !important;
+    border: 2px solid !important;
+    border-radius: 8px !important;
+    padding: 8px 16px !important;
+    height: 38px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    transition: all 0.15s !important;
+    min-width: 100px !important;
+    white-space: nowrap !important;
+    text-decoration: none !important;
 }
-.flt-btn:hover {
-    background: #00264D !important;
-    color: white !important;
+/* Excel — green */
+.flt-btn-excel {
+    color: #16a34a !important;
+    border-color: #16a34a !important;
 }
-.flt-btn-excel, .flt-btn-pdf, .flt-btn-csv {
-    background: white !important;
-    color: #00264D !important;
-    border-color: #00264D !important;
+.flt-btn-excel:hover {
+    background: #f0fdf4 !important;
+    border-color: #15803d !important;
 }
-.flt-btn-excel:hover, .flt-btn-pdf:hover, .flt-btn-csv:hover {
-    background: #00264D !important;
-    color: white !important;
+/* CSV — blue */
+.flt-btn-csv {
+    color: #2563eb !important;
+    border-color: #2563eb !important;
+}
+.flt-btn-csv:hover {
+    background: #eff6ff !important;
+    border-color: #1d4ed8 !important;
+}
+/* PDF — red */
+.flt-btn-pdf {
+    color: #dc2626 !important;
+    border-color: #dc2626 !important;
+}
+.flt-btn-pdf:hover {
+    background: #fef2f2 !important;
+    border-color: #b91c1c !important;
 }
 
 /* Add Customer Button */

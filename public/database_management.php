@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'database_management';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -53,8 +53,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     elseif ($action === 'run_backup') {
         $fname = 'backup_' . date('Y_m_d_His') . '.sql';
         $bpath = cfg_get($pdo, 'backup_storage', 'local');
-        $pdo->prepare("INSERT INTO database_backups (filename,file_size,created_by) VALUES(?,?,?)")
-            ->execute([$fname, 0, $me['id']]);
+        $pdo->prepare("INSERT INTO database_backups (backup_name,backup_file,backup_size,status,created_by) VALUES(?,?,?,?,?)")
+            ->execute([$fname, $bpath.'/'.$fname, 0, 'completed', $me['id']]);
         $bid = $pdo->lastInsertId();
         $pdo->prepare("INSERT INTO system_backups (backup_name,backup_type,file_path,status,created_by) VALUES(?,?,?,?,?)")
             ->execute([$fname, 'database', $bpath.'/'.$fname, 'completed', $me['id']]);
@@ -137,7 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // ── Data for views ────────────────────────────────────────────────────
 // Backup history
 $backup_history = $pdo->query(
-    "SELECT * FROM database_backups ORDER BY created_at DESC LIMIT 20"
+    "SELECT id, backup_name AS filename, backup_size AS file_size, created_at FROM database_backups ORDER BY created_at DESC LIMIT 20"
 )->fetchAll(PDO::FETCH_ASSOC);
 
 // Restore history
@@ -188,7 +188,7 @@ $security_logs = $sec_stmt->fetchAll(PDO::FETCH_ASSOC);
 $users_list = $pdo->query("SELECT id, first_name, last_name, role FROM users ORDER BY first_name, last_name")->fetchAll(PDO::FETCH_ASSOC);
 
 // Available backup files for restore
-$available_backups = $pdo->query("SELECT filename, file_size, created_at FROM database_backups ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
+$available_backups = $pdo->query("SELECT backup_name AS filename, backup_size AS file_size, created_at FROM database_backups ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
 
 // DB tables for schema editor
 $all_tables = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Complete Manager Reports - Real Report Format
  * Operations Reports with tabbed interface matching Admin design
@@ -224,18 +224,18 @@ require_once __DIR__ . '/../partials/header.php';
     border-color: #16a34a !important;
 }
 .rpt-export-btn:nth-child(1):hover {
-    background: #16a34a !important;
-    color: #ffffff !important;
+    background: #f0fdf4 !important;
+    border-color: #15803d !important;
 }
 
-/* CSV Button - Dark Blue Border */
+/* CSV Button - Blue Border */
 .rpt-export-btn:nth-child(2) {
-    color: #1e3a8a !important;
-    border-color: #1e3a8a !important;
+    color: #2563eb !important;
+    border-color: #2563eb !important;
 }
 .rpt-export-btn:nth-child(2):hover {
-    background: #1e3a8a !important;
-    color: #ffffff !important;
+    background: #eff6ff !important;
+    border-color: #1d4ed8 !important;
 }
 
 /* PDF Button - Red Border */
@@ -244,8 +244,8 @@ require_once __DIR__ . '/../partials/header.php';
     border-color: #dc2626 !important;
 }
 .rpt-export-btn:nth-child(3):hover {
-    background: #dc2626 !important;
-    color: #ffffff !important;
+    background: #fef2f2 !important;
+    border-color: #b91c1c !important;
 }
 
 .rpt-export-btn i {
@@ -431,6 +431,7 @@ require_once __DIR__ . '/../partials/header.php';
     <div class="rpt-content">
         <!-- Date Filter Bar -->
         <form method="GET" class="rpt-filter-bar">
+            <input type="hidden" name="section" id="hiddenSectionInput" value="<?= htmlspecialchars($_GET['section'] ?? 'fuel_sales') ?>">
             <label><i class="fas fa-calendar"></i> Report Date:</label>
             <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" required>
             <span style="color: #64748b;">to</span>

@@ -35,7 +35,7 @@ try {
 
 // Active section tab
 $section = $_GET['section'] ?? 'fuel_sales';
-$valid_sections = ['fuel_sales','merchandise','service_income','payments','job_orders','customers'];
+$valid_sections = ['fuel_sales','merchandise','service_income','payments','customers'];
 if (!in_array($section, $valid_sections)) $section = 'fuel_sales';
 
 // Active shift filter
@@ -101,7 +101,7 @@ ksort($shifts);
     white-space: nowrap;
     transition: all 0.2s;
 }
-.sr-section-tab:hover { background: #fff; color: #00264D; }
+.sr-section-tab:hover { background: #fff; color: #002F70; }
 .sr-section-tab.active {
     background: #fff;
     color: #00264D;
@@ -127,7 +127,7 @@ ksort($shifts);
     transition: all 0.2s;
 }
 .sr-shift-btn:hover { background: #f0f4ff; }
-.sr-shift-btn.active { background: #00264D; color: white; }
+.sr-shift-btn.active { background: #002F70; color: white; border-color: #002F70; }
 /* Section Content */
 .sr-section-panel { display: none; }
 .sr-section-panel.active { display: block; }
@@ -226,7 +226,7 @@ ksort($shifts);
     <?php
     $tabs = [
         'fuel_sales'      => ['label'=>'Fuel Sales Report',         'ico'=>'fas fa-gas-pump'],
-        'merchandise'     => ['label'=>'Merchandise Sales Report',   'ico'=>'fas fa-shopping-cart'],
+        'merchandise'     => ['label'=>'Daily Merchandise & Service Sales Report',   'ico'=>'fas fa-shopping-cart'],
         'service_income'  => ['label'=>'Service Income Report',      'ico'=>'fas fa-wrench'],
         'payments'        => ['label'=>'Payments Report',            'ico'=>'fas fa-money-bill-wave'],
         'customers'       => ['label'=>'Customers Report',           'ico'=>'fas fa-users'],
@@ -249,318 +249,6 @@ if (!function_exists('srFuelDisplayName')) {
         }
         return $name !== '' ? $name : 'Fuel';
     }
-}
-
-function srFetch($pdo, $station_id, $date_start, $date_end, $shift_start_t, $shift_end_t, $section) {
-    $rows = [];
-    try {
-        switch ($section) {
-
-            case 'fuel_sales':
-                $is_s1 = ($shift_start_t === '06:00:00');
-                if ($is_s1) {
-                    $shift_cond = "(LOWER(COALESCE(ft.shift_period,'')) IN ('first','morning','1','shift1','shift 1') OR ft.shift_name LIKE '%First%' OR ft.shift_name LIKE '%Morning%' OR (COALESCE(ft.shift_period,'') = '' AND TIME(ft.transaction_date) >= '06:00:00' AND TIME(ft.transaction_date) < '14:00:00'))";
-                } else {
-                    $shift_cond = "(LOWER(COALESCE(ft.shift_period,'')) IN ('second','afternoon','evening','2','shift2','shift 2','night','midnight') OR ft.shift_name LIKE '%Second%' OR ft.shift_name LIKE '%Afternoon%' OR ft.shift_name LIKE '%Evening%' OR (COALESCE(ft.shift_period,'') = '' AND (TIME(ft.transaction_date) >= '14:00:00' OR TIME(ft.transaction_date) < '06:00:00')))";
-                }
-
-                $q = $pdo->prepare("
-                    SELECT
-                        COALESCE(ft.pump_id, '—') AS pump_name,
-                        COALESCE(ft.fuel_type, '—') AS fuel_type,
-                        COALESCE(ft.previous_reading, 0) AS beg_reading,
-                        COALESCE(ft.present_reading, 0)  AS end_reading,
-                        COALESCE(ft.calibration, 0)      AS calibration,
-                        COALESCE(ft.liters_sold,
-                            ABS(COALESCE(ft.present_reading,0) - COALESCE(ft.previous_reading,0))
-                            + COALESCE(ft.calibration,0)
-                        ) AS dispensed_liters,
-                        COALESCE(ft.price_per_liter, 0) AS unit_price,
-                        COALESCE(ft.total_amount, 0) AS amount,
-                        TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS encoder,
-                        LOWER(COALESCE(ft.shift_period,'')) AS sp,
-                        TIME(ft.transaction_date) AS txn_time
-                    FROM fuel_transactions ft
-                    LEFT JOIN users u ON ft.staff_id = u.id
-                    WHERE ft.station_id = ?
-                      AND DATE(ft.transaction_date) BETWEEN ? AND ?
-                      AND $shift_cond
-                    ORDER BY ft.transaction_date ASC, TIME(ft.transaction_date) ASC, ft.fuel_type ASC, ft.pump_id ASC
-                ");
-                $q->execute([$station_id, $date_start, $date_end]);
-                $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                foreach ($rows as &$row) {
-                    $row['fuel_type'] = srFuelDisplayName($row['fuel_type'] ?? '');
-                }
-                unset($row);
-                break;
-
-            case 'merchandise':
-                $is_s1 = ($shift_start_t === '06:00:00');
-                if ($is_s1) {
-                    $shift_cond = "(LOWER(COALESCE(mt.shift_period,'')) IN ('first','morning','1','shift1','shift 1') OR mt.shift_name LIKE '%First%' OR mt.shift_name LIKE '%Morning%' OR (COALESCE(mt.shift_period,'') = '' AND TIME(mt.created_at) >= '06:00:00' AND TIME(mt.created_at) < '14:00:00'))";
-                } else {
-                    $shift_cond = "(LOWER(COALESCE(mt.shift_period,'')) IN ('second','afternoon','evening','2','shift2','shift 2','night','midnight') OR mt.shift_name LIKE '%Second%' OR mt.shift_name LIKE '%Afternoon%' OR mt.shift_name LIKE '%Evening%' OR (COALESCE(mt.shift_period,'') = '' AND (TIME(mt.created_at) >= '14:00:00' OR TIME(mt.created_at) < '06:00:00')))";
-                }
-
-                $q = $pdo->prepare("
-                    SELECT
-                        COALESCE(mti.category, '—') AS category,
-                        COALESCE(mti.product_name, '—') AS product_name,
-                        COALESCE(si.stock_level, 0) + SUM(mti.quantity) AS beg_stock,
-                        0 AS stock_in,
-                        SUM(mti.quantity)               AS stock_out,
-                        COALESCE(si.stock_level, 0)     AS end_stock,
-                        COALESCE(mti.unit_price, 0) AS unit_price,
-                        SUM(COALESCE(mti.subtotal, mti.quantity * mti.unit_price, 0)) AS amount,
-                        TRIM(GROUP_CONCAT(DISTINCT COALESCE(u.first_name,'') ORDER BY u.first_name SEPARATOR ', ')) AS encoder
-                    FROM merchandise_transaction_items mti
-                    JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
-                    LEFT JOIN users u ON mt.staff_id = u.id
-                    LEFT JOIN station_inventory si
-                        ON si.product_id = mti.product_id AND si.station_id = mt.station_id
-                    WHERE mt.station_id = ?
-                      AND DATE(mt.created_at) BETWEEN ? AND ?
-                      AND $shift_cond
-                      AND mti.item_type = 'merchandise'
-                    GROUP BY mti.product_id, mti.category, mti.product_name, mti.unit_price, si.stock_level
-                    ORDER BY mti.category, mti.product_name
-                ");
-                $q->execute([$station_id, $date_start, $date_end]);
-                $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-                // Fallback without item_type filter
-                if (empty($rows)) {
-                    $q2 = $pdo->prepare("
-                        SELECT
-                            COALESCE(mti.category, '—') AS category,
-                            COALESCE(mti.product_name, '—') AS product_name,
-                            COALESCE(si.stock_level, 0) + SUM(mti.quantity) AS beg_stock,
-                            0 AS stock_in,
-                            SUM(mti.quantity)               AS stock_out,
-                            COALESCE(si.stock_level, 0)     AS end_stock,
-                            COALESCE(mti.unit_price, 0) AS unit_price,
-                            SUM(COALESCE(mti.subtotal, mti.quantity * mti.unit_price, 0)) AS amount,
-                            TRIM(GROUP_CONCAT(DISTINCT COALESCE(u.first_name,'') ORDER BY u.first_name SEPARATOR ', ')) AS encoder
-                        FROM merchandise_transaction_items mti
-                        JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
-                        LEFT JOIN users u ON mt.staff_id = u.id
-                        LEFT JOIN station_inventory si
-                            ON si.product_id = mti.product_id AND si.station_id = mt.station_id
-                        WHERE mt.station_id = ?
-                          AND DATE(mt.created_at) BETWEEN ? AND ?
-                          AND $shift_cond
-                        GROUP BY mti.product_id, mti.category, mti.product_name, mti.unit_price, si.stock_level
-                        ORDER BY mti.category, mti.product_name
-                    ");
-                    $q2->execute([$station_id, $date_start, $date_end]);
-                    $rows = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                }
-                break;
-
-            case 'service_income':
-                $is_s1 = ($shift_start_t === '06:00:00');
-                if ($is_s1) {
-                    $shift_cond = "(TIME(jo.created_at) >= '06:00:00' AND TIME(jo.created_at) < '14:00:00')";
-                } else {
-                    $shift_cond = "NOT (TIME(jo.created_at) >= '06:00:00' AND TIME(jo.created_at) < '14:00:00')";
-                }
-
-                $q = $pdo->prepare("
-                    SELECT
-                        COALESCE(jo.service_type, 'General Service') AS service_type,
-                        COALESCE(jo.actual_labor_cost, jo.estimated_labor_cost, 0) AS labor_fee,
-                        COALESCE(jo.actual_parts_cost, jo.estimated_parts_cost, 0) AS parts_used,
-                        COALESCE(jo.total_cost, jo.estimated_cost, 0) AS total_amount,
-                        TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS encoder
-                    FROM job_orders jo
-                    LEFT JOIN users u ON jo.created_by = u.id
-                    WHERE jo.station_id = ?
-                      AND DATE(jo.created_at) BETWEEN ? AND ?
-                      AND $shift_cond
-                      AND jo.status = 'Completed'
-                    ORDER BY jo.service_type
-                ");
-                $q->execute([$station_id, $date_start, $date_end]);
-                $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                break;
-
-            case 'payments':
-                $is_s1 = ($shift_start_t === '06:00:00');
-                if ($is_s1) {
-                    $shift_cond = "(LOWER(COALESCE(ft.shift_period,'')) IN ('first','morning','1','shift1','shift 1') OR ft.shift_name LIKE '%First%' OR ft.shift_name LIKE '%Morning%' OR (COALESCE(ft.shift_period,'') = '' AND TIME(ft.transaction_date) >= '06:00:00' AND TIME(ft.transaction_date) < '14:00:00'))";
-                    $m_shift_cond = "(LOWER(COALESCE(mt.shift_period,'')) IN ('first','morning','1','shift1','shift 1') OR mt.shift_name LIKE '%First%' OR mt.shift_name LIKE '%Morning%' OR (COALESCE(mt.shift_period,'') = '' AND TIME(mt.created_at) >= '06:00:00' AND TIME(mt.created_at) < '14:00:00'))";
-                } else {
-                    $shift_cond = "(LOWER(COALESCE(ft.shift_period,'')) IN ('second','afternoon','evening','2','shift2','shift 2','night','midnight') OR ft.shift_name LIKE '%Second%' OR ft.shift_name LIKE '%Afternoon%' OR ft.shift_name LIKE '%Evening%' OR (COALESCE(ft.shift_period,'') = '' AND (TIME(ft.transaction_date) >= '14:00:00' OR TIME(ft.transaction_date) < '06:00:00')))";
-                    $m_shift_cond = "(LOWER(COALESCE(mt.shift_period,'')) IN ('second','afternoon','evening','2','shift2','shift 2','night','midnight') OR mt.shift_name LIKE '%Second%' OR mt.shift_name LIKE '%Afternoon%' OR mt.shift_name LIKE '%Evening%' OR (COALESCE(mt.shift_period,'') = '' AND (TIME(mt.created_at) >= '14:00:00' OR TIME(mt.created_at) < '06:00:00')))";
-                }
-
-                $q = $pdo->prepare("
-                    SELECT
-                        CASE
-                            WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fleet%' THEN 'Fleet'
-                            WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fuel card%'
-                              OR LOWER(COALESCE(payment_method,'')) LIKE '%efuel%' THEN 'E-Fuel'
-                            WHEN LOWER(COALESCE(payment_method,'')) LIKE '%card%' THEN 'Card'
-                            WHEN LOWER(COALESCE(payment_method,'')) LIKE '%wallet%'
-                              OR LOWER(COALESCE(payment_method,'')) LIKE '%gcash%'
-                              OR LOWER(COALESCE(payment_method,'')) LIKE '%maya%' THEN 'E-Wallet'
-                            WHEN LOWER(COALESCE(payment_method,'')) LIKE '%cash%'
-                              OR COALESCE(payment_method,'') = '' THEN 'Cash'
-                            ELSE COALESCE(NULLIF(payment_method,''), 'Cash')
-                        END AS mode_of_payment,
-                        COUNT(*) AS txn_count,
-                        SUM(COALESCE(total_amount, 0)) AS amount
-                    FROM fuel_transactions ft
-                    WHERE ft.station_id = ?
-                      AND DATE(ft.transaction_date) BETWEEN ? AND ?
-                      AND $shift_cond
-                    GROUP BY mode_of_payment
-                    ORDER BY amount DESC
-                ");
-                $q->execute([$station_id, $date_start, $date_end]);
-                $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-                // Include merchandise payments
-                try {
-                    $q2 = $pdo->prepare("
-                        SELECT
-                            CASE
-                                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fleet%' THEN 'Fleet'
-                                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%card%' THEN 'Card'
-                                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%wallet%'
-                                  OR LOWER(COALESCE(payment_method,'')) LIKE '%gcash%'
-                                  OR LOWER(COALESCE(payment_method,'')) LIKE '%maya%' THEN 'E-Wallet'
-                                ELSE 'Cash'
-                            END AS mode_of_payment,
-                            COUNT(*) AS txn_count,
-                            SUM(COALESCE(total_amount, 0)) AS amount
-                        FROM merchandise_transactions mt
-                        WHERE mt.station_id = ?
-                          AND DATE(mt.created_at) BETWEEN ? AND ?
-                          AND $m_shift_cond
-                        GROUP BY mode_of_payment
-                    ");
-                    $q2->execute([$station_id, $date_start, $date_end]);
-                    $merch_pay = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                    // Merge
-                    $merged = [];
-                    foreach (array_merge($rows, $merch_pay) as $r) {
-                        $m = $r['mode_of_payment'];
-                        if (!isset($merged[$m])) $merged[$m] = ['mode_of_payment'=>$m,'txn_count'=>0,'amount'=>0];
-                        $merged[$m]['txn_count'] += $r['txn_count'];
-                        $merged[$m]['amount']    += $r['amount'];
-                    }
-                    usort($merged, fn($a,$b) => $b['amount'] <=> $a['amount']);
-                    $rows = array_values($merged);
-                } catch (Exception $e2) { }
-                break;
-
-            case 'job_orders':
-                $is_s1 = ($shift_start_t === '06:00:00');
-                if ($is_s1) {
-                    $shift_cond = "(TIME(jo.created_at) >= '06:00:00' AND TIME(jo.created_at) < '14:00:00')";
-                } else {
-                    $shift_cond = "NOT (TIME(jo.created_at) >= '06:00:00' AND TIME(jo.created_at) < '14:00:00')";
-                }
-
-                $q = $pdo->prepare("
-                    SELECT
-                        COALESCE(jo.status, 'Pending') AS status,
-                        COALESCE(jo.service_type, '—')  AS service_type,
-                        COALESCE(jo.actual_parts_cost, jo.estimated_parts_cost, 0) AS parts_used,
-                        COALESCE(jo.actual_labor_cost, jo.estimated_labor_cost, 0) AS labor_fee,
-                        COALESCE(jo.total_cost, jo.estimated_cost, 0) AS total_amount,
-                        TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS encoder
-                    FROM job_orders jo
-                    LEFT JOIN users u ON jo.created_by = u.id
-                    WHERE jo.station_id = ?
-                      AND DATE(jo.created_at) BETWEEN ? AND ?
-                      AND $shift_cond
-                    ORDER BY FIELD(jo.status,'Pending','In Progress','Completed','Cancelled'), jo.created_at DESC
-                ");
-                $q->execute([$station_id, $date_start, $date_end]);
-                $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                break;
-
-            case 'customers':
-                // Check columns
-                try {
-                    $ck = $pdo->query("SHOW COLUMNS FROM merchandise_transactions LIKE 'customer_id'");
-                    $has_cid = $ck && $ck->rowCount() > 0;
-                } catch (Exception $e) { $has_cid = false; }
-
-                try {
-                    $lk = $pdo->query("SHOW COLUMNS FROM customers LIKE 'loyalty_points'");
-                    $has_lp = $lk && $lk->rowCount() > 0;
-                } catch (Exception $e) { $has_lp = false; }
-
-                try {
-                    $pk = $pdo->query("SHOW COLUMNS FROM customers LIKE 'points'");
-                    $has_points = $pk && $pk->rowCount() > 0;
-                } catch (Exception $e) { $has_points = false; }
-
-                if ($has_lp) {
-                    $lp_col = 'COALESCE(c.loyalty_points, 0)';
-                } elseif ($has_points) {
-                    $lp_col = 'COALESCE(c.points, 0)';
-                } else {
-                    $lp_col = '0';
-                }
-
-                $is_s1 = ($shift_start_t === '06:00:00');
-                if ($is_s1) {
-                    $shift_cond = "(LOWER(COALESCE(mt.shift_period,'')) IN ('first','morning','1','shift1','shift 1') OR mt.shift_name LIKE '%First%' OR mt.shift_name LIKE '%Morning%' OR (COALESCE(mt.shift_period,'') = '' AND TIME(mt.created_at) >= '06:00:00' AND TIME(mt.created_at) < '14:00:00'))";
-                } else {
-                    $shift_cond = "(LOWER(COALESCE(mt.shift_period,'')) IN ('second','afternoon','evening','2','shift2','shift 2','night','midnight') OR mt.shift_name LIKE '%Second%' OR mt.shift_name LIKE '%Afternoon%' OR mt.shift_name LIKE '%Evening%' OR (COALESCE(mt.shift_period,'') = '' AND (TIME(mt.created_at) >= '14:00:00' OR TIME(mt.created_at) < '06:00:00')))";
-                }
-
-                if ($has_cid) {
-                    $q = $pdo->prepare("
-                        SELECT
-                            COALESCE(c.name, '—') AS customer_name,
-                            CONCAT('#', c.id) AS customer_ref,
-                            COUNT(DISTINCT mt.id) AS txn_count,
-                            COALESCE(c.balance, 0) AS balance,
-                            $lp_col AS loyalty_points
-                        FROM customers c
-                        JOIN merchandise_transactions mt
-                            ON mt.customer_id = c.id
-                           AND mt.station_id = ?
-                           AND DATE(mt.created_at) BETWEEN ? AND ?
-                           AND $shift_cond
-                        WHERE c.station_id = ?
-                        GROUP BY c.id, c.name, c.balance
-                        ORDER BY txn_count DESC
-                    ");
-                    $q->execute([$station_id, $date_start, $date_end, $station_id]);
-                } else {
-                    $q = $pdo->prepare("
-                        SELECT
-                            COALESCE(c.name, '—') AS customer_name,
-                            CONCAT('#', c.id) AS customer_ref,
-                            COUNT(DISTINCT mt.id) AS txn_count,
-                            COALESCE(c.balance, 0) AS balance,
-                            $lp_col AS loyalty_points
-                        FROM customers c
-                        JOIN merchandise_transactions mt
-                            ON mt.customer_name = c.name
-                           AND mt.station_id = ?
-                           AND DATE(mt.created_at) BETWEEN ? AND ?
-                           AND $shift_cond
-                        WHERE c.station_id = ?
-                        GROUP BY c.id, c.name, c.balance
-                        ORDER BY txn_count DESC
-                    ");
-                    $q->execute([$station_id, $date_start, $date_end, $station_id]);
-                }
-                $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                break;
-        }
-    } catch (Exception $ex) {
-        $rows = [];
-    }
-    return $rows;
 }
 
 function srManagerTableExists(PDO $pdo, string $table): bool {
@@ -1018,79 +706,19 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
         </div>
     </div>
 
-    <?php foreach ($shifts as $snum => $sdef):
-        $rows = srFetchManager($pdo, (int)$station_id, $date_start, $date_end, $sdef['start'], $sdef['end'], $sec_key);
+    <?php
+    if ($sec_key === 'merchandise'):
+        // MERCHANDISE tab: render once as a full daily report (no shift split)
+        require_once __DIR__ . '/merchandise_service_report_new.php';
+        $reportData = fetchMerchandiseServiceReport($pdo, $station_id, $date_start, $date_end, null);
     ?>
-    <div class="sr-shift-block <?= ($active_shift!==0 && $active_shift!==$snum)?'hidden':'' ?>" data-shift="<?=$snum?>" data-section="<?=$sec_key?>">
-        <div class="sr-shift-heading"><?= $sdef['label'] ?></div>
+    <div class="sr-shift-block" data-shift="0" data-section="<?=$sec_key?>">
+        <div class="sr-shift-heading">Daily Report (All Shifts)</div>
 
-        <?php if ($sec_key === 'fuel_sales'): ?>
-        <table class="sr-table">
-            <thead><tr>
-                <th>Name</th><th>Beginning Reading</th><th>Ending Reading</th>
-                <th>Calibration</th><th>Dispensed Liters</th><th>Unit Price</th><th>Amount</th><th>Encoder</th>
-            </tr></thead>
-            <tbody>
-            <?php if (empty($rows)): ?><tr><td colspan="8" class="sr-empty">No fuel sales for this shift</td></tr>
-            <?php else:
-                $tl=0;$ta=0;
-                // Group pumps by fuel type and assign sequential numbers
-                $fuel_pump_counter = [];
-                foreach($rows as $r):
-                    $tl+=$r['dispensed_liters'];
-                    $ta+=$r['amount'];
-                    // Clean fuel type: remove number suffixes for display
-                    $fuel_display = preg_replace('/\s+\d+\s*-\s*\d+$/', '', $r['fuel_type']);
-
-                    // Track pump counter per fuel type
-                    if (!isset($fuel_pump_counter[$fuel_display])) {
-                        $fuel_pump_counter[$fuel_display] = [];
-                    }
-                    $pump_key = $r['pump_name'];
-                    if (!isset($fuel_pump_counter[$fuel_display][$pump_key])) {
-                        $fuel_pump_counter[$fuel_display][$pump_key] = count($fuel_pump_counter[$fuel_display]) + 1;
-                    }
-                    $pump_num = $fuel_pump_counter[$fuel_display][$pump_key];
-            ?>
-                <tr>
-                    <td>
-                        <div style="font-weight:700;font-size:.85rem;">Pump <?=$pump_num?></div>
-                        <div style="font-size:.78rem;color:#555;"><?=htmlspecialchars($fuel_display)?></div>
-                    </td>
-                    <td><?=number_format($r['beg_reading'],2)?></td>
-                    <td><?=number_format($r['end_reading'],2)?></td>
-                    <td><?=number_format($r['calibration'],2)?></td>
-                    <td><?=number_format($r['dispensed_liters'],2)?> L</td>
-                    <td>₱<?=number_format($r['unit_price'],2)?></td>
-                    <td>₱<?=number_format($r['amount'],2)?></td>
-                    <td><?=htmlspecialchars($r['encoder'])?></td>
-                </tr>
-            <?php endforeach; endif; ?>
-            </tbody>
-            <?php if (!empty($rows)): ?>
-            <tfoot><tr>
-                <td colspan="4" style="text-align:right;"><strong>SHIFT TOTALS:</strong></td>
-                <td><strong><?=number_format($tl,2)?> L</strong></td>
-                <td></td>
-                <td><strong>₱<?=number_format($ta,2)?></strong></td>
-                <td></td>
-            </tr></tfoot>
-            <?php endif; ?>
-        </table>
-
-        <?php elseif ($sec_key === 'merchandise'): 
-            // NEW 6-SECTION MERCHANDISE & SERVICE REPORT
-            // Include the new data fetching function
-            require_once __DIR__ . '/merchandise_service_report_new.php';
-            
-            // Fetch comprehensive report data (no shift filter for daily report)
-            $reportData = fetchMerchandiseServiceReport($pdo, $station_id, $date_start, $date_end, null);
-        ?>
-        
         <!-- SECTION 1: MERCHANDISE SALES -->
         <div style="margin-bottom: 24px;">
             <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">
-                1. MERCHANDISE SALES
+                MERCHANDISE SALES
             </div>
             <table class="sr-table">
                 <thead><tr>
@@ -1107,8 +735,8 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                         <td><?=htmlspecialchars($r['category'])?></td>
                         <td><?=htmlspecialchars($r['product'])?></td>
                         <td><?=number_format($r['qty'])?></td>
-                        <td>₱<?=number_format($r['unit_price'],2)?></td>
-                        <td>₱<?=number_format($r['amount'],2)?></td>
+                        <td>&#x20B1;<?=number_format($r['unit_price'],2)?></td>
+                        <td>&#x20B1;<?=number_format($r['amount'],2)?></td>
                         <td><?=htmlspecialchars($r['encoder'])?></td>
                     </tr>
                 <?php endforeach; endif; ?>
@@ -1116,7 +744,7 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                 <?php if (!empty($reportData['merchandise_sales'])): ?>
                 <tfoot><tr>
                     <td colspan="6" style="text-align:right;"><strong>Total Merchandise Sales:</strong></td>
-                    <td><strong>₱<?=number_format($ta,2)?></strong></td>
+                    <td><strong>&#x20B1;<?=number_format($ta,2)?></strong></td>
                     <td></td>
                 </tr></tfoot>
                 <?php endif; ?>
@@ -1126,7 +754,7 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
         <!-- SECTION 2: JOB ORDER / SERVICE SALES -->
         <div style="margin-bottom: 24px;">
             <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">
-                2. JOB ORDER / SERVICE SALES
+                JOB ORDER / SERVICE SALES
             </div>
             <table class="sr-table">
                 <thead><tr>
@@ -1142,9 +770,9 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                         <td><?=htmlspecialchars($r['customer'])?></td>
                         <td><?=htmlspecialchars($r['vehicle'])?></td>
                         <td><?=htmlspecialchars($r['service_type'])?></td>
-                        <td>₱<?=number_format($r['labor_fee'],2)?></td>
-                        <td>₱<?=number_format($r['parts_cost'],2)?></td>
-                        <td>₱<?=number_format($r['total_amount'],2)?></td>
+                        <td>&#x20B1;<?=number_format($r['labor_fee'],2)?></td>
+                        <td>&#x20B1;<?=number_format($r['parts_cost'],2)?></td>
+                        <td>&#x20B1;<?=number_format($r['total_amount'],2)?></td>
                         <td><?=htmlspecialchars($r['encoder'])?></td>
                     </tr>
                 <?php endforeach; endif; ?>
@@ -1153,12 +781,12 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                 <tfoot>
                     <tr>
                         <td colspan="4" style="text-align:right;"><strong>Total Service Income (Labor):</strong></td>
-                        <td><strong>₱<?=number_format($labor,2)?></strong></td>
+                        <td><strong>&#x20B1;<?=number_format($labor,2)?></strong></td>
                         <td colspan="3"></td>
                     </tr>
                     <tr>
                         <td colspan="4" style="text-align:right;"><strong>Total Job Order Sales:</strong></td>
-                        <td colspan="2"><strong>₱<?=number_format($total,2)?></strong></td>
+                        <td colspan="2"><strong>&#x20B1;<?=number_format($total,2)?></strong></td>
                         <td colspan="2"></td>
                     </tr>
                 </tfoot>
@@ -1169,7 +797,7 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
         <!-- SECTION 3: PARTS USED IN JOB ORDERS -->
         <div style="margin-bottom: 24px;">
             <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">
-                3. PARTS USED IN JOB ORDERS (FROM MERCHANDISE PRODUCTS)
+                PARTS USED IN JOB ORDERS (FROM MERCHANDISE PRODUCTS)
             </div>
             <p style="font-size: 11px; color: #64748b; margin: 0 0 8px 0; font-style: italic;">Source: Merchandise Inventory Products</p>
             <table class="sr-table">
@@ -1187,8 +815,8 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                         <td><?=htmlspecialchars($r['product_name'])?></td>
                         <td><?=htmlspecialchars($r['category'])?></td>
                         <td><?=number_format($r['qty_used'])?></td>
-                        <td>₱<?=number_format($r['unit_price'],2)?></td>
-                        <td>₱<?=number_format($r['total_cost'],2)?></td>
+                        <td>&#x20B1;<?=number_format($r['unit_price'],2)?></td>
+                        <td>&#x20B1;<?=number_format($r['total_cost'],2)?></td>
                     </tr>
                 <?php endforeach; endif; ?>
                 </tbody>
@@ -1197,7 +825,7 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                     <td colspan="4" style="text-align:right;"><strong>Total Parts Used:</strong></td>
                     <td><strong><?=number_format($qty)?></strong></td>
                     <td style="text-align:right;"><strong>Total Cost:</strong></td>
-                    <td><strong>₱<?=number_format($cost,2)?></strong></td>
+                    <td><strong>&#x20B1;<?=number_format($cost,2)?></strong></td>
                 </tr></tfoot>
                 <?php endif; ?>
             </table>
@@ -1206,7 +834,7 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
         <!-- SECTION 4: PAYMENT BREAKDOWN -->
         <div style="margin-bottom: 24px;">
             <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">
-                4. PAYMENT BREAKDOWN
+                PAYMENT BREAKDOWN
             </div>
             <table class="sr-table">
                 <thead><tr>
@@ -1219,7 +847,7 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                     <tr>
                         <td><?=htmlspecialchars($r['payment_method'])?></td>
                         <td><?=number_format($r['transactions'])?></td>
-                        <td>₱<?=number_format($r['amount'],2)?></td>
+                        <td>&#x20B1;<?=number_format($r['amount'],2)?></td>
                     </tr>
                 <?php endforeach; endif; ?>
                 </tbody>
@@ -1227,7 +855,7 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                 <tfoot><tr>
                     <td style="text-align:right;"><strong>TOTAL:</strong></td>
                     <td><strong><?=number_format($txn)?></strong></td>
-                    <td><strong>₱<?=number_format($amt,2)?></strong></td>
+                    <td><strong>&#x20B1;<?=number_format($amt,2)?></strong></td>
                 </tr></tfoot>
                 <?php endif; ?>
             </table>
@@ -1236,27 +864,25 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
         <!-- SECTION 5: SHIFT SALES SUMMARY -->
         <div style="margin-bottom: 24px;">
             <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">
-                5. SHIFT SALES SUMMARY
+                SHIFT SALES SUMMARY
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                <!-- Shift 1 -->
                 <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px;">
                     <div style="font-weight: 700; margin-bottom: 8px;">Shift 1 (6:00 AM – 2:00 PM)</div>
                     <table style="width: 100%; font-size: 11px;">
-                        <tr><td>Merchandise Sales</td><td style="text-align: right;">₱<?=number_format($reportData['shift_summary']['shift1']['merchandise_sales']??0,2)?></td></tr>
-                        <tr><td>Labor Income</td><td style="text-align: right;">₱<?=number_format($reportData['shift_summary']['shift1']['labor_income']??0,2)?></td></tr>
-                        <tr><td>Parts Sales</td><td style="text-align: right;">₱<?=number_format($reportData['shift_summary']['shift1']['parts_sales']??0,2)?></td></tr>
-                        <tr style="border-top: 2px solid #00264D; font-weight: 700;"><td>Grand Total</td><td style="text-align: right;">₱<?=number_format($reportData['shift_summary']['shift1']['grand_total']??0,2)?></td></tr>
+                        <tr><td>Merchandise Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift1']['merchandise_sales']??0,2)?></td></tr>
+                        <tr><td>Labor Income</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift1']['labor_income']??0,2)?></td></tr>
+                        <tr><td>Parts Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift1']['parts_sales']??0,2)?></td></tr>
+                        <tr style="border-top: 2px solid #00264D; font-weight: 700;"><td>Grand Total</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift1']['grand_total']??0,2)?></td></tr>
                     </table>
                 </div>
-                <!-- Shift 2 -->
                 <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px;">
                     <div style="font-weight: 700; margin-bottom: 8px;">Shift 2 (2:00 PM – 12:00 AM)</div>
                     <table style="width: 100%; font-size: 11px;">
-                        <tr><td>Merchandise Sales</td><td style="text-align: right;">₱<?=number_format($reportData['shift_summary']['shift2']['merchandise_sales']??0,2)?></td></tr>
-                        <tr><td>Labor Income</td><td style="text-align: right;">₱<?=number_format($reportData['shift_summary']['shift2']['labor_income']??0,2)?></td></tr>
-                        <tr><td>Parts Sales</td><td style="text-align: right;">₱<?=number_format($reportData['shift_summary']['shift2']['parts_sales']??0,2)?></td></tr>
-                        <tr style="border-top: 2px solid #00264D; font-weight: 700;"><td>Grand Total</td><td style="text-align: right;">₱<?=number_format($reportData['shift_summary']['shift2']['grand_total']??0,2)?></td></tr>
+                        <tr><td>Merchandise Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift2']['merchandise_sales']??0,2)?></td></tr>
+                        <tr><td>Labor Income</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift2']['labor_income']??0,2)?></td></tr>
+                        <tr><td>Parts Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift2']['parts_sales']??0,2)?></td></tr>
+                        <tr style="border-top: 2px solid #00264D; font-weight: 700;"><td>Grand Total</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift2']['grand_total']??0,2)?></td></tr>
                     </table>
                 </div>
             </div>
@@ -1265,22 +891,79 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
         <!-- SECTION 6: OVERALL DAILY SUMMARY -->
         <div style="margin-bottom: 24px;">
             <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">
-                6. OVERALL DAILY SUMMARY
+                OVERALL DAILY SUMMARY
             </div>
             <table class="sr-table">
                 <thead><tr>
                     <th>Description</th><th style="text-align: right;">Amount</th>
                 </tr></thead>
                 <tbody>
-                    <tr><td>Merchandise Sales</td><td style="text-align: right;">₱<?=number_format($reportData['daily_summary']['merchandise_sales'],2)?></td></tr>
-                    <tr><td>Labor Income</td><td style="text-align: right;">₱<?=number_format($reportData['daily_summary']['labor_income'],2)?></td></tr>
-                    <tr><td>Parts Used (Merchandise Products)</td><td style="text-align: right;">₱<?=number_format($reportData['daily_summary']['parts_used'],2)?></td></tr>
-                    <tr style="background: #f0f4ff;"><td><strong>Grand Total Sales</strong></td><td style="text-align: right;"><strong>₱<?=number_format($reportData['daily_summary']['grand_total'],2)?></strong></td></tr>
+                    <tr><td>Merchandise Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['daily_summary']['merchandise_sales'],2)?></td></tr>
+                    <tr><td>Labor Income</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['daily_summary']['labor_income'],2)?></td></tr>
+                    <tr><td>Parts Used (Merchandise Products)</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['daily_summary']['parts_used'],2)?></td></tr>
+                    <tr style="background: #f0f4ff;"><td><strong>Grand Total Sales</strong></td><td style="text-align: right;"><strong>&#x20B1;<?=number_format($reportData['daily_summary']['grand_total'],2)?></strong></td></tr>
                     <tr><td>Total Transactions</td><td style="text-align: right;"><?=number_format($reportData['daily_summary']['total_transactions'])?></td></tr>
                     <tr><td>Customers Served</td><td style="text-align: right;"><?=number_format($reportData['daily_summary']['customers_served'])?></td></tr>
                 </tbody>
             </table>
         </div>
+
+    </div><!-- end sr-shift-block merchandise -->
+
+    <?php else:
+        // All other tabs: render per-shift using the loop
+        foreach ($shifts as $snum => $sdef):
+            $rows = srFetchManager($pdo, (int)$station_id, $date_start, $date_end, $sdef['start'], $sdef['end'], $sec_key);
+    ?>
+    <div class="sr-shift-block <?= ($active_shift!==0 && $active_shift!==$snum)?'hidden':'' ?>" data-shift="<?=$snum?>" data-section="<?=$sec_key?>">
+        <div class="sr-shift-heading"><?= $sdef['label'] ?></div>
+
+        <?php if ($sec_key === 'fuel_sales'): ?>
+        <table class="sr-table">
+            <thead><tr>
+                <th>Name</th><th>Beginning Reading</th><th>Ending Reading</th>
+                <th>Calibration</th><th>Dispensed Liters</th><th>Unit Price</th><th>Amount</th><th>Encoder</th>
+            </tr></thead>
+            <tbody>
+            <?php if (empty($rows)): ?><tr><td colspan="8" class="sr-empty">No fuel sales for this shift</td></tr>
+            <?php else:
+                $tl=0;$ta=0;
+                $fuel_pump_counter = [];
+                foreach($rows as $r):
+                    $tl+=$r['dispensed_liters'];
+                    $ta+=$r['amount'];
+                    $fuel_display = preg_replace('/\s+\d+\s*-\s*\d+$/', '', $r['fuel_type']);
+                    if (!isset($fuel_pump_counter[$fuel_display])) $fuel_pump_counter[$fuel_display] = [];
+                    $pump_key = $r['pump_name'];
+                    if (!isset($fuel_pump_counter[$fuel_display][$pump_key]))
+                        $fuel_pump_counter[$fuel_display][$pump_key] = count($fuel_pump_counter[$fuel_display]) + 1;
+                    $pump_num = $fuel_pump_counter[$fuel_display][$pump_key];
+            ?>
+                <tr>
+                    <td>
+                        <div style="font-weight:700;font-size:.85rem;">Pump <?=$pump_num?></div>
+                        <div style="font-size:.78rem;color:#555;"><?=htmlspecialchars($fuel_display)?></div>
+                    </td>
+                    <td><?=number_format($r['beg_reading'],2)?></td>
+                    <td><?=number_format($r['end_reading'],2)?></td>
+                    <td><?=number_format($r['calibration'],2)?></td>
+                    <td><?=number_format($r['dispensed_liters'],2)?> L</td>
+                    <td>&#x20B1;<?=number_format($r['unit_price'],2)?></td>
+                    <td>&#x20B1;<?=number_format($r['amount'],2)?></td>
+                    <td><?=htmlspecialchars($r['encoder'])?></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+            <?php if (!empty($rows)): ?>
+            <tfoot><tr>
+                <td colspan="4" style="text-align:right;"><strong>SHIFT TOTALS:</strong></td>
+                <td><strong><?=number_format($tl,2)?> L</strong></td>
+                <td></td>
+                <td><strong>&#x20B1;<?=number_format($ta,2)?></strong></td>
+                <td></td>
+            </tr></tfoot>
+            <?php endif; ?>
+        </table>
 
         <?php elseif ($sec_key === 'service_income'): ?>
         <table class="sr-table">
@@ -1289,20 +972,22 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
             </tr></thead>
             <tbody>
             <?php if (empty($rows)): ?><tr><td colspan="5" class="sr-empty">No service income for this shift</td></tr>
-            <?php else: $ta=0; foreach($rows as $r): $ta+=$r['total_amount']; ?>
+            <?php else: $tl=0; $tp=0; $ta=0; foreach($rows as $r): $tl+=$r['labor_fee']; $tp+=$r['parts_used']; $ta+=$r['total_amount']; ?>
                 <tr>
                     <td><?=htmlspecialchars($r['service_type'])?></td>
-                    <td>₱<?=number_format($r['labor_fee'],2)?></td>
-                    <td>₱<?=number_format($r['parts_used'],2)?></td>
-                    <td>₱<?=number_format($r['total_amount'],2)?></td>
+                    <td>&#x20B1;<?=number_format($r['labor_fee'],2)?></td>
+                    <td>&#x20B1;<?=number_format($r['parts_used'],2)?></td>
+                    <td>&#x20B1;<?=number_format($r['total_amount'],2)?></td>
                     <td><?=htmlspecialchars($r['encoder'])?></td>
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
             <?php if (!empty($rows)): ?>
             <tfoot><tr>
-                <td colspan="3" style="text-align:right;"><strong>SHIFT TOTALS:</strong></td>
-                <td><strong>₱<?=number_format($ta,2)?></strong></td>
+                <td><strong>TOTAL</strong></td>
+                <td><strong>&#x20B1;<?=number_format($tl,2)?></strong></td>
+                <td><strong>&#x20B1;<?=number_format($tp,2)?></strong></td>
+                <td><strong>&#x20B1;<?=number_format($ta,2)?></strong></td>
                 <td></td>
             </tr></tfoot>
             <?php endif; ?>
@@ -1315,45 +1000,51 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
             </tr></thead>
             <tbody>
             <?php if (empty($rows)): ?><tr><td colspan="3" class="sr-empty">No payment records for this shift</td></tr>
-            <?php else: $ta=0; foreach($rows as $r): $ta+=$r['amount']; ?>
+            <?php else: $tc=0; $ta=0; foreach($rows as $r): $tc+=$r['txn_count']; $ta+=$r['amount']; ?>
                 <tr>
                     <td><?=htmlspecialchars($r['mode_of_payment'])?></td>
                     <td><?=number_format($r['txn_count'])?></td>
-                    <td>₱<?=number_format($r['amount'],2)?></td>
+                    <td>&#x20B1;<?=number_format($r['amount'],2)?></td>
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
             <?php if (!empty($rows)): ?>
             <tfoot><tr>
-                <td style="text-align:right;"><strong>SHIFT TOTALS:</strong></td>
-                <td></td>
-                <td><strong>₱<?=number_format($ta,2)?></strong></td>
+                <td><strong>TOTAL</strong></td>
+                <td><strong><?=number_format($tc)?></strong></td>
+                <td><strong>&#x20B1;<?=number_format($ta,2)?></strong></td>
             </tr></tfoot>
             <?php endif; ?>
         </table>
 
-        <?php elseif ($sec_key === 'job_orders'): ?>
+        <?php elseif ($sec_key === 'job_orders'): 
+            $status_colors=['Pending'=>'#f59e0b','In Progress'=>'#3b82f6','Completed'=>'#22c55e','Cancelled'=>'#ef4444'];
+        ?>
         <table class="sr-table">
             <thead><tr>
-                <th>Status</th><th>Service Type</th><th>Parts Used</th><th>Labor Fee</th><th>Total Amount</th><th>Encoder</th>
+                <th>Status</th><th>Service Type</th><th>Parts Used</th>
+                <th>Labor Fee</th><th>Total Service Amount</th><th>Encoder</th>
             </tr></thead>
             <tbody>
             <?php if (empty($rows)): ?><tr><td colspan="6" class="sr-empty">No job orders for this shift</td></tr>
-            <?php else: $ta=0; foreach($rows as $r): $ta+=$r['total_amount']; ?>
+            <?php else: $tp=0;$tl=0;$ta=0; foreach($rows as $r): $tp+=$r['parts_used'];$tl+=$r['labor_fee'];$ta+=$r['total_amount'];
+                $sc=$status_colors[$r['status']]??'#64748b'; ?>
                 <tr>
-                    <td><?=htmlspecialchars($r['status'])?></td>
+                    <td><span class="sr-status" style="background:<?=$sc?>"><?=htmlspecialchars($r['status'])?></span></td>
                     <td><?=htmlspecialchars($r['service_type'])?></td>
-                    <td>₱<?=number_format($r['parts_used'],2)?></td>
-                    <td>₱<?=number_format($r['labor_fee'],2)?></td>
-                    <td>₱<?=number_format($r['total_amount'],2)?></td>
+                    <td>&#x20B1;<?=number_format($r['parts_used'],2)?></td>
+                    <td>&#x20B1;<?=number_format($r['labor_fee'],2)?></td>
+                    <td>&#x20B1;<?=number_format($r['total_amount'],2)?></td>
                     <td><?=htmlspecialchars($r['encoder'])?></td>
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
-            <?php if (!empty($rows)): ?>
+            <?php if(!empty($rows)): ?>
             <tfoot><tr>
-                <td colspan="4" style="text-align:right;"><strong>SHIFT TOTALS:</strong></td>
-                <td><strong>₱<?=number_format($ta,2)?></strong></td>
+                <td colspan="2"><strong>TOTAL</strong></td>
+                <td><strong>&#x20B1;<?=number_format($tp,2)?></strong></td>
+                <td><strong>&#x20B1;<?=number_format($tl,2)?></strong></td>
+                <td><strong>&#x20B1;<?=number_format($ta,2)?></strong></td>
                 <td></td>
             </tr></tfoot>
             <?php endif; ?>
@@ -1362,26 +1053,34 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
         <?php elseif ($sec_key === 'customers'): ?>
         <table class="sr-table">
             <thead><tr>
-                <th>Customer Name</th><th>Customer Ref</th><th>Transaction Count</th><th>Balance</th><th>Loyalty Points</th>
+                <th>Customer Name / ID</th><th>Transactions Made</th><th>Balance</th><th>Loyalty Points</th>
             </tr></thead>
             <tbody>
-            <?php if (empty($rows)): ?><tr><td colspan="5" class="sr-empty">No customer transactions for this shift</td></tr>
-            <?php else: foreach($rows as $r): ?>
+            <?php if (empty($rows)): ?><tr><td colspan="4" class="sr-empty">No customer transactions for this shift</td></tr>
+            <?php else: $tt=0;$tb=0;$tlp=0; foreach($rows as $r): $tt+=$r['txn_count'];$tb+=$r['balance'];$tlp+=$r['loyalty_points']; ?>
                 <tr>
-                    <td><?=htmlspecialchars($r['customer_name'])?></td>
-                    <td><?=htmlspecialchars($r['customer_ref'])?></td>
+                    <td><?=htmlspecialchars($r['customer_name'])?> / <?=htmlspecialchars($r['customer_ref'])?></td>
                     <td><?=number_format($r['txn_count'])?></td>
-                    <td>₱<?=number_format($r['balance'],2)?></td>
-                    <td><?=number_format($r['loyalty_points'])?></td>
+                    <td>&#x20B1;<?=number_format($r['balance'],2)?></td>
+                    <td><?=number_format($r['loyalty_points'])?> pts</td>
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
+            <?php if(!empty($rows)): ?>
+            <tfoot><tr>
+                <td><strong>TOTAL</strong></td>
+                <td><strong><?=number_format($tt)?></strong></td>
+                <td><strong>&#x20B1;<?=number_format($tb,2)?></strong></td>
+                <td><strong><?=number_format($tlp)?> pts</strong></td>
+            </tr></tfoot>
+            <?php endif; ?>
         </table>
 
         <?php endif; ?>
     </div>
-    <?php endforeach; ?>
-
+    <?php endforeach; // end shifts loop
+    endif; // end merchandise / other-tabs condition
+    ?>
 </div>
 <?php endforeach; ?>
 
@@ -1393,9 +1092,14 @@ function srSwitchSection(sectionKey) {
     const panel = document.getElementById('sr-panel-' + sectionKey);
     if (panel) panel.classList.add('active');
     
-    // Update tab buttons
+    // Update tab buttons safely
     document.querySelectorAll('.sr-section-tab').forEach(btn => btn.classList.remove('active'));
-    event.target.closest('.sr-section-tab').classList.add('active');
+    const activeTabBtn = document.querySelector(`.sr-section-tab[onclick*="'${sectionKey}'"]`);
+    if (activeTabBtn) activeTabBtn.classList.add('active');
+
+    // Update hidden input in the date filter form
+    const hiddenInput = document.getElementById('hiddenSectionInput');
+    if (hiddenInput) hiddenInput.value = sectionKey;
     
     // Update URL without reload
     const url = new URL(window.location);

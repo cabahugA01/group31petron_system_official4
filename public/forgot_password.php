@@ -49,18 +49,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Clean any stray CR/LF from email column
             try { $pdo->exec("UPDATE users SET email = TRIM(REPLACE(REPLACE(email, CHAR(13), ''), CHAR(10), ''))"); } catch(Exception $ce) {}
 
-            // Detect input type: EMAIL or USERNAME only
-            $detected_type = (strpos($recovery_id, '@') !== false) ? 'email' : 'username';
-
-            // Query user — use TRIM(email) to handle any residual dirty data
-            if ($detected_type === 'email') {
-                $sql = "SELECT `{$uid_col}` AS user_id, username, TRIM(email) AS email FROM users WHERE TRIM(email) = ? AND status = ? LIMIT 1";
-            } else {
-                $sql = "SELECT `{$uid_col}` AS user_id, username, TRIM(email) AS email FROM users WHERE username = ? AND status = ? LIMIT 1";
-            }
+            // Query user — match email or username case-insensitively and handle any status case variations
+            $sql = "SELECT `{$uid_col}` AS user_id, username, TRIM(email) AS email 
+                    FROM users 
+                    WHERE (LOWER(TRIM(email)) = LOWER(?) OR LOWER(TRIM(username)) = LOWER(?)) 
+                      AND LOWER(TRIM(status)) = 'active' 
+                    LIMIT 1";
 
             $stmt = $pdo->prepare($sql);
-            $stmt->execute([trim($recovery_id), $status_active]);
+            $stmt->execute([trim($recovery_id), trim($recovery_id)]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
             // Strip any remaining CR/LF from fetched email
@@ -81,19 +78,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Generate OTP
                     $otp_code = sprintf("%06d", random_int(100000, 999999));
 
-                    // Store OTP using DATE_ADD(NOW()) so expiry matches MySQL server time
-                    // (avoids PHP timezone vs MySQL timezone mismatch)
+                    // Store OTP in DB — delete old ones first
                     $pdo->prepare("DELETE FROM password_reset_tokens WHERE user_id = ?")->execute([$user['user_id']]);
                     $pdo->prepare("INSERT INTO password_reset_tokens (user_id, token, token_type, expires_at, ip_address) VALUES (?, ?, 'reset', DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)")
                         ->execute([$user['user_id'], $otp_code, $_SERVER['REMOTE_ADDR']]);
 
-                    // Attempt to send email (non-blocking — redirect happens regardless)
+                    // Send OTP email — give it enough time to complete SMTP handshake
+                    $email_sent = false;
                     if (function_exists('sendPasswordResetOTP')) {
-                        sendPasswordResetOTP($user['email'], $otp_code);
+                        @set_time_limit(60); // allow up to 60s for SMTP
+                        $email_sent = (bool) sendPasswordResetOTP($user['email'], $otp_code);
+                        if (!$email_sent) {
+                            error_log("Password reset OTP email FAILED for user_id={$user['user_id']} email={$user['email']}");
+                        }
                     }
 
-                    // Always redirect to verify_otp.php (dev mode shows OTP hint there)
-                    header("Location: verify_otp.php?email=" . urlencode($user['email']));
+                    // Redirect to OTP verify page; pass email_failed hint for dev feedback
+                    $redirect = "verify_otp.php?email=" . urlencode($user['email']);
+                    if (!$email_sent) {
+                        $redirect .= "&email_failed=1";
+                    }
+                    header("Location: {$redirect}");
                     exit;
                 }
             } else {

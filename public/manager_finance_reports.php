@@ -147,18 +147,18 @@ require_once __DIR__ . '/../partials/header.php';
     border-color: #16a34a !important;
 }
 .rpt-export-btn:nth-child(1):hover {
-    background: #16a34a !important;
-    color: #ffffff !important;
+    background: #f0fdf4 !important;
+    border-color: #15803d !important;
 }
 
-/* CSV Button - Dark Blue Border */
+/* CSV Button - Blue Border */
 .rpt-export-btn:nth-child(2) {
-    color: #1e3a8a !important;
-    border-color: #1e3a8a !important;
+    color: #2563eb !important;
+    border-color: #2563eb !important;
 }
 .rpt-export-btn:nth-child(2):hover {
-    background: #1e3a8a !important;
-    color: #ffffff !important;
+    background: #eff6ff !important;
+    border-color: #1d4ed8 !important;
 }
 
 /* PDF Button - Red Border */
@@ -167,8 +167,8 @@ require_once __DIR__ . '/../partials/header.php';
     border-color: #dc2626 !important;
 }
 .rpt-export-btn:nth-child(3):hover {
-    background: #dc2626 !important;
-    color: #ffffff !important;
+    background: #fef2f2 !important;
+    border-color: #b91c1c !important;
 }
 
 .rpt-export-btn i {
@@ -635,18 +635,6 @@ require_once __DIR__ . '/../partials/header.php';
                             <td></td>
                         </tr>
                     </tbody>
-                    <tfoot>
-                        <tr>
-                            <td colspan="6" style="text-align:center;padding:16px;background:#f0f4ff;">
-                                <strong>Reconciliation Status:</strong>
-                                <?php if (abs($variance) < 100): ?>
-                                    <span style="color:#0d7d3e;">✓ Reconciled - Variance within acceptable range</span>
-                                <?php else: ?>
-                                    <span style="color:#c62828;">⚠ Variance Detected - Manager review required</span>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                    </tfoot>
                 </table>
             </div>
 
