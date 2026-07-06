@@ -1,194 +1,261 @@
 <?php
 /**
  * Submit Master Data Request API
- * 
- * Staff submits requests for new Vehicle Types, Service Types, or Products
- * These require manager approval before being added to the system
+ * backend/api/submit_master_data_request.php
+ *
+ * Serves both POST (submit request) and GET (list requests with filters).
  */
-require_once __DIR__ . '/../../backend/lib.php';
+if (session_status() === PHP_SESSION_NONE) session_start();
+require_once __DIR__ . '/../lib.php';
 require_once __DIR__ . '/../../public/db_connect.php';
 require_login();
 
-header('Content-Type: application/json');
+header('Content-Type: application/json; charset=utf-8');
 
 $me   = current_user();
 $role = role_key($me['role'] ?? '');
 
-// Only staff and above can submit requests
-if (!in_array($role, ['staff', 'manager', 'admin', 'superadmin'])) {
+// Only operational roles can submit/view requests
+$allowed_roles = ['staff', 'manager', 'admin', 'superadmin', 'developer'];
+if (!in_array($role, $allowed_roles)) {
+    http_response_code(403);
     echo json_encode(['success' => false, 'error' => 'Unauthorized.']);
     exit;
 }
 
-// Ensure table exists
-try {
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS master_data_requests (
-            id                  INT AUTO_INCREMENT PRIMARY KEY,
-            request_type        ENUM('vehicle_type', 'service_type', 'product') NOT NULL,
-            request_data        JSON NOT NULL,
-            requested_by        INT NOT NULL,
-            station_id          INT NULL,
-            request_reason      TEXT NULL,
-            status              ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
-            reviewed_by         INT NULL,
-            review_note         VARCHAR(500) NULL,
-            created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            reviewed_at         DATETIME NULL,
-            INDEX idx_status (status),
-            INDEX idx_request_type (request_type),
-            INDEX idx_requested_by (requested_by),
-            INDEX idx_created_at (created_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    ");
-} catch (PDOException $e) {
-    // Table might already exist, continue
-}
+$stationId = !empty($me['station_id']) ? (int)$me['station_id'] : null;
 
 // ── Handle POST: Submit new request ──────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true);
     
-    $requestType = $input['request_type'] ?? '';
+    $reqType     = $input['request_type'] ?? ''; // 'vehicle_type', 'service_type', 'product'
     $requestData = $input['request_data'] ?? null;
-    $reason      = trim($input['reason'] ?? '');
-    
-    // Validation
-    if (!in_array($requestType, ['vehicle_type', 'service_type', 'product'])) {
-        echo json_encode(['success' => false, 'error' => 'Invalid request type.']);
-        exit;
-    }
     
     if (empty($requestData) || !is_array($requestData)) {
+        http_response_code(400);
         echo json_encode(['success' => false, 'error' => 'Request data is required.']);
         exit;
     }
-    
-    if (empty($reason)) {
-        echo json_encode(['success' => false, 'error' => 'Reason for request is required.']);
-        exit;
-    }
-    
-    // Specific validation based on request type
-    if ($requestType === 'vehicle_type') {
-        if (empty($requestData['vehicle_name'])) {
-            echo json_encode(['success' => false, 'error' => 'Vehicle type name is required.']);
-            exit;
-        }
-        if (empty($requestData['category'])) {
-            echo json_encode(['success' => false, 'error' => 'Vehicle category is required.']);
-            exit;
-        }
-    } elseif ($requestType === 'service_type') {
-        if (empty($requestData['service_name'])) {
-            echo json_encode(['success' => false, 'error' => 'Service name is required.']);
-            exit;
-        }
-        if (empty($requestData['service_category'])) {
-            echo json_encode(['success' => false, 'error' => 'Service category is required.']);
-            exit;
-        }
-        if (!isset($requestData['default_price']) || $requestData['default_price'] < 0) {
-            echo json_encode(['success' => false, 'error' => 'Valid service fee is required.']);
-            exit;
-        }
-    } elseif ($requestType === 'product') {
+
+    $category = '';
+    $sourceModule = '';
+
+    if ($reqType === 'product') {
+        $category = 'Merchandise Product';
+        $sourceModule = 'Merchandise';
         if (empty($requestData['product_name'])) {
+            http_response_code(400);
             echo json_encode(['success' => false, 'error' => 'Product name is required.']);
             exit;
         }
         if (empty($requestData['category'])) {
-            echo json_encode(['success' => false, 'error' => 'Product category is required.']);
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Category is required.']);
             exit;
         }
+        if (empty($requestData['unit'])) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Unit is required.']);
+            exit;
+        }
+    } elseif ($reqType === 'service_type') {
+        $category = 'Service Type';
+        $sourceModule = 'Job Order';
+        if (empty($requestData['service_name'])) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Service name is required.']);
+            exit;
+        }
+        if (empty($requestData['category'])) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Category is required.']);
+            exit;
+        }
+        if (!isset($requestData['suggested_price']) || $requestData['suggested_price'] <= 0) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Valid suggested price is required.']);
+            exit;
+        }
+    } elseif ($reqType === 'vehicle_type') {
+        $category = 'Vehicle';
+        $sourceModule = 'Job Order';
+        if (empty($requestData['vehicle_brand'])) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Vehicle brand is required.']);
+            exit;
+        }
+        if (empty($requestData['vehicle_model'])) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Vehicle model is required.']);
+            exit;
+        }
+        if (empty($requestData['vehicle_type'])) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Vehicle type is required.']);
+            exit;
+        }
+        if (empty($requestData['fuel_type'])) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Fuel type is required.']);
+            exit;
+        }
+    } else {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'Invalid request type.']);
+        exit;
     }
-    
+
     try {
-        // Get user's station ID if available
-        $stationId = !empty($me['station_id']) ? (int)$me['station_id'] : null;
-        
+        $pdo->beginTransaction();
+
         $stmt = $pdo->prepare("
             INSERT INTO master_data_requests 
-                (request_type, request_data, requested_by, station_id, request_reason, status, created_at)
+                (category, source_module, requested_by, station_id, status, data_payload, created_at)
             VALUES 
-                (:request_type, :request_data, :requested_by, :station_id, :reason, 'pending', NOW())
+                (?, ?, ?, ?, 'Pending', ?, NOW())
         ");
-        
         $stmt->execute([
-            ':request_type'  => $requestType,
-            ':request_data'  => json_encode($requestData),
-            ':requested_by'  => $me['id'],
-            ':station_id'    => $stationId,
-            ':reason'        => $reason
+            $category,
+            $sourceModule,
+            $me['id'],
+            $stationId,
+            json_encode($requestData)
         ]);
-        
+
         $requestId = $pdo->lastInsertId();
-        
+        $requestNo = sprintf('MDR-%05d', $requestId);
+
+        $update = $pdo->prepare("UPDATE master_data_requests SET request_no = ? WHERE id = ?");
+        $update->execute([$requestNo, $requestId]);
+
+        $pdo->commit();
+
+        // Send notification to Managers
+        try {
+            $m_stmt = $pdo->prepare("SELECT id FROM users WHERE LOWER(role) = 'manager' AND (station_id = ? OR station_id IS NULL OR station_id = 0)");
+            $m_stmt->execute([$stationId]);
+            $managers = $m_stmt->fetchAll(PDO::FETCH_COLUMN);
+            if (empty($managers)) {
+                $managers = $pdo->query("SELECT id FROM users WHERE LOWER(role) = 'manager'")->fetchAll(PDO::FETCH_COLUMN);
+            }
+
+            $requestedItem = '';
+            if ($reqType === 'product') $requestedItem = $requestData['product_name'];
+            elseif ($reqType === 'service_type') $requestedItem = $requestData['service_name'];
+            else $requestedItem = $requestData['vehicle_brand'] . ' ' . $requestData['vehicle_model'];
+
+            $requesterName = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
+            if (empty($requesterName)) $requesterName = $me['name'] ?? 'Staff';
+
+            $notif_stmt = $pdo->prepare("
+                INSERT INTO notifications 
+                    (user_id, type, event_type, severity, title, message, source_key, redirect_url, status, created_at)
+                VALUES 
+                    (?, 'info', 'master_data_request', 'medium', ?, ?, ?, 'manager_request_data_management.php', 'unread', NOW())
+            ");
+
+            foreach ($managers as $mgr_id) {
+                $notif_stmt->execute([
+                    $mgr_id,
+                    "New Master Data Request: " . $category,
+                    "{$requesterName} requested to add {$requestedItem}.",
+                    "mdr_" . $requestId . "_" . $mgr_id
+                ]);
+            }
+        } catch (Exception $notif_err) {
+            // Non-blocking notification error
+            error_log("Master data request notification error: " . $notif_err->getMessage());
+        }
+
         echo json_encode([
             'success'    => true,
             'request_id' => $requestId,
+            'request_no' => $requestNo,
             'message'    => 'Request submitted successfully. Waiting for manager approval.'
         ]);
-        
-    } catch (PDOException $e) {
-        error_log("Submit master data request error: " . $e->getMessage());
+
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        http_response_code(500);
         echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
     }
-    
     exit;
 }
 
-// ── Handle GET: Fetch requests (for manager approval page) ──────────────────
+// ── Handle GET: Fetch requests (for manager request management page) ──────────
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    $status = $_GET['status'] ?? 'pending';
-    $type   = $_GET['type'] ?? '';
-    
+    $status      = $_GET['status'] ?? '';
+    $category    = $_GET['category'] ?? '';
+    $requestedBy = $_GET['requested_by'] ?? '';
+    $dateFrom    = $_GET['date_from'] ?? '';
+    $dateTo      = $_GET['date_to'] ?? '';
+    $search      = $_GET['search'] ?? '';
+
     try {
         $query = "
             SELECT 
                 r.*,
-                CONCAT(u.first_name, ' ', u.last_name) as requester_name,
-                u.role as requester_role,
-                s.name as station_name,
-                CONCAT(rev.first_name, ' ', rev.last_name) as reviewer_name
+                COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.name, 'Unknown Staff') as requester_name,
+                COALESCE(CONCAT(rev.first_name, ' ', rev.last_name), rev.name, '') as reviewer_name
             FROM master_data_requests r
             LEFT JOIN users u ON r.requested_by = u.id
-            LEFT JOIN stations s ON r.station_id = s.id
             LEFT JOIN users rev ON r.reviewed_by = rev.id
-            WHERE r.status = :status
+            WHERE 1=1
         ";
-        
-        if (!empty($type) && in_array($type, ['vehicle_type', 'service_type', 'product'])) {
-            $query .= " AND r.request_type = :type";
+        $params = [];
+
+        if (!empty($status)) {
+            $query .= " AND r.status = ?";
+            $params[] = $status;
         }
-        
+
+        if (!empty($category)) {
+            $query .= " AND r.category = ?";
+            $params[] = $category;
+        }
+
+        if (!empty($requestedBy)) {
+            $query .= " AND r.requested_by = ?";
+            $params[] = (int)$requestedBy;
+        }
+
+        if (!empty($dateFrom)) {
+            $query .= " AND DATE(r.created_at) >= ?";
+            $params[] = $dateFrom;
+        }
+
+        if (!empty($dateTo)) {
+            $query .= " AND DATE(r.created_at) <= ?";
+            $params[] = $dateTo;
+        }
+
+        if (!empty($search)) {
+            $query .= " AND (r.request_no LIKE ? OR r.data_payload LIKE ?)";
+            $params[] = "%$search%";
+            $params[] = "%$search%";
+        }
+
         $query .= " ORDER BY r.created_at DESC";
-        
+
         $stmt = $pdo->prepare($query);
-        $stmt->bindValue(':status', $status);
-        if (!empty($type)) {
-            $stmt->bindValue(':type', $type);
-        }
-        $stmt->execute();
-        
+        $stmt->execute($params);
         $requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Decode JSON data for each request
+
+        // Format dates and decode JSON payloads
         foreach ($requests as &$req) {
-            $req['request_data'] = json_decode($req['request_data'], true);
+            $req['data_payload'] = json_decode($req['data_payload'], true);
+            $req['date_submitted'] = date('M d, Y', strtotime($req['created_at']));
         }
-        
+
         echo json_encode([
             'success'  => true,
             'requests' => $requests
         ]);
-        
+
     } catch (PDOException $e) {
-        error_log("Fetch master data requests error: " . $e->getMessage());
-        echo json_encode(['success' => false, 'error' => 'Database error.']);
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
     }
-    
     exit;
 }
-
-echo json_encode(['success' => false, 'error' => 'Invalid request method.']);

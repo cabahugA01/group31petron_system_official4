@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 ob_start();
 session_start();
 
@@ -40,9 +40,9 @@ if (empty($token) || empty($email)) {
             FROM   password_reset_tokens prt
             JOIN   users u ON prt.user_id = u.`{$uid_col}`
             WHERE  prt.token      = ?
-              AND  TRIM(u.email)  = ?
+              AND  LOWER(TRIM(u.email))  = LOWER(?)
               AND  prt.token_type = 'reset'
-              AND  u.status       = '{$status_active}'
+              AND  LOWER(TRIM(u.status)) = 'active'
             ORDER BY prt.id DESC
             LIMIT  1
         ");
@@ -96,12 +96,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
         try {
             $pdo->beginTransaction();
 
-            // ── Update password_hash (new column name) ──────────────
+            // ── Update password_hash (new column name) ──────────────────
             $hashed = password_hash($password, PASSWORD_BCRYPT);
             $pdo->prepare("UPDATE users SET `{$pass_col}` = ? WHERE `{$uid_col}` = ?")
                 ->execute([$hashed, $user_data['user_id']]);
 
-            // ── Mark OTP / token as used ────────────────────────────
+            // ── Mark OTP / token as used ────────────────────────────────
             if (!empty($phone)) {
                 // Phone path: mark password_resets row as used
                 $pdo->prepare("UPDATE password_resets SET status = 'used' WHERE id = ?")
@@ -112,7 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
                     ->execute([$token]);
             }
 
-            // ── Audit log ───────────────────────────────────────────
+            // ── Audit log ───────────────────────────────────────────────
             $pdo->prepare(
                 "INSERT INTO activity_logs (user_id, action, details, ip_address)
                  VALUES (?, 'Password Reset', 'Password successfully reset', ?)"
@@ -142,21 +142,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
     <title>Reset Password | Petron Management System</title>
     <link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">
     <style>
-        :root {
-            --blue-glow: rgba(0, 100, 255, 0.45);
-            --red-glow: rgba(227, 6, 19, 0.35);
-        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
+        :root {
+            --blue:      #002F6C;
+            --blue-mid:  #003d8a;
+            --blue-glow: rgba(0,91,255,.6);
+            --red:       #E30613;
+            --red-glow:  rgba(227,6,19,.6);
+            --text:      #ffffff;
+            --muted:     rgba(255,255,255,.9);
+            --label:     #ffffff;
+            --icon:      rgba(200,225,255,.85);
         }
 
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: 'Inter', 'Segoe UI', sans-serif;
             min-height: 100vh;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
             position: relative;
@@ -164,16 +168,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
             background: transparent;
         }
 
-        /* ── Base Image Background only ── */
         .bg-layer {
             position: fixed;
             inset: 0;
             z-index: 0;
-            display: none !important;
         }
 
         .bg-image {
-            display: block !important;
             background: url('../assets/img/background.jpg') center center / cover no-repeat;
             z-index: 1;
         }
@@ -184,6 +185,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
             width: 100%;
             max-width: 520px;
             padding: 0 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
 
         .login-card {
@@ -193,18 +197,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
             position: relative;
             overflow: visible;
             color: #ffffff;
+            width: 100%;
             box-shadow:
                 0 8px 32px rgba(0,0,0,.40),
                 0 24px 56px rgba(0,0,0,.30);
-            width: 100%;
         }
 
         .login-card::before {
             content: '';
             position: absolute;
-            top: 10%; left: -18px;
-            width: 12px; height: 80%;
-            background: linear-gradient(180deg, rgba(0,100,255,0) 0%, rgba(0,100,255,0.9) 30%, rgba(0,150,255,1) 50%, rgba(0,100,255,0.9) 70%, rgba(0,100,255,0) 100%);
+            top: 10%;
+            left: -18px;
+            width: 12px;
+            height: 80%;
+            background: linear-gradient(180deg,
+                rgba(0, 100, 255, 0) 0%,
+                rgba(0, 100, 255, 0.9) 30%,
+                rgba(0, 150, 255, 1) 50%,
+                rgba(0, 100, 255, 0.9) 70%,
+                rgba(0, 100, 255, 0) 100%
+            );
             border-radius: 50%;
             filter: blur(8px);
             animation: sideGlowBlue 3s ease-in-out infinite alternate;
@@ -214,9 +226,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
         .login-card::after {
             content: '';
             position: absolute;
-            top: 10%; right: -18px;
-            width: 12px; height: 80%;
-            background: linear-gradient(180deg, rgba(227,6,19,0) 0%, rgba(227,6,19,0.9) 30%, rgba(255,40,40,1) 50%, rgba(227,6,19,0.9) 70%, rgba(227,6,19,0) 100%);
+            top: 10%;
+            right: -18px;
+            width: 12px;
+            height: 80%;
+            background: linear-gradient(180deg,
+                rgba(227, 6, 19, 0) 0%,
+                rgba(227, 6, 19, 0.9) 30%,
+                rgba(255, 40, 40, 1) 50%,
+                rgba(227, 6, 19, 0.9) 70%,
+                rgba(227, 6, 19, 0) 100%
+            );
             border-radius: 50%;
             filter: blur(8px);
             animation: sideGlowRed 3s ease-in-out infinite alternate;
@@ -234,29 +254,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
             100% { opacity: 0.4; height: 60%; top: 20%; filter: blur(8px); }
         }
 
-
-        .brand {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin-bottom: 32px;
-            text-align: center;
-        }
-
+        .brand { text-align: center; margin-bottom: 30px; }
         .brand-logo {
-            width: 88px;
-            height: auto;
-            object-fit: contain;
-            margin-bottom: 16px;
+            width: 88px; height: auto;
             filter: drop-shadow(0 4px 16px rgba(227,6,19,.4));
             animation: logoFloat 3s ease-in-out infinite;
         }
-
         @keyframes logoFloat {
-            0%, 100% { transform: translateY(0); }
-            50%       { transform: translateY(-5px); }
+            0%,100% { transform: translateY(0); }
+            50%      { transform: translateY(-5px); }
         }
-
         .brand-tagline {
             display: block;
             margin-top: 10px;
@@ -264,42 +271,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
             font-weight: 700;
             letter-spacing: 2.8px;
             text-transform: uppercase;
-            color: rgba(180,210,255,.9);
-            text-shadow: 0 0 12px rgba(100,160,255,.4);
+            color: rgba(200,220,255,.95);
+            text-shadow: 0 1px 4px rgba(0,0,0,.5);
         }
 
-        .field-group {
-            margin-bottom: 24px;
-            position: relative;
+        .alert-error, .alert-success, .alert-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-radius: 10px;
+            padding: 12px 14px;
+            margin-bottom: 22px;
+            font-size: 13px;
         }
+        .alert-error {
+            background: rgba(227,6,19,.12);
+            border: 1px solid rgba(227,6,19,.35);
+            color: #ff8080;
+            animation: shake .35s ease;
+        }
+        .alert-success {
+            background: rgba(16,185,129,.12);
+            border: 1px solid rgba(16,185,129,.35);
+            color: #6ee7b7;
+        }
+        .alert-info {
+            background: rgba(59,130,246,.12);
+            border: 1px solid rgba(59,130,246,.35);
+            color: #93c5fd;
+        }
+        @keyframes shake {
+            0%,100% { transform: translateX(0); }
+            25%      { transform: translateX(-6px); }
+            75%      { transform: translateX(6px); }
+        }
+
+        .form-group { margin-bottom: 18px; }
 
         .field-label {
-            display: block;
-            margin-bottom: 8px;
-            font-size: 12.5px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 11.5px;
             font-weight: 700;
-            color: rgba(255,255,255,.9);
-            letter-spacing: .8px;
+            letter-spacing: 1.4px;
             text-transform: uppercase;
-            text-shadow: 0 1px 3px rgba(0,0,0,.5);
+            color: var(--label);
+            margin-bottom: 8px;
+            text-shadow: 0 1px 4px rgba(0,0,0,.5);
         }
 
         .input-wrap {
             position: relative;
             display: flex;
             align-items: center;
-            border-radius: 14px;
-            background: rgba(0,0,0,.45);
-            border: 1.5px solid rgba(255,255,255,.15);
-            box-shadow: 0 2px 6px rgba(0,0,0,.35) inset;
-            transition: border-color .25s, box-shadow .25s;
         }
-
-        .input-wrap:focus-within {
-            border-color: #3b82f6;
-            box-shadow: 0 0 14px rgba(59,130,246,.5), 0 2px 6px rgba(0,0,0,.3) inset;
-        }
-
         .input-icon {
             position: absolute;
             left: 16px;
@@ -310,7 +336,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
             z-index: 2;
             text-shadow: 0 0 10px rgba(255,255,255,.5), 0 1px 3px rgba(0,0,0,.6);
         }
-
         .input-wrap:focus-within .input-icon {
             color: #ffffff;
             text-shadow: 0 0 16px rgba(96,165,250,.9), 0 1px 3px rgba(0,0,0,.6);
@@ -318,20 +343,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
 
         .field-input {
             width: 100%;
-            height: 48px;
-            background: transparent;
-            border: none;
-            outline: none;
-            padding: 0 46px;
-            color: #ffffff;
+            padding: 14px 46px;
             font-family: inherit;
             font-size: 14.5px;
             font-weight: 500;
-            text-shadow: 0 1px 2px rgba(0,0,0,.4);
+            color: #ffffff;
+            background: rgba(255,255,255,.12);
+            border: 1px solid rgba(255,255,255,.25);
+            border-radius: 13px;
+            outline: none;
+            transition: border-color .25s, box-shadow .25s, background .25s;
+            caret-color: #93c5fd;
+            text-shadow: 0 1px 3px rgba(0,0,0,.4);
         }
-
-        .field-input::placeholder {
-            color: rgba(255,255,255,.45);
+        .field-input::placeholder { color: rgba(200,220,255,.55); font-weight: 400; }
+        .field-input:focus {
+            background: rgba(255,255,255,.18);
+            border-color: rgba(147,197,253,.8);
+            box-shadow: 0 0 0 3px rgba(96,165,250,.20);
         }
 
         .pw-toggle {
@@ -353,125 +382,77 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
         }
         .pw-toggle:hover { color: #93c5fd; text-shadow: 0 0 10px rgba(96,165,250,.6); }
 
-        /* Hide browser native password reveal eye (Chrome/Edge/IE) */
-        .field-input[type="password"]::-ms-reveal,
-        .field-input[type="password"]::-ms-clear,
+        /* Hide browser native password reveal eye (Edge/IE/Chrome) */
         input[type="password"]::-ms-reveal,
-        input[type="password"]::-ms-clear {
-            display: none !important;
-        }
+        input[type="password"]::-ms-clear { display: none !important; }
         input[type="password"]::-webkit-contacts-auto-fill-button,
         input[type="password"]::-webkit-credentials-auto-fill-button,
         input[type="password"]::-webkit-strong-password-auto-fill-button {
-            display: none !important;
-            visibility: hidden;
-            pointer-events: none;
+            display: none !important; visibility: hidden; pointer-events: none;
         }
 
-        /* Password Strength */
-        .password-strength {
-            margin-top: 8px;
-            font-size: 12px;
-            font-weight: 600;
-            text-shadow: 0 1px 2px rgba(0,0,0,.5);
-        }
+        .strength-bar { height: 4px; border-radius: 2px; margin-top: 8px; transition: all .3s; background: rgba(255,255,255,.15); }
+        .strength-text { font-size: 11px; font-weight: 600; margin-top: 5px; }
 
-        .strength-weak   { color: #f87171; }
-        .strength-medium { color: #fbbf24; }
-        .strength-strong { color: #34d399; }
-
-        .btn-submit {
+        .btn-login {
             width: 100%;
-            height: 50px;
-            background: linear-gradient(135deg, #002F6C, #0050b3);
-            border: 1px solid rgba(255,255,255,.15);
-            border-radius: 14px;
-            color: #ffffff;
+            padding: 14px;
             font-family: inherit;
             font-size: 15px;
             font-weight: 700;
+            letter-spacing: .4px;
+            color: #fff;
+            background: linear-gradient(135deg, #002F6C 0%, #0050b3 100%);
+            border: none;
+            border-radius: 12px;
             cursor: pointer;
-            transition: transform .15s, box-shadow .2s;
-            box-shadow: 0 4px 15px rgba(0,47,108,.4), 0 1px 0 rgba(255,255,255,.15) inset;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 10px;
+            transition: transform .15s, box-shadow .2s;
+            box-shadow: 0 4px 24px rgba(0,47,108,.5), 0 0 0 1px rgba(255,255,255,.07) inset;
+            position: relative;
+            overflow: hidden;
+            text-transform: uppercase;
         }
-
-        .btn-submit:hover {
-            box-shadow: 0 6px 20px rgba(0,47,108,.6), 0 1px 0 rgba(255,255,255,.25) inset;
-            transform: translateY(-1px);
+        .btn-login::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,.12) 0%, transparent 60%);
+            opacity: 0;
+            transition: opacity .2s;
         }
-
-        .btn-submit:active {
-            transform: translateY(1px);
-            box-shadow: 0 2px 10px rgba(0,47,108,.4);
+        .btn-login:hover:not(:disabled)::before { opacity: 1; }
+        .btn-login:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0,47,108,.65), 0 0 0 1px rgba(255,255,255,.1) inset;
         }
-
-        .btn-submit:disabled {
-            background: #4a5568;
-            border-color: rgba(255,255,255,.05);
+        .btn-login:active:not(:disabled) { transform: translateY(0); }
+        .btn-login:disabled {
+            background: rgba(255,255,255,.07);
+            color: rgba(255,255,255,.28);
             cursor: not-allowed;
             box-shadow: none;
-            transform: none;
         }
 
-        .error-banner, .success-banner, .info-banner {
-            border-radius: 12px;
-            padding: 12px 16px;
-            font-size: 13.5px;
-            font-weight: 600;
-            margin-bottom: 24px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,.25);
-            text-align: left;
-        }
-
-        .error-banner {
-            background: rgba(220,38,38,.25);
-            border: 1.5px solid rgba(220,38,38,.45);
-            color: #fca5a5;
-        }
-
-        .success-banner {
-            background: rgba(16,185,129,.2);
-            border: 1.5px solid rgba(16,185,129,.45);
-            color: #a7f3d0;
-        }
-
-        .info-banner {
-            background: rgba(59,130,246,.2);
-            border: 1.5px solid rgba(59,130,246,.45);
-            color: #bfdbfe;
-        }
-
-        .links-wrap {
-            margin-top: 24px;
+        .login-footer {
             display: flex;
             flex-direction: column;
             gap: 12px;
             align-items: center;
+            margin-top: 24px;
         }
-
-        .forgot-link {
-            color: rgba(255,255,255,.8);
-            font-size: 13.5px;
+        .login-footer a {
+            font-size: 13px;
             font-weight: 600;
+            color: rgba(180,210,255,.75);
             text-decoration: none;
-            transition: color .2s, text-shadow .2s;
-            text-shadow: 0 1px 2px rgba(0,0,0,.5);
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
+            transition: color .2s;
+            text-shadow: 0 1px 4px rgba(0,0,0,.4);
         }
-
-        .forgot-link:hover {
-            color: #93c5fd;
-            text-shadow: 0 0 8px rgba(147,197,253,.5);
-        }
+        .login-footer a:hover { color: #93c5fd; }
 
         .page-footer {
             margin-top: 28px;
@@ -485,21 +466,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
             user-select: none;
             pointer-events: none;
         }
-
-        .spinner {
-            width: 18px;
-            height: 18px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 50%;
-            border-top-color: #fff;
-            animation: spin 0.8s linear infinite;
-            display: none;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
         @media (max-width: 540px) {
             .login-wrap { padding: 0 12px; }
             .login-card { padding: 38px 28px 32px; }
@@ -507,154 +473,129 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
     </style>
 </head>
 <body>
+    <div class="bg-layer bg-image"></div>
 
-<!-- 4D Background Layers -->
-<div class="bg-layer bg-image"></div>
-<div class="bg-layer bg-gradient"></div>
-<div class="bg-layer bg-orbs">
-    <div class="orb orb-1"></div>
-    <div class="orb orb-2"></div>
-</div>
-<div class="bg-layer bg-particles">
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-</div>
-<div class="bg-layer bg-grid"></div>
-
-<div class="login-wrap">
-    <div class="login-card">
-        <!-- Branding -->
-        <div class="brand">
-            <img src="<?php echo '../' . get_system_logo_url(isset($station_id) ? (int)$station_id : (isset($user['station_id']) ? (int)$user['station_id'] : 0)); ?>" alt="Petron" class="brand-logo">
-            <span class="brand-tagline">Station Management System</span>
-        </div>
-
-        <!-- Error Message -->
-        <?php if ($error): ?>
-            <div class="error-banner" role="alert">
-                <i class="fas fa-exclamation-triangle"></i>
-                <span><?php echo htmlspecialchars($error); ?></span>
-            </div>
-        <?php endif; ?>
-
-        <!-- Success Message -->
-        <?php if ($message): ?>
-            <div class="success-banner" role="status">
-                <i class="fas fa-check-circle"></i>
-                <span><?php echo $message; ?></span>
-            </div>
-        <?php endif; ?>
-
-        <?php if ($token_valid): ?>
-            <!-- Info Message -->
-            <div class="info-banner">
-                <i class="fas fa-info-circle"></i>
-                <span>Resetting password for: <strong><?php echo htmlspecialchars($user_data['email'] ?: ($user_data['phone'] ?: $user_data['username'])); ?></strong></span>
+    <div class="login-wrap">
+        <div class="login-card">
+            <div class="brand">
+                <img src="<?php echo '../' . get_system_logo_url(isset($station_id) ? (int)$station_id : (isset($user['station_id']) ? (int)$user['station_id'] : 0)); ?>" alt="Petron Logo" class="brand-logo">
+                <span class="brand-tagline">Station Management System</span>
             </div>
 
-            <!-- Reset Password Form -->
-            <form method="POST" action="" id="resetForm">
-                <div class="field-group">
-                    <label for="password_hash" class="field-label">New Password</label>
-                    <div class="input-wrap">
-                        <i class="fas fa-lock input-icon"></i>
-                        <input type="password" name="password_hash" id="password_hash" class="field-input" placeholder="Enter password" required autofocus aria-label="New Password">
-                        <button type="button" class="pw-toggle" id="togglePassword" aria-label="Show password">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                    </div>
-                    <div class="password-strength" id="passwordStrength"></div>
+            <?php if ($error): ?>
+                <div class="alert-error">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span><?php echo htmlspecialchars($error); ?></span>
                 </div>
-
-                <div class="field-group">
-                    <label for="confirm_password" class="field-label">Confirm Password</label>
-                    <div class="input-wrap">
-                        <i class="fas fa-lock input-icon"></i>
-                        <input type="password" name="confirm_password" id="confirm_password" class="field-input" placeholder="Enter password" required aria-label="Confirm Password">
-                        <button type="button" class="pw-toggle" id="toggleConfirmPassword" aria-label="Show confirm password">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <button type="submit" class="btn-submit" id="submitBtn">
-                    <div class="spinner" id="spinner"></div>
-                    <span id="btnText">Reset Password</span>
-                </button>
-            </form>
-        <?php endif; ?>
-
-        <!-- Secondary Links -->
-        <div class="links-wrap">
-            <a href="login.php" class="forgot-link"><i class="fas fa-arrow-left"></i> Back to Login</a>
-            <?php if (!$token_valid && !$message): ?>
-                <a href="forgot_password.php" class="forgot-link"><i class="fas fa-redo"></i> Request New Reset Link</a>
             <?php endif; ?>
+
+            <?php if ($message): ?>
+                <div class="alert-success">
+                    <i class="fas fa-check-circle"></i>
+                    <span><?php echo $message; ?></span>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($token_valid): ?>
+                <div class="alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    <span>Resetting for: <strong><?php echo htmlspecialchars($user_data['email'] ?? $user_data['username']); ?></strong></span>
+                </div>
+
+                <form method="POST" action="" id="resetForm">
+                    <div class="form-group">
+                        <label for="password_hash" class="field-label">New Password</label>
+                        <div class="input-wrap">
+                            <i class="fas fa-lock input-icon"></i>
+                            <input type="password" name="password_hash" id="password_hash" class="field-input"
+                                   placeholder="Enter new password" required autofocus>
+                            <button type="button" class="pw-toggle" id="togglePw1">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                        <div class="strength-bar" id="strengthBar"></div>
+                        <div class="strength-text" id="strengthText"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="confirm_password" class="field-label">Confirm Password</label>
+                        <div class="input-wrap">
+                            <i class="fas fa-lock input-icon"></i>
+                            <input type="password" name="confirm_password" id="confirm_password" class="field-input"
+                                   placeholder="Confirm new password" required>
+                            <button type="button" class="pw-toggle" id="togglePw2">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-login" id="submitBtn">
+                        <i class="fas fa-check-circle"></i>
+                        <span id="btnText">Reset Password</span>
+                    </button>
+                </form>
+            <?php endif; ?>
+
+            <div class="login-footer">
+                <a href="login.php">
+                    <i class="fas fa-arrow-left"></i> Back to Login
+                </a>
+                <?php if (!$token_valid && !$message): ?>
+                <a href="forgot_password.php">
+                    <i class="fas fa-redo"></i> Request New Reset
+                </a>
+                <?php endif; ?>
+            </div>
+        </div>
+        <div class="page-footer">
+            &copy; <?php echo date('Y'); ?> Petron Station Management System. All Rights Reserved.
         </div>
     </div>
 
-    <div class="page-footer">
-        &copy; <?php echo date('Y'); ?> Petron Station &amp; Service Center Management System. All Rights Reserved.
-    </div>
-</div>
-
-<?php if ($token_valid): ?>
 <script>
-    const togglePassword        = document.getElementById('togglePassword');
-    const toggleConfirmPassword = document.getElementById('toggleConfirmPassword');
-    const passwordInput         = document.getElementById('password_hash');
-    const confirmPasswordInput  = document.getElementById('confirm_password');
-    const passwordStrength      = document.getElementById('passwordStrength');
-
-    togglePassword.addEventListener('click', () => {
-        const type = passwordInput.type === 'password' ? 'text' : 'password';
-        passwordInput.type = type;
-        togglePassword.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
+function setupToggle(btnId, inputId) {
+    const btn = document.getElementById(btnId);
+    const inp = document.getElementById(inputId);
+    if (!btn || !inp) return;
+    btn.addEventListener('click', () => {
+        const show = inp.type === 'password';
+        inp.type = show ? 'text' : 'password';
+        btn.querySelector('i').className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
     });
+}
+setupToggle('togglePw1', 'password_hash');
+setupToggle('togglePw2', 'confirm_password');
 
-    toggleConfirmPassword.addEventListener('click', () => {
-        const type = confirmPasswordInput.type === 'password' ? 'text' : 'password';
-        confirmPasswordInput.type = type;
-        toggleConfirmPassword.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
+const pwInput = document.getElementById('password_hash');
+const bar = document.getElementById('strengthBar');
+const txt = document.getElementById('strengthText');
+if (pwInput && bar && txt) {
+    pwInput.addEventListener('input', () => {
+        const v = pwInput.value;
+        let score = 0;
+        if (v.length >= 8) score++;
+        if (/[A-Z]/.test(v)) score++;
+        if (/[a-z]/.test(v)) score++;
+        if (/[0-9]/.test(v)) score++;
+        if (/[^A-Za-z0-9]/.test(v)) score++;
+        const colors = ['#6b7280','#ef4444','#f59e0b','#3b82f6','#10b981','#10b981'];
+        const labels = ['','Weak','Fair','Good','Strong','Very Strong'];
+        bar.style.background = colors[score] || '#6b7280';
+        bar.style.width = (score * 20) + '%';
+        txt.textContent = labels[score] || '';
+        txt.style.color = colors[score] || '#6b7280';
     });
+}
 
-    passwordInput.addEventListener('input', () => {
-        const p = passwordInput.value;
-        let strength = 0;
-        if (p.length >= 8)           strength++;
-        if (/[a-z]/.test(p))         strength++;
-        if (/[A-Z]/.test(p))         strength++;
-        if (/[0-9]/.test(p))         strength++;
-        if (/[$@#&!^*(),.?]/.test(p)) strength++;
-
-        const map = {
-            0: '', 1: '<span class="strength-weak">Weak password</span>',
-            2: '<span class="strength-weak">Weak password</span>',
-            3: '<span class="strength-medium">Medium strength</span>',
-            4: '<span class="strength-medium">Medium strength</span>',
-            5: '<span class="strength-strong">Strong password</span>'
-        };
-        passwordStrength.innerHTML = map[strength] ?? '';
+const resetForm = document.getElementById('resetForm');
+const submitBtn = document.getElementById('submitBtn');
+const btnText = document.getElementById('btnText');
+if (resetForm) {
+    resetForm.addEventListener('submit', () => {
+        if (submitBtn) submitBtn.disabled = true;
+        if (btnText) btnText.textContent = 'Resetting...';
     });
-
-    const form      = document.getElementById('resetForm');
-    const submitBtn = document.getElementById('submitBtn');
-    const spinner   = document.getElementById('spinner');
-    const btnText   = document.getElementById('btnText');
-
-    form.addEventListener('submit', () => {
-        submitBtn.disabled = true;
-        spinner.style.display = 'block';
-        btnText.textContent = 'Resetting...';
-    });
+}
 </script>
-<?php endif; ?>
-
 </body>
 </html>

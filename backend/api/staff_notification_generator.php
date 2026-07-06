@@ -130,7 +130,7 @@ try {
             "Fuel Transaction #{$r['id']} — {$status}",
             "Fuel Transaction #{$r['id']} ({$r['fuel_type']} {$liters}) is {$status} at {$ts}.",
             $key,
-            'staff_transactions_hub.php?section=fuel'
+            'staff_transactions_hub.php?section=fuel&fuel_tab=readings'
         );
     }
 } catch (Exception $e) {}
@@ -212,7 +212,7 @@ try {
             "Low Fuel Alert: {$r['fuel_type']}",
             "{$r['fuel_type']} is at {$pct}% capacity ({$r['current_level']}L remaining). Refill needed.",
             $key,
-            'staff_transactions_hub.php?section=fuel'
+            'staff_inventory_fuel.php'
         );
     }
 } catch (Exception $e) {}
@@ -260,7 +260,7 @@ try {
             "Low Stock Alert: {$r['product_name']}",
             "{$label}: {$r['product_name']} ({$code}).",
             $key,
-            'staff_inventory.php'
+            'staff_inventory_merchandise.php'
         );
     }
 } catch (Exception $e) {}
@@ -296,7 +296,7 @@ try {
 
 // ════════════════════════════════════════════════════════════
 // 6. DELIVERIES — recent status updates (48h)
-//    Column verified: status, supplier, delivery_date, updated_at
+//    Column verified: status, supplier, delivery_date, delivery_type, updated_at
 // ════════════════════════════════════════════════════════════
 try {
     $s = $sw ? "AND do2.station_id = {$sw}" : '';
@@ -313,9 +313,15 @@ try {
     )->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($rows as $r) {
-        $status   = $r['status'] ?? 'Unknown';
-        $supplier = $r['supplier'] ?? 'Supplier';
-        $dt       = $r['delivery_date'] ? date('M d, Y', strtotime($r['delivery_date'])) : 'TBD';
+        $status      = $r['status'] ?? 'Unknown';
+        $supplier    = $r['supplier'] ?? 'Supplier';
+        $dt          = $r['delivery_date'] ? date('M d, Y', strtotime($r['delivery_date'])) : 'TBD';
+        $deliv_type  = strtolower($r['delivery_type'] ?? '');
+
+        // Route to correct staff delivery page based on delivery type
+        $redirect_page = (strpos($deliv_type, 'fuel') !== false)
+            ? 'staff_fuel_deliveries.php'
+            : 'staff_record_delivery.php';
 
         $type = 'info'; $sev = 'low';
         if (in_array($status, ['Pending Manager Approval', 'Pending Manager Confirmation', 'Pending Verification'])) {
@@ -335,7 +341,7 @@ try {
             "Delivery #{$r['id']} — {$status}",
             "Delivery #{$r['id']} from {$supplier} is now {$status}. Expected: {$dt}.",
             $key,
-            'staff_record_delivery.php'
+            $redirect_page
         );
     }
 } catch (Exception $e) {}
@@ -378,6 +384,22 @@ try {
            AND created_at < DATE_SUB(NOW(), INTERVAL 14 DAY)"
     );
     $stmt->execute([$user_id]);
+} catch (Exception $e) {}
+
+// ── Fix any stale notifications with wrong redirect URLs ─────
+// Purge unread notifications whose redirect_url points to old/incorrect pages
+// so they are regenerated fresh with correct URLs on next load.
+try {
+    $bad_urls = [
+        'staff_inventory.php',                         // old — now staff_inventory_merchandise.php
+        'staff_transactions_hub.php?section=fuel',     // too generic — replaced by specific fuel pages
+    ];
+    foreach ($bad_urls as $bad) {
+        $pdo->prepare(
+            "DELETE FROM notifications
+             WHERE user_id = ? AND redirect_url = ? AND status = 'unread'"
+        )->execute([$user_id, $bad]);
+    }
 } catch (Exception $e) {}
 
 echo json_encode(['ok' => true, 'generated' => $generated]);

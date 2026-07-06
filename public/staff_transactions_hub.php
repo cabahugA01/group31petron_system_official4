@@ -5865,16 +5865,42 @@ input[list] {
                             title="Close">×</button>
                 </div>
 
-                <!-- Category -->
+                <!-- Brand -->
                 <div style="margin-bottom:14px;">
                     <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
-                        Category <span style="color:#dc2626;">*</span>
+                        Vehicle Brand <span style="color:#dc2626;">*</span>
                     </label>
                     <input type="text" 
-                           id="newVehicleCategory" 
+                           id="newVehicleBrand" 
+                           class="txn-input" 
+                           placeholder="e.g. Toyota, Honda, Mitsubishi..."
+                           style="font-size:13px;"
+                           autocomplete="off">
+                </div>
+
+                <!-- Model -->
+                <div style="margin-bottom:14px;">
+                    <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
+                        Vehicle Model <span style="color:#dc2626;">*</span>
+                    </label>
+                    <input type="text" 
+                           id="newVehicleModel" 
+                           class="txn-input" 
+                           placeholder="e.g. Vios, Civic, Montero..."
+                           style="font-size:13px;"
+                           autocomplete="off">
+                </div>
+
+                <!-- Vehicle Type -->
+                <div style="margin-bottom:14px;">
+                    <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
+                        Vehicle Type <span style="color:#dc2626;">*</span>
+                    </label>
+                    <input type="text" 
+                           id="newVehicleType" 
                            class="txn-input" 
                            list="vehicleCategoryList"
-                           placeholder="Type or select category..."
+                           placeholder="Type or select vehicle type..."
                            style="font-size:13px;"
                            autocomplete="off">
                     <datalist id="vehicleCategoryList">
@@ -5885,44 +5911,30 @@ input[list] {
                         <option value="Light Trucks / Utility">
                         <option value="Motorcycles">
                         <option value="Tricycles / E-bikes">
-                        <option value="Other">
+                        <option value="Others">
                     </datalist>
                 </div>
 
-                <!-- Vehicle Name -->
+                <!-- Fuel Type -->
                 <div style="margin-bottom:14px;">
                     <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
-                        Vehicle Name <span style="color:#dc2626;">*</span>
+                        Fuel Type <span style="color:#dc2626;">*</span>
                     </label>
-                    <input type="text" id="newVehicleName" class="txn-input"
-                           placeholder="e.g. Toyota Innova, Kawasaki Dominar…"
-                           maxlength="150"
-                           style="font-size:13px;"
-                           autocomplete="off">
-                    <div style="font-size:10px;color:#94a3b8;margin-top:4px;">
-                        Be specific — include brand and model (e.g. "Honda XRM 125")
-                    </div>
+                    <select id="newVehicleFuelType" class="txn-select" style="font-size:13px;width:100%;">
+                        <option value="Gasoline" selected>Gasoline</option>
+                        <option value="Diesel">Diesel</option>
+                        <option value="LPG">LPG</option>
+                        <option value="Hybrid">Hybrid</option>
+                        <option value="Electric">Electric</option>
+                    </select>
                 </div>
 
-                <!-- Description (Optional) -->
-                <div style="margin-bottom:14px;">
-                    <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
-                        Description
-                    </label>
-                    <textarea id="newVehicleDescription" class="txn-input"
-                              placeholder="Additional details about this vehicle type (optional)..."
-                              rows="2"
-                              maxlength="255"
-                              style="font-size:13px;resize:vertical;"
-                              autocomplete="off"></textarea>
-                </div>
-
-                <!-- Reason for Request -->
+                <!-- Remarks -->
                 <div style="margin-bottom:18px;">
                     <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
-                        Reason for Request <span style="color:#dc2626;">*</span>
+                        Remarks / Reason for Request
                     </label>
-                    <textarea id="newVehicleReason" class="txn-input"
+                    <textarea id="newVehicleRemarks" class="txn-input"
                               placeholder="Why do you need this vehicle type added? (e.g., 'Customer owns this model')"
                               rows="2"
                               maxlength="500"
@@ -7070,18 +7082,22 @@ input[list] {
 
         // ── Add Vehicle Type modal ────────────────────────────────────────────
         function openAddVehicleModal() {
-            const nameEl = document.getElementById('newVehicleName');
-            const catEl  = document.getElementById('newVehicleCategory');
-            const descEl = document.getElementById('newVehicleDescription');
-            const reasonEl = document.getElementById('newVehicleReason');
-            if (nameEl) nameEl.value = '';
-            if (catEl)  catEl.value  = '';
-            if (descEl) descEl.value = '';
-            if (reasonEl) reasonEl.value = '';
+            const brandEl  = document.getElementById('newVehicleBrand');
+            const modelEl  = document.getElementById('newVehicleModel');
+            const typeEl   = document.getElementById('newVehicleType');
+            const fuelEl   = document.getElementById('newVehicleFuelType');
+            const remarksEl = document.getElementById('newVehicleRemarks');
+            
+            if (brandEl) brandEl.value = '';
+            if (modelEl) modelEl.value = '';
+            if (typeEl)  typeEl.value  = '';
+            if (fuelEl)  fuelEl.value  = 'Gasoline';
+            if (remarksEl) remarksEl.value = '';
+            
             setAddVehicleError('');
             const modal = document.getElementById('addVehicleModal');
             if (modal) { modal.style.display = 'flex'; }
-            setTimeout(() => catEl && catEl.focus(), 80);
+            setTimeout(() => brandEl && brandEl.focus(), 80);
         }
 
         function closeAddVehicleModal() {
@@ -7098,18 +7114,20 @@ input[list] {
         }
 
         async function submitNewVehicleType() {
-            const name        = (document.getElementById('newVehicleName')?.value        || '').trim();
-            const category    = (document.getElementById('newVehicleCategory')?.value    || '').trim();
-            const description = (document.getElementById('newVehicleDescription')?.value || '').trim();
-            const reason      = (document.getElementById('newVehicleReason')?.value      || '').trim();
-            const btn         = document.getElementById('addVehicleSubmitBtn');
+            const brand   = (document.getElementById('newVehicleBrand')?.value   || '').trim();
+            const model   = (document.getElementById('newVehicleModel')?.value   || '').trim();
+            const type    = (document.getElementById('newVehicleType')?.value    || '').trim();
+            const fuel    = (document.getElementById('newVehicleFuelType')?.value    || '').trim();
+            const remarks = (document.getElementById('newVehicleRemarks')?.value || '').trim();
+            const btn     = document.getElementById('addVehicleSubmitBtn');
 
             setAddVehicleError('');
-            if (!category) { setAddVehicleError('Please select or enter a category.'); return; }
-            if (!name)     { setAddVehicleError('Please enter the vehicle name.'); return; }
-            if (name.length > 150) { setAddVehicleError('Name is too long (max 150 characters).'); return; }
-            if (!reason)   { setAddVehicleError('Please explain why you need this vehicle type added.'); return; }
-            if (reason.length < 10) { setAddVehicleError('Please provide a more detailed reason (minimum 10 characters).'); return; }
+            if (!brand)   { setAddVehicleError('Please enter the vehicle brand.'); return; }
+            if (!model)   { setAddVehicleError('Please enter the vehicle model.'); return; }
+            if (!type)    { setAddVehicleError('Please select or enter a vehicle type.'); return; }
+            if (!fuel)    { setAddVehicleError('Please select a fuel type.'); return; }
+            if (!remarks) { setAddVehicleError('Please enter remarks/reason for request.'); return; }
+            if (remarks.length < 5) { setAddVehicleError('Please provide a reason with at least 5 characters.'); return; }
 
             if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting…'; }
 
@@ -7121,11 +7139,13 @@ input[list] {
                     body: JSON.stringify({
                         request_type: 'vehicle_type',
                         request_data: {
-                            vehicle_name: name,
-                            category: category,
-                            description: description
+                            vehicle_brand: brand,
+                            vehicle_model: model,
+                            vehicle_type: type,
+                            fuel_type: fuel,
+                            remarks: remarks
                         },
-                        reason: reason
+                        reason: remarks
                     })
                 });
                 const data = await res.json();
@@ -7134,10 +7154,11 @@ input[list] {
                     closeAddVehicleModal();
                     // Set the value in the input for current use
                     const vehicleInput = document.getElementById('joVehicleType');
-                    if (vehicleInput) vehicleInput.value = name;
+                    const displayName = brand + ' ' + model;
+                    if (vehicleInput) vehicleInput.value = displayName;
                     
                     showTxnAlert(
-                        'Request submitted successfully! Request ID: #' + data.request_id + '. Status: Pending Manager Approval. You can use "' + name + '" now.',
+                        'Request submitted successfully! Request ID: #' + data.request_id + '. Status: Pending Manager Approval. You can use "' + displayName + '" now.',
                         'success'
                     );
                 } else {
@@ -7341,6 +7362,7 @@ input[list] {
             const svcPrice     = parseFloat(document.getElementById('joServicePrice')?.value || 0);
             const vehiclePlate = (document.getElementById('joVehiclePlate')?.value || '').trim();
             const vehicleType  = (document.getElementById('joVehicleType')?.value || '').trim();
+            const mechanicId   = (document.getElementById('joMechanicId')?.value || '').trim();
 
             if (!svcType) {
                 showTxnAlert('Please select a service type first.', 'warning');
@@ -7354,6 +7376,12 @@ input[list] {
                 showTxnAlert('Please enter the vehicle plate number first.', 'warning');
                 const plateInput = document.getElementById('joVehiclePlate');
                 if (plateInput) plateInput.focus();
+                return;
+            }
+            if (!mechanicId) {
+                showTxnAlert('Please select a valid assigned mechanic from the dropdown list.', 'warning');
+                const mechInput = document.getElementById('joMechanic');
+                if (mechInput) mechInput.focus();
                 return;
             }
 
@@ -7392,6 +7420,13 @@ input[list] {
 
             // Add service to cart (includes auto-fetched parts)
             if (svcType) {
+                const mechanicId = (document.getElementById('joMechanicId')?.value || '').trim();
+                if (!mechanicId) {
+                    showTxnAlert('Please select a valid assigned mechanic from the dropdown list.', 'warning');
+                    const mechInput = document.getElementById('joMechanic');
+                    if (mechInput) mechInput.focus();
+                    return;
+                }
                 await applyJobOrderToCart();
             }
 
@@ -7930,12 +7965,19 @@ input[list] {
             // ── JO data ───────────────────────────────────────────────────────
             let joData = {};
             if (hasService) {
+                const mechanicId = (document.getElementById('joMechanicId')?.value || '').trim();
+                if (!mechanicId) {
+                    showTxnAlert('Please select a valid assigned mechanic from the dropdown list.', 'warning');
+                    const mechInput = document.getElementById('joMechanic');
+                    if (mechInput) mechInput.focus();
+                    return;
+                }
                 joData = {
                     job_order_service:            (document.getElementById('joServiceTypeValue')?.value || '').trim(),
                     job_order_description:        (document.getElementById('joNotes')?.value || '').trim(),
                     job_order_vehicle_plate:      (document.getElementById('joVehiclePlate')?.value || '').trim().toUpperCase(),
                     job_order_vehicle_type:       (document.getElementById('joVehicleType')?.value || '').trim(),
-                    job_order_mechanic_id:        parseInt(document.getElementById('joMechanicId')?.value || 0) || null,
+                    job_order_mechanic_id:        parseInt(mechanicId) || null,
                     job_order_mechanic_name:      (document.getElementById('joMechanicName')?.value || '').trim(),
                     job_order_contact:            (document.getElementById('joContactNumber')?.value || '').trim(),
                     job_order_estimated_duration: parseInt(document.getElementById('joEstimatedDuration')?.value || 0) || null,

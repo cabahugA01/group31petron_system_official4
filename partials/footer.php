@@ -1,4 +1,4 @@
-﻿
+
   </main>
 
   <style>
@@ -57,7 +57,6 @@
         font-size: 0.85em !important;
         font-weight: 500 !important;
         transition: width 0.3s ease !important;
-        border-right: 1px solid #e0e0e0 !important;
         overflow: hidden !important;
         padding: 0 10px !important;
         box-sizing: border-box !important;
@@ -311,25 +310,6 @@
   <!-- FIXED FOOTER -->
   <footer class="fixed-footer">
     <div class="footer-sidebar-area" id="footerSidebarArea">
-      <?php
-      // Show user identity in sidebar footer: FIRSTNAME LASTNAME – ROLE
-      if (isset($_SESSION['user'])) {
-          $fu = $_SESSION['user'];
-          $fu_first = trim($fu['first_name'] ?? '');
-          $fu_last  = trim($fu['last_name']  ?? '');
-          if ($fu_first !== '' || $fu_last !== '') {
-              $fu_name = strtoupper(trim("$fu_first $fu_last"));
-          } else {
-              $fu_name = strtoupper($fu['name'] ?? $fu['username'] ?? 'USER');
-          }
-          $fu_role = strtoupper(function_exists('normalize_role') ? normalize_role($fu['role'] ?? 'Staff') : ucfirst(strtolower($fu['role'] ?? 'Staff')));
-          echo '<span class="footer-identity" title="' . htmlspecialchars("$fu_name – $fu_role") . '">'
-             . '<i class="fas fa-user-circle" style="margin-right:5px;color:var(--petron-blue,#00264D);font-size:13px;"></i>'
-             . '<span class="footer-identity-text">'
-             . htmlspecialchars($fu_name) . ' <span style="color:#aaa;">–</span> ' . htmlspecialchars($fu_role)
-             . '</span></span>';
-      }
-      ?>
     </div>
     <div class="footer-content">
       <div class="footer-left">

@@ -23,12 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         try {
             // Auto-detect column names
-            $cols = array_column($pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_ASSOC), 'Field');
             $uid_col = 'id';
-            
-            // Detect status format (Active vs active)
-            $all_status = $pdo->query("SELECT DISTINCT status FROM users")->fetchAll(PDO::FETCH_COLUMN);
-            $status_active = in_array('Active', $all_status) ? 'Active' : 'active';
 
             // Auto-create password_reset_tokens if missing
             $pdo->exec("
@@ -46,23 +41,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             ");
 
-            // Clean any stray CR/LF from email column
+            // Clean any stray whitespace/CR/LF from email column in DB
             try { $pdo->exec("UPDATE users SET email = TRIM(REPLACE(REPLACE(email, CHAR(13), ''), CHAR(10), ''))"); } catch(Exception $ce) {}
 
-            // Query user — match email or username case-insensitively and handle any status case variations
-            $sql = "SELECT `{$uid_col}` AS user_id, username, TRIM(email) AS email 
-                    FROM users 
-                    WHERE (LOWER(TRIM(email)) = LOWER(?) OR LOWER(TRIM(username)) = LOWER(?)) 
-                      AND LOWER(TRIM(status)) = 'active' 
-                    LIMIT 1";
+            $input = trim($recovery_id);
+            $user = null;
 
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([trim($recovery_id), trim($recovery_id)]);
-            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            // --- Strategy 1: If input looks like an email, try email match first ---
+            if (strpos($input, '@') !== false) {
+                $stmt = $pdo->prepare("
+                    SELECT `{$uid_col}` AS user_id, username, TRIM(email) AS email, role
+                    FROM users
+                    WHERE LOWER(TRIM(email)) = LOWER(?)
+                      AND LOWER(TRIM(status)) = 'active'
+                    LIMIT 1
+                ");
+                $stmt->execute([$input]);
+                $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            }
 
-            // Strip any remaining CR/LF from fetched email
+            // --- Strategy 2: Try username match (or email match if Strategy 1 missed) ---
+            if (!$user) {
+                $stmt = $pdo->prepare("
+                    SELECT `{$uid_col}` AS user_id, username, TRIM(email) AS email, role
+                    FROM users
+                    WHERE (LOWER(TRIM(username)) = LOWER(?) OR LOWER(TRIM(email)) = LOWER(?))
+                      AND LOWER(TRIM(status)) = 'active'
+                    LIMIT 1
+                ");
+                $stmt->execute([$input, $input]);
+                $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            }
+
+            // Strip any remaining whitespace/CR/LF from fetched email
             if ($user && !empty($user['email'])) {
-                $user['email'] = trim(preg_replace('/[\r\n]+/', '', $user['email']));
+                $user['email'] = trim(preg_replace('/[\r\n\t ]+/', '', $user['email']));
             }
 
             // Log attempt
@@ -125,21 +138,25 @@ $footer_text = "&copy; {$current_year} {$system_name}. All Rights Reserved.";
     <title>Forgot Password | Petron Management System</title>
     <link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">
     <style>
-        :root {
-            --blue-glow: rgba(0, 100, 255, 0.45);
-            --red-glow: rgba(227, 6, 19, 0.35);
-        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
+        :root {
+            --blue:      #002F6C;
+            --blue-mid:  #003d8a;
+            --blue-glow: rgba(0,91,255,.6);
+            --red:       #E30613;
+            --red-glow:  rgba(227,6,19,.6);
+            --text:      #ffffff;
+            --muted:     rgba(255,255,255,.9);
+            --label:     #ffffff;
+            --icon:      rgba(200,225,255,.85);
         }
 
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: 'Inter', 'Segoe UI', sans-serif;
             min-height: 100vh;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
             position: relative;
@@ -147,16 +164,13 @@ $footer_text = "&copy; {$current_year} {$system_name}. All Rights Reserved.";
             background: transparent;
         }
 
-        /* ── Base Image Background only ── */
         .bg-layer {
             position: fixed;
             inset: 0;
             z-index: 0;
-            display: none !important;
         }
 
         .bg-image {
-            display: block !important;
             background: url('../assets/img/background.jpg') center center / cover no-repeat;
             z-index: 1;
         }
@@ -167,6 +181,9 @@ $footer_text = "&copy; {$current_year} {$system_name}. All Rights Reserved.";
             width: 100%;
             max-width: 520px;
             padding: 0 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
 
         .login-card {
@@ -176,18 +193,26 @@ $footer_text = "&copy; {$current_year} {$system_name}. All Rights Reserved.";
             position: relative;
             overflow: visible;
             color: #ffffff;
+            width: 100%;
             box-shadow:
                 0 8px 32px rgba(0,0,0,.40),
                 0 24px 56px rgba(0,0,0,.30);
-            width: 100%;
         }
 
         .login-card::before {
             content: '';
             position: absolute;
-            top: 10%; left: -18px;
-            width: 12px; height: 80%;
-            background: linear-gradient(180deg, rgba(0,100,255,0) 0%, rgba(0,100,255,0.9) 30%, rgba(0,150,255,1) 50%, rgba(0,100,255,0.9) 70%, rgba(0,100,255,0) 100%);
+            top: 10%;
+            left: -18px;
+            width: 12px;
+            height: 80%;
+            background: linear-gradient(180deg,
+                rgba(0, 100, 255, 0) 0%,
+                rgba(0, 100, 255, 0.9) 30%,
+                rgba(0, 150, 255, 1) 50%,
+                rgba(0, 100, 255, 0.9) 70%,
+                rgba(0, 100, 255, 0) 100%
+            );
             border-radius: 50%;
             filter: blur(8px);
             animation: sideGlowBlue 3s ease-in-out infinite alternate;
@@ -197,9 +222,17 @@ $footer_text = "&copy; {$current_year} {$system_name}. All Rights Reserved.";
         .login-card::after {
             content: '';
             position: absolute;
-            top: 10%; right: -18px;
-            width: 12px; height: 80%;
-            background: linear-gradient(180deg, rgba(227,6,19,0) 0%, rgba(227,6,19,0.9) 30%, rgba(255,40,40,1) 50%, rgba(227,6,19,0.9) 70%, rgba(227,6,19,0) 100%);
+            top: 10%;
+            right: -18px;
+            width: 12px;
+            height: 80%;
+            background: linear-gradient(180deg,
+                rgba(227, 6, 19, 0) 0%,
+                rgba(227, 6, 19, 0.9) 30%,
+                rgba(255, 40, 40, 1) 50%,
+                rgba(227, 6, 19, 0.9) 70%,
+                rgba(227, 6, 19, 0) 100%
+            );
             border-radius: 50%;
             filter: blur(8px);
             animation: sideGlowRed 3s ease-in-out infinite alternate;
@@ -217,29 +250,16 @@ $footer_text = "&copy; {$current_year} {$system_name}. All Rights Reserved.";
             100% { opacity: 0.4; height: 60%; top: 20%; filter: blur(8px); }
         }
 
-
-        .brand {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin-bottom: 32px;
-            text-align: center;
-        }
-
+        .brand { text-align: center; margin-bottom: 30px; }
         .brand-logo {
-            width: 88px;
-            height: auto;
-            object-fit: contain;
-            margin-bottom: 16px;
+            width: 88px; height: auto;
             filter: drop-shadow(0 4px 16px rgba(227,6,19,.4));
             animation: logoFloat 3s ease-in-out infinite;
         }
-
         @keyframes logoFloat {
-            0%, 100% { transform: translateY(0); }
-            50%       { transform: translateY(-5px); }
+            0%,100% { transform: translateY(0); }
+            50%      { transform: translateY(-5px); }
         }
-
         .brand-tagline {
             display: block;
             margin-top: 10px;
@@ -247,47 +267,56 @@ $footer_text = "&copy; {$current_year} {$system_name}. All Rights Reserved.";
             font-weight: 700;
             letter-spacing: 2.8px;
             text-transform: uppercase;
-            color: rgba(180,210,255,.9);
-            text-shadow: 0 0 12px rgba(100,160,255,.4);
+            color: rgba(200,220,255,.95);
+            text-shadow: 0 1px 4px rgba(0,0,0,.5);
         }
 
-        .field-group {
-            margin-bottom: 24px;
-            position: relative;
+        .alert-error, .alert-success {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-radius: 10px;
+            padding: 12px 14px;
+            margin-bottom: 22px;
+            font-size: 13px;
         }
+        .alert-error {
+            background: rgba(227,6,19,.12);
+            border: 1px solid rgba(227,6,19,.35);
+            color: #ff8080;
+            animation: shake .35s ease;
+        }
+        .alert-success {
+            background: rgba(16,185,129,.12);
+            border: 1px solid rgba(16,185,129,.35);
+            color: #6ee7b7;
+        }
+        @keyframes shake {
+            0%,100% { transform: translateX(0); }
+            25%      { transform: translateX(-6px); }
+            75%      { transform: translateX(6px); }
+        }
+
+        .form-group { margin-bottom: 18px; }
 
         .field-label {
-            display: block;
-            margin-bottom: 8px;
-            font-size: 12.5px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 11.5px;
             font-weight: 700;
-            color: rgba(255,255,255,.9);
-            letter-spacing: .8px;
+            letter-spacing: 1.4px;
             text-transform: uppercase;
-            text-shadow: 0 1px 3px rgba(0,0,0,.5);
-        }
-
-        /* Hide type detection badge - auto-detection runs silently in background */
-        .type-badge {
-            display: none !important;
+            color: var(--label);
+            margin-bottom: 8px;
+            text-shadow: 0 1px 4px rgba(0,0,0,.5);
         }
 
         .input-wrap {
             position: relative;
             display: flex;
             align-items: center;
-            border-radius: 14px;
-            background: rgba(0,0,0,.45);
-            border: 1.5px solid rgba(255,255,255,.15);
-            box-shadow: 0 2px 6px rgba(0,0,0,.35) inset;
-            transition: border-color .25s, box-shadow .25s;
         }
-
-        .input-wrap:focus-within {
-            border-color: #3b82f6;
-            box-shadow: 0 0 14px rgba(59,130,246,.5), 0 2px 6px rgba(0,0,0,.3) inset;
-        }
-
         .input-icon {
             position: absolute;
             left: 16px;
@@ -298,7 +327,6 @@ $footer_text = "&copy; {$current_year} {$system_name}. All Rights Reserved.";
             z-index: 2;
             text-shadow: 0 0 10px rgba(255,255,255,.5), 0 1px 3px rgba(0,0,0,.6);
         }
-
         .input-wrap:focus-within .input-icon {
             color: #ffffff;
             text-shadow: 0 0 16px rgba(96,165,250,.9), 0 1px 3px rgba(0,0,0,.6);
@@ -306,109 +334,85 @@ $footer_text = "&copy; {$current_year} {$system_name}. All Rights Reserved.";
 
         .field-input {
             width: 100%;
-            height: 48px;
-            background: transparent;
-            border: none;
-            outline: none;
-            padding: 0 16px 0 46px;
-            color: #ffffff;
+            padding: 14px 46px;
             font-family: inherit;
             font-size: 14.5px;
             font-weight: 500;
-            text-shadow: 0 1px 2px rgba(0,0,0,.4);
-        }
-
-        .field-input::placeholder {
-            color: rgba(200,220,255,.45);
-            font-weight: 400;
-        }
-
-
-
-        .btn-submit {
-            width: 100%;
-            height: 50px;
-            background: linear-gradient(135deg, #002F6C, #0050b3);
-            border: 1px solid rgba(255,255,255,.15);
-            border-radius: 14px;
             color: #ffffff;
+            background: rgba(255,255,255,.12);
+            border: 1px solid rgba(255,255,255,.25);
+            border-radius: 13px;
+            outline: none;
+            transition: border-color .25s, box-shadow .25s, background .25s;
+            caret-color: #93c5fd;
+            text-shadow: 0 1px 3px rgba(0,0,0,.4);
+        }
+        .field-input::placeholder { color: rgba(200,220,255,.55); font-weight: 400; }
+        .field-input:focus {
+            background: rgba(255,255,255,.18);
+            border-color: rgba(147,197,253,.8);
+            box-shadow: 0 0 0 3px rgba(96,165,250,.20);
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 14px;
             font-family: inherit;
             font-size: 15px;
             font-weight: 700;
+            letter-spacing: .4px;
+            color: #fff;
+            background: linear-gradient(135deg, #002F6C 0%, #0050b3 100%);
+            border: none;
+            border-radius: 12px;
             cursor: pointer;
-            transition: transform .15s, box-shadow .2s;
-            box-shadow: 0 4px 15px rgba(0,47,108,.4), 0 1px 0 rgba(255,255,255,.15) inset;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 10px;
+            transition: transform .15s, box-shadow .2s;
+            box-shadow: 0 4px 24px rgba(0,47,108,.5), 0 0 0 1px rgba(255,255,255,.07) inset;
+            position: relative;
+            overflow: hidden;
+            text-transform: uppercase;
         }
-
-        .btn-submit:hover {
-            box-shadow: 0 6px 20px rgba(0,47,108,.6), 0 1px 0 rgba(255,255,255,.25) inset;
-            transform: translateY(-1px);
+        .btn-login::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,.12) 0%, transparent 60%);
+            opacity: 0;
+            transition: opacity .2s;
         }
-
-        .btn-submit:active {
-            transform: translateY(1px);
-            box-shadow: 0 2px 10px rgba(0,47,108,.4);
+        .btn-login:hover:not(:disabled)::before { opacity: 1; }
+        .btn-login:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0,47,108,.65), 0 0 0 1px rgba(255,255,255,.1) inset;
         }
-
-        .btn-submit:disabled {
-            background: #4a5568;
-            border-color: rgba(255,255,255,.05);
+        .btn-login:active:not(:disabled) { transform: translateY(0); }
+        .btn-login:disabled {
+            background: rgba(255,255,255,.07);
+            color: rgba(255,255,255,.28);
             cursor: not-allowed;
             box-shadow: none;
-            transform: none;
         }
 
-        .error-banner, .success-banner {
-            border-radius: 12px;
-            padding: 12px 16px;
-            font-size: 13.5px;
-            font-weight: 600;
-            margin-bottom: 24px;
+        .login-footer {
             display: flex;
-            align-items: center;
+            flex-direction: column;
             gap: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,.25);
-            text-align: left;
-        }
-
-        .error-banner {
-            background: rgba(220,38,38,.25);
-            border: 1.5px solid rgba(220,38,38,.45);
-            color: #fca5a5;
-        }
-
-        .success-banner {
-            background: rgba(16,185,129,.2);
-            border: 1.5px solid rgba(16,185,129,.45);
-            color: #a7f3d0;
-        }
-
-        .links-wrap {
-            margin-top: 24px;
-            display: flex;
-            justify-content: center;
-        }
-
-        .forgot-link {
-            color: rgba(255,255,255,.8);
-            font-size: 13.5px;
-            font-weight: 600;
-            text-decoration: none;
-            transition: color .2s, text-shadow .2s;
-            text-shadow: 0 1px 2px rgba(0,0,0,.5);
-            display: inline-flex;
             align-items: center;
-            gap: 8px;
+            margin-top: 24px;
         }
-
-        .forgot-link:hover {
-            color: #93c5fd;
-            text-shadow: 0 0 8px rgba(147,197,253,.5);
+        .login-footer a {
+            font-size: 13px;
+            font-weight: 600;
+            color: rgba(180,210,255,.75);
+            text-decoration: none;
+            transition: color .2s;
+            text-shadow: 0 1px 4px rgba(0,0,0,.4);
         }
+        .login-footer a:hover { color: #93c5fd; }
 
         .page-footer {
             margin-top: 28px;
@@ -418,8 +422,10 @@ $footer_text = "&copy; {$current_year} {$system_name}. All Rights Reserved.";
             letter-spacing: .5px;
             text-align: center;
             text-shadow: 0 1px 6px rgba(0,0,0,.9), 0 2px 12px rgba(0,0,0,.8);
+            cursor: default;
+            user-select: none;
+            pointer-events: none;
         }
-
         @media (max-width: 540px) {
             .login-wrap { padding: 0 12px; }
             .login-card { padding: 38px 28px 32px; }
@@ -427,110 +433,70 @@ $footer_text = "&copy; {$current_year} {$system_name}. All Rights Reserved.";
     </style>
 </head>
 <body>
+    <div class="bg-layer bg-image"></div>
 
-<!-- 4D Background Layers -->
-<div class="bg-layer bg-image"></div>
-<div class="bg-layer bg-gradient"></div>
-<div class="bg-layer bg-orbs">
-    <div class="orb orb-1"></div>
-    <div class="orb orb-2"></div>
-</div>
-<div class="bg-layer bg-particles">
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-</div>
-<div class="bg-layer bg-grid"></div>
-
-<div class="login-wrap">
-    <div class="login-card">
-        <!-- Branding -->
-        <div class="brand">
-            <img src="<?php echo '../' . get_system_logo_url(isset($station_id) ? (int)$station_id : (isset($user['station_id']) ? (int)$user['station_id'] : 0)); ?>" alt="Petron" class="brand-logo">
-            <span class="brand-tagline">Station Management System</span>
-        </div>
-
-        <!-- Error Message -->
-        <?php if ($error): ?>
-            <div class="error-banner">
-                <i class="fas fa-exclamation-triangle"></i>
-                <span><?php echo htmlspecialchars($error); ?></span>
+    <div class="login-wrap">
+        <div class="login-card">
+            <div class="brand">
+                <img src="<?php echo '../' . get_system_logo_url(isset($station_id) ? (int)$station_id : (isset($user['station_id']) ? (int)$user['station_id'] : 0)); ?>" alt="Petron Logo" class="brand-logo">
+                <span class="brand-tagline">Station Management System</span>
             </div>
-        <?php endif; ?>
 
-        <!-- Success Message -->
-        <?php if ($success): ?>
-            <div class="success-banner">
-                <i class="fas fa-check-circle"></i>
-                <span><?php echo htmlspecialchars($success); ?></span>
-            </div>
-        <?php endif; ?>
-
-        <?php if (!$success): ?>
-        <!-- Forgot Password Form -->
-        <form method="POST" action=""  id="forgotForm">
-            <div class="field-group">
-                <label for="recovery_id" class="field-label">Account ID</label>
-                <div class="input-wrap">
-                    <i class="fas fa-id-badge input-icon"></i>
-                    <input type="text" name="recovery_id" id="recovery_id" class="field-input" placeholder="Enter Account" required autofocus aria-label="Account ID">
-                    <span class="type-badge" id="typeBadge"></span>
+            <?php if ($error): ?>
+                <div class="alert-error">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span><?php echo htmlspecialchars($error); ?></span>
                 </div>
-            </div>
-            
-            <button type="submit" class="btn-submit" id="submitBtn">
-                <div class="spinner" id="spinner"></div>
-                <span id="btnText">Send Reset Link</span>
-            </button>
-        </form>
-        <?php endif; ?>
+            <?php endif; ?>
 
-        <!-- Secondary Links -->
-        <div class="links-wrap">
-            <a href="login_new.php" class="forgot-link"><i class="fas fa-arrow-left"></i> Back to Login</a>
+            <?php if ($success): ?>
+                <div class="alert-success">
+                    <i class="fas fa-check-circle"></i>
+                    <span><?php echo htmlspecialchars($success); ?></span>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!$success): ?>
+            <form method="POST" action="" id="forgotForm">
+                <div class="form-group">
+                    <label for="recovery_id" class="field-label">Email or Username</label>
+                    <div class="input-wrap">
+                        <i class="fas fa-envelope input-icon"></i>
+                        <input type="text" name="recovery_id" id="recovery_id" class="field-input"
+                               placeholder="Enter your email or username" required autofocus autocomplete="username">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-login" id="submitBtn">
+                    <i class="fas fa-paper-plane"></i>
+                    <span>Send OTP</span>
+                </button>
+            </form>
+            <?php endif; ?>
+
+            <div class="login-footer">
+                <a href="login.php">
+                    <i class="fas fa-arrow-left"></i> Back to Login
+                </a>
+            </div>
+        </div>
+        <div class="page-footer">
+            &copy; <?php echo date('Y'); ?> Petron Station Management System. All Rights Reserved.
         </div>
     </div>
-
-    <div class="page-footer">
-        <?php echo $footer_text; ?>
-    </div>
-</div>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const form = document.getElementById('forgotForm');
-        const submitBtn = document.getElementById('submitBtn');
-        const spinner = document.getElementById('spinner');
-        const btnText = document.getElementById('btnText');
-        const recoveryInput = document.getElementById('recovery_id');
-
-        // Auto-detection runs silently in background (no UI badge display)
-        function detectType(val) {
-            val = (val || '').trim();
-            if (!val) return null;
-            if (val.indexOf('@') !== -1) return 'email';
-            if (/^\d{11}$/.test(val)) return 'phone';
-            return 'username';
-        }
-
-        if (form) {
-            form.addEventListener('submit', () => {
-                submitBtn.disabled = true;
-                if (spinner) {
-                    spinner.style.display = 'block';
-                }
-                if (btnText) {
-                    btnText.textContent = 'Sending...';
-                }
-            });
-        }
+const forgotForm = document.getElementById('forgotForm');
+const submitBtn = document.getElementById('submitBtn');
+if (forgotForm && submitBtn) {
+    forgotForm.addEventListener('submit', () => {
+        submitBtn.disabled = true;
+        const span = submitBtn.querySelector('span');
+        if (span) span.textContent = 'Sending OTP...';
+        const icon = submitBtn.querySelector('i');
+        if (icon) icon.className = 'fas fa-spinner fa-spin';
     });
+}
 </script>
-
 </body>
 </html>

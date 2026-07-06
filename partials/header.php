@@ -642,9 +642,8 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     }
     body.dark-theme .footer-sidebar-area {
         background-color: #111827 !important;
-        border-right: 1px solid var(--border-color) !important;
         color: var(--text-secondary) !important;
-    }
+     }
     body.dark-theme .footer-text,
     body.dark-theme .footer-clock { color: var(--text-secondary) !important; }
     body.dark-theme .footer-identity { color: #93c5fd !important; }
@@ -821,18 +820,19 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         }
 
         .sidebar {
-            display: flex;
-            flex-direction: column;
-            position: fixed;
-            top: 70px;
-            left: 0;
-            bottom: 0;
-            width: 250px;
-            z-index: 1001;
-            overflow: hidden;
-            background: var(--sidebar-bg);
-            border-right: 1px solid var(--line);
-            transition: width 0.3s ease;
+            display: flex !important;
+            flex-direction: column !important;
+            position: fixed !important;
+            top: 70px !important;
+            left: 0 !important;
+            bottom: 40px !important; /* height of fixed footer */
+            height: calc(100vh - 110px) !important; /* 70px top + 40px bottom = 110px */
+            width: 250px !important;
+            z-index: 1001 !important;
+            overflow: hidden !important;
+            background: var(--sidebar-bg) !important;
+            border-right: 1px solid var(--line) !important;
+            transition: width 0.3s ease !important;
         }
         .sidebar-menu { 
             flex: 1 1 auto; 
@@ -1088,7 +1088,8 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
             position: fixed !important;
             top: 60px !important;
             left: -260px !important;
-            bottom: 0 !important;
+            bottom: 40px !important; /* height of fixed footer */
+            height: calc(100vh - 100px) !important; /* 60px top + 40px bottom = 100px */
             width: 250px !important;
             z-index: 1100 !important;
             overflow-y: auto !important;
