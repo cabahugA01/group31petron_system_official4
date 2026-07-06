@@ -9,387 +9,47 @@ require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
 require_login();
 
-$me         = current_user();
-$role       = role_key($me['role'] ?? '');
+$me  = current_user();
+$role  = role_key($me['role'] ?? '');
 $station_id = (int) user_station_id();
 
 // Access control - Manager, Supervisor, Admin
-if (!in_array($role, ['manager', 'supervisor', 'admin', 'superadmin'])) {
-    $_SESSION['error'] = 'Access denied. Manager access required.';
-    header('Location: staff_dashboard.php'); 
-    exit;
+if (!in_array($role, ['manager', 'supervisor', 'admin', 'superadmin'])) {  $_SESSION['error'] = 'Access denied. Manager access required.';  header('Location: staff_dashboard.php');  exit;
 }
 
-if ($station_id <= 0) {
-    $_SESSION['error'] = 'No station assigned.';
-    header('Location: manager_dashboard.php'); 
-    exit;
+if ($station_id <= 0) {  $_SESSION['error'] = 'No station assigned.';  header('Location: manager_dashboard.php');  exit;
 }
 
 // ── Shift Dependency & Continuity Helpers ─────────────────────
-if (!function_exists('get_preceding_shift_and_date')) {
-    function get_preceding_shift_and_date($pdo, $shift_key, $date) {
-        $stmt = $pdo->query("SELECT shift_key FROM shift_periods WHERE is_active = 1 ORDER BY sort_order ASC");
-        $shifts = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        
-        if (empty($shifts)) {
-            return null;
-        }
-        
-        $index = array_search(strtolower($shift_key), array_map('strtolower', $shifts));
-        if ($index === false) {
-            return null;
-        }
-        
-        if ($index > 0) {
-            return [
-                'shift_key' => $shifts[$index - 1],
-                'date' => $date
-            ];
-        } else {
-            $prev_date = date('Y-m-d', strtotime($date . ' -1 day'));
-            return [
-                'shift_key' => $shifts[count($shifts) - 1],
-                'date' => $prev_date
-            ];
-        }
-    }
+if (!function_exists('get_preceding_shift_and_date')) {  function get_preceding_shift_and_date($pdo, $shift_key, $date) {  $stmt = $pdo->query("SELECT shift_key FROM shift_periods WHERE is_active = 1 ORDER BY sort_order ASC");  $shifts = $stmt->fetchAll(PDO::FETCH_COLUMN);  if (empty($shifts)) {  return null;  }  $index = array_search(strtolower($shift_key), array_map('strtolower', $shifts));  if ($index === false) {  return null;  }  if ($index > 0) {  return [  'shift_key' => $shifts[$index - 1],  'date' => $date  ];  } else {  $prev_date = date('Y-m-d', strtotime($date . ' -1 day'));  return [  'shift_key' => $shifts[count($shifts) - 1],  'date' => $prev_date  ];  }  }
 }
 
-if (!function_exists('get_preceding_shift_validated_ending')) {
-    function get_preceding_shift_validated_ending($pdo, $station_id, $pump_id, $current_shift, $current_date) {
-        $preceding = get_preceding_shift_and_date($pdo, $current_shift, $current_date);
-        if ($preceding) {
-            $stmt = $pdo->prepare("
-                SELECT present_reading 
-                FROM fuel_transactions 
-                WHERE station_id = ? 
-                  AND pump_id = ? 
-                  AND LOWER(shift_period) = LOWER(?) 
-                  AND DATE(transaction_date) = ?
-                  AND LOWER(status) IN ('verified', 'adjusted')
-                ORDER BY id DESC 
-                LIMIT 1
-            ");
-            $stmt->execute([$station_id, $pump_id, $preceding['shift_key'], $preceding['date']]);
-            $val = $stmt->fetchColumn();
-            if ($val !== false) {
-                return (float)$val;
-            }
-        }
-        
-        $stmt_fallback = $pdo->prepare("
-            SELECT present_reading 
-            FROM fuel_transactions 
-            WHERE station_id = ? 
-              AND pump_id = ? 
-              AND LOWER(status) IN ('verified', 'adjusted')
-            ORDER BY transaction_date DESC, id DESC 
-            LIMIT 1
-        ");
-        $stmt_fallback->execute([$station_id, $pump_id]);
-        $val_fallback = $stmt_fallback->fetchColumn();
-        return $val_fallback !== false ? (float)$val_fallback : 0.0;
-    }
+if (!function_exists('get_preceding_shift_validated_ending')) {  function get_preceding_shift_validated_ending($pdo, $station_id, $pump_id, $current_shift, $current_date) {  $preceding = get_preceding_shift_and_date($pdo, $current_shift, $current_date);  if ($preceding) {  $stmt = $pdo->prepare("  SELECT present_reading  FROM fuel_transactions  WHERE station_id = ?  AND pump_id = ?  AND LOWER(shift_period) = LOWER(?)  AND DATE(transaction_date) = ?  AND LOWER(status) IN ('verified', 'adjusted')  ORDER BY id DESC  LIMIT 1  ");  $stmt->execute([$station_id, $pump_id, $preceding['shift_key'], $preceding['date']]);  $val = $stmt->fetchColumn();  if ($val !== false) {  return (float)$val;  }  }  $stmt_fallback = $pdo->prepare("  SELECT present_reading  FROM fuel_transactions  WHERE station_id = ?  AND pump_id = ?  AND LOWER(status) IN ('verified', 'adjusted')  ORDER BY transaction_date DESC, id DESC  LIMIT 1  ");  $stmt_fallback->execute([$station_id, $pump_id]);  $val_fallback = $stmt_fallback->fetchColumn();  return $val_fallback !== false ? (float)$val_fallback : 0.0;  }
 }
 
-if (!function_exists('is_preceding_shift_validated')) {
-    function is_preceding_shift_validated($pdo, $station_id, $pump_id, $current_shift, $current_date) {
-        $preceding = get_preceding_shift_and_date($pdo, $current_shift, $current_date);
-        if (!$preceding) {
-            return true; 
-        }
-        
-        $stmt_exists = $pdo->prepare("
-            SELECT COUNT(*) 
-            FROM fuel_transactions 
-            WHERE station_id = ? 
-              AND pump_id = ? 
-              AND LOWER(shift_period) = LOWER(?) 
-              AND DATE(transaction_date) = ?
-        ");
-        $stmt_exists->execute([$station_id, $pump_id, $preceding['shift_key'], $preceding['date']]);
-        $exists = (int)$stmt_exists->fetchColumn() > 0;
-        
-        if (!$exists) {
-            return false;
-        }
-        
-        $stmt_unverified = $pdo->prepare("
-            SELECT COUNT(*) 
-            FROM fuel_transactions 
-            WHERE station_id = ? 
-              AND pump_id = ? 
-              AND LOWER(shift_period) = LOWER(?) 
-              AND DATE(transaction_date) = ?
-              AND LOWER(status) NOT IN ('verified', 'adjusted')
-        ");
-        $stmt_unverified->execute([$station_id, $pump_id, $preceding['shift_key'], $preceding['date']]);
-        $unverified = (int)$stmt_unverified->fetchColumn();
-        
-        return $unverified === 0;
-    }
+if (!function_exists('is_preceding_shift_validated')) {  function is_preceding_shift_validated($pdo, $station_id, $pump_id, $current_shift, $current_date) {  $preceding = get_preceding_shift_and_date($pdo, $current_shift, $current_date);  if (!$preceding) {  return true;  }  $stmt_exists = $pdo->prepare("  SELECT COUNT(*)  FROM fuel_transactions  WHERE station_id = ?  AND pump_id = ?  AND LOWER(shift_period) = LOWER(?)  AND DATE(transaction_date) = ?  ");  $stmt_exists->execute([$station_id, $pump_id, $preceding['shift_key'], $preceding['date']]);  $exists = (int)$stmt_exists->fetchColumn() > 0;  if (!$exists) {  return false;  }  $stmt_unverified = $pdo->prepare("  SELECT COUNT(*)  FROM fuel_transactions  WHERE station_id = ?  AND pump_id = ?  AND LOWER(shift_period) = LOWER(?)  AND DATE(transaction_date) = ?  AND LOWER(status) NOT IN ('verified', 'adjusted')  ");  $stmt_unverified->execute([$station_id, $pump_id, $preceding['shift_key'], $preceding['date']]);  $unverified = (int)$stmt_unverified->fetchColumn();  return $unverified === 0;  }
 }
 
-if (!function_exists('formatShiftLabel')) {
-    function formatShiftLabel($shift_key) {
-        $s = strtolower(trim($shift_key ?? ''));
-        if ($s === 'first') return 'Shift 1';
-        if ($s === 'second') return 'Shift 2';
-        if ($s === 'third') return 'Shift 3';
-        return ucfirst($shift_key);
-    }
+if (!function_exists('formatShiftLabel')) {  function formatShiftLabel($shift_key) {  $s = strtolower(trim($shift_key ?? ''));  if ($s === 'first') return 'Shift 1';  if ($s === 'second') return 'Shift 2';  if ($s === 'third') return 'Shift 3';  return ucfirst($shift_key);  }
 }
 
-if (!function_exists('getStatusBadgeClass')) {
-    function getStatusBadgeClass($status) {
-        $s = strtolower(trim($status ?? ''));
-        if (str_contains($s, 'pending')) return 'bg-amber';
-        if ($s === 'verified' || $s === 'approved' || $s === 'validated') return 'bg-green';
-        if ($s === 'adjusted') return 'bg-blue';
-        if ($s === 'rejected') return 'bg-red';
-        return 'bg-gray';
-    }
+if (!function_exists('getStatusBadgeClass')) {  function getStatusBadgeClass($status) {  $s = strtolower(trim($status ?? ''));  if (str_contains($s, 'pending')) return 'bg-amber';  if ($s === 'verified' || $s === 'approved' || $s === 'validated') return 'bg-green';  if ($s === 'adjusted') return 'bg-blue';  if ($s === 'rejected') return 'bg-red';  return 'bg-gray';  }
 }
 
-if (!function_exists('getStatusLabel')) {
-    function getStatusLabel($status) {
-        $s = strtolower(trim($status ?? ''));
-        if (str_contains($s, 'pending')) return 'Pending';
-        if ($s === 'verified' || $s === 'approved' || $s === 'validated') return 'Verified';
-        if ($s === 'adjusted') return 'Adjusted';
-        if ($s === 'rejected') return 'Rejected';
-        return ucfirst($status);
-    }
+if (!function_exists('getStatusLabel')) {  function getStatusLabel($status) {  $s = strtolower(trim($status ?? ''));  if (str_contains($s, 'pending')) return 'Pending';  if ($s === 'verified' || $s === 'approved' || $s === 'validated') return 'Verified';  if ($s === 'adjusted') return 'Adjusted';  if ($s === 'rejected') return 'Rejected';  return ucfirst($status);  }
 }
 
 // ── GET Filters ──────────────────────────────────────────────
 // Default date: if no date provided in URL, use the most recent date with transactions.
 // Falls back to today if nothing found.
-if (isset($_GET['date']) && $_GET['date'] !== '') {
-    $date_filter = trim($_GET['date']);
-} else {
-    // Find most recent date with any fuel transactions for this station
-    try {
-        $latest_stmt = $pdo->prepare("SELECT DATE(transaction_date) FROM fuel_transactions WHERE station_id = ? ORDER BY transaction_date DESC, id DESC LIMIT 1");
-        $latest_stmt->execute([$station_id]);
-        $latest_date = $latest_stmt->fetchColumn();
-        $date_filter = $latest_date ?: date('Y-m-d');
-    } catch (Exception $e) {
-        $date_filter = date('Y-m-d');
-    }
+if (isset($_GET['date']) && $_GET['date'] !== '') {  $date_filter = trim($_GET['date']);
+} else {  // Find most recent date with any fuel transactions for this station  try {  $latest_stmt = $pdo->prepare("SELECT DATE(transaction_date) FROM fuel_transactions WHERE station_id = ? ORDER BY transaction_date DESC, id DESC LIMIT 1");  $latest_stmt->execute([$station_id]);  $latest_date = $latest_stmt->fetchColumn();  $date_filter = $latest_date ?: date('Y-m-d');  } catch (Exception $e) {  $date_filter = date('Y-m-d');  }
 }
-$shift_filter       = trim($_GET['shift']     ?? 'all');
-$fuel_type_filter   = trim($_GET['fuel_type'] ?? 'all');
-$staff_filter       = trim($_GET['staff']     ?? '');
-$export             = trim($_GET['export']    ?? '');
-
-
-// ── POST Actions (Verify / Adjust / Reject) ───────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $export === '') {
-    $action  = trim($_POST['action'] ?? '');
-    $tx_id   = (int)($_POST['id'] ?? 0);
-    $remarks = trim($_POST['remarks'] ?? '');
-
-    if ($tx_id <= 0) {
-        $_SESSION['error'] = 'Invalid transaction ID.';
-        header('Location: manager_fuel_pump_master.php'); exit;
-    }
-
-    try {
-        $pdo->beginTransaction();
-
-        $stmt = $pdo->prepare("
-            SELECT ft.*,
-                   COALESCE(
-                       NULLIF(CONCAT(TRIM(COALESCE(staff.first_name, '')), ' ', TRIM(COALESCE(staff.last_name, ''))), ' '),
-                       staff.username,
-                       'Unknown'
-                   ) as staff_name
-            FROM fuel_transactions ft
-            LEFT JOIN users staff ON ft.staff_id = staff.id
-            WHERE ft.id = ? AND ft.station_id = ?
-        ");
-        $stmt->execute([$tx_id, $station_id]);
-        $tx = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$tx) {
-            throw new Exception("Transaction not found.");
-        }
-
-        // 1. VERIFY ACTION
-        if ($action === 'verify') {
-            if (!str_contains(strtolower($tx['status']), 'pending')) {
-                throw new Exception("Transaction has already been processed.");
-            }
-
-            $liters_sold = (float)$tx['liters_sold'];
-            $prev_reading = (float)$tx['previous_reading'];
-
-            if ($tx['pump_id'] > 0) {
-                $tx_date_str = date('Y-m-d', strtotime($tx['transaction_date']));
-                
-                // Shift validation gate check
-                if (!is_preceding_shift_validated($pdo, $station_id, $tx['pump_id'], $tx['shift_period'], $tx_date_str)) {
-                    $preceding = get_preceding_shift_and_date($pdo, $tx['shift_period'], $tx_date_str);
-                    throw new Exception("Cannot validate this transaction. The transaction for the preceding shift (" . formatShiftLabel($preceding['shift_key']) . " on " . $preceding['date'] . ") for this fuel line must be verified or adjusted first.");
-                }
-
-                // Programmatically set Beginning Reading to match preceding shift's validated Ending Reading
-                $prev_reading = get_preceding_shift_validated_ending($pdo, $station_id, $tx['pump_id'], $tx['shift_period'], $tx_date_str);
-                $present_reading = (float)$tx['present_reading'];
-                $calibration = (float)$tx['calibration'];
-                
-                if ($present_reading < $prev_reading) {
-                    throw new Exception("Ending reading (" . number_format($present_reading, 2) . ") cannot be less than the preceding shift's validated ending reading (" . number_format($prev_reading, 2) . ").");
-                }
-                
-                $liters_sold = max(0.00, $present_reading - $prev_reading - $calibration);
-                $price_per_liter = (float)$tx['price_per_liter'];
-                $total_amount = round($liters_sold * $price_per_liter, 2);
-                
-                $up = $pdo->prepare("UPDATE fuel_transactions SET previous_reading = ?, liters_sold = ?, total_amount = ?, status = 'Verified', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
-                $up->execute([$prev_reading, $liters_sold, $total_amount, $me['id'], $remarks ?: null, $tx_id]);
-            } else {
-                $up = $pdo->prepare("UPDATE fuel_transactions SET status = 'Verified', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
-                $up->execute([$me['id'], $remarks ?: null, $tx_id]);
-            }
-
-            // Deduct stock from fuel_inventory
-            $up_stock = $pdo->prepare("UPDATE fuel_inventory 
-                                       SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?),
-                                           current_stock  = GREATEST(0, COALESCE(current_stock, 0) - ?),
-                                           last_updated   = NOW()
-                                       WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
-            $up_stock->execute([$liters_sold, $liters_sold, $station_id, $tx['fuel_type']]);
-
-            log_activity($pdo, $me['id'], 'Fuel Reading Approved', "TXN {$tx['transaction_id']} | {$tx['fuel_type']} | {$liters_sold} L");
-            $_SESSION['success'] = "Transaction <strong>{$tx['transaction_id']}</strong> verified and approved successfully.";
-        }
-
-        // 2. ADJUST ACTION
-        elseif ($action === 'adjust') {
-            if (empty($remarks)) {
-                throw new Exception("Adjustment reason is required.");
-            }
-            if (!str_contains(strtolower($tx['status']), 'pending')) {
-                throw new Exception("Transaction has already been processed.");
-            }
-
-            $ending = isset($_POST['ending']) ? (float)$_POST['ending'] : null;
-            $calibration = isset($_POST['calibration']) ? (float)$_POST['calibration'] : null;
-
-            if ($ending !== null && $calibration !== null) {
-                $tx_date_str = date('Y-m-d', strtotime($tx['transaction_date']));
-                $beginning = (float)$tx['previous_reading'];
-
-                if ($tx['pump_id'] > 0) {
-                    // Shift validation gate check
-                    if (!is_preceding_shift_validated($pdo, $station_id, $tx['pump_id'], $tx['shift_period'], $tx_date_str)) {
-                        $preceding = get_preceding_shift_and_date($pdo, $tx['shift_period'], $tx_date_str);
-                        throw new Exception("Cannot adjust this transaction. The transaction for the preceding shift (" . formatShiftLabel($preceding['shift_key']) . " on " . $preceding['date'] . ") for this fuel line must be verified or adjusted first.");
-                    }
-
-                    $beginning = get_preceding_shift_validated_ending($pdo, $station_id, $tx['pump_id'], $tx['shift_period'], $tx_date_str);
-                }
-
-                $liters_sold = $ending - $beginning - $calibration;
-                if ($liters_sold < 0) {
-                    throw new Exception("Ending reading cannot be less than beginning reading and calibration combined.");
-                }
-                $price_per_liter = (float)$tx['price_per_liter'];
-                $total_amount = $liters_sold * $price_per_liter;
-
-                // Update transaction readings and calibration
-                $up = $pdo->prepare("
-                    UPDATE fuel_transactions 
-                    SET previous_reading = ?, 
-                        present_reading = ?, 
-                        calibration = ?, 
-                        liters_sold = ?, 
-                        total_amount = ?, 
-                        status = 'Adjusted', 
-                        validated_by = ?, 
-                        validated_at = NOW(), 
-                        reject_reason = ? 
-                    WHERE id = ?
-                ");
-                $up->execute([$beginning, $ending, $calibration, $liters_sold, $total_amount, $me['id'], $remarks, $tx_id]);
-
-                // Deduct stock from fuel_inventory
-                $up_stock = $pdo->prepare("UPDATE fuel_inventory 
-                                           SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?),
-                                               current_stock  = GREATEST(0, COALESCE(current_stock, 0) - ?),
-                                               last_updated   = NOW()
-                                           WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
-                $up_stock->execute([$liters_sold, $liters_sold, $station_id, $tx['fuel_type']]);
-
-                // Log into fuel_adjustments audit log
-                try {
-                    $meta_notes = json_encode([
-                        'transaction_id' => $tx['transaction_id'],
-                        'fuel_line' => 'Pump #' . ($tx['pump_id'] ?? '—'),
-                        'fuel_type' => $tx['fuel_type'],
-                        'shift' => formatShiftLabel($tx['shift_period']),
-                        'staff_name' => $tx['staff_name'] ?? '—',
-                        'prev_beginning' => (float)$tx['previous_reading'],
-                        'prev_ending' => (float)$tx['present_reading'],
-                        'prev_calibration' => (float)$tx['calibration'],
-                        'new_beginning' => $beginning,
-                        'new_ending' => $ending,
-                        'new_calibration' => $calibration,
-                    ]);
-
-                    $ins_adj = $pdo->prepare("
-                        INSERT INTO fuel_adjustments 
-                        (station_id, adjustment_date, fuel_type, fuel_type_id, adjustment_type, liters, previous_value, new_value, reason, user_id, notes, status, approved_by, approved_at, created_at)
-                        VALUES (?, CURDATE(), ?, null, 'transaction_adjustment', ?, ?, ?, ?, ?, ?, 'Approved', ?, NOW(), NOW())
-                    ");
-                    $ins_adj->execute([
-                        $station_id,
-                        $tx['fuel_type'],
-                        $liters_sold,
-                        (float)$tx['liters_sold'],
-                        $liters_sold,
-                        $remarks,
-                        $me['id'],
-                        $meta_notes,
-                        $me['id']
-                    ]);
-                } catch (Exception $e) {}
-
-                log_activity($pdo, $me['id'], 'Fuel Reading Adjusted and Approved', "TXN {$tx['transaction_id']} | {$tx['fuel_type']} | Old: {$tx['liters_sold']} L -> New: {$liters_sold} L | Reason: {$remarks}");
-                $_SESSION['success'] = "Transaction <strong>{$tx['transaction_id']}</strong> adjusted and validated successfully.";
-            }
-        }
-
-        // 3. REJECT ACTION
-        elseif ($action === 'reject') {
-            if (empty($remarks)) {
-                throw new Exception("Rejection reason is required.");
-            }
-            if (!str_contains(strtolower($tx['status']), 'pending')) {
-                throw new Exception("Transaction has already been processed.");
-            }
-
-            $up = $pdo->prepare("UPDATE fuel_transactions SET status = 'Rejected', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
-            $up->execute([$me['id'], $remarks, $tx_id]);
-
-            log_activity($pdo, $me['id'], 'Fuel Reading Rejected', "TXN {$tx['transaction_id']} | Reason: {$remarks}");
-            $_SESSION['success'] = "Transaction <strong>{$tx['transaction_id']}</strong> rejected and returned to staff.";
-        }
-
-        $pdo->commit();
-    } catch (Exception $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        $_SESSION['error'] = "Error: " . $e->getMessage();
-    }
-
-    $redirect_url = 'manager_fuel_pump_master.php';
-    if (!empty($_SERVER['QUERY_STRING'])) {
-        $redirect_url .= '?' . $_SERVER['QUERY_STRING'];
-    }
-    header('Location: ' . $redirect_url); exit;
+$shift_filter  = trim($_GET['shift']  ?? 'all');
+$fuel_type_filter  = trim($_GET['fuel_type'] ?? 'all');
+$staff_filter  = trim($_GET['staff']  ?? '');
+$export  = trim($_GET['export']  ?? '');  // ── POST Actions (Verify / Adjust / Reject) ───────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $export === '') {  $action  = trim($_POST['action'] ?? '');  $tx_id  = (int)($_POST['id'] ?? 0);  $remarks = trim($_POST['remarks'] ?? '');  if ($tx_id <= 0) {  $_SESSION['error'] = 'Invalid transaction ID.';  header('Location: manager_fuel_pump_master.php'); exit;  }  try {  $pdo->beginTransaction();  $stmt = $pdo->prepare("  SELECT ft.*,  COALESCE(  NULLIF(CONCAT(TRIM(COALESCE(staff.first_name, '')), ' ', TRIM(COALESCE(staff.last_name, ''))), ' '),  staff.username,  'Unknown'  ) as staff_name  FROM fuel_transactions ft  LEFT JOIN users staff ON ft.staff_id = staff.id  WHERE ft.id = ? AND ft.station_id = ?  ");  $stmt->execute([$tx_id, $station_id]);  $tx = $stmt->fetch(PDO::FETCH_ASSOC);  if (!$tx) {  throw new Exception("Transaction not found.");  }  // 1. VERIFY ACTION  if ($action === 'verify') {  if (!str_contains(strtolower($tx['status']), 'pending')) {  throw new Exception("Transaction has already been processed.");  }  $liters_sold = (float)$tx['liters_sold'];  $prev_reading = (float)$tx['previous_reading'];  if ($tx['pump_id'] > 0) {  $tx_date_str = date('Y-m-d', strtotime($tx['transaction_date']));  // Shift validation gate check  if (!is_preceding_shift_validated($pdo, $station_id, $tx['pump_id'], $tx['shift_period'], $tx_date_str)) {  $preceding = get_preceding_shift_and_date($pdo, $tx['shift_period'], $tx_date_str);  throw new Exception("Cannot validate this transaction. The transaction for the preceding shift (" . formatShiftLabel($preceding['shift_key']) . " on " . $preceding['date'] . ") for this fuel line must be verified or adjusted first.");  }  // Programmatically set Beginning Reading to match preceding shift's validated Ending Reading  $prev_reading = get_preceding_shift_validated_ending($pdo, $station_id, $tx['pump_id'], $tx['shift_period'], $tx_date_str);  $present_reading = (float)$tx['present_reading'];  $calibration = (float)$tx['calibration'];  if ($present_reading < $prev_reading) {  throw new Exception("Ending reading (" . number_format($present_reading, 2) . ") cannot be less than the preceding shift's validated ending reading (" . number_format($prev_reading, 2) . ").");  }  $liters_sold = max(0.00, $present_reading - $prev_reading - $calibration);  $price_per_liter = (float)$tx['price_per_liter'];  $total_amount = round($liters_sold * $price_per_liter, 2);  $up = $pdo->prepare("UPDATE fuel_transactions SET previous_reading = ?, liters_sold = ?, total_amount = ?, status = 'Verified', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");  $up->execute([$prev_reading, $liters_sold, $total_amount, $me['id'], $remarks ?: null, $tx_id]);  } else {  $up = $pdo->prepare("UPDATE fuel_transactions SET status = 'Verified', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");  $up->execute([$me['id'], $remarks ?: null, $tx_id]);  }  // Deduct stock from fuel_inventory  $up_stock = $pdo->prepare("UPDATE fuel_inventory  SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?),  current_stock  = GREATEST(0, COALESCE(current_stock, 0) - ?),  last_updated  = NOW()  WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");  $up_stock->execute([$liters_sold, $liters_sold, $station_id, $tx['fuel_type']]);  log_activity($pdo, $me['id'], 'Fuel Reading Approved', "TXN {$tx['transaction_id']} | {$tx['fuel_type']} | {$liters_sold} L");  $_SESSION['success'] = "Transaction <strong>{$tx['transaction_id']}</strong> verified and approved successfully.";  }  // 2. ADJUST ACTION  elseif ($action === 'adjust') {  if (empty($remarks)) {  throw new Exception("Adjustment reason is required.");  }  if (!str_contains(strtolower($tx['status']), 'pending')) {  throw new Exception("Transaction has already been processed.");  }  $ending = isset($_POST['ending']) ? (float)$_POST['ending'] : null;  $calibration = isset($_POST['calibration']) ? (float)$_POST['calibration'] : null;  if ($ending !== null && $calibration !== null) {  $tx_date_str = date('Y-m-d', strtotime($tx['transaction_date']));  $beginning = (float)$tx['previous_reading'];  if ($tx['pump_id'] > 0) {  // Shift validation gate check  if (!is_preceding_shift_validated($pdo, $station_id, $tx['pump_id'], $tx['shift_period'], $tx_date_str)) {  $preceding = get_preceding_shift_and_date($pdo, $tx['shift_period'], $tx_date_str);  throw new Exception("Cannot adjust this transaction. The transaction for the preceding shift (" . formatShiftLabel($preceding['shift_key']) . " on " . $preceding['date'] . ") for this fuel line must be verified or adjusted first.");  }  $beginning = get_preceding_shift_validated_ending($pdo, $station_id, $tx['pump_id'], $tx['shift_period'], $tx_date_str);  }  $liters_sold = $ending - $beginning - $calibration;  if ($liters_sold < 0) {  throw new Exception("Ending reading cannot be less than beginning reading and calibration combined.");  }  $price_per_liter = (float)$tx['price_per_liter'];  $total_amount = $liters_sold * $price_per_liter;  // Update transaction readings and calibration  $up = $pdo->prepare("  UPDATE fuel_transactions  SET previous_reading = ?,  present_reading = ?,  calibration = ?,  liters_sold = ?,  total_amount = ?,  status = 'Adjusted',  validated_by = ?,  validated_at = NOW(),  reject_reason = ?  WHERE id = ?  ");  $up->execute([$beginning, $ending, $calibration, $liters_sold, $total_amount, $me['id'], $remarks, $tx_id]);  // Deduct stock from fuel_inventory  $up_stock = $pdo->prepare("UPDATE fuel_inventory  SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?),  current_stock  = GREATEST(0, COALESCE(current_stock, 0) - ?),  last_updated  = NOW()  WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");  $up_stock->execute([$liters_sold, $liters_sold, $station_id, $tx['fuel_type']]);  // Log into fuel_adjustments audit log  try {  $meta_notes = json_encode([  'transaction_id' => $tx['transaction_id'],  'fuel_line' => 'Pump #' . ($tx['pump_id'] ?? '—'),  'fuel_type' => $tx['fuel_type'],  'shift' => formatShiftLabel($tx['shift_period']),  'staff_name' => $tx['staff_name'] ?? '—',  'prev_beginning' => (float)$tx['previous_reading'],  'prev_ending' => (float)$tx['present_reading'],  'prev_calibration' => (float)$tx['calibration'],  'new_beginning' => $beginning,  'new_ending' => $ending,  'new_calibration' => $calibration,  ]);  $ins_adj = $pdo->prepare("  INSERT INTO fuel_adjustments  (station_id, adjustment_date, fuel_type, fuel_type_id, adjustment_type, liters, previous_value, new_value, reason, user_id, notes, status, approved_by, approved_at, created_at)  VALUES (?, CURDATE(), ?, null, 'transaction_adjustment', ?, ?, ?, ?, ?, ?, 'Approved', ?, NOW(), NOW())  ");  $ins_adj->execute([  $station_id,  $tx['fuel_type'],  $liters_sold,  (float)$tx['liters_sold'],  $liters_sold,  $remarks,  $me['id'],  $meta_notes,  $me['id']  ]);  } catch (Exception $e) {}  log_activity($pdo, $me['id'], 'Fuel Reading Adjusted and Approved', "TXN {$tx['transaction_id']} | {$tx['fuel_type']} | Old: {$tx['liters_sold']} L -> New: {$liters_sold} L | Reason: {$remarks}");  $_SESSION['success'] = "Transaction <strong>{$tx['transaction_id']}</strong> adjusted and validated successfully.";  }  }  // 3. REJECT ACTION  elseif ($action === 'reject') {  if (empty($remarks)) {  throw new Exception("Rejection reason is required.");  }  if (!str_contains(strtolower($tx['status']), 'pending')) {  throw new Exception("Transaction has already been processed.");  }  $up = $pdo->prepare("UPDATE fuel_transactions SET status = 'Rejected', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");  $up->execute([$me['id'], $remarks, $tx_id]);  log_activity($pdo, $me['id'], 'Fuel Reading Rejected', "TXN {$tx['transaction_id']} | Reason: {$remarks}");  $_SESSION['success'] = "Transaction <strong>{$tx['transaction_id']}</strong> rejected and returned to staff.";  }  $pdo->commit();  } catch (Exception $e) {  if ($pdo->inTransaction()) $pdo->rollBack();  $_SESSION['error'] = "Error: " . $e->getMessage();  }  $redirect_url = 'manager_fuel_pump_master.php';  if (!empty($_SERVER['QUERY_STRING'])) {  $redirect_url .= '?' . $_SERVER['QUERY_STRING'];  }  header('Location: ' . $redirect_url); exit;
 }
 
 // ── Fetch Filtered Calibration Records ────────────────────────
@@ -401,68 +61,20 @@ $where[] = "DATE(ft.transaction_date) = ?";
 $params[] = $date_filter;
 
 // Shift Filter
-if ($shift_filter !== 'all') {
-    $where[] = "LOWER(ft.shift_period) = ?";
-    $params[] = strtolower($shift_filter);
+if ($shift_filter !== 'all') {  $where[] = "LOWER(ft.shift_period) = ?";  $params[] = strtolower($shift_filter);
 }
 
 // Fuel Type Filter — use LIKE so 'Diesel' matches stored 'DIESEL 1 - 1', etc.
-if ($fuel_type_filter !== 'all') {
-    $where[] = "LOWER(ft.fuel_type) LIKE ?";
-    $params[] = '%' . strtolower($fuel_type_filter) . '%';
+if ($fuel_type_filter !== 'all') {  $where[] = "LOWER(ft.fuel_type) LIKE ?";  $params[] = '%' . strtolower($fuel_type_filter) . '%';
 }
 
 // Staff Filter
-if ($staff_filter !== '') {
-    $where[] = "(LOWER(staff.username) LIKE ? OR LOWER(staff.first_name) LIKE ? OR LOWER(staff.last_name) LIKE ?)";
-    $like_val = '%' . strtolower($staff_filter) . '%';
-    $params = array_merge($params, [$like_val, $like_val, $like_val]);
+if ($staff_filter !== '') {  $where[] = "(LOWER(staff.username) LIKE ? OR LOWER(staff.first_name) LIKE ? OR LOWER(staff.last_name) LIKE ?)";  $like_val = '%' . strtolower($staff_filter) . '%';  $params = array_merge($params, [$like_val, $like_val, $like_val]);
 }
 
 $records = [];
-try {
-    $sql = "SELECT ft.*, 
-                   fp.pump_number,
-                   COALESCE(
-                       NULLIF(CONCAT(TRIM(COALESCE(staff.first_name, '')), ' ', TRIM(COALESCE(staff.last_name, ''))), ' '),
-                       staff.username,
-                       'Unknown'
-                   ) as staff_name,
-                   COALESCE(
-                       NULLIF(CONCAT(TRIM(COALESCE(validator.first_name, '')), ' ', TRIM(COALESCE(validator.last_name, ''))), ' '),
-                       validator.username,
-                       '—'
-                   ) as validator_name
-            FROM fuel_transactions ft
-            LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
-            LEFT JOIN users staff ON ft.staff_id = staff.id
-            LEFT JOIN users validator ON ft.validated_by = validator.id
-            WHERE " . implode(" AND ", $where) . "
-            ORDER BY
-                CASE
-                    WHEN TRIM(UPPER(ft.fuel_type)) = 'DIESEL'                                          THEN 1
-                    WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 1%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 1%' THEN 2
-                    WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 2%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 2%' THEN 3
-                    WHEN UPPER(ft.fuel_type) LIKE '%TURBO%DIESEL%'                                      THEN 4
-                    WHEN UPPER(ft.fuel_type) LIKE '%KEROSENE%'                                          THEN 5
-                    WHEN UPPER(ft.fuel_type) LIKE '%XCS%PLUS%' OR UPPER(ft.fuel_type) LIKE 'XCS PLUS%' THEN 6
-                    WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%1%'                                       THEN 7
-                    WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%2%'                                       THEN 8
-                    WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%'                                         THEN 9
-                    WHEN UPPER(ft.fuel_type) LIKE '%DIESEL%'                                           THEN 10
-                    ELSE 99
-                END ASC,
-                ft.fuel_type ASC,
-                fp.pump_number ASC,
-                ft.transaction_date ASC,
-                ft.created_at ASC";
-    
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {
-    error_log("Fetch calibration records error: " . $e->getMessage());
-    $_SESSION['error'] = "Error loading calibration records: " . $e->getMessage();
+try {  $sql = "SELECT ft.*,  fp.pump_number,  COALESCE(  NULLIF(CONCAT(TRIM(COALESCE(staff.first_name, '')), ' ', TRIM(COALESCE(staff.last_name, ''))), ' '),  staff.username,  'Unknown'  ) as staff_name,  COALESCE(  NULLIF(CONCAT(TRIM(COALESCE(validator.first_name, '')), ' ', TRIM(COALESCE(validator.last_name, ''))), ' '),  validator.username,  '—'  ) as validator_name  FROM fuel_transactions ft  LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id  LEFT JOIN users staff ON ft.staff_id = staff.id  LEFT JOIN users validator ON ft.validated_by = validator.id  WHERE " . implode(" AND ", $where) . "  ORDER BY  CASE  WHEN TRIM(UPPER(ft.fuel_type)) = 'DIESEL'  THEN 1  WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 1%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 1%' THEN 2  WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 2%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 2%' THEN 3  WHEN UPPER(ft.fuel_type) LIKE '%TURBO%DIESEL%'  THEN 4  WHEN UPPER(ft.fuel_type) LIKE '%KEROSENE%'  THEN 5  WHEN UPPER(ft.fuel_type) LIKE '%XCS%PLUS%' OR UPPER(ft.fuel_type) LIKE 'XCS PLUS%' THEN 6  WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%1%'  THEN 7  WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%2%'  THEN 8  WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%'  THEN 9  WHEN UPPER(ft.fuel_type) LIKE '%DIESEL%'  THEN 10  ELSE 99  END ASC,  ft.fuel_type ASC,  fp.pump_number ASC,  ft.transaction_date ASC,  ft.created_at ASC";  $stmt = $pdo->prepare($sql);  $stmt->execute($params);  $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {  error_log("Fetch calibration records error: " . $e->getMessage());  $_SESSION['error'] = "Error loading calibration records: " . $e->getMessage();
 }
 
 // ── Metrics Calculations ──────────────────────────────────────
@@ -470,107 +82,16 @@ $total_calibration_liters = 0.0;
 $pending_reviews_count = 0;
 $total_liters_validated = 0.0;
 
-foreach ($records as $r) {
-    $st = strtolower(trim($r['status'] ?? ''));
-    if (in_array($st, ['verified', 'approved', 'adjusted', 'validated'])) {
-        $total_calibration_liters += (float)($r['calibration'] ?? 0.0);
-        $total_liters_validated += (float)($r['liters_sold'] ?? 0.0);
-    } elseif (str_contains($st, 'pending')) {
-        $pending_reviews_count++;
-    }
+foreach ($records as $r) {  $st = strtolower(trim($r['status'] ?? ''));  if (in_array($st, ['verified', 'approved', 'adjusted', 'validated'])) {  $total_calibration_liters += (float)($r['calibration'] ?? 0.0);  $total_liters_validated += (float)($r['liters_sold'] ?? 0.0);  } elseif (str_contains($st, 'pending')) {  $pending_reviews_count++;  }
 }
 
 // ── Fetch dynamic filters data (from fuel_transactions for accurate type list) ─
 $fuel_types = [];
-try {
-    // Pull distinct fuel types from actual transactions so the dropdown matches stored data
-    $ft_stmt = $pdo->prepare("
-        SELECT DISTINCT
-            CASE
-                WHEN UPPER(fuel_type) LIKE '%TURBO%DIESEL%' THEN 'Turbo Diesel'
-                WHEN UPPER(fuel_type) LIKE '%KEROSENE%'     THEN 'Kerosene'
-                WHEN UPPER(fuel_type) LIKE '%XCS%'          THEN 'XCS Plus'
-                WHEN UPPER(fuel_type) LIKE '%XTRA%UNL%'     THEN 'Xtra UNL'
-                WHEN UPPER(fuel_type) LIKE '%DIESEL%'       THEN 'Diesel'
-                ELSE fuel_type
-            END AS normalized_type
-        FROM fuel_transactions
-        WHERE station_id = ?
-        ORDER BY 1
-    ");
-    $ft_stmt->execute([$station_id]);
-    $fuel_types = array_unique($ft_stmt->fetchAll(PDO::FETCH_COLUMN));
+try {  // Pull distinct fuel types from actual transactions so the dropdown matches stored data  $ft_stmt = $pdo->prepare("  SELECT DISTINCT  CASE  WHEN UPPER(fuel_type) LIKE '%TURBO%DIESEL%' THEN 'Turbo Diesel'  WHEN UPPER(fuel_type) LIKE '%KEROSENE%'  THEN 'Kerosene'  WHEN UPPER(fuel_type) LIKE '%XCS%'  THEN 'XCS Plus'  WHEN UPPER(fuel_type) LIKE '%XTRA%UNL%'  THEN 'Xtra UNL'  WHEN UPPER(fuel_type) LIKE '%DIESEL%'  THEN 'Diesel'  ELSE fuel_type  END AS normalized_type  FROM fuel_transactions  WHERE station_id = ?  ORDER BY 1  ");  $ft_stmt->execute([$station_id]);  $fuel_types = array_unique($ft_stmt->fetchAll(PDO::FETCH_COLUMN));
 } catch (Exception $e) {}
 
 // ── EXPORTS ──────────────────────────────────────────────────
-if (in_array($export, ['excel', 'pdf'])) {
-    $headers = ['Date', 'Shift', 'Fuel Line', 'Fuel Type', 'Staff Encoder', 'Beginning', 'Ending', 'Staff Calibration', 'Manager Calibration', 'Liters Sold', 'Status', 'Validated By', 'Date Validated'];
-    $rows_fmt = [];
-    foreach ($records as $r) {
-        $rows_fmt[] = [
-            date('Y-m-d', strtotime($r['transaction_date'])),
-            formatShiftLabel($r['shift_period']),
-            $r['pump_number'] ?? '—',
-            $r['fuel_type'],
-            $r['staff_name'] ?? '—',
-            number_format($r['previous_reading'], 2),
-            number_format($r['present_reading'], 2),
-            number_format($r['staff_calibration'], 2) . ' L',
-            number_format($r['calibration'], 2) . ' L',
-            number_format($r['liters_sold'], 2) . ' L',
-            getStatusLabel($r['status']),
-            $r['validator_name'] ?? '—',
-            $r['validated_at'] ? date('Y-m-d H:i', strtotime($r['validated_at'])) : '—'
-        ];
-    }
-    $filename = 'calibration_review_' . $date_filter;
-
-    if ($export === 'excel') {
-        header('Content-Type: application/vnd.ms-excel; charset=utf-8');
-        header('Content-Disposition: attachment; filename="' . $filename . '.xls"');
-        echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>table{border-collapse:collapse}th,td{border:1px solid #ddd;padding:7px}th{background:#002F6C;color:#fff;font-size:11px}</style></head><body>';
-        echo '<h2>Calibration Review Report - ' . htmlspecialchars($date_filter) . '</h2>';
-        echo '<p>Station: ' . htmlspecialchars(user_station_name()) . ' | Records: ' . count($rows_fmt) . '</p>';
-        echo '<table><thead><tr>';
-        foreach ($headers as $h) echo '<th>' . htmlspecialchars($h) . '</th>';
-        echo '</tr></thead><tbody>';
-        foreach ($rows_fmt as $row) {
-            echo '<tr>';
-            foreach ($row as $col) echo '<td>' . htmlspecialchars($col) . '</td>';
-            echo '</tr>';
-        }
-        echo '</tbody></table></body></html>'; exit;
-    }
-
-    if ($export === 'pdf') {
-        header('Content-Type: text/html; charset=UTF-8');
-        $tbody = '';
-        foreach ($rows_fmt as $row) {
-            $tbody .= '<tr>';
-            foreach ($row as $col) {
-                $tbody .= '<td>' . htmlspecialchars($col) . '</td>';
-            }
-            $tbody .= '</tr>';
-        }
-        echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Calibration Review</title>
-        <style>body{font-family:Arial,sans-serif;font-size:10px;padding:20px;color:#333;}
-        .pbtn{margin-bottom:12px}@media print{.pbtn{display:none}}
-        .hdr{border-bottom:3px solid #002F6C;margin-bottom:14px;padding-bottom:8px;display:flex;align-items:center;justify-content:between;}
-        h1{color:#002F6C;font-size:16px;margin:0 0 4px;text-transform:uppercase;}
-        table{width:100%;border-collapse:collapse;margin-top:10px;}
-        th{background:#002F6C;color:#fff;padding:6px;font-size:8px;text-transform:uppercase;text-align:left;}
-        td{padding:5px;border-bottom:1px solid #e2e8f0;font-size:8px;}
-        tr:nth-child(even) td{background:#f8fafc}
-        </style></head><body>';
-        echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;font-weight:bold;">🖨 Print / Save PDF</button>
-        <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none;font-weight:bold;">← Back</a></div>';
-        echo '<div class="hdr"><div><h1>Calibration Review</h1><p style="margin:2px 0 0;color:#666;">Date: ' . htmlspecialchars($date_filter) . ' | Station: ' . htmlspecialchars(user_station_name()) . '</p></div></div>';
-        echo '<table><thead><tr>';
-        foreach ($headers as $h) echo '<th>' . htmlspecialchars($h) . '</th>';
-        echo '</tr></thead>';
-        echo '<tbody>' . ($tbody ?: '<tr><td colspan="' . count($headers) . '" style="text-align:center;padding:20px;color:#94a3b8">No records found.</td></tr>') . '</tbody></table>';
-        echo '</body></html>'; exit;
-    }
+if (in_array($export, ['excel', 'pdf'])) {  $headers = ['Date', 'Shift', 'Fuel Line', 'Fuel Type', 'Staff Encoder', 'Beginning', 'Ending', 'Staff Calibration', 'Manager Calibration', 'Liters Sold', 'Status', 'Validated By', 'Date Validated'];  $rows_fmt = [];  foreach ($records as $r) {  $rows_fmt[] = [  date('Y-m-d', strtotime($r['transaction_date'])),  formatShiftLabel($r['shift_period']),  $r['pump_number'] ?? '—',  $r['fuel_type'],  $r['staff_name'] ?? '—',  number_format($r['previous_reading'], 2),  number_format($r['present_reading'], 2),  number_format($r['staff_calibration'], 2) . ' L',  number_format($r['calibration'], 2) . ' L',  number_format($r['liters_sold'], 2) . ' L',  getStatusLabel($r['status']),  $r['validator_name'] ?? '—',  $r['validated_at'] ? date('Y-m-d H:i', strtotime($r['validated_at'])) : '—'  ];  }  $filename = 'calibration_review_' . $date_filter;  if ($export === 'excel') {  header('Content-Type: application/vnd.ms-excel; charset=utf-8');  header('Content-Disposition: attachment; filename="' . $filename . '.xls"');  echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>table{border-collapse:collapse}th,td{border:1px solid #ddd;padding:7px}th{background:#002F6C;color:#fff;font-size:11px}</style></head><body>';  echo '<h2>Calibration Review Report - ' . htmlspecialchars($date_filter) . '</h2>';  echo '<p>Station: ' . htmlspecialchars(user_station_name()) . ' | Records: ' . count($rows_fmt) . '</p>';  echo '<table><thead><tr>';  foreach ($headers as $h) echo '<th>' . htmlspecialchars($h) . '</th>';  echo '</tr></thead><tbody>';  foreach ($rows_fmt as $row) {  echo '<tr>';  foreach ($row as $col) echo '<td>' . htmlspecialchars($col) . '</td>';  echo '</tr>';  }  echo '</tbody></table></body></html>'; exit;  }  if ($export === 'pdf') {  header('Content-Type: text/html; charset=UTF-8');  $tbody = '';  foreach ($rows_fmt as $row) {  $tbody .= '<tr>';  foreach ($row as $col) {  $tbody .= '<td>' . htmlspecialchars($col) . '</td>';  }  $tbody .= '</tr>';  }  echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Calibration Review</title>  <style>body{font-family:Arial,sans-serif;font-size:10px;padding:20px;color:#333;}  .pbtn{margin-bottom:12px}@media print{.pbtn{display:none}}  .hdr{border-bottom:3px solid #002F6C;margin-bottom:14px;padding-bottom:8px;display:flex;align-items:center;justify-content:between;}  h1{color:#002F6C;font-size:16px;margin:0 0 4px;text-transform:uppercase;}  table{width:100%;border-collapse:collapse;margin-top:10px;}  th{background:#002F6C;color:#fff;padding:6px;font-size:8px;text-transform:uppercase;text-align:left;}  td{padding:5px;border-bottom:1px solid #e2e8f0;font-size:8px;}  tr:nth-child(even) td{background:#f8fafc}  </style></head><body>';  echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;font-weight:bold;"> Print / Save PDF</button>  <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none;font-weight:bold;">← Back</a></div>';  echo '<div class="hdr"><div><h1>Calibration Review</h1><p style="margin:2px 0 0;color:#666;">Date: ' . htmlspecialchars($date_filter) . ' | Station: ' . htmlspecialchars(user_station_name()) . '</p></div></div>';  echo '<table><thead><tr>';  foreach ($headers as $h) echo '<th>' . htmlspecialchars($h) . '</th>';  echo '</tr></thead>';  echo '<tbody>' . ($tbody ?: '<tr><td colspan="' . count($headers) . '" style="text-align:center;padding:20px;color:#94a3b8">No records found.</td></tr>') . '</tbody></table>';  echo '</body></html>'; exit;  }
 }
 
 require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
@@ -677,412 +198,41 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 .details-val { font-size: 12px; color: #1e293b; font-weight: 600; margin-top: 2px; }
 </style>
 
-<div class="mcr-wrap">
-    <!-- Page Header -->
-    <div class="int-head">
-        <div>
-            <h1><i class="fas fa-balance-scale"></i> Calibration Review</h1>
-            <div class="sub">Verify and reconcile shift-based pump meter readings and calibration amounts.</div>
-        </div>
-        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'excel'])) ?>" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
-            <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'pdf'])) ?>" class="ato-btn ato-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
-        </div>
-    </div>
-
-    <!-- Summary Cards -->
-    <div class="mcr-cards">
-        <div class="mcr-card blue">
-            <div class="mcr-card-info">
-                <span class="mcr-card-lbl">Total Validated Liters</span>
-                <span class="mcr-card-val"><?= number_format($total_liters_validated, 2) ?> L</span>
-            </div>
-            <div class="mcr-card-icon"><i class="fas fa-gas-pump"></i></div>
-        </div>
-        <div class="mcr-card green">
-            <div class="mcr-card-info">
-                <span class="mcr-card-lbl">Total Calibration Liters</span>
-                <span class="mcr-card-val"><?= number_format($total_calibration_liters, 2) ?> L</span>
-            </div>
-            <div class="mcr-card-icon"><i class="fas fa-tint"></i></div>
-        </div>
-        <div class="mcr-card amber">
-            <div class="mcr-card-info">
-                <span class="mcr-card-lbl">Pending Review Rows</span>
-                <span class="mcr-card-val"><?= number_format($pending_reviews_count) ?></span>
-            </div>
-            <div class="mcr-card-icon"><i class="fas fa-clock"></i></div>
-        </div>
-    </div>
-
-    <!-- Filters Form -->
-    <form method="get" class="mcr-filter">
-        <div class="mcr-fg">
-            <label>Review Date</label>
-            <input type="date" name="date" value="<?= htmlspecialchars($date_filter) ?>">
-        </div>
-        <div class="mcr-fg">
-            <label>Shift</label>
-            <select name="shift">
-                <option value="all">All Shifts</option>
-                <option value="first" <?= $shift_filter === 'first' ? 'selected' : '' ?>>Shift 1</option>
-                <option value="second" <?= $shift_filter === 'second' ? 'selected' : '' ?>>Shift 2</option>
-            </select>
-        </div>
-        <div class="mcr-fg">
-            <label>Fuel Type</label>
-            <select name="fuel_type">
-                <option value="all">All Fuel Types</option>
-                <?php foreach ($fuel_types as $ft): ?>
-                    <option value="<?= htmlspecialchars($ft) ?>" <?= strtolower($fuel_type_filter) === strtolower($ft) ? 'selected' : '' ?>><?= htmlspecialchars($ft) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <div class="mcr-fg">
-            <label>Staff Encoder</label>
-            <input type="text" name="staff" value="<?= htmlspecialchars($staff_filter) ?>" placeholder="Staff name...">
-        </div>
-        <div style="display: flex; gap: 8px;">
-            <button type="submit" class="ato-btn ato-btn-filter"><i class="fas fa-search"></i> Filter</button>
-            <a href="manager_fuel_pump_master.php" class="ato-btn ato-btn-reset"><i class="fas fa-rotate-left"></i> Reset</a>
-        </div>
-    </form>
-
-    <!-- Calibration Review Table Card -->
-    <div class="mcr-table-card">
-        <div class="mcr-table-hd">
-            <h3 class="mcr-table-title"><i class="fas fa-table"></i> Shift-Based Readings & Calibration Logs</h3>
-        </div>
-        <div class="mcr-tbl-wrap">
-            <table class="mcr-tbl">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Shift</th>
-                        <th>Fuel Line</th>
-                        <th>Fuel Type</th>
-                        <th>Staff</th>
-                        <th style="text-align:right;">Beginning</th>
-                        <th style="text-align:right;">Ending</th>
-                        <th style="text-align:right;">Staff Calibration</th>
-                        <th style="text-align:right;">Manager Calibration</th>
-                        <th style="text-align:center;">Status</th>
-                        <th style="text-align:center; width: 220px;">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($records)): ?>
-                        <tr>
-                            <td colspan="11" style="text-align:center;padding:40px;color:#94a3b8;">
-                                <i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>
-                                No calibration/readings records found for the selected filters.
-                            </td>
-                        </tr>
-                    <?php else: ?>
-                        <?php foreach ($records as $r): 
-                            $status = strtolower($r['status'] ?? 'pending validation');
-                            $tx_date = date('Y-m-d', strtotime($r['transaction_date']));
-                            $preceding_ok = true;
-                            
-                            // Check sequence validation for active validation actions
-                            if ($status === 'pending validation' && $r['pump_id'] > 0) {
-                                $preceding_ok = is_preceding_shift_validated($pdo, $station_id, $r['pump_id'], $r['shift_period'], $tx_date);
-                            }
-                            
-                            $shift_lbl = formatShiftLabel($r['shift_period']);
-                        ?>
-                            <tr>
-                                <td><?= date('M d, Y', strtotime($r['transaction_date'])) ?></td>
-                                <td><strong><?= htmlspecialchars($shift_lbl) ?></strong></td>
-                                <td><strong><?= htmlspecialchars($r['pump_number'] ?? '—') ?></strong></td>
-                                <td><?= htmlspecialchars($r['fuel_type']) ?></td>
-                                <td><?= htmlspecialchars($r['staff_name']) ?></td>
-                                <td style="text-align:right; font-family: monospace;"><?= number_format($r['previous_reading'], 2) ?></td>
-                                <td style="text-align:right; font-family: monospace;"><?= number_format($r['present_reading'], 2) ?></td>
-                                <td style="text-align:right; font-family: monospace; color: #475569;"><?= number_format($r['staff_calibration'], 2) ?> L</td>
-                                <td style="text-align:right; font-family: monospace; font-weight: bold;"><?= number_format($r['calibration'], 2) ?> L</td>
-                                <td style="text-align:center;">
-                                    <span class="badge-st <?= getStatusBadgeClass($r['status']) ?>"><?= getStatusLabel($r['status']) ?></span>
-                                </td>
-                                <td style="text-align:center; padding: 8px 10px; vertical-align:middle;">
-                                    <div style="display:flex; flex-direction:column; gap:5px; align-items:stretch; min-width:90px;">
-                                    <?php if ($status === 'pending validation'): ?>
-                                        <?php if ($preceding_ok): ?>
-                                            <!-- Verify -->
-                                            <form method="post" style="margin:0;" onsubmit="return confirm('Verify and approve this entry? Beginning reading will match preceding shift ending.');">
-                                                <input type="hidden" name="action" value="verify">
-                                                <input type="hidden" name="id" value="<?= $r['id'] ?>">
-                                                <button type="submit" class="act-btn act-btn-verify" title="Verify Readings"><i class="fas fa-check"></i> Verify</button>
-                                            </form>
-                                            <!-- Edit/Adjust -->
-                                            <button class="act-btn act-btn-edit" onclick="openAdjustModal(<?= htmlspecialchars(json_encode([
-                                                'id' => $r['id'],
-                                                'txn_id' => $r['transaction_id'],
-                                                'pump' => $r['pump_number'] ?? '—',
-                                                'fuel_type' => $r['fuel_type'],
-                                                'beginning' => get_preceding_shift_validated_ending($pdo, $station_id, $r['pump_id'], $r['shift_period'], $tx_date),
-                                                'ending' => $r['present_reading'],
-                                                'calibration' => $r['calibration'],
-                                                'price' => $r['price_per_liter']
-                                            ])) ?>)" title="Adjust Readings"><i class="fas fa-edit"></i> Edit</button>
-                                            <!-- Reject -->
-                                            <button class="act-btn act-btn-reject" onclick="openRejectModal(<?= $r['id'] ?>, '<?= $r['transaction_id'] ?>')" title="Reject"><i class="fas fa-times"></i> Reject</button>
-                                        <?php else: ?>
-                                            <?php 
-                                                $preceding = get_preceding_shift_and_date($pdo, $r['shift_period'], $tx_date);
-                                                $prec_lbl = $preceding ? (formatShiftLabel($preceding['shift_key']) . ' on ' . $preceding['date']) : 'Shift 1';
-                                            ?>
-                                            <button class="act-btn disabled" disabled title="Waiting for preceding shift (<?= $prec_lbl ?>) validation"><i class="fas fa-lock"></i> Locked</button>
-                                            <span style="font-size:9px; color:#dc2626; text-align:center; display:block;">⚠️ Check preceding shift</span>
-                                        <?php endif; ?>
-                                    <?php else: ?>
-                                        <button class="act-btn act-btn-view" onclick="openViewModal(<?= htmlspecialchars(json_encode([
-                                            'txn_id' => $r['transaction_id'],
-                                            'pump' => $r['pump_number'] ?? '—',
-                                            'fuel_type' => $r['fuel_type'],
-                                            'beginning' => number_format($r['previous_reading'], 2),
-                                            'ending' => number_format($r['present_reading'], 2),
-                                            'staff_cal' => number_format($r['staff_calibration'], 2) . ' L',
-                                            'mgr_cal' => number_format($r['calibration'], 2) . ' L',
-                                            'liters_sold' => number_format($r['liters_sold'], 2) . ' L',
-                                            'total_amount' => '₱' . number_format($r['total_amount'], 2),
-                                            'staff' => $r['staff_name'],
-                                            'status' => getStatusLabel($r['status']),
-                                            'validator' => $r['validator_name'],
-                                            'validated_at' => $r['validated_at'] ? date('M d, Y h:i A', strtotime($r['validated_at'])) : '—',
-                                            'remarks' => $r['reject_reason'] ?: '—'
-                                        ])) ?>)"><i class="fas fa-eye"></i> View</button>
-                                    <?php endif; ?>
-                                    </div>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
+<div class="mcr-wrap">  <!-- Page Header -->  <div class="int-head">  <div>  <h1><i class="fas fa-balance-scale"></i> Calibration Review</h1>  <div class="sub">Verify and reconcile shift-based pump meter readings and calibration amounts.</div>  </div>  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">  <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'excel'])) ?>" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>  <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'pdf'])) ?>" class="ato-btn ato-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>  </div>  </div>  <!-- Summary Cards -->  <div class="mcr-cards">  <div class="mcr-card blue">  <div class="mcr-card-info">  <span class="mcr-card-lbl">Total Validated Liters</span>  <span class="mcr-card-val"><?= number_format($total_liters_validated, 2) ?> L</span>  </div>  <div class="mcr-card-icon"><i class="fas fa-gas-pump"></i></div>  </div>  <div class="mcr-card green">  <div class="mcr-card-info">  <span class="mcr-card-lbl">Total Calibration Liters</span>  <span class="mcr-card-val"><?= number_format($total_calibration_liters, 2) ?> L</span>  </div>  <div class="mcr-card-icon"><i class="fas fa-tint"></i></div>  </div>  <div class="mcr-card amber">  <div class="mcr-card-info">  <span class="mcr-card-lbl">Pending Review Rows</span>  <span class="mcr-card-val"><?= number_format($pending_reviews_count) ?></span>  </div>  <div class="mcr-card-icon"><i class="fas fa-clock"></i></div>  </div>  </div>  <!-- Filters Form -->  <form method="get" class="mcr-filter">  <div class="mcr-fg">  <label>Review Date</label>  <input type="date" name="date" value="<?= htmlspecialchars($date_filter) ?>">  </div>  <div class="mcr-fg">  <label>Shift</label>  <select name="shift">  <option value="all">All Shifts</option>  <option value="first" <?= $shift_filter === 'first' ? 'selected' : '' ?>>Shift 1</option>  <option value="second" <?= $shift_filter === 'second' ? 'selected' : '' ?>>Shift 2</option>  </select>  </div>  <div class="mcr-fg">  <label>Fuel Type</label>  <select name="fuel_type">  <option value="all">All Fuel Types</option>  <?php foreach ($fuel_types as $ft): ?>  <option value="<?= htmlspecialchars($ft) ?>" <?= strtolower($fuel_type_filter) === strtolower($ft) ? 'selected' : '' ?>><?= htmlspecialchars($ft) ?></option>  <?php endforeach; ?>  </select>  </div>  <div class="mcr-fg">  <label>Staff Encoder</label>  <input type="text" name="staff" value="<?= htmlspecialchars($staff_filter) ?>" placeholder="Staff name...">  </div>  <div style="display: flex; gap: 8px;">  <button type="submit" class="ato-btn ato-btn-filter"><i class="fas fa-search"></i> Filter</button>  <a href="manager_fuel_pump_master.php" class="ato-btn ato-btn-reset"><i class="fas fa-rotate-left"></i> Reset</a>  </div>  </form>  <!-- Calibration Review Table Card -->  <div class="mcr-table-card">  <div class="mcr-table-hd">  <h3 class="mcr-table-title"><i class="fas fa-table"></i> Shift-Based Readings & Calibration Logs</h3>  </div>  <div class="mcr-tbl-wrap">  <table class="mcr-tbl">  <thead>  <tr>  <th>Date</th>  <th>Shift</th>  <th>Fuel Line</th>  <th>Fuel Type</th>  <th>Staff</th>  <th style="text-align:right;">Beginning</th>  <th style="text-align:right;">Ending</th>  <th style="text-align:right;">Staff Calibration</th>  <th style="text-align:right;">Manager Calibration</th>  <th style="text-align:center;">Status</th>  <th style="text-align:center; width: 220px;">Actions</th>  </tr>  </thead>  <tbody>  <?php if (empty($records)): ?>  <tr>  <td colspan="11" style="text-align:center;padding:40px;color:#94a3b8;">  <i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>  No calibration/readings records found for the selected filters.  </td>  </tr>  <?php else: ?>  <?php foreach ($records as $r):  $status = strtolower($r['status'] ?? 'pending validation');  $tx_date = date('Y-m-d', strtotime($r['transaction_date']));  $preceding_ok = true;  // Check sequence validation for active validation actions  if ($status === 'pending validation' && $r['pump_id'] > 0) {  $preceding_ok = is_preceding_shift_validated($pdo, $station_id, $r['pump_id'], $r['shift_period'], $tx_date);  }  $shift_lbl = formatShiftLabel($r['shift_period']);  ?>  <tr>  <td><?= date('M d, Y', strtotime($r['transaction_date'])) ?></td>  <td><strong><?= htmlspecialchars($shift_lbl) ?></strong></td>  <td><strong><?= htmlspecialchars($r['pump_number'] ?? '—') ?></strong></td>  <td><?= htmlspecialchars($r['fuel_type']) ?></td>  <td><?= htmlspecialchars($r['staff_name']) ?></td>  <td style="text-align:right; font-family: monospace;"><?= number_format($r['previous_reading'], 2) ?></td>  <td style="text-align:right; font-family: monospace;"><?= number_format($r['present_reading'], 2) ?></td>  <td style="text-align:right; font-family: monospace; color: #475569;"><?= number_format($r['staff_calibration'], 2) ?> L</td>  <td style="text-align:right; font-family: monospace; font-weight: bold;"><?= number_format($r['calibration'], 2) ?> L</td>  <td style="text-align:center;">  <span class="badge-st <?= getStatusBadgeClass($r['status']) ?>"><?= getStatusLabel($r['status']) ?></span>  </td>  <td style="text-align:center; padding: 8px 10px; vertical-align:middle;">  <div style="display:flex; flex-direction:column; gap:5px; align-items:stretch; min-width:90px;">  <?php if ($status === 'pending validation'): ?>  <?php if ($preceding_ok): ?>  <!-- Verify -->  <form method="post" style="margin:0;" onsubmit="return confirm('Verify and approve this entry? Beginning reading will match preceding shift ending.');">  <input type="hidden" name="action" value="verify">  <input type="hidden" name="id" value="<?= $r['id'] ?>">  <button type="submit" class="act-btn act-btn-verify" title="Verify Readings"><i class="fas fa-check"></i> Verify</button>  </form>  <!-- Edit/Adjust -->  <button class="act-btn act-btn-edit" onclick="openAdjustModal(<?= htmlspecialchars(json_encode([  'id' => $r['id'],  'txn_id' => $r['transaction_id'],  'pump' => $r['pump_number'] ?? '—',  'fuel_type' => $r['fuel_type'],  'beginning' => get_preceding_shift_validated_ending($pdo, $station_id, $r['pump_id'], $r['shift_period'], $tx_date),  'ending' => $r['present_reading'],  'calibration' => $r['calibration'],  'price' => $r['price_per_liter']  ])) ?>)" title="Adjust Readings"><i class="fas fa-edit"></i> Edit</button>  <!-- Reject -->  <button class="act-btn act-btn-reject" onclick="openRejectModal(<?= $r['id'] ?>, '<?= $r['transaction_id'] ?>')" title="Reject"><i class="fas fa-times"></i> Reject</button>  <?php else: ?>  <?php  $preceding = get_preceding_shift_and_date($pdo, $r['shift_period'], $tx_date);  $prec_lbl = $preceding ? (formatShiftLabel($preceding['shift_key']) . ' on ' . $preceding['date']) : 'Shift 1';  ?>  <button class="act-btn disabled" disabled title="Waiting for preceding shift (<?= $prec_lbl ?>) validation"><i class="fas fa-lock"></i> Locked</button>  <span style="font-size:9px; color:#dc2626; text-align:center; display:block;">Check preceding shift</span>  <?php endif; ?>  <?php else: ?>  <button class="act-btn act-btn-view" onclick="openViewModal(<?= htmlspecialchars(json_encode([  'txn_id' => $r['transaction_id'],  'pump' => $r['pump_number'] ?? '—',  'fuel_type' => $r['fuel_type'],  'beginning' => number_format($r['previous_reading'], 2),  'ending' => number_format($r['present_reading'], 2),  'staff_cal' => number_format($r['staff_calibration'], 2) . ' L',  'mgr_cal' => number_format($r['calibration'], 2) . ' L',  'liters_sold' => number_format($r['liters_sold'], 2) . ' L',  'total_amount' => '₱' . number_format($r['total_amount'], 2),  'staff' => $r['staff_name'],  'status' => getStatusLabel($r['status']),  'validator' => $r['validator_name'],  'validated_at' => $r['validated_at'] ? date('M d, Y h:i A', strtotime($r['validated_at'])) : '—',  'remarks' => $r['reject_reason'] ?: '—'  ])) ?>)"><i class="fas fa-eye"></i> View</button>  <?php endif; ?>  </div>  </td>  </tr>  <?php endforeach; ?>  <?php endif; ?>  </tbody>  </table>  </div>  </div>
 </div>
 
 <!-- Adjust / Edit Modal -->
-<div id="adjustModal" class="modal">
-    <div class="modal-content">
-        <form method="post">
-            <input type="hidden" name="action" value="adjust">
-            <input type="hidden" name="id" id="adj_tx_id">
-            
-            <div class="modal-header">
-                <h3>Adjust Calibration & Readings</h3>
-                <button type="button" onclick="closeModal('adjustModal')" style="border:none;background:none;font-size:20px;cursor:pointer;">&times;</button>
-            </div>
-            
-            <div class="modal-body">
-                <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 10px; font-size: 11px; color: #1e3a8a; margin-bottom: 14px;">
-                    <i class="fas fa-info-circle"></i> <strong>Sequence Rules:</strong> The beginning reading is programmatically set to match the validated ending reading of the preceding shift to maintain a seamless audit trail.
-                </div>
-                
-                <div class="details-grid" style="margin-bottom: 12px;">
-                    <div>
-                        <span class="details-lbl">Fuel Line</span>
-                        <div class="details-val" id="adj_lbl_pump"></div>
-                    </div>
-                    <div>
-                        <span class="details-lbl">Fuel Type</span>
-                        <div class="details-val" id="adj_lbl_fuel"></div>
-                    </div>
-                </div>
-
-                <div class="modal-fg">
-                    <label>Beginning Reading (Preceding Ending)</label>
-                    <input type="number" step="0.01" id="adj_beginning" name="beginning" readonly>
-                </div>
-                <div class="modal-fg">
-                    <label>Ending Reading</label>
-                    <input type="number" step="0.01" id="adj_ending" name="ending" required oninput="calculateAdjustedLiters()">
-                </div>
-                <div class="modal-fg">
-                    <label>Manager Calibration (Liters)</label>
-                    <input type="number" step="0.1" id="adj_calibration" name="calibration" required oninput="calculateAdjustedLiters()">
-                </div>
-                
-                <div class="modal-fg" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; margin-top: 10px;">
-                    <span class="details-lbl">Calculated Liters Sold</span>
-                    <div id="adj_calculated_liters" style="font-size: 16px; font-weight: 700; color: #00264D; margin-top: 2px;">0.00 L</div>
-                </div>
-                
-                <div class="modal-fg" style="margin-top: 10px;">
-                    <label>Reason for Adjustment</label>
-                    <textarea name="remarks" rows="3" required placeholder="Provide clear reason for this override..."></textarea>
-                </div>
-            </div>
-            
-            <div class="modal-footer">
-                <button type="button" class="ato-btn ato-btn-reset" onclick="closeModal('adjustModal')">Cancel</button>
-                <button type="submit" class="ato-btn ato-btn-filter" style="background: #002F70 !important; color: white !important;"><i class="fas fa-save"></i> Save Adjustment</button>
-            </div>
-        </form>
-    </div>
+<div id="adjustModal" class="modal">  <div class="modal-content">  <form method="post">  <input type="hidden" name="action" value="adjust">  <input type="hidden" name="id" id="adj_tx_id">  <div class="modal-header">  <h3>Adjust Calibration & Readings</h3>  <button type="button" onclick="closeModal('adjustModal')" style="border:none;background:none;font-size:20px;cursor:pointer;">&times;</button>  </div>  <div class="modal-body">  <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 10px; font-size: 11px; color: #1e3a8a; margin-bottom: 14px;">  <i class="fas fa-info-circle"></i> <strong>Sequence Rules:</strong> The beginning reading is programmatically set to match the validated ending reading of the preceding shift to maintain a seamless audit trail.  </div>  <div class="details-grid" style="margin-bottom: 12px;">  <div>  <span class="details-lbl">Fuel Line</span>  <div class="details-val" id="adj_lbl_pump"></div>  </div>  <div>  <span class="details-lbl">Fuel Type</span>  <div class="details-val" id="adj_lbl_fuel"></div>  </div>  </div>  <div class="modal-fg">  <label>Beginning Reading (Preceding Ending)</label>  <input type="number" step="0.01" id="adj_beginning" name="beginning" readonly>  </div>  <div class="modal-fg">  <label>Ending Reading</label>  <input type="number" step="0.01" id="adj_ending" name="ending" required oninput="calculateAdjustedLiters()">  </div>  <div class="modal-fg">  <label>Manager Calibration (Liters)</label>  <input type="number" step="0.1" id="adj_calibration" name="calibration" required oninput="calculateAdjustedLiters()">  </div>  <div class="modal-fg" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; margin-top: 10px;">  <span class="details-lbl">Calculated Liters Sold</span>  <div id="adj_calculated_liters" style="font-size: 16px; font-weight: 700; color: #00264D; margin-top: 2px;">0.00 L</div>  </div>  <div class="modal-fg" style="margin-top: 10px;">  <label>Reason for Adjustment</label>  <textarea name="remarks" rows="3" required placeholder="Provide clear reason for this override..."></textarea>  </div>  </div>  <div class="modal-footer">  <button type="button" class="ato-btn ato-btn-reset" onclick="closeModal('adjustModal')">Cancel</button>  <button type="submit" class="ato-btn ato-btn-filter" style="background: #002F70 !important; color: white !important;"><i class="fas fa-save"></i> Save Adjustment</button>  </div>  </form>  </div>
 </div>
 
 <!-- Reject Modal -->
-<div id="rejectModal" class="modal">
-    <div class="modal-content">
-        <form method="post">
-            <input type="hidden" name="action" value="reject">
-            <input type="hidden" name="id" id="reject_tx_id">
-            
-            <div class="modal-header">
-                <h3>Reject Reading Entry</h3>
-                <button type="button" onclick="closeModal('rejectModal')" style="border:none;background:none;font-size:20px;cursor:pointer;">&times;</button>
-            </div>
-            
-            <div class="modal-body">
-                <p style="font-size: 12.5px; color: #475569; margin-bottom: 12px;">
-                    Are you sure you want to reject transaction <strong id="reject_lbl_txn"></strong>? It will be returned to the staff for re-encoding.
-                </p>
-                <div class="modal-fg">
-                    <label>Reason for Rejection</label>
-                    <textarea name="remarks" rows="3" required placeholder="Specify why the meter reading/calibration was rejected..."></textarea>
-                </div>
-            </div>
-            
-            <div class="modal-footer">
-                <button type="button" class="ato-btn ato-btn-reset" onclick="closeModal('rejectModal')">Cancel</button>
-                <button type="submit" class="ato-btn ato-btn-pdf" style="background: #dc2626 !important; color: white !important;"><i class="fas fa-times"></i> Reject Entry</button>
-            </div>
-        </form>
-    </div>
+<div id="rejectModal" class="modal">  <div class="modal-content">  <form method="post">  <input type="hidden" name="action" value="reject">  <input type="hidden" name="id" id="reject_tx_id">  <div class="modal-header">  <h3>Reject Reading Entry</h3>  <button type="button" onclick="closeModal('rejectModal')" style="border:none;background:none;font-size:20px;cursor:pointer;">&times;</button>  </div>  <div class="modal-body">  <p style="font-size: 12.5px; color: #475569; margin-bottom: 12px;">  Are you sure you want to reject transaction <strong id="reject_lbl_txn"></strong>? It will be returned to the staff for re-encoding.  </p>  <div class="modal-fg">  <label>Reason for Rejection</label>  <textarea name="remarks" rows="3" required placeholder="Specify why the meter reading/calibration was rejected..."></textarea>  </div>  </div>  <div class="modal-footer">  <button type="button" class="ato-btn ato-btn-reset" onclick="closeModal('rejectModal')">Cancel</button>  <button type="submit" class="ato-btn ato-btn-pdf" style="background: #dc2626 !important; color: white !important;"><i class="fas fa-times"></i> Reject Entry</button>  </div>  </form>  </div>
 </div>
 
 <!-- View Details Modal -->
-<div id="viewModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3>Calibration Entry Audit Details</h3>
-            <button type="button" onclick="closeModal('viewModal')" style="border:none;background:none;font-size:20px;cursor:pointer;">&times;</button>
-        </div>
-        <div class="modal-body">
-            <div class="details-grid">
-                <div class="details-item">
-                    <div class="details-lbl">Transaction ID</div>
-                    <div class="details-val" id="view_txn_id"></div>
-                </div>
-                <div class="details-item">
-                    <div class="details-lbl">Fuel Line (Pump)</div>
-                    <div class="details-val" id="view_pump"></div>
-                </div>
-                <div class="details-item">
-                    <div class="details-lbl">Fuel Type</div>
-                    <div class="details-val" id="view_fuel_type"></div>
-                </div>
-                <div class="details-item">
-                    <div class="details-lbl">Staff Encoder</div>
-                    <div class="details-val" id="view_staff"></div>
-                </div>
-                <div class="details-item">
-                    <div class="details-lbl">Beginning Reading</div>
-                    <div class="details-val" id="view_beginning"></div>
-                </div>
-                <div class="details-item">
-                    <div class="details-lbl">Ending Reading</div>
-                    <div class="details-val" id="view_ending"></div>
-                </div>
-                <div class="details-item">
-                    <div class="details-lbl">Staff Calibration</div>
-                    <div class="details-val" id="view_staff_cal"></div>
-                </div>
-                <div class="details-item">
-                    <div class="details-lbl">Manager Calibration</div>
-                    <div class="details-val" id="view_mgr_cal" style="font-weight:700;"></div>
-                </div>
-                <div class="details-item">
-                    <div class="details-lbl">Liters Sold</div>
-                    <div class="details-val" id="view_liters_sold"></div>
-                </div>
-                <div class="details-item">
-                    <div class="details-lbl">Total Amount</div>
-                    <div class="details-val" id="view_total_amount"></div>
-                </div>
-                <div class="details-item">
-                    <div class="details-lbl">Review Status</div>
-                    <div class="details-val" id="view_status"></div>
-                </div>
-                <div class="details-item">
-                    <div class="details-lbl">Validator Manager</div>
-                    <div class="details-val" id="view_validator"></div>
-                </div>
-                <div class="details-item full-width">
-                    <div class="details-lbl">Validation Timestamp</div>
-                    <div class="details-val" id="view_validated_at"></div>
-                </div>
-                <div class="details-item full-width">
-                    <div class="details-lbl">Manager Notes / Reason</div>
-                    <div class="details-val" id="view_remarks" style="white-space:pre-wrap;font-weight:normal;color:#475569;"></div>
-                </div>
-            </div>
-        </div>
-        <div class="modal-footer">
-            <button type="button" class="ato-btn ato-btn-reset" onclick="closeModal('viewModal')">Close</button>
-        </div>
-    </div>
+<div id="viewModal" class="modal">  <div class="modal-content">  <div class="modal-header">  <h3>Calibration Entry Audit Details</h3>  <button type="button" onclick="closeModal('viewModal')" style="border:none;background:none;font-size:20px;cursor:pointer;">&times;</button>  </div>  <div class="modal-body">  <div class="details-grid">  <div class="details-item">  <div class="details-lbl">Transaction ID</div>  <div class="details-val" id="view_txn_id"></div>  </div>  <div class="details-item">  <div class="details-lbl">Fuel Line (Pump)</div>  <div class="details-val" id="view_pump"></div>  </div>  <div class="details-item">  <div class="details-lbl">Fuel Type</div>  <div class="details-val" id="view_fuel_type"></div>  </div>  <div class="details-item">  <div class="details-lbl">Staff Encoder</div>  <div class="details-val" id="view_staff"></div>  </div>  <div class="details-item">  <div class="details-lbl">Beginning Reading</div>  <div class="details-val" id="view_beginning"></div>  </div>  <div class="details-item">  <div class="details-lbl">Ending Reading</div>  <div class="details-val" id="view_ending"></div>  </div>  <div class="details-item">  <div class="details-lbl">Staff Calibration</div>  <div class="details-val" id="view_staff_cal"></div>  </div>  <div class="details-item">  <div class="details-lbl">Manager Calibration</div>  <div class="details-val" id="view_mgr_cal" style="font-weight:700;"></div>  </div>  <div class="details-item">  <div class="details-lbl">Liters Sold</div>  <div class="details-val" id="view_liters_sold"></div>  </div>  <div class="details-item">  <div class="details-lbl">Total Amount</div>  <div class="details-val" id="view_total_amount"></div>  </div>  <div class="details-item">  <div class="details-lbl">Review Status</div>  <div class="details-val" id="view_status"></div>  </div>  <div class="details-item">  <div class="details-lbl">Validator Manager</div>  <div class="details-val" id="view_validator"></div>  </div>  <div class="details-item full-width">  <div class="details-lbl">Validation Timestamp</div>  <div class="details-val" id="view_validated_at"></div>  </div>  <div class="details-item full-width">  <div class="details-lbl">Manager Notes / Reason</div>  <div class="details-val" id="view_remarks" style="white-space:pre-wrap;font-weight:normal;color:#475569;"></div>  </div>  </div>  </div>  <div class="modal-footer">  <button type="button" class="ato-btn ato-btn-reset" onclick="closeModal('viewModal')">Close</button>  </div>  </div>
 </div>
 
 <script>
 let activePrice = 0.00;
 
-function openAdjustModal(data) {
-    document.getElementById('adj_tx_id').value = data.id;
-    document.getElementById('adj_lbl_pump').innerText = data.pump;
-    document.getElementById('adj_lbl_fuel').innerText = data.fuel_type;
-    document.getElementById('adj_beginning').value = parseFloat(data.beginning).toFixed(2);
-    document.getElementById('adj_ending').value = parseFloat(data.ending).toFixed(2);
-    document.getElementById('adj_calibration').value = parseFloat(data.calibration).toFixed(2);
-    activePrice = parseFloat(data.price || 0);
-    calculateAdjustedLiters();
-    document.getElementById('adjustModal').style.display = 'flex';
+function openAdjustModal(data) {  document.getElementById('adj_tx_id').value = data.id;  document.getElementById('adj_lbl_pump').innerText = data.pump;  document.getElementById('adj_lbl_fuel').innerText = data.fuel_type;  document.getElementById('adj_beginning').value = parseFloat(data.beginning).toFixed(2);  document.getElementById('adj_ending').value = parseFloat(data.ending).toFixed(2);  document.getElementById('adj_calibration').value = parseFloat(data.calibration).toFixed(2);  activePrice = parseFloat(data.price || 0);  calculateAdjustedLiters();  document.getElementById('adjustModal').style.display = 'flex';
 }
 
-function calculateAdjustedLiters() {
-    const beginning = parseFloat(document.getElementById('adj_beginning').value) || 0;
-    const ending = parseFloat(document.getElementById('adj_ending').value) || 0;
-    const calibration = parseFloat(document.getElementById('adj_calibration').value) || 0;
-    const liters = Math.max(0, ending - beginning - calibration);
-    document.getElementById('adj_calculated_liters').innerText = liters.toFixed(2) + ' L';
+function calculateAdjustedLiters() {  const beginning = parseFloat(document.getElementById('adj_beginning').value) || 0;  const ending = parseFloat(document.getElementById('adj_ending').value) || 0;  const calibration = parseFloat(document.getElementById('adj_calibration').value) || 0;  const liters = Math.max(0, ending - beginning - calibration);  document.getElementById('adj_calculated_liters').innerText = liters.toFixed(2) + ' L';
 }
 
-function openRejectModal(id, txnId) {
-    document.getElementById('reject_tx_id').value = id;
-    document.getElementById('reject_lbl_txn').innerText = txnId;
-    document.getElementById('rejectModal').style.display = 'flex';
+function openRejectModal(id, txnId) {  document.getElementById('reject_tx_id').value = id;  document.getElementById('reject_lbl_txn').innerText = txnId;  document.getElementById('rejectModal').style.display = 'flex';
 }
 
-function openViewModal(data) {
-    document.getElementById('view_txn_id').innerText = data.txn_id;
-    document.getElementById('view_pump').innerText = data.pump;
-    document.getElementById('view_fuel_type').innerText = data.fuel_type;
-    document.getElementById('view_staff').innerText = data.staff;
-    document.getElementById('view_beginning').innerText = data.beginning;
-    document.getElementById('view_ending').innerText = data.ending;
-    document.getElementById('view_staff_cal').innerText = data.staff_cal;
-    document.getElementById('view_mgr_cal').innerText = data.mgr_cal;
-    document.getElementById('view_liters_sold').innerText = data.liters_sold;
-    document.getElementById('view_total_amount').innerText = data.total_amount;
-    document.getElementById('view_status').innerText = data.status;
-    document.getElementById('view_validator').innerText = data.validator;
-    document.getElementById('view_validated_at').innerText = data.validated_at;
-    document.getElementById('view_remarks').innerText = data.remarks;
-    document.getElementById('viewModal').style.display = 'flex';
+function openViewModal(data) {  document.getElementById('view_txn_id').innerText = data.txn_id;  document.getElementById('view_pump').innerText = data.pump;  document.getElementById('view_fuel_type').innerText = data.fuel_type;  document.getElementById('view_staff').innerText = data.staff;  document.getElementById('view_beginning').innerText = data.beginning;  document.getElementById('view_ending').innerText = data.ending;  document.getElementById('view_staff_cal').innerText = data.staff_cal;  document.getElementById('view_mgr_cal').innerText = data.mgr_cal;  document.getElementById('view_liters_sold').innerText = data.liters_sold;  document.getElementById('view_total_amount').innerText = data.total_amount;  document.getElementById('view_status').innerText = data.status;  document.getElementById('view_validator').innerText = data.validator;  document.getElementById('view_validated_at').innerText = data.validated_at;  document.getElementById('view_remarks').innerText = data.remarks;  document.getElementById('viewModal').style.display = 'flex';
 }
 
-function closeModal(modalId) {
-    document.getElementById(modalId).style.display = 'none';
+function closeModal(modalId) {  document.getElementById(modalId).style.display = 'none';
 }
 
 // Close modals when clicking outside
-window.onclick = function(event) {
-    if (event.target.classList.contains('modal')) {
-        event.target.style.display = 'none';
-    }
+window.onclick = function(event) {  if (event.target.classList.contains('modal')) {  event.target.style.display = 'none';  }
 }
 </script>
 

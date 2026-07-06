@@ -1,610 +1,96 @@
 <?php
-/**
- * Complete Manager Reports - Real Report Format
- * Operations Reports with tabbed interface matching Admin design
- * Blue theme for Manager role
- */
-
-$page_id = 'manager_reports';
+/**  * Complete Manager Reports - Real Report Format  * Operations Reports with tabbed interface matching Admin design  * Blue theme for Manager role  */  $page_id = 'manager_reports';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
-require_login();
-
-$me = current_user();
+require_login();  $me = current_user();
 $role = role_key($me['role'] ?? '');
-$station_id = user_station_id();
-
-// Check if manager role
-if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
-    die('Access denied. Manager privileges required.');
-}
-
-// Module gate
-if (!in_array($role, ['superadmin','developer']) && !is_module_enabled('reports')) {
-    render_module_disabled_page('Reports');
-}
-
-if (!$station_id) {
-    die('Error: You are not assigned to a station.');
-}
-
-// Get active tab from URL parameter
-$active_tab = $_GET['tab'] ?? 'shift_reports';
-
-// Get date range from GET or use current day as default.
+$station_id = user_station_id();  // Check if manager role
+if (!in_array($role, ['manager', 'admin', 'superadmin'])) {  die('Access denied. Manager privileges required.');
+}  // Module gate
+if (!in_array($role, ['superadmin','developer']) && !is_module_enabled('reports')) {  render_module_disabled_page('Reports');
+}  if (!$station_id) {  die('Error: You are not assigned to a station.');
+}  // Get active tab from URL parameter
+$active_tab = $_GET['tab'] ?? 'shift_reports';  // Get date range from GET or use current day as default.
 // Manager reports are operational daily reports, so the default should stay updated to today.
 $date_from = $_GET['date_from'] ?? date('Y-m-d');
-$date_to   = $_GET['date_to']   ?? date('Y-m-d');
-
-// Validate date format
-if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_from)) {
-    $date_from = date('Y-m-d');
+$date_to  = $_GET['date_to']  ?? date('Y-m-d');  // Validate date format
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_from)) {  $date_from = date('Y-m-d');
 }
-if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to)) {
-    $date_to = date('Y-m-d');
-}
-
-// Pass these variables to included report files
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to)) {  $date_to = date('Y-m-d');
+}  // Pass these variables to included report files
 $date_start = $date_from;
-$date_end = $date_to;
-
-// Get Station Name
+$date_end = $date_to;  // Get Station Name
 $station_name = 'Station';
-try {
-    $s = $pdo->prepare("SELECT name FROM stations WHERE id=? LIMIT 1");
-    $s->execute([$station_id]);
-    $st = $s->fetch(PDO::FETCH_ASSOC);
-    if ($st) $station_name = $st['name'];
-} catch (Exception $e) {}
-
-require_once __DIR__ . '/../partials/header.php';
-?>
-
-<style>
-/* ============================================================
-   MANAGER REPORTS - MATCHES ADMIN PROFESSIONAL DESIGN
-   Blue theme for manager (#00264D, #002F70)
-   Force application with !important for specificity
-   ============================================================ */
-
-/* Main Container */
-.reports-wrapper {
-    background: white !important;
-    border-radius: 8px !important;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
-    margin: 0 !important;
-    overflow: hidden !important;
+try {  $s = $pdo->prepare("SELECT name FROM stations WHERE id=? LIMIT 1");  $s->execute([$station_id]);  $st = $s->fetch(PDO::FETCH_ASSOC);  if ($st) $station_name = $st['name'];
+} catch (Exception $e) {}  require_once __DIR__ . '/../partials/header.php';
+?>  <style>
+/* ============================================================  MANAGER REPORTS - MATCHES ADMIN PROFESSIONAL DESIGN  Blue theme for manager (#00264D, #002F70)  Force application with !important for specificity  ============================================================ */  /* Main Container */
+.reports-wrapper {  background: white !important;  border-radius: 8px !important;  box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;  margin: 0 !important;  overflow: hidden !important;
+}  /* Page Header */
+.rpt-page-header {  background: linear-gradient(135deg, #00264D 0%, #003d7a 100%) !important;  padding: 24px 28px !important;  color: white !important;  border-bottom: 3px solid #002F70 !important;
+}  .rpt-page-header h1 {  margin: 0 0 6px !important;  font-size: 24px !important;  font-weight: 700 !important;  text-transform: uppercase !important;  letter-spacing: 0.5px !important;  color: white !important;
+}  .rpt-page-header .subtitle {  margin: 0 !important;  font-size: 13px !important;  opacity: 0.9 !important;  color: white !important;
+}  /* Tab Navigation - Matches Staff Style */
+.rpt-tabs {  display: flex !important;  background: #f8f9fa !important;  border-bottom: 2px solid #e2e8f0 !important;  overflow:hidden !important;  gap: 0 !important;
+}  .rpt-tab-btn {  flex: 1 !important;  !important;  padding: 14px 18px !important;  text-align: center !important;  font-size: 12px !important;  font-weight: 600 !important;  color: #64748b !important;  background: transparent !important;  border: none !important;  border-bottom: 3px solid transparent !important;  cursor: pointer !important;  transition: all 0.2s ease !important;  text-transform: uppercase !important;  letter-spacing: 0.3px !important;
+}  .rpt-tab-btn:hover {  background: rgba(0, 38, 77, 0.05) !important;  color: #00264D !important;
+}  .rpt-tab-btn.active {  background: white !important;  color: #00264D !important;  border-bottom-color: #002F70 !important;  font-weight: 700 !important;
+}  .rpt-tab-btn i {  margin-right: 5px !important;  font-size: 13px !important;
+}  /* Content Area */
+.rpt-content {  padding: 24px 28px !important;
+}  /* Date Filter Bar - Clean Design */
+.rpt-filter-bar {  display: flex !important;  align-items: center !important;  gap: 10px !important;  padding: 0 !important;  background: transparent !important;  border-radius: 0 !important;  border: none !important;  margin-bottom: 24px !important;  flex-wrap: wrap !important;
+}  .rpt-filter-bar label {  font-size: 12px !important;  font-weight: 600 !important;  color: #00264D !important;  margin: 0 !important;
+}  .rpt-filter-bar input[type="date"] {  padding: 7px 10px !important;  border: 1px solid #cbd5e1 !important;  border-radius: 4px !important;  font-size: 12px !important;  max-width: 140px !important;
+}  .rpt-filter-bar button {  padding: 7px 16px !important;  background: #ffffff !important;  color: #00264D !important;  border: 1px solid #00264D !important;  border-radius: 4px !important;  font-size: 12px !important;  font-weight: 600 !important;  cursor: pointer !important;  transition: all 0.2s !important;
+}  .rpt-filter-bar button:hover {  background: #00264D !important;  color: #ffffff !important;
+}  .rpt-filter-bar button i {  margin-right: 4px !important;
+}  /* Export Actions */
+.rpt-export-actions {  display: flex !important;  gap: 6px !important;  margin-left: auto !important;
+}  .rpt-export-btn {  padding: 7px 14px !important;  border-radius: 4px !important;  font-size: 11px !important;  font-weight: 600 !important;  cursor: pointer !important;  transition: all 0.2s !important;  border: 1px solid !important;  display: inline-flex !important;  align-items: center !important;  gap: 6px !important;  background: #ffffff !important;
+}  /* Excel Button - Green Border */
+.rpt-export-btn:nth-child(1) {  color: #16a34a !important;  border-color: #16a34a !important;
 }
-
-/* Page Header */
-.rpt-page-header {
-    background: linear-gradient(135deg, #00264D 0%, #003d7a 100%) !important;
-    padding: 24px 28px !important;
-    color: white !important;
-    border-bottom: 3px solid #002F70 !important;
+.rpt-export-btn:nth-child(1):hover {  background: #f0fdf4 !important;  border-color: #15803d !important;
+}  /* CSV Button - Blue Border */
+.rpt-export-btn:nth-child(2) {  color: #2563eb !important;  border-color: #2563eb !important;
 }
-
-.rpt-page-header h1 {
-    margin: 0 0 6px !important;
-    font-size: 24px !important;
-    font-weight: 700 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.5px !important;
-    color: white !important;
+.rpt-export-btn:nth-child(2):hover {  background: #eff6ff !important;  border-color: #1d4ed8 !important;
+}  /* PDF Button - Red Border */
+.rpt-export-btn:nth-child(3) {  color: #dc2626 !important;  border-color: #dc2626 !important;
 }
-
-.rpt-page-header .subtitle {
-    margin: 0 !important;
-    font-size: 13px !important;
-    opacity: 0.9 !important;
-    color: white !important;
+.rpt-export-btn:nth-child(3):hover {  background: #fef2f2 !important;  border-color: #b91c1c !important;
+}  .rpt-export-btn i {  margin-right: 3px !important;
+}  /* Tab Panel */
+.rpt-tab-panel {  display: none !important;
+}  .rpt-tab-panel.active {  display: block !important;
+}  /* Report Info Box */
+.rpt-info-box {  background: #f0f4ff !important;  padding: 14px 16px !important;  border-radius: 4px !important;  margin-bottom: 20px !important;  border: 1px solid #dbeafe !important;
+}  .rpt-info-box p {  margin: 0 !important;  font-size: 12px !important;  color: #334155 !important;  line-height: 1.5 !important;
+}  .rpt-info-box strong {  color: #00264D !important;
+}  /* Station Info Header */
+.rpt-station-info {  text-align: center !important;  padding: 16px 0 !important;  border-bottom: 2px solid #e2e8f0 !important;  margin-bottom: 20px !important;
+}  .rpt-station-info h2 {  margin: 0 0 4px !important;  font-size: 18px !important;  font-weight: 700 !important;  color: #00264D !important;  text-transform: uppercase !important;
+}  .rpt-station-info p {  margin: 0 !important;  font-size: 12px !important;  color: #64748b !important;
+}  /* Tables - Clean Professional Style with Blue Headers */
+.rpt-table {  width: 100% !important;  border-collapse: collapse !important;  margin-top: 16px !important;  font-size: 12px !important;  background: white !important;
+}  .rpt-table thead {  background: #f8fafc !important;  border-top: 2px solid #00264D !important;  border-bottom: 2px solid #e2e8f0 !important;
+}  .rpt-table thead th {  padding: 12px 10px !important;  text-align: left !important;  font-weight: 700 !important;  color: #475569 !important;  font-size: 11px !important;  text-transform: uppercase !important;  letter-spacing: 0.3px !important;  background: #f8fafc !important;
+}  .rpt-table tbody tr {  border-bottom: 1px solid #f1f5f9 !important;  transition: background 0.15s !important;
+}  .rpt-table tbody tr:hover {  background: #f8fafc !important;
+}  .rpt-table tbody td {  padding: 10px !important;  color: #334155 !important;  font-size: 12px !important;
+}  .rpt-table tfoot {  background: #f8f9fa !important;  border-top: 2px solid #00264D !important;  font-weight: 700 !important;
+}  .rpt-table tfoot td {  padding: 12px 10px !important;  color: #00264D !important;  font-size: 12px !important;
+}  /* Print Styles - matches staff_reports.php approach */
+@media print {  @page {  size: legal portrait;  margin: 0.3in 0.4in;  }  * {  -webkit-print-color-adjust: exact !important;  print-color-adjust: exact !important;  }  html, body {  background: white !important;  padding: 0 !important;  margin: 0 !important;  width: 100% !important;  }  /* Hide EVERYTHING except .rpt-printable */  body > * { display: none !important; }  .rpt-printable { display: block !important; }  /* Tables print clean */  .sr-tbl, .rpt-table {  width: 100% !important;  border-collapse: collapse !important;  font-size: 10px !important;  page-break-inside: auto !important;  }  .sr-tbl thead tr,  .rpt-table thead tr {  background: #f8f9fa !important;  }  .sr-tbl thead th,  .rpt-table thead th {  padding: 7px 6px !important;  font-size: 9px !important;  border-bottom: 1px solid #000 !important;  }  .sr-tbl tbody td,  .rpt-table tbody td {  padding: 6px !important;  font-size: 10px !important;  border-bottom: 1px solid #ddd !important;  }  .sr-tbl tfoot td,  .rpt-table tfoot td {  padding: 7px 6px !important;  font-size: 10px !important;  border-top: 2px solid #000 !important;  font-weight: 700 !important;  }  .sr-shift-block {  page-break-inside: avoid !important;  margin-bottom: 20px !important;  }  /* Show all shift blocks when printing */  .sr-shift-block.hidden {  display: block !important;  }
 }
-
-/* Tab Navigation - Matches Staff Style */
-.rpt-tabs {
-    display: flex !important;
-    background: #f8f9fa !important;
-    border-bottom: 2px solid #e2e8f0 !important;
-    overflow:hidden !important;
-    gap: 0 !important;
-}
-
-.rpt-tab-btn {
-    flex: 1 !important;
-    !important;
-    padding: 14px 18px !important;
-    text-align: center !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
-    color: #64748b !important;
-    background: transparent !important;
-    border: none !important;
-    border-bottom: 3px solid transparent !important;
-    cursor: pointer !important;
-    transition: all 0.2s ease !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.3px !important;
-}
-
-.rpt-tab-btn:hover {
-    background: rgba(0, 38, 77, 0.05) !important;
-    color: #00264D !important;
-}
-
-.rpt-tab-btn.active {
-    background: white !important;
-    color: #00264D !important;
-    border-bottom-color: #002F70 !important;
-    font-weight: 700 !important;
-}
-
-.rpt-tab-btn i {
-    margin-right: 5px !important;
-    font-size: 13px !important;
-}
-
-/* Content Area */
-.rpt-content {
-    padding: 24px 28px !important;
-}
-
-/* Date Filter Bar - Clean Design */
-.rpt-filter-bar {
-    display: flex !important;
-    align-items: center !important;
-    gap: 10px !important;
-    padding: 0 !important;
-    background: transparent !important;
-    border-radius: 0 !important;
-    border: none !important;
-    margin-bottom: 24px !important;
-    flex-wrap: wrap !important;
-}
-
-.rpt-filter-bar label {
-    font-size: 12px !important;
-    font-weight: 600 !important;
-    color: #00264D !important;
-    margin: 0 !important;
-}
-
-.rpt-filter-bar input[type="date"] {
-    padding: 7px 10px !important;
-    border: 1px solid #cbd5e1 !important;
-    border-radius: 4px !important;
-    font-size: 12px !important;
-    max-width: 140px !important;
-}
-
-.rpt-filter-bar button {
-    padding: 7px 16px !important;
-    background: #ffffff !important;
-    color: #00264D !important;
-    border: 1px solid #00264D !important;
-    border-radius: 4px !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
-    cursor: pointer !important;
-    transition: all 0.2s !important;
-}
-
-.rpt-filter-bar button:hover {
-    background: #00264D !important;
-    color: #ffffff !important;
-}
-
-.rpt-filter-bar button i {
-    margin-right: 4px !important;
-}
-
-/* Export Actions */
-.rpt-export-actions {
-    display: flex !important;
-    gap: 6px !important;
-    margin-left: auto !important;
-}
-
-.rpt-export-btn {
-    padding: 7px 14px !important;
-    border-radius: 4px !important;
-    font-size: 11px !important;
-    font-weight: 600 !important;
-    cursor: pointer !important;
-    transition: all 0.2s !important;
-    border: 1px solid !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-    background: #ffffff !important;
-}
-
-/* Excel Button - Green Border */
-.rpt-export-btn:nth-child(1) {
-    color: #16a34a !important;
-    border-color: #16a34a !important;
-}
-.rpt-export-btn:nth-child(1):hover {
-    background: #f0fdf4 !important;
-    border-color: #15803d !important;
-}
-
-/* CSV Button - Blue Border */
-.rpt-export-btn:nth-child(2) {
-    color: #2563eb !important;
-    border-color: #2563eb !important;
-}
-.rpt-export-btn:nth-child(2):hover {
-    background: #eff6ff !important;
-    border-color: #1d4ed8 !important;
-}
-
-/* PDF Button - Red Border */
-.rpt-export-btn:nth-child(3) {
-    color: #dc2626 !important;
-    border-color: #dc2626 !important;
-}
-.rpt-export-btn:nth-child(3):hover {
-    background: #fef2f2 !important;
-    border-color: #b91c1c !important;
-}
-
-.rpt-export-btn i {
-    margin-right: 3px !important;
-}
-
-/* Tab Panel */
-.rpt-tab-panel {
-    display: none !important;
-}
-
-.rpt-tab-panel.active {
-    display: block !important;
-}
-
-/* Report Info Box */
-.rpt-info-box {
-    background: #f0f4ff !important;
-    padding: 14px 16px !important;
-    border-radius: 4px !important;
-    margin-bottom: 20px !important;
-    border: 1px solid #dbeafe !important;
-}
-
-.rpt-info-box p {
-    margin: 0 !important;
-    font-size: 12px !important;
-    color: #334155 !important;
-    line-height: 1.5 !important;
-}
-
-.rpt-info-box strong {
-    color: #00264D !important;
-}
-
-/* Station Info Header */
-.rpt-station-info {
-    text-align: center !important;
-    padding: 16px 0 !important;
-    border-bottom: 2px solid #e2e8f0 !important;
-    margin-bottom: 20px !important;
-}
-
-.rpt-station-info h2 {
-    margin: 0 0 4px !important;
-    font-size: 18px !important;
-    font-weight: 700 !important;
-    color: #00264D !important;
-    text-transform: uppercase !important;
-}
-
-.rpt-station-info p {
-    margin: 0 !important;
-    font-size: 12px !important;
-    color: #64748b !important;
-}
-
-/* Tables - Clean Professional Style with Blue Headers */
-.rpt-table {
-    width: 100% !important;
-    border-collapse: collapse !important;
-    margin-top: 16px !important;
-    font-size: 12px !important;
-    background: white !important;
-}
-
-.rpt-table thead {
-    background: #f8fafc !important;
-    border-top: 2px solid #00264D !important;
-    border-bottom: 2px solid #e2e8f0 !important;
-}
-
-.rpt-table thead th {
-    padding: 12px 10px !important;
-    text-align: left !important;
-    font-weight: 700 !important;
-    color: #475569 !important;
-    font-size: 11px !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.3px !important;
-    background: #f8fafc !important;
-}
-
-.rpt-table tbody tr {
-    border-bottom: 1px solid #f1f5f9 !important;
-    transition: background 0.15s !important;
-}
-
-.rpt-table tbody tr:hover {
-    background: #f8fafc !important;
-}
-
-.rpt-table tbody td {
-    padding: 10px !important;
-    color: #334155 !important;
-    font-size: 12px !important;
-}
-
-.rpt-table tfoot {
-    background: #f8f9fa !important;
-    border-top: 2px solid #00264D !important;
-    font-weight: 700 !important;
-}
-
-.rpt-table tfoot td {
-    padding: 12px 10px !important;
-    color: #00264D !important;
-    font-size: 12px !important;
-}
-
-/* Print Styles - matches staff_reports.php approach */
-@media print {
-    @page {
-        size: legal portrait;
-        margin: 0.3in 0.4in;
-    }
-
-    * {
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-    }
-
-    html, body {
-        background: white !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        width: 100% !important;
-    }
-
-    /* Hide EVERYTHING except .rpt-printable */
-    body > * { display: none !important; }
-    .rpt-printable { display: block !important; }
-
-    /* Tables print clean */
-    .sr-tbl, .rpt-table {
-        width: 100% !important;
-        border-collapse: collapse !important;
-        font-size: 10px !important;
-        page-break-inside: auto !important;
-    }
-
-    .sr-tbl thead tr,
-    .rpt-table thead tr {
-        background: #f8f9fa !important;
-    }
-
-    .sr-tbl thead th,
-    .rpt-table thead th {
-        padding: 7px 6px !important;
-        font-size: 9px !important;
-        border-bottom: 1px solid #000 !important;
-    }
-
-    .sr-tbl tbody td,
-    .rpt-table tbody td {
-        padding: 6px !important;
-        font-size: 10px !important;
-        border-bottom: 1px solid #ddd !important;
-    }
-
-    .sr-tbl tfoot td,
-    .rpt-table tfoot td {
-        padding: 7px 6px !important;
-        font-size: 10px !important;
-        border-top: 2px solid #000 !important;
-        font-weight: 700 !important;
-    }
-
-    .sr-shift-block {
-        page-break-inside: avoid !important;
-        margin-bottom: 20px !important;
-    }
-
-    /* Show all shift blocks when printing */
-    .sr-shift-block.hidden {
-        display: block !important;
-    }
-}
-</style>
-
-<div class="reports-wrapper">
-    <!-- Content Area -->
-    <div class="rpt-content">
-        <!-- Date Filter Bar -->
-        <form method="GET" class="rpt-filter-bar">
-            <input type="hidden" name="section" id="hiddenSectionInput" value="<?= htmlspecialchars($_GET['section'] ?? 'fuel_sales') ?>">
-            <label><i class="fas fa-calendar"></i> Report Date:</label>
-            <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" required>
-            <span style="color: #64748b;">to</span>
-            <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>" required>
-            <button type="submit"><i class="fas fa-sync-alt"></i> Apply</button>
-            
-            <div class="rpt-export-actions">
-                <button type="button" class="rpt-export-btn" onclick="exportReport('excel')">
-                    <i class="fas fa-file-excel"></i> Excel
-                </button>
-                <button type="button" class="rpt-export-btn" onclick="exportReport('csv')">
-                    <i class="fas fa-file-csv"></i> CSV
-                </button>
-                <button type="button" class="rpt-export-btn" onclick="printReport()">
-                    <i class="fas fa-file-pdf"></i> PDF
-                </button>
-            </div>
-        </form>
-
-        <!-- Printable Report Content -->
-        <div class="rpt-printable">
-            <?php include __DIR__ . '/reports/manager_shift_reports.php'; ?>
-        </div>
-
-    </div>
-</div>
-
-<script src="../assets/vendor/xlsx/xlsx.full.min.js"></script>
+</style>  <div class="reports-wrapper">  <!-- Content Area -->  <div class="rpt-content">  <!-- Date Filter Bar -->  <form method="GET" class="rpt-filter-bar">  <input type="hidden" name="section" id="hiddenSectionInput" value="<?= htmlspecialchars($_GET['section'] ?? 'fuel_sales') ?>">  <label><i class="fas fa-calendar"></i> Report Date:</label>  <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" required>  <span style="color: #64748b;">to</span>  <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>" required>  <button type="submit"><i class="fas fa-sync-alt"></i> Apply</button>  <div class="rpt-export-actions">  <button type="button" class="rpt-export-btn" onclick="exportReport('excel')">  <i class="fas fa-file-excel"></i> Excel  </button>  <button type="button" class="rpt-export-btn" onclick="exportReport('csv')">  <i class="fas fa-file-csv"></i> CSV  </button>  <button type="button" class="rpt-export-btn" onclick="printReport()">  <i class="fas fa-file-pdf"></i> PDF  </button>  </div>  </form>  <!-- Printable Report Content -->  <div class="rpt-printable">  <?php include __DIR__ . '/reports/manager_shift_reports.php'; ?>  </div>  </div>
+</div>  <script src="../assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script>
-function exportReport(type) {
-    if (typeof XLSX === 'undefined') {
-        alert('Export library not loaded. Please refresh the page and try again.');
-        return;
-    }
-    const wrap = document.querySelector('.rpt-printable');
-    if (!wrap) { alert('No report content found.'); return; }
-
-    // Get active section panel
-    const activePanel = wrap.querySelector('.sr-section-panel.active') || wrap;
-
-    // Temporarily make hidden shift blocks visible so innerText works
-    const hiddenBlocks = Array.from(activePanel.querySelectorAll('.sr-shift-block.hidden'));
-    hiddenBlocks.forEach(b => { b.style.display = 'block'; b.dataset.wasHidden = '1'; });
-
-    // Grab all tables with actual tbody rows
-    const tables = Array.from(activePanel.querySelectorAll('table')).filter(
-        t => t.querySelector('tbody tr')
-    );
-
-    // Restore hidden blocks
-    hiddenBlocks.forEach(b => { b.style.display = 'none'; delete b.dataset.wasHidden; });
-
-    if (!tables.length) { alert('No table data found to export.'); return; }
-
-    const section  = new URL(window.location).searchParams.get('section') || 'operations';
-    const dateFrom = document.querySelector('input[name="date_from"]')?.value || '';
-    const dateTo   = document.querySelector('input[name="date_to"]')?.value || '';
-    const filename = `Manager_Report_${section}_${dateFrom}_to_${dateTo}`;
-
-    if (type === 'csv') {
-        exportCSV(tables, filename);
-    } else {
-        exportExcel(tables, filename);
-    }
+function exportReport(type) {  if (typeof XLSX === 'undefined') {  alert('Export library not loaded. Please refresh the page and try again.');  return;  }  const wrap = document.querySelector('.rpt-printable');  if (!wrap) { alert('No report content found.'); return; }  // Get active section panel  const activePanel = wrap.querySelector('.sr-section-panel.active') || wrap;  // Temporarily make hidden shift blocks visible so innerText works  const hiddenBlocks = Array.from(activePanel.querySelectorAll('.sr-shift-block.hidden'));  hiddenBlocks.forEach(b => { b.style.display = 'block'; b.dataset.wasHidden = '1'; });  // Grab all tables with actual tbody rows  const tables = Array.from(activePanel.querySelectorAll('table')).filter(  t => t.querySelector('tbody tr')  );  // Restore hidden blocks  hiddenBlocks.forEach(b => { b.style.display = 'none'; delete b.dataset.wasHidden; });  if (!tables.length) { alert('No table data found to export.'); return; }  const section  = new URL(window.location).searchParams.get('section') || 'operations';  const dateFrom = document.querySelector('input[name="date_from"]')?.value || '';  const dateTo  = document.querySelector('input[name="date_to"]')?.value || '';  const filename = `Manager_Report_${section}_${dateFrom}_to_${dateTo}`;  if (type === 'csv') {  exportCSV(tables, filename);  } else {  exportExcel(tables, filename);  }
+}  function tableToAoA(table) {  const aoa = [];  // Headers  table.querySelectorAll('thead tr').forEach(tr => {  aoa.push([...tr.querySelectorAll('th')].map(th => th.innerText.trim()));  });  // Body  table.querySelectorAll('tbody tr').forEach(tr => {  aoa.push([...tr.querySelectorAll('td')].map(td => td.innerText.trim()));  });  // Footer  table.querySelectorAll('tfoot tr').forEach(tr => {  aoa.push([...tr.querySelectorAll('td')].map(td => td.innerText.trim()));  });  return aoa;
+}  function exportExcel(tables, filename) {  const wb = XLSX.utils.book_new();  const usedNames = {};  tables.forEach((tbl, i) => {  // Get heading from nearest shift block  const block = tbl.closest('.sr-shift-block');  let sheetName = block?.querySelector('.sr-shift-heading')?.innerText?.trim()  || `Sheet ${i + 1}`;  // Clean sheet name (Excel limit: 31 chars, no special chars)  sheetName = sheetName.replace(/[:\\\/?*\[\]]/g, '').substring(0, 31).trim() || `Sheet${i+1}`;  // Deduplicate sheet names  if (usedNames[sheetName]) {  usedNames[sheetName]++;  sheetName = (sheetName.substring(0, 28) + ' ' + usedNames[sheetName]).substring(0,31);  } else {  usedNames[sheetName] = 1;  }  const aoa = tableToAoA(tbl);  const ws  = XLSX.utils.aoa_to_sheet(aoa);  // Auto column widths  if (aoa.length && aoa[0]) {  ws['!cols'] = aoa[0].map((_, ci) => ({  wch: Math.min(45, Math.max(10, ...aoa.map(row => String(row[ci] ?? '').length)))  }));  }  XLSX.utils.book_append_sheet(wb, ws, sheetName);  });  XLSX.writeFile(wb, filename + '.xlsx');
+}  function exportCSV(tables, filename) {  let csv = '';  tables.forEach((tbl, i) => {  const block  = tbl.closest('.sr-shift-block');  const heading = block?.querySelector('.sr-shift-heading')?.innerText?.trim();  if (heading) csv += '"' + heading.replace(/"/g, '""') + '"\n';  else if (i > 0) csv += '\n';  tableToAoA(tbl).forEach(row => {  csv += row.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',') + '\n';  });  });  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });  const url  = URL.createObjectURL(blob);  const a  = document.createElement('a');  a.href  = url;  a.download = filename + '.csv';  document.body.appendChild(a);  a.click();  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+}  function printReport() {  const wrap  = document.querySelector('.rpt-printable');  const active = wrap?.querySelector('.sr-section-panel.active') || wrap;  if (!active) { window.print(); return; }  // Reveal hidden shift blocks before printing  const hidden = active.querySelectorAll('.sr-shift-block.hidden');  hidden.forEach(b => b.style.display = 'block');  const w = window.open('', '_blank', 'width=900,height=700');  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Manager Report</title>  <style>  @page{size:legal portrait;margin:.3in .4in;}  *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}  body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:0;}  .sr-section-tabs{display:none !important;}  .sr-shift-block{display:block !important;}  .sr-shift-heading{font-size:12px;font-weight:700;text-transform:uppercase;padding:6px 0;border-bottom:1px solid #ccc;margin-bottom:8px;margin-top:16px;}  div[style*="text-align:center"]{text-align:center;padding:10px 0 8px;border-bottom:2px solid #000;margin-bottom:12px;}  table{width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:6px;}  thead tr{background:#f0f0f0 !important;border-top:2px solid #000;border-bottom:1px solid #999;}  thead th{padding:6px 5px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;}  tbody tr{border-bottom:1px solid #ddd;}  tbody td{padding:5px;}  tfoot tr{border-top:2px solid #000;background:#f0f0f0 !important;}  tfoot td{padding:6px 5px;font-weight:700;}  .sr-empty{text-align:center;padding:12px;color:#888;font-style:italic;}  .sr-status,.sr-badge,.cr-badge,.cr-status,.fr-badge{padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700;}  </style></head><body>${active.innerHTML}</body></html>`);  w.document.close();  w.focus();  setTimeout(() => { w.print(); w.close(); }, 500);  // Restore hidden blocks  hidden.forEach(b => b.style.display = 'none');
 }
-
-function tableToAoA(table) {
-    const aoa = [];
-    // Headers
-    table.querySelectorAll('thead tr').forEach(tr => {
-        aoa.push([...tr.querySelectorAll('th')].map(th => th.innerText.trim()));
-    });
-    // Body
-    table.querySelectorAll('tbody tr').forEach(tr => {
-        aoa.push([...tr.querySelectorAll('td')].map(td => td.innerText.trim()));
-    });
-    // Footer
-    table.querySelectorAll('tfoot tr').forEach(tr => {
-        aoa.push([...tr.querySelectorAll('td')].map(td => td.innerText.trim()));
-    });
-    return aoa;
-}
-
-function exportExcel(tables, filename) {
-    const wb = XLSX.utils.book_new();
-    const usedNames = {};
-
-    tables.forEach((tbl, i) => {
-        // Get heading from nearest shift block
-        const block = tbl.closest('.sr-shift-block');
-        let sheetName = block?.querySelector('.sr-shift-heading')?.innerText?.trim()
-                      || `Sheet ${i + 1}`;
-        // Clean sheet name (Excel limit: 31 chars, no special chars)
-        sheetName = sheetName.replace(/[:\\\/?*\[\]]/g, '').substring(0, 31).trim() || `Sheet${i+1}`;
-        // Deduplicate sheet names
-        if (usedNames[sheetName]) {
-            usedNames[sheetName]++;
-            sheetName = (sheetName.substring(0, 28) + ' ' + usedNames[sheetName]).substring(0,31);
-        } else {
-            usedNames[sheetName] = 1;
-        }
-
-        const aoa = tableToAoA(tbl);
-        const ws  = XLSX.utils.aoa_to_sheet(aoa);
-        // Auto column widths
-        if (aoa.length && aoa[0]) {
-            ws['!cols'] = aoa[0].map((_, ci) => ({
-                wch: Math.min(45, Math.max(10, ...aoa.map(row => String(row[ci] ?? '').length)))
-            }));
-        }
-        XLSX.utils.book_append_sheet(wb, ws, sheetName);
-    });
-
-    XLSX.writeFile(wb, filename + '.xlsx');
-}
-
-function exportCSV(tables, filename) {
-    let csv = '';
-    tables.forEach((tbl, i) => {
-        const block   = tbl.closest('.sr-shift-block');
-        const heading = block?.querySelector('.sr-shift-heading')?.innerText?.trim();
-        if (heading) csv += '"' + heading.replace(/"/g, '""') + '"\n';
-        else if (i > 0) csv += '\n';
-        tableToAoA(tbl).forEach(row => {
-            csv += row.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',') + '\n';
-        });
-    });
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = filename + '.csv';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
-}
-
-function printReport() {
-    const wrap   = document.querySelector('.rpt-printable');
-    const active = wrap?.querySelector('.sr-section-panel.active') || wrap;
-    if (!active) { window.print(); return; }
-
-    // Reveal hidden shift blocks before printing
-    const hidden = active.querySelectorAll('.sr-shift-block.hidden');
-    hidden.forEach(b => b.style.display = 'block');
-
-    const w = window.open('', '_blank', 'width=900,height=700');
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Manager Report</title>
-    <style>
-        @page{size:legal portrait;margin:.3in .4in;}
-        *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
-        body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:0;}
-        .sr-section-tabs{display:none !important;}
-        .sr-shift-block{display:block !important;}
-        .sr-shift-heading{font-size:12px;font-weight:700;text-transform:uppercase;padding:6px 0;border-bottom:1px solid #ccc;margin-bottom:8px;margin-top:16px;}
-        div[style*="text-align:center"]{text-align:center;padding:10px 0 8px;border-bottom:2px solid #000;margin-bottom:12px;}
-        table{width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:6px;}
-        thead tr{background:#f0f0f0 !important;border-top:2px solid #000;border-bottom:1px solid #999;}
-        thead th{padding:6px 5px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;}
-        tbody tr{border-bottom:1px solid #ddd;}
-        tbody td{padding:5px;}
-        tfoot tr{border-top:2px solid #000;background:#f0f0f0 !important;}
-        tfoot td{padding:6px 5px;font-weight:700;}
-        .sr-empty{text-align:center;padding:12px;color:#888;font-style:italic;}
-        .sr-status,.sr-badge,.cr-badge,.cr-status,.fr-badge{padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700;}
-    </style></head><body>${active.innerHTML}</body></html>`);
-    w.document.close();
-    w.focus();
-    setTimeout(() => { w.print(); w.close(); }, 500);
-
-    // Restore hidden blocks
-    hidden.forEach(b => b.style.display = 'none');
-}
-</script>
-
-<?php require_once __DIR__ . '/../partials/footer.php'; ?>
+</script>  <?php require_once __DIR__ . '/../partials/footer.php'; ?>

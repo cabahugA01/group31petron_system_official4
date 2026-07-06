@@ -1,144 +1,15 @@
 <?php
 // Test QR code verification for job order transactions
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
-require_once __DIR__ . '/../public/db_connect.php';
-
-echo "Testing QR Code Verification for Job Orders\n";
-echo str_repeat("=", 70) . "\n\n";
-
-// Test with ID=2 (known combined transaction)
+ini_set('display_errors', 1);  require_once __DIR__ . '/../public/db_connect.php';  echo "Testing QR Code Verification for Job Orders\n";
+echo str_repeat("=", 70) . "\n\n";  // Test with ID=2 (known combined transaction)
 $id = 2;
-$type = 'job_order';
-
-echo "Test Case: ID=$id, Type=$type\n";
-echo str_repeat("-", 70) . "\n\n";
-
-try {
-    // Simulate verify.php logic
-    echo "Step 1: Try merchandise_transactions table...\n";
-    
-    $stmt = $pdo->prepare("
-        SELECT mt.*,
-               COALESCE(u.username, 'Staff') AS staff_name,
-               COALESCE(s.name, 'Petron Station') AS station_name,
-               COALESCE(s.location, '') AS station_location,
-               COALESCE(s.address, 'Vamenta Blvd., Carmen, CDO') AS station_address,
-               COALESCE(s.vat_tin, '236-002-207-0000') AS station_vat_tin
-        FROM   merchandise_transactions mt
-        LEFT JOIN users    u ON mt.staff_id   = u.id
-        LEFT JOIN stations s ON mt.station_id = s.id
-        WHERE  mt.transaction_id = ? OR mt.id = ?
-        LIMIT  1
-    ");
-    $numeric_id = is_numeric($id) ? (int)$id : 0;
-    $stmt->execute([$id, $numeric_id]);
-    $txn = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    if ($txn) {
-        echo "✅ Found in merchandise_transactions!\n";
-        echo "   Transaction ID: {$txn['transaction_id']}\n";
-        echo "   Type: {$txn['transaction_type']}\n";
-        echo "   Customer: {$txn['customer_name']}\n";
-        echo "   Staff: {$txn['staff_name']}\n";
-        echo "   Station: {$txn['station_name']}\n";
-        echo "\n";
-        
-        echo "Job Order Fields:\n";
-        echo "   Service: " . ($txn['job_order_service'] ?? 'NULL') . "\n";
-        echo "   Vehicle Plate: " . ($txn['job_order_vehicle_plate'] ?? 'NULL') . "\n";
-        echo "   Vehicle Type: " . ($txn['job_order_vehicle_type'] ?? 'NULL') . "\n";
-        echo "   Mechanic: " . ($txn['job_order_mechanic_name'] ?? 'NULL') . "\n";
-        echo "   Description: " . ($txn['job_order_description'] ?? 'NULL') . "\n";
-        echo "\n";
-        
-        // Get items
-        $stmt2 = $pdo->prepare("
-            SELECT product_name, category, size_variant, quantity, unit_price, subtotal,
-                   COALESCE(item_type,'merchandise') AS item_type
-            FROM   merchandise_transaction_items
-            WHERE  transaction_id = ?
-            ORDER  BY id ASC
-        ");
-        $stmt2->execute([$txn['id']]);
-        $items = $stmt2->fetchAll(PDO::FETCH_ASSOC);
-        
-        echo "Items Found: " . count($items) . "\n";
-        foreach ($items as $item) {
-            echo "   - {$item['product_name']} (Type: {$item['item_type']}, Qty: {$item['quantity']}, ₱{$item['subtotal']})\n";
-        }
-        echo "\n";
-        
-        echo "✅ VERIFICATION PAGE WILL DISPLAY:\n";
-        echo "   ✓ Transaction details\n";
-        echo "   ✓ Staff name: {$txn['staff_name']}\n";
-        echo "   ✓ Items: " . count($items) . " items\n";
-        echo "   ✓ Job Order Details: YES\n";
-        echo "      - Service: " . ($txn['job_order_service'] ?? 'NULL') . "\n";
-        echo "      - Vehicle: " . ($txn['job_order_vehicle_plate'] ?? 'NULL') . "\n";
-        echo "      - Mechanic: " . ($txn['job_order_mechanic_name'] ?? 'NULL') . "\n";
-        echo "   ✓ Payment info\n";
-        echo "   ✓ Totals\n";
-        
-    } else {
-        echo "❌ NOT found in merchandise_transactions\n";
-        echo "\nStep 2: Try job_orders table...\n";
-        
-        $stmt_jo = $pdo->prepare("
-            SELECT jo.*,
-                   COALESCE(cb.username, 'Staff') AS staff_name,
-                   COALESCE(s.name, 'Petron Station') AS station_name
-            FROM   job_orders jo
-            LEFT JOIN users    cb ON cb.id = jo.created_by
-            LEFT JOIN stations s  ON s.id  = jo.station_id
-            WHERE  jo.job_order_id = ? OR jo.id = ?
-            LIMIT  1
-        ");
-        $stmt_jo->execute([$id, $numeric_id]);
-        $jo = $stmt_jo->fetch(PDO::FETCH_ASSOC);
-        
-        if ($jo) {
-            echo "✅ Found in job_orders table!\n";
-            echo "   Job Order ID: " . ($jo['job_order_id'] ?? 'NULL') . "\n";
-            echo "   Customer: {$jo['customer_name']}\n";
-            echo "   Service: {$jo['service_type']}\n";
-            echo "   Vehicle: " . ($jo['vehicle_plate'] ?? 'NULL') . "\n";
-        } else {
-            echo "❌ NOT found in job_orders table either\n";
-        }
-    }
-    
-    echo "\n" . str_repeat("=", 70) . "\n";
-    echo "QR CODE URL TEST:\n";
-    echo str_repeat("=", 70) . "\n\n";
-    
-    if ($txn) {
-        $txn_id = $txn['transaction_id'];
-        $verify_url = "http://localhost/group31petron_system_official4/public/verify.php?id=" . urlencode($txn_id) . "&type=job_order";
-        
-        echo "QR Code should encode this URL:\n";
-        echo $verify_url . "\n\n";
-        echo "✅ When scanned, this should:\n";
-        echo "   1. Find transaction in merchandise_transactions\n";
-        echo "   2. Display 'Record found' banner\n";
-        echo "   3. Show all transaction details\n";
-        echo "   4. Display job order section with service/vehicle/mechanic\n";
-        echo "   5. List all items\n";
-        echo "   6. Show payment and totals\n";
-    }
-    
-} catch (Exception $e) {
-    echo "❌ ERROR: " . $e->getMessage() . "\n";
-    echo "Stack trace:\n" . $e->getTraceAsString() . "\n";
-}
-
-echo "\n" . str_repeat("=", 70) . "\n";
+$type = 'job_order';  echo "Test Case: ID=$id, Type=$type\n";
+echo str_repeat("-", 70) . "\n\n";  try {  // Simulate verify.php logic  echo "Step 1: Try merchandise_transactions table...\n";  $stmt = $pdo->prepare("  SELECT mt.*,  COALESCE(u.username, 'Staff') AS staff_name,  COALESCE(s.name, 'Petron Station') AS station_name,  COALESCE(s.location, '') AS station_location,  COALESCE(s.address, 'Vamenta Blvd., Carmen, CDO') AS station_address,  COALESCE(s.vat_tin, '236-002-207-0000') AS station_vat_tin  FROM  merchandise_transactions mt  LEFT JOIN users  u ON mt.staff_id  = u.id  LEFT JOIN stations s ON mt.station_id = s.id  WHERE  mt.transaction_id = ? OR mt.id = ?  LIMIT  1  ");  $numeric_id = is_numeric($id) ? (int)$id : 0;  $stmt->execute([$id, $numeric_id]);  $txn = $stmt->fetch(PDO::FETCH_ASSOC);  if ($txn) {  echo "Found in merchandise_transactions!\n";  echo "  Transaction ID: {$txn['transaction_id']}\n";  echo "  Type: {$txn['transaction_type']}\n";  echo "  Customer: {$txn['customer_name']}\n";  echo "  Staff: {$txn['staff_name']}\n";  echo "  Station: {$txn['station_name']}\n";  echo "\n";  echo "Job Order Fields:\n";  echo "  Service: " . ($txn['job_order_service'] ?? 'NULL') . "\n";  echo "  Vehicle Plate: " . ($txn['job_order_vehicle_plate'] ?? 'NULL') . "\n";  echo "  Vehicle Type: " . ($txn['job_order_vehicle_type'] ?? 'NULL') . "\n";  echo "  Mechanic: " . ($txn['job_order_mechanic_name'] ?? 'NULL') . "\n";  echo "  Description: " . ($txn['job_order_description'] ?? 'NULL') . "\n";  echo "\n";  // Get items  $stmt2 = $pdo->prepare("  SELECT product_name, category, size_variant, quantity, unit_price, subtotal,  COALESCE(item_type,'merchandise') AS item_type  FROM  merchandise_transaction_items  WHERE  transaction_id = ?  ORDER  BY id ASC  ");  $stmt2->execute([$txn['id']]);  $items = $stmt2->fetchAll(PDO::FETCH_ASSOC);  echo "Items Found: " . count($items) . "\n";  foreach ($items as $item) {  echo "  - {$item['product_name']} (Type: {$item['item_type']}, Qty: {$item['quantity']}, ₱{$item['subtotal']})\n";  }  echo "\n";  echo "VERIFICATION PAGE WILL DISPLAY:\n";  echo "  Transaction details\n";  echo "  Staff name: {$txn['staff_name']}\n";  echo "  Items: " . count($items) . " items\n";  echo "  Job Order Details: YES\n";  echo "  - Service: " . ($txn['job_order_service'] ?? 'NULL') . "\n";  echo "  - Vehicle: " . ($txn['job_order_vehicle_plate'] ?? 'NULL') . "\n";  echo "  - Mechanic: " . ($txn['job_order_mechanic_name'] ?? 'NULL') . "\n";  echo "  Payment info\n";  echo "  Totals\n";  } else {  echo "NOT found in merchandise_transactions\n";  echo "\nStep 2: Try job_orders table...\n";  $stmt_jo = $pdo->prepare("  SELECT jo.*,  COALESCE(cb.username, 'Staff') AS staff_name,  COALESCE(s.name, 'Petron Station') AS station_name  FROM  job_orders jo  LEFT JOIN users  cb ON cb.id = jo.created_by  LEFT JOIN stations s  ON s.id  = jo.station_id  WHERE  jo.job_order_id = ? OR jo.id = ?  LIMIT  1  ");  $stmt_jo->execute([$id, $numeric_id]);  $jo = $stmt_jo->fetch(PDO::FETCH_ASSOC);  if ($jo) {  echo "Found in job_orders table!\n";  echo "  Job Order ID: " . ($jo['job_order_id'] ?? 'NULL') . "\n";  echo "  Customer: {$jo['customer_name']}\n";  echo "  Service: {$jo['service_type']}\n";  echo "  Vehicle: " . ($jo['vehicle_plate'] ?? 'NULL') . "\n";  } else {  echo "NOT found in job_orders table either\n";  }  }  echo "\n" . str_repeat("=", 70) . "\n";  echo "QR CODE URL TEST:\n";  echo str_repeat("=", 70) . "\n\n";  if ($txn) {  $txn_id = $txn['transaction_id'];  $verify_url = "http://localhost/group31petron_system_official4/public/verify.php?id=" . urlencode($txn_id) . "&type=job_order";  echo "QR Code should encode this URL:\n";  echo $verify_url . "\n\n";  echo "When scanned, this should:\n";  echo "  1. Find transaction in merchandise_transactions\n";  echo "  2. Display 'Record found' banner\n";  echo "  3. Show all transaction details\n";  echo "  4. Display job order section with service/vehicle/mechanic\n";  echo "  5. List all items\n";  echo "  6. Show payment and totals\n";  }  } catch (Exception $e) {  echo "ERROR: " . $e->getMessage() . "\n";  echo "Stack trace:\n" . $e->getTraceAsString() . "\n";
+}  echo "\n" . str_repeat("=", 70) . "\n";
 echo "FINAL STATUS: ";
-if (isset($txn) && $txn) {
-    echo "✅ PASS - QR verification will work!\n";
-} else {
-    echo "❌ FAIL - Transaction not found\n";
+if (isset($txn) && $txn) {  echo "PASS - QR verification will work!\n";
+} else {  echo "FAIL - Transaction not found\n";
 }
 echo str_repeat("=", 70) . "\n";
 ?>

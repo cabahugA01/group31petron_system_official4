@@ -22,50 +22,19 @@
 .po-filter-bar input:focus,.po-filter-bar select:focus{border-color:#002F70;}
 
 /* Main Control Button Base Style */
-.po-ctrl-btn{
-    display:inline-flex;
-    align-items:center;
-    gap:6px;
-    padding:6px 12px;
-    border-radius:5px;
-    font-size:12px;
-    font-weight:600;
-    cursor:pointer;
-    border:1px solid transparent;
-    text-decoration:none;
-    white-space:nowrap;
-    transition:all .15s;
-    line-height:1.2;
+.po-ctrl-btn{  display:inline-flex;  align-items:center;  gap:6px;  padding:6px 12px;  border-radius:5px;  font-size:12px;  font-weight:600;  cursor:pointer;  border:1px solid transparent;  text-decoration:none;  white-space:nowrap;  transition:all .15s;  line-height:1.2;
 }
 
 /* Force standard Back/Outline style on ALL action buttons, including <button> tags */
-.po-btn-back{
-    background:#ffffff !important;
-    background-color:#ffffff !important;
-    color:#475569 !important;
-    border:1px solid #94a3b8 !important;
-    border-color:#94a3b8 !important;
-    box-shadow:none !important;
+.po-btn-back{  background:#ffffff !important;  background-color:#ffffff !important;  color:#475569 !important;  border:1px solid #94a3b8 !important;  border-color:#94a3b8 !important;  box-shadow:none !important;
 }
-.po-btn-back:hover{
-    background:#f1f5f9 !important;
-    background-color:#f1f5f9 !important;
-    color:#334155 !important;
-    border-color:#64748b !important;
+.po-btn-back:hover{  background:#f1f5f9 !important;  background-color:#f1f5f9 !important;  color:#334155 !important;  border-color:#64748b !important;
 }
 
 /* Export Buttons Style */
-.po-btn-exp{
-    background:#fff !important;
-    background-color:#fff !important;
-    color:#002F70 !important;
-    border:1px solid #002F70 !important;
-    border-color:#002F70 !important;
+.po-btn-exp{  background:#fff !important;  background-color:#fff !important;  color:#002F70 !important;  border:1px solid #002F70 !important;  border-color:#002F70 !important;
 }
-.po-btn-exp:hover{
-    background:#002F70 !important;
-    background-color:#002F70 !important;
-    color:#fff !important;
+.po-btn-exp:hover{  background:#002F70 !important;  background-color:#002F70 !important;  color:#fff !important;
 }
 
 .po-table-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;}
@@ -94,87 +63,31 @@
 .po-info-box{background:#e8f4fd;border-left:4px solid #002F70;border-radius:6px;padding:10px 14px;font-size:12px;color:#002F70;margin-bottom:14px;}
 .flash-ok{position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:99999;background:#d4edda;color:#155724;border:1px solid #c3e6cb;box-shadow:0 4px 16px rgba(0,0,0,.15);padding:12px 20px;border-radius:8px;display:flex;align-items:center;gap:8px;animation:sda .3s ease-out;}
 .flash-err{position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:99999;background:#f8d7da;color:#721c24;border:1px solid #f5c6cb;box-shadow:0 4px 16px rgba(0,0,0,.15);padding:12px 20px;border-radius:8px;display:flex;align-items:center;gap:8px;animation:sda .3s ease-out;}
-.po-btn-fin{
-    background:#fff !important;
-    color:#16a34a !important;
-    border:1px solid #16a34a !important;
+.po-btn-fin{  background:#fff !important;  color:#16a34a !important;  border:1px solid #16a34a !important;
 }
-.po-btn-fin:hover{
-    background:#16a34a !important;
-    color:#fff !important;
+.po-btn-fin:hover{  background:#16a34a !important;  color:#fff !important;
 }
-.po-btn-rej{
-    background:#fff !important;
-    color:#dc2626 !important;
-    border:1px solid #dc2626 !important;
+.po-btn-rej{  background:#fff !important;  color:#dc2626 !important;  border:1px solid #dc2626 !important;
 }
-.po-btn-rej:hover{
-    background:#dc2626 !important;
-    color:#fff !important;
+.po-btn-rej:hover{  background:#dc2626 !important;  color:#fff !important;
 }
 @keyframes sda{from{top:-60px;opacity:0}to{top:24px;opacity:1}}
 
 /* ── PO Tabs ─────────────────────────────────────────────────────────── */
-.po-tabs-nav {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 20px;
-    background: transparent;
-    border-radius: 0;
-    overflow: visible;
-    box-shadow: none;
-    border-bottom: none;
+.po-tabs-nav {  display: flex;  gap: 8px;  margin-bottom: 20px;  background: transparent;  border-radius: 0;  overflow: visible;  box-shadow: none;  border-bottom: none;
 }
-.po-tab-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 8px 16px;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    border-radius: 6px;
-    transition: all .2s;
-    text-transform: none;
-    letter-spacing: normal;
-    box-shadow: none;
-    border: 1px solid #cbd5e1;
-    background: #fff;
-    color: #475569;
+.po-tab-btn {  display: inline-flex;  align-items: center;  justify-content: center;  gap: 8px;  padding: 8px 16px;  font-size: 13px;  font-weight: 700;  cursor: pointer;  border-radius: 6px;  transition: all .2s;  text-transform: none;  letter-spacing: normal;  box-shadow: none;  border: 1px solid #cbd5e1;  background: #fff;  color: #475569;
 }
-.po-tab-btn:hover {
-    background: #f8fafc;
-    color: #0f172a;
-    border-color: #94a3b8;
+.po-tab-btn:hover {  background: #f8fafc;  color: #0f172a;  border-color: #94a3b8;
 }
-.po-tab-btn.active-merch {
-    background: #002F6C !important;
-    color: #fff !important;
-    border-color: #002F6C !important;
+.po-tab-btn.active-merch {  background: #002F6C !important;  color: #fff !important;  border-color: #002F6C !important;
 }
-.po-tab-btn.active-fuel {
-    background: #002F6C !important;
-    color: #fff !important;
-    border-color: #002F6C !important;
+.po-tab-btn.active-fuel {  background: #002F6C !important;  color: #fff !important;  border-color: #002F6C !important;
 }
-.po-tab-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 18px;
-    height: 18px;
-    padding: 0 5px;
-    border-radius: 9px;
-    font-size: 10px;
-    font-weight: 800;
-    background: #e2e8f0;
-    color: #475569;
+.po-tab-badge {  display: inline-flex;  align-items: center;  justify-content: center;  min-width: 18px;  height: 18px;  padding: 0 5px;  border-radius: 9px;  font-size: 10px;  font-weight: 800;  background: #e2e8f0;  color: #475569;
 }
 .po-tab-btn.active-merch .po-tab-badge,
-.po-tab-btn.active-fuel .po-tab-badge {
-    background: rgba(255, 255, 255, 0.2) !important;
-    color: #fff !important;
+.po-tab-btn.active-fuel .po-tab-badge {  background: rgba(255, 255, 255, 0.2) !important;  color: #fff !important;
 }
 .po-tab-pane { display: none; }
 .po-tab-pane.active { display: block; }

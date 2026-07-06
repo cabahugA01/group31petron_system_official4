@@ -8,29 +8,10 @@ require_once __DIR__ . '/../public/db_connect.php';
 // Simulate admin session for station_id
 $station_id = 1253; // admin station
 
-function check(PDO $pdo, string $label, string $sql, array $params = []): void {
-    try {
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $result = $stmt->fetchColumn();
-        echo "[OK]   $label => " . var_export($result, true) . "\n";
-    } catch (Exception $e) {
-        echo "[FAIL] $label => " . $e->getMessage() . "\n";
-    }
+function check(PDO $pdo, string $label, string $sql, array $params = []): void {  try {  $stmt = $pdo->prepare($sql);  $stmt->execute($params);  $result = $stmt->fetchColumn();  echo "[OK]  $label => " . var_export($result, true) . "\n";  } catch (Exception $e) {  echo "[FAIL] $label => " . $e->getMessage() . "\n";  }
 }
 
-function checkRows(PDO $pdo, string $label, string $sql, array $params = []): void {
-    try {
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        echo "[OK]   $label => " . count($rows) . " rows\n";
-        if ($rows) {
-            echo "       cols: " . implode(', ', array_keys($rows[0])) . "\n";
-        }
-    } catch (Exception $e) {
-        echo "[FAIL] $label => " . $e->getMessage() . "\n";
-    }
+function checkRows(PDO $pdo, string $label, string $sql, array $params = []): void {  try {  $stmt = $pdo->prepare($sql);  $stmt->execute($params);  $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);  echo "[OK]  $label => " . count($rows) . " rows\n";  if ($rows) {  echo "  cols: " . implode(', ', array_keys($rows[0])) . "\n";  }  } catch (Exception $e) {  echo "[FAIL] $label => " . $e->getMessage() . "\n";  }
 }
 
 $date_filter = date('Y-m-d');
@@ -106,65 +87,8 @@ checkRows($pdo, 'low_merch_inventory', "SELECT 'Merchandise' AS type, COALESCE(p
 checkRows($pdo, 'recent_deliveries_oversight', "SELECT id, delivery_type AS type, COALESCE(NULLIF(delivery_ref,''),CONCAT('DO-',id)) AS ref_no, supplier, product, status, created_at FROM deliveries_oversight WHERE station_id=? ORDER BY created_at DESC LIMIT 10", [$s]);
 
 echo "\n=== COLUMN EXISTENCE SPOT CHECKS ===\n";
-$col_checks = [
-    ['fuel_transactions', 'transaction_id'],
-    ['fuel_transactions', 'fuel_type'],
-    ['fuel_transactions', 'total_amount'],
-    ['fuel_transactions', 'liters_sold'],
-    ['fuel_transactions', 'staff_id'],
-    ['merchandise_transactions', 'transaction_id'],
-    ['merchandise_transactions', 'validation_status'],
-    ['merchandise_transactions', 'workflow_status'],
-    ['merchandise_transactions', 'customer_name'],
-    ['merchandise_transactions', 'staff_id'],
-    ['job_orders', 'job_order_number'],
-    ['job_orders', 'job_order_id'],
-    ['job_orders', 'total_cost'],
-    ['job_orders', 'estimated_cost'],
-    ['job_orders', 'created_by'],
-    ['job_orders', 'user_id'],
-    ['customers', 'contact_number'],
-    ['customers', 'phone'],
-    ['customers', 'verification_status'],
-    ['customers', 'mgr_status'],
-    ['customers', 'mgr_reviewed_by'],
-    ['purchase_orders', 'admin_finalized'],
-    ['purchase_orders', 'delivery_validated'],
-    ['purchase_orders', 'stock_in_done'],
-    ['purchase_orders', 'product_name'],
-    ['purchase_orders', 'po_number'],
-    ['fuel_purchase_orders', 'po_number'],
-    ['fuel_purchase_orders', 'fuel_type_id'],
-    ['fuel_purchase_orders', 'volume'],
-    ['fuel_purchase_orders', 'delivery_date'],
-    ['fuel_inventory', 'fuel_type'],
-    ['fuel_inventory', 'current_level'],
-    ['fuel_inventory', 'current_stock'],
-    ['fuel_inventory', 'critical_level'],
-    ['fuel_inventory', 'reorder_level'],
-    ['station_inventory', 'stock_level'],
-    ['station_inventory', 'reorder_level'],
-    ['deliveries_oversight', 'delivery_ref'],
-    ['deliveries_oversight', 'delivery_type'],
-    ['deliveries_oversight', 'supplier'],
-    ['audit_logs', 'entity_type'],
-    ['audit_logs', 'log_type'],
-    ['audit_logs', 'action_type'],
-    ['audit_logs', 'error_message'],
-    ['login_attempts', 'attempt_time'],
-    ['login_attempts', 'status'],
-    ['users', 'first_name'],
-    ['users', 'last_name'],
-    ['users', 'employee_id'],
+$col_checks = [  ['fuel_transactions', 'transaction_id'],  ['fuel_transactions', 'fuel_type'],  ['fuel_transactions', 'total_amount'],  ['fuel_transactions', 'liters_sold'],  ['fuel_transactions', 'staff_id'],  ['merchandise_transactions', 'transaction_id'],  ['merchandise_transactions', 'validation_status'],  ['merchandise_transactions', 'workflow_status'],  ['merchandise_transactions', 'customer_name'],  ['merchandise_transactions', 'staff_id'],  ['job_orders', 'job_order_number'],  ['job_orders', 'job_order_id'],  ['job_orders', 'total_cost'],  ['job_orders', 'estimated_cost'],  ['job_orders', 'created_by'],  ['job_orders', 'user_id'],  ['customers', 'contact_number'],  ['customers', 'phone'],  ['customers', 'verification_status'],  ['customers', 'mgr_status'],  ['customers', 'mgr_reviewed_by'],  ['purchase_orders', 'admin_finalized'],  ['purchase_orders', 'delivery_validated'],  ['purchase_orders', 'stock_in_done'],  ['purchase_orders', 'product_name'],  ['purchase_orders', 'po_number'],  ['fuel_purchase_orders', 'po_number'],  ['fuel_purchase_orders', 'fuel_type_id'],  ['fuel_purchase_orders', 'volume'],  ['fuel_purchase_orders', 'delivery_date'],  ['fuel_inventory', 'fuel_type'],  ['fuel_inventory', 'current_level'],  ['fuel_inventory', 'current_stock'],  ['fuel_inventory', 'critical_level'],  ['fuel_inventory', 'reorder_level'],  ['station_inventory', 'stock_level'],  ['station_inventory', 'reorder_level'],  ['deliveries_oversight', 'delivery_ref'],  ['deliveries_oversight', 'delivery_type'],  ['deliveries_oversight', 'supplier'],  ['audit_logs', 'entity_type'],  ['audit_logs', 'log_type'],  ['audit_logs', 'action_type'],  ['audit_logs', 'error_message'],  ['login_attempts', 'attempt_time'],  ['login_attempts', 'status'],  ['users', 'first_name'],  ['users', 'last_name'],  ['users', 'employee_id'],
 ];
 
-foreach ($col_checks as [$table, $col]) {
-    try {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?");
-        $stmt->execute([$table, $col]);
-        $exists = (bool)$stmt->fetchColumn();
-        echo ($exists ? "[OK]   " : "[MISS]") . " $table.$col\n";
-    } catch (Exception $e) {
-        echo "[ERR]  $table.$col => " . $e->getMessage() . "\n";
-    }
+foreach ($col_checks as [$table, $col]) {  try {  $stmt = $pdo->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?");  $stmt->execute([$table, $col]);  $exists = (bool)$stmt->fetchColumn();  echo ($exists ? "[OK]  " : "[MISS]") . " $table.$col\n";  } catch (Exception $e) {  echo "[ERR]  $table.$col => " . $e->getMessage() . "\n";  }
 }

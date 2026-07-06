@@ -1,41 +1,8 @@
 <?php
 // Helper function: resolve the best inventory row for a tank configuration
 // Falls back to the base fuel type if the specific sub-type has 0 or no data
-function resolve_fi_lookup(array $fi_lookup, string $ft_key, string $label): ?array {
-    if ($ft_key === 'xtra unl') {
-        $sub = (strpos($label, 'XTRA UNL 1') !== false) ? 'xtra unl 1' : 'xtra unl 2';
-        $inv = $fi_lookup[$sub] ?? null;
-        // Use sub-type if it has real data; otherwise fall back to base type (if exists)
-        if ($inv && ((float)($inv['current_level'] ?? 0) > 0 || (float)($inv['current_stock'] ?? 0) > 0)) {
-            return $inv;
-        }
-        return $fi_lookup['xtra unl'] ?? $inv ?? null;
-    } elseif ($ft_key === 'diesel') {
-        $sub = (strpos($label, 'DIESEL 1') !== false) ? 'diesel 1' : 'diesel 2';
-        $inv = $fi_lookup[$sub] ?? null;
-        if ($inv && ((float)($inv['current_level'] ?? 0) > 0 || (float)($inv['current_stock'] ?? 0) > 0)) {
-            return $inv;
-        }
-        return $fi_lookup['diesel'] ?? $inv ?? null;
-    }
-    return $fi_lookup[$ft_key] ?? null;
+function resolve_fi_lookup(array $fi_lookup, string $ft_key, string $label): ?array {  if ($ft_key === 'xtra unl') {  $sub = (strpos($label, 'XTRA UNL 1') !== false) ? 'xtra unl 1' : 'xtra unl 2';  $inv = $fi_lookup[$sub] ?? null;  // Use sub-type if it has real data; otherwise fall back to base type (if exists)  if ($inv && ((float)($inv['current_level'] ?? 0) > 0 || (float)($inv['current_stock'] ?? 0) > 0)) {  return $inv;  }  return $fi_lookup['xtra unl'] ?? $inv ?? null;  } elseif ($ft_key === 'diesel') {  $sub = (strpos($label, 'DIESEL 1') !== false) ? 'diesel 1' : 'diesel 2';  $inv = $fi_lookup[$sub] ?? null;  if ($inv && ((float)($inv['current_level'] ?? 0) > 0 || (float)($inv['current_stock'] ?? 0) > 0)) {  return $inv;  }  return $fi_lookup['diesel'] ?? $inv ?? null;  }  return $fi_lookup[$ft_key] ?? null;
 }
 
-function resolve_db_key(array $fi_lookup, string $ft_key, string $label): string {
-    if ($ft_key === 'xtra unl') {
-        $sub = (strpos($label, 'XTRA UNL 1') !== false) ? 'xtra unl 1' : 'xtra unl 2';
-        $inv = $fi_lookup[$sub] ?? null;
-        if ($inv && ((float)($inv['current_level'] ?? 0) > 0 || (float)($inv['current_stock'] ?? 0) > 0)) {
-            return $sub;
-        }
-        return isset($fi_lookup['xtra unl']) ? 'xtra unl' : $sub;
-    } elseif ($ft_key === 'diesel') {
-        $sub = (strpos($label, 'DIESEL 1') !== false) ? 'diesel 1' : 'diesel 2';
-        $inv = $fi_lookup[$sub] ?? null;
-        if ($inv && ((float)($inv['current_level'] ?? 0) > 0 || (float)($inv['current_stock'] ?? 0) > 0)) {
-            return $sub;
-        }
-        return isset($fi_lookup['diesel']) ? 'diesel' : $sub;
-    }
-    return $ft_key;
+function resolve_db_key(array $fi_lookup, string $ft_key, string $label): string {  if ($ft_key === 'xtra unl') {  $sub = (strpos($label, 'XTRA UNL 1') !== false) ? 'xtra unl 1' : 'xtra unl 2';  $inv = $fi_lookup[$sub] ?? null;  if ($inv && ((float)($inv['current_level'] ?? 0) > 0 || (float)($inv['current_stock'] ?? 0) > 0)) {  return $sub;  }  return isset($fi_lookup['xtra unl']) ? 'xtra unl' : $sub;  } elseif ($ft_key === 'diesel') {  $sub = (strpos($label, 'DIESEL 1') !== false) ? 'diesel 1' : 'diesel 2';  $inv = $fi_lookup[$sub] ?? null;  if ($inv && ((float)($inv['current_level'] ?? 0) > 0 || (float)($inv['current_stock'] ?? 0) > 0)) {  return $sub;  }  return isset($fi_lookup['diesel']) ? 'diesel' : $sub;  }  return $ft_key;
 }

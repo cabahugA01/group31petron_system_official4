@@ -1,77 +1,7 @@
 <?php
 // Test verify.php QR scan page query
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
-require_once __DIR__ . '/../public/db_connect.php';
-
-$id = 'MERCH2026125350963';
-
-echo "Testing QR Verify Page for: $id\n";
-echo str_repeat("=", 70) . "\n\n";
-
-try {
-    // Test the exact query used in verify.php
-    $stmt = $pdo->prepare("
-        SELECT mt.*,
-               COALESCE(u.username, 'Staff') AS staff_name,
-               COALESCE(s.name, 'Petron Station') AS station_name,
-               COALESCE(s.location, '') AS station_location,
-               COALESCE(s.address, 'Vamenta Blvd., Carmen, CDO') AS station_address,
-               COALESCE(s.vat_tin, '236-002-207-0000') AS station_vat_tin
-        FROM   merchandise_transactions mt
-        LEFT JOIN users    u ON mt.staff_id   = u.id
-        LEFT JOIN stations s ON mt.station_id = s.id
-        WHERE  mt.transaction_id = ?
-        LIMIT  1
-    ");
-    $stmt->execute([$id]);
-    $txn = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    if ($txn) {
-        echo "✓ TRANSACTION FOUND\n";
-        echo "  Transaction ID: {$txn['transaction_id']}\n";
-        echo "  Customer: {$txn['customer_name']}\n";
-        echo "  Staff: {$txn['staff_name']}\n";
-        echo "  Station: {$txn['station_name']}\n";
-        echo "  Station Address: {$txn['station_address']}\n";
-        echo "  VAT TIN: {$txn['station_vat_tin']}\n";
-        echo "  Payment Status: {$txn['payment_status']}\n";
-        echo "  Validation Status: {$txn['validation_status']}\n";
-        echo "\n";
-        
-        // Test items query
-        $stmt2 = $pdo->prepare("
-            SELECT product_name, category, size_variant, quantity, unit_price, subtotal,
-                   COALESCE(item_type,'merchandise') AS item_type
-            FROM   merchandise_transaction_items
-            WHERE  transaction_id = ?
-            ORDER  BY id ASC
-        ");
-        $stmt2->execute([$txn['id']]);
-        $items = $stmt2->fetchAll(PDO::FETCH_ASSOC);
-        
-        echo "✓ ITEMS FOUND: " . count($items) . "\n";
-        foreach ($items as $item) {
-            echo "  - {$item['product_name']} (Qty: {$item['quantity']}, ₱{$item['subtotal']})\n";
-        }
-        echo "\n";
-        
-        echo "✅ QR VERIFICATION PAGE SHOULD LOAD SUCCESSFULLY!\n";
-        echo "\nExpected Display:\n";
-        echo "  - Customer: {$txn['customer_name']}\n";
-        echo "  - Staff: {$txn['staff_name']}\n";
-        echo "  - Station: {$txn['station_name']}\n";
-        echo "  - Items: " . count($items) . " items\n";
-        echo "  - Total: ₱{$txn['total_amount']}\n";
-        echo "  - Payment: {$txn['payment_method']} - {$txn['payment_status']}\n";
-        
-    } else {
-        echo "✗ TRANSACTION NOT FOUND\n";
-    }
-    
-} catch (Exception $e) {
-    echo "❌ ERROR: " . $e->getMessage() . "\n";
-    echo "Stack trace:\n" . $e->getTraceAsString() . "\n";
+ini_set('display_errors', 1);  require_once __DIR__ . '/../public/db_connect.php';  $id = 'MERCH2026125350963';  echo "Testing QR Verify Page for: $id\n";
+echo str_repeat("=", 70) . "\n\n";  try {  // Test the exact query used in verify.php  $stmt = $pdo->prepare("  SELECT mt.*,  COALESCE(u.username, 'Staff') AS staff_name,  COALESCE(s.name, 'Petron Station') AS station_name,  COALESCE(s.location, '') AS station_location,  COALESCE(s.address, 'Vamenta Blvd., Carmen, CDO') AS station_address,  COALESCE(s.vat_tin, '236-002-207-0000') AS station_vat_tin  FROM  merchandise_transactions mt  LEFT JOIN users  u ON mt.staff_id  = u.id  LEFT JOIN stations s ON mt.station_id = s.id  WHERE  mt.transaction_id = ?  LIMIT  1  ");  $stmt->execute([$id]);  $txn = $stmt->fetch(PDO::FETCH_ASSOC);  if ($txn) {  echo " TRANSACTION FOUND\n";  echo "  Transaction ID: {$txn['transaction_id']}\n";  echo "  Customer: {$txn['customer_name']}\n";  echo "  Staff: {$txn['staff_name']}\n";  echo "  Station: {$txn['station_name']}\n";  echo "  Station Address: {$txn['station_address']}\n";  echo "  VAT TIN: {$txn['station_vat_tin']}\n";  echo "  Payment Status: {$txn['payment_status']}\n";  echo "  Validation Status: {$txn['validation_status']}\n";  echo "\n";  // Test items query  $stmt2 = $pdo->prepare("  SELECT product_name, category, size_variant, quantity, unit_price, subtotal,  COALESCE(item_type,'merchandise') AS item_type  FROM  merchandise_transaction_items  WHERE  transaction_id = ?  ORDER  BY id ASC  ");  $stmt2->execute([$txn['id']]);  $items = $stmt2->fetchAll(PDO::FETCH_ASSOC);  echo " ITEMS FOUND: " . count($items) . "\n";  foreach ($items as $item) {  echo "  - {$item['product_name']} (Qty: {$item['quantity']}, ₱{$item['subtotal']})\n";  }  echo "\n";  echo "QR VERIFICATION PAGE SHOULD LOAD SUCCESSFULLY!\n";  echo "\nExpected Display:\n";  echo "  - Customer: {$txn['customer_name']}\n";  echo "  - Staff: {$txn['staff_name']}\n";  echo "  - Station: {$txn['station_name']}\n";  echo "  - Items: " . count($items) . " items\n";  echo "  - Total: ₱{$txn['total_amount']}\n";  echo "  - Payment: {$txn['payment_method']} - {$txn['payment_status']}\n";  } else {  echo " TRANSACTION NOT FOUND\n";  }  } catch (Exception $e) {  echo "ERROR: " . $e->getMessage() . "\n";  echo "Stack trace:\n" . $e->getTraceAsString() . "\n";
 }
 ?>

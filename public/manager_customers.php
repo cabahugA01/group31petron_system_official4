@@ -3,164 +3,74 @@ $page_id = 'mgr_customers';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
-header('Content-Type: text/html; charset=utf-8');
-
-$me         = current_user();
-$role       = role_key($me['role'] ?? '');
-$station_id = user_station_id();
-
-if (!in_array($role, ['manager', 'admin', 'superadmin', 'developer'])) {
-    header('Location: dashboard.php');
-    exit;
-}
-
-/*
- |  MANAGER CUSTOMER MODULE — PERMISSION BOUNDARY
- |  ─────────────────────────────────────────────
- |  ✅ Allowed : Add Customer, Edit Customer, View Complete Profile,
- |               View Gov ID, View CR, Download Documents,
- |               Verify Customer, View Outstanding Balance,
- |               View Payment Status, View Complete Transaction History,
- |               Print Customer Profile, Export Customer Records
- |
- |  ❌ Blocked : Delete Customer, Restore Customer, Permanently Delete,
- |               Manage User Permissions, Access System Audit Logs,
- |               Reverse Customer Transactions, Manually Edit Balance
- */
-
-
-$station_name = '';
-try {
-    $sn = $pdo->prepare("SELECT name FROM stations WHERE id = ?");
-    $sn->execute([$station_id]);
-    $station_name = $sn->fetchColumn() ?: 'Station';
-} catch (Exception $e) {}
-
-include __DIR__ . '/../partials/header.php';
+header('Content-Type: text/html; charset=utf-8');  $me  = current_user();
+$role  = role_key($me['role'] ?? '');
+$station_id = user_station_id();  if (!in_array($role, ['manager', 'admin', 'superadmin', 'developer'])) {  header('Location: dashboard.php');  exit;
+}  /*  |  MANAGER CUSTOMER MODULE — PERMISSION BOUNDARY  |  ─────────────────────────────────────────────  |  Allowed : Add Customer, Edit Customer, View Complete Profile,  |  View Gov ID, View CR, Download Documents,  |  Verify Customer, View Outstanding Balance,  |  View Payment Status, View Complete Transaction History,  |  Print Customer Profile, Export Customer Records  |  |  Blocked : Delete Customer, Restore Customer, Permanently Delete,  |  Manage User Permissions, Access System Audit Logs,  |  Reverse Customer Transactions, Manually Edit Balance  */  $station_name = '';
+try {  $sn = $pdo->prepare("SELECT name FROM stations WHERE id = ?");  $sn->execute([$station_id]);  $station_name = $sn->fetchColumn() ?: 'Station';
+} catch (Exception $e) {}  include __DIR__ . '/../partials/header.php';
 ?>
 <style>
 /* ── Page Layout ──────────────────────────────────────────── */
 .int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; padding-bottom:16px; border-bottom:2px solid #e9ecef; }
 .int-head h1 { font-size:22px!important; font-weight:700!important; color:#00264D!important; margin:0!important; text-transform:uppercase!important; display:flex; align-items:center; gap:8px; }
-.int-head .sub { font-size:13px; color:#64748b; margin-top:4px; }
-
-/* ── Summary Cards ────────────────────────────────────────── */
+.int-head .sub { font-size:13px; color:#64748b; margin-top:4px; }  /* ── Summary Cards ────────────────────────────────────────── */
 .cust-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:22px; }
 .cust-card { background:#fff; border-radius:10px; padding:16px 18px; box-shadow:0 1px 4px rgba(0,0,0,.08); display:flex; flex-direction:column; gap:4px; }
 .cust-card .cc-label { font-size:11px; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:.4px; }
 .cust-card .cc-val { font-size:26px; font-weight:800; color:#002F70; line-height:1; }
 .cust-card .cc-icon { font-size:18px; margin-bottom:4px; }
-.cc-blue   .cc-val { color:#002F70; }
+.cc-blue  .cc-val { color:#002F70; }
 .cc-green  .cc-val { color:#16a34a; }
 .cc-amber  .cc-val { color:#d97706; }
-.cc-red    .cc-val { color:#dc2626; }
-.cc-teal   .cc-val { color:#0891b2; }
-.cc-purple .cc-val { color:#7c3aed; }
-
-/* ── Filter Bar ───────────────────────────────────────────── */
+.cc-red  .cc-val { color:#dc2626; }
+.cc-teal  .cc-val { color:#0891b2; }
+.cc-purple .cc-val { color:#7c3aed; }  /* ── Filter Bar ───────────────────────────────────────────── */
 .cust-filter-bar { background:transparent; border-radius:0; padding:0; box-shadow:none; margin-bottom:16px; display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
 .cust-filter-bar .fg { display:flex; flex-direction:column; gap:4px; }
 .cust-filter-bar label { font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.4px; }
 .cust-filter-bar input, .cust-filter-bar select { padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; color:#1e293b; font-family:inherit; outline:none; min-width:130px; }
 .cust-filter-bar input:focus, .cust-filter-bar select:focus { border-color:#002F70; box-shadow:0 0 0 2px rgba(0,47,112,.1); }
-.fg-search input { min-width:220px; }
-
-/* ── Top Buttons ──────────────────────────────────────────── */
+.fg-search input { min-width:220px; }  /* ── Top Buttons ──────────────────────────────────────────── */
 .cust-top-btns { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:16px; }
 .cust-btn { display:inline-flex; align-items:center; gap:6px; padding:0 14px; height:34px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; border:1px solid transparent; text-decoration:none; transition:all .15s; white-space:nowrap; }
-.cust-btn-primary   { background:#002F70; color:#fff!important; border-color:#002F70; }
+.cust-btn-primary  { background:#002F70; color:#fff!important; border-color:#002F70; }
 .cust-btn-primary:hover { background:#001a45; }
-.cust-btn-outline   { background:#fff; color:#002F70!important; border-color:#002F70; }
+.cust-btn-outline  { background:#fff; color:#002F70!important; border-color:#002F70; }
 .cust-btn-outline:hover { background:#002F70; color:#fff!important; }
-.cust-btn-success   { background:#16a34a; color:#fff!important; border-color:#16a34a; }
+.cust-btn-success  { background:#16a34a; color:#fff!important; border-color:#16a34a; }
 .cust-btn-success:hover { background:#15803d; }
-.cust-btn-amber     { background:#d97706; color:#fff!important; border-color:#d97706; }
+.cust-btn-amber  { background:#d97706; color:#fff!important; border-color:#d97706; }
 .cust-btn-amber:hover { background:#b45309; }
-.cust-btn-gray      { background:#64748b; color:#fff!important; border-color:#64748b; }
-.cust-btn-gray:hover { background:#475569; }
-
-/* Export Buttons - Colored Borders Design matching admin_customers.php */
+.cust-btn-gray  { background:#64748b; color:#fff!important; border-color:#64748b; }
+.cust-btn-gray:hover { background:#475569; }  /* Export Buttons - Colored Borders Design matching admin_customers.php */
 .flt-btn,
 .flt-btn-excel,
 .flt-btn-pdf,
-.flt-btn-csv {
-    background: #ffffff !important;
-    border: 2px solid !important;
-    border-radius: 8px !important;
-    padding: 8px 16px !important;
-    height: 38px !important;
-    font-size: 13px !important;
-    font-weight: 600 !important;
-    cursor: pointer !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 8px !important;
-    transition: all 0.15s !important;
-    min-width: 100px !important;
-    white-space: nowrap !important;
-    text-decoration: none !important;
+.flt-btn-csv {  background: #ffffff !important;  border: 2px solid !important;  border-radius: 8px !important;  padding: 8px 16px !important;  height: 38px !important;  font-size: 13px !important;  font-weight: 600 !important;  cursor: pointer !important;  display: inline-flex !important;  align-items: center !important;  justify-content: center !important;  gap: 8px !important;  transition: all 0.15s !important;  min-width: 100px !important;  white-space: nowrap !important;  text-decoration: none !important;
 }
 /* Excel — green */
-.flt-btn-excel {
-    color: #16a34a !important;
-    border-color: #16a34a !important;
+.flt-btn-excel {  color: #16a34a !important;  border-color: #16a34a !important;
 }
-.flt-btn-excel:hover {
-    background: #f0fdf4 !important;
-    border-color: #15803d !important;
+.flt-btn-excel:hover {  background: #f0fdf4 !important;  border-color: #15803d !important;
 }
 /* CSV — blue */
-.flt-btn-csv {
-    color: #2563eb !important;
-    border-color: #2563eb !important;
+.flt-btn-csv {  color: #2563eb !important;  border-color: #2563eb !important;
 }
-.flt-btn-csv:hover {
-    background: #eff6ff !important;
-    border-color: #1d4ed8 !important;
+.flt-btn-csv:hover {  background: #eff6ff !important;  border-color: #1d4ed8 !important;
 }
 /* PDF — red */
-.flt-btn-pdf {
-    color: #dc2626 !important;
-    border-color: #dc2626 !important;
+.flt-btn-pdf {  color: #dc2626 !important;  border-color: #dc2626 !important;
 }
-.flt-btn-pdf:hover {
-    background: #fef2f2 !important;
-    border-color: #b91c1c !important;
+.flt-btn-pdf:hover {  background: #fef2f2 !important;  border-color: #b91c1c !important;
+}  /* Add Customer Button */
+.btn-add-customer {  background-color: #ffffff !important;  background: #ffffff !important;  color: #002F70 !important;  border: 1px solid #002F70 !important;  font-weight: 600 !important;  transition: all 0.15s ease-in-out !important;  border-radius: 6px !important;  padding: 8px 14px !important;  font-size: 13px !important;  cursor: pointer !important;  display: inline-flex !important;  align-items: center !important;  justify-content: center !important;  gap: 6px !important;  height: 34px !important;  text-decoration: none !important;
 }
-
-/* Add Customer Button */
-.btn-add-customer {
-    background-color: #ffffff !important;
-    background: #ffffff !important;
-    color: #002F70 !important;
-    border: 1px solid #002F70 !important;
-    font-weight: 600 !important;
-    transition: all 0.15s ease-in-out !important;
-    border-radius: 6px !important;
-    padding: 8px 14px !important;
-    font-size: 13px !important;
-    cursor: pointer !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 6px !important;
-    height: 34px !important;
-    text-decoration: none !important;
-}
-.btn-add-customer:hover {
-    background-color: #002F70 !important;
-    background: #002F70 !important;
-    color: #ffffff !important;
+.btn-add-customer:hover {  background-color: #002F70 !important;  background: #002F70 !important;  color: #ffffff !important;
 }
 }
-.btn-add-customer:hover {
-    background-color: #001f4d !important;
-    background: #001f4d !important;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
-}
-
-/* ── Table ────────────────────────────────────────────────── */
+.btn-add-customer:hover {  background-color: #001f4d !important;  background: #001f4d !important;  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+}  /* ── Table ────────────────────────────────────────────────── */
 .cust-table-wrap { background:#fff; border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,.08); overflow:hidden; }
 .cust-table-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px 12px; border-bottom:1px solid #f1f5f9; }
 .cust-table-header h3 { font-size:14px; font-weight:700; color:#002F70; margin:0; }
@@ -170,31 +80,25 @@ include __DIR__ . '/../partials/header.php';
 .cust-table tbody tr { border-bottom:1px solid #f1f5f9; transition:background .1s; }
 .cust-table tbody tr:hover td { background:#f8faff; }
 .cust-table tbody td { padding:10px 12px; color:#334155; font-size:12px; vertical-align:middle; white-space:nowrap; background:#fff; }
-.cust-table tfoot td { padding:10px 12px; font-size:11px; color:#64748b; background:#f8fafc; }
-
-/* ── Badges ───────────────────────────────────────────────── */
+.cust-table tfoot td { padding:10px 12px; font-size:11px; color:#64748b; background:#f8fafc; }  /* ── Badges ───────────────────────────────────────────────── */
 .badge { display:inline-block; padding:3px 8px; border-radius:4px; font-size:10px; font-weight:700; text-transform:uppercase; white-space:nowrap; }
 .badge-verified  { background:#d1fae5; color:#065f46; }
-.badge-pending   { background:#fef3c7; color:#92400e; }
+.badge-pending  { background:#fef3c7; color:#92400e; }
 .badge-rejected  { background:#fee2e2; color:#991b1b; }
-.badge-active    { background:#dcfce7; color:#166534; }
+.badge-active  { background:#dcfce7; color:#166534; }
 .badge-inactive  { background:#f1f5f9; color:#64748b; }
-.badge-walk-in   { background:#eff6ff; color:#1d4ed8; }
-.badge-regular   { background:#f0fdf4; color:#15803d; }
-.badge-fleet     { background:#faf5ff; color:#7c3aed; }
-.badge-paid      { background:#ecfdf5; color:#059669; }
-.badge-partial   { background:#eff6ff; color:#1d4ed8; }
-.badge-unpaid    { background:#fff1f2; color:#e11d48; }
-
-/* ── Action Buttons ───────────────────────────────────────── */
+.badge-walk-in  { background:#eff6ff; color:#1d4ed8; }
+.badge-regular  { background:#f0fdf4; color:#15803d; }
+.badge-fleet  { background:#faf5ff; color:#7c3aed; }
+.badge-paid  { background:#ecfdf5; color:#059669; }
+.badge-partial  { background:#eff6ff; color:#1d4ed8; }
+.badge-unpaid  { background:#fff1f2; color:#e11d48; }  /* ── Action Buttons ───────────────────────────────────────── */
 .act-btn { display:inline-flex; align-items:center; justify-content:center; gap:4px; padding:6px 10px; height:auto; border-radius:6px; border:1px solid #cbd5e1; cursor:pointer; font-size:12px; font-weight:600; transition:all .15s; background:#fff !important; color:#334155; text-decoration:none; white-space:nowrap; width:100%; box-sizing:border-box; }
 .act-btn:hover { background:#f8fafc !important; border-color:#94a3b8; box-shadow:0 2px 4px rgba(0,0,0,0.05); }
-.act-view    { background:#fff !important; color:#002F70  !important; border-color:#002F70  !important; } .act-view:hover    { background:#002F70  !important; color:#fff !important; }
-.act-edit    { background:#fff !important; color:#64748b  !important; border-color:#64748b  !important; } .act-edit:hover    { background:#64748b  !important; color:#fff !important; }
+.act-view  { background:#fff !important; color:#002F70  !important; border-color:#002F70  !important; } .act-view:hover  { background:#002F70  !important; color:#fff !important; }
+.act-edit  { background:#fff !important; color:#64748b  !important; border-color:#64748b  !important; } .act-edit:hover  { background:#64748b  !important; color:#fff !important; }
 .act-verify  { background:#fff !important; color:#16a34a  !important; border-color:#16a34a  !important; } .act-verify:hover  { background:#16a34a  !important; color:#fff !important; }
-.act-print   { background:#fff !important; color:#64748b  !important; border-color:#64748b  !important; } .act-print:hover   { background:#64748b  !important; color:#fff !important; }
-
-/* ── Modals ───────────────────────────────────────────────── */
+.act-print  { background:#fff !important; color:#64748b  !important; border-color:#64748b  !important; } .act-print:hover  { background:#64748b  !important; color:#fff !important; }  /* ── Modals ───────────────────────────────────────────────── */
 .modal-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:9999; align-items:center; justify-content:center; }
 .modal-overlay.open { display:flex; }
 .modal-box { background:#fff; border-radius:12px; width:90%; max-width:640px; max-height:92vh; overflow-y:auto; box-shadow:0 20px 40px rgba(0,0,0,.2); padding:28px; }
@@ -211,9 +115,7 @@ include __DIR__ . '/../partials/header.php';
 .form-section-title { font-size:12px; font-weight:700; color:#002F70; text-transform:uppercase; letter-spacing:.5px; border-bottom:1px solid #e2e8f0; padding-bottom:6px; margin:16px 0 12px; }
 .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:20px; padding-top:14px; border-top:1px solid #f1f5f9; }
 .fleet-fields { display:none; }
-.fleet-fields.show { display:block; }
-
-/* ── Profile View ─────────────────────────────────────────── */
+.fleet-fields.show { display:block; }  /* ── Profile View ─────────────────────────────────────────── */
 .profile-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,.6); z-index:9998; align-items:flex-start; justify-content:center; overflow-y:auto; padding:20px 0; }
 .profile-overlay.open { display:flex; }
 .profile-box { background:#fff; border-radius:12px; width:95%; max-width:1060px; margin:auto; box-shadow:0 20px 50px rgba(0,0,0,.25); overflow:hidden; }
@@ -234,991 +136,68 @@ include __DIR__ . '/../partials/header.php';
 .txn-mini-table thead th { background:#f1f5f9; padding:7px 10px; text-align:left; font-size:10px; font-weight:700; color:#475569; text-transform:uppercase; border-bottom:1px solid #e2e8f0; }
 .txn-mini-table tbody td { padding:7px 10px; border-bottom:1px solid #f8fafc; color:#334155; }
 .txn-mini-table tbody tr:hover td { background:#f8faff; }
-.profile-actions { display:flex; gap:10px; padding:16px 28px; background:#f8fafc; border-top:1px solid #e2e8f0; justify-content:flex-end; flex-wrap:wrap; }
-
-/* ── Toast ────────────────────────────────────────────────── */
+.profile-actions { display:flex; gap:10px; padding:16px 28px; background:#f8fafc; border-top:1px solid #e2e8f0; justify-content:flex-end; flex-wrap:wrap; }  /* ── Toast ────────────────────────────────────────────────── */
 #toast-container { position:fixed; top:20px; right:20px; z-index:99999; display:flex; flex-direction:column; gap:8px; }
 .toast { padding:12px 18px; border-radius:8px; font-size:13px; font-weight:600; min-width:280px; box-shadow:0 4px 12px rgba(0,0,0,.15); animation:slideIn .3s ease; }
 .toast-success { background:#16a34a; color:#fff; }
-.toast-error   { background:#dc2626; color:#fff; }
-@keyframes slideIn { from{transform:translateX(60px);opacity:0} to{transform:none;opacity:1} }
-
-.empty-state { text-align:center; padding:40px; color:#94a3b8; }
+.toast-error  { background:#dc2626; color:#fff; }
+@keyframes slideIn { from{transform:translateX(60px);opacity:0} to{transform:none;opacity:1} }  .empty-state { text-align:center; padding:40px; color:#94a3b8; }
 .empty-state i { font-size:36px; margin-bottom:10px; display:block; }
 #loading-row td { text-align:center; padding:30px; color:#94a3b8; }
-</style>
-
-<!-- CACHE BUSTER v2.0 - BUTTON LAYOUT UPDATE -->
-<div id="customer-list-view">
-    <div class="int-head" style="display: flex !important; justify-content: space-between !important; align-items: flex-start !important;">
-        <div>
-            <h1><i class="fas fa-users"></i> Customer Management</h1>
-            <div class="sub">Manage, verify, and monitor customer accounts</div>
-        </div>
-        <div style="display: flex !important; gap: 10px !important; align-items: center !important; flex-wrap: wrap !important;">
-            <!-- Export Buttons Only -->
-            <a class="cust-btn flt-btn flt-btn-excel" href="manager_customer_export.php?format=excel" onclick="passFiltersToExport(this,'excel')" title="Export to Excel">
-                <i class="fas fa-file-excel"></i> Excel
-            </a>
-            <a class="cust-btn flt-btn flt-btn-csv" href="manager_customer_export.php?format=csv" onclick="passFiltersToExport(this,'csv')" title="Export to CSV">
-                <i class="fas fa-file-csv"></i> CSV
-            </a>
-            <a class="cust-btn flt-btn flt-btn-pdf" href="manager_customer_export.php?format=pdf" target="_blank" onclick="passFiltersToExport(this,'pdf')" title="Export to PDF">
-                <i class="fas fa-file-pdf"></i> PDF
-            </a>
-        </div>
-    </div>
-
-    <!-- Summary Cards -->
-    <div class="cust-cards" id="summary-cards">
-        <div class="cust-card cc-blue">
-            <span class="cc-icon"><i class="fas fa-users"></i></span>
-            <span class="cc-label">Total Customers</span>
-            <span class="cc-val" id="stat-total">—</span>
-        </div>
-        <div class="cust-card cc-teal">
-            <span class="cc-icon"><i class="fas fa-user-plus"></i></span>
-            <span class="cc-label">New Today</span>
-            <span class="cc-val" id="stat-new">—</span>
-        </div>
-        <div class="cust-card cc-green">
-            <span class="cc-icon"><i class="fas fa-star"></i></span>
-            <span class="cc-label">Regular</span>
-            <span class="cc-val" id="stat-regular">—</span>
-        </div>
-        <div class="cust-card cc-purple">
-            <span class="cc-icon"><i class="fas fa-building"></i></span>
-            <span class="cc-label">Fleet / Company</span>
-            <span class="cc-val" id="stat-fleet">—</span>
-        </div>
-        <div class="cust-card cc-red">
-            <span class="cc-icon"><i class="fas fa-exclamation-circle"></i></span>
-            <span class="cc-label">With Balance</span>
-            <span class="cc-val" id="stat-outstanding">—</span>
-        </div>
-        <div class="cust-card cc-amber">
-            <span class="cc-icon"><i class="fas fa-check-circle"></i></span>
-            <span class="cc-label">Active</span>
-            <span class="cc-val" id="stat-active">—</span>
-        </div>
-    </div>
-
-    <!-- Filter Bar -->
-    <div class="cust-filter-bar">
-        <div class="fg fg-search">
-            <label>Search</label>
-            <input type="text" id="filter-search" placeholder="ID / Name / Contact…" oninput="debounceLoad()">
-        </div>
-        <div class="fg">
-            <label>Customer Type</label>
-            <select id="filter-type" onchange="loadManagerCustomers()">
-                <option value="">All Types</option>
-                <option value="walk-in">Walk-in</option>
-                <option value="regular">Regular</option>
-                <option value="fleet">Fleet / Company</option>
-            </select>
-        </div>
-        <div class="fg">
-            <label>Status</label>
-            <select id="filter-status" onchange="loadManagerCustomers()">
-                <option value="">All Status</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-            </select>
-        </div>
-        <div class="fg">
-            <label>Verification</label>
-            <select id="filter-verification" onchange="loadManagerCustomers()">
-                <option value="">All</option>
-                <option value="pending">Pending</option>
-                <option value="verified">Verified</option>
-                <option value="rejected">Rejected</option>
-            </select>
-        </div>
-        <div class="fg">
-            <label>Payment</label>
-            <select id="filter-payment" onchange="loadManagerCustomers()">
-                <option value="">All</option>
-                <option value="paid">Paid</option>
-                <option value="partial">Partial</option>
-                <option value="unpaid">Unpaid</option>
-            </select>
-        </div>
-        <div class="fg">
-            <label>Date From</label>
-            <input type="date" id="filter-date-from" onchange="loadManagerCustomers()">
-        </div>
-        <div class="fg">
-            <label>Date To</label>
-            <input type="date" id="filter-date-to" onchange="loadManagerCustomers()">
-        </div>
-    </div>
-
-    <!-- Customer Table -->
-    <div class="cust-table-wrap">
-        <div class="cust-table-header">
-            <div>
-                <h3><i class="fas fa-list"></i> Customer Registry</h3>
-                <span id="count-label" style="font-size:12px;color:#64748b;"></span>
-            </div>
-            <div>
-                <button class="cust-btn btn-add-customer" onclick="openAddModal()" style="height:36px;">
-                    <i class="fas fa-user-plus"></i> Add Customer
-                </button>
-            </div>
-        </div>
-        <div style="overflow-x:auto;">
-            <table class="cust-table">
-                <thead>
-                    <tr>
-                        <th>Customer ID</th>
-                        <th>Customer Name</th>
-                        <th>Type</th>
-                        <th>Contact No.</th>
-                        <th>Outstanding Balance</th>
-                        <th>Verification</th>
-                        <th>Last Transaction</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="cust-tbody">
-                    <tr id="loading-row"><td colspan="9"><i class="fas fa-spinner fa-spin"></i> Loading customers…</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<!-- Customer Profile View (Full Page) -->
-<div id="customer-profile-view" style="display: none; background: #f8fafc; border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 24px; border: 1px solid #e2e8f0;">
-    <!-- Profile Header -->
-    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #e2e8f0; padding-bottom:16px; margin-bottom:24px; flex-wrap:wrap; gap:12px;">
-        <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-            <button class="cust-btn cust-btn-gray" onclick="closeProfile()" style="height:36px; padding:0 16px;"><i class="fas fa-arrow-left"></i> Back to List</button>
-            <div>
-                <h2 style="font-size:24px; font-weight:800; color:#002F70; margin:0; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                    <span id="prof-name-text">Loading...</span>
-                    <span id="prof-type-badge" class="badge">Walk-in</span>
-                    <span id="prof-status-badge" class="badge">Active</span>
-                </h2>
-                <div style="font-size:12px; color:#64748b; margin-top:4px;">
-                    Customer ID: <strong id="prof-id-text">—</strong> | Date Registered: <span id="prof-date-text">—</span>
-                </div>
-            </div>
-        </div>
-        <div style="display:flex; gap:8px;">
-            <button class="cust-btn cust-btn-success" id="prof-verify-btn-top" onclick="openVerifyFromProfile()"><i class="fas fa-check-circle"></i> Verify Customer</button>
-            <button class="cust-btn cust-btn-outline" onclick="printProfile()"><i class="fas fa-print"></i> Print Profile</button>
-        </div>
-    </div>
-
-    <!-- Main Content Grid -->
-    <div class="profile-grid" style="display:grid; grid-template-columns:1.2fr 1fr; gap:24px; margin-bottom:24px;">
-        <!-- Left Column: Customer Info & Fleet Info & Documents -->
-        <div>
-            <!-- Info Blocks -->
-            <div class="info-block" style="background:#fff; border-radius:10px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); border:1px solid #e2e8f0; margin-bottom:20px;">
-                <h4 style="font-size:13px; font-weight:700; color:#002F70; border-bottom:1px solid #e2e8f0; padding-bottom:8px; margin:0 0 16px; text-transform:uppercase;"><i class="fas fa-user-circle"></i> Customer Information</h4>
-                <div class="info-row"><span class="label">Customer ID</span><span class="value" id="prof-id-val">—</span></div>
-                <div class="info-row"><span class="label">Full Name</span><span class="value" id="prof-name-val">—</span></div>
-                <div class="info-row"><span class="label">Contact Number</span><span class="value" id="prof-contact-val">—</span></div>
-                <div class="info-row"><span class="label">Address</span><span class="value" id="prof-address-val">—</span></div>
-                <div class="info-row"><span class="label">Type</span><span class="value" id="prof-type-val">—</span></div>
-                <div class="info-row"><span class="label">Registered</span><span class="value" id="prof-registered-val">—</span></div>
-                <div class="info-row"><span class="label">Status</span><span class="value" id="prof-status-val">—</span></div>
-            </div>
-
-            <!-- Fleet Info block (Conditional) -->
-            <div id="prof-fleet-block" class="info-block" style="background:#fff; border-radius:10px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); border:1px solid #e2e8f0; margin-bottom:20px; display:none;">
-                <h4 style="font-size:13px; font-weight:700; color:#002F70; border-bottom:1px solid #e2e8f0; padding-bottom:8px; margin:0 0 16px; text-transform:uppercase;"><i class="fas fa-building"></i> Fleet / Company Information</h4>
-                <div class="info-row"><span class="label">Company Name</span><span class="value" id="prof-company-val">—</span></div>
-                <div class="info-row"><span class="label">Company Address</span><span class="value" id="prof-company-address-val">—</span></div>
-                <div class="info-row"><span class="label">Contact Person</span><span class="value" id="prof-contact-person-val">—</span></div>
-                <div class="info-row"><span class="label">Company Contact</span><span class="value" id="prof-company-contact-val">—</span></div>
-            </div>
-
-            <!-- Verification Documents -->
-            <div class="info-block" style="background:#fff; border-radius:10px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); border:1px solid #e2e8f0;">
-                <h4 style="font-size:13px; font-weight:700; color:#002F70; border-bottom:1px solid #e2e8f0; padding-bottom:8px; margin:0 0 16px; text-transform:uppercase;"><i class="fas fa-file-alt"></i> Verification Documents</h4>
-                <div class="info-row"><span class="label">Government ID Type</span><span class="value" id="prof-gov-type-val">—</span></div>
-                <div class="info-row"><span class="label">Verification Status</span><span class="value" id="prof-ver-status-val">—</span></div>
-                <div class="info-row"><span class="label">Verified By</span><span class="value" id="prof-verified-by-val">—</span></div>
-                <div class="info-row"><span class="label">Verified Date</span><span class="value" id="prof-verified-date-val">—</span></div>
-                <div class="info-row"><span class="label">Remarks / Notes</span><span class="value" id="prof-ver-remarks-val">—</span></div>
-                <div id="prof-doc-buttons" style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;">
-                    <!-- Preview and download buttons dynamically rendered here -->
-                </div>
-            </div>
-        </div>
-
-        <!-- Right Column: Financials & Transaction Summary -->
-        <div>
-            <!-- Financial Cards -->
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:20px;">
-                <div class="cust-card cc-red" style="margin-bottom:0; border-left-width:4px;">
-                    <span class="cc-icon"><i class="fas fa-wallet"></i></span>
-                    <span class="cc-label" style="font-size:10px;">Outstanding Balance</span>
-                    <span class="cc-val" id="prof-outstanding-val" style="font-size:22px;">&#x20B1;0.00</span>
-                </div>
-                <div class="cust-card cc-blue" style="margin-bottom:0; border-left-width:4px;">
-                    <span class="cc-icon"><i class="fas fa-credit-card"></i></span>
-                    <span class="cc-label" style="font-size:10px;">Credit Limit</span>
-                    <span class="cc-val" id="prof-credit-limit-val" style="font-size:22px;">&#x20B1;0.00</span>
-                </div>
-            </div>
-
-            <!-- Financial Details Block -->
-            <div class="info-block" style="background:#fff; border-radius:10px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); border:1px solid #e2e8f0; margin-bottom:20px; margin-top:20px;">
-                <h4 style="font-size:13px; font-weight:700; color:#002F70; border-bottom:1px solid #e2e8f0; padding-bottom:8px; margin:0 0 16px; text-transform:uppercase;"><i class="fas fa-coins"></i> Financial Information</h4>
-                <div class="info-row"><span class="label">Total Payments</span><span class="value" id="prof-payments-val">—</span></div>
-                <div class="info-row"><span class="label">Remaining Balance</span><span class="value" id="prof-remaining-val">—</span></div>
-                <div class="info-row"><span class="label">Payment Status</span><span class="value" id="prof-pay-status-val">—</span></div>
-                <div class="info-row"><span class="label">Last Payment Date</span><span class="value" id="prof-last-pay-date-val">—</span></div>
-            </div>
-
-            <!-- Transaction Summary -->
-            <div class="info-block" style="background:#fff; border-radius:10px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); border:1px solid #e2e8f0;">
-                <h4 style="font-size:13px; font-weight:700; color:#002F70; border-bottom:1px solid #e2e8f0; padding-bottom:8px; margin:0 0 16px; text-transform:uppercase;"><i class="fas fa-chart-line"></i> Transaction Summary</h4>
-                <div class="info-row"><span class="label">Fuel Transactions</span><span class="value" id="prof-fuel-count-val">—</span></div>
-                <div class="info-row"><span class="label">Merchandise Transactions</span><span class="value" id="prof-merch-count-val">—</span></div>
-                <div class="info-row"><span class="label">Job Order Transactions</span><span class="value" id="prof-jo-count-val">—</span></div>
-                <div class="info-row"><span class="label">Total Purchased Amount</span><span class="value" id="prof-total-purchased-val">—</span></div>
-                <div class="info-row"><span class="label">Last Transaction Date</span><span class="value" id="prof-last-tx-date-val">—</span></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Transaction History Block -->
-    <div class="cust-table-wrap" style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.05); margin-bottom:24px;">
-        <div class="cust-table-header" style="border-bottom:1px solid #e2e8f0; padding:16px 20px;">
-            <h3 style="font-size:15px; font-weight:700; color:#002F70; margin:0;"><i class="fas fa-history"></i> Complete Transaction History</h3>
-        </div>
-
-        <!-- History Filters -->
-        <div style="display:flex; flex-wrap:wrap; gap:12px; padding:16px 20px; background:#f8fafc; border-bottom:1px solid #e2e8f0; align-items:flex-end;">
-            <div class="fg" style="flex:1; min-width:180px;">
-                <label style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:4px; display:block;">Search Ref No.</label>
-                <input type="text" id="tx-search" placeholder="Search reference..." oninput="debounceTxHistory()" style="padding:6px 10px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px; width:100%;">
-            </div>
-            <div class="fg" style="width:120px;">
-                <label style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:4px; display:block;">Module</label>
-                <select id="tx-module" onchange="loadTxHistory()" style="padding:6px 10px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px; width:100%;">
-                    <option value="">All Modules</option>
-                    <option value="Fuel">Fuel</option>
-                    <option value="Merchandise">Merchandise</option>
-                    <option value="Job Order">Job Order</option>
-                </select>
-            </div>
-            <div class="fg" style="width:140px;">
-                <label style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:4px; display:block;">Txn Status</label>
-                <select id="tx-status" onchange="loadTxHistory()" style="padding:6px 10px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px; width:100%;">
-                    <option value="">All Statuses</option>
-                    <option value="completed">Completed / Verified</option>
-                    <option value="pending">Pending / Reviewed</option>
-                    <option value="rejected">Rejected / Cancelled</option>
-                </select>
-            </div>
-            <div class="fg" style="width:130px;">
-                <label style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:4px; display:block;">Payment Status</label>
-                <select id="tx-payment" onchange="loadTxHistory()" style="padding:6px 10px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px; width:100%;">
-                    <option value="">All Payments</option>
-                    <option value="paid">Paid</option>
-                    <option value="partial">Partial</option>
-                    <option value="unpaid">Unpaid</option>
-                </select>
-            </div>
-            <div class="fg" style="width:120px;">
-                <label style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:4px; display:block;">Date From</label>
-                <input type="date" id="tx-date-from" onchange="loadTxHistory()" style="padding:6px 10px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px; width:100%;">
-            </div>
-            <div class="fg" style="width:120px;">
-                <label style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:4px; display:block;">Date To</label>
-                <input type="date" id="tx-date-to" onchange="loadTxHistory()" style="padding:6px 10px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px; width:100%;">
-            </div>
-            <button class="cust-btn cust-btn-gray" onclick="resetTxHistoryFilters()" style="height:32px; padding:0 12px; font-size:11px; margin-bottom:2px;"><i class="fas fa-undo"></i> Reset</button>
-        </div>
-
-        <div style="overflow-x:auto;">
-            <table class="cust-table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Reference No.</th>
-                        <th>Module</th>
-                        <th>Description</th>
-                        <th>Amount</th>
-                        <th>Payment Status</th>
-                        <th>Processed By</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="tx-history-tbody">
-                    <tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8;">No transactions found.</td></tr>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- History Pagination -->
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; flex-wrap:wrap; gap:10px;">
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-size:12px; color:#64748b;">Rows per page:</span>
-                <select id="tx-limit-select" onchange="changeTxHistoryLimit()" style="padding:4px 8px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px; outline:none; background:#fff;">
-                    <option value="10">10</option>
-                    <option value="25">25</option>
-                    <option value="50">50</option>
-                    <option value="100">100</option>
-                </select>
-            </div>
-            <div style="display:flex; align-items:center; gap:12px;">
-                <span id="tx-pagination-info" style="font-size:12px; color:#64748b; font-weight:600;">Showing 0–0 of 0</span>
-                <div style="display:flex; gap:6px;">
-                    <button id="tx-prev-btn" class="cust-btn cust-btn-gray" onclick="changeTxHistoryPage(-1)" style="height:28px; padding:0 10px; font-size:11px;" disabled><i class="fas fa-chevron-left"></i> Previous</button>
-                    <button id="tx-next-btn" class="cust-btn cust-btn-gray" onclick="changeTxHistoryPage(1)" style="height:28px; padding:0 10px; font-size:11px;" disabled>Next <i class="fas fa-chevron-right"></i></button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Bottom Buttons Row -->
-    <div style="display:flex; justify-content:space-between; align-items:center; border-top:2px solid #e2e8f0; padding-top:16px;">
-        <button class="cust-btn cust-btn-gray" onclick="closeProfile()" style="height:36px; padding:0 16px;"><i class="fas fa-arrow-left"></i> Back to Customer List</button>
-        <div style="display:flex; gap:8px;">
-            <button class="cust-btn cust-btn-success" id="prof-verify-btn-bottom" onclick="openVerifyFromProfile()"><i class="fas fa-check-circle"></i> Verify Customer</button>
-            <button class="cust-btn cust-btn-outline" onclick="printProfile()"><i class="fas fa-print"></i> Print Customer Profile</button>
-        </div>
-    </div>
-</div>
-
-<div id="toast-container"></div>
-
-<!-- -- ADD / EDIT CUSTOMER MODAL -- -->
-<div class="modal-overlay" id="modal-customer">
-  <div class="modal-box modal-lg">
-    <div class="modal-head">
-      <span class="modal-title"><i class="fas fa-user-plus"></i> <span id="modal-cust-title">Add Customer</span></span>
-      <button class="modal-close" onclick="closeModal('modal-customer')">&times;</button>
-    </div>
-    <form id="form-customer" enctype="multipart/form-data">
-      <input type="hidden" id="fc-id" name="customer_id" value="">
-      <input type="hidden" id="fc-mode" value="add">
-      <div class="form-section-title"><i class="fas fa-user"></i> Basic Information</div>
-      <div class="form-row">
-        <div class="form-group"><label>First Name *</label><input type="text" name="first_name" id="fc-fname" required></div>
-        <div class="form-group"><label>Middle Name</label><input type="text" name="middle_name" id="fc-mname"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Last Name *</label><input type="text" name="last_name" id="fc-lname" required></div>
-        <div class="form-group"><label>Contact Number *</label><input type="text" name="contact_number" id="fc-contact" required></div>
-      </div>
-      <div class="form-group"><label>Address *</label><textarea name="address" id="fc-address" rows="2" required></textarea></div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Customer Type *</label>
-          <select name="customer_type" id="fc-type" onchange="toggleFleetFields()" required>
-            <option value="walk-in">Walk-in</option>
-            <option value="regular">Regular</option>
-            <option value="fleet">Fleet / Company</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Account Status</label>
-          <select name="status" id="fc-status">
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </div>
-      </div>
-      <div class="fleet-fields" id="fleet-section">
-        <div class="form-section-title"><i class="fas fa-building"></i> Fleet / Company Information</div>
-        <div class="form-row">
-          <div class="form-group"><label>Company Name</label><input type="text" name="company_name" id="fc-company"></div>
-          <div class="form-group"><label>Company Contact Number</label><input type="text" name="company_contact_number" id="fc-company-contact"></div>
-        </div>
-        <div class="form-group"><label>Company Address</label><textarea name="company_address" id="fc-company-address" rows="2"></textarea></div>
-        <div class="form-group"><label>Contact Person</label><input type="text" name="company_contact_person" id="fc-contact-person"></div>
-      </div>
-      <div class="form-section-title"><i class="fas fa-id-card"></i> Verification Documents</div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Government ID Type</label>
-          <select name="gov_id_type" id="fc-gov-type">
-            <option value="">-- Select --</option>
-            <option>Philippine Passport</option>
-            <option>Driver's License</option>
-            <option>SSS ID</option>
-            <option>PhilHealth ID</option>
-            <option>Voter's ID</option>
-            <option>Postal ID</option>
-            <option>PRC ID</option>
-            <option>UMID</option>
-            <option>National ID (PhilSys)</option>
-          </select>
-        </div>
-        <div class="form-group"><label>Government ID Image (JPG/PNG/PDF, max 5MB)</label><input type="file" name="gov_id_image" id="fc-gov-file" accept=".jpg,.jpeg,.png,.pdf"></div>
-      </div>
-      <div class="form-group"><label>Certificate of Registration (CR) - Fleet only</label><input type="file" name="cr_document" id="fc-cr-file" accept=".jpg,.jpeg,.png,.pdf"></div>
-      <div class="form-section-title"><i class="fas fa-wallet"></i> Financial Information</div>
-      <div class="form-row">
-        <div class="form-group"><label>Credit Limit (&#x20B1;)</label><input type="number" step="0.01" min="0" name="credit_limit" id="fc-credit-limit" value="0"></div>
-        <div class="form-group">
-          <label>Outstanding Balance</label>
-          <div style="background:#f1f5f9; border:1px solid #e2e8f0; border-radius:6px; padding:9px 11px; font-size:13px; color:#64748b; display:flex; align-items:center; gap:6px;">
-            <i class="fas fa-lock" style="color:#94a3b8;"></i>
-            <span>System-managed — not editable by Manager</span>
-          </div>
-          <small style="color:#94a3b8; font-size:10px; margin-top:4px; display:block;">Balance is updated automatically through customer transactions.</small>
-        </div>
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="cust-btn cust-btn-gray" onclick="closeModal('modal-customer')">Cancel</button>
-        <button type="submit" class="cust-btn cust-btn-primary" id="fc-submit-btn"><i class="fas fa-save"></i> Save Customer</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- -- VERIFY CUSTOMER MODAL -- -->
-<div class="modal-overlay" id="modal-verify">
-  <div class="modal-box">
-    <div class="modal-head">
-      <span class="modal-title"><i class="fas fa-shield-alt"></i> Verify Customer</span>
-      <button class="modal-close" onclick="closeModal('modal-verify')">&times;</button>
-    </div>
-    <p style="font-size:13px;color:#334155;margin-bottom:16px;">
-      Reviewing verification for: <strong id="verify-name"></strong>
-    </p>
-    <form id="form-verify">
-      <input type="hidden" id="fv-id" name="id">
-      <div class="form-group">
-        <label>Verification Decision *</label>
-        <select name="status" id="fv-status" required>
-          <option value="verified">Approve / Verify</option>
-          <option value="rejected">Reject</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Remarks / Notes</label>
-        <textarea name="remarks" id="fv-remarks" rows="3" placeholder="Enter reason or notes..."></textarea>
-      </div>
-      <div id="verify-doc-preview" style="margin-bottom:14px;display:none;">
-        <div class="form-section-title"><i class="fas fa-file-alt"></i> Uploaded Documents</div>
-        <div id="verify-doc-links" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;"></div>
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="cust-btn cust-btn-gray" onclick="closeModal('modal-verify')">Cancel</button>
-        <button type="submit" class="cust-btn cust-btn-success"><i class="fas fa-check"></i> Submit Decision</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- -- DOCUMENT PREVIEW MODAL -- -->
-<div class="modal-overlay" id="modal-doc-preview">
-  <div class="modal-box modal-lg" style="max-width:800px;width:95%;">
-    <div class="modal-head">
-      <span class="modal-title"><i class="fas fa-file-alt"></i> Document Preview</span>
-      <button class="modal-close" onclick="closeModal('modal-doc-preview')">&times;</button>
-    </div>
-    <div id="doc-preview-body" style="text-align:center;min-height:200px;padding:15px 0;"></div>
-  </div>
+</style>  <!-- CACHE BUSTER v2.0 - BUTTON LAYOUT UPDATE -->
+<div id="customer-list-view">  <div class="int-head" style="display: flex !important; justify-content: space-between !important; align-items: flex-start !important;">  <div>  <h1><i class="fas fa-users"></i> Customer Management</h1>  <div class="sub">Manage, verify, and monitor customer accounts</div>  </div>  <div style="display: flex !important; gap: 10px !important; align-items: center !important; flex-wrap: wrap !important;">  <!-- Export Buttons Only -->  <a class="cust-btn flt-btn flt-btn-excel" href="manager_customer_export.php?format=excel" onclick="passFiltersToExport(this,'excel')" title="Export to Excel">  <i class="fas fa-file-excel"></i> Excel  </a>  <a class="cust-btn flt-btn flt-btn-csv" href="manager_customer_export.php?format=csv" onclick="passFiltersToExport(this,'csv')" title="Export to CSV">  <i class="fas fa-file-csv"></i> CSV  </a>  <a class="cust-btn flt-btn flt-btn-pdf" href="manager_customer_export.php?format=pdf" target="_blank" onclick="passFiltersToExport(this,'pdf')" title="Export to PDF">  <i class="fas fa-file-pdf"></i> PDF  </a>  </div>  </div>  <!-- Summary Cards -->  <div class="cust-cards" id="summary-cards">  <div class="cust-card cc-blue">  <span class="cc-icon"><i class="fas fa-users"></i></span>  <span class="cc-label">Total Customers</span>  <span class="cc-val" id="stat-total">—</span>  </div>  <div class="cust-card cc-teal">  <span class="cc-icon"><i class="fas fa-user-plus"></i></span>  <span class="cc-label">New Today</span>  <span class="cc-val" id="stat-new">—</span>  </div>  <div class="cust-card cc-green">  <span class="cc-icon"><i class="fas fa-star"></i></span>  <span class="cc-label">Regular</span>  <span class="cc-val" id="stat-regular">—</span>  </div>  <div class="cust-card cc-purple">  <span class="cc-icon"><i class="fas fa-building"></i></span>  <span class="cc-label">Fleet / Company</span>  <span class="cc-val" id="stat-fleet">—</span>  </div>  <div class="cust-card cc-red">  <span class="cc-icon"><i class="fas fa-exclamation-circle"></i></span>  <span class="cc-label">With Balance</span>  <span class="cc-val" id="stat-outstanding">—</span>  </div>  <div class="cust-card cc-amber">  <span class="cc-icon"><i class="fas fa-check-circle"></i></span>  <span class="cc-label">Active</span>  <span class="cc-val" id="stat-active">—</span>  </div>  </div>  <!-- Filter Bar -->  <div class="cust-filter-bar">  <div class="fg fg-search">  <label>Search</label>  <input type="text" id="filter-search" placeholder="ID / Name / Contact…" oninput="debounceLoad()">  </div>  <div class="fg">  <label>Customer Type</label>  <select id="filter-type" onchange="loadManagerCustomers()">  <option value="">All Types</option>  <option value="walk-in">Walk-in</option>  <option value="regular">Regular</option>  <option value="fleet">Fleet / Company</option>  </select>  </div>  <div class="fg">  <label>Status</label>  <select id="filter-status" onchange="loadManagerCustomers()">  <option value="">All Status</option>  <option value="active">Active</option>  <option value="inactive">Inactive</option>  </select>  </div>  <div class="fg">  <label>Verification</label>  <select id="filter-verification" onchange="loadManagerCustomers()">  <option value="">All</option>  <option value="pending">Pending</option>  <option value="verified">Verified</option>  <option value="rejected">Rejected</option>  </select>  </div>  <div class="fg">  <label>Payment</label>  <select id="filter-payment" onchange="loadManagerCustomers()">  <option value="">All</option>  <option value="paid">Paid</option>  <option value="partial">Partial</option>  <option value="unpaid">Unpaid</option>  </select>  </div>  <div class="fg">  <label>Date From</label>  <input type="date" id="filter-date-from" onchange="loadManagerCustomers()">  </div>  <div class="fg">  <label>Date To</label>  <input type="date" id="filter-date-to" onchange="loadManagerCustomers()">  </div>  </div>  <!-- Customer Table -->  <div class="cust-table-wrap">  <div class="cust-table-header">  <div>  <h3><i class="fas fa-list"></i> Customer Registry</h3>  <span id="count-label" style="font-size:12px;color:#64748b;"></span>  </div>  <div>  <button class="cust-btn btn-add-customer" onclick="openAddModal()" style="height:36px;">  <i class="fas fa-user-plus"></i> Add Customer  </button>  </div>  </div>  <div style="overflow-x:auto;">  <table class="cust-table">  <thead>  <tr>  <th>Customer ID</th>  <th>Customer Name</th>  <th>Type</th>  <th>Contact No.</th>  <th>Outstanding Balance</th>  <th>Verification</th>  <th>Last Transaction</th>  <th>Status</th>  <th>Actions</th>  </tr>  </thead>  <tbody id="cust-tbody">  <tr id="loading-row"><td colspan="9"><i class="fas fa-spinner fa-spin"></i> Loading customers…</td></tr>  </tbody>  </table>  </div>  </div>
+</div>  <!-- Customer Profile View (Full Page) -->
+<div id="customer-profile-view" style="display: none; background: #f8fafc; border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 24px; border: 1px solid #e2e8f0;">  <!-- Profile Header -->  <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #e2e8f0; padding-bottom:16px; margin-bottom:24px; flex-wrap:wrap; gap:12px;">  <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">  <button class="cust-btn cust-btn-gray" onclick="closeProfile()" style="height:36px; padding:0 16px;"><i class="fas fa-arrow-left"></i> Back to List</button>  <div>  <h2 style="font-size:24px; font-weight:800; color:#002F70; margin:0; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">  <span id="prof-name-text">Loading...</span>  <span id="prof-type-badge" class="badge">Walk-in</span>  <span id="prof-status-badge" class="badge">Active</span>  </h2>  <div style="font-size:12px; color:#64748b; margin-top:4px;">  Customer ID: <strong id="prof-id-text">—</strong> | Date Registered: <span id="prof-date-text">—</span>  </div>  </div>  </div>  <div style="display:flex; gap:8px;">  <button class="cust-btn cust-btn-success" id="prof-verify-btn-top" onclick="openVerifyFromProfile()"><i class="fas fa-check-circle"></i> Verify Customer</button>  <button class="cust-btn cust-btn-outline" onclick="printProfile()"><i class="fas fa-print"></i> Print Profile</button>  </div>  </div>  <!-- Main Content Grid -->  <div class="profile-grid" style="display:grid; grid-template-columns:1.2fr 1fr; gap:24px; margin-bottom:24px;">  <!-- Left Column: Customer Info & Fleet Info & Documents -->  <div>  <!-- Info Blocks -->  <div class="info-block" style="background:#fff; border-radius:10px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); border:1px solid #e2e8f0; margin-bottom:20px;">  <h4 style="font-size:13px; font-weight:700; color:#002F70; border-bottom:1px solid #e2e8f0; padding-bottom:8px; margin:0 0 16px; text-transform:uppercase;"><i class="fas fa-user-circle"></i> Customer Information</h4>  <div class="info-row"><span class="label">Customer ID</span><span class="value" id="prof-id-val">—</span></div>  <div class="info-row"><span class="label">Full Name</span><span class="value" id="prof-name-val">—</span></div>  <div class="info-row"><span class="label">Contact Number</span><span class="value" id="prof-contact-val">—</span></div>  <div class="info-row"><span class="label">Address</span><span class="value" id="prof-address-val">—</span></div>  <div class="info-row"><span class="label">Type</span><span class="value" id="prof-type-val">—</span></div>  <div class="info-row"><span class="label">Registered</span><span class="value" id="prof-registered-val">—</span></div>  <div class="info-row"><span class="label">Status</span><span class="value" id="prof-status-val">—</span></div>  </div>  <!-- Fleet Info block (Conditional) -->  <div id="prof-fleet-block" class="info-block" style="background:#fff; border-radius:10px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); border:1px solid #e2e8f0; margin-bottom:20px; display:none;">  <h4 style="font-size:13px; font-weight:700; color:#002F70; border-bottom:1px solid #e2e8f0; padding-bottom:8px; margin:0 0 16px; text-transform:uppercase;"><i class="fas fa-building"></i> Fleet / Company Information</h4>  <div class="info-row"><span class="label">Company Name</span><span class="value" id="prof-company-val">—</span></div>  <div class="info-row"><span class="label">Company Address</span><span class="value" id="prof-company-address-val">—</span></div>  <div class="info-row"><span class="label">Contact Person</span><span class="value" id="prof-contact-person-val">—</span></div>  <div class="info-row"><span class="label">Company Contact</span><span class="value" id="prof-company-contact-val">—</span></div>  </div>  <!-- Verification Documents -->  <div class="info-block" style="background:#fff; border-radius:10px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); border:1px solid #e2e8f0;">  <h4 style="font-size:13px; font-weight:700; color:#002F70; border-bottom:1px solid #e2e8f0; padding-bottom:8px; margin:0 0 16px; text-transform:uppercase;"><i class="fas fa-file-alt"></i> Verification Documents</h4>  <div class="info-row"><span class="label">Government ID Type</span><span class="value" id="prof-gov-type-val">—</span></div>  <div class="info-row"><span class="label">Verification Status</span><span class="value" id="prof-ver-status-val">—</span></div>  <div class="info-row"><span class="label">Verified By</span><span class="value" id="prof-verified-by-val">—</span></div>  <div class="info-row"><span class="label">Verified Date</span><span class="value" id="prof-verified-date-val">—</span></div>  <div class="info-row"><span class="label">Remarks / Notes</span><span class="value" id="prof-ver-remarks-val">—</span></div>  <div id="prof-doc-buttons" style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;">  <!-- Preview and download buttons dynamically rendered here -->  </div>  </div>  </div>  <!-- Right Column: Financials & Transaction Summary -->  <div>  <!-- Financial Cards -->  <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:20px;">  <div class="cust-card cc-red" style="margin-bottom:0; border-left-width:4px;">  <span class="cc-icon"><i class="fas fa-wallet"></i></span>  <span class="cc-label" style="font-size:10px;">Outstanding Balance</span>  <span class="cc-val" id="prof-outstanding-val" style="font-size:22px;">&#x20B1;0.00</span>  </div>  <div class="cust-card cc-blue" style="margin-bottom:0; border-left-width:4px;">  <span class="cc-icon"><i class="fas fa-credit-card"></i></span>  <span class="cc-label" style="font-size:10px;">Credit Limit</span>  <span class="cc-val" id="prof-credit-limit-val" style="font-size:22px;">&#x20B1;0.00</span>  </div>  </div>  <!-- Financial Details Block -->  <div class="info-block" style="background:#fff; border-radius:10px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); border:1px solid #e2e8f0; margin-bottom:20px; margin-top:20px;">  <h4 style="font-size:13px; font-weight:700; color:#002F70; border-bottom:1px solid #e2e8f0; padding-bottom:8px; margin:0 0 16px; text-transform:uppercase;"><i class="fas fa-coins"></i> Financial Information</h4>  <div class="info-row"><span class="label">Total Payments</span><span class="value" id="prof-payments-val">—</span></div>  <div class="info-row"><span class="label">Remaining Balance</span><span class="value" id="prof-remaining-val">—</span></div>  <div class="info-row"><span class="label">Payment Status</span><span class="value" id="prof-pay-status-val">—</span></div>  <div class="info-row"><span class="label">Last Payment Date</span><span class="value" id="prof-last-pay-date-val">—</span></div>  </div>  <!-- Transaction Summary -->  <div class="info-block" style="background:#fff; border-radius:10px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); border:1px solid #e2e8f0;">  <h4 style="font-size:13px; font-weight:700; color:#002F70; border-bottom:1px solid #e2e8f0; padding-bottom:8px; margin:0 0 16px; text-transform:uppercase;"><i class="fas fa-chart-line"></i> Transaction Summary</h4>  <div class="info-row"><span class="label">Fuel Transactions</span><span class="value" id="prof-fuel-count-val">—</span></div>  <div class="info-row"><span class="label">Merchandise Transactions</span><span class="value" id="prof-merch-count-val">—</span></div>  <div class="info-row"><span class="label">Job Order Transactions</span><span class="value" id="prof-jo-count-val">—</span></div>  <div class="info-row"><span class="label">Total Purchased Amount</span><span class="value" id="prof-total-purchased-val">—</span></div>  <div class="info-row"><span class="label">Last Transaction Date</span><span class="value" id="prof-last-tx-date-val">—</span></div>  </div>  </div>  </div>  <!-- Transaction History Block -->  <div class="cust-table-wrap" style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.05); margin-bottom:24px;">  <div class="cust-table-header" style="border-bottom:1px solid #e2e8f0; padding:16px 20px;">  <h3 style="font-size:15px; font-weight:700; color:#002F70; margin:0;"><i class="fas fa-history"></i> Complete Transaction History</h3>  </div>  <!-- History Filters -->  <div style="display:flex; flex-wrap:wrap; gap:12px; padding:16px 20px; background:#f8fafc; border-bottom:1px solid #e2e8f0; align-items:flex-end;">  <div class="fg" style="flex:1; min-width:180px;">  <label style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:4px; display:block;">Search Ref No.</label>  <input type="text" id="tx-search" placeholder="Search reference..." oninput="debounceTxHistory()" style="padding:6px 10px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px; width:100%;">  </div>  <div class="fg" style="width:120px;">  <label style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:4px; display:block;">Module</label>  <select id="tx-module" onchange="loadTxHistory()" style="padding:6px 10px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px; width:100%;">  <option value="">All Modules</option>  <option value="Fuel">Fuel</option>  <option value="Merchandise">Merchandise</option>  <option value="Job Order">Job Order</option>  </select>  </div>  <div class="fg" style="width:140px;">  <label style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:4px; display:block;">Txn Status</label>  <select id="tx-status" onchange="loadTxHistory()" style="padding:6px 10px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px; width:100%;">  <option value="">All Statuses</option>  <option value="completed">Completed / Verified</option>  <option value="pending">Pending / Reviewed</option>  <option value="rejected">Rejected / Cancelled</option>  </select>  </div>  <div class="fg" style="width:130px;">  <label style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:4px; display:block;">Payment Status</label>  <select id="tx-payment" onchange="loadTxHistory()" style="padding:6px 10px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px; width:100%;">  <option value="">All Payments</option>  <option value="paid">Paid</option>  <option value="partial">Partial</option>  <option value="unpaid">Unpaid</option>  </select>  </div>  <div class="fg" style="width:120px;">  <label style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:4px; display:block;">Date From</label>  <input type="date" id="tx-date-from" onchange="loadTxHistory()" style="padding:6px 10px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px; width:100%;">  </div>  <div class="fg" style="width:120px;">  <label style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:4px; display:block;">Date To</label>  <input type="date" id="tx-date-to" onchange="loadTxHistory()" style="padding:6px 10px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px; width:100%;">  </div>  <button class="cust-btn cust-btn-gray" onclick="resetTxHistoryFilters()" style="height:32px; padding:0 12px; font-size:11px; margin-bottom:2px;"><i class="fas fa-undo"></i> Reset</button>  </div>  <div style="overflow-x:auto;">  <table class="cust-table">  <thead>  <tr>  <th>Date</th>  <th>Reference No.</th>  <th>Module</th>  <th>Description</th>  <th>Amount</th>  <th>Payment Status</th>  <th>Processed By</th>  <th>Actions</th>  </tr>  </thead>  <tbody id="tx-history-tbody">  <tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8;">No transactions found.</td></tr>  </tbody>  </table>  </div>  <!-- History Pagination -->  <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; flex-wrap:wrap; gap:10px;">  <div style="display:flex; align-items:center; gap:8px;">  <span style="font-size:12px; color:#64748b;">Rows per page:</span>  <select id="tx-limit-select" onchange="changeTxHistoryLimit()" style="padding:4px 8px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px; outline:none; background:#fff;">  <option value="10">10</option>  <option value="25">25</option>  <option value="50">50</option>  <option value="100">100</option>  </select>  </div>  <div style="display:flex; align-items:center; gap:12px;">  <span id="tx-pagination-info" style="font-size:12px; color:#64748b; font-weight:600;">Showing 0–0 of 0</span>  <div style="display:flex; gap:6px;">  <button id="tx-prev-btn" class="cust-btn cust-btn-gray" onclick="changeTxHistoryPage(-1)" style="height:28px; padding:0 10px; font-size:11px;" disabled><i class="fas fa-chevron-left"></i> Previous</button>  <button id="tx-next-btn" class="cust-btn cust-btn-gray" onclick="changeTxHistoryPage(1)" style="height:28px; padding:0 10px; font-size:11px;" disabled>Next <i class="fas fa-chevron-right"></i></button>  </div>  </div>  </div>  </div>  <!-- Bottom Buttons Row -->  <div style="display:flex; justify-content:space-between; align-items:center; border-top:2px solid #e2e8f0; padding-top:16px;">  <button class="cust-btn cust-btn-gray" onclick="closeProfile()" style="height:36px; padding:0 16px;"><i class="fas fa-arrow-left"></i> Back to Customer List</button>  <div style="display:flex; gap:8px;">  <button class="cust-btn cust-btn-success" id="prof-verify-btn-bottom" onclick="openVerifyFromProfile()"><i class="fas fa-check-circle"></i> Verify Customer</button>  <button class="cust-btn cust-btn-outline" onclick="printProfile()"><i class="fas fa-print"></i> Print Customer Profile</button>  </div>  </div>
+</div>  <div id="toast-container"></div>  <!-- -- ADD / EDIT CUSTOMER MODAL -- -->
+<div class="modal-overlay" id="modal-customer">  <div class="modal-box modal-lg">  <div class="modal-head">  <span class="modal-title"><i class="fas fa-user-plus"></i> <span id="modal-cust-title">Add Customer</span></span>  <button class="modal-close" onclick="closeModal('modal-customer')">&times;</button>  </div>  <form id="form-customer" enctype="multipart/form-data">  <input type="hidden" id="fc-id" name="customer_id" value="">  <input type="hidden" id="fc-mode" value="add">  <div class="form-section-title"><i class="fas fa-user"></i> Basic Information</div>  <div class="form-row">  <div class="form-group"><label>First Name *</label><input type="text" name="first_name" id="fc-fname" required></div>  <div class="form-group"><label>Middle Name</label><input type="text" name="middle_name" id="fc-mname"></div>  </div>  <div class="form-row">  <div class="form-group"><label>Last Name *</label><input type="text" name="last_name" id="fc-lname" required></div>  <div class="form-group"><label>Contact Number *</label><input type="text" name="contact_number" id="fc-contact" required></div>  </div>  <div class="form-group"><label>Address *</label><textarea name="address" id="fc-address" rows="2" required></textarea></div>  <div class="form-row">  <div class="form-group">  <label>Customer Type *</label>  <select name="customer_type" id="fc-type" onchange="toggleFleetFields()" required>  <option value="walk-in">Walk-in</option>  <option value="regular">Regular</option>  <option value="fleet">Fleet / Company</option>  </select>  </div>  <div class="form-group">  <label>Account Status</label>  <select name="status" id="fc-status">  <option value="active">Active</option>  <option value="inactive">Inactive</option>  </select>  </div>  </div>  <div class="fleet-fields" id="fleet-section">  <div class="form-section-title"><i class="fas fa-building"></i> Fleet / Company Information</div>  <div class="form-row">  <div class="form-group"><label>Company Name</label><input type="text" name="company_name" id="fc-company"></div>  <div class="form-group"><label>Company Contact Number</label><input type="text" name="company_contact_number" id="fc-company-contact"></div>  </div>  <div class="form-group"><label>Company Address</label><textarea name="company_address" id="fc-company-address" rows="2"></textarea></div>  <div class="form-group"><label>Contact Person</label><input type="text" name="company_contact_person" id="fc-contact-person"></div>  </div>  <div class="form-section-title"><i class="fas fa-id-card"></i> Verification Documents</div>  <div class="form-row">  <div class="form-group">  <label>Government ID Type</label>  <select name="gov_id_type" id="fc-gov-type">  <option value="">-- Select --</option>  <option>Philippine Passport</option>  <option>Driver's License</option>  <option>SSS ID</option>  <option>PhilHealth ID</option>  <option>Voter's ID</option>  <option>Postal ID</option>  <option>PRC ID</option>  <option>UMID</option>  <option>National ID (PhilSys)</option>  </select>  </div>  <div class="form-group"><label>Government ID Image (JPG/PNG/PDF, max 5MB)</label><input type="file" name="gov_id_image" id="fc-gov-file" accept=".jpg,.jpeg,.png,.pdf"></div>  </div>  <div class="form-group"><label>Certificate of Registration (CR) - Fleet only</label><input type="file" name="cr_document" id="fc-cr-file" accept=".jpg,.jpeg,.png,.pdf"></div>  <div class="form-section-title"><i class="fas fa-wallet"></i> Financial Information</div>  <div class="form-row">  <div class="form-group"><label>Credit Limit (&#x20B1;)</label><input type="number" step="0.01" min="0" name="credit_limit" id="fc-credit-limit" value="0"></div>  <div class="form-group">  <label>Outstanding Balance</label>  <div style="background:#f1f5f9; border:1px solid #e2e8f0; border-radius:6px; padding:9px 11px; font-size:13px; color:#64748b; display:flex; align-items:center; gap:6px;">  <i class="fas fa-lock" style="color:#94a3b8;"></i>  <span>System-managed — not editable by Manager</span>  </div>  <small style="color:#94a3b8; font-size:10px; margin-top:4px; display:block;">Balance is updated automatically through customer transactions.</small>  </div>  </div>  <div class="modal-actions">  <button type="button" class="cust-btn cust-btn-gray" onclick="closeModal('modal-customer')">Cancel</button>  <button type="submit" class="cust-btn cust-btn-primary" id="fc-submit-btn"><i class="fas fa-save"></i> Save Customer</button>  </div>  </form>  </div>
+</div>  <!-- -- VERIFY CUSTOMER MODAL -- -->
+<div class="modal-overlay" id="modal-verify">  <div class="modal-box">  <div class="modal-head">  <span class="modal-title"><i class="fas fa-shield-alt"></i> Verify Customer</span>  <button class="modal-close" onclick="closeModal('modal-verify')">&times;</button>  </div>  <p style="font-size:13px;color:#334155;margin-bottom:16px;">  Reviewing verification for: <strong id="verify-name"></strong>  </p>  <form id="form-verify">  <input type="hidden" id="fv-id" name="id">  <div class="form-group">  <label>Verification Decision *</label>  <select name="status" id="fv-status" required>  <option value="verified">Approve / Verify</option>  <option value="rejected">Reject</option>  </select>  </div>  <div class="form-group">  <label>Remarks / Notes</label>  <textarea name="remarks" id="fv-remarks" rows="3" placeholder="Enter reason or notes..."></textarea>  </div>  <div id="verify-doc-preview" style="margin-bottom:14px;display:none;">  <div class="form-section-title"><i class="fas fa-file-alt"></i> Uploaded Documents</div>  <div id="verify-doc-links" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;"></div>  </div>  <div class="modal-actions">  <button type="button" class="cust-btn cust-btn-gray" onclick="closeModal('modal-verify')">Cancel</button>  <button type="submit" class="cust-btn cust-btn-success"><i class="fas fa-check"></i> Submit Decision</button>  </div>  </form>  </div>
+</div>  <!-- -- DOCUMENT PREVIEW MODAL -- -->
+<div class="modal-overlay" id="modal-doc-preview">  <div class="modal-box modal-lg" style="max-width:800px;width:95%;">  <div class="modal-head">  <span class="modal-title"><i class="fas fa-file-alt"></i> Document Preview</span>  <button class="modal-close" onclick="closeModal('modal-doc-preview')">&times;</button>  </div>  <div id="doc-preview-body" style="text-align:center;min-height:200px;padding:15px 0;"></div>  </div>
 </div>
 <script>
 let debounceTimer = null;
 let currentProfileId = null;
-let currentProfileData = null;
-
-// --- LOAD CUSTOMERS ------------------------------------------------
-function loadManagerCustomers() {
-  const tbody = document.getElementById('cust-tbody');
-  tbody.innerHTML = '<tr id="loading-row"><td colspan="9" style="text-align:center;padding:30px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
-
-  const params = new URLSearchParams({
-    action: 'list',
-    search: document.getElementById('filter-search').value,
-    type: document.getElementById('filter-type').value,
-    status: document.getElementById('filter-status').value,
-    verification: document.getElementById('filter-verification').value,
-    payment: document.getElementById('filter-payment').value,
-    date_from: document.getElementById('filter-date-from').value,
-    date_to: document.getElementById('filter-date-to').value
-  });
-
-  fetch('manager_customer_operations.php?' + params.toString())
-    .then(r => r.json())
-    .then(data => {
-      if (!data.success) { showToast(data.error || 'Failed to load customers', 'error'); tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><i class="fas fa-exclamation-circle"></i> Error loading data</td></tr>'; return; }
-      updateStats(data.stats);
-      renderTable(data.customers);
-    })
-    .catch(() => { tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><i class="fas fa-wifi"></i> Network error</td></tr>'; });
-}
-
-function debounceLoad() {
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(loadManagerCustomers, 400);
-}
-
-function updateStats(s) {
-  document.getElementById('stat-total').textContent = s.total || 0;
-  document.getElementById('stat-new').textContent = s.new_today || 0;
-  document.getElementById('stat-regular').textContent = s.regular || 0;
-  document.getElementById('stat-fleet').textContent = s.fleet || 0;
-  document.getElementById('stat-outstanding').textContent = s.outstanding || 0;
-  document.getElementById('stat-active').textContent = s.active || 0;
-}
-
-function renderTable(customers) {
-  const tbody = document.getElementById('cust-tbody');
-  document.getElementById('count-label').textContent = customers.length + ' record(s) found';
-  if (!customers.length) {
-    tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><i class="fas fa-users-slash"></i><p>No customers found matching the criteria</p></div></td></tr>';
-    return;
-  }
-  tbody.innerHTML = customers.map(c => {
-    const fullName = c.display_name || [c.first_name, c.middle_name, c.last_name].filter(Boolean).join(' ') || c.name || 'Unknown';
-    const typeBadge = {'walk-in':'badge-walk-in','regular':'badge-regular','fleet':'badge-fleet'}[c.customer_type] || 'badge-walk-in';
-    const verBadge = {'verified':'badge-verified','pending':'badge-pending','rejected':'badge-rejected'}[c.verification_status] || 'badge-pending';
-    const statusBadge = c.status === 'active' ? 'badge-active' : 'badge-inactive';
-    const payBadge = {'paid':'badge-paid','partial':'badge-partial','unpaid':'badge-unpaid'}[c.payment_status] || '';
-    const balance = parseFloat(c.outstanding_balance || 0);
-    const balHtml = balance > 0 ? `<span style="color:#dc2626;font-weight:700;">\u20B1${fmt(balance)}</span>` : `<span style="color:#16a34a;">\u20B10.00</span>`;
-    const lastTx = c.last_transaction ? fmtDate(c.last_transaction) : '<span style="color:#94a3b8;">N/A</span>';
-    return `<tr>
-      <td><strong>${esc(c.customer_id)}</strong></td>
-      <td>${esc(fullName)}</td>
-      <td><span class="badge ${typeBadge}">${esc(c.customer_type)}</span></td>
-      <td>${esc(c.contact_number)}</td>
-      <td>${balHtml}</td>
-      <td><span class="badge ${verBadge}">${c.verification_status}</span></td>
-      <td>${lastTx}</td>
-      <td><span class="badge ${statusBadge}">${c.status}</span></td>
-      <td>
-        <div style="display:flex;flex-direction:column;gap:5px;min-width:90px;">
-          <button class="act-btn act-view" onclick="viewProfile(${c.id})" title="View Profile"><i class="fas fa-eye"></i> View</button>
-          <button class="act-btn act-edit" onclick="openEditModal(${c.id})" title="Edit Customer"><i class="fas fa-edit"></i> Edit</button>
-          <button class="act-btn act-verify" data-cid="${c.id}" data-name="${esc(fullName).replace(/"/g,'&quot;')}" data-govid="${c.gov_id_image||''}" data-crdoc="${c.cr_document||''}" onclick="openVerifyFromBtn(this)" title="Verify Customer"><i class="fas fa-check-circle"></i> Verify</button>
-          <button class="act-btn act-print" onclick="printCustomer(${c.id})" title="Print Profile"><i class="fas fa-print"></i> Print</button>
-        </div>
-      </td>
-    </tr>`;
-  }).join('');
-}
-
-// --- HELPERS -------------------------------------------------------
+let currentProfileData = null;  // --- LOAD CUSTOMERS ------------------------------------------------
+function loadManagerCustomers() {  const tbody = document.getElementById('cust-tbody');  tbody.innerHTML = '<tr id="loading-row"><td colspan="9" style="text-align:center;padding:30px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';  const params = new URLSearchParams({  action: 'list',  search: document.getElementById('filter-search').value,  type: document.getElementById('filter-type').value,  status: document.getElementById('filter-status').value,  verification: document.getElementById('filter-verification').value,  payment: document.getElementById('filter-payment').value,  date_from: document.getElementById('filter-date-from').value,  date_to: document.getElementById('filter-date-to').value  });  fetch('manager_customer_operations.php?' + params.toString())  .then(r => r.json())  .then(data => {  if (!data.success) { showToast(data.error || 'Failed to load customers', 'error'); tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><i class="fas fa-exclamation-circle"></i> Error loading data</td></tr>'; return; }  updateStats(data.stats);  renderTable(data.customers);  })  .catch(() => { tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><i class="fas fa-wifi"></i> Network error</td></tr>'; });
+}  function debounceLoad() {  clearTimeout(debounceTimer);  debounceTimer = setTimeout(loadManagerCustomers, 400);
+}  function updateStats(s) {  document.getElementById('stat-total').textContent = s.total || 0;  document.getElementById('stat-new').textContent = s.new_today || 0;  document.getElementById('stat-regular').textContent = s.regular || 0;  document.getElementById('stat-fleet').textContent = s.fleet || 0;  document.getElementById('stat-outstanding').textContent = s.outstanding || 0;  document.getElementById('stat-active').textContent = s.active || 0;
+}  function renderTable(customers) {  const tbody = document.getElementById('cust-tbody');  document.getElementById('count-label').textContent = customers.length + ' record(s) found';  if (!customers.length) {  tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><i class="fas fa-users-slash"></i><p>No customers found matching the criteria</p></div></td></tr>';  return;  }  tbody.innerHTML = customers.map(c => {  const fullName = c.display_name || [c.first_name, c.middle_name, c.last_name].filter(Boolean).join(' ') || c.name || 'Unknown';  const typeBadge = {'walk-in':'badge-walk-in','regular':'badge-regular','fleet':'badge-fleet'}[c.customer_type] || 'badge-walk-in';  const verBadge = {'verified':'badge-verified','pending':'badge-pending','rejected':'badge-rejected'}[c.verification_status] || 'badge-pending';  const statusBadge = c.status === 'active' ? 'badge-active' : 'badge-inactive';  const payBadge = {'paid':'badge-paid','partial':'badge-partial','unpaid':'badge-unpaid'}[c.payment_status] || '';  const balance = parseFloat(c.outstanding_balance || 0);  const balHtml = balance > 0 ? `<span style="color:#dc2626;font-weight:700;">\u20B1${fmt(balance)}</span>` : `<span style="color:#16a34a;">\u20B10.00</span>`;  const lastTx = c.last_transaction ? fmtDate(c.last_transaction) : '<span style="color:#94a3b8;">N/A</span>';  return `<tr>  <td><strong>${esc(c.customer_id)}</strong></td>  <td>${esc(fullName)}</td>  <td><span class="badge ${typeBadge}">${esc(c.customer_type)}</span></td>  <td>${esc(c.contact_number)}</td>  <td>${balHtml}</td>  <td><span class="badge ${verBadge}">${c.verification_status}</span></td>  <td>${lastTx}</td>  <td><span class="badge ${statusBadge}">${c.status}</span></td>  <td>  <div style="display:flex;flex-direction:column;gap:5px;min-width:90px;">  <button class="act-btn act-view" onclick="viewProfile(${c.id})" title="View Profile"><i class="fas fa-eye"></i> View</button>  <button class="act-btn act-edit" onclick="openEditModal(${c.id})" title="Edit Customer"><i class="fas fa-edit"></i> Edit</button>  <button class="act-btn act-verify" data-cid="${c.id}" data-name="${esc(fullName).replace(/"/g,'&quot;')}" data-govid="${c.gov_id_image||''}" data-crdoc="${c.cr_document||''}" onclick="openVerifyFromBtn(this)" title="Verify Customer"><i class="fas fa-check-circle"></i> Verify</button>  <button class="act-btn act-print" onclick="printCustomer(${c.id})" title="Print Profile"><i class="fas fa-print"></i> Print</button>  </div>  </td>  </tr>`;  }).join('');
+}  // --- HELPERS -------------------------------------------------------
 function esc(s) { const d = document.createElement('div'); d.textContent = s||''; return d.innerHTML; }
 function fmt(n) { return parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
-function fmtDate(d) { if (!d) return '—'; const dt = new Date(d); return dt.toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}); }
-
-function showToast(msg, type='success') {
-  const tc = document.getElementById('toast-container');
-  const t = document.createElement('div');
-  t.className = `toast toast-${type}`;
-  t.textContent = msg;
-  tc.appendChild(t);
-  setTimeout(() => t.remove(), 4000);
+function fmtDate(d) { if (!d) return '—'; const dt = new Date(d); return dt.toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}); }  function showToast(msg, type='success') {  const tc = document.getElementById('toast-container');  const t = document.createElement('div');  t.className = `toast toast-${type}`;  t.textContent = msg;  tc.appendChild(t);  setTimeout(() => t.remove(), 4000);
+}  function closeModal(id) { document.getElementById(id).classList.remove('open'); }  function passFiltersToExport(el, fmt) {  const url = new URL('manager_customer_export.php', window.location.href);  url.searchParams.set('format', fmt);  ['search','type','status','verification','payment','date_from','date_to'].forEach(k => {  const el2 = document.getElementById('filter-' + k.replace('_','-'));  if (el2) url.searchParams.set(k, el2.value);  });  el.href = url.toString();
 }
-
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-
-function passFiltersToExport(el, fmt) {
-  const url = new URL('manager_customer_export.php', window.location.href);
-  url.searchParams.set('format', fmt);
-  ['search','type','status','verification','payment','date_from','date_to'].forEach(k => {
-    const el2 = document.getElementById('filter-' + k.replace('_','-'));
-    if (el2) url.searchParams.set(k, el2.value);
-  });
-  el.href = url.toString();
-}
-</script>
-
-<script>
+</script>  <script>
 // --- ADD / EDIT MODAL ----------------------------------------------
-function toggleFleetFields() {
-  const t = document.getElementById('fc-type').value;
-  document.getElementById('fleet-section').classList.toggle('show', t === 'fleet');
-}
-
-function openAddModal() {
-  document.getElementById('form-customer').reset();
-  document.getElementById('fc-id').value = '';
-  document.getElementById('fc-mode').value = 'add';
-  document.getElementById('modal-cust-title').textContent = 'Add New Customer';
-  document.getElementById('fc-submit-btn').innerHTML = '<i class="fas fa-save"></i> Save Customer';
-  document.getElementById('fleet-section').classList.remove('show');
-  document.getElementById('modal-customer').classList.add('open');
-}
-
-function openEditModal(id) {
-  fetch(`manager_customer_operations.php?action=view&id=${id}`)
-    .then(r => r.json())
-    .then(data => {
-      if (!data.success) { showToast(data.error || 'Failed to load customer', 'error'); return; }
-      const c = data.customer;
-      document.getElementById('fc-id').value = c.id;
-      document.getElementById('fc-mode').value = 'edit';
-      document.getElementById('modal-cust-title').textContent = 'Edit Customer';
-      document.getElementById('fc-submit-btn').innerHTML = '<i class="fas fa-save"></i> Update Customer';
-      document.getElementById('fc-fname').value = c.first_name || '';
-      document.getElementById('fc-mname').value = c.middle_name || '';
-      document.getElementById('fc-lname').value = c.last_name || '';
-      document.getElementById('fc-contact').value = c.contact_number || '';
-      document.getElementById('fc-address').value = c.address || '';
-      document.getElementById('fc-type').value = c.customer_type || 'walk-in';
-      document.getElementById('fc-status').value = c.status || 'active';
-      document.getElementById('fc-gov-type').value = c.gov_id_type || '';
-      document.getElementById('fc-company').value = c.company_name || '';
-      document.getElementById('fc-company-address').value = c.company_address || '';
-      document.getElementById('fc-contact-person').value = c.company_contact_person || '';
-      document.getElementById('fc-company-contact').value = c.company_contact_number || '';
-      document.getElementById('fc-credit-limit').value = c.credit_limit || 0;
-      document.getElementById('fc-outstanding').value = c.outstanding_balance || 0;
-      toggleFleetFields();
-      document.getElementById('modal-customer').classList.add('open');
-    })
-    .catch(() => showToast('Network error', 'error'));
-}
-
-document.getElementById('form-customer').addEventListener('submit', function(e) {
-  e.preventDefault();
-  const mode = document.getElementById('fc-mode').value;
-  const action = mode === 'add' ? 'add' : 'update';
-  const fd = new FormData(this);
-  fd.append('action', action);
-  const btn = document.getElementById('fc-submit-btn');
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
-
-  fetch('manager_customer_operations.php', { method: 'POST', body: fd })
-    .then(r => r.json())
-    .then(data => {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-save"></i> Save Customer';
-      if (data.success) {
-        showToast(data.message || 'Customer saved!', 'success');
-        closeModal('modal-customer');
-        loadManagerCustomers();
-      } else {
-        showToast(data.error || 'Failed to save customer', 'error');
-      }
-    })
-    .catch(() => { btn.disabled = false; showToast('Network error', 'error'); });
-});
-
-// --- VERIFY MODAL -------------------------------------------------
+function toggleFleetFields() {  const t = document.getElementById('fc-type').value;  document.getElementById('fleet-section').classList.toggle('show', t === 'fleet');
+}  function openAddModal() {  document.getElementById('form-customer').reset();  document.getElementById('fc-id').value = '';  document.getElementById('fc-mode').value = 'add';  document.getElementById('modal-cust-title').textContent = 'Add New Customer';  document.getElementById('fc-submit-btn').innerHTML = '<i class="fas fa-save"></i> Save Customer';  document.getElementById('fleet-section').classList.remove('show');  document.getElementById('modal-customer').classList.add('open');
+}  function openEditModal(id) {  fetch(`manager_customer_operations.php?action=view&id=${id}`)  .then(r => r.json())  .then(data => {  if (!data.success) { showToast(data.error || 'Failed to load customer', 'error'); return; }  const c = data.customer;  document.getElementById('fc-id').value = c.id;  document.getElementById('fc-mode').value = 'edit';  document.getElementById('modal-cust-title').textContent = 'Edit Customer';  document.getElementById('fc-submit-btn').innerHTML = '<i class="fas fa-save"></i> Update Customer';  document.getElementById('fc-fname').value = c.first_name || '';  document.getElementById('fc-mname').value = c.middle_name || '';  document.getElementById('fc-lname').value = c.last_name || '';  document.getElementById('fc-contact').value = c.contact_number || '';  document.getElementById('fc-address').value = c.address || '';  document.getElementById('fc-type').value = c.customer_type || 'walk-in';  document.getElementById('fc-status').value = c.status || 'active';  document.getElementById('fc-gov-type').value = c.gov_id_type || '';  document.getElementById('fc-company').value = c.company_name || '';  document.getElementById('fc-company-address').value = c.company_address || '';  document.getElementById('fc-contact-person').value = c.company_contact_person || '';  document.getElementById('fc-company-contact').value = c.company_contact_number || '';  document.getElementById('fc-credit-limit').value = c.credit_limit || 0;  document.getElementById('fc-outstanding').value = c.outstanding_balance || 0;  toggleFleetFields();  document.getElementById('modal-customer').classList.add('open');  })  .catch(() => showToast('Network error', 'error'));
+}  document.getElementById('form-customer').addEventListener('submit', function(e) {  e.preventDefault();  const mode = document.getElementById('fc-mode').value;  const action = mode === 'add' ? 'add' : 'update';  const fd = new FormData(this);  fd.append('action', action);  const btn = document.getElementById('fc-submit-btn');  btn.disabled = true;  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';  fetch('manager_customer_operations.php', { method: 'POST', body: fd })  .then(r => r.json())  .then(data => {  btn.disabled = false;  btn.innerHTML = '<i class="fas fa-save"></i> Save Customer';  if (data.success) {  showToast(data.message || 'Customer saved!', 'success');  closeModal('modal-customer');  loadManagerCustomers();  } else {  showToast(data.error || 'Failed to save customer', 'error');  }  })  .catch(() => { btn.disabled = false; showToast('Network error', 'error'); });
+});  // --- VERIFY MODAL -------------------------------------------------
 // Called from table row button via data-attributes (avoids inline string-injection of paths)
-function openVerifyFromBtn(btn) {
-  openVerifyModal(
-    btn.getAttribute('data-cid'),
-    btn.getAttribute('data-name'),
-    btn.getAttribute('data-govid'),
-    btn.getAttribute('data-crdoc')
-  );
-}
-
-function openVerifyModal(id, name, govId, crDoc) {
-  document.getElementById('fv-id').value = id;
-  document.getElementById('fv-status').value = 'verified';
-  document.getElementById('fv-remarks').value = '';
-  document.getElementById('verify-name').textContent = name;
-  const docWrap = document.getElementById('verify-doc-preview');
-  const docLinks = document.getElementById('verify-doc-links');
-  if (govId || crDoc) {
-    docLinks.innerHTML = '';
-    if (govId) docLinks.innerHTML += `<a href="${govId}" target="_blank" class="cust-btn cust-btn-outline" style="font-size:11px;"><i class="fas fa-id-card"></i> Preview Gov ID</a>`;
-    if (crDoc) docLinks.innerHTML += `<a href="${crDoc}" target="_blank" class="cust-btn cust-btn-outline" style="font-size:11px;"><i class="fas fa-file"></i> Preview CR</a>`;
-    docWrap.style.display = 'block';
-  } else {
-    docWrap.style.display = 'none';
-  }
-  document.getElementById('modal-verify').classList.add('open');
-}
-
-function openVerifyFromProfile() {
-  if (!currentProfileData) return;
-  const c = currentProfileData.customer;
-  const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.name || 'Unknown';
-  openVerifyModal(c.id, name, c.gov_id_image, c.cr_document);
-}
-
-document.getElementById('form-verify').addEventListener('submit', function(e) {
-  e.preventDefault();
-  const fd = new FormData(this);
-  fd.append('action', 'verify');
-  const btn = this.querySelector('[type=submit]');
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
-
-  fetch('manager_customer_operations.php', { method: 'POST', body: fd })
-    .then(r => r.json())
-    .then(data => {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-check"></i> Submit Decision';
-      if (data.success) {
-        showToast(data.message, 'success');
-        closeModal('modal-verify');
-        if (currentProfileId) viewProfile(currentProfileId);
-        loadManagerCustomers();
-      } else {
-        showToast(data.error || 'Verification failed', 'error');
-      }
-    })
-    .catch(() => { btn.disabled = false; showToast('Network error', 'error'); });
-});
-
-// --- PROFILE VIEW (Full-page SPA) --------------------------------
+function openVerifyFromBtn(btn) {  openVerifyModal(  btn.getAttribute('data-cid'),  btn.getAttribute('data-name'),  btn.getAttribute('data-govid'),  btn.getAttribute('data-crdoc')  );
+}  function openVerifyModal(id, name, govId, crDoc) {  document.getElementById('fv-id').value = id;  document.getElementById('fv-status').value = 'verified';  document.getElementById('fv-remarks').value = '';  document.getElementById('verify-name').textContent = name;  const docWrap = document.getElementById('verify-doc-preview');  const docLinks = document.getElementById('verify-doc-links');  if (govId || crDoc) {  docLinks.innerHTML = '';  if (govId) docLinks.innerHTML += `<a href="${govId}" target="_blank" class="cust-btn cust-btn-outline" style="font-size:11px;"><i class="fas fa-id-card"></i> Preview Gov ID</a>`;  if (crDoc) docLinks.innerHTML += `<a href="${crDoc}" target="_blank" class="cust-btn cust-btn-outline" style="font-size:11px;"><i class="fas fa-file"></i> Preview CR</a>`;  docWrap.style.display = 'block';  } else {  docWrap.style.display = 'none';  }  document.getElementById('modal-verify').classList.add('open');
+}  function openVerifyFromProfile() {  if (!currentProfileData) return;  const c = currentProfileData.customer;  const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.name || 'Unknown';  openVerifyModal(c.id, name, c.gov_id_image, c.cr_document);
+}  document.getElementById('form-verify').addEventListener('submit', function(e) {  e.preventDefault();  const fd = new FormData(this);  fd.append('action', 'verify');  const btn = this.querySelector('[type=submit]');  btn.disabled = true;  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';  fetch('manager_customer_operations.php', { method: 'POST', body: fd })  .then(r => r.json())  .then(data => {  btn.disabled = false;  btn.innerHTML = '<i class="fas fa-check"></i> Submit Decision';  if (data.success) {  showToast(data.message, 'success');  closeModal('modal-verify');  if (currentProfileId) viewProfile(currentProfileId);  loadManagerCustomers();  } else {  showToast(data.error || 'Verification failed', 'error');  }  })  .catch(() => { btn.disabled = false; showToast('Network error', 'error'); });
+});  // --- PROFILE VIEW (Full-page SPA) --------------------------------
 let txHistoryPage = 1;
 let txHistoryLimit = 10;
-let txDebounceTimer = null;
-
-function viewProfile(id) {
-  currentProfileId = id;
-  // Show loading state on profile, hide list
-  document.getElementById('customer-list-view').style.display = 'none';
-  const pv = document.getElementById('customer-profile-view');
-  pv.style.display = 'block';
-  document.getElementById('prof-name-text').textContent = 'Loading...';
-  document.getElementById('prof-id-text').textContent   = '—';
-  document.getElementById('prof-date-text').textContent  = '—';
-
-  fetch(`manager_customer_operations.php?action=view&id=${id}`)
-    .then(r => r.json())
-    .then(data => {
-      if (!data.success) { showToast(data.error || 'Failed to load profile', 'error'); return; }
-      currentProfileData = data;
-      renderProfile(data);
-      // Load first page of tx history
-      txHistoryPage = 1;
-      loadTxHistory();
-    })
-    .catch(() => showToast('Network error loading profile', 'error'));
-}
-
-function renderProfile(data) {
-  const c   = data.customer;
-  const tx  = data.transactions;
-  const fin = data.financials;
-  const fullName = c.display_name || [c.first_name, c.middle_name, c.last_name].filter(Boolean).join(' ') || c.name || 'Unknown';
-
-  // Header
-  document.getElementById('prof-name-text').textContent = fullName;
-  document.getElementById('prof-id-text').textContent   = c.customer_id || '—';
-  document.getElementById('prof-date-text').textContent  = c.registered_at ? fmtDate(c.registered_at) : '—';
-
-  const typeBadge   = {'walk-in':'badge-walk-in','regular':'badge-regular','fleet':'badge-fleet'}[c.customer_type] || 'badge-walk-in';
-  const statusBadge = c.status === 'active' ? 'badge-active' : 'badge-inactive';
-  const verBadge    = {'verified':'badge-verified','pending':'badge-pending','rejected':'badge-rejected'}[c.verification_status] || 'badge-pending';
-
-  document.getElementById('prof-type-badge').className   = 'badge ' + typeBadge;
-  document.getElementById('prof-type-badge').textContent = c.customer_type || '—';
-  document.getElementById('prof-status-badge').className   = 'badge ' + statusBadge;
-  document.getElementById('prof-status-badge').textContent = c.status || '—';
-
-  // Customer info fields
-  document.getElementById('prof-id-val').textContent         = c.customer_id || '—';
-  document.getElementById('prof-name-val').textContent       = fullName;
-  document.getElementById('prof-contact-val').textContent    = c.contact_number || '—';
-  document.getElementById('prof-address-val').textContent    = c.address || '—';
-  document.getElementById('prof-type-val').innerHTML         = `<span class="badge ${typeBadge}">${esc(c.customer_type||'—')}</span>`;
-  document.getElementById('prof-registered-val').textContent = c.registered_at ? fmtDate(c.registered_at) : '—';
-  document.getElementById('prof-status-val').innerHTML       = `<span class="badge ${statusBadge}">${esc(c.status||'—')}</span>`;
-
-  // Fleet block
-  const fleetBlock = document.getElementById('prof-fleet-block');
-  if (c.customer_type === 'fleet') {
-    fleetBlock.style.display = 'block';
-    document.getElementById('prof-company-val').textContent         = c.company_name || '—';
-    document.getElementById('prof-company-address-val').textContent = c.company_address || '—';
-    document.getElementById('prof-contact-person-val').textContent  = c.company_contact_person || '—';
-    document.getElementById('prof-company-contact-val').textContent = c.company_contact_number || '—';
-  } else {
-    fleetBlock.style.display = 'none';
-  }
-
-  // Verification
-  document.getElementById('prof-gov-type-val').textContent    = c.gov_id_type || '—';
-  document.getElementById('prof-ver-status-val').innerHTML    = `<span class="badge ${verBadge}">${esc(c.verification_status||'pending')}</span>`;
-  document.getElementById('prof-verified-by-val').textContent = c.verified_by_name || '—';
-  document.getElementById('prof-verified-date-val').textContent = c.verified_at ? fmtDate(c.verified_at) : '—';
-  document.getElementById('prof-ver-remarks-val').textContent = c.verification_remarks || '—';
-
-  // Document buttons
-  const docBtns = document.getElementById('prof-doc-buttons');
-  docBtns.innerHTML = '';
-  if (c.gov_id_image) {
-    docBtns.innerHTML += `<button class="cust-btn cust-btn-outline" style="font-size:11px;" onclick="previewDocument('../${esc(c.gov_id_image)}')"><i class="fas fa-id-card"></i> Preview Gov ID</button>
-    <a href="../${esc(c.gov_id_image)}" download class="cust-btn cust-btn-gray" style="font-size:11px;"><i class="fas fa-download"></i> Download Gov ID</a>`;
-  }
-  if (c.cr_document) {
-    docBtns.innerHTML += `<button class="cust-btn cust-btn-outline" style="font-size:11px;" onclick="previewDocument('../${esc(c.cr_document)}')"><i class="fas fa-file-alt"></i> Preview CR</button>
-    <a href="../${esc(c.cr_document)}" download class="cust-btn cust-btn-gray" style="font-size:11px;"><i class="fas fa-download"></i> Download CR</a>`;
-  }
-  if (!c.gov_id_image && !c.cr_document) {
-    docBtns.innerHTML = '<span style="color:#94a3b8;font-size:12px;">No documents uploaded.</span>';
-  }
-
-  // Financial cards
-  document.getElementById('prof-outstanding-val').textContent  = '\u20B1' + fmt(fin.outstanding_balance);
-  document.getElementById('prof-credit-limit-val').textContent = '\u20B1' + fmt(fin.credit_limit);
-
-  const payBadge = {'paid':'badge-paid','partial':'badge-partial','unpaid':'badge-unpaid'}[fin.payment_status] || 'badge-pending';
-  document.getElementById('prof-payments-val').textContent      = '\u20B1' + fmt(fin.total_payments);
-  document.getElementById('prof-remaining-val').textContent     = '\u20B1' + fmt(fin.remaining_balance || 0);
-  document.getElementById('prof-pay-status-val').innerHTML      = `<span class="badge ${payBadge}">${esc(fin.payment_status||'—')}</span>`;
-  document.getElementById('prof-last-pay-date-val').textContent = fin.last_payment_date ? fmtDate(fin.last_payment_date) : '—';
-
-  // Transaction summary
-  document.getElementById('prof-fuel-count-val').textContent       = `${tx.fuel_count} (\u20B1${fmt(tx.fuel_amount)})`;
-  document.getElementById('prof-merch-count-val').textContent      = `${tx.merch_count} (\u20B1${fmt(tx.merch_amount)})`;
-  document.getElementById('prof-jo-count-val').textContent         = `${tx.service_count} (\u20B1${fmt(tx.service_amount)})`;
-  document.getElementById('prof-total-purchased-val').textContent  = '\u20B1' + fmt(tx.total_amount);
-  document.getElementById('prof-last-tx-date-val').textContent     = tx.last_transaction ? fmtDate(tx.last_transaction) : '—';
-}
-
-function closeProfile() {
-  document.getElementById('customer-profile-view').style.display = 'none';
-  document.getElementById('customer-list-view').style.display    = 'block';
-  currentProfileId   = null;
-  currentProfileData = null;
-  // Reset tx history filters
-  ['tx-search','tx-date-from','tx-date-to'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
-  ['tx-module','tx-status','tx-payment'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
-}
-
-function printProfile() {
-  if (!currentProfileId) return;
-  window.open(`manager_customer_export.php?format=pdf&profile_id=${currentProfileId}`, '_blank');
-}
-
-function printCustomer(id) {
-  window.open(`manager_customer_export.php?format=pdf&profile_id=${id}`, '_blank');
-}
-
-function openVerifyFromProfile() {
-  if (!currentProfileData) return;
-  const c = currentProfileData.customer;
-  const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.name || 'Unknown';
-  openVerifyModal(c.id, name, c.gov_id_image, c.cr_document);
-}
-
-// --- DOCUMENT PREVIEW ------------------------------------------
-function previewDocument(filePath) {
-  const body = document.getElementById('doc-preview-body');
-  body.innerHTML = '<i class="fas fa-spinner fa-spin fa-2x" style="color:#002F70;margin-top:50px;display:block;"></i>';
-  document.getElementById('modal-doc-preview').classList.add('open');
-  const ext = filePath.split('.').pop().toLowerCase();
-  setTimeout(() => {
-    if (ext === 'pdf') {
-      body.innerHTML = `<iframe src="${filePath}" style="width:100%;height:580px;border:none;border-radius:6px;"></iframe>`;
-    } else {
-      body.innerHTML = `<img src="${filePath}" style="max-width:100%;max-height:75vh;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.1);" onerror="this.outerHTML='<p style=color:#dc2626>Could not load document.</p>'">`;
-    }
-  }, 250);
-}
-
-// --- TRANSACTION HISTORY PAGINATION ----------------------------
-function loadTxHistory() {
-  if (!currentProfileId) return;
-  const tbody = document.getElementById('tx-history-tbody');
-  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
-
-  const params = new URLSearchParams({
-    action:         'transaction_history',
-    customer_id:    currentProfileId,
-    page:           txHistoryPage,
-    limit:          txHistoryLimit,
-    search:         document.getElementById('tx-search').value,
-    module:         document.getElementById('tx-module').value,
-    txn_status:     document.getElementById('tx-status').value,
-    payment_status: document.getElementById('tx-payment').value,
-    date_from:      document.getElementById('tx-date-from').value,
-    date_to:        document.getElementById('tx-date-to').value
-  });
-
-  fetch('manager_customer_operations.php?' + params.toString())
-    .then(r => r.json())
-    .then(data => {
-      if (!data.success) {
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#dc2626;padding:20px;">${esc(data.error||'Failed to load')}</td></tr>`;
-        return;
-      }
-      renderTxHistoryTable(data.data, data.total);
-    })
-    .catch(() => { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;">Network error</td></tr>'; });
-}
-
-function renderTxHistoryTable(rows, total) {
-  const tbody    = document.getElementById('tx-history-tbody');
-  const info     = document.getElementById('tx-pagination-info');
-  const prevBtn  = document.getElementById('tx-prev-btn');
-  const nextBtn  = document.getElementById('tx-next-btn');
-
-  if (!rows || !rows.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:#94a3b8;"><i class="fas fa-history fa-2x" style="display:block;margin-bottom:8px;"></i>No transactions found.</td></tr>';
-    info.textContent   = 'Showing 0–0 of 0';
-    prevBtn.disabled   = true;
-    nextBtn.disabled   = true;
-    return;
-  }
-
-  const start = (txHistoryPage - 1) * txHistoryLimit + 1;
-  const end   = Math.min(txHistoryPage * txHistoryLimit, total);
-  info.textContent = `Showing ${start}–${end} of ${total}`;
-  prevBtn.disabled = txHistoryPage <= 1;
-  nextBtn.disabled = end >= total;
-
-  const modColors = {'Fuel':'#dcfce7;color:#166534','Merchandise':'#eff6ff;color:#1d4ed8','Job Order':'#faf5ff;color:#7c3aed'};
-  const payColors = {'paid':'badge-paid','partial':'badge-partial','unpaid':'badge-unpaid','pending':'badge-pending'};
-
-  tbody.innerHTML = rows.map(r => {
-    const modStyle  = modColors[r.module] || '#f1f5f9;color:#475569';
-    const payBadge  = payColors[String(r.payment_status).toLowerCase()] || 'badge-pending';
-    const typeParam = r.module === 'Fuel' ? 'fuel' : r.module === 'Merchandise' ? 'merchandise' : 'job_order';
-    const viewUrl   = `receipt.php?id=${encodeURIComponent(r.source_id)}&type=${typeParam}`;
-    return `<tr>
-      <td>${fmtDate(r.txn_date)}</td>
-      <td><strong>${esc(r.reference_no)}</strong></td>
-      <td><span class="badge" style="background:${modStyle};">${esc(r.module)}</span></td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">${esc(r.description)}</td>
-      <td style="font-weight:700;">&#x20B1;${fmt(r.amount)}</td>
-      <td><span class="badge ${payBadge}">${esc(r.payment_status||'—')}</span></td>
-      <td>${esc(r.processed_by||'—')}</td>
-      <td>
-        <div style="display:flex;gap:5px;">
-          <a href="${viewUrl}" target="_blank" class="act-btn act-view" style="padding:5px 9px;font-size:11px;"><i class="fas fa-eye"></i> View</a>
-          <a href="${viewUrl}" target="_blank" class="act-btn act-print" style="padding:5px 9px;font-size:11px;"><i class="fas fa-print"></i> Print</a>
-        </div>
-      </td>
-    </tr>`;
-  }).join('');
-}
-
-function debounceTxHistory() {
-  clearTimeout(txDebounceTimer);
-  txDebounceTimer = setTimeout(() => { txHistoryPage = 1; loadTxHistory(); }, 400);
-}
-
-function changeTxHistoryPage(dir) {
-  txHistoryPage = Math.max(1, txHistoryPage + dir);
-  loadTxHistory();
-}
-
-function changeTxHistoryLimit() {
-  txHistoryLimit = parseInt(document.getElementById('tx-limit-select').value) || 10;
-  txHistoryPage  = 1;
-  loadTxHistory();
-}
-
-function resetTxHistoryFilters() {
-  ['tx-search','tx-date-from','tx-date-to'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
-  ['tx-module','tx-status','tx-payment'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
-  txHistoryPage = 1;
-  loadTxHistory();
-}
-
-// --- INIT ---------------------------------------------------------
-
-document.addEventListener('DOMContentLoaded', loadManagerCustomers);
-</script>
-
-<?php include __DIR__ . '/../partials/footer.php'; ?>
+let txDebounceTimer = null;  function viewProfile(id) {  currentProfileId = id;  // Show loading state on profile, hide list  document.getElementById('customer-list-view').style.display = 'none';  const pv = document.getElementById('customer-profile-view');  pv.style.display = 'block';  document.getElementById('prof-name-text').textContent = 'Loading...';  document.getElementById('prof-id-text').textContent  = '—';  document.getElementById('prof-date-text').textContent  = '—';  fetch(`manager_customer_operations.php?action=view&id=${id}`)  .then(r => r.json())  .then(data => {  if (!data.success) { showToast(data.error || 'Failed to load profile', 'error'); return; }  currentProfileData = data;  renderProfile(data);  // Load first page of tx history  txHistoryPage = 1;  loadTxHistory();  })  .catch(() => showToast('Network error loading profile', 'error'));
+}  function renderProfile(data) {  const c  = data.customer;  const tx  = data.transactions;  const fin = data.financials;  const fullName = c.display_name || [c.first_name, c.middle_name, c.last_name].filter(Boolean).join(' ') || c.name || 'Unknown';  // Header  document.getElementById('prof-name-text').textContent = fullName;  document.getElementById('prof-id-text').textContent  = c.customer_id || '—';  document.getElementById('prof-date-text').textContent  = c.registered_at ? fmtDate(c.registered_at) : '—';  const typeBadge  = {'walk-in':'badge-walk-in','regular':'badge-regular','fleet':'badge-fleet'}[c.customer_type] || 'badge-walk-in';  const statusBadge = c.status === 'active' ? 'badge-active' : 'badge-inactive';  const verBadge  = {'verified':'badge-verified','pending':'badge-pending','rejected':'badge-rejected'}[c.verification_status] || 'badge-pending';  document.getElementById('prof-type-badge').className  = 'badge ' + typeBadge;  document.getElementById('prof-type-badge').textContent = c.customer_type || '—';  document.getElementById('prof-status-badge').className  = 'badge ' + statusBadge;  document.getElementById('prof-status-badge').textContent = c.status || '—';  // Customer info fields  document.getElementById('prof-id-val').textContent  = c.customer_id || '—';  document.getElementById('prof-name-val').textContent  = fullName;  document.getElementById('prof-contact-val').textContent  = c.contact_number || '—';  document.getElementById('prof-address-val').textContent  = c.address || '—';  document.getElementById('prof-type-val').innerHTML  = `<span class="badge ${typeBadge}">${esc(c.customer_type||'—')}</span>`;  document.getElementById('prof-registered-val').textContent = c.registered_at ? fmtDate(c.registered_at) : '—';  document.getElementById('prof-status-val').innerHTML  = `<span class="badge ${statusBadge}">${esc(c.status||'—')}</span>`;  // Fleet block  const fleetBlock = document.getElementById('prof-fleet-block');  if (c.customer_type === 'fleet') {  fleetBlock.style.display = 'block';  document.getElementById('prof-company-val').textContent  = c.company_name || '—';  document.getElementById('prof-company-address-val').textContent = c.company_address || '—';  document.getElementById('prof-contact-person-val').textContent  = c.company_contact_person || '—';  document.getElementById('prof-company-contact-val').textContent = c.company_contact_number || '—';  } else {  fleetBlock.style.display = 'none';  }  // Verification  document.getElementById('prof-gov-type-val').textContent  = c.gov_id_type || '—';  document.getElementById('prof-ver-status-val').innerHTML  = `<span class="badge ${verBadge}">${esc(c.verification_status||'pending')}</span>`;  document.getElementById('prof-verified-by-val').textContent = c.verified_by_name || '—';  document.getElementById('prof-verified-date-val').textContent = c.verified_at ? fmtDate(c.verified_at) : '—';  document.getElementById('prof-ver-remarks-val').textContent = c.verification_remarks || '—';  // Document buttons  const docBtns = document.getElementById('prof-doc-buttons');  docBtns.innerHTML = '';  if (c.gov_id_image) {  docBtns.innerHTML += `<button class="cust-btn cust-btn-outline" style="font-size:11px;" onclick="previewDocument('../${esc(c.gov_id_image)}')"><i class="fas fa-id-card"></i> Preview Gov ID</button>  <a href="../${esc(c.gov_id_image)}" download class="cust-btn cust-btn-gray" style="font-size:11px;"><i class="fas fa-download"></i> Download Gov ID</a>`;  }  if (c.cr_document) {  docBtns.innerHTML += `<button class="cust-btn cust-btn-outline" style="font-size:11px;" onclick="previewDocument('../${esc(c.cr_document)}')"><i class="fas fa-file-alt"></i> Preview CR</button>  <a href="../${esc(c.cr_document)}" download class="cust-btn cust-btn-gray" style="font-size:11px;"><i class="fas fa-download"></i> Download CR</a>`;  }  if (!c.gov_id_image && !c.cr_document) {  docBtns.innerHTML = '<span style="color:#94a3b8;font-size:12px;">No documents uploaded.</span>';  }  // Financial cards  document.getElementById('prof-outstanding-val').textContent  = '\u20B1' + fmt(fin.outstanding_balance);  document.getElementById('prof-credit-limit-val').textContent = '\u20B1' + fmt(fin.credit_limit);  const payBadge = {'paid':'badge-paid','partial':'badge-partial','unpaid':'badge-unpaid'}[fin.payment_status] || 'badge-pending';  document.getElementById('prof-payments-val').textContent  = '\u20B1' + fmt(fin.total_payments);  document.getElementById('prof-remaining-val').textContent  = '\u20B1' + fmt(fin.remaining_balance || 0);  document.getElementById('prof-pay-status-val').innerHTML  = `<span class="badge ${payBadge}">${esc(fin.payment_status||'—')}</span>`;  document.getElementById('prof-last-pay-date-val').textContent = fin.last_payment_date ? fmtDate(fin.last_payment_date) : '—';  // Transaction summary  document.getElementById('prof-fuel-count-val').textContent  = `${tx.fuel_count} (\u20B1${fmt(tx.fuel_amount)})`;  document.getElementById('prof-merch-count-val').textContent  = `${tx.merch_count} (\u20B1${fmt(tx.merch_amount)})`;  document.getElementById('prof-jo-count-val').textContent  = `${tx.service_count} (\u20B1${fmt(tx.service_amount)})`;  document.getElementById('prof-total-purchased-val').textContent  = '\u20B1' + fmt(tx.total_amount);  document.getElementById('prof-last-tx-date-val').textContent  = tx.last_transaction ? fmtDate(tx.last_transaction) : '—';
+}  function closeProfile() {  document.getElementById('customer-profile-view').style.display = 'none';  document.getElementById('customer-list-view').style.display  = 'block';  currentProfileId  = null;  currentProfileData = null;  // Reset tx history filters  ['tx-search','tx-date-from','tx-date-to'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });  ['tx-module','tx-status','tx-payment'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+}  function printProfile() {  if (!currentProfileId) return;  window.open(`manager_customer_export.php?format=pdf&profile_id=${currentProfileId}`, '_blank');
+}  function printCustomer(id) {  window.open(`manager_customer_export.php?format=pdf&profile_id=${id}`, '_blank');
+}  function openVerifyFromProfile() {  if (!currentProfileData) return;  const c = currentProfileData.customer;  const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.name || 'Unknown';  openVerifyModal(c.id, name, c.gov_id_image, c.cr_document);
+}  // --- DOCUMENT PREVIEW ------------------------------------------
+function previewDocument(filePath) {  const body = document.getElementById('doc-preview-body');  body.innerHTML = '<i class="fas fa-spinner fa-spin fa-2x" style="color:#002F70;margin-top:50px;display:block;"></i>';  document.getElementById('modal-doc-preview').classList.add('open');  const ext = filePath.split('.').pop().toLowerCase();  setTimeout(() => {  if (ext === 'pdf') {  body.innerHTML = `<iframe src="${filePath}" style="width:100%;height:580px;border:none;border-radius:6px;"></iframe>`;  } else {  body.innerHTML = `<img src="${filePath}" style="max-width:100%;max-height:75vh;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.1);" onerror="this.outerHTML='<p style=color:#dc2626>Could not load document.</p>'">`;  }  }, 250);
+}  // --- TRANSACTION HISTORY PAGINATION ----------------------------
+function loadTxHistory() {  if (!currentProfileId) return;  const tbody = document.getElementById('tx-history-tbody');  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';  const params = new URLSearchParams({  action:  'transaction_history',  customer_id:  currentProfileId,  page:  txHistoryPage,  limit:  txHistoryLimit,  search:  document.getElementById('tx-search').value,  module:  document.getElementById('tx-module').value,  txn_status:  document.getElementById('tx-status').value,  payment_status: document.getElementById('tx-payment').value,  date_from:  document.getElementById('tx-date-from').value,  date_to:  document.getElementById('tx-date-to').value  });  fetch('manager_customer_operations.php?' + params.toString())  .then(r => r.json())  .then(data => {  if (!data.success) {  tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#dc2626;padding:20px;">${esc(data.error||'Failed to load')}</td></tr>`;  return;  }  renderTxHistoryTable(data.data, data.total);  })  .catch(() => { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;">Network error</td></tr>'; });
+}  function renderTxHistoryTable(rows, total) {  const tbody  = document.getElementById('tx-history-tbody');  const info  = document.getElementById('tx-pagination-info');  const prevBtn  = document.getElementById('tx-prev-btn');  const nextBtn  = document.getElementById('tx-next-btn');  if (!rows || !rows.length) {  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:#94a3b8;"><i class="fas fa-history fa-2x" style="display:block;margin-bottom:8px;"></i>No transactions found.</td></tr>';  info.textContent  = 'Showing 0–0 of 0';  prevBtn.disabled  = true;  nextBtn.disabled  = true;  return;  }  const start = (txHistoryPage - 1) * txHistoryLimit + 1;  const end  = Math.min(txHistoryPage * txHistoryLimit, total);  info.textContent = `Showing ${start}–${end} of ${total}`;  prevBtn.disabled = txHistoryPage <= 1;  nextBtn.disabled = end >= total;  const modColors = {'Fuel':'#dcfce7;color:#166534','Merchandise':'#eff6ff;color:#1d4ed8','Job Order':'#faf5ff;color:#7c3aed'};  const payColors = {'paid':'badge-paid','partial':'badge-partial','unpaid':'badge-unpaid','pending':'badge-pending'};  tbody.innerHTML = rows.map(r => {  const modStyle  = modColors[r.module] || '#f1f5f9;color:#475569';  const payBadge  = payColors[String(r.payment_status).toLowerCase()] || 'badge-pending';  const typeParam = r.module === 'Fuel' ? 'fuel' : r.module === 'Merchandise' ? 'merchandise' : 'job_order';  const viewUrl  = `receipt.php?id=${encodeURIComponent(r.source_id)}&type=${typeParam}`;  return `<tr>  <td>${fmtDate(r.txn_date)}</td>  <td><strong>${esc(r.reference_no)}</strong></td>  <td><span class="badge" style="background:${modStyle};">${esc(r.module)}</span></td>  <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">${esc(r.description)}</td>  <td style="font-weight:700;">&#x20B1;${fmt(r.amount)}</td>  <td><span class="badge ${payBadge}">${esc(r.payment_status||'—')}</span></td>  <td>${esc(r.processed_by||'—')}</td>  <td>  <div style="display:flex;gap:5px;">  <a href="${viewUrl}" target="_blank" class="act-btn act-view" style="padding:5px 9px;font-size:11px;"><i class="fas fa-eye"></i> View</a>  <a href="${viewUrl}" target="_blank" class="act-btn act-print" style="padding:5px 9px;font-size:11px;"><i class="fas fa-print"></i> Print</a>  </div>  </td>  </tr>`;  }).join('');
+}  function debounceTxHistory() {  clearTimeout(txDebounceTimer);  txDebounceTimer = setTimeout(() => { txHistoryPage = 1; loadTxHistory(); }, 400);
+}  function changeTxHistoryPage(dir) {  txHistoryPage = Math.max(1, txHistoryPage + dir);  loadTxHistory();
+}  function changeTxHistoryLimit() {  txHistoryLimit = parseInt(document.getElementById('tx-limit-select').value) || 10;  txHistoryPage  = 1;  loadTxHistory();
+}  function resetTxHistoryFilters() {  ['tx-search','tx-date-from','tx-date-to'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });  ['tx-module','tx-status','tx-payment'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });  txHistoryPage = 1;  loadTxHistory();
+}  // --- INIT ---------------------------------------------------------  document.addEventListener('DOMContentLoaded', loadManagerCustomers);
+</script>  <?php include __DIR__ . '/../partials/footer.php'; ?>

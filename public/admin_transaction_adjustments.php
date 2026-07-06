@@ -2,88 +2,31 @@
 $page_id = 'admin_transaction_adjustments';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
-require_login();
-
-$me         = current_user();
-$role       = role_key($me['role'] ?? '');
-$station_id = (int) user_station_id();
-
-if (!in_array($role, ['admin', 'superadmin'])) {
-    $_SESSION['error'] = 'Access denied.';
-    header('Location: admin_dashboard.php'); exit;
-}
-
-// ── Create table if missing ───────────────────────────────────────────────────
-try { $pdo->exec("CREATE TABLE IF NOT EXISTS transaction_adjustments (
-    id INT AUTO_INCREMENT PRIMARY KEY, transaction_id VARCHAR(50) NOT NULL,
-    transaction_type ENUM('job_order','merchandise','combined') DEFAULT 'merchandise',
-    customer_name VARCHAR(255) DEFAULT NULL, original_amount DECIMAL(10,2) NOT NULL,
-    updated_amount DECIMAL(10,2) NOT NULL, amount_difference DECIMAL(10,2) NOT NULL,
-    adjustment_reason VARCHAR(255) NOT NULL, manager_remarks TEXT,
-    adjusted_by INT NOT NULL, adjustment_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    station_id INT NOT NULL,
-    INDEX idx_adj_date (adjustment_date), INDEX idx_adj_station (station_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"); } catch(Exception $e){}
-
-// ── Filters ───────────────────────────────────────────────────────────────────
+require_login();  $me  = current_user();
+$role  = role_key($me['role'] ?? '');
+$station_id = (int) user_station_id();  if (!in_array($role, ['admin', 'superadmin'])) {  $_SESSION['error'] = 'Access denied.';  header('Location: admin_dashboard.php'); exit;
+}  // ── Create table if missing ───────────────────────────────────────────────────
+try { $pdo->exec("CREATE TABLE IF NOT EXISTS transaction_adjustments (  id INT AUTO_INCREMENT PRIMARY KEY, transaction_id VARCHAR(50) NOT NULL,  transaction_type ENUM('job_order','merchandise','combined') DEFAULT 'merchandise',  customer_name VARCHAR(255) DEFAULT NULL, original_amount DECIMAL(10,2) NOT NULL,  updated_amount DECIMAL(10,2) NOT NULL, amount_difference DECIMAL(10,2) NOT NULL,  adjustment_reason VARCHAR(255) NOT NULL, manager_remarks TEXT,  adjusted_by INT NOT NULL, adjustment_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,  station_id INT NOT NULL,  INDEX idx_adj_date (adjustment_date), INDEX idx_adj_station (station_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"); } catch(Exception $e){}  // ── Filters ───────────────────────────────────────────────────────────────────
 $date_from = trim($_GET['date_from'] ?? date('Y-m-01'));
-$date_to   = trim($_GET['date_to']   ?? date('Y-m-d'));
-$f_manager = trim($_GET['manager']   ?? '');
-$f_type    = trim($_GET['type']      ?? '');
-
-// ── KPIs ──────────────────────────────────────────────────────────────────────
+$date_to  = trim($_GET['date_to']  ?? date('Y-m-d'));
+$f_manager = trim($_GET['manager']  ?? '');
+$f_type  = trim($_GET['type']  ?? '');  // ── KPIs ──────────────────────────────────────────────────────────────────────
 $kpi_total=0; $kpi_month=0; $kpi_managers=0;
-try {
-    $s=$pdo->prepare("SELECT COUNT(*) FROM transaction_adjustments WHERE station_id=?");
-    $s->execute([$station_id]); $kpi_total=(int)$s->fetchColumn();
-    $s2=$pdo->prepare("SELECT COUNT(*) FROM transaction_adjustments WHERE station_id=? AND DATE(adjustment_date) BETWEEN ? AND ?");
-    $s2->execute([$station_id,$date_from,$date_to]); $kpi_month=(int)$s2->fetchColumn();
-    $s3=$pdo->prepare("SELECT COUNT(DISTINCT adjusted_by) FROM transaction_adjustments WHERE station_id=? AND DATE(adjustment_date) BETWEEN ? AND ?");
-    $s3->execute([$station_id,$date_from,$date_to]); $kpi_managers=(int)$s3->fetchColumn();
-} catch(Exception $e){}
-
-// ── Manager list ──────────────────────────────────────────────────────────────
+try {  $s=$pdo->prepare("SELECT COUNT(*) FROM transaction_adjustments WHERE station_id=?");  $s->execute([$station_id]); $kpi_total=(int)$s->fetchColumn();  $s2=$pdo->prepare("SELECT COUNT(*) FROM transaction_adjustments WHERE station_id=? AND DATE(adjustment_date) BETWEEN ? AND ?");  $s2->execute([$station_id,$date_from,$date_to]); $kpi_month=(int)$s2->fetchColumn();  $s3=$pdo->prepare("SELECT COUNT(DISTINCT adjusted_by) FROM transaction_adjustments WHERE station_id=? AND DATE(adjustment_date) BETWEEN ? AND ?");  $s3->execute([$station_id,$date_from,$date_to]); $kpi_managers=(int)$s3->fetchColumn();
+} catch(Exception $e){}  // ── Manager list ──────────────────────────────────────────────────────────────
 $mgr_list=[];
-try {
-    $s=$pdo->prepare("SELECT DISTINCT u.id, COALESCE(NULLIF(TRIM(CONCAT(u.first_name,' ',u.last_name)),' '),u.username,'Unknown') as name
-        FROM users u JOIN transaction_adjustments ta ON ta.adjusted_by=u.id WHERE ta.station_id=? ORDER BY name");
-    $s->execute([$station_id]); $mgr_list=$s->fetchAll(PDO::FETCH_ASSOC);
-} catch(Exception $e){}
-
-// ── Fetch rows ────────────────────────────────────────────────────────────────
+try {  $s=$pdo->prepare("SELECT DISTINCT u.id, COALESCE(NULLIF(TRIM(CONCAT(u.first_name,' ',u.last_name)),' '),u.username,'Unknown') as name  FROM users u JOIN transaction_adjustments ta ON ta.adjusted_by=u.id WHERE ta.station_id=? ORDER BY name");  $s->execute([$station_id]); $mgr_list=$s->fetchAll(PDO::FETCH_ASSOC);
+} catch(Exception $e){}  // ── Fetch rows ────────────────────────────────────────────────────────────────
 $where="WHERE ta.station_id=? AND DATE(ta.adjustment_date) BETWEEN ? AND ?";
 $params=[$station_id,$date_from,$date_to];
 if($f_manager!=='') { $where.=" AND ta.adjusted_by=?"; $params[]=$f_manager; }
-if($f_type!=='') { $where.=" AND ta.transaction_type=?"; $params[]=$f_type; }
-
-$rows=[];
-try {
-    $s=$pdo->prepare("SELECT ta.id as adj_id, ta.transaction_id, COALESCE(ta.customer_name,'Walk-in') as customer,
-        ta.transaction_type, ta.original_amount, ta.updated_amount, ta.amount_difference,
-        ta.adjustment_reason, ta.manager_remarks, ta.adjustment_date, ta.fields_changed,
-        mt.job_order_id, mt.job_order_vehicle_plate, mt.payment_method, mt.workflow_status,
-        COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),' '),u.username,'Unknown') as adjusted_by_name,
-        (SELECT GROUP_CONCAT(product_name SEPARATOR ', ') FROM merchandise_transaction_items WHERE transaction_id = mt.id) AS item_names
-        FROM transaction_adjustments ta 
-        LEFT JOIN merchandise_transactions mt ON mt.transaction_id COLLATE utf8mb4_unicode_ci = ta.transaction_id COLLATE utf8mb4_unicode_ci
-        LEFT JOIN users u ON u.id=ta.adjusted_by
-        $where ORDER BY ta.adjustment_date DESC LIMIT 500");
-    $s->execute($params); $rows=$s->fetchAll(PDO::FETCH_ASSOC);
-} catch(Exception $e){}
-
-// ── Export ────────────────────────────────────────────────────────────────────
+if($f_type!=='') { $where.=" AND ta.transaction_type=?"; $params[]=$f_type; }  $rows=[];
+try {  $s=$pdo->prepare("SELECT ta.id as adj_id, ta.transaction_id, COALESCE(ta.customer_name,'Walk-in') as customer,  ta.transaction_type, ta.original_amount, ta.updated_amount, ta.amount_difference,  ta.adjustment_reason, ta.manager_remarks, ta.adjustment_date, ta.fields_changed,  mt.job_order_id, mt.job_order_vehicle_plate, mt.payment_method, mt.workflow_status,  COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),' '),u.username,'Unknown') as adjusted_by_name,  (SELECT GROUP_CONCAT(product_name SEPARATOR ', ') FROM merchandise_transaction_items WHERE transaction_id = mt.id) AS item_names  FROM transaction_adjustments ta  LEFT JOIN merchandise_transactions mt ON mt.transaction_id COLLATE utf8mb4_unicode_ci = ta.transaction_id COLLATE utf8mb4_unicode_ci  LEFT JOIN users u ON u.id=ta.adjusted_by  $where ORDER BY ta.adjustment_date DESC LIMIT 500");  $s->execute($params); $rows=$s->fetchAll(PDO::FETCH_ASSOC);
+} catch(Exception $e){}  // ── Export ────────────────────────────────────────────────────────────────────
 $export=$_GET['export']??'';
-if(in_array($export,['excel','csv'])) {
-    $fn='transaction_adjustments_'.date('Ymd_His');
-    if($export==='excel'){ header('Content-Type: application/vnd.ms-excel'); header("Content-Disposition: attachment; filename=\"{$fn}.xls\""); }
-    else { header('Content-Type: text/csv; charset=utf-8'); header("Content-Disposition: attachment; filename=\"{$fn}.csv\""); }
-    $out=fopen('php://output','w');
-    fputcsv($out,['Adj ID','Transaction ID','Customer','Type','Original Amount','Updated Amount','Difference','Reason','Adjusted By','Date']);
-    foreach($rows as $r) fputcsv($out,['ADJ-'.$r['adj_id'],$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['transaction_type'])),'₱'.number_format($r['original_amount'],2),'₱'.number_format($r['updated_amount'],2),'₱'.number_format($r['amount_difference'],2),$r['adjustment_reason'],$r['adjusted_by_name'],date('M d, Y H:i',strtotime($r['adjustment_date']))]);
-    fclose($out); exit;
-}
-
-require_once __DIR__ . '/../partials/header.php';
+if(in_array($export,['excel','csv'])) {  $fn='transaction_adjustments_'.date('Ymd_His');  if($export==='excel'){ header('Content-Type: application/vnd.ms-excel'); header("Content-Disposition: attachment; filename=\"{$fn}.xls\""); }  else { header('Content-Type: text/csv; charset=utf-8'); header("Content-Disposition: attachment; filename=\"{$fn}.csv\""); }  $out=fopen('php://output','w');  fputcsv($out,['Adj ID','Transaction ID','Customer','Type','Original Amount','Updated Amount','Difference','Reason','Adjusted By','Date']);  foreach($rows as $r) fputcsv($out,['ADJ-'.$r['adj_id'],$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['transaction_type'])),'₱'.number_format($r['original_amount'],2),'₱'.number_format($r['updated_amount'],2),'₱'.number_format($r['amount_difference'],2),$r['adjustment_reason'],$r['adjusted_by_name'],date('M d, Y H:i',strtotime($r['adjustment_date']))]);  fclose($out); exit;
+}  require_once __DIR__ . '/../partials/header.php';
 ?>
 <style>
 .page-head.txn-page-head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;margin-top:-12px !important;}
@@ -122,232 +65,15 @@ require_once __DIR__ . '/../partials/header.php';
 .t-compact tbody tr { border: none; }
 .t-compact tbody tr:hover td { background: #eff6ff !important; }
 .t-compact td { padding: 7px 4px !important; color: #334155 !important; background: #fff; font-size: 11.5px !important; vertical-align: middle; border: none; border-bottom: 1px solid #f1f5f9; line-height: 1.3; overflow: hidden; }
-</style>
-
-<div class="page-head txn-page-head">
-    <div>
-        <h1><i class="fas fa-sliders-h"></i> Transaction Adjustments Oversight</h1>
-        <div class="sub">Monitor and review all adjustments performed by Managers across the station.</div>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <a href="admin_all_transactions.php" class="flt-btn flt-btn-reset"><i class="fas fa-arrow-left"></i> Back</a>
-        <a href="?<?=http_build_query(array_merge($_GET,['export'=>'excel']))?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
-        <button class="flt-btn flt-btn-pdf" onclick="window.print()"><i class="fas fa-file-pdf"></i> PDF</button>
-    </div>
-</div>
-
-<!-- KPI Cards -->
-<div class="txn-kpi-grid">
-    <div class="txn-kpi-card"><div class="txn-kpi-lbl"><i class="fas fa-edit"></i> Total Adjustments</div><div class="txn-kpi-val"><?=number_format($kpi_total)?></div></div>
-    <div class="txn-kpi-card"><div class="txn-kpi-lbl"><i class="fas fa-calendar-alt"></i> Adjustments This Period</div><div class="txn-kpi-val"><?=number_format($kpi_month)?></div></div>
-    <div class="txn-kpi-card"><div class="txn-kpi-lbl"><i class="fas fa-user-shield"></i> Managers With Adjustments</div><div class="txn-kpi-val"><?=number_format($kpi_managers)?></div></div>
-</div>
-
-<!-- Filters -->
-<form method="get" class="filters">
-    <div><label>From</label><input type="date" name="date_from" value="<?=htmlspecialchars($date_from)?>" class="inp"></div>
-    <div><label>To</label><input type="date" name="date_to" value="<?=htmlspecialchars($date_to)?>" class="inp"></div>
-    <div>
-        <label>Manager</label>
-        <select name="manager" class="inp">
-            <option value="">All Managers</option>
-            <?php foreach($mgr_list as $m): ?>
-            <option value="<?=(int)$m['id']?>" <?=$f_manager==(int)$m['id']?'selected':''?>><?=htmlspecialchars($m['name'])?></option>
-            <?php endforeach; ?>
-        </select>
-    </div>
-    <div>
-        <label>Type</label>
-        <select name="type" class="inp">
-            <option value="">All Types</option>
-            <option value="merchandise" <?=$f_type==='merchandise'?'selected':''?>>Merchandise</option>
-            <option value="job_order"   <?=$f_type==='job_order'?'selected':''?>>Job Order</option>
-            <option value="combined"    <?=$f_type==='combined'?'selected':''?>>Combined</option>
-        </select>
-    </div>
-    <div style="flex-direction:row;gap:6px;">
-        <button type="submit" class="flt-btn flt-btn-solid-primary"><i class="fas fa-search"></i> Filter</button>
-        <a href="admin_transaction_adjustments.php" class="flt-btn flt-btn-reset"><i class="fas fa-rotate-left"></i> Reset</a>
-    </div>
-</form>
-
-<!-- Table -->
-<div class="card">
-    <div class="card-head">
-        <div class="card-title"><i class="fas fa-table" style="margin-right:6px;"></i>Adjustment Records (<?=count($rows)?> records)</div>
-    </div>
-    <div class="card-table-wrap">
-    <table class="t-compact">
-        <thead>
-            <tr>
-                <th style="width: 3.5%;">Adj ID</th>
-                <th style="width: 7%;">Trans ID</th>
-                <th style="width: 3.5%;">JO No.</th>
-                <th style="width: 7.5%;">Customer</th>
-                <th style="width: 4.5%;">Plate</th>
-                <th style="width: 4.5%;">Type</th>
-                <th style="width: 10%;">Items/Service</th>
-                <th style="width: 3.5%; text-align:center;">Orig Qty</th>
-                <th style="width: 3.5%; text-align:center;">Upd Qty</th>
-                <th style="width: 5.5%;">Orig Amt</th>
-                <th style="width: 5.5%;">Upd Amt</th>
-                <th style="width: 5.5%;">Diff</th>
-                <th style="width: 4.5%;">Payment</th>
-                <th style="width: 5.5%;">Adj Type</th>
-                <th style="width: 9.5%;">Reason</th>
-                <th style="width: 5.5%;">By</th>
-                <th style="width: 4.5%; text-align:center;">Status</th>
-                <th style="width: 6.5%;">Date/Time</th>
-                <th style="width: 5.5%; text-align:center;">Action</th>
-            </tr>
-        </thead>
-        <tbody>
-        <?php if(empty($rows)): ?>
-        <tr><td colspan="19" style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>No adjustment records found</td></tr>
-        <?php else: ?>
-        <?php foreach($rows as $r): ?>
-        <?php 
-        $diff = (float)$r['amount_difference'];
-        $fc = json_decode($r['fields_changed'], true) ?: [];
-        
-        // Job Order Number
-        $jo_display = !empty($r['job_order_id']) ? 'JO-' . $r['job_order_id'] : '—';
-        
-        // Customer Name
-        $customer_display = htmlspecialchars($r['customer']);
-        
-        // Vehicle Plate
-        $plate_display = !empty($r['job_order_vehicle_plate']) ? htmlspecialchars($r['job_order_vehicle_plate']) : '—';
-        
-        // Transaction Type
-        $txn_type_display = htmlspecialchars(ucwords(str_replace('_', ' ', $r['transaction_type'])));
-        
-        // Items / Service
-        $items_list = [];
-        if (isset($fc['adjusted_items']) && is_array($fc['adjusted_items'])) {
-            foreach ($fc['adjusted_items'] as $it) {
-                if (!empty($it['product_name'])) {
-                    $items_list[] = $it['product_name'];
-                }
-            }
-        }
-        if (empty($items_list) && !empty($r['item_names'])) {
-            $items_list[] = $r['item_names'];
-        }
-        $items_display = !empty($items_list) ? htmlspecialchars(implode(', ', $items_list)) : '—';
-        
-        // Quantities
-        $old_qty = '—';
-        $new_qty = '—';
-        if (isset($fc['adjusted_items']) && is_array($fc['adjusted_items']) && !empty($fc['adjusted_items'])) {
-            $old_qty = $fc['adjusted_items'][0]['old_qty'] ?? '—';
-            $new_qty = $fc['adjusted_items'][0]['new_qty'] ?? '—';
-        } else {
-            if (isset($fc['quantity'])) {
-                $new_qty = $fc['quantity'];
-            }
-            if (isset($fc['old_qty'])) {
-                $old_qty = $fc['old_qty'];
-            }
-        }
-        
-        // Payment Method
-        $payment_display = !empty($r['payment_method']) ? htmlspecialchars($r['payment_method']) : '—';
-        
-        // Adjustment Type
-        $adj_type = 'Price Adj';
-        if ($old_qty !== '—' && $new_qty !== '—' && $old_qty != $new_qty) {
-            $adj_type = 'Quantity Adj';
-        }
-        
-        // Status Badge Style
-        $status_text = !empty($r['workflow_status']) ? htmlspecialchars($r['workflow_status']) : 'Completed';
-        $badge_class = 'badge-neutral';
-        if (strtolower($status_text) === 'completed') {
-            $badge_class = 'badge-up';
-        } elseif (strtolower($status_text) === 'adjusted') {
-            $badge_class = 'badge-up';
-        } elseif (strtolower($status_text) === 'voided') {
-            $badge_class = 'badge-dn';
-        }
-        ?>
-        <tr>
-            <td style="white-space:nowrap; font-size:11px;"><strong>ADJ-<?=(int)$r['adj_id']?></strong></td>
-            <td style="white-space:nowrap; line-height:1.2;">
-                <?php if (str_starts_with($r['transaction_id'], 'MERCH')): ?>
-                    <span style="font-weight:700; color:#002F70; font-size:11px;">MERCH</span><br><span style="font-size:10px; color:#64748b; font-family:monospace;"><?=substr($r['transaction_id'], 5)?></span>
-                <?php elseif (str_starts_with($r['transaction_id'], 'JO')): ?>
-                    <span style="font-weight:700; color:#d97706; font-size:11px;">JO</span><br><span style="font-size:10px; color:#64748b; font-family:monospace;"><?=substr($r['transaction_id'], 2)?></span>
-                <?php else: ?>
-                    <span style="font-size:10.5px; font-family:monospace; color:#334155;"><?=htmlspecialchars($r['transaction_id'])?></span>
-                <?php endif; ?>
-            </td>
-            <td style="white-space:nowrap; font-size:11px;"><?=$jo_display?></td>
-            <td style="font-size:11.5px; line-height:1.2;"><?=$customer_display?></td>
-            <td style="white-space:nowrap; font-size:11px;"><?=$plate_display?></td>
-            <td style="white-space:nowrap;">
-                <?php if(str_contains(strtolower($r['transaction_type']),'job')): ?>
-                    <span class="badge" style="background:#fef3c7;color:#b45309;font-size:9.5px;padding:2px 6px;">Job Order</span>
-                <?php elseif(str_contains(strtolower($r['transaction_type']),'combined')): ?>
-                    <span class="badge" style="background:#ede9fe;color:#6d28d9;font-size:9.5px;padding:2px 6px;">Combined</span>
-                <?php else: ?>
-                    <span class="badge" style="background:#dbeafe;color:#1e40af;font-size:9.5px;padding:2px 6px;">Merch</span>
-                <?php endif; ?>
-            </td>
-            <td style="font-size:11.5px; line-height:1.2;"><?=$items_display?></td>
-            <td style="text-align:center; font-size:11px;"><?=$old_qty?></td>
-            <td style="text-align:center; font-size:11px;"><?=$new_qty?></td>
-            <td style="white-space:nowrap; font-size:11.5px;">₱<?=number_format($r['original_amount'],2)?></td>
-            <td style="white-space:nowrap; font-weight:700; font-size:11.5px;">₱<?=number_format($r['updated_amount'],2)?></td>
-            <td style="white-space:nowrap; font-weight:700; font-size:11.5px; color:<?=$diff>=0?'#16a34a':'#dc2626'?>;">
-                <?=($diff>=0?'+':'').'₱'.number_format($diff,2)?>
-            </td>
-            <td style="white-space:nowrap; font-size:11px;"><?=$payment_display?></td>
-            <td style="white-space:nowrap; font-size:11px;"><?=$adj_type?></td>
-            <td style="font-size:11.5px; line-height:1.2;"><?=htmlspecialchars($r['adjustment_reason'])?><?php if($r['manager_remarks']): ?><br><small style="color:#64748b; font-size:10px;"><?=htmlspecialchars($r['manager_remarks'])?></small><?php endif; ?></td>
-            <td style="font-size:11px; line-height:1.2;"><?=htmlspecialchars($r['adjusted_by_name'])?></td>
-            <td style="text-align:center; white-space:nowrap;"><span class="badge <?=$badge_class?>" style="font-size:9.5px;padding:2px 6px;"><?=$status_text?></span></td>
-            <td style="white-space:nowrap; font-size:10.5px; line-height:1.2;"><?=date('M d, Y',strtotime($r['adjustment_date']))?><br><span style="color:#64748b; font-size:10px;"><?=date('h:i A',strtotime($r['adjustment_date']))?></span></td>
-            <td style="text-align:center; white-space:nowrap;">
-                <button class="flt-btn flt-btn-search" style="height:22px;font-size:9px;padding:0 6px;margin:0;"
-                    onclick="openAdjModal({
-                        adjId:    'ADJ-<?=(int)$r['adj_id']?>',
-                        txnId:    '<?=addslashes(htmlspecialchars($r['transaction_id']))?>' ,
-                        customer: '<?=addslashes(htmlspecialchars($r['customer']))?>' ,
-                        type:     '<?=addslashes(htmlspecialchars(ucwords(str_replace('_',' ',$r['transaction_type']))))?>' ,
-                        original: '₱<?=number_format($r['original_amount'],2)?>' ,
-                        updated:  '₱<?=number_format($r['updated_amount'],2)?>' ,
-                        diff:     '₱<?=number_format($r['amount_difference'],2)?>' ,
-                        reason:   '<?=addslashes(htmlspecialchars($r['adjustment_reason']))?>' ,
-                        remarks:  '<?=addslashes(htmlspecialchars($r['manager_remarks']??''))?>' ,
-                        by:       '<?=addslashes(htmlspecialchars($r['adjusted_by_name']))?>' ,
-                        date:     '<?=date('M d, Y h:i A',strtotime($r['adjustment_date']))?>'
-                    })"><i class="fas fa-eye"></i> View</button>
-            </td>
-        </tr>
-        <?php endforeach; ?>
-        <?php endif; ?>
-        </tbody>
-    </table>
-    </div>
-</div>
-
-<!-- Adjustment Detail Modal -->
-<div id="adjModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:16px;width:92%;max-width:580px;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden;animation:adjModalIn .2s ease;">
-    <div style="background:linear-gradient(135deg,#ea580c,#dc2626);padding:18px 22px;display:flex;align-items:center;justify-content:space-between;">
-      <span style="color:#fff;font-size:15px;font-weight:700;"><i class="fas fa-sliders-h" style="margin-right:8px;"></i>Adjustment Details</span>
-      <button onclick="closeAdjModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">&times;</button>
-    </div>
-    <div style="padding:22px 24px;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <tbody id="adjModalBody"></tbody>
-      </table>
-    </div>
-    <div style="padding:12px 24px 18px;text-align:right;border-top:1px solid #f1f5f9;">
-      <button onclick="closeAdjModal()" class="flt-btn flt-btn-reset" style="height:34px;"><i class="fas fa-times"></i> Close</button>
-    </div>
-  </div>
+</style>  <div class="page-head txn-page-head">  <div>  <h1><i class="fas fa-sliders-h"></i> Transaction Adjustments Oversight</h1>  <div class="sub">Monitor and review all adjustments performed by Managers across the station.</div>  </div>  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">  <a href="admin_all_transactions.php" class="flt-btn flt-btn-reset"><i class="fas fa-arrow-left"></i> Back</a>  <a href="?<?=http_build_query(array_merge($_GET,['export'=>'excel']))?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>  <button class="flt-btn flt-btn-pdf" onclick="window.print()"><i class="fas fa-file-pdf"></i> PDF</button>  </div>
+</div>  <!-- KPI Cards -->
+<div class="txn-kpi-grid">  <div class="txn-kpi-card"><div class="txn-kpi-lbl"><i class="fas fa-edit"></i> Total Adjustments</div><div class="txn-kpi-val"><?=number_format($kpi_total)?></div></div>  <div class="txn-kpi-card"><div class="txn-kpi-lbl"><i class="fas fa-calendar-alt"></i> Adjustments This Period</div><div class="txn-kpi-val"><?=number_format($kpi_month)?></div></div>  <div class="txn-kpi-card"><div class="txn-kpi-lbl"><i class="fas fa-user-shield"></i> Managers With Adjustments</div><div class="txn-kpi-val"><?=number_format($kpi_managers)?></div></div>
+</div>  <!-- Filters -->
+<form method="get" class="filters">  <div><label>From</label><input type="date" name="date_from" value="<?=htmlspecialchars($date_from)?>" class="inp"></div>  <div><label>To</label><input type="date" name="date_to" value="<?=htmlspecialchars($date_to)?>" class="inp"></div>  <div>  <label>Manager</label>  <select name="manager" class="inp">  <option value="">All Managers</option>  <?php foreach($mgr_list as $m): ?>  <option value="<?=(int)$m['id']?>" <?=$f_manager==(int)$m['id']?'selected':''?>><?=htmlspecialchars($m['name'])?></option>  <?php endforeach; ?>  </select>  </div>  <div>  <label>Type</label>  <select name="type" class="inp">  <option value="">All Types</option>  <option value="merchandise" <?=$f_type==='merchandise'?'selected':''?>>Merchandise</option>  <option value="job_order"  <?=$f_type==='job_order'?'selected':''?>>Job Order</option>  <option value="combined"  <?=$f_type==='combined'?'selected':''?>>Combined</option>  </select>  </div>  <div style="flex-direction:row;gap:6px;">  <button type="submit" class="flt-btn flt-btn-solid-primary"><i class="fas fa-search"></i> Filter</button>  <a href="admin_transaction_adjustments.php" class="flt-btn flt-btn-reset"><i class="fas fa-rotate-left"></i> Reset</a>  </div>
+</form>  <!-- Table -->
+<div class="card">  <div class="card-head">  <div class="card-title"><i class="fas fa-table" style="margin-right:6px;"></i>Adjustment Records (<?=count($rows)?> records)</div>  </div>  <div class="card-table-wrap">  <table class="t-compact">  <thead>  <tr>  <th style="width: 3.5%;">Adj ID</th>  <th style="width: 7%;">Trans ID</th>  <th style="width: 3.5%;">JO No.</th>  <th style="width: 7.5%;">Customer</th>  <th style="width: 4.5%;">Plate</th>  <th style="width: 4.5%;">Type</th>  <th style="width: 10%;">Items/Service</th>  <th style="width: 3.5%; text-align:center;">Orig Qty</th>  <th style="width: 3.5%; text-align:center;">Upd Qty</th>  <th style="width: 5.5%;">Orig Amt</th>  <th style="width: 5.5%;">Upd Amt</th>  <th style="width: 5.5%;">Diff</th>  <th style="width: 4.5%;">Payment</th>  <th style="width: 5.5%;">Adj Type</th>  <th style="width: 9.5%;">Reason</th>  <th style="width: 5.5%;">By</th>  <th style="width: 4.5%; text-align:center;">Status</th>  <th style="width: 6.5%;">Date/Time</th>  <th style="width: 5.5%; text-align:center;">Action</th>  </tr>  </thead>  <tbody>  <?php if(empty($rows)): ?>  <tr><td colspan="19" style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>No adjustment records found</td></tr>  <?php else: ?>  <?php foreach($rows as $r): ?>  <?php  $diff = (float)$r['amount_difference'];  $fc = json_decode($r['fields_changed'], true) ?: [];  // Job Order Number  $jo_display = !empty($r['job_order_id']) ? 'JO-' . $r['job_order_id'] : '—';  // Customer Name  $customer_display = htmlspecialchars($r['customer']);  // Vehicle Plate  $plate_display = !empty($r['job_order_vehicle_plate']) ? htmlspecialchars($r['job_order_vehicle_plate']) : '—';  // Transaction Type  $txn_type_display = htmlspecialchars(ucwords(str_replace('_', ' ', $r['transaction_type'])));  // Items / Service  $items_list = [];  if (isset($fc['adjusted_items']) && is_array($fc['adjusted_items'])) {  foreach ($fc['adjusted_items'] as $it) {  if (!empty($it['product_name'])) {  $items_list[] = $it['product_name'];  }  }  }  if (empty($items_list) && !empty($r['item_names'])) {  $items_list[] = $r['item_names'];  }  $items_display = !empty($items_list) ? htmlspecialchars(implode(', ', $items_list)) : '—';  // Quantities  $old_qty = '—';  $new_qty = '—';  if (isset($fc['adjusted_items']) && is_array($fc['adjusted_items']) && !empty($fc['adjusted_items'])) {  $old_qty = $fc['adjusted_items'][0]['old_qty'] ?? '—';  $new_qty = $fc['adjusted_items'][0]['new_qty'] ?? '—';  } else {  if (isset($fc['quantity'])) {  $new_qty = $fc['quantity'];  }  if (isset($fc['old_qty'])) {  $old_qty = $fc['old_qty'];  }  }  // Payment Method  $payment_display = !empty($r['payment_method']) ? htmlspecialchars($r['payment_method']) : '—';  // Adjustment Type  $adj_type = 'Price Adj';  if ($old_qty !== '—' && $new_qty !== '—' && $old_qty != $new_qty) {  $adj_type = 'Quantity Adj';  }  // Status Badge Style  $status_text = !empty($r['workflow_status']) ? htmlspecialchars($r['workflow_status']) : 'Completed';  $badge_class = 'badge-neutral';  if (strtolower($status_text) === 'completed') {  $badge_class = 'badge-up';  } elseif (strtolower($status_text) === 'adjusted') {  $badge_class = 'badge-up';  } elseif (strtolower($status_text) === 'voided') {  $badge_class = 'badge-dn';  }  ?>  <tr>  <td style="white-space:nowrap; font-size:11px;"><strong>ADJ-<?=(int)$r['adj_id']?></strong></td>  <td style="white-space:nowrap; line-height:1.2;">  <?php if (str_starts_with($r['transaction_id'], 'MERCH')): ?>  <span style="font-weight:700; color:#002F70; font-size:11px;">MERCH</span><br><span style="font-size:10px; color:#64748b; font-family:monospace;"><?=substr($r['transaction_id'], 5)?></span>  <?php elseif (str_starts_with($r['transaction_id'], 'JO')): ?>  <span style="font-weight:700; color:#d97706; font-size:11px;">JO</span><br><span style="font-size:10px; color:#64748b; font-family:monospace;"><?=substr($r['transaction_id'], 2)?></span>  <?php else: ?>  <span style="font-size:10.5px; font-family:monospace; color:#334155;"><?=htmlspecialchars($r['transaction_id'])?></span>  <?php endif; ?>  </td>  <td style="white-space:nowrap; font-size:11px;"><?=$jo_display?></td>  <td style="font-size:11.5px; line-height:1.2;"><?=$customer_display?></td>  <td style="white-space:nowrap; font-size:11px;"><?=$plate_display?></td>  <td style="white-space:nowrap;">  <?php if(str_contains(strtolower($r['transaction_type']),'job')): ?>  <span class="badge" style="background:#fef3c7;color:#b45309;font-size:9.5px;padding:2px 6px;">Job Order</span>  <?php elseif(str_contains(strtolower($r['transaction_type']),'combined')): ?>  <span class="badge" style="background:#ede9fe;color:#6d28d9;font-size:9.5px;padding:2px 6px;">Combined</span>  <?php else: ?>  <span class="badge" style="background:#dbeafe;color:#1e40af;font-size:9.5px;padding:2px 6px;">Merch</span>  <?php endif; ?>  </td>  <td style="font-size:11.5px; line-height:1.2;"><?=$items_display?></td>  <td style="text-align:center; font-size:11px;"><?=$old_qty?></td>  <td style="text-align:center; font-size:11px;"><?=$new_qty?></td>  <td style="white-space:nowrap; font-size:11.5px;">₱<?=number_format($r['original_amount'],2)?></td>  <td style="white-space:nowrap; font-weight:700; font-size:11.5px;">₱<?=number_format($r['updated_amount'],2)?></td>  <td style="white-space:nowrap; font-weight:700; font-size:11.5px; color:<?=$diff>=0?'#16a34a':'#dc2626'?>;">  <?=($diff>=0?'+':'').'₱'.number_format($diff,2)?>  </td>  <td style="white-space:nowrap; font-size:11px;"><?=$payment_display?></td>  <td style="white-space:nowrap; font-size:11px;"><?=$adj_type?></td>  <td style="font-size:11.5px; line-height:1.2;"><?=htmlspecialchars($r['adjustment_reason'])?><?php if($r['manager_remarks']): ?><br><small style="color:#64748b; font-size:10px;"><?=htmlspecialchars($r['manager_remarks'])?></small><?php endif; ?></td>  <td style="font-size:11px; line-height:1.2;"><?=htmlspecialchars($r['adjusted_by_name'])?></td>  <td style="text-align:center; white-space:nowrap;"><span class="badge <?=$badge_class?>" style="font-size:9.5px;padding:2px 6px;"><?=$status_text?></span></td>  <td style="white-space:nowrap; font-size:10.5px; line-height:1.2;"><?=date('M d, Y',strtotime($r['adjustment_date']))?><br><span style="color:#64748b; font-size:10px;"><?=date('h:i A',strtotime($r['adjustment_date']))?></span></td>  <td style="text-align:center; white-space:nowrap;">  <button class="flt-btn flt-btn-search" style="height:22px;font-size:9px;padding:0 6px;margin:0;"  onclick="openAdjModal({  adjId:  'ADJ-<?=(int)$r['adj_id']?>',  txnId:  '<?=addslashes(htmlspecialchars($r['transaction_id']))?>' ,  customer: '<?=addslashes(htmlspecialchars($r['customer']))?>' ,  type:  '<?=addslashes(htmlspecialchars(ucwords(str_replace('_',' ',$r['transaction_type']))))?>' ,  original: '₱<?=number_format($r['original_amount'],2)?>' ,  updated:  '₱<?=number_format($r['updated_amount'],2)?>' ,  diff:  '₱<?=number_format($r['amount_difference'],2)?>' ,  reason:  '<?=addslashes(htmlspecialchars($r['adjustment_reason']))?>' ,  remarks:  '<?=addslashes(htmlspecialchars($r['manager_remarks']??''))?>' ,  by:  '<?=addslashes(htmlspecialchars($r['adjusted_by_name']))?>' ,  date:  '<?=date('M d, Y h:i A',strtotime($r['adjustment_date']))?>'  })"><i class="fas fa-eye"></i> View</button>  </td>  </tr>  <?php endforeach; ?>  <?php endif; ?>  </tbody>  </table>  </div>
+</div>  <!-- Adjustment Detail Modal -->
+<div id="adjModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;">  <div style="background:#fff;border-radius:16px;width:92%;max-width:580px;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden;animation:adjModalIn .2s ease;">  <div style="background:linear-gradient(135deg,#ea580c,#dc2626);padding:18px 22px;display:flex;align-items:center;justify-content:space-between;">  <span style="color:#fff;font-size:15px;font-weight:700;"><i class="fas fa-sliders-h" style="margin-right:8px;"></i>Adjustment Details</span>  <button onclick="closeAdjModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">&times;</button>  </div>  <div style="padding:22px 24px;">  <table style="width:100%;border-collapse:collapse;font-size:13px;">  <tbody id="adjModalBody"></tbody>  </table>  </div>  <div style="padding:12px 24px 18px;text-align:right;border-top:1px solid #f1f5f9;">  <button onclick="closeAdjModal()" class="flt-btn flt-btn-reset" style="height:34px;"><i class="fas fa-times"></i> Close</button>  </div>  </div>
 </div>
 <style>
 @keyframes adjModalIn{from{opacity:0;transform:translateY(-16px)}to{opacity:1;transform:none}}
@@ -357,32 +83,11 @@ require_once __DIR__ . '/../partials/header.php';
 #adjModalBody td:last-child{color:#1e293b;font-weight:500;}
 </style>
 <script>
-function openAdjModal(d){
-  var diff = parseFloat((d.diff||'').replace(/[^₱0-9.\-]/g,'').replace('₱','')) || 0;
-  var diffColor = diff >= 0 ? '#16a34a' : '#dc2626';
-  var rows=[
-    ['Adjustment ID',    '<strong>'+d.adjId+'</strong>'],
-    ['Transaction ID',   d.txnId],
-    ['Customer',         d.customer],
-    ['Type',             d.type],
-    ['Original Amount',  d.original],
-    ['Updated Amount',   '<strong style="color:#002F70;font-size:15px;">'+d.updated+'</strong>'],
-    ['Difference',       '<strong style="color:'+diffColor+';font-size:14px;">'+d.diff+'</strong>'],
-    ['Reason',           d.reason],
-    ['Manager Remarks',  d.remarks || '—'],
-    ['Adjusted By',      d.by],
-    ['Adjustment Date',  d.date]
-  ];
-  var html='';
-  rows.forEach(function(r){ html+='<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>'; });
-  document.getElementById('adjModalBody').innerHTML=html;
-  document.getElementById('adjModal').style.display='flex';
+function openAdjModal(d){  var diff = parseFloat((d.diff||'').replace(/[^₱0-9.\-]/g,'').replace('₱','')) || 0;  var diffColor = diff >= 0 ? '#16a34a' : '#dc2626';  var rows=[  ['Adjustment ID',  '<strong>'+d.adjId+'</strong>'],  ['Transaction ID',  d.txnId],  ['Customer',  d.customer],  ['Type',  d.type],  ['Original Amount',  d.original],  ['Updated Amount',  '<strong style="color:#002F70;font-size:15px;">'+d.updated+'</strong>'],  ['Difference',  '<strong style="color:'+diffColor+';font-size:14px;">'+d.diff+'</strong>'],  ['Reason',  d.reason],  ['Manager Remarks',  d.remarks || '—'],  ['Adjusted By',  d.by],  ['Adjustment Date',  d.date]  ];  var html='';  rows.forEach(function(r){ html+='<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>'; });  document.getElementById('adjModalBody').innerHTML=html;  document.getElementById('adjModal').style.display='flex';
 }
-function closeAdjModal(){
-  document.getElementById('adjModal').style.display='none';
+function closeAdjModal(){  document.getElementById('adjModal').style.display='none';
 }
-document.getElementById('adjModal').addEventListener('click',function(e){
-  if(e.target===this) closeAdjModal();
+document.getElementById('adjModal').addEventListener('click',function(e){  if(e.target===this) closeAdjModal();
 });
 </script>
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>
