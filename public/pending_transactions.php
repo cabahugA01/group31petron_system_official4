@@ -12,10 +12,7 @@ require_login();
 $me = current_user();
 $role = role_key($me['role'] ?? '');
 
-if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
-    $_SESSION['error'] = 'Access denied. Manager role required.';
-    header('Location: staff_dashboard.php');
-    exit;
+if (!in_array($role, ['manager', 'admin', 'superadmin'])) {  $_SESSION['error'] = 'Access denied. Manager role required.';  header('Location: staff_dashboard.php');  exit;
 }
 
 $_SESSION['success'] = 'Transactions are official when saved. Use Adjust, Void, or Correct in Transaction Monitoring.';

@@ -1,95 +1,9 @@
 <?php
-/**
- * GET /backend/api/get_service_parts.php?service_key=oil_change&station_id=X
- *
- * Returns the required/suggested parts for a given service type,
- * enriched with live stock and price from station_inventory.
- *
- * Response:
- * {
- *   success: true,
- *   service_key: "oil_change",
- *   parts: [
- *     { product_id, product_name, category, size, default_quantity,
- *       is_required, unit_price, stock_level, in_stock }
- *   ]
- * }
- */
+/**  * GET /backend/api/get_service_parts.php?service_key=oil_change&station_id=X  *  * Returns the required/suggested parts for a given service type,  * enriched with live stock and price from station_inventory.  *  * Response:  * {  *  success: true,  *  service_key: "oil_change",  *  parts: [  *  { product_id, product_name, category, size, default_quantity,  *  is_required, unit_price, stock_level, in_stock }  *  ]  * }  */
 require_once __DIR__ . '/../lib.php';
 require_once __DIR__ . '/../../public/db_connect.php';
-require_login();
-
-header('Content-Type: application/json');
-
-$me         = current_user();
+require_login();  header('Content-Type: application/json');  $me  = current_user();
 $station_id = user_station_id();
-$service_key = trim($_GET['service_key'] ?? '');
-
-if (!$service_key) {
-    echo json_encode(['success' => false, 'error' => 'service_key is required']);
-    exit;
-}
-
-try {
-    // ── Ensure service_parts_mapping table exists ─────────────────────────────
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS service_parts_mapping (
-            id               INT AUTO_INCREMENT PRIMARY KEY,
-            service_key      VARCHAR(50)  NOT NULL,
-            product_name     VARCHAR(255) NOT NULL,
-            category         VARCHAR(100) NOT NULL DEFAULT 'General',
-            default_quantity INT          NOT NULL DEFAULT 1,
-            is_required      TINYINT(1)   NOT NULL DEFAULT 0,
-            sort_order       INT          NOT NULL DEFAULT 0,
-            created_at       TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_service_key (service_key)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    ");
-
-    // ── Fetch parts with live station stock + price ───────────────────────────
-    $stmt = $pdo->prepare("
-        SELECT
-            spm.product_name,
-            spm.category,
-            spm.default_quantity,
-            spm.is_required,
-            spm.sort_order,
-            ip.id          AS product_id,
-            ip.size,
-            COALESCE(ip.unit_price, ip.unit_cost, 0)  AS unit_price,
-            COALESCE(si.stock_level, 0)               AS stock_level
-        FROM service_parts_mapping spm
-        LEFT JOIN inventory_products ip
-               ON LOWER(TRIM(ip.product_name)) = LOWER(TRIM(spm.product_name))
-              AND COALESCE(ip.category,'') <> 'Fuel'
-        LEFT JOIN station_inventory si
-               ON si.product_id = ip.id
-              AND si.station_id = ?
-        WHERE spm.service_key = ?
-        ORDER BY spm.is_required DESC, spm.sort_order ASC, spm.product_name ASC
-    ");
-    $stmt->execute([$station_id, $service_key]);
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    $parts = array_map(fn($r) => [
-        'product_id'       => $r['product_id'] ? (int)$r['product_id'] : null,
-        'product_name'     => $r['product_name'],
-        'category'         => $r['category'],
-        'size'             => $r['size'] ?? '',
-        'default_quantity' => (int)$r['default_quantity'],
-        'is_required'      => (bool)$r['is_required'],
-        'unit_price'       => (float)$r['unit_price'],
-        'stock_level'      => (int)$r['stock_level'],
-        'in_stock'         => (int)$r['stock_level'] > 0,
-    ], $rows);
-
-    echo json_encode([
-        'success'     => true,
-        'service_key' => $service_key,
-        'parts'       => $parts,
-    ]);
-
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+$service_key = trim($_GET['service_key'] ?? '');  if (!$service_key) {  echo json_encode(['success' => false, 'error' => 'service_key is required']);  exit;
+}  try {  // ── Ensure service_parts_mapping table exists ─────────────────────────────  $pdo->exec("  CREATE TABLE IF NOT EXISTS service_parts_mapping (  id  INT AUTO_INCREMENT PRIMARY KEY,  service_key  VARCHAR(50)  NOT NULL,  product_name  VARCHAR(255) NOT NULL,  category  VARCHAR(100) NOT NULL DEFAULT 'General',  default_quantity INT  NOT NULL DEFAULT 1,  is_required  TINYINT(1)  NOT NULL DEFAULT 0,  sort_order  INT  NOT NULL DEFAULT 0,  created_at  TIMESTAMP  DEFAULT CURRENT_TIMESTAMP,  INDEX idx_service_key (service_key)  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4  ");  // ── Fetch parts with live station stock + price ───────────────────────────  $stmt = $pdo->prepare("  SELECT  spm.product_name,  spm.category,  spm.default_quantity,  spm.is_required,  spm.sort_order,  ip.id  AS product_id,  ip.size,  COALESCE(ip.unit_price, ip.unit_cost, 0)  AS unit_price,  COALESCE(si.stock_level, 0)  AS stock_level  FROM service_parts_mapping spm  LEFT JOIN inventory_products ip  ON LOWER(TRIM(ip.product_name)) = LOWER(TRIM(spm.product_name))  AND COALESCE(ip.category,'') <> 'Fuel'  LEFT JOIN station_inventory si  ON si.product_id = ip.id  AND si.station_id = ?  WHERE spm.service_key = ?  ORDER BY spm.is_required DESC, spm.sort_order ASC, spm.product_name ASC  ");  $stmt->execute([$station_id, $service_key]);  $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);  $parts = array_map(fn($r) => [  'product_id'  => $r['product_id'] ? (int)$r['product_id'] : null,  'product_name'  => $r['product_name'],  'category'  => $r['category'],  'size'  => $r['size'] ?? '',  'default_quantity' => (int)$r['default_quantity'],  'is_required'  => (bool)$r['is_required'],  'unit_price'  => (float)$r['unit_price'],  'stock_level'  => (int)$r['stock_level'],  'in_stock'  => (int)$r['stock_level'] > 0,  ], $rows);  echo json_encode([  'success'  => true,  'service_key' => $service_key,  'parts'  => $parts,  ]);  } catch (Exception $e) {  http_response_code(500);  echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 }

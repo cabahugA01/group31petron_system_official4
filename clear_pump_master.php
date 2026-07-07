@@ -21,12 +21,8 @@ $stmt->execute([$station_id]);
 echo "station_pump_assignment deleted for station $station_id: " . $stmt->rowCount() . " rows\n";
 
 // 4. Clear pump_calibration_history for this station (already empty but just in case)
-try {
-    $stmt = $pdo->prepare("DELETE FROM pump_calibration_history WHERE station_id = ?");
-    $stmt->execute([$station_id]);
-    echo "pump_calibration_history deleted for station $station_id: " . $stmt->rowCount() . " rows\n";
-} catch(Exception $e) {
-    echo "pump_calibration_history: " . $e->getMessage() . "\n";
+try {  $stmt = $pdo->prepare("DELETE FROM pump_calibration_history WHERE station_id = ?");  $stmt->execute([$station_id]);  echo "pump_calibration_history deleted for station $station_id: " . $stmt->rowCount() . " rows\n";
+} catch(Exception $e) {  echo "pump_calibration_history: " . $e->getMessage() . "\n";
 }
 
 // 5. Reset calibration values on fuel_inventory for this station

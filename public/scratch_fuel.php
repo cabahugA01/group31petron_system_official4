@@ -1,4 +1,2 @@
 <?php
-// Scratch pad for fuel testing
-
-
+// Scratch pad for fuel testing  

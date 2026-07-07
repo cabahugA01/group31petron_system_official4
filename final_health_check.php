@@ -6,15 +6,7 @@ $date = date('Y-m-d');
 $errors = [];
 $ok = [];
 
-function test_query($pdo, $sql, $params, $label, &$ok, &$errors) {
-    try {
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        $ok[] = "$label (rows: " . count($result) . ")";
-    } catch (Exception $e) {
-        $errors[] = "$label: " . $e->getMessage();
-    }
+function test_query($pdo, $sql, $params, $label, &$ok, &$errors) {  try {  $stmt = $pdo->prepare($sql);  $stmt->execute($params);  $result = $stmt->fetchAll(PDO::FETCH_ASSOC);  $ok[] = "$label (rows: " . count($result) . ")";  } catch (Exception $e) {  $errors[] = "$label: " . $e->getMessage();  }
 }
 
 // Manager dashboard queries
@@ -35,12 +27,9 @@ test_query($pdo, "SELECT * FROM purchase_orders WHERE station_id = ? ORDER BY cr
 test_query($pdo, "SELECT * FROM stock_requests WHERE station_id = ? ORDER BY created_at DESC LIMIT 5", [$station_id], "stock_requests", $ok, $errors);
 
 echo "=== QUERY HEALTH CHECK ===\n\n";
-echo "✓ PASSED (" . count($ok) . "):\n";
-foreach ($ok as $r) echo "  ✓ $r\n";
+echo " PASSED (" . count($ok) . "):\n";
+foreach ($ok as $r) echo "  $r\n";
 
-if ($errors) {
-    echo "\n✗ FAILED (" . count($errors) . "):\n";
-    foreach ($errors as $e) echo "  ✗ $e\n";
-} else {
-    echo "\n🎉 All queries passed! System is ready.\n";
+if ($errors) {  echo "\n FAILED (" . count($errors) . "):\n";  foreach ($errors as $e) echo "  $e\n";
+} else {  echo "\n All queries passed! System is ready.\n";
 }
