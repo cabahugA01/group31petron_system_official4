@@ -1776,6 +1776,8 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         overflow: hidden !important; /* Hide overflow text */
         text-indent: -9999px !important; /* Push text way off screen */
         line-height: 0 !important; /* Collapse text height */
+        z-index: 1100 !important;
+        pointer-events: auto !important;
     }
     
     /* Ensure no text content visible */
@@ -2072,8 +2074,8 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         border-radius: 50%;
         transition: all 0.3s ease;
         background: rgba(0, 47, 112, 0.05);
-        z-index: 1000;
-        pointer-events: auto;
+        z-index: 1100 !important;
+        pointer-events: auto !important;
         flex-shrink: 0;
         width: 32px;  /* Ultra compact */
         height: 32px;
@@ -2114,8 +2116,8 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         transition: all 0.3s ease;
         background: rgba(0, 47, 112, 0.07);
         border: 1.5px solid rgba(0, 47, 112, 0.12);
-        z-index: 1000;
-        pointer-events: auto;
+        z-index: 1100 !important;
+        pointer-events: auto !important;
         width: 36px;
         height: 36px;
         display: flex;
@@ -2208,13 +2210,13 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     .profile-access {
         position: relative;
         cursor: pointer;
-        z-index: 999;
-        pointer-events: auto;
+        z-index: 1100 !important;
+        pointer-events: auto !important;
     }
 
     .profile-dropdown {
-        z-index: 1001;
-        pointer-events: auto;
+        z-index: 1150 !important;
+        pointer-events: auto !important;
     }
 
     /* ---- Force all header interactive elements to receive clicks ---- */
@@ -2233,14 +2235,105 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     #sidebarCollapseBtn {
         pointer-events: auto !important;
         position: relative;
+        z-index: 1100 !important;
     }
 
     /* Ensure header-left and header-right are fully interactive */
     .header-left,
     .header-right {
         pointer-events: auto !important;
+        z-index: 1100 !important;
+        position: relative;
     }
     
+    /* Make sure search wrapper doesn't block icons */
+    #searchWrapper {
+        pointer-events: auto !important;
+        z-index: 5 !important;
+        max-width: 250px;
+        position: relative;
+    }
+    
+    /* Ensure header-center stays behind interactive elements */
+    .header-center {
+        z-index: 5 !important;
+        pointer-events: none !important;
+    }
+    
+    /* But allow interaction with search elements */
+    .header-center * {
+        pointer-events: auto !important;
+    }
+    
+    /* === CRITICAL HEADER ICON FIX === */
+    /* Ensure all header buttons are always clickable with highest priority */
+    .top-header,
+    .top-header * {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+    }
+    
+    /* NUCLEAR FIX: Force all interactive header elements to be on top and clickable */
+    #notificationBell,
+    #themeToggle,
+    #profileMenu,
+    #sidebarCollapseBtn,
+    .notification-bell,
+    .theme-toggle-btn,
+    .profile-access,
+    .sidebar-collapse-btn {
+        position: relative !important;
+        z-index: 99999 !important;
+        pointer-events: auto !important;
+        cursor: pointer !important;
+        isolation: isolate !important;
+    }
+    
+    /* Make sure button backgrounds don't block clicks */
+    .sidebar-collapse-btn,
+    #sidebarCollapseBtn {
+        background: var(--petron-blue) !important;
+        border: none !important;
+        outline: none !important;
+        -webkit-tap-highlight-color: transparent !important;
+    }
+    
+    /* Ensure dropdowns appear above everything */
+    #notificationDropdown,
+    #profileDropdown,
+    .notif-dropdown,
+    .profile-dropdown {
+        z-index: 999999 !important;
+        pointer-events: auto !important;
+    }
+    
+    /* Prevent any overlay from blocking header icons */
+    .header-left > *,
+    .header-right > * {
+        position: relative !important;
+        z-index: 99999 !important;
+        pointer-events: auto !important;
+    }
+    
+    /* Ensure brand elements don't block the button */
+    .brand-mark,
+    .brand-text {
+        pointer-events: none !important;
+        z-index: 1 !important;
+    }
+    
+    /* Make sure header areas have proper stacking */
+    .header-left {
+        z-index: 99999 !important;
+        isolation: isolate !important;
+    }
+    
+    .header-right {
+        z-index: 99999 !important;
+        isolation: isolate !important;
+    }
         
         
         
@@ -2563,8 +2656,8 @@ require_once __DIR__ . '/rbac_menu.php';
     <header class="top-header">
         <div class="header-left">
             <!-- Sidebar Toggle Button -->
-            <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" aria-label="Toggle Sidebar" style="margin-right: 15px;">
-                <i class="fas fa-bars" id="sidebarToggleIcon"></i>
+            <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" aria-label="Toggle Sidebar" style="margin-right: 15px; z-index: 99999 !important; pointer-events: auto !important; position: relative !important; cursor: pointer !important;">
+                <i class="fas fa-bars" id="sidebarToggleIcon" style="pointer-events: none !important;"></i>
             </button>
             <?php 
                 $logo_path = $station_settings['logo'] ?? '../assets/img/Petron Logo.png';
@@ -2669,9 +2762,9 @@ require_once __DIR__ . '/rbac_menu.php';
 
             <!-- Notification Bell -->
             <?php if(in_array($role, ['staff','admin','manager','superadmin','developer'])): ?>
-            <div class="notification-bell" id="notificationBell">
-                <i class="fas fa-bell"></i>
-                <span class="badge" id="notificationBadge" style="display: none;">0</span>
+            <div class="notification-bell" id="notificationBell" style="z-index: 99999 !important; pointer-events: auto !important; position: relative !important; cursor: pointer !important;">
+                <i class="fas fa-bell" style="pointer-events: none !important;"></i>
+                <span class="badge" id="notificationBadge" style="display: none; pointer-events: none !important;">0</span>
 
                 <div class="notif-dropdown" id="notificationDropdown">
                     <div class="notif-dropdown-header">
@@ -2917,55 +3010,16 @@ require_once __DIR__ . '/rbac_menu.php';
     <script>
         
     function updateClock() {
+        const el = document.getElementById('live-clock');
+        if (!el) return;
         const now = new Date();
         const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' };
-        document.getElementById('live-clock').innerHTML = '<i class="far fa-clock"></i> ' + now.toLocaleDateString('en-US', options);
+        el.innerHTML = '<i class="far fa-clock"></i> ' + now.toLocaleDateString('en-US', options);
     }
     setInterval(updateClock, 1000);
     updateClock();
 
-    // Diagnostic click tracker
-    (function() {
-        document.addEventListener('DOMContentLoaded', function() {
-            var diag = document.createElement('div');
-            diag.id = 'petronDiagClickTracker';
-            diag.style.position = 'fixed';
-            diag.style.bottom = '20px';
-            diag.style.left = '20px';
-            diag.style.background = 'rgba(0, 0, 0, 0.9)';
-            diag.style.color = '#00ff00';
-            diag.style.padding = '15px';
-            diag.style.borderRadius = '8px';
-            diag.style.zIndex = '1000000';
-            diag.style.fontFamily = 'monospace';
-            diag.style.fontSize = '12px';
-            diag.style.pointerEvents = 'none';
-            diag.style.boxShadow = '0 4px 20px rgba(0,0,0,0.5)';
-            diag.style.border = '2px solid #00ff00';
-            diag.innerHTML = 'Click tracker active. Click anywhere to test...';
-            document.body.appendChild(diag);
-
-            document.addEventListener('click', function(e) {
-                var el = e.target;
-                var info = 'Clicked element: <b>' + el.tagName + '</b>';
-                if (el.id) info += ' #' + el.id;
-                if (el.className) info += ' .' + String(el.className).trim().split(/\s+/).join('.');
-                
-                var chain = [];
-                var p = el.parentElement;
-                while(p) {
-                    var pInfo = p.tagName;
-                    if (p.id) pInfo += '#' + p.id;
-                    else if (p.className) pInfo += '.' + String(p.className).trim().split(/\s+/)[0];
-                    chain.push(pInfo);
-                    p = p.parentElement;
-                }
-                info += '<br>Parent chain: ' + chain.slice(0, 5).join(' &gt; ');
-                info += '<br>Coordinates: X=' + e.clientX + ', Y=' + e.clientY;
-                diag.innerHTML = info;
-            }, true);
-        });
-    })();
+    // (diagnostic click tracker removed)
 
     // Initialize page data for notification system
     window.pageData = {
@@ -3097,29 +3151,15 @@ require_once __DIR__ . '/rbac_menu.php';
         }
 
 
-        // Close dropdowns when clicking outside
-        document.addEventListener('click', function(e) {
-            if (!e.target.closest('#notificationBell') && !e.target.closest('#notificationDropdown')) {
-                if (notifDropdown) notifDropdown.classList.remove('show');
-            }
-            if (!e.target.closest('#varianceAlertBell')) {
-                var vd = document.getElementById('varianceAlertDropdown');
-                if (vd) vd.classList.remove('show');
-            }
-            if (!e.target.closest('#profileMenu') && !e.target.closest('#profileDropdown')) {
-                if (profileDropdown) profileDropdown.classList.remove('show');
-            }
-        });
-
         // Prevent closing when clicking inside dropdowns
         if (notifDropdown) {
-            notifDropdown.addEventListener('click', function(e) { 
-                e.stopPropagation(); 
+            notifDropdown.addEventListener('click', function(e) {
+                e.stopPropagation();
             });
         }
         if (profileDropdown) {
-            profileDropdown.addEventListener('click', function(e) { 
-                e.stopPropagation(); 
+            profileDropdown.addEventListener('click', function(e) {
+                e.stopPropagation();
             });
         }
 
@@ -3231,11 +3271,9 @@ require_once __DIR__ . '/rbac_menu.php';
 
             });
 
-        // ---- CAPTURE-PHASE HEADER CLICK HANDLER ----
-        // Fires BEFORE any overlay can block the event at the bubble phase.
-        // Uses coordinate-based detection so even invisible overlays cannot block header actions.
+        // ---- CAPTURE-PHASE HEADER CLICK HANDLER (removed - conflicts with normal handlers) ----
         (function() {
-            function headerCaptureHandler(e) {
+            function headerCaptureHandler(e) { return; /* disabled */
                 var x = e.clientX, y = e.clientY;
 
                 // Get ALL elements at click position (includes ones under overlays)
@@ -3251,6 +3289,7 @@ require_once __DIR__ . '/rbac_menu.php';
 
                 // Notification bell
                 if (inStack('notificationBell')) {
+                    console.log('Notification bell clicked'); // Debug log
                     var nd = document.getElementById('notificationDropdown');
                     var pd = document.getElementById('profileDropdown');
                     if (pd) pd.classList.remove('show');
@@ -3262,21 +3301,25 @@ require_once __DIR__ . '/rbac_menu.php';
                         }
                     }
                     e.stopPropagation();
+                    e.preventDefault();
                     return;
                 }
 
                 // Profile menu
                 if (inStack('profileMenu') && !inStack('profileDropdown')) {
+                    console.log('Profile menu clicked'); // Debug log
                     var nd2 = document.getElementById('notificationDropdown');
                     var pd2 = document.getElementById('profileDropdown');
                     if (nd2) nd2.classList.remove('show');
                     if (pd2) pd2.classList.toggle('show');
                     e.stopPropagation();
+                    e.preventDefault();
                     return;
                 }
 
                 // Theme toggle
                 if (inStack('themeToggle')) {
+                    console.log('Theme toggle clicked'); // Debug log
                     var goingDark = !document.body.classList.contains('dark-theme');
                     if (goingDark) {
                         document.body.classList.add('dark-theme');
@@ -3290,24 +3333,27 @@ require_once __DIR__ . '/rbac_menu.php';
                         localStorage.setItem('petronTheme', 'light');
                     }
                     e.stopPropagation();
+                    e.preventDefault();
                     return;
                 }
 
                 // Sidebar collapse button
                 if (inStack('sidebarCollapseBtn')) {
+                    console.log('Sidebar collapse clicked'); // Debug log
                     if (typeof toggleSidebar === 'function') toggleSidebar();
                     e.stopPropagation();
+                    e.preventDefault();
                     return;
                 }
 
                 // Close dropdowns on outside click
                 var nb = document.getElementById('notificationBell');
                 var pf = document.getElementById('profileMenu');
-                if (nb && !nb.getBoundingClientRect || !inStack('notificationBell')) {
+                if (nb && nb.getBoundingClientRect && !inStack('notificationBell')) {
                     var nd3 = document.getElementById('notificationDropdown');
                     if (nd3 && !inStack('notificationDropdown')) nd3.classList.remove('show');
                 }
-                if (pf && !inStack('profileMenu') && !inStack('profileDropdown')) {
+                if (pf && pf.getBoundingClientRect && !inStack('profileMenu') && !inStack('profileDropdown')) {
                     var pd3 = document.getElementById('profileDropdown');
                     if (pd3) pd3.classList.remove('show');
                 }
