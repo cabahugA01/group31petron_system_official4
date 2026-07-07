@@ -720,6 +720,73 @@
         
         updatePagination();
     }
+
+    // --- PWA OFFLINE / ONLINE DETECTION SYSTEM ---
+    function showConnectionStatus(online) {
+        let banner = document.getElementById('offline-status-banner');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'offline-status-banner';
+            banner.style.position = 'fixed';
+            banner.style.top = '20px';
+            banner.style.left = '50%';
+            banner.style.transform = 'translateX(-50%) translateY(-100px)';
+            banner.style.zIndex = '999999';
+            banner.style.padding = '12px 24px';
+            banner.style.borderRadius = '30px';
+            banner.style.boxShadow = '0 10px 25px rgba(0,0,0,0.2)';
+            banner.style.fontFamily = 'system-ui, -apple-system, sans-serif';
+            banner.style.fontWeight = 'bold';
+            banner.style.fontSize = '14px';
+            banner.style.display = 'flex';
+            banner.style.alignItems = 'center';
+            banner.style.gap = '8px';
+            banner.style.transition = 'transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease';
+            banner.style.opacity = '0';
+            document.body.appendChild(banner);
+        }
+
+        if (online) {
+            banner.style.backgroundColor = '#10B981'; // Emerald/success green
+            banner.style.color = '#FFFFFF';
+            banner.innerHTML = '<i class="fas fa-wifi"></i> Online Mode - System Connected';
+            banner.style.opacity = '1';
+            banner.style.transform = 'translateX(-50%) translateY(0)';
+            
+            // Hide after 3 seconds when back online
+            setTimeout(() => {
+                banner.style.transform = 'translateX(-50%) translateY(-100px)';
+                banner.style.opacity = '0';
+            }, 3000);
+        } else {
+            banner.style.backgroundColor = '#EF4444'; // Red/danger
+            banner.style.color = '#FFFFFF';
+            banner.innerHTML = '<i class="fas fa-wifi-slash"></i> Offline Mode - Running from Cache';
+            banner.style.opacity = '1';
+            banner.style.transform = 'translateX(-50%) translateY(0)';
+        }
+    }
+
+    window.addEventListener('online', () => showConnectionStatus(true));
+    window.addEventListener('offline', () => showConnectionStatus(false));
+
+    // Check initial status on load (only show if offline initially)
+    if (!navigator.onLine) {
+        showConnectionStatus(false);
+    }
+
+    // --- REGISTER SERVICE WORKER FOR OFFLINE SUPPORT ---
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('sw.js')
+                .then(function(reg) {
+                    console.log('Petron ServiceWorker registered successfully. Scope:', reg.scope);
+                })
+                .catch(function(err) {
+                    console.error('Petron ServiceWorker registration failed:', err);
+                });
+        });
+    }
   </script>
 </body>
 </html>

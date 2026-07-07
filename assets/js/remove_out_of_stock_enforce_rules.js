@@ -17,7 +17,7 @@
         const outOfStockClasses = document.querySelectorAll(".out-of-stock, .stock-out, .unavailable");
         outOfStockClasses.forEach(element => {
             element.style.display = "none";
-            console.log("🗑️ Removed out-of-stock element:", element);
+            console.log("Removed out-of-stock element:", element);
         });
         
         // Ensure all stock displays show positive values

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 session_start();
 ob_start();
 
@@ -178,40 +178,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Auto Clock In for staff roles on login
                 $role = role_key($user['role'] ?? '');
                 $staff_roles = ['staff'];
+                $auto_shift_key = 'first';
+                $auto_shift_name = 'First Shift: 6:00 AM – 2:00 PM';
                 if (in_array($role, $staff_roles)) {
                     try {
                         $station_id = $user['station_id'] ?? null;
                         // Only clock in if not already clocked in
-                        $check = $pdo->prepare("SELECT id FROM labor_sessions WHERE user_id = ? AND end_time IS NULL");
+                        $check = $pdo->prepare("SELECT id, shift_period, shift_name FROM labor_sessions WHERE user_id = ? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1");
                         $check->execute([$user['user_id']]);
-                        if (!$check->fetch() && $station_id) {
-                            // Determine current shift
-                            $sp = $pdo->prepare(
-                                "SELECT shift_key, shift_name FROM shift_periods
-                                 WHERE is_active = 1 AND start_time <= TIME(NOW()) AND end_time >= TIME(NOW())
-                                 ORDER BY sort_order ASC LIMIT 1"
-                            );
-                            $sp->execute();
-                            $shift = $sp->fetch(PDO::FETCH_ASSOC);
-                            if (!$shift) {
-                                $sp2   = $pdo->query("SELECT shift_key, shift_name FROM shift_periods WHERE is_active = 1 ORDER BY sort_order DESC LIMIT 1");
-                                $shift = $sp2 ? $sp2->fetch(PDO::FETCH_ASSOC) : null;
+                        $existing_session = $check->fetch(PDO::FETCH_ASSOC);
+                        if ($existing_session && $station_id) {
+                            $auto_shift_key = $existing_session['shift_period'];
+                            $auto_shift_name = $existing_session['shift_name'];
+                        } elseif ($station_id) {
+                            // Check the user's assigned shift in the profile first
+                            $user_assigned_shift = strtolower(trim((string)($user['assigned_shift'] ?? '')));
+                            if (strpos($user_assigned_shift, 'shift 1') !== false || strpos($user_assigned_shift, '1') !== false || $user_assigned_shift === 'first') {
+                                $auto_shift_key = 'first';
+                            } elseif (strpos($user_assigned_shift, 'shift 2') !== false || strpos($user_assigned_shift, '2') !== false || $user_assigned_shift === 'second') {
+                                $auto_shift_key = 'second';
+                            } else {
+                                // Determine current shift using fixed schedule rules:
+                                //   Shift 1 (first)  → 6:00 AM – 2:00 PM  (06:00:00–13:59:59)
+                                //   Shift 2 (second) → 2:00 PM – 12:00 MN  (14:00:00–23:59:59)
+                                //   Early morning (00:00–05:59) → counted as Shift 2 (previous night)
+                                $login_time = date('H:i:s');
+                                $auto_shift_key = ($login_time >= '06:00:00' && $login_time < '14:00:00') ? 'first' : 'second';
                             }
-                            if (!$shift) $shift = ['shift_key' => 'first', 'shift_name' => 'First Shift'];
+
+                            // Try to load exact DB record for consistent naming
+                            $sp = $pdo->prepare("SELECT shift_key, shift_name FROM shift_periods WHERE shift_key = ? AND is_active = 1 LIMIT 1");
+                            $sp->execute([$auto_shift_key]);
+                            $shift = $sp->fetch(PDO::FETCH_ASSOC);
+
+                            // Hard fallback if table is empty or record missing
+                            if (!$shift) {
+                                $shift = $auto_shift_key === 'first'
+                                    ? ['shift_key' => 'first',  'shift_name' => 'First Shift: 6:00 AM – 2:00 PM']
+                                    : ['shift_key' => 'second', 'shift_name' => 'Second Shift: 2:00 PM – 12:00 Midnight'];
+                            }
+
+                            $auto_shift_key = $shift['shift_key'];
+                            $auto_shift_name = $shift['shift_name'];
 
                             $pdo->prepare(
                                 "INSERT INTO labor_sessions (user_id, station_id, start_time, shift_period, shift_name)
                                  VALUES (?, ?, NOW(), ?, ?)"
-                            )->execute([$user['user_id'], $station_id, $shift['shift_key'], $shift['shift_name']]);
+                            )->execute([$user['user_id'], $station_id, $auto_shift_key, $auto_shift_name]);
 
                             $tables = $pdo->query("SHOW TABLES LIKE 'activity_logs'")->fetchAll();
                             if (!empty($tables)) {
                                 $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, 'Clock In', ?, ?)")
-                                    ->execute([$user['user_id'], "Auto clock-in on login - Station {$station_id} - {$shift['shift_name']}", $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0']);
+                                    ->execute([$user['user_id'], "Auto clock-in on login - Station {$station_id} - {$auto_shift_name}", $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0']);
                             }
                         }
                     } catch (Exception $e) { /* Fail silently, do not block login */ }
                 }
+
+                // Store detected shift in session so dashboards & pages can reference it
+                $_SESSION['current_shift_key']  = $auto_shift_key;
+                $_SESSION['current_shift_label'] = $auto_shift_name;
 
                 // RBAC Redirect Logic
                 if ($role === 'superadmin') {

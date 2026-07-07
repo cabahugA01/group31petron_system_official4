@@ -168,12 +168,12 @@ $(document).ready(function() {
 });
 
 function loadDashboardMetrics() {
-    $.post('backend/staff_oversight_ops.php', { action: 'get_logs', limit: 50 }, function(logs) {
+    $.post('../backend/staff_oversight_ops.php', { action: 'get_logs', limit: 50 }, function(logs) {
         // Calculate pending, flagged, etc from recent logs
         // Update cards
     });
     
-    $.post('backend/manager_calendar_ops.php', { action: 'get_data', start: new Date().toISOString().split('T')[0], end: new Date(Date.now() + 86400000).toISOString().split('T')[0] }, function(shifts) {
+    $.post('../backend/manager_calendar_ops.php', { action: 'get_data', start: new Date().toISOString().split('T')[0], end: new Date(Date.now() + 86400000).toISOString().split('T')[0] }, function(shifts) {
         // Calculate coverage %
         document.getElementById('shiftCoverage').textContent = '85%'; // Sample
     });

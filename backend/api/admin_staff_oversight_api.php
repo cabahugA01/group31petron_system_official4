@@ -49,7 +49,7 @@ try {
                     u.role as assigned_role,
                     s.name as station_name,
                     u.status as account_status,
-                    '' as remarks,
+                    u.remarks as remarks,
                     
                     -- Clock-in/out logs for TODAY's shift
                     (SELECT ls.start_time FROM labor_sessions ls 
@@ -72,14 +72,19 @@ try {
                     (SELECT created_at FROM activity_logs WHERE user_id = u.id AND action LIKE '%Encod%' ORDER BY created_at DESC LIMIT 1) as last_encoded_transaction,
                     (SELECT created_at FROM activity_logs WHERE user_id = u.id AND (action LIKE '%Approve%' OR action LIKE '%Validat%' OR action LIKE '%Reject%') ORDER BY created_at DESC LIMIT 1) as last_validated_transaction,
                     
-                    -- Activity summary (during THIS SHIFT only) - simplified to use only common columns
-                    0 as shift_requests_count,
-                    0 as shift_deliveries_count,
-                    0 as shift_jobs_count,
+                    -- Activity summary (during THIS SHIFT only)
+                    (SELECT COUNT(*) FROM stock_requests WHERE staff_id = u.id AND created_at BETWEEN ? AND ?) as shift_requests_count,
                     
-                    -- Performance metrics (sales + service income during THIS SHIFT) - simplified
-                    0 as shift_sales_total,
-                    0 as shift_service_income
+                    (COALESCE((SELECT COUNT(*) FROM fuel_deliveries WHERE received_by = u.id AND created_at BETWEEN ? AND ?), 0) +
+                     COALESCE((SELECT COUNT(*) FROM merchandise_deliveries WHERE encoded_by = u.id AND created_at BETWEEN ? AND ?), 0)) as shift_deliveries_count,
+                     
+                    (SELECT COUNT(*) FROM job_orders WHERE (created_by = u.id OR assigned_mechanic_id = u.id) AND created_at BETWEEN ? AND ?) as shift_jobs_count,
+                    
+                    -- Performance metrics (sales + service income during THIS SHIFT)
+                    (COALESCE((SELECT SUM(total_amount) FROM fuel_transactions WHERE staff_id = u.id AND transaction_date BETWEEN ? AND ?), 0) +
+                     COALESCE((SELECT SUM(total_amount) FROM merchandise_transactions WHERE staff_id = u.id AND transaction_date BETWEEN ? AND ?), 0)) as shift_sales_total,
+                     
+                    COALESCE((SELECT SUM(total_cost) FROM job_orders WHERE (created_by = u.id OR assigned_mechanic_id = u.id) AND status = 'Completed' AND completed_at BETWEEN ? AND ?), 0) as shift_service_income
                     
                 FROM users u
                 LEFT JOIN stations s ON u.station_id = s.id
@@ -87,16 +92,15 @@ try {
                 $shift_filter
             ";
             
-            // If admin, only show staff from their station
-            $params = [
-                $shift_start, $shift_end,  // clock_in_time
-                $shift_start, $shift_end,  // clock_out_time  
-                $shift_start, $shift_end   // shift_duration
-            ];
-            $my_station_id = (int)($me['station_id'] ?? 0);
+            // Build parameters array (10 subqueries, each needing shift_start & shift_end)
+            $params = [];
+            for ($i = 0; $i < 10; $i++) {
+                $params[] = $shift_start;
+                $params[] = $shift_end;
+            }
             
+            $my_station_id = (int)($me['station_id'] ?? 0);
             if ($role === 'admin') {
-                // Validate station ID
                 if ($my_station_id <= 0) {
                     echo json_encode(['success' => false, 'error' => 'Invalid station assignment. Please contact system administrator.']);
                     exit;
@@ -141,18 +145,17 @@ try {
                 'shift_period' => $shift === 1 ? '6:00 AM – 2:00 PM' : ($shift === 2 ? '2:00 PM – 12:00 AM' : 'All Day')
             ]);
             break;
-
+ 
         case 'update_status':
             $staff_id = $_POST['staff_id'] ?? 0;
             $status = $_POST['status'] ?? '';
             
-            // Only allow 'active' and 'inactive' until database enum includes 'suspended'
-            if (!$staff_id || !in_array($status, ['active', 'inactive'])) {
-                echo json_encode(['success' => false, 'error' => 'Invalid parameters. Status must be active or inactive.']);
+            // Validate against database enum ('Active', 'Disabled', 'Locked')
+            if (!$staff_id || !in_array($status, ['Active', 'Disabled'])) {
+                echo json_encode(['success' => false, 'error' => 'Invalid parameters. Status must be Active or Disabled.']);
                 exit;
             }
             
-            // Ensure target is staff/manager and (if admin) in same station
             $checkSql = "SELECT station_id FROM users WHERE id = ? AND role IN ('staff', 'operations_staff', 'manager', 'Staff', 'Manager')";
             $checkStmt = $pdo->prepare($checkSql);
             $checkStmt->execute([$staff_id]);
@@ -190,20 +193,11 @@ try {
                 exit;
             }
             
-            // Check if 'remarks' column exists
-            $columns = $pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_COLUMN);
-            $has_remarks_col = in_array('remarks', $columns);
-            
-            if ($has_remarks_col) {
-                $update = $pdo->prepare("UPDATE users SET remarks = ? WHERE id = ?");
-                $update->execute([$remarks, $staff_id]);
-                echo json_encode(['success' => true]);
-            } else {
-                // Column doesn't exist, just return success (remarks feature not available)
-                echo json_encode(['success' => true, 'warning' => 'Remarks column not available in database']);
-            }
+            $update = $pdo->prepare("UPDATE users SET remarks = ? WHERE id = ?");
+            $update->execute([$remarks, $staff_id]);
+            echo json_encode(['success' => true]);
             break;
-
+ 
         case 'edit_user':
             $staff_id = $_POST['staff_id'] ?? 0;
             $name = trim($_POST['name'] ?? '');
@@ -211,9 +205,9 @@ try {
             $edit_role = strtolower(trim($_POST['role'] ?? ''));
             $status = trim($_POST['status'] ?? '');
             
-            // Only allow 'active' and 'inactive' until database enum includes 'suspended'
-            if (!$staff_id || !$name || !$email || !in_array($edit_role, ['manager', 'staff']) || !in_array($status, ['active', 'inactive'])) {
-                echo json_encode(['success' => false, 'error' => 'All fields are required and must be valid. Status must be active or inactive.']);
+            // Validate input
+            if (!$staff_id || !$name || !$email || !in_array($edit_role, ['manager', 'staff']) || !in_array($status, ['Active', 'Disabled'])) {
+                echo json_encode(['success' => false, 'error' => 'All fields are required and must be valid. Status must be Active or Disabled.']);
                 exit;
             }
             
@@ -236,35 +230,23 @@ try {
                 }
             }
 
-            // Check if 'name' column exists, update accordingly
-            $columns = $pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_COLUMN);
-            $has_first_name_col = in_array('first_name', $columns);
-            $has_last_name_col = in_array('last_name', $columns);
+            // Split name into first_name and last_name
+            $name_parts = explode(' ', $name, 2);
+            $first_name = $name_parts[0];
+            $last_name = isset($name_parts[1]) ? $name_parts[1] : '';
             
-            if ($has_first_name_col && $has_last_name_col) {
-                // Split name into first_name and last_name
-                $name_parts = explode(' ', $name, 2);
-                $first_name = $name_parts[0];
-                $last_name = isset($name_parts[1]) ? $name_parts[1] : '';
-                
-                $updateSql = "UPDATE users SET first_name = ?, last_name = ?, email = ?, role = ?, status = ? WHERE id = ?";
-                $updateStmt = $pdo->prepare($updateSql);
-                $updateStmt->execute([$first_name, $last_name, $email, $edit_role, $status, $staff_id]);
-            } else {
-                $updateSql = "UPDATE users SET email = ?, role = ?, status = ? WHERE id = ?";
-                $updateStmt = $pdo->prepare($updateSql);
-                $updateStmt->execute([$email, $edit_role, $status, $staff_id]);
-            }
+            $updateSql = "UPDATE users SET first_name = ?, last_name = ?, email = ?, role = ?, status = ? WHERE id = ?";
+            $updateStmt = $pdo->prepare($updateSql);
+            $updateStmt->execute([$first_name, $last_name, $email, $edit_role, $status, $staff_id]);
 
             log_activity($pdo, $me['id'], 'Edit User', "Edited staff #$staff_id ($name) via Admin Oversight");
-            
             echo json_encode(['success' => true]);
             break;
-
+            
         default:
-            echo json_encode(['success' => false, 'error' => 'Invalid action']);
+            echo json_encode(['success' => false, 'error' => 'Invalid action specified.']);
             break;
     }
 } catch (Exception $e) {
-    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    echo json_encode(['success' => false, 'error' => 'Server error: ' . $e->getMessage()]);
 }

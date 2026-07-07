@@ -21,7 +21,6 @@ require_once __DIR__ . '/../includes/PHPMailer/src/SMTP.php';
 function sendPasswordResetOTP($to_email, $otp) {
     global $email_config;
     
-    // Enable detailed error reporting
     error_log("=== OTP Email Send Attempt ===");
     error_log("To: {$to_email}");
     error_log("OTP: {$otp}");
@@ -29,10 +28,10 @@ function sendPasswordResetOTP($to_email, $otp) {
     try {
         $mail = new PHPMailer(true);
         
-        // Enable verbose debug output
-        $mail->SMTPDebug = 2; // Show detailed debug info
+        // Disable verbose debug to reduce log noise; only log errors
+        $mail->SMTPDebug = 0;
         $mail->Debugoutput = function($str, $level) {
-            error_log("PHPMailer DEBUG [{$level}]: {$str}");
+            if ($level <= 1) error_log("PHPMailer [{$level}]: {$str}");
         };
         
         $mail->isSMTP();
@@ -45,23 +44,30 @@ function sendPasswordResetOTP($to_email, $otp) {
         $mail->Timeout       = 30;
         $mail->SMTPKeepAlive = false;
         $mail->CharSet       = 'UTF-8';
-        
-        error_log("SMTP Config - Host: {$mail->Host}, Port: {$mail->Port}, User: {$mail->Username}");
-        
-        $mail->setFrom($email_config['from_email'], $email_config['from_name']);
-        $mail->addAddress($to_email);
+        $mail->Encoding      = 'base64';
         
         // Bypass SSL certificate verification for local environments
         $mail->SMTPOptions = array(
             'ssl' => array(
-                'verify_peer' => false,
-                'verify_peer_name' => false,
+                'verify_peer'       => false,
+                'verify_peer_name'  => false,
                 'allow_self_signed' => true
             )
         );
         
+        $mail->setFrom($email_config['from_email'], $email_config['from_name']);
+        $mail->addAddress($to_email);
+        $mail->addReplyTo($email_config['from_email'], $email_config['from_name']);
+        
+        // Anti-spam and deliverability headers
+        $mail->addCustomHeader('X-Mailer', 'Petron-System-Mailer/2.0');
+        $mail->addCustomHeader('X-Priority', '1');
+        $mail->addCustomHeader('X-MS-Exchange-Organization-SCL', '-1');
+        $mail->addCustomHeader('Precedence', 'bulk');
+        $mail->MessageID = '<otp-' . time() . '-' . md5($to_email) . '@petron-system.local>';
+        
         $mail->isHTML(true);
-        $mail->Subject = 'Password Reset OTP - Petron Management System';
+        $mail->Subject = 'Your Petron System OTP Code: ' . $otp;
 
         // Embed logo via standard AddEmbeddedImage to maximize deliverability
         $logo_path = __DIR__ . '/../assets/img/Petron Logo.png';
@@ -92,7 +98,7 @@ function sendPasswordResetOTP($to_email, $otp) {
                         <span style='font-size:40px;font-weight:800;letter-spacing:10px;color:#002F6C;font-family:monospace;'>{$otp}</span>
                     </div>
                     <div style='background-color:#fff3cd;border-left:4px solid #ffc107;padding:14px 16px;border-radius:5px;margin:20px 0;'>
-                        <p style='margin:0;color:#856404;font-weight:700;'>&#9200; This OTP will expire in <strong>5 minutes</strong>.</p>
+                        <p style='margin:0;color:#856404;font-weight:700;'>This OTP will expire in <strong>5 minutes</strong>.</p>
                     </div>
                     <p style='color:#6c757d;font-size:13px;line-height:1.6;'>If you did not request this, please ignore this email. Your password will remain unchanged.</p>
                 </div>
@@ -110,21 +116,21 @@ function sendPasswordResetOTP($to_email, $otp) {
             . "If you did not request this, please ignore this email.\n\n"
             . "-- Petron Station Management System";
         
-        error_log("Attempting to send email...");
+        error_log("Attempting to send OTP email to {$to_email}...");
         $sent = $mail->send();
         
         if ($sent) {
-            error_log("✓ Email sent SUCCESSFULLY to {$to_email}");
+            error_log("OTP email sent SUCCESSFULLY to {$to_email}");
         } else {
-            error_log("✗ Email send FAILED: " . $mail->ErrorInfo);
+            error_log("OTP email send FAILED: " . $mail->ErrorInfo);
         }
         
         return $sent;
 
     } catch (Exception $e) {
-        error_log("✗ OTP email EXCEPTION: " . $e->getMessage());
+        error_log("OTP email EXCEPTION for {$to_email}: " . $e->getMessage());
         if (isset($mail)) {
-            error_log("✗ PHPMailer Error: " . $mail->ErrorInfo);
+            error_log("PHPMailer Error: " . $mail->ErrorInfo);
         }
         return false;
     }

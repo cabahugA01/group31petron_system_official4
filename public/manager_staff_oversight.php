@@ -327,7 +327,7 @@ function loadLogs() {
     const to = $('#dateTo').val();
     const staff = $('#staffFilter').val();
     
-    $.post('backend/staff_oversight_ops.php', {
+    $.post('../backend/staff_oversight_ops.php', {
         action: 'get_logs',
         date_from: from,
         date_to: to,
@@ -340,7 +340,7 @@ function loadLogs() {
 }
 
 function loadShifts() {
-    $.post('backend/staff_oversight_ops.php', {
+    $.post('../backend/staff_oversight_ops.php', {
         action: 'get_shift_summaries',
         shift: $('#shiftType').val()
     }, function(data) {
@@ -351,7 +351,7 @@ function loadShifts() {
 }
 
 function loadPerformance() {
-    $.post('backend/staff_oversight_ops.php', {
+    $.post('../backend/staff_oversight_ops.php', {
         action: 'performance',
         period: $('#perfPeriod').val()
     }, function(data) {
@@ -383,7 +383,7 @@ function loadPerformance() {
 }
 
 function loadFlags() {
-    $.post('backend/staff_oversight_ops.php', { action: 'get_flagged_items' }, function(data) {
+    $.post('../backend/staff_oversight_ops.php', { action: 'get_flagged_items' }, function(data) {
         if (data.success) {
             flagsTable.clear().rows.add(data.data).draw();
         }
@@ -391,7 +391,7 @@ function loadFlags() {
 }
 
 function loadStaffFilter() {
-    $.post('backend/staff_oversight_ops.php', { action: 'staff_list' }, function(data) {
+    $.post('../backend/staff_oversight_ops.php', { action: 'staff_list' }, function(data) {
         if (data.success) {
             let options = '<option value="">All Staff</option>';
             data.data.forEach(staff => {
@@ -405,7 +405,7 @@ function loadStaffFilter() {
 function flagEntry(table, id, note) {
     if (!confirm('Flag this entry?')) return;
     
-    $.post('backend/staff_oversight_ops.php', {
+    $.post('../backend/staff_oversight_ops.php', {
         action: 'flag',
         table: table,
         id: id,
@@ -422,7 +422,7 @@ function flagEntry(table, id, note) {
 }
 
 function validateEntry(table, id, note = '') {
-    $.post('backend/staff_oversight_ops.php', {
+    $.post('../backend/staff_oversight_ops.php', {
         action: 'validate',
         table: table,
         id: id,

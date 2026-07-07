@@ -70,7 +70,7 @@ if(in_array($role, ['superadmin','admin','manager'])){
     // 4. Anomalies Detected
     $sales_data = read_json('sales.json', []);
     foreach($sales_data as $s){
-        if(($s['total'] > 10000 || $s['total'] == 0)) $header_alerts[] = ['msg'=>"Anomaly Detected: ₱".number_format($s['total']), 'time'=>$s['date']??'', 'link'=>'transactions.php'];
+        if(($s['total'] > 10000 || $s['total'] == 0)) $header_alerts[] = ['msg'=>"Anomaly Detected: â‚±".number_format($s['total']), 'time'=>$s['date']??'', 'link'=>'transactions.php'];
     }
     // 5. Inventory (keep existing)
     try {
@@ -287,9 +287,9 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/vendor/fontawesome/css/all.min.css">
   <!-- GLOBAL TEXT VISIBILITY FIX - Ensures all text is readable while keeping original colors -->
   <style>
-    /* ═══════════════════════════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        TEXT VISIBILITY FIX - Keep all colors, just fix text contrast
-    ═══════════════════════════════════════════════════════════ */
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     
     /* Only fix form labels and inputs - keep everything else as is */
     label:not([style*="color:"]), 
@@ -381,9 +381,9 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         --header-text: #00264D;
     }
     
-    /* ══════════════════════════════════════════════════════════════════
-       DARK THEME — Full proper dark mode
-       ══════════════════════════════════════════════════════════════════ */
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+       DARK THEME â€” Full proper dark mode
+       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
     /* Dark theme CSS variable overrides */
     body.dark-theme {
@@ -407,7 +407,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         --shadow-dark:    0 4px 24px rgba(0,0,0,0.5);
     }
 
-    /* ── Body & Main ── */
+    /* â”€â”€ Body & Main â”€â”€ */
     body.dark-theme {
         background-color: var(--bg-main) !important;
         color: var(--text-main) !important;
@@ -416,7 +416,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         background-color: var(--bg-main) !important;
     }
 
-    /* ── Top Header ── */
+    /* â”€â”€ Top Header â”€â”€ */
     body.dark-theme .top-header {
         background-color: var(--header-bg) !important;
         border-bottom: 1px solid var(--border-color) !important;
@@ -429,7 +429,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         color: #94a3b8 !important;
     }
 
-    /* ── Sidebar ── */
+    /* â”€â”€ Sidebar â”€â”€ */
     body.dark-theme .sidebar {
         background-color: var(--sidebar-bg) !important;
         border-right: 1px solid var(--border-color) !important;
@@ -450,7 +450,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         border-top: 1px solid rgba(255,255,255,0.08) !important;
     }
 
-    /* ── Cards & Panels ── */
+    /* â”€â”€ Cards & Panels â”€â”€ */
     body.dark-theme .widget-card,
     body.dark-theme .card,
     body.dark-theme .petron-card,
@@ -499,7 +499,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         color: var(--text-main) !important;
     }
 
-    /* ── Tables ── */
+    /* â”€â”€ Tables â”€â”€ */
     body.dark-theme table,
     body.dark-theme .table {
         background-color: var(--bg-card) !important;
@@ -533,7 +533,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         border-color: var(--border-color) !important;
     }
 
-    /* ── Inputs, Selects, Textareas ── */
+    /* â”€â”€ Inputs, Selects, Textareas â”€â”€ */
     body.dark-theme input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="reset"]),
     body.dark-theme select,
     body.dark-theme textarea {
@@ -560,7 +560,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         color: var(--text-secondary) !important;
     }
 
-    /* ── Buttons ── */
+    /* â”€â”€ Buttons â”€â”€ */
     body.dark-theme .btn-light,
     body.dark-theme .btn-outline-secondary,
     body.dark-theme .btn-secondary {
@@ -579,14 +579,14 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     body.dark-theme .btn-warning  { background-color: #d97706 !important; border-color: #b45309 !important; color: #fff !important; }
     body.dark-theme .btn-info     { background-color: #0891b2 !important; border-color: #0e7490 !important; color: #fff !important; }
 
-    /* custom petron buttons — keep them as-is or slightly darken */
+    /* custom petron buttons â€” keep them as-is or slightly darken */
     body.dark-theme .cust-btn {
         background: #252840 !important;
         color: #e2e8f0 !important;
         border-color: #3d4a5c !important;
     }
 
-    /* ── Header icons & controls ── */
+    /* â”€â”€ Header icons & controls â”€â”€ */
     body.dark-theme .notification-bell {
         background: rgba(255,255,255,0.07) !important;
     }
@@ -598,12 +598,12 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     }
     body.dark-theme .theme-toggle-btn:hover { background: rgba(255,255,255,0.14) !important; }
 
-    /* ── Profile area in header ── */
+    /* â”€â”€ Profile area in header â”€â”€ */
     body.dark-theme .profile-access { color: var(--text-main) !important; }
     body.dark-theme .profile-access > div > div:first-child { color: #93c5fd !important; }
     body.dark-theme .profile-access > div > div:last-child  { color: #64748b !important; }
 
-    /* ── Dropdowns ── */
+    /* â”€â”€ Dropdowns â”€â”€ */
     body.dark-theme .notif-dropdown,
     body.dark-theme .profile-dropdown {
         background-color: #1e2130 !important;
@@ -634,7 +634,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         border-color: var(--border-color) !important;
     }
 
-    /* ── Footer ── */
+    /* â”€â”€ Footer â”€â”€ */
     body.dark-theme .fixed-footer {
         background-color: #1a1f2e !important;
         border-top: 1px solid var(--border-color) !important;
@@ -648,7 +648,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     body.dark-theme .footer-clock { color: var(--text-secondary) !important; }
     body.dark-theme .footer-identity { color: #93c5fd !important; }
 
-    /* ── Welcome Banner / Page headers ── */
+    /* â”€â”€ Welcome Banner / Page headers â”€â”€ */
     body.dark-theme .welcome-banner {
         background: linear-gradient(135deg, #1e2130 0%, #1a2035 100%) !important;
         border-color: var(--border-color) !important;
@@ -662,7 +662,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     body.dark-theme .page-title { color: #93c5fd !important; }
     body.dark-theme .page-subtitle { color: var(--text-secondary) !important; }
 
-    /* ── Generic text overrides ── */
+    /* â”€â”€ Generic text overrides â”€â”€ */
     body.dark-theme h1, body.dark-theme h2, body.dark-theme h3,
     body.dark-theme h4, body.dark-theme h5, body.dark-theme h6 {
         color: var(--text-main) !important;
@@ -672,7 +672,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     body.dark-theme a:not(.btn):not(.nav-item) { color: #60a5fa !important; }
     body.dark-theme a:not(.btn):not(.nav-item):hover { color: #93c5fd !important; }
 
-    /* ── Flash messages — keep original alert colors but on dark bg ── */
+    /* â”€â”€ Flash messages â€” keep original alert colors but on dark bg â”€â”€ */
     body.dark-theme .petron-flash.flash-success {
         background: #14532d !important; color: #bbf7d0 !important; border-left-color: #16a34a !important;
     }
@@ -686,7 +686,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         background: #0c1a3a !important; color: #93c5fd !important; border-left-color: #2563eb !important;
     }
 
-    /* ── Modals ── */
+    /* â”€â”€ Modals â”€â”€ */
     body.dark-theme .modal-card,
     body.dark-theme .modal-card-wide,
     body.dark-theme .modal-card-xl {
@@ -706,7 +706,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     body.dark-theme .modal-backdrop,
     body.dark-theme .modal-overlay { background: rgba(0,0,0,0.75) !important; }
 
-    /* ── Badges ── */
+    /* â”€â”€ Badges â”€â”€ */
     body.dark-theme .badge:not([style*="background"]) {
         background-color: #252840 !important;
         color: #e2e8f0 !important;
@@ -714,13 +714,13 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     }
     body.dark-theme .sbadge { opacity: 0.9 !important; }
 
-    /* ── Scrollbars in dark mode ── */
+    /* â”€â”€ Scrollbars in dark mode â”€â”€ */
     body.dark-theme ::-webkit-scrollbar { width: 6px; height: 6px; }
     body.dark-theme ::-webkit-scrollbar-track { background: #0f1117; }
     body.dark-theme ::-webkit-scrollbar-thumb { background: #3d4a5c; border-radius: 3px; }
     body.dark-theme ::-webkit-scrollbar-thumb:hover { background: #4d5a6c; }
 
-    /* ── Misc overrides ── */
+    /* â”€â”€ Misc overrides â”€â”€ */
     body.dark-theme hr                      { border-color: var(--border-color) !important; }
     body.dark-theme .text-muted             { color: #64748b !important; }
     body.dark-theme .border                 { border-color: var(--border-color) !important; }
@@ -769,7 +769,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         border-color: #1e2130 !important;
     }
     
-    /* Apply theme variables to elements — with smooth transitions */
+    /* Apply theme variables to elements â€” with smooth transitions */
     body {
         background-color: var(--bg-main);
         color: var(--text-main);
@@ -857,7 +857,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
             background: rgba(255,255,255,0.5);
         } 
 
-        /* ── Sidebar Identity Footer ── */
+        /* â”€â”€ Sidebar Identity Footer â”€â”€ */
         .sidebar-identity-footer {
             position: relative !important;
             bottom: auto !important;
@@ -887,7 +887,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
             padding-bottom: 80px !important;
         }
 
-        /* Avatar circle — centered above name */
+        /* Avatar circle â€” centered above name */
         .sif-avatar {
             flex-shrink: 0 !important;
             width: 30px !important;
@@ -969,7 +969,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
             font-size: 18px !important;
         }
 
-        /* Sub-menus use normal document flow — they expand inline, not floating */
+        /* Sub-menus use normal document flow â€” they expand inline, not floating */
         .sidebar-menu > nav > div > div[id^="sub-"] {
             position: relative !important;
             z-index: 1002 !important;
@@ -1051,7 +1051,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         }
     }
 
-    /* ── Mobile Layout (screens < 992px) ── */
+    /* â”€â”€ Mobile Layout (screens < 992px) â”€â”€ */
     @media (max-width: 991px) {
         body { overflow-x: hidden; }
 
@@ -1592,6 +1592,9 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         align-items: center;
         gap: 10px;
         flex-shrink: 0;
+        position: relative;
+        z-index: 10;
+        pointer-events: auto;
     }
     .header-center {
         flex-grow: 1;
@@ -1599,6 +1602,9 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         justify-content: center;
         align-items: center;
         padding: 0 5px;  /* Minimal padding */
+        position: relative;
+        z-index: 5;
+        pointer-events: none;  /* Prevent center area from blocking header icon clicks */
     }
     .header-right {
         display: flex;
@@ -1607,6 +1613,9 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         flex-shrink: 0;
         padding-right: 0;  /* No extra padding - balanced with left */
         overflow: visible;  /* Ensure content not clipped */
+        position: relative;
+        z-index: 10;
+        pointer-events: auto;
     }
     .profile-access {
         position: relative;
@@ -2030,6 +2039,16 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
 
     /* Toggle row removed - button moved to header */
     
+    /* Header Search Bar - restore pointer events on actual search elements */
+    #searchWrapper,
+    .header-center form,
+    .header-center input,
+    .header-center button,
+    #searchInput,
+    #searchSuggestions {
+        pointer-events: auto;
+    }
+
     /* Header Search Bar Styling */
     .header-center form input[type="text"]:focus {
         outline: none;
@@ -2086,7 +2105,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         z-index: 1001;
     }
 
-    /* ── Theme Toggle Button (icon only) ── */
+    /* â”€â”€ Theme Toggle Button (icon only) â”€â”€ */
     .theme-toggle-btn {
         position: relative;
         cursor: pointer;
@@ -2120,7 +2139,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         transform: rotate(20deg);
     }
 
-    /* Dark mode — glowing indigo circle */
+    /* Dark mode â€” glowing indigo circle */
     body.dark-theme .theme-toggle-btn {
         background: rgba(99, 102, 241, 0.18) !important;
         border: 1.5px solid rgba(99, 102, 241, 0.55) !important;
@@ -2138,7 +2157,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         color: #c7d2fe !important;
     }
 
-    /* ── Dark Mode Accent Bar (thin glow line at very top of page) ── */
+    /* â”€â”€ Dark Mode Accent Bar (thin glow line at very top of page) â”€â”€ */
     body::before {
         content: '';
         position: fixed;
@@ -2197,6 +2216,30 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         z-index: 1001;
         pointer-events: auto;
     }
+
+    /* ---- Force all header interactive elements to receive clicks ---- */
+    .top-header .notification-bell,
+    .top-header .theme-toggle-btn,
+    .top-header .profile-access,
+    .top-header .sidebar-collapse-btn,
+    .top-header .notif-dropdown,
+    .top-header .profile-dropdown,
+    .top-header button,
+    .top-header a,
+    #notificationBell,
+    #themeToggle,
+    #profileMenu,
+    #profileDropdown,
+    #sidebarCollapseBtn {
+        pointer-events: auto !important;
+        position: relative;
+    }
+
+    /* Ensure header-left and header-right are fully interactive */
+    .header-left,
+    .header-right {
+        pointer-events: auto !important;
+    }
     
         
         
@@ -2248,7 +2291,7 @@ require_once __DIR__ . '/rbac_menu.php';
       $current_hash = $uri_parts[1] ?? '';
   }
 
-  // Fuel management sub-item badge counts — proper prepared statements
+  // Fuel management sub-item badge counts â€” proper prepared statements
   $fuel_sub_badges = [];
   if ($role === 'manager' && $myStationId) {
       try {
@@ -2263,7 +2306,7 @@ require_once __DIR__ . '/rbac_menu.php';
           $s->execute([$myStationId]);
           $fuel_sub_badges['fuel_deliveries'] = (int)$s->fetchColumn();
 
-          // Open variance reports — shown in Reports sidebar
+          // Open variance reports â€” shown in Reports sidebar
           $s = $pdo->prepare("SELECT COUNT(*) FROM fuel_variance_reports WHERE station_id=? AND status IN ('Open','Under Investigation')");
           $s->execute([$myStationId]);
           $vcount = (int)$s->fetchColumn();
@@ -2288,7 +2331,7 @@ require_once __DIR__ . '/rbac_menu.php';
 
   // Sub-item descriptions for Fuel Management
   $fuel_sub_desc = [
-      'fuel_transactions'   => 'View all staff submissions — validate, approve, reject or adjust',
+      'fuel_transactions'   => 'View all staff submissions â€” validate, approve, reject or adjust',
       'fuel_deliveries'     => 'Validate delivery receipts encoded by staff',
       'fuel_adjustments'    => 'Encode corrections for stock discrepancies (logs old vs new + remarks)',
       'fuel_daily_ops'      => 'Monitor daily pump readings and reconcile liters vs sales',
@@ -2296,12 +2339,12 @@ require_once __DIR__ . '/rbac_menu.php';
       // Reports sidebar
       'fuel_vol_sales'      => 'Consolidated liters sold per fuel type',
       'fuel_vol_amount'     => 'Liters + peso totals per fuel type',
-      'fuel_variance_report'=> 'Short/over analysis — discrepancies between sales vs stock',
+      'fuel_variance_report'=> 'Short/over analysis â€” discrepancies between sales vs stock',
       'fuel_meter_reading'  => 'Validated meter reading table after Manager approval',
   ];
 
   foreach($items as $it){
-    // Dashboard — render with role-correct href (hidden for manager, admin, and superadmin)
+    // Dashboard â€” render with role-correct href (hidden for manager, admin, and superadmin)
     if (($it['id'] ?? '') === 'dashboard') {
         if (in_array($role, ['manager','supervisor','admin','superadmin'])) {
             continue; // Dashboard removed from manager, admin, and superadmin sidebar
@@ -2356,7 +2399,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 $parent_active = true;
                 break;
             }
-            // Query-param match — most specific: file + all query params must match
+            // Query-param match â€” most specific: file + all query params must match
             if ($sub_file !== '' && $current_url === $sub_file && $sub_query !== '') {
                 parse_str($sub_query, $sub_params);
                 $match = true;
@@ -2381,9 +2424,9 @@ require_once __DIR__ . '/rbac_menu.php';
     echo '<div class="nav-item-wrapper">';
 
     if ($has_sub) {
-        // Parent item — toggles sub-menu (don't highlight parent red for Manager Inventory)
+        // Parent item â€” toggles sub-menu (don't highlight parent red for Manager Inventory)
         $expanded = $parent_active ? 'expanded' : '';
-        // Don't highlight parent red for these items — only their sub-items should be red
+        // Don't highlight parent red for these items â€” only their sub-items should be red
         $should_highlight_parent = $parent_active && !in_array(($it['id'] ?? ''), ['inventory_manager', 'job_orders', 'product_management_main', 'transactions', 'fuel', 'inventory', 'customers', 'mgr_customers', 'reports']);
         $parent_cls = $should_highlight_parent ? 'nav-item active' : 'nav-item';
         echo '<a class="'.$parent_cls.' has-submenu" href="'.htmlspecialchars($it['href']).'" data-tooltip="'.htmlspecialchars($it['label']).'" onclick="toggleSidebarSub(event,\'sub-'.htmlspecialchars($it['id']).'\')">';
@@ -2410,7 +2453,7 @@ require_once __DIR__ . '/rbac_menu.php';
             $sub_file     = basename(parse_url($sub['href'], PHP_URL_PATH) ?? '');
             $sub_active   = '';
 
-            // Hash-based navigation (Staff Inventory) — only match if hash is non-empty
+            // Hash-based navigation (Staff Inventory) â€” only match if hash is non-empty
             if ($sub_fragment !== '' && $current_hash === $sub_fragment) {
                 $sub_active = 'active';
             }
@@ -2418,7 +2461,7 @@ require_once __DIR__ . '/rbac_menu.php';
             elseif ($page_id === ($sub['id'] ?? '')) {
                 $sub_active = 'active';
             }
-            // Query-param match — e.g. ?section=fuel on staff_transactions_hub.php
+            // Query-param match â€” e.g. ?section=fuel on staff_transactions_hub.php
             elseif ($sub_file !== '' && $current_url === $sub_file && $sub_query !== '') {
                 parse_str($sub_query, $sub_params);
                 $match = true;
@@ -2430,7 +2473,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 }
                 if ($match) $sub_active = 'active';
             }
-            // Direct file navigation (Manager Inventory) — exact filename match only
+            // Direct file navigation (Manager Inventory) â€” exact filename match only
             // Skip if any sibling sub-item has a query string that matches the current URL's query params
             // (prevents both "Pending Transactions" and "Validated Transactions" lighting up simultaneously)
             elseif ($sub_fragment === '' && $sub_query === '' && $current_url !== '' && $current_url === $sub_file) {
@@ -2468,7 +2511,7 @@ require_once __DIR__ . '/rbac_menu.php';
         echo '</div>';
 
     } else {
-        // Regular item — direct link
+        // Regular item â€” direct link
         echo '<a class="nav-item '.$active.'" href="'.htmlspecialchars($it['href']).'" data-tooltip="'.htmlspecialchars($it['label']).'">';
         echo '<span class="ico" style="margin-right:10px;width:24px;text-align:center;flex-shrink:0;"><i class="'.htmlspecialchars($it['ico']).'"></i></span>';
         echo '<span style="flex-grow:1;font-size:13px;font-weight:500;">'.htmlspecialchars($it['label']).'</span>';
@@ -2484,7 +2527,7 @@ require_once __DIR__ . '/rbac_menu.php';
       </nav>
     </div>
 
-    <!-- ── Sidebar Identity Footer ── -->
+    <!-- â”€â”€ Sidebar Identity Footer â”€â”€ -->
     <?php
     $sid_first = trim($user['first_name'] ?? '');
     $sid_last  = trim($user['last_name']  ?? '');
@@ -2495,7 +2538,7 @@ require_once __DIR__ . '/rbac_menu.php';
     }
     $sid_role = strtoupper(normalize_role($user['role'] ?? 'Staff'));
     ?>
-    <div class="sidebar-identity-footer" title="<?php echo htmlspecialchars("$sid_name – $sid_role"); ?>">
+    <div class="sidebar-identity-footer" title="<?php echo htmlspecialchars("$sid_name â€“ $sid_role"); ?>">
         <div class="sif-avatar">
             <?php if (!empty($user['profile_picture'])): ?>
                 <img src="<?php echo htmlspecialchars($app_base_path . '/' . ltrim($user['profile_picture'], '/')); ?>"
@@ -2506,7 +2549,7 @@ require_once __DIR__ . '/rbac_menu.php';
         </div>
         <span class="sif-name"><?php echo htmlspecialchars($sid_name); ?></span>
         <div class="sif-role-line">
-            <span class="sif-dash">–</span>
+            <span class="sif-dash">â€“</span>
             <span class="sif-role"><?php echo htmlspecialchars($sid_role); ?></span>
         </div>
     </div>
@@ -2516,9 +2559,7 @@ require_once __DIR__ . '/rbac_menu.php';
   <!-- Mobile Sidebar Backdrop (shown only on mobile when sidebar is open) -->
   <div class="mobile-sidebar-backdrop" id="mobileSidebarBackdrop"></div>
 
-  <main class="main">
-
-    <!-- GLOBAL TOP HEADER -->
+  <!-- GLOBAL TOP HEADER -->
     <header class="top-header">
         <div class="header-left">
             <!-- Sidebar Toggle Button -->
@@ -2556,15 +2597,15 @@ require_once __DIR__ . '/rbac_menu.php';
         </div>
         <div class="header-center">
             <!-- Global Search Bar -->
-            <?php if(in_array($role, ['superadmin', 'admin', 'manager', 'staff'])): ?>
+            <?php if(in_array($role, ['superadmin', 'developer', 'admin', 'manager', 'staff'])): ?>
             <div style="position:relative;" id="searchWrapper">
-                <form method="get" action="search.php" style="margin:0;display:flex;" autocomplete="off">
+                <form method="get" action="<?php echo $public_base_url; ?>/search.php" style="margin:0;display:flex;" autocomplete="off">
                     <input type="text" id="searchInput" name="q"
                            placeholder="<?php
-                               if ($role === 'superadmin') echo 'Search Stations / Admins / Reports…';
-                               elseif ($role === 'admin')   echo 'Search Transactions / Customers / Inventory…';
-                               elseif ($role === 'manager') echo 'Search Transactions / Job Orders / Fuel / Products…';
-                               else echo 'Search Transactions / Customers / Products…';
+                               if (in_array($role, ['superadmin', 'developer'])) echo 'Search Stations / Users / System Logs...';
+                               elseif ($role === 'admin')   echo 'Search Transactions / Customers / Inventory...';
+                               elseif ($role === 'manager') echo 'Search Transactions / Job Orders / Fuel / Products...';
+                               else echo 'Search Transactions / Customers / Products...';
                            ?>"
                            style="padding:6px 12px;border-radius:25px 0 0 25px;border:2px solid rgba(0,47,112,0.2);border-right:none;font-size:13px;width:220px;background:rgba(255,255,255,0.9);transition:all 0.3s ease;outline:none;">
                     <button type="submit"
@@ -2580,7 +2621,7 @@ require_once __DIR__ . '/rbac_menu.php';
             <?php endif; ?>
         </div>
         <div class="header-right">
-            <!-- Variance Alert Badge (Job Order Tracker) — shown only to staff on merchandise page -->
+            <!-- Variance Alert Badge (Job Order Tracker) â€” shown only to staff on merchandise page -->
             <?php if (isset($variance_alert_count) && $variance_alert_count > 0): ?>
             <div class="notification-bell" id="varianceAlertBell" title="Variance Alerts"
                  style="position:relative;cursor:pointer;"
@@ -2708,9 +2749,11 @@ require_once __DIR__ . '/rbac_menu.php';
         </div>
 </header>
 
-    <!-- ══ GLOBAL FLASH MESSAGE STYLES ══════════════════════════════════════ -->
+  <main class="main">
+
+    <!-- ══ GLOBAL FLASH MESSAGE STYLES â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
     <style>
-    /* ── Petron system-wide flash alerts ── */
+    /* â”€â”€ Petron system-wide flash alerts â”€â”€ */
     .petron-flash {
         display: flex;
         align-items: flex-start;
@@ -2762,7 +2805,7 @@ require_once __DIR__ . '/rbac_menu.php';
     }
     .petron-flash .flash-close:hover { opacity: 1; }
 
-    /* ── JS-powered toast (bottom-right, for AJAX actions) ── */
+    /* â”€â”€ JS-powered toast (bottom-right, for AJAX actions) â”€â”€ */
     #petron-toast-container {
         position: fixed;
         bottom: 60px;
@@ -2801,7 +2844,7 @@ require_once __DIR__ . '/rbac_menu.php';
     .petron-toast i { font-size: 16px; flex-shrink: 0; margin-top: 2px; }
     </style>
 
-    <!-- ══ GLOBAL FLASH MESSAGE RENDERER (PHP SESSION → HTML) ════════════════ -->
+    <!-- â•â• GLOBAL FLASH MESSAGE RENDERER (PHP SESSION â†’ HTML) â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
     <?php
     /* Icons + classes map */
     $__flash_map = [
@@ -2824,7 +2867,7 @@ require_once __DIR__ . '/rbac_menu.php';
     </div>
     <?php endforeach; ?>
 
-    <!-- ══ GLOBAL JS TOAST HELPER ═══════════════════════════════════════════ -->
+    <!-- â•â• GLOBAL JS TOAST HELPER â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
     <div id="petron-toast-container"></div>
     <script>
     /**
@@ -2881,6 +2924,49 @@ require_once __DIR__ . '/rbac_menu.php';
     setInterval(updateClock, 1000);
     updateClock();
 
+    // Diagnostic click tracker
+    (function() {
+        document.addEventListener('DOMContentLoaded', function() {
+            var diag = document.createElement('div');
+            diag.id = 'petronDiagClickTracker';
+            diag.style.position = 'fixed';
+            diag.style.bottom = '20px';
+            diag.style.left = '20px';
+            diag.style.background = 'rgba(0, 0, 0, 0.9)';
+            diag.style.color = '#00ff00';
+            diag.style.padding = '15px';
+            diag.style.borderRadius = '8px';
+            diag.style.zIndex = '1000000';
+            diag.style.fontFamily = 'monospace';
+            diag.style.fontSize = '12px';
+            diag.style.pointerEvents = 'none';
+            diag.style.boxShadow = '0 4px 20px rgba(0,0,0,0.5)';
+            diag.style.border = '2px solid #00ff00';
+            diag.innerHTML = 'Click tracker active. Click anywhere to test...';
+            document.body.appendChild(diag);
+
+            document.addEventListener('click', function(e) {
+                var el = e.target;
+                var info = 'Clicked element: <b>' + el.tagName + '</b>';
+                if (el.id) info += ' #' + el.id;
+                if (el.className) info += ' .' + String(el.className).trim().split(/\s+/).join('.');
+                
+                var chain = [];
+                var p = el.parentElement;
+                while(p) {
+                    var pInfo = p.tagName;
+                    if (p.id) pInfo += '#' + p.id;
+                    else if (p.className) pInfo += '.' + String(p.className).trim().split(/\s+/)[0];
+                    chain.push(pInfo);
+                    p = p.parentElement;
+                }
+                info += '<br>Parent chain: ' + chain.slice(0, 5).join(' &gt; ');
+                info += '<br>Coordinates: X=' + e.clientX + ', Y=' + e.clientY;
+                diag.innerHTML = info;
+            }, true);
+        });
+    })();
+
     // Initialize page data for notification system
     window.pageData = {
         role: '<?php echo htmlspecialchars($role); ?>',
@@ -2905,7 +2991,7 @@ require_once __DIR__ . '/rbac_menu.php';
             return url;
         }
         // Bare filename (e.g. "manager_job_orders.php", "manager_reports.php?tab=foo")
-        // → resolve to /public/<filename>
+        // â†’ resolve to /public/<filename>
         if (url.match(/^[a-zA-Z0-9_\-]+\.php/)) {
             return base + '/public/' + url;
         }
@@ -2976,7 +3062,7 @@ require_once __DIR__ . '/rbac_menu.php';
         const themeToggle = document.getElementById('themeToggle');
         const themeIcon   = document.getElementById('themeIcon');
 
-        // Helper — apply dark/light state visually
+        // Helper â€” apply dark/light state visually
         function applyTheme(isDark) {
             if (isDark) {
                 document.body.classList.add('dark-theme');
@@ -3037,10 +3123,10 @@ require_once __DIR__ . '/rbac_menu.php';
             });
         }
 
-        // ── Sidebar Sub-menu Toggle ──
-        // NOTE: defined inside DOMContentLoaded — moved to global below
+        // â”€â”€ Sidebar Sub-menu Toggle â”€â”€
+        // NOTE: defined inside DOMContentLoaded â€” moved to global below
 
-        // ── Highlight active sub-item based on URL hash ──
+        // â”€â”€ Highlight active sub-item based on URL hash â”€â”€
         (function() {
             const hash = window.location.hash;
             if (!hash) return;
@@ -3053,7 +3139,7 @@ require_once __DIR__ . '/rbac_menu.php';
             });
         })();
 
-        // ── Sidebar Toggle (Desktop: collapse/expand | Mobile: overlay slide-in) ──
+        // â”€â”€ Sidebar Toggle (Desktop: collapse/expand | Mobile: overlay slide-in) â”€â”€
         const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
         const sidebarToggleIcon  = document.getElementById('sidebarToggleIcon');
         const mainSidebar        = document.getElementById('mainSidebar');
@@ -3061,7 +3147,7 @@ require_once __DIR__ . '/rbac_menu.php';
 
         const isMobile = () => window.innerWidth < 992;
 
-        // ── Mobile sidebar helpers ────────────────────────────────────────────
+        // â”€â”€ Mobile sidebar helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         function openMobileSidebar() {
             if (!mainSidebar) return;
             mainSidebar.classList.add('mobile-open');
@@ -3075,7 +3161,7 @@ require_once __DIR__ . '/rbac_menu.php';
             document.body.style.overflow = '';
         }
 
-        // ── Desktop sidebar helpers ───────────────────────────────────────────
+        // â”€â”€ Desktop sidebar helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         function applyDesktopState(collapsed) {
             const mainContent = document.querySelector('.main');
             if (collapsed) {
@@ -3145,12 +3231,98 @@ require_once __DIR__ . '/rbac_menu.php';
 
             });
 
+        // ---- CAPTURE-PHASE HEADER CLICK HANDLER ----
+        // Fires BEFORE any overlay can block the event at the bubble phase.
+        // Uses coordinate-based detection so even invisible overlays cannot block header actions.
+        (function() {
+            function headerCaptureHandler(e) {
+                var x = e.clientX, y = e.clientY;
+
+                // Get ALL elements at click position (includes ones under overlays)
+                var all = document.elementsFromPoint ? document.elementsFromPoint(x, y) : [];
+
+                // Helper: check if any element in the stack matches a selector/id
+                function inStack(id) {
+                    var el = document.getElementById(id);
+                    if (!el) return false;
+                    var r = el.getBoundingClientRect();
+                    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+                }
+
+                // Notification bell
+                if (inStack('notificationBell')) {
+                    var nd = document.getElementById('notificationDropdown');
+                    var pd = document.getElementById('profileDropdown');
+                    if (pd) pd.classList.remove('show');
+                    if (nd) {
+                        nd.classList.toggle('show');
+                        if (nd.classList.contains('show')) {
+                            if (typeof window.loadStaffNotifications === 'function') window.loadStaffNotifications();
+                            else if (typeof window.saLoadNotifications === 'function') window.saLoadNotifications();
+                        }
+                    }
+                    e.stopPropagation();
+                    return;
+                }
+
+                // Profile menu
+                if (inStack('profileMenu') && !inStack('profileDropdown')) {
+                    var nd2 = document.getElementById('notificationDropdown');
+                    var pd2 = document.getElementById('profileDropdown');
+                    if (nd2) nd2.classList.remove('show');
+                    if (pd2) pd2.classList.toggle('show');
+                    e.stopPropagation();
+                    return;
+                }
+
+                // Theme toggle
+                if (inStack('themeToggle')) {
+                    var goingDark = !document.body.classList.contains('dark-theme');
+                    if (goingDark) {
+                        document.body.classList.add('dark-theme');
+                        var ti = document.getElementById('themeIcon');
+                        if (ti) ti.className = 'fas fa-sun';
+                        localStorage.setItem('petronTheme', 'dark');
+                    } else {
+                        document.body.classList.remove('dark-theme');
+                        var ti2 = document.getElementById('themeIcon');
+                        if (ti2) ti2.className = 'fas fa-moon';
+                        localStorage.setItem('petronTheme', 'light');
+                    }
+                    e.stopPropagation();
+                    return;
+                }
+
+                // Sidebar collapse button
+                if (inStack('sidebarCollapseBtn')) {
+                    if (typeof toggleSidebar === 'function') toggleSidebar();
+                    e.stopPropagation();
+                    return;
+                }
+
+                // Close dropdowns on outside click
+                var nb = document.getElementById('notificationBell');
+                var pf = document.getElementById('profileMenu');
+                if (nb && !nb.getBoundingClientRect || !inStack('notificationBell')) {
+                    var nd3 = document.getElementById('notificationDropdown');
+                    if (nd3 && !inStack('notificationDropdown')) nd3.classList.remove('show');
+                }
+                if (pf && !inStack('profileMenu') && !inStack('profileDropdown')) {
+                    var pd3 = document.getElementById('profileDropdown');
+                    if (pd3) pd3.classList.remove('show');
+                }
+            }
+
+            document.addEventListener('click', headerCaptureHandler, true);
+        })();
+        // ---- END CAPTURE-PHASE HEADER CLICK HANDLER ----
+
 
 
                 
                 
         
-        // ── Global Search Autocomplete ────────────────────────────────────────
+        // â”€â”€ Global Search Autocomplete â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         (function () {
             const searchInput       = document.getElementById('searchInput');
             const searchSuggestions = document.getElementById('searchSuggestions');
@@ -3186,11 +3358,12 @@ require_once __DIR__ . '/rbac_menu.php';
                 // Show loading state
                 searchSuggestions.innerHTML =
                     '<div style="padding:14px 16px;color:#94a3b8;font-size:13px;text-align:center;">' +
-                    '<i class="fas fa-spinner fa-spin"></i> Searching…</div>';
+                    '<i class="fas fa-spinner fa-spin"></i> Searchingâ€¦</div>';
                 searchSuggestions.style.display = 'block';
 
                 debounceTimer = setTimeout(() => {
-                    fetch('search.php?q=' + encodeURIComponent(query) + '&ajax=1')
+                    const _searchBase = (window.pageData && window.pageData.appBasePath) ? window.pageData.appBasePath : '';
+                    fetch(_searchBase + '/public/search.php?q=' + encodeURIComponent(query) + '&ajax=1')
                         .then(r => r.json())
                         .then(data => {
                             searchSuggestions.innerHTML = '';
@@ -3257,7 +3430,8 @@ require_once __DIR__ . '/rbac_menu.php';
 
                             // "View all results" footer
                             const footer = document.createElement('a');
-                            footer.href = 'search.php?q=' + encodeURIComponent(query);
+                            const _sb = (window.pageData && window.pageData.appBasePath) ? window.pageData.appBasePath : '';\r
+                            footer.href = _sb + '/public/search.php?q=' + encodeURIComponent(query);
                             footer.style.cssText =
                                 'display:block;padding:10px 14px;text-align:center;font-size:12px;' +
                                 'font-weight:600;color:#002F6C;text-decoration:none;' +
@@ -3290,7 +3464,7 @@ require_once __DIR__ . '/rbac_menu.php';
             });
         })();
 
-        // ── Notification System ───────────────────────────────────────────────────
+        // â”€â”€ Notification System â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // SuperAdmin/Developer: real system-level alerts from DB via AJAX.
         // Manager: deeper approval/oversight notifications.
         // Staff/Admin: operational notifications.
@@ -3308,14 +3482,14 @@ require_once __DIR__ . '/rbac_menu.php';
         ?>
 
         <?php if ($is_superadmin_role): ?>
-        // ── SuperAdmin: Real DB-driven notifications ──────────────────────────
+        // â”€â”€ SuperAdmin: Real DB-driven notifications â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         (function () {
             'use strict';
 
             const API_LIST = '../backend/api/notifications_api.php';
             const API_GEN  = '../backend/api/superadmin_notification_generator.php';
 
-            // Severity → colour mapping
+            // Severity â†’ colour mapping
             const SEV_COLOR = {
                 critical : '#dc3545',
                 high     : '#fd7e14',
@@ -3399,7 +3573,7 @@ require_once __DIR__ . '/rbac_menu.php';
 
             async function loadNotifications() {
                 const el = document.getElementById('notificationList');
-                if (el) el.innerHTML = '<div style="padding:20px;text-align:center;color:#888;font-size:12px;"><i class="fas fa-spinner fa-spin"></i> Loading…</div>';
+                if (el) el.innerHTML = '<div style="padding:20px;text-align:center;color:#888;font-size:12px;"><i class="fas fa-spinner fa-spin"></i> Loadingâ€¦</div>';
                 try {
                     const res  = await fetch(API_LIST + '?action=list&limit=15&status=all');
                     const data = await res.json();
@@ -3478,7 +3652,7 @@ require_once __DIR__ . '/rbac_menu.php';
         })();
 
         <?php else: ?>
-        // ── Staff / Manager / Admin: Dynamic DB-driven notifications ─────────
+        // â”€â”€ Staff / Manager / Admin: Dynamic DB-driven notifications â”€â”€â”€â”€â”€â”€â”€â”€â”€
         (function () {
             'use strict';
 
@@ -3499,7 +3673,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 document.head.appendChild(style);
             }
 
-            // Event type → icon mapping
+            // Event type â†’ icon mapping
             const EVT_ICON = {
                 transaction     : 'fas fa-shopping-cart',
                 job_order       : 'fas fa-wrench',
@@ -3539,11 +3713,11 @@ require_once __DIR__ . '/rbac_menu.php';
                 }
             }
 
-            // ── Load & render notifications (fast — no generator wait) ────────
+            // â”€â”€ Load & render notifications (fast â€” no generator wait) â”€â”€â”€â”€â”€â”€â”€â”€
             async function loadNotifications() {
                 const el = document.getElementById('notificationList');
                 if (!el) return;
-                el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px;"><i class="fas fa-spinner fa-spin"></i> Loading…</div>';
+                el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px;"><i class="fas fa-spinner fa-spin"></i> Loadingâ€¦</div>';
                 try {
                     const ctrl = new AbortController();
                     const tid  = setTimeout(() => ctrl.abort(), 8000); // 8s timeout
@@ -3595,7 +3769,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 }
             }
 
-            // ── Fetch unread count only (lightweight) ─────────────────────────
+            // â”€â”€ Fetch unread count only (lightweight) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             async function fetchUnreadCount() {
                 try {
                     const ctrl = new AbortController();
@@ -3607,7 +3781,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 } catch (e) {}
             }
 
-            // ── Run generator silently in background (fire-and-forget) ────────
+            // â”€â”€ Run generator silently in background (fire-and-forget) â”€â”€â”€â”€â”€â”€â”€â”€
             function runGeneratorBackground() {
                 fetch(API_GEN, { keepalive: true })
                     .then(r => r.json())
@@ -3615,7 +3789,7 @@ require_once __DIR__ . '/rbac_menu.php';
                     .catch(() => {});
             }
 
-            // ── Mark one notification as read ─────────────────────────────────
+            // â”€â”€ Mark one notification as read â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             window.staffMarkRead = async function (id, url) {
                 try {
                     const fd = new FormData();
@@ -3629,7 +3803,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 }
             };
 
-            // ── Mark all read ─────────────────────────────────────────────────
+            // â”€â”€ Mark all read â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             const markAllBtn = document.getElementById('markAllReadBtn');
             if (markAllBtn) {
                 markAllBtn.addEventListener('click', async function (e) {
@@ -3641,7 +3815,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 });
             }
 
-            // ── Refresh button ────────────────────────────────────────────────
+            // â”€â”€ Refresh button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             const refreshBtn = document.getElementById('refreshNotificationsBtn');
             if (refreshBtn) {
                 refreshBtn.addEventListener('click', async function (e) {
@@ -3654,11 +3828,11 @@ require_once __DIR__ . '/rbac_menu.php';
             // Expose globally for the toggle listener
             window.loadStaffNotifications = loadNotifications;
 
-            // ── On page load: fetch count immediately, run generator after 2s ─
+            // â”€â”€ On page load: fetch count immediately, run generator after 2s â”€
             fetchUnreadCount();
             setTimeout(runGeneratorBackground, 2000);
 
-            // ── Poll: count every 60s, generator every 5 min ─────────────────
+            // â”€â”€ Poll: count every 60s, generator every 5 min â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             setInterval(fetchUnreadCount, 60000);
             setInterval(runGeneratorBackground, 300000);
 
@@ -3667,7 +3841,7 @@ require_once __DIR__ . '/rbac_menu.php';
     </script>
 
     <script>
-    /* ── GLOBAL: Sidebar Sub-menu Toggle ── */
+    /* â”€â”€ GLOBAL: Sidebar Sub-menu Toggle â”€â”€ */
     function toggleSidebarSub(e, subId) {
         e.preventDefault();
         e.stopPropagation();
@@ -3696,7 +3870,7 @@ require_once __DIR__ . '/rbac_menu.php';
 
         const isOpen = sub.style.display !== 'none';
 
-        // Close all other open sub-menus (accordion — no overlap)
+        // Close all other open sub-menus (accordion â€” no overlap)
         document.querySelectorAll('[id^="sub-"]').forEach(function(other) {
             if (other.id !== subId) {
                 other.style.display = 'none';

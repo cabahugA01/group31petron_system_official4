@@ -48,13 +48,13 @@ class StaffOversightOps {
                 l.action, l.details, l.created_at,
                 COUNT(fdr.id) as fuel_readings,
                 COUNT(jo.id) as job_orders,
-                SUM(jo.total_amount) as jo_total,
+                SUM(jo.total_cost) as jo_total,
                 AVG(CASE WHEN jo.status = 'Completed' THEN 1 ELSE 0 END) as completion_rate
             FROM activity_logs l
             JOIN users u ON l.user_id = u.id
+            JOIN stations s ON u.station_id = s.id
             LEFT JOIN fuel_daily_readings fdr ON fdr.user_id = u.id AND fdr.station_id = s.id
             LEFT JOIN job_orders jo ON jo.created_by = u.id AND jo.station_id = s.id
-            JOIN stations s ON u.station_id = s.id
             $where
             GROUP BY u.id, DATE(l.created_at), l.action
             ORDER BY l.created_at DESC
@@ -175,7 +175,7 @@ class StaffOversightOps {
                 COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.username, 'Unknown') as name,
                 COUNT(jo.id) as total_jo,
                 SUM(CASE WHEN jo.status = 'Completed' THEN 1 ELSE 0 END) as completed,
-                AVG(jo.total_amount) as avg_amount,
+                AVG(jo.total_cost) as avg_amount,
                 COUNT(fdr.id) as readings,
                 SUM(fdr.sales_liters) as total_liters
             FROM users u

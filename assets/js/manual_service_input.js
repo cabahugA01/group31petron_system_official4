@@ -280,7 +280,7 @@ class ManualServiceInput {
             autoText.textContent = `Manual service: ${serviceName} with ${parts.length} parts`;
         }
         
-        console.log('✅ Manual parts displayed:', { serviceName, parts });
+        console.log('Manual parts displayed:', { serviceName, parts });
     }
     
     getJobOrderId() {
