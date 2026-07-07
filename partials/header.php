@@ -2656,7 +2656,7 @@ require_once __DIR__ . '/rbac_menu.php';
     <header class="top-header">
         <div class="header-left">
             <!-- Sidebar Toggle Button -->
-            <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" aria-label="Toggle Sidebar" style="margin-right: 15px; z-index: 99999 !important; pointer-events: auto !important; position: relative !important; cursor: pointer !important;">
+            <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" aria-label="Toggle Sidebar" onclick="petronToggleSidebar()" style="margin-right: 15px; z-index: 99999 !important; pointer-events: auto !important; position: relative !important; cursor: pointer !important;">
                 <i class="fas fa-bars" id="sidebarToggleIcon" style="pointer-events: none !important;"></i>
             </button>
             <?php 
@@ -2762,7 +2762,7 @@ require_once __DIR__ . '/rbac_menu.php';
 
             <!-- Notification Bell -->
             <?php if(in_array($role, ['staff','admin','manager','superadmin','developer'])): ?>
-            <div class="notification-bell" id="notificationBell" style="z-index: 99999 !important; pointer-events: auto !important; position: relative !important; cursor: pointer !important;">
+            <div class="notification-bell" id="notificationBell" onclick="petronToggleNotif(event)" style="z-index: 99999 !important; pointer-events: auto !important; position: relative !important; cursor: pointer !important;">
                 <i class="fas fa-bell" style="pointer-events: none !important;"></i>
                 <span class="badge" id="notificationBadge" style="display: none; pointer-events: none !important;">0</span>
 
@@ -2789,7 +2789,7 @@ require_once __DIR__ . '/rbac_menu.php';
             <?php endif; ?>
 
             <!-- Theme Toggle Button -->
-            <div class="theme-toggle-btn" id="themeToggle" title="Switch to Dark Mode" aria-label="Toggle theme">
+            <div class="theme-toggle-btn" id="themeToggle" title="Switch to Dark Mode" aria-label="Toggle theme" onclick="petronToggleTheme()">
                 <i class="fas fa-moon" id="themeIcon"></i>
             </div>
 
@@ -2807,7 +2807,7 @@ require_once __DIR__ . '/rbac_menu.php';
             // Profile picture: stored in users.profile_picture as relative path
             $hdr_pic = !empty($user['profile_picture']) ? $app_base_path . '/' . ltrim($user['profile_picture'], '/') : '';
             ?>
-            <div class="profile-access" id="profileMenu">
+            <div class="profile-access" id="profileMenu" onclick="petronToggleProfile(event)">
                 <?php if ($hdr_pic): ?>
                 <img src="<?php echo htmlspecialchars($hdr_pic); ?>" alt="Profile"
                      style="width:30px;height:30px;border-radius:50%;object-fit:cover;border:2px solid var(--petron-blue);flex-shrink:0;">
@@ -3053,224 +3053,149 @@ require_once __DIR__ . '/rbac_menu.php';
     };
 
 
-    // Simple Dropdown Toggle Logic
-    document.addEventListener('DOMContentLoaded', function() {
-        // Get elements
-        const notifBell = document.getElementById('notificationBell');
-        const notifDropdown = document.getElementById('notificationDropdown');
-        const profileAccess = document.getElementById('profileMenu');
-        const profileDropdown = document.getElementById('profileDropdown');
+    // ── Global header action functions (called via onclick attributes) ──────────
 
-        // Notification bell click
-        if (notifBell && notifDropdown) {
-            notifBell.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                // Close profile dropdown if open
-                if (profileDropdown) {
-                    profileDropdown.classList.remove('show');
-                }
-
-                // Toggle notification dropdown
-                notifDropdown.classList.toggle('show');
-                
-                // If we just opened it, load notifications
-                if (notifDropdown.classList.contains('show')) {
-                    if (typeof window.loadStaffNotifications === 'function') {
-                        window.loadStaffNotifications();
-                    } else if (typeof window.saLoadNotifications === 'function') {
-                        window.saLoadNotifications();
-                    }
-                }
-            });
-        }
-
-        // Profile dropdown click
-        if (profileAccess && profileDropdown) {
-            profileAccess.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                // Close notification dropdown if open
-                if (notifDropdown) {
-                    notifDropdown.classList.remove('show');
-                }
-                
-                // Toggle profile dropdown
-                profileDropdown.classList.toggle('show');
-            });
-        }
-
-        // Close dropdowns when clicking outside
-        document.addEventListener('click', function(e) {
-            if (notifBell && notifDropdown && !notifBell.contains(e.target) && !notifDropdown.contains(e.target)) {
-                notifDropdown.classList.remove('show');
+    window.petronToggleSidebar = function() {
+        var s = document.getElementById('mainSidebar');
+        var backdrop = document.getElementById('mobileSidebarBackdrop');
+        var icon = document.getElementById('sidebarToggleIcon');
+        var main = document.querySelector('.main');
+        if (!s) return;
+        if (window.innerWidth < 992) {
+            var isOpen = s.classList.contains('mobile-open');
+            s.classList.toggle('mobile-open');
+            if (backdrop) backdrop.classList.toggle('active');
+            document.body.style.overflow = isOpen ? '' : 'hidden';
+        } else {
+            var isCollapsed = s.classList.contains('collapsed');
+            if (isCollapsed) {
+                s.classList.remove('collapsed');
+                if (icon) icon.className = 'fas fa-bars';
+                if (main) { main.style.left = '250px'; main.classList.remove('sidebar-collapsed'); }
+                document.body.classList.add('sidebar-expanded');
+                document.body.classList.remove('sidebar-collapsed');
+                localStorage.setItem('sidebarState', 'expanded');
+            } else {
+                s.classList.add('collapsed');
+                if (icon) icon.className = 'fas fa-chevron-right';
+                if (main) { main.style.left = '70px'; main.classList.add('sidebar-collapsed'); }
+                document.body.classList.add('sidebar-collapsed');
+                document.body.classList.remove('sidebar-expanded');
+                localStorage.setItem('sidebarState', 'collapsed');
             }
-            if (profileAccess && profileDropdown && !profileAccess.contains(e.target) && !profileDropdown.contains(e.target)) {
-                profileDropdown.classList.remove('show');
+        }
+    };
+
+    window.petronToggleNotif = function(e) {
+        if (e) { e.stopPropagation(); }
+        var nd = document.getElementById('notificationDropdown');
+        var pd = document.getElementById('profileDropdown');
+        if (pd) pd.classList.remove('show');
+        if (!nd) return;
+        var wasHidden = !nd.classList.contains('show');
+        nd.classList.toggle('show');
+        if (wasHidden) {
+            if (typeof window.loadStaffNotifications === 'function') window.loadStaffNotifications();
+            else if (typeof window.saLoadNotifications === 'function') window.saLoadNotifications();
+        }
+    };
+
+    window.petronToggleProfile = function(e) {
+        if (e) { e.stopPropagation(); }
+        var nd = document.getElementById('notificationDropdown');
+        var pd = document.getElementById('profileDropdown');
+        if (nd) nd.classList.remove('show');
+        if (pd) pd.classList.toggle('show');
+    };
+
+    window.petronToggleTheme = function() {
+        var isDark = document.body.classList.contains('dark-theme');
+        var icon = document.getElementById('themeIcon');
+        var btn  = document.getElementById('themeToggle');
+        if (isDark) {
+            document.body.classList.remove('dark-theme');
+            if (icon) icon.className = 'fas fa-moon';
+            if (btn)  btn.title = 'Switch to Dark Mode';
+            localStorage.setItem('petronTheme', 'light');
+            if (typeof showPetronFlash === 'function') showPetronFlash('Switched to Light Mode', 'info', 2000);
+        } else {
+            document.body.classList.add('dark-theme');
+            if (icon) icon.className = 'fas fa-sun';
+            if (btn)  btn.title = 'Switch to Light Mode';
+            localStorage.setItem('petronTheme', 'dark');
+            if (typeof showPetronFlash === 'function') showPetronFlash('Switched to Dark Mode', 'info', 2000);
+        }
+    };
+
+    // Close dropdowns on outside click
+    document.addEventListener('click', function(e) {
+        var nd = document.getElementById('notificationDropdown');
+        var pd = document.getElementById('profileDropdown');
+        var nb = document.getElementById('notificationBell');
+        var pm = document.getElementById('profileMenu');
+        var vd = document.getElementById('varianceAlertDropdown');
+        var vb = document.getElementById('varianceAlertBell');
+        if (nd && nb && !nb.contains(e.target) && !nd.contains(e.target)) nd.classList.remove('show');
+        if (pd && pm && !pm.contains(e.target) && !pd.contains(e.target)) pd.classList.remove('show');
+        if (vd && vb && !vb.contains(e.target)) vd.classList.remove('show');
+    });
+
+    // Apply saved theme immediately
+    (function() {
+        if (localStorage.getItem('petronTheme') === 'dark') {
+            document.body.classList.add('dark-theme');
+            var icon = document.getElementById('themeIcon');
+            if (icon) icon.className = 'fas fa-sun';
+            var btn = document.getElementById('themeToggle');
+            if (btn) btn.title = 'Switch to Light Mode';
+        }
+    })();
+
+    // Init sidebar state + mobile backdrop on DOMContentLoaded
+    document.addEventListener('DOMContentLoaded', function() {
+        // Restore sidebar state (desktop only)
+        if (window.innerWidth >= 992) {
+            var saved = localStorage.getItem('sidebarState');
+            if (saved === 'collapsed') {
+                var s    = document.getElementById('mainSidebar');
+                var icon = document.getElementById('sidebarToggleIcon');
+                var main = document.querySelector('.main');
+                if (s) s.classList.add('collapsed');
+                if (icon) icon.className = 'fas fa-chevron-right';
+                if (main) { main.style.left = '70px'; main.classList.add('sidebar-collapsed'); }
+                document.body.classList.add('sidebar-collapsed');
+            }
+        }
+        // Mobile backdrop click
+        var backdrop = document.getElementById('mobileSidebarBackdrop');
+        if (backdrop) {
+            backdrop.addEventListener('click', function() {
+                var s = document.getElementById('mainSidebar');
+                if (s) s.classList.remove('mobile-open');
+                backdrop.classList.remove('active');
+                document.body.style.overflow = '';
+            });
+        }
+        // Close mobile sidebar on resize
+        window.addEventListener('resize', function() {
+            if (window.innerWidth >= 992) {
+                var s = document.getElementById('mainSidebar');
+                var bd = document.getElementById('mobileSidebarBackdrop');
+                if (s) s.classList.remove('mobile-open');
+                if (bd) bd.classList.remove('active');
+                document.body.style.overflow = '';
             }
         });
-
-        // Theme Toggle Functionality
-        const themeToggle = document.getElementById('themeToggle');
-        const themeIcon   = document.getElementById('themeIcon');
-
-        // Helper â€” apply dark/light state visually
-        function applyTheme(isDark) {
-            if (isDark) {
-                document.body.classList.add('dark-theme');
-                if (themeIcon)  themeIcon.className = 'fas fa-sun';
-                if (themeToggle) themeToggle.title = 'Switch to Light Mode';
-            } else {
-                document.body.classList.remove('dark-theme');
-                if (themeIcon)  themeIcon.className = 'fas fa-moon';
-                if (themeToggle) themeToggle.title = 'Switch to Dark Mode';
-            }
-        }
-
-        // Load saved theme from localStorage on page init
-        const savedTheme = localStorage.getItem('petronTheme') || 'light';
-        applyTheme(savedTheme === 'dark');
-
-        // Toggle theme on button click
-        if (themeToggle) {
-            themeToggle.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const goingDark = !document.body.classList.contains('dark-theme');
-                applyTheme(goingDark);
-                localStorage.setItem('petronTheme', goingDark ? 'dark' : 'light');
-
-                // Toast notification
-                if (typeof showPetronFlash === 'function') {
-                    showPetronFlash(goingDark ? 'Switched to Dark Mode' : 'Switched to Light Mode', 'info', 2000);
-                }
-            });
-        }
-
-
-        // Prevent closing when clicking inside dropdowns
-        if (notifDropdown) {
-            notifDropdown.addEventListener('click', function(e) {
-                e.stopPropagation();
-            });
-        }
-        if (profileDropdown) {
-            profileDropdown.addEventListener('click', function(e) {
-                e.stopPropagation();
-            });
-        }
-
-        // â”€â”€ Sidebar Sub-menu Toggle â”€â”€
-        // NOTE: defined inside DOMContentLoaded â€” moved to global below
-
-        // â”€â”€ Highlight active sub-item based on URL hash â”€â”€
-        (function() {
-            const hash = window.location.hash;
-            if (!hash) return;
-            // Only add active to exact hash matches, not partial matches
+        // Hash-based active sidebar link
+        var hash = window.location.hash;
+        if (hash) {
             document.querySelectorAll('.nav-item[href$="' + hash + '"]').forEach(function(el) {
                 el.classList.add('active');
-                // Ensure parent sub-menu is open
-                const parent = el.closest('[id^="sub-"]');
+                var parent = el.closest('[id^="sub-"]');
                 if (parent) parent.style.display = 'block';
             });
-        })();
-
-        // â”€â”€ Sidebar Toggle (Desktop: collapse/expand | Mobile: overlay slide-in) â”€â”€
-        const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
-        const sidebarToggleIcon  = document.getElementById('sidebarToggleIcon');
-        const mainSidebar        = document.getElementById('mainSidebar');
-        const mobileBackdrop     = document.getElementById('mobileSidebarBackdrop');
-
-        const isMobile = () => window.innerWidth < 992;
-
-        // â”€â”€ Mobile sidebar helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        function openMobileSidebar() {
-            if (!mainSidebar) return;
-            mainSidebar.classList.add('mobile-open');
-            if (mobileBackdrop) mobileBackdrop.classList.add('active');
-            document.body.style.overflow = 'hidden';
         }
-        function closeMobileSidebar() {
-            if (!mainSidebar) return;
-            mainSidebar.classList.remove('mobile-open');
-            if (mobileBackdrop) mobileBackdrop.classList.remove('active');
-            document.body.style.overflow = '';
-        }
-
-        // â”€â”€ Desktop sidebar helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        function applyDesktopState(collapsed) {
-            const mainContent = document.querySelector('.main');
-            if (collapsed) {
-                mainSidebar.classList.add('collapsed');
-                if (sidebarToggleIcon) sidebarToggleIcon.className = 'fas fa-chevron-right';
-                if (mainContent) {
-                    mainContent.style.left = '70px';
-                    mainContent.classList.add('sidebar-collapsed');
-                    document.body.classList.add('sidebar-collapsed');
-                    document.body.classList.remove('sidebar-expanded');
-                }
-            } else {
-                mainSidebar.classList.remove('collapsed');
-                if (sidebarToggleIcon) sidebarToggleIcon.className = 'fas fa-bars';
-                if (mainContent) {
-                    mainContent.style.left = '250px';
-                    mainContent.classList.remove('sidebar-collapsed');
-                    document.body.classList.add('sidebar-expanded');
-                    document.body.classList.remove('sidebar-collapsed');
-                }
-            }
-        }
-
-        function toggleSidebar() {
-            if (isMobile()) {
-                // Mobile: slide-in overlay
-                const isOpen = mainSidebar && mainSidebar.classList.contains('mobile-open');
-                if (isOpen) {
-                    closeMobileSidebar();
-                } else {
-                    openMobileSidebar();
-                }
-                return;
-            }
-            // Desktop: collapse/expand
-            const isCollapsed = mainSidebar && mainSidebar.classList.contains('collapsed');
-            const newState = !isCollapsed;
-            applyDesktopState(newState);
-            localStorage.setItem('sidebarState', newState ? 'collapsed' : 'expanded');
-        }
-
-        // Init desktop state from localStorage (only on desktop)
-        if (!isMobile() && mainSidebar) {
-            const savedState = localStorage.getItem('sidebarState');
-            applyDesktopState(savedState === 'collapsed');
-        }
-
-        // Backdrop click closes mobile sidebar
-        if (mobileBackdrop) {
-            mobileBackdrop.addEventListener('click', closeMobileSidebar);
-        }
-
-        // Close mobile sidebar on window resize to desktop
-        window.addEventListener('resize', function() {
-            if (!isMobile()) {
-                closeMobileSidebar();
-            }
-        });
-
-        if (sidebarCollapseBtn) {
-            sidebarCollapseBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                toggleSidebar();
-            });
-        }
-
-            });
-
+    });
         // ---- CAPTURE-PHASE HEADER CLICK HANDLER (removed - conflicts with normal handlers) ----
         (function() {
             function headerCaptureHandler(e) { return; /* disabled */
