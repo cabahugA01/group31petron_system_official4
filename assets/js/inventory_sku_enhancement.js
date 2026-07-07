@@ -1,9 +1,67 @@
 
 // Enhance inventory display to show SKU and stock for Car Battery items
-function enhanceInventoryDisplay() {  console.log("Enhancing inventory display for Car Battery items");  const tableRows = document.querySelectorAll("table tr");  tableRows.forEach(row => {  const productNameCell = row.querySelector("td:nth-child(2)");  if (productNameCell) {  const productName = productNameCell.textContent.trim();  if (productName.includes("Car Battery")) {  // Add SKU display  const skuCell = row.querySelector("td:nth-child(3)");  if (skuCell) {  const currentSku = skuCell.textContent.trim();  if (!currentSku.startsWith("CB-")) {  // Add SKU if not present  const sku = getSkuForBattery(productName);  skuCell.innerHTML = `${sku} <small style="color: #666;">(SKU)</small>`;  }  }  // Add stock display  const stockCell = row.querySelector("td:nth-child(5)");  if (stockCell) {  const stock = getStockForBattery(productName);  const stockStatus = stock > 0 ?  `<span style="color: #28a745; font-weight: bold;">${stock} IN STOCK</span>` :  `<span style="color: #dc3545; font-weight: bold;">OUT OF STOCK</span>`;  stockCell.innerHTML = stockStatus;  }  // Highlight Car Battery rows  row.style.backgroundColor = "#e3f2fd";  row.style.borderLeft = "4px solid #2196f3";  }  }  });
-}  function getSkuForBattery(productName) {  const skuMap = {  "Car Battery 2SM/N50": "CB-2SM-50",  "Car Battery Premium MF": "CB-PMF-70",  "Car Battery Heavy Duty": "CB-HD-100"  };  return skuMap[productName] || "CB-UNKNOWN";
-}  function getStockForBattery(productName) {  // This would typically come from API, but for now return default values  const stockMap = {  "Car Battery 2SM/N50": 10,  "Car Battery Premium MF": 8,  "Car Battery Heavy Duty": 5  };  return stockMap[productName] || 0;
-}  // Run enhancement when page loads
-if (document.readyState === "loading") {  document.addEventListener("DOMContentLoaded", enhanceInventoryDisplay);
-} else {  enhanceInventoryDisplay();
+function enhanceInventoryDisplay() {
+    console.log("🔧 Enhancing inventory display for Car Battery items");
+    
+    const tableRows = document.querySelectorAll("table tr");
+    tableRows.forEach(row => {
+        const productNameCell = row.querySelector("td:nth-child(2)");
+        if (productNameCell) {
+            const productName = productNameCell.textContent.trim();
+            
+            if (productName.includes("Car Battery")) {
+                // Add SKU display
+                const skuCell = row.querySelector("td:nth-child(3)");
+                if (skuCell) {
+                    const currentSku = skuCell.textContent.trim();
+                    if (!currentSku.startsWith("CB-")) {
+                        // Add SKU if not present
+                        const sku = getSkuForBattery(productName);
+                        skuCell.innerHTML = `${sku} <small style="color: #666;">(SKU)</small>`;
+                    }
+                }
+                
+                // Add stock display
+                const stockCell = row.querySelector("td:nth-child(5)");
+                if (stockCell) {
+                    const stock = getStockForBattery(productName);
+                    const stockStatus = stock > 0 ? 
+                        `<span style="color: #28a745; font-weight: bold;">${stock} IN STOCK</span>` : 
+                        `<span style="color: #dc3545; font-weight: bold;">OUT OF STOCK</span>`;
+                    
+                    stockCell.innerHTML = stockStatus;
+                }
+                
+                // Highlight Car Battery rows
+                row.style.backgroundColor = "#e3f2fd";
+                row.style.borderLeft = "4px solid #2196f3";
+            }
+        }
+    });
+}
+
+function getSkuForBattery(productName) {
+    const skuMap = {
+        "Car Battery 2SM/N50": "CB-2SM-50",
+        "Car Battery Premium MF": "CB-PMF-70",
+        "Car Battery Heavy Duty": "CB-HD-100"
+    };
+    return skuMap[productName] || "CB-UNKNOWN";
+}
+
+function getStockForBattery(productName) {
+    // This would typically come from API, but for now return default values
+    const stockMap = {
+        "Car Battery 2SM/N50": 10,
+        "Car Battery Premium MF": 8,
+        "Car Battery Heavy Duty": 5
+    };
+    return stockMap[productName] || 0;
+}
+
+// Run enhancement when page loads
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", enhanceInventoryDisplay);
+} else {
+    enhanceInventoryDisplay();
 }

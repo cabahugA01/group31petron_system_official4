@@ -2,29 +2,315 @@
 $page_id = 'oversight';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
-require_login();  // RBAC Enforcement: Only Super Admin can view this oversight dashboard
+require_login();
+
+// RBAC Enforcement: Only Super Admin can view this oversight dashboard
 $me = current_user();
-if(($me['role'] ?? '') !== 'superadmin'){  echo "<div style='padding:20px;color:red;'>Access Denied. Super Admin privileges required.</div>";  exit;
-}  include __DIR__ . '/../partials/header.php';  // --- FILTERS & EXPORT LOGIC ---
+if(($me['role'] ?? '') !== 'superadmin'){
+    echo "<div style='padding:20px;color:red;'>Access Denied. Super Admin privileges required.</div>";
+    exit;
+}
+
+include __DIR__ . '/../partials/header.php';
+
+// --- FILTERS & EXPORT LOGIC ---
 $f_station = $_GET['station'] ?? '';
 $f_start = $_GET['start'] ?? date('Y-m-01');
-$f_end = $_GET['end'] ?? date('Y-m-d');  // Fetch System Thresholds early for use in export and display
+$f_end = $_GET['end'] ?? date('Y-m-d');
+
+// Fetch System Thresholds early for use in export and display
 $lowStockThreshold = 20; // Default
 $calibrationThreshold = 50; // Default
-try {  // Fetch multiple settings at once  $stmtSet = $pdo->query("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('low_stock_threshold', 'calibration_threshold')");  $settings = $stmtSet->fetchAll(PDO::FETCH_KEY_PAIR);  $lowStockThreshold = (int)($settings['low_stock_threshold'] ?? 20);  $calibrationThreshold = (int)($settings['calibration_threshold'] ?? 50);
-} catch (Exception $e) { /* Table missing, use default */ }  // Export Handler
-if(($_GET['export'] ?? '') === 'csv'){  header('Content-Type: text/csv');  header('Content-Disposition: attachment; filename="inventory_oversight.csv"');  $out = fopen('php://output', 'w');  // Header  fputcsv($out, ['Report Type', 'Station', 'Item/Fuel', 'Date', 'Value/Stock', 'Status/Variance']);  // 1. Fuel Readings Data  $fr = read_json('fuel_readings.json', []);  foreach($fr as $r){  if($r['date'] < $f_start || $r['date'] > $f_end) continue;  if($f_station && ($r['station_id'] ?? '') != $f_station) continue;  $liters = $r['computed_liters'] ?? 0;  $status = 'Normal';  if($liters < 0) $status = 'Negative Variance';  elseif(($r['calibration'] ?? 0) > $calibrationThreshold) $status = 'High Calibration';  fputcsv($out, [  'Fuel Reading',  $r['station_id'], // Ideally map to name, but ID is safer for CSV logic here without DB fetch overhead inside loop  $r['fuel_type'],  $r['date'],  $liters . ' L',  $status  ]);  }  fclose($out);  exit;
-}  // --- 1. DATA AGGREGATION (Input Stage) ---
-try {  // FIX: Ensure activity_logs table exists to prevent "Base table not found" error  $pdo->exec("CREATE TABLE IF NOT EXISTS activity_logs (  id INT AUTO_INCREMENT PRIMARY KEY,  user_id INT,  action VARCHAR(255),  details TEXT,  ip_address VARCHAR(45),  created_at DATETIME DEFAULT CURRENT_TIMESTAMP  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");  // Fetch Stations for mapping  $stations = $pdo->query("SELECT * FROM stations")->fetchAll(PDO::FETCH_ASSOC);  $stationsMap = [];  foreach($stations as $s) $stationsMap[$s['id']] = $s['name'];  // Fetch Consolidated Inventory (Merch & Fuel Levels from DB)  $invSql = "SELECT i.*, s.name as station_name FROM station_inventory i LEFT JOIN stations s ON i.station_id = s.id WHERE 1=1";  $invParams = [];  if($f_station) { $invSql .= " AND i.station_id = ?"; $invParams[] = $f_station; }  $invStmt = $pdo->prepare($invSql);  $invStmt->execute($invParams);  $inventoryDB = $invStmt->fetchAll(PDO::FETCH_ASSOC);  // Fetch Audit Trail (Activity Logs)  // Note: Filtering logs by station requires joining users and checking their station_id  $logSql = "SELECT l.*, u.username, s.name as station_name FROM activity_logs l  LEFT JOIN users u ON l.user_id = u.id  LEFT JOIN stations s ON u.station_id = s.id  WHERE (l.created_at BETWEEN ? AND ?)";  $logParams = [$f_start . ' 00:00:00', $f_end . ' 23:59:59'];  if($f_station) {  $logSql .= " AND u.station_id = ?";  $logParams[] = $f_station;  }  $logSql .= " ORDER BY l.created_at DESC LIMIT 50";  $logStmt = $pdo->prepare($logSql);  $logStmt->execute($logParams);  $auditLogs = $logStmt->fetchAll(PDO::FETCH_ASSOC);  } catch(PDOException $e) {  echo "<div class='card error'>Database Error: " . $e->getMessage() . "</div>";  $inventoryDB = [];  $auditLogs = [];
-}  // Fetch Fuel Readings (JSON) for Variance Detection
-$fuelReadings = read_json('fuel_readings.json', []);  // --- 2. PROCESS STAGE (Logic & Variance) ---  // A. Merchandise Analysis (Color Coding)
-$merchItems = array_filter($inventoryDB, function($item) {  return ($item['type'] === 'merch');
-});  // B. Fuel Overview
-$fuelStock = array_filter($inventoryDB, function($item) {  return ($item['type'] === 'fuel');
-});  // C. Variance Detection (Filtered Readings)
+try {
+    // Fetch multiple settings at once
+    $stmtSet = $pdo->query("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('low_stock_threshold', 'calibration_threshold')");
+    $settings = $stmtSet->fetchAll(PDO::FETCH_KEY_PAIR);
+    $lowStockThreshold = (int)($settings['low_stock_threshold'] ?? 20);
+    $calibrationThreshold = (int)($settings['calibration_threshold'] ?? 50);
+} catch (Exception $e) { /* Table missing, use default */ }
+
+// Export Handler
+if(($_GET['export'] ?? '') === 'csv'){
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="inventory_oversight.csv"');
+    $out = fopen('php://output', 'w');
+    
+    // Header
+    fputcsv($out, ['Report Type', 'Station', 'Item/Fuel', 'Date', 'Value/Stock', 'Status/Variance']);
+
+    // 1. Fuel Readings Data
+    $fr = read_json('fuel_readings.json', []);
+    foreach($fr as $r){
+        if($r['date'] < $f_start || $r['date'] > $f_end) continue;
+        if($f_station && ($r['station_id'] ?? '') != $f_station) continue;
+        
+        $liters = $r['computed_liters'] ?? 0;
+        $status = 'Normal';
+        if($liters < 0) $status = 'Negative Variance';
+        elseif(($r['calibration'] ?? 0) > $calibrationThreshold) $status = 'High Calibration';
+
+        fputcsv($out, [
+            'Fuel Reading',
+            $r['station_id'], // Ideally map to name, but ID is safer for CSV logic here without DB fetch overhead inside loop
+            $r['fuel_type'],
+            $r['date'],
+            $liters . ' L',
+            $status
+        ]);
+    }
+    fclose($out);
+    exit;
+}
+
+// --- 1. DATA AGGREGATION (Input Stage) ---
+try {
+    // FIX: Ensure activity_logs table exists to prevent "Base table not found" error
+    $pdo->exec("CREATE TABLE IF NOT EXISTS activity_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT,
+        action VARCHAR(255),
+        details TEXT,
+        ip_address VARCHAR(45),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Fetch Stations for mapping
+    $stations = $pdo->query("SELECT * FROM stations")->fetchAll(PDO::FETCH_ASSOC);
+    $stationsMap = [];
+    foreach($stations as $s) $stationsMap[$s['id']] = $s['name'];
+
+    // Fetch Consolidated Inventory (Merch & Fuel Levels from DB)
+    $invSql = "SELECT i.*, s.name as station_name FROM station_inventory i LEFT JOIN stations s ON i.station_id = s.id WHERE 1=1";
+    $invParams = [];
+    if($f_station) { $invSql .= " AND i.station_id = ?"; $invParams[] = $f_station; }
+    
+    $invStmt = $pdo->prepare($invSql);
+    $invStmt->execute($invParams);
+    $inventoryDB = $invStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Fetch Audit Trail (Activity Logs)
+    // Note: Filtering logs by station requires joining users and checking their station_id
+    $logSql = "SELECT l.*, u.username, s.name as station_name FROM activity_logs l 
+               LEFT JOIN users u ON l.user_id = u.id 
+               LEFT JOIN stations s ON u.station_id = s.id 
+               WHERE (l.created_at BETWEEN ? AND ?)";
+    $logParams = [$f_start . ' 00:00:00', $f_end . ' 23:59:59'];
+    
+    if($f_station) { 
+        $logSql .= " AND u.station_id = ?"; 
+        $logParams[] = $f_station; 
+    }
+    $logSql .= " ORDER BY l.created_at DESC LIMIT 50";
+
+    $logStmt = $pdo->prepare($logSql);
+    $logStmt->execute($logParams);
+    $auditLogs = $logStmt->fetchAll(PDO::FETCH_ASSOC);
+
+} catch(PDOException $e) {
+    echo "<div class='card error'>Database Error: " . $e->getMessage() . "</div>";
+    $inventoryDB = [];
+    $auditLogs = [];
+}
+
+// Fetch Fuel Readings (JSON) for Variance Detection
+$fuelReadings = read_json('fuel_readings.json', []);
+
+// --- 2. PROCESS STAGE (Logic & Variance) ---
+
+// A. Merchandise Analysis (Color Coding)
+$merchItems = array_filter($inventoryDB, function($item) {
+    return ($item['type'] === 'merch');
+});
+
+// B. Fuel Overview
+$fuelStock = array_filter($inventoryDB, function($item) {
+    return ($item['type'] === 'fuel');
+});
+
+// C. Variance Detection (Filtered Readings)
 $filteredReadings = [];
-foreach(array_reverse($fuelReadings) as $r) {  // Apply Filters  if($r['date'] < $f_start || $r['date'] > $f_end) continue;  if($f_station && ($r['station_id'] ?? '') != $f_station) continue;  $filteredReadings[] = $r;
+foreach(array_reverse($fuelReadings) as $r) {
+    // Apply Filters
+    if($r['date'] < $f_start || $r['date'] > $f_end) continue;
+    if($f_station && ($r['station_id'] ?? '') != $f_station) continue;
+    
+    $filteredReadings[] = $r;
 }
 // Limit display if too many
 $displayReadings = array_slice($filteredReadings, 0, 50);
-?>  <div class="page-head">  <div>  <h1 class="h1">Inventory Oversight</h1>  <div class="sub">Nationwide inventory monitoring, variance detection, and audit trails.</div>  </div>  <div style="display:flex; gap:10px; align-items:center;">  <a href="oversight.php?export=csv&station=<?php echo urlencode($f_station); ?>&start=<?php echo $f_start; ?>&end=<?php echo $f_end; ?>" class="btn ghost"><i class="fas fa-download"></i> Export CSV</a>  <button class="btn ghost" onclick="window.print()"><i class="fas fa-print"></i> Print</button>  </div>  </div>  <!-- FILTERS -->  <section class="card" style="padding:15px; margin-bottom:20px; background:#f8f9fa;">  <form method="get" style="display:flex; gap:15px; align-items:end; flex-wrap:wrap;">  <div>  <label class="lbl" style="font-size:0.85em;">Station</label>  <select name="station" class="inp" style="padding:5px;">  <option value="">All Stations</option>  <?php foreach($stationsMap as $id => $name): ?>  <option value="<?php echo $id; ?>" <?php echo $f_station == $id ? 'selected' : ''; ?>><?php echo htmlspecialchars($name); ?></option>  <?php endforeach; ?>  </select>  </div>  <div>  <label class="lbl" style="font-size:0.85em;">Date Range</label>  <div style="display:flex; gap:5px;">  <input type="date" name="start" value="<?php echo $f_start; ?>" class="inp" style="padding:5px;">  <span style="align-self:center;">to</span>  <input type="date" name="end" value="<?php echo $f_end; ?>" class="inp" style="padding:5px;">  </div>  </div>  <button type="submit" class="btn primary" style="padding:6px 15px;">Filter</button>  <?php if($f_station || $f_start != date('Y-m-01')): ?>  <a href="oversight.php" class="btn ghost" style="padding:6px 15px;">Reset</a>  <?php endif; ?>  </form>  </section>  <!-- METRICS -->  <section class="cards three">  <div class="card metric">  <div class="metric-label">Merchandise Items</div>  <div class="metric-value"><?php echo count($merchItems); ?></div>  <div class="metric-sub">Tracked in selected view</div>  </div>  <div class="card metric">  <div class="metric-label">Fuel Tanks</div>  <div class="metric-value blue"><?php echo count($fuelStock); ?></div>  <div class="metric-sub">Active tanks</div>  </div>  <div class="card metric">  <div class="metric-label">Logs Found</div>  <div class="metric-value"><?php echo count($auditLogs); ?></div>  <div class="metric-sub">In selected date range</div>  </div>  </section>  <!-- 1. FUEL VARIANCE & READINGS -->  <section class="card" style="margin-top:20px; padding:20px;">  <h2 class="h2">Fuel Variance & Readings Oversight</h2>  <div class="sub">Meter readings vs calculated liters. Formula: (Present – Previous – Calibration).</div>  <div class="table-wrap">  <table class="table">  <thead>  <tr>  <th>Station</th>  <th>Fuel Type</th>  <th>Date</th>  <th>Readings (Prev  Pres)</th>  <th>Calibration</th>  <th>Sold (L)</th>  <th>Status</th>  </tr>  </thead>  <tbody>  <?php foreach($displayReadings as $r):  $liters = $r['computed_liters'] ?? 0;  $status = 'Normal';  $statusColor = 'green';  // Variance Logic: Negative liters or high calibration  if($liters < 0) { $status = 'Negative Variance'; $statusColor = 'red'; }  elseif(($r['calibration'] ?? 0) > $calibrationThreshold) { $status = 'High Calibration'; $statusColor = 'orange'; }  ?>  <tr>  <td><?php echo htmlspecialchars($stationsMap[$r['station_id'] ?? ''] ?? 'Unknown Station'); ?></td>  <td><?php echo htmlspecialchars($r['fuel_type']); ?></td>  <td><?php echo htmlspecialchars($r['date']); ?></td>  <td><?php echo number_format($r['previous'], 2) . '  ' . number_format($r['present'], 2); ?></td>  <td><?php echo number_format($r['calibration'], 2); ?></td>  <td><b><?php echo number_format($liters, 2); ?> L</b></td>  <td><span style="color:<?php echo $statusColor; ?>; font-weight:bold;"><?php echo $status; ?></span></td>  </tr>  <?php endforeach; ?>  <?php if(empty($displayReadings)): ?><tr><td colspan="7">No fuel readings found in this range.</td></tr><?php endif; ?>  </tbody>  </table>  </div>  </section>  <section class="grid-2" style="margin-top:20px;">  <!-- 2. MERCHANDISE STOCK STATUS -->  <div class="card" style="padding:20px;">  <h2 class="h2"><i class="fas fa-box"></i> Merchandise Stock Status</h2>  <div class="table-wrap">  <table class="table">  <thead>  <tr>  <th>Station</th>  <th>Product</th>  <th>Stock</th>  <th>Action</th>  </tr>  </thead>  <tbody>  <?php foreach($merchItems as $item):  $sl = $item['stock_level'];  $color = 'green';  $msg = 'Normal';  if($sl <= $lowStockThreshold) { $color = 'red'; $msg = 'Critical'; }  elseif($sl <= ($lowStockThreshold * 2.5)) { $color = 'orange'; $msg = 'Warning'; }  ?>  <tr>  <td><?php echo htmlspecialchars($item['station_name'] ?? 'Unknown'); ?></td>  <td><?php echo htmlspecialchars($item['product_name']); ?></td>  <td style="color:<?php echo $color; ?>; font-weight:bold;">  <?php echo number_format($sl); ?>  <small style="color:#666; font-weight:normal;">(<?php echo $msg; ?>)</small>  </td>  <td>  <?php if($color !== 'green'): ?>  <button class="btn ghost small">Notify</button>  <?php endif; ?>  </td>  </tr>  <?php endforeach; ?>  <?php if(empty($merchItems)): ?><tr><td colspan="4">No merchandise found.</td></tr><?php endif; ?>  </tbody>  </table>  </div>  </div>  <!-- 3. AUDIT TRAIL -->  <div class="card" style="padding:20px;">  <h2 class="h2"><i class="fas fa-shield-alt"></i> Audit Trail</h2>  <div class="sub">Activities in selected range.</div>  <div class="table-wrap">  <table class="table">  <thead>  <tr>  <th>User</th>  <th>Action</th>  <th>Details</th>  <th>Time</th>  </tr>  </thead>  <tbody>  <?php foreach($auditLogs as $log): ?>  <tr>  <td>  <?php echo htmlspecialchars($log['username'] ?? 'System'); ?><br>  <small><?php echo htmlspecialchars($log['station_name'] ?? 'Head Office'); ?></small>  </td>  <td><?php echo htmlspecialchars($log['action']); ?></td>  <td><small><?php echo htmlspecialchars($log['details']); ?></small></td>  <td><?php echo date('M d H:i', strtotime($log['created_at'])); ?></td>  </tr>  <?php endforeach; ?>  <?php if(empty($auditLogs)): ?><tr><td colspan="4">No logs available.</td></tr><?php endif; ?>  </tbody>  </table>  </div>  </div>  </section>  <?php include __DIR__ . '/../partials/footer.php'; ?>
+?>
+  <div class="page-head">
+    <div>
+      <h1 class="h1">Inventory Oversight</h1>
+      <div class="sub">Nationwide inventory monitoring, variance detection, and audit trails.</div>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center;">
+        <a href="oversight.php?export=csv&station=<?php echo urlencode($f_station); ?>&start=<?php echo $f_start; ?>&end=<?php echo $f_end; ?>" class="btn ghost"><i class="fas fa-download"></i> Export CSV</a>
+        <button class="btn ghost" onclick="window.print()"><i class="fas fa-print"></i> Print</button>
+    </div>
+  </div>
+  
+  <!-- FILTERS -->
+  <section class="card" style="padding:15px; margin-bottom:20px; background:#f8f9fa;">
+    <form method="get" style="display:flex; gap:15px; align-items:end; flex-wrap:wrap;">
+        <div>
+            <label class="lbl" style="font-size:0.85em;">Station</label>
+            <select name="station" class="inp" style="padding:5px;">
+                <option value="">All Stations</option>
+                <?php foreach($stationsMap as $id => $name): ?>
+                    <option value="<?php echo $id; ?>" <?php echo $f_station == $id ? 'selected' : ''; ?>><?php echo htmlspecialchars($name); ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div>
+            <label class="lbl" style="font-size:0.85em;">Date Range</label>
+            <div style="display:flex; gap:5px;">
+                <input type="date" name="start" value="<?php echo $f_start; ?>" class="inp" style="padding:5px;">
+                <span style="align-self:center;">to</span>
+                <input type="date" name="end" value="<?php echo $f_end; ?>" class="inp" style="padding:5px;">
+            </div>
+        </div>
+        <button type="submit" class="btn primary" style="padding:6px 15px;">Filter</button>
+        <?php if($f_station || $f_start != date('Y-m-01')): ?>
+            <a href="oversight.php" class="btn ghost" style="padding:6px 15px;">Reset</a>
+        <?php endif; ?>
+    </form>
+  </section>
+
+  <!-- METRICS -->
+  <section class="cards three">
+    <div class="card metric">
+        <div class="metric-label">Merchandise Items</div>
+        <div class="metric-value"><?php echo count($merchItems); ?></div>
+        <div class="metric-sub">Tracked in selected view</div>
+    </div>
+    <div class="card metric">
+        <div class="metric-label">Fuel Tanks</div>
+        <div class="metric-value blue"><?php echo count($fuelStock); ?></div>
+        <div class="metric-sub">Active tanks</div>
+    </div>
+    <div class="card metric">
+        <div class="metric-label">Logs Found</div>
+        <div class="metric-value"><?php echo count($auditLogs); ?></div>
+        <div class="metric-sub">In selected date range</div>
+    </div>
+  </section>
+
+  <!-- 1. FUEL VARIANCE & READINGS -->
+  <section class="card" style="margin-top:20px; padding:20px;">
+    <h2 class="h2">Fuel Variance & Readings Oversight</h2>
+    <div class="sub">Meter readings vs calculated liters. Formula: (Present – Previous – Calibration).</div>
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Station</th>
+                    <th>Fuel Type</th>
+                    <th>Date</th>
+                    <th>Readings (Prev ➡ Pres)</th>
+                    <th>Calibration</th>
+                    <th>Sold (L)</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach($displayReadings as $r): 
+                    $liters = $r['computed_liters'] ?? 0;
+                    $status = 'Normal';
+                    $statusColor = 'green';
+                    // Variance Logic: Negative liters or high calibration
+                    if($liters < 0) { $status = 'Negative Variance'; $statusColor = 'red'; }
+                    elseif(($r['calibration'] ?? 0) > $calibrationThreshold) { $status = 'High Calibration'; $statusColor = 'orange'; }
+                ?>
+                <tr>
+                    <td><?php echo htmlspecialchars($stationsMap[$r['station_id'] ?? ''] ?? 'Unknown Station'); ?></td>
+                    <td><?php echo htmlspecialchars($r['fuel_type']); ?></td>
+                    <td><?php echo htmlspecialchars($r['date']); ?></td>
+                    <td><?php echo number_format($r['previous'], 2) . ' ➡ ' . number_format($r['present'], 2); ?></td>
+                    <td><?php echo number_format($r['calibration'], 2); ?></td>
+                    <td><b><?php echo number_format($liters, 2); ?> L</b></td>
+                    <td><span style="color:<?php echo $statusColor; ?>; font-weight:bold;"><?php echo $status; ?></span></td>
+                </tr>
+                <?php endforeach; ?>
+                <?php if(empty($displayReadings)): ?><tr><td colspan="7">No fuel readings found in this range.</td></tr><?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+  </section>
+
+  <section class="grid-2" style="margin-top:20px;">
+    <!-- 2. MERCHANDISE STOCK STATUS -->
+    <div class="card" style="padding:20px;">
+        <h2 class="h2"><i class="fas fa-box"></i> Merchandise Stock Status</h2>
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Station</th>
+                        <th>Product</th>
+                        <th>Stock</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach($merchItems as $item): 
+                        $sl = $item['stock_level'];
+                        $color = 'green';
+                        $msg = 'Normal';
+                        if($sl <= $lowStockThreshold) { $color = 'red'; $msg = 'Critical'; }
+                        elseif($sl <= ($lowStockThreshold * 2.5)) { $color = 'orange'; $msg = 'Warning'; }
+                    ?>
+                    <tr>
+                        <td><?php echo htmlspecialchars($item['station_name'] ?? 'Unknown'); ?></td>
+                        <td><?php echo htmlspecialchars($item['product_name']); ?></td>
+                        <td style="color:<?php echo $color; ?>; font-weight:bold;">
+                            <?php echo number_format($sl); ?>
+                            <small style="color:#666; font-weight:normal;">(<?php echo $msg; ?>)</small>
+                        </td>
+                        <td>
+                            <?php if($color !== 'green'): ?>
+                                <button class="btn ghost small">Notify</button>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    <?php if(empty($merchItems)): ?><tr><td colspan="4">No merchandise found.</td></tr><?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 3. AUDIT TRAIL -->
+    <div class="card" style="padding:20px;">
+        <h2 class="h2"><i class="fas fa-shield-alt"></i> Audit Trail</h2>
+        <div class="sub">Activities in selected range.</div>
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>User</th>
+                        <th>Action</th>
+                        <th>Details</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach($auditLogs as $log): ?>
+                    <tr>
+                        <td>
+                            <?php echo htmlspecialchars($log['username'] ?? 'System'); ?><br>
+                            <small><?php echo htmlspecialchars($log['station_name'] ?? 'Head Office'); ?></small>
+                        </td>
+                        <td><?php echo htmlspecialchars($log['action']); ?></td>
+                        <td><small><?php echo htmlspecialchars($log['details']); ?></small></td>
+                        <td><?php echo date('M d H:i', strtotime($log['created_at'])); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                    <?php if(empty($auditLogs)): ?><tr><td colspan="4">No logs available.</td></tr><?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+  </section>
+
+<?php include __DIR__ . '/../partials/footer.php'; ?>

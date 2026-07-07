@@ -5,7 +5,7 @@ ini_set('display_errors', 1);
 require_once __DIR__ . '/config/email_config.php';
 
 $test_email = 'cabahug.amiedamas@gmail.com';
-$test_otp  = '654321';
+$test_otp   = '654321';
 
 echo "Testing OTP email to: {$test_email}\n";
 echo "OTP Code: {$test_otp}\n\n";

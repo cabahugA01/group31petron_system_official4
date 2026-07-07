@@ -1,13 +1,158 @@
 <?php
-/**  * Export Job Order Tracker (Staff Side)  * Exports service records and receipts  * Formats: Excel, CSV, PDF  */
-if (session_status() === PHP_SESSION_NONE) session_start();  require_once __DIR__ . '/../lib.php';
+/**
+ * Export Job Order Tracker (Staff Side)
+ * Exports service records and receipts
+ * Formats: Excel, CSV, PDF
+ */
+if (session_status() === PHP_SESSION_NONE) session_start();
+
+require_once __DIR__ . '/../lib.php';
 require_once __DIR__ . '/../../public/db_connect.php';
-require_login();  $me = current_user();
+require_login();
+
+$me = current_user();
 $role = role_key($me['role'] ?? '');
-$station_id = (int)user_station_id();  if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin'])) {  die('Access denied');
-}  $format = $_GET['format'] ?? 'excel';
+$station_id = (int)user_station_id();
+
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin'])) {
+    die('Access denied');
+}
+
+$format = $_GET['format'] ?? 'excel';
 $date_from = $_GET['date_from'] ?? date('Y-m-01');
-$date_to = $_GET['date_to'] ?? date('Y-m-d');  // Validate format - Excel and CSV only
-if (!in_array($format, ['excel', 'csv'])) {  die('Invalid format');
-}  try {  // Fetch job orders with service details  $query = $pdo->prepare("  SELECT  jo.id,  CONCAT('JO-', LPAD(jo.id, 5, '0')) AS jo_ref,  jo.customer_name,  jo.vehicle_plate,  jo.service_type,  jo.created_at AS transaction_date,  jo.total_cost,  COALESCE(jo.amount_paid, 0) AS amount_paid,  (jo.total_cost - COALESCE(jo.amount_paid, 0)) AS balance_due,  jo.payment_method,  jo.payment_status,  jo.status,  jo.validation_status,  jo.due_date,  u.name AS staff_name,  jo.notes,  (SELECT GROUP_CONCAT(  CONCAT(mti.product_name, ' (Qty: ', mti.quantity, ', ₱', ROUND(mti.unit_price, 2), ')')  SEPARATOR '; '  )  FROM merchandise_transaction_items mti  INNER JOIN merchandise_transactions mt ON mt.id = mti.transaction_id  WHERE mt.job_order_id = jo.id  ) AS service_items  FROM job_orders jo  LEFT JOIN users u ON jo.created_by = u.id  WHERE jo.station_id = ?  AND DATE(jo.created_at) BETWEEN ? AND ?  AND jo.created_by = ?  ORDER BY jo.created_at DESC  LIMIT 500  ");  $query->execute([$station_id, $date_from, $date_to, $me['id']]);  $job_orders = $query->fetchAll(PDO::FETCH_ASSOC);  if (empty($job_orders)) {  die('No job order records found for the selected period');  }  // Export based on format  if ($format === 'csv') {  header('Content-Type: text/csv; charset=utf-8');  header('Content-Disposition: attachment; filename="job_order_tracker_' . date('Y-m-d_His') . '.csv"');  $output = fopen('php://output', 'w');  fputcsv($output, ['JO Ref', 'Date', 'Customer', 'Vehicle', 'Service Type', 'Service Items', 'Total Cost', 'Paid', 'Balance', 'Payment Method', 'Payment Status', 'Status', 'Staff', 'Notes']);  foreach ($job_orders as $row) {  fputcsv($output, [  $row['jo_ref'],  date('M d, Y H:i', strtotime($row['transaction_date'])),  $row['customer_name'] ?: 'Walk-in',  $row['vehicle_plate'] ?: 'N/A',  $row['service_type'],  $row['service_items'] ?: 'N/A',  number_format((float)$row['total_cost'], 2),  number_format((float)$row['amount_paid'], 2),  number_format((float)$row['balance_due'], 2),  $row['payment_method'] ?: 'N/A',  $row['payment_status'],  $row['validation_status'] ?: $row['status'],  $row['staff_name'],  $row['notes'] ?: ''  ]);  }  fclose($output);  exit;  } elseif ($format === 'excel') {  header('Content-Type: application/vnd.ms-excel; charset=utf-8');  header('Content-Disposition: attachment; filename="job_order_tracker_' . date('Y-m-d_His') . '.xls"');  echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel">';  echo '<head><meta charset="UTF-8">';  echo '<style>table{border-collapse:collapse;}th,td{border:1px solid #ddd;padding:8px;}th{background-color:#002F70;color:white;font-weight:bold;}</style>';  echo '</head><body>';  echo '<table>';  echo '<thead><tr>';  echo '<th>JO Ref</th><th>Date</th><th>Customer</th><th>Vehicle</th><th>Service Type</th><th>Service Items</th>';  echo '<th>Total Cost</th><th>Paid</th><th>Balance</th><th>Payment Method</th><th>Payment Status</th><th>Status</th><th>Staff</th><th>Notes</th>';  echo '</tr></thead><tbody>';  $total_cost = 0;  $total_paid = 0;  $total_balance = 0;  foreach ($job_orders as $row) {  $total_cost += (float)$row['total_cost'];  $total_paid += (float)$row['amount_paid'];  $total_balance += (float)$row['balance_due'];  echo '<tr>';  echo '<td>' . htmlspecialchars($row['jo_ref']) . '</td>';  echo '<td>' . date('M d, Y H:i', strtotime($row['transaction_date'])) . '</td>';  echo '<td>' . htmlspecialchars($row['customer_name'] ?: 'Walk-in') . '</td>';  echo '<td>' . htmlspecialchars($row['vehicle_plate'] ?: 'N/A') . '</td>';  echo '<td>' . htmlspecialchars($row['service_type']) . '</td>';  echo '<td>' . htmlspecialchars($row['service_items'] ?: 'N/A') . '</td>';  echo '<td style="text-align:right;">₱' . number_format((float)$row['total_cost'], 2) . '</td>';  echo '<td style="text-align:right;">₱' . number_format((float)$row['amount_paid'], 2) . '</td>';  echo '<td style="text-align:right;">₱' . number_format((float)$row['balance_due'], 2) . '</td>';  echo '<td>' . htmlspecialchars($row['payment_method'] ?: 'N/A') . '</td>';  echo '<td>' . htmlspecialchars($row['payment_status']) . '</td>';  echo '<td>' . htmlspecialchars($row['validation_status'] ?: $row['status']) . '</td>';  echo '<td>' . htmlspecialchars($row['staff_name']) . '</td>';  echo '<td>' . htmlspecialchars($row['notes'] ?: '') . '</td>';  echo '</tr>';  }  echo '<tr style="background:#f0f4ff;font-weight:bold;">';  echo '<td colspan="6" style="text-align:right;">TOTAL:</td>';  echo '<td style="text-align:right;">₱' . number_format($total_cost, 2) . '</td>';  echo '<td style="text-align:right;">₱' . number_format($total_paid, 2) . '</td>';  echo '<td style="text-align:right;">₱' . number_format($total_balance, 2) . '</td>';  echo '<td colspan="5"></td>';  echo '</tr>';  echo '</tbody></table></body></html>';  exit;  }  } catch (Exception $e) {  die('Export error: ' . $e->getMessage());
+$date_to = $_GET['date_to'] ?? date('Y-m-d');
+
+// Validate format - Excel and CSV only
+if (!in_array($format, ['excel', 'csv'])) {
+    die('Invalid format');
+}
+
+try {
+    // Fetch job orders with service details
+    $query = $pdo->prepare("
+        SELECT 
+            jo.id,
+            CONCAT('JO-', LPAD(jo.id, 5, '0')) AS jo_ref,
+            jo.customer_name,
+            jo.vehicle_plate,
+            jo.service_type,
+            jo.created_at AS transaction_date,
+            jo.total_cost,
+            COALESCE(jo.amount_paid, 0) AS amount_paid,
+            (jo.total_cost - COALESCE(jo.amount_paid, 0)) AS balance_due,
+            jo.payment_method,
+            jo.payment_status,
+            jo.status,
+            jo.validation_status,
+            jo.due_date,
+            u.name AS staff_name,
+            jo.notes,
+            (SELECT GROUP_CONCAT(
+                CONCAT(mti.product_name, ' (Qty: ', mti.quantity, ', ₱', ROUND(mti.unit_price, 2), ')')
+                SEPARATOR '; '
+            )
+            FROM merchandise_transaction_items mti
+            INNER JOIN merchandise_transactions mt ON mt.id = mti.transaction_id
+            WHERE mt.job_order_id = jo.id
+            ) AS service_items
+        FROM job_orders jo
+        LEFT JOIN users u ON jo.created_by = u.id
+        WHERE jo.station_id = ?
+          AND DATE(jo.created_at) BETWEEN ? AND ?
+          AND jo.created_by = ?
+        ORDER BY jo.created_at DESC
+        LIMIT 500
+    ");
+    $query->execute([$station_id, $date_from, $date_to, $me['id']]);
+    $job_orders = $query->fetchAll(PDO::FETCH_ASSOC);
+
+    if (empty($job_orders)) {
+        die('No job order records found for the selected period');
+    }
+
+    // Export based on format
+    if ($format === 'csv') {
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="job_order_tracker_' . date('Y-m-d_His') . '.csv"');
+        
+        $output = fopen('php://output', 'w');
+        fputcsv($output, ['JO Ref', 'Date', 'Customer', 'Vehicle', 'Service Type', 'Service Items', 'Total Cost', 'Paid', 'Balance', 'Payment Method', 'Payment Status', 'Status', 'Staff', 'Notes']);
+        
+        foreach ($job_orders as $row) {
+            fputcsv($output, [
+                $row['jo_ref'],
+                date('M d, Y H:i', strtotime($row['transaction_date'])),
+                $row['customer_name'] ?: 'Walk-in',
+                $row['vehicle_plate'] ?: 'N/A',
+                $row['service_type'],
+                $row['service_items'] ?: 'N/A',
+                number_format((float)$row['total_cost'], 2),
+                number_format((float)$row['amount_paid'], 2),
+                number_format((float)$row['balance_due'], 2),
+                $row['payment_method'] ?: 'N/A',
+                $row['payment_status'],
+                $row['validation_status'] ?: $row['status'],
+                $row['staff_name'],
+                $row['notes'] ?: ''
+            ]);
+        }
+        
+        fclose($output);
+        exit;
+        
+    } elseif ($format === 'excel') {
+        header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+        header('Content-Disposition: attachment; filename="job_order_tracker_' . date('Y-m-d_His') . '.xls"');
+        
+        echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel">';
+        echo '<head><meta charset="UTF-8">';
+        echo '<style>table{border-collapse:collapse;}th,td{border:1px solid #ddd;padding:8px;}th{background-color:#002F70;color:white;font-weight:bold;}</style>';
+        echo '</head><body>';
+        echo '<table>';
+        echo '<thead><tr>';
+        echo '<th>JO Ref</th><th>Date</th><th>Customer</th><th>Vehicle</th><th>Service Type</th><th>Service Items</th>';
+        echo '<th>Total Cost</th><th>Paid</th><th>Balance</th><th>Payment Method</th><th>Payment Status</th><th>Status</th><th>Staff</th><th>Notes</th>';
+        echo '</tr></thead><tbody>';
+        
+        $total_cost = 0;
+        $total_paid = 0;
+        $total_balance = 0;
+        
+        foreach ($job_orders as $row) {
+            $total_cost += (float)$row['total_cost'];
+            $total_paid += (float)$row['amount_paid'];
+            $total_balance += (float)$row['balance_due'];
+            
+            echo '<tr>';
+            echo '<td>' . htmlspecialchars($row['jo_ref']) . '</td>';
+            echo '<td>' . date('M d, Y H:i', strtotime($row['transaction_date'])) . '</td>';
+            echo '<td>' . htmlspecialchars($row['customer_name'] ?: 'Walk-in') . '</td>';
+            echo '<td>' . htmlspecialchars($row['vehicle_plate'] ?: 'N/A') . '</td>';
+            echo '<td>' . htmlspecialchars($row['service_type']) . '</td>';
+            echo '<td>' . htmlspecialchars($row['service_items'] ?: 'N/A') . '</td>';
+            echo '<td style="text-align:right;">₱' . number_format((float)$row['total_cost'], 2) . '</td>';
+            echo '<td style="text-align:right;">₱' . number_format((float)$row['amount_paid'], 2) . '</td>';
+            echo '<td style="text-align:right;">₱' . number_format((float)$row['balance_due'], 2) . '</td>';
+            echo '<td>' . htmlspecialchars($row['payment_method'] ?: 'N/A') . '</td>';
+            echo '<td>' . htmlspecialchars($row['payment_status']) . '</td>';
+            echo '<td>' . htmlspecialchars($row['validation_status'] ?: $row['status']) . '</td>';
+            echo '<td>' . htmlspecialchars($row['staff_name']) . '</td>';
+            echo '<td>' . htmlspecialchars($row['notes'] ?: '') . '</td>';
+            echo '</tr>';
+        }
+        
+        echo '<tr style="background:#f0f4ff;font-weight:bold;">';
+        echo '<td colspan="6" style="text-align:right;">TOTAL:</td>';
+        echo '<td style="text-align:right;">₱' . number_format($total_cost, 2) . '</td>';
+        echo '<td style="text-align:right;">₱' . number_format($total_paid, 2) . '</td>';
+        echo '<td style="text-align:right;">₱' . number_format($total_balance, 2) . '</td>';
+        echo '<td colspan="5"></td>';
+        echo '</tr>';
+        
+        echo '</tbody></table></body></html>';
+        exit;
+    }
+
+} catch (Exception $e) {
+    die('Export error: ' . $e->getMessage());
 }

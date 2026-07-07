@@ -1,24 +1,334 @@
 <?php
-/**  * EXPORT CENTER - ADMIN  *  * Centralized export hub for Admin role with immediate export functionality.  *  * Export Categories:  * 1. Sales Exports - Daily/Weekly/Monthly sales reports  * 2. Financial Exports - Profit & Loss, fuel cost analysis, revenue breakdown  * 3. Inventory Exports - Stock levels, movement history, low stock reports  * 4. Staff Performance Exports - Productivity, attendance records  * 5. Audit Trail Exports - Override logs, approval history, system logs  * 6. Customer Exports - Customer lists, credit reports, statements  * 7. Fuel Exports - Fuel reconciliation, variance reports, calibration logs  *  * Features:  * - Date range selectors  * - Format options (Excel, PDF, CSV)  * - Immediate export (no scheduling)  */
+/**
+ * EXPORT CENTER - ADMIN
+ * 
+ * Centralized export hub for Admin role with immediate export functionality.
+ * 
+ * Export Categories:
+ * 1. Sales Exports - Daily/Weekly/Monthly sales reports
+ * 2. Financial Exports - Profit & Loss, fuel cost analysis, revenue breakdown
+ * 3. Inventory Exports - Stock levels, movement history, low stock reports
+ * 4. Staff Performance Exports - Productivity, attendance records
+ * 5. Audit Trail Exports - Override logs, approval history, system logs
+ * 6. Customer Exports - Customer lists, credit reports, statements
+ * 7. Fuel Exports - Fuel reconciliation, variance reports, calibration logs
+ * 
+ * Features:
+ * - Date range selectors
+ * - Format options (Excel, PDF, CSV)
+ * - Immediate export (no scheduling)
+ */
 $page_id = 'export_center';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
-require_login();  $me = current_user();
-$role = role_key($me['role'] ?? 'staff');  if ($role !== 'admin' && $role !== 'superadmin' && $role !== 'manager') {  header('Location: dashboard.php');  exit;
-}  $active_tab = $_GET['tab'] ?? 'sales';  // Add access control for restricted tabs
-if ($active_tab === 'financial' && !in_array($role, ['admin', 'superadmin'])) {  $active_tab = 'sales';
+require_login();
+
+$me = current_user();
+$role = role_key($me['role'] ?? 'staff');
+
+if ($role !== 'admin' && $role !== 'superadmin' && $role !== 'manager') {
+    header('Location: dashboard.php');
+    exit;
 }
-if ($active_tab === 'audit' && !in_array($role, ['admin', 'superadmin'])) {  $active_tab = 'sales';
+
+$active_tab = $_GET['tab'] ?? 'sales';
+
+// Add access control for restricted tabs
+if ($active_tab === 'financial' && !in_array($role, ['admin', 'superadmin'])) {
+    $active_tab = 'sales';
 }
-if ($active_tab === 'staff' && !in_array($role, ['manager', 'admin', 'superadmin'])) {  $active_tab = 'sales';
+if ($active_tab === 'audit' && !in_array($role, ['admin', 'superadmin'])) {
+    $active_tab = 'sales';
+}
+if ($active_tab === 'staff' && !in_array($role, ['manager', 'admin', 'superadmin'])) {
+    $active_tab = 'sales';
 }
 $station_id = user_station_id();
 $export_message = '';
-$message_type = '';  $default_date_range = isset($_GET['start_date']) && isset($_GET['end_date'])  ? [$_GET['start_date'], $_GET['end_date']]  : [date('Y-m-01'), date('Y-m-t')];  include __DIR__ . '/../partials/header.php';
-?>  <div class="page-head">  <div>  <h1 class="h1">Export Center</h1>  <div class="sub">Download reports and data in various formats</div>  </div>
-</div>  <?php if ($export_message): ?>
-<div style="background: <?php echo $message_type === 'success' ? '#d4edda' : '#f8d7da'; ?>; color: <?php echo $message_type === 'success' ? '#155724' : '#721c24'; ?>; padding: 15px; border-radius: 8px; margin-bottom: 20px;">  <?php echo htmlspecialchars($export_message); ?>
+$message_type = '';
+
+$default_date_range = isset($_GET['start_date']) && isset($_GET['end_date']) 
+    ? [$_GET['start_date'], $_GET['end_date']]
+    : [date('Y-m-01'), date('Y-m-t')];
+
+include __DIR__ . '/../partials/header.php';
+?>
+
+<div class="page-head">
+    <div>
+        <h1 class="h1">Export Center</h1>
+        <div class="sub">Download reports and data in various formats</div>
+    </div>
 </div>
-<?php endif; ?>  <div style="margin-bottom: 20px;">  <div style="border-bottom: 2px solid #ddd; display: flex; gap: 5px; flex-wrap: wrap;">  <!-- Available to all roles -->  <a href="export_center.php?tab=sales" class="btn <?php echo $active_tab === 'sales' ? 'primary' : 'secondary'; ?>" style="border-radius: 8px 8px 0 0;">  <i class="fas fa-chart-line"></i> Sales Exports  </a>  <!-- Admin and Super Admin only -->  <?php if (in_array($role, ['admin', 'superadmin'])): ?>  <a href="export_center.php?tab=financial" class="btn <?php echo $active_tab === 'financial' ? 'primary' : 'secondary'; ?>" style="border-radius: 8px 8px 0 0;">  <i class="fas fa-dollar-sign"></i> Financial Exports  </a>  <a href="export_center.php?tab=audit" class="btn <?php echo $active_tab === 'audit' ? 'primary' : 'secondary'; ?>" style="border-radius: 8px 8px 0 0;">  <i class="fas fa-clipboard-list"></i> Audit Trail  </a>  <?php endif; ?>  <!-- Available to all roles -->  <a href="export_center.php?tab=inventory" class="btn <?php echo $active_tab === 'inventory' ? 'primary' : 'secondary'; ?>" style="border-radius: 8px 8px 0 0;">  <i class="fas fa-box"></i> Inventory Exports  </a>  <!-- Manager and Admin only -->  <?php if (in_array($role, ['manager', 'admin', 'superadmin'])): ?>  <a href="export_center.php?tab=staff" class="btn <?php echo $active_tab === 'staff' ? 'primary' : 'secondary'; ?>" style="border-radius: 8px 8px 0 0;">  <i class="fas fa-users"></i> Staff Performance  </a>  <?php endif; ?>  <!-- Available to all roles -->  <a href="export_center.php?tab=customer" class="btn <?php echo $active_tab === 'customer' ? 'primary' : 'secondary'; ?>" style="border-radius: 8px 8px 0 0;">  <i class="fas fa-user-friends"></i> Customer Exports  </a>  <!-- Available to all roles -->  <a href="export_center.php?tab=fuel" class="btn <?php echo $active_tab === 'fuel' ? 'primary' : 'secondary'; ?>" style="border-radius: 8px 8px 0 0;">  <i class="fas fa-gas-pump"></i> Fuel Exports  </a>  </div>
-</div>  <div class="card" style="padding: 30px;">  <?php if ($active_tab === 'sales'): ?>  <h3 class="h3"><i class="fas fa-chart-line"></i> Sales Exports</h3>  <p class="muted" style="margin-bottom: 30px;">Download daily, weekly, and monthly sales reports</p>  <form method="post" action="sales_reports_export.php" style="margin-bottom: 30px;">  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">Start Date</label>  <input type="date" name="start_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[0]); ?>" required>  </div>  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">End Date</label>  <input type="date" name="end_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[1]); ?>" required>  </div>  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">Format</label>  <select name="format" class="inp" style="width: 100%;">  <option value="excel">Excel (.xlsx)</option>  <option value="csv">CSV (.csv)</option>  <option value="pdf">PDF (.pdf)</option>  </select>  </div>  </div>  <div style="display: flex; gap: 10px; flex-wrap: wrap;">  <button type="submit" name="export_type" value="daily" class="btn primary"><i class="fas fa-download"></i> Daily Sales Report</button>  <button type="submit" name="export_type" value="weekly" class="btn primary"><i class="fas fa-download"></i> Weekly Sales Report</button>  <button type="submit" name="export_type" value="monthly" class="btn primary"><i class="fas fa-download"></i> Monthly Sales Report</button>  </div>  </form>  <?php elseif ($active_tab === 'financial'): ?>  <h3 class="h3"><i class="fas fa-dollar-sign"></i> Financial Exports</h3>  <p class="muted" style="margin-bottom: 30px;">Profit & Loss, fuel cost analysis, and revenue breakdown</p>  <form method="post" action="financial_export.php" style="margin-bottom: 30px;">  <input type="hidden" name="view" value="export_financial">  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">Start Date</label>  <input type="date" name="start_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[0]); ?>" required>  </div>  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">End Date</label>  <input type="date" name="end_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[1]); ?>" required>  </div>  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">Format</label>  <select name="format" class="inp" style="width: 100%;">  <option value="excel">Excel (.xlsx)</option>  <option value="pdf">PDF (.pdf)</option>  </select>  </div>  </div>  <div style="display: flex; gap: 10px; flex-wrap: wrap;">  <button type="submit" name="export_type" value="profit_loss" class="btn primary"><i class="fas fa-download"></i> Profit & Loss Statement</button>  <button type="submit" name="export_type" value="fuel_cost" class="btn primary"><i class="fas fa-download"></i> Fuel Cost Analysis</button>  <button type="submit" name="export_type" value="revenue" class="btn primary"><i class="fas fa-download"></i> Revenue Breakdown</button>  </div>  </form>  <?php elseif ($active_tab === 'inventory'): ?>  <h3 class="h3"><i class="fas fa-box"></i> Inventory Exports</h3>  <p class="muted" style="margin-bottom: 30px;">Stock levels, movement history, and low stock reports</p>  <form method="post" action="inventory_export.php" style="margin-bottom: 30px;">  <input type="hidden" name="export" value="1">  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">Start Date</label>  <input type="date" name="start_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[0]); ?>" required>  </div>  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">End Date</label>  <input type="date" name="end_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[1]); ?>" required>  </div>  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">Format</label>  <select name="format" class="inp" style="width: 100%;">  <option value="excel">Excel (.xlsx)</option>  <option value="csv">CSV (.csv)</option>  </select>  </div>  </div>  <div style="display: flex; gap: 10px; flex-wrap: wrap;">  <button type="submit" name="export_type" value="stock_levels" class="btn primary"><i class="fas fa-download"></i> Stock Levels</button>  <button type="submit" name="export_type" value="movement_history" class="btn primary"><i class="fas fa-download"></i> Movement History</button>  <button type="submit" name="export_type" value="low_stock" class="btn primary"><i class="fas fa-download"></i> Low Stock Report</button>  </div>  </form>  <?php elseif ($active_tab === 'staff'): ?>  <h3 class="h3"><i class="fas fa-users"></i> Staff Performance Exports</h3>  <p class="muted" style="margin-bottom: 30px;">Productivity metrics and attendance records</p>  <form method="post" action="staff_reports_export.php" style="margin-bottom: 30px;">  <input type="hidden" name="export" value="1">  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">Start Date</label>  <input type="date" name="start_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[0]); ?>" required>  </div>  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">End Date</label>  <input type="date" name="end_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[1]); ?>" required>  </div>  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">Format</label>  <select name="format" class="inp" style="width: 100%;">  <option value="excel">Excel (.xlsx)</option>  <option value="pdf">PDF (.pdf)</option>  </select>  </div>  </div>  <div style="display: flex; gap: 10px; flex-wrap: wrap;">  <button type="submit" name="export_type" value="productivity" class="btn primary"><i class="fas fa-download"></i> Productivity Metrics</button>  <button type="submit" name="export_type" value="attendance" class="btn primary"><i class="fas fa-download"></i> Attendance Records</button>  <button type="submit" name="export_type" value="performance" class="btn primary"><i class="fas fa-download"></i> Individual Performance</button>  </div>  </form>  <?php elseif ($active_tab === 'audit'): ?>  <h3 class="h3"><i class="fas fa-clipboard-list"></i> Audit Trail Exports</h3>  <p class="muted" style="margin-bottom: 30px;">Override logs, approval history, and system logs</p>  <form method="post" action="audit_logs_export.php" style="margin-bottom: 30px;">  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">Start Date</label>  <input type="date" name="start_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[0]); ?>" required>  </div>  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">End Date</label>  <input type="date" name="end_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[1]); ?>" required>  </div>  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">Format</label>  <select name="format" class="inp" style="width: 100%;">  <option value="excel">Excel (.xlsx)</option>  <option value="csv">CSV (.csv)</option>  </select>  </div>  </div>  <div style="display: flex; gap: 10px; flex-wrap: wrap;">  <button type="submit" name="export_type" value="override_logs" class="btn primary"><i class="fas fa-download"></i> Override Logs</button>  <button type="submit" name="export_type" value="approval_history" class="btn primary"><i class="fas fa-download"></i> Approval History</button>  <button type="submit" name="export_type" value="system_logs" class="btn primary"><i class="fas fa-download"></i> System Logs</button>  <button type="submit" name="export_type" value="unlock_history" class="btn primary"><i class="fas fa-download"></i> Unlock History</button>  </div>  </form>  <?php elseif ($active_tab === 'customer'): ?>  <h3 class="h3"><i class="fas fa-user-friends"></i> Customer Exports</h3>  <p class="muted" style="margin-bottom: 30px;">Customer lists, credit reports, and statements of account</p>  <form method="post" action="customer_credit_export.php" style="margin-bottom: 30px;">  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">Start Date</label>  <input type="date" name="start_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[0]); ?>" required>  </div>  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">End Date</label>  <input type="date" name="end_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[1]); ?>" required>  </div>  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">Format</label>  <select name="format" class="inp" style="width: 100%;">  <option value="excel">Excel (.xlsx)</option>  <option value="pdf">PDF (.pdf)</option>  </select>  </div>  </div>  <div style="display: flex; gap: 10px; flex-wrap: wrap;">  <button type="submit" name="export_type" value="customer_list" class="btn primary"><i class="fas fa-download"></i> Customer List</button>  <button type="submit" name="export_type" value="credit_reports" class="btn primary"><i class="fas fa-download"></i> Credit Reports</button>  <button type="submit" name="export_type" value="statements" class="btn primary"><i class="fas fa-download"></i> Statements of Account</button>  </div>  </form>  <?php elseif ($active_tab === 'fuel'): ?>  <h3 class="h3"><i class="fas fa-gas-pump"></i> Fuel Exports</h3>  <p class="muted" style="margin-bottom: 30px;">Variance reports and calibration logs</p>  <form method="post" action="fuel_reconciliation_export.php" style="margin-bottom: 30px;">  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">Start Date</label>  <input type="date" name="start_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[0]); ?>" required>  </div>  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">End Date</label>  <input type="date" name="end_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[1]); ?>" required>  </div>  <div>  <label style="font-weight: bold; display: block; margin-bottom: 5px;">Format</label>  <select name="format" class="inp" style="width: 100%;">  <option value="excel">Excel (.xlsx)</option>  <option value="pdf">PDF (.pdf)</option>  </select>  </div>  </div>  <div style="display: flex; gap: 10px; flex-wrap: wrap;">  <button type="submit" name="export_type" value="variance" class="btn primary"><i class="fas fa-download"></i> Variance Reports</button>  <button type="submit" name="export_type" value="calibration" class="btn primary"><i class="fas fa-download"></i> Calibration Logs</button>  </div>  </form>  <?php endif; ?>  <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 30px;">  <h4 style="margin-bottom: 15px;"><i class="fas fa-info-circle"></i> Export Instructions</h4>  <ul style="margin: 0; padding-left: 20px; color: #666;">  <li style="margin-bottom: 10px;">Select your desired date range and export format</li>  <li style="margin-bottom: 10px;">Click the export button to download immediately (no scheduling)</li>  <li style="margin-bottom: 10px;">Export files will be saved to your browser's default download location</li>  <li style="margin-bottom: 10px;">Large exports may take a few moments to generate</li>  <li>All exports are logged in the audit trail for accountability</li>  </ul>  </div>
-</div>  <?php include __DIR__ . '/../partials/footer.php'; ?>
+
+<?php if ($export_message): ?>
+<div style="background: <?php echo $message_type === 'success' ? '#d4edda' : '#f8d7da'; ?>; color: <?php echo $message_type === 'success' ? '#155724' : '#721c24'; ?>; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+    <?php echo htmlspecialchars($export_message); ?>
+</div>
+<?php endif; ?>
+
+<div style="margin-bottom: 20px;">
+    <div style="border-bottom: 2px solid #ddd; display: flex; gap: 5px; flex-wrap: wrap;">
+        <!-- Available to all roles -->
+        <a href="export_center.php?tab=sales" class="btn <?php echo $active_tab === 'sales' ? 'primary' : 'secondary'; ?>" style="border-radius: 8px 8px 0 0;">
+            <i class="fas fa-chart-line"></i> Sales Exports
+        </a>
+        
+        <!-- Admin and Super Admin only -->
+        <?php if (in_array($role, ['admin', 'superadmin'])): ?>
+        <a href="export_center.php?tab=financial" class="btn <?php echo $active_tab === 'financial' ? 'primary' : 'secondary'; ?>" style="border-radius: 8px 8px 0 0;">
+            <i class="fas fa-dollar-sign"></i> Financial Exports
+        </a>
+        <a href="export_center.php?tab=audit" class="btn <?php echo $active_tab === 'audit' ? 'primary' : 'secondary'; ?>" style="border-radius: 8px 8px 0 0;">
+            <i class="fas fa-clipboard-list"></i> Audit Trail
+        </a>
+        <?php endif; ?>
+        
+        <!-- Available to all roles -->
+        <a href="export_center.php?tab=inventory" class="btn <?php echo $active_tab === 'inventory' ? 'primary' : 'secondary'; ?>" style="border-radius: 8px 8px 0 0;">
+            <i class="fas fa-box"></i> Inventory Exports
+        </a>
+        
+        <!-- Manager and Admin only -->
+        <?php if (in_array($role, ['manager', 'admin', 'superadmin'])): ?>
+        <a href="export_center.php?tab=staff" class="btn <?php echo $active_tab === 'staff' ? 'primary' : 'secondary'; ?>" style="border-radius: 8px 8px 0 0;">
+            <i class="fas fa-users"></i> Staff Performance
+        </a>
+        <?php endif; ?>
+        
+        <!-- Available to all roles -->
+        <a href="export_center.php?tab=customer" class="btn <?php echo $active_tab === 'customer' ? 'primary' : 'secondary'; ?>" style="border-radius: 8px 8px 0 0;">
+            <i class="fas fa-user-friends"></i> Customer Exports
+        </a>
+        
+        <!-- Available to all roles -->
+        <a href="export_center.php?tab=fuel" class="btn <?php echo $active_tab === 'fuel' ? 'primary' : 'secondary'; ?>" style="border-radius: 8px 8px 0 0;">
+            <i class="fas fa-gas-pump"></i> Fuel Exports
+        </a>
+    </div>
+</div>
+
+<div class="card" style="padding: 30px;">
+    
+    <?php if ($active_tab === 'sales'): ?>
+        <h3 class="h3"><i class="fas fa-chart-line"></i> Sales Exports</h3>
+        <p class="muted" style="margin-bottom: 30px;">Download daily, weekly, and monthly sales reports</p>
+        
+        <form method="post" action="sales_reports_export.php" style="margin-bottom: 30px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">Start Date</label>
+                    <input type="date" name="start_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[0]); ?>" required>
+                </div>
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">End Date</label>
+                    <input type="date" name="end_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[1]); ?>" required>
+                </div>
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">Format</label>
+                    <select name="format" class="inp" style="width: 100%;">
+                        <option value="excel">Excel (.xlsx)</option>
+                        <option value="csv">CSV (.csv)</option>
+                        <option value="pdf">PDF (.pdf)</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="submit" name="export_type" value="daily" class="btn primary"><i class="fas fa-download"></i> Daily Sales Report</button>
+                <button type="submit" name="export_type" value="weekly" class="btn primary"><i class="fas fa-download"></i> Weekly Sales Report</button>
+                <button type="submit" name="export_type" value="monthly" class="btn primary"><i class="fas fa-download"></i> Monthly Sales Report</button>
+            </div>
+        </form>
+
+    <?php elseif ($active_tab === 'financial'): ?>
+        <h3 class="h3"><i class="fas fa-dollar-sign"></i> Financial Exports</h3>
+        <p class="muted" style="margin-bottom: 30px;">Profit & Loss, fuel cost analysis, and revenue breakdown</p>
+        
+        <form method="post" action="financial_export.php" style="margin-bottom: 30px;">
+            <input type="hidden" name="view" value="export_financial">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">Start Date</label>
+                    <input type="date" name="start_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[0]); ?>" required>
+                </div>
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">End Date</label>
+                    <input type="date" name="end_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[1]); ?>" required>
+                </div>
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">Format</label>
+                    <select name="format" class="inp" style="width: 100%;">
+                        <option value="excel">Excel (.xlsx)</option>
+                        <option value="pdf">PDF (.pdf)</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="submit" name="export_type" value="profit_loss" class="btn primary"><i class="fas fa-download"></i> Profit & Loss Statement</button>
+                <button type="submit" name="export_type" value="fuel_cost" class="btn primary"><i class="fas fa-download"></i> Fuel Cost Analysis</button>
+                <button type="submit" name="export_type" value="revenue" class="btn primary"><i class="fas fa-download"></i> Revenue Breakdown</button>
+            </div>
+        </form>
+
+    <?php elseif ($active_tab === 'inventory'): ?>
+        <h3 class="h3"><i class="fas fa-box"></i> Inventory Exports</h3>
+        <p class="muted" style="margin-bottom: 30px;">Stock levels, movement history, and low stock reports</p>
+        
+        <form method="post" action="inventory_export.php" style="margin-bottom: 30px;">
+            <input type="hidden" name="export" value="1">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">Start Date</label>
+                    <input type="date" name="start_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[0]); ?>" required>
+                </div>
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">End Date</label>
+                    <input type="date" name="end_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[1]); ?>" required>
+                </div>
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">Format</label>
+                    <select name="format" class="inp" style="width: 100%;">
+                        <option value="excel">Excel (.xlsx)</option>
+                        <option value="csv">CSV (.csv)</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="submit" name="export_type" value="stock_levels" class="btn primary"><i class="fas fa-download"></i> Stock Levels</button>
+                <button type="submit" name="export_type" value="movement_history" class="btn primary"><i class="fas fa-download"></i> Movement History</button>
+                <button type="submit" name="export_type" value="low_stock" class="btn primary"><i class="fas fa-download"></i> Low Stock Report</button>
+            </div>
+        </form>
+
+    <?php elseif ($active_tab === 'staff'): ?>
+        <h3 class="h3"><i class="fas fa-users"></i> Staff Performance Exports</h3>
+        <p class="muted" style="margin-bottom: 30px;">Productivity metrics and attendance records</p>
+        
+        <form method="post" action="staff_reports_export.php" style="margin-bottom: 30px;">
+            <input type="hidden" name="export" value="1">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">Start Date</label>
+                    <input type="date" name="start_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[0]); ?>" required>
+                </div>
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">End Date</label>
+                    <input type="date" name="end_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[1]); ?>" required>
+                </div>
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">Format</label>
+                    <select name="format" class="inp" style="width: 100%;">
+                        <option value="excel">Excel (.xlsx)</option>
+                        <option value="pdf">PDF (.pdf)</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="submit" name="export_type" value="productivity" class="btn primary"><i class="fas fa-download"></i> Productivity Metrics</button>
+                <button type="submit" name="export_type" value="attendance" class="btn primary"><i class="fas fa-download"></i> Attendance Records</button>
+                <button type="submit" name="export_type" value="performance" class="btn primary"><i class="fas fa-download"></i> Individual Performance</button>
+            </div>
+        </form>
+
+    <?php elseif ($active_tab === 'audit'): ?>
+        <h3 class="h3"><i class="fas fa-clipboard-list"></i> Audit Trail Exports</h3>
+        <p class="muted" style="margin-bottom: 30px;">Override logs, approval history, and system logs</p>
+        
+        <form method="post" action="audit_logs_export.php" style="margin-bottom: 30px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">Start Date</label>
+                    <input type="date" name="start_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[0]); ?>" required>
+                </div>
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">End Date</label>
+                    <input type="date" name="end_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[1]); ?>" required>
+                </div>
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">Format</label>
+                    <select name="format" class="inp" style="width: 100%;">
+                        <option value="excel">Excel (.xlsx)</option>
+                        <option value="csv">CSV (.csv)</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="submit" name="export_type" value="override_logs" class="btn primary"><i class="fas fa-download"></i> Override Logs</button>
+                <button type="submit" name="export_type" value="approval_history" class="btn primary"><i class="fas fa-download"></i> Approval History</button>
+                <button type="submit" name="export_type" value="system_logs" class="btn primary"><i class="fas fa-download"></i> System Logs</button>
+                <button type="submit" name="export_type" value="unlock_history" class="btn primary"><i class="fas fa-download"></i> Unlock History</button>
+            </div>
+        </form>
+
+    <?php elseif ($active_tab === 'customer'): ?>
+        <h3 class="h3"><i class="fas fa-user-friends"></i> Customer Exports</h3>
+        <p class="muted" style="margin-bottom: 30px;">Customer lists, credit reports, and statements of account</p>
+        
+        <form method="post" action="customer_credit_export.php" style="margin-bottom: 30px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">Start Date</label>
+                    <input type="date" name="start_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[0]); ?>" required>
+                </div>
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">End Date</label>
+                    <input type="date" name="end_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[1]); ?>" required>
+                </div>
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">Format</label>
+                    <select name="format" class="inp" style="width: 100%;">
+                        <option value="excel">Excel (.xlsx)</option>
+                        <option value="pdf">PDF (.pdf)</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="submit" name="export_type" value="customer_list" class="btn primary"><i class="fas fa-download"></i> Customer List</button>
+                <button type="submit" name="export_type" value="credit_reports" class="btn primary"><i class="fas fa-download"></i> Credit Reports</button>
+                <button type="submit" name="export_type" value="statements" class="btn primary"><i class="fas fa-download"></i> Statements of Account</button>
+            </div>
+        </form>
+
+    <?php elseif ($active_tab === 'fuel'): ?>
+        <h3 class="h3"><i class="fas fa-gas-pump"></i> Fuel Exports</h3>
+        <p class="muted" style="margin-bottom: 30px;">Variance reports and calibration logs</p>
+        
+        <form method="post" action="fuel_reconciliation_export.php" style="margin-bottom: 30px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">Start Date</label>
+                    <input type="date" name="start_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[0]); ?>" required>
+                </div>
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">End Date</label>
+                    <input type="date" name="end_date" class="inp" style="width: 100%;" value="<?php echo htmlspecialchars($default_date_range[1]); ?>" required>
+                </div>
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">Format</label>
+                    <select name="format" class="inp" style="width: 100%;">
+                        <option value="excel">Excel (.xlsx)</option>
+                        <option value="pdf">PDF (.pdf)</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="submit" name="export_type" value="variance" class="btn primary"><i class="fas fa-download"></i> Variance Reports</button>
+                <button type="submit" name="export_type" value="calibration" class="btn primary"><i class="fas fa-download"></i> Calibration Logs</button>
+            </div>
+        </form>
+
+    <?php endif; ?>
+
+    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 30px;">
+        <h4 style="margin-bottom: 15px;"><i class="fas fa-info-circle"></i> Export Instructions</h4>
+        <ul style="margin: 0; padding-left: 20px; color: #666;">
+            <li style="margin-bottom: 10px;">Select your desired date range and export format</li>
+            <li style="margin-bottom: 10px;">Click the export button to download immediately (no scheduling)</li>
+            <li style="margin-bottom: 10px;">Export files will be saved to your browser's default download location</li>
+            <li style="margin-bottom: 10px;">Large exports may take a few moments to generate</li>
+            <li>All exports are logged in the audit trail for accountability</li>
+        </ul>
+    </div>
+</div>
+
+<?php include __DIR__ . '/../partials/footer.php'; ?>

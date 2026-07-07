@@ -4,32 +4,148 @@ require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
 require_login();
 
-$me  = current_user();
+$me   = current_user();
 $role = role_key($me['role'] ?? '');
-if (!in_array($role, ['admin', 'owner', 'superadmin'])) {  $_SESSION['error'] = 'Access denied. Admin/Owner access required.';  header('Location: dashboard.php'); exit;
+if (!in_array($role, ['admin', 'owner', 'superadmin'])) {
+    $_SESSION['error'] = 'Access denied. Admin/Owner access required.';
+    header('Location: dashboard.php'); exit;
 }
 
 $station_id = (int) user_station_id();
 
 // ── Filters ──────────────────────────────────────────────────────────────────
-$start_date  = $_GET['start_date']  ?? date('Y-m-d', strtotime('-30 days'));
-$end_date  = $_GET['end_date']  ?? date('Y-m-d');
-$type_filter  = $_GET['type_filter']  ?? 'all'; // all | merchandise | job_order
-$status_filter  = $_GET['status_filter']  ?? '';  // '' | approved | adjusted | rejected
-$search_filter  = trim($_GET['search']  ?? '');
+$start_date      = $_GET['start_date']      ?? date('Y-m-d', strtotime('-30 days'));
+$end_date        = $_GET['end_date']        ?? date('Y-m-d');
+$type_filter     = $_GET['type_filter']     ?? 'all'; // all | merchandise | job_order
+$status_filter   = $_GET['status_filter']   ?? '';    // '' | approved | adjusted | rejected
+$search_filter   = trim($_GET['search']     ?? '');
 
 // ── Helper: column detection ──────────────────────────────────────────────────
-function ave_has(PDO $pdo, string $table, string $col): bool {  static $cache = [];  $key = $table . '.' . strtolower($col);  if (!isset($cache[$key])) {  try {  $rows = $pdo->query("SHOW COLUMNS FROM `$table`")->fetchAll(PDO::FETCH_ASSOC);  foreach ($rows as $r) $cache[$table . '.' . strtolower($r['Field'])] = true;  } catch (Exception $e) {}  }  return $cache[$key] ?? false;
+function ave_has(PDO $pdo, string $table, string $col): bool {
+    static $cache = [];
+    $key = $table . '.' . strtolower($col);
+    if (!isset($cache[$key])) {
+        try {
+            $rows = $pdo->query("SHOW COLUMNS FROM `$table`")->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($rows as $r) $cache[$table . '.' . strtolower($r['Field'])] = true;
+        } catch (Exception $e) {}
+    }
+    return $cache[$key] ?? false;
 }
 
 // ── Fetch Merchandise Transactions ───────────────────────────────────────────
 $mt_rows = [];
-try {  $mt_where  = "WHERE mt.station_id = ? AND DATE(CASE WHEN mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE mt.created_at END) BETWEEN ? AND ?";  $mt_params = [$station_id, $start_date, $end_date];  // Status filter  if ($status_filter !== '') {  $mt_where .= " AND LOWER(TRIM(COALESCE(mt.validation_status,''))) = LOWER(?)";  $mt_params[] = $status_filter;  } else {  $mt_where .= " AND LOWER(TRIM(COALESCE(mt.validation_status,''))) IN ('approved','adjusted','rejected','completed','official','validated')";  }  // Search  if ($search_filter !== '') {  $mt_where .= " AND (mt.customer_name LIKE ? OR mt.transaction_id LIKE ?)";  $mt_params[] = "%$search_filter%";  $mt_params[] = "%$search_filter%";  }  $mt_paid_col = ave_has($pdo, 'merchandise_transactions', 'amount_paid') ? 'mt.amount_paid' : '0';  $mt_vby_col  = ave_has($pdo, 'merchandise_transactions', 'validated_by')  ? "COALESCE(NULLIF(TRIM(CONCAT(COALESCE(v.first_name,''),' ',COALESCE(v.last_name,''))),''), v.username, 'N/A')"  : "'N/A'";  $mt_notes_col = ave_has($pdo, 'merchandise_transactions', 'manager_notes')  ? 'COALESCE(mt.manager_notes, mt.rejection_reason, mt.remarks, \'\')' : "''";  $stmt = $pdo->prepare("  SELECT  mt.id  AS row_id,  mt.transaction_id  AS txn_id,  'Merchandise'  AS entry_type,  COALESCE(NULLIF(TRIM(mt.customer_name),''),'Walk-in')  AS customer,  COALESCE(mt.item_sku, 'N/A')  AS product_name,  COALESCE(mt.payment_method,'Cash')  AS payment_method,  mt.total_amount  AS amount,  {$mt_paid_col}  AS amount_paid,  CASE WHEN mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE mt.created_at END AS txn_date,  COALESCE(mt.validation_status,'Pending')  AS validation_status,  COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''), u.username, 'Unknown') AS staff_name,  {$mt_vby_col}  AS validated_by,  mt.validated_at,  {$mt_notes_col}  AS notes  FROM merchandise_transactions mt  LEFT JOIN users u ON u.id = mt.staff_id  LEFT JOIN users v ON v.id = mt.validated_by  {$mt_where}  ORDER BY txn_date DESC  LIMIT 500  ");  $stmt->execute($mt_params);  if ($type_filter === 'all' || $type_filter === 'merchandise') {  $mt_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);  }
+try {
+    $mt_where  = "WHERE mt.station_id = ? AND DATE(CASE WHEN mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE mt.created_at END) BETWEEN ? AND ?";
+    $mt_params = [$station_id, $start_date, $end_date];
+
+    // Status filter
+    if ($status_filter !== '') {
+        $mt_where .= " AND LOWER(TRIM(COALESCE(mt.validation_status,''))) = LOWER(?)";
+        $mt_params[] = $status_filter;
+    } else {
+        $mt_where .= " AND LOWER(TRIM(COALESCE(mt.validation_status,''))) IN ('approved','adjusted','rejected','completed','official','validated')";
+    }
+
+    // Search
+    if ($search_filter !== '') {
+        $mt_where .= " AND (mt.customer_name LIKE ? OR mt.transaction_id LIKE ?)";
+        $mt_params[] = "%$search_filter%";
+        $mt_params[] = "%$search_filter%";
+    }
+
+    $mt_paid_col = ave_has($pdo, 'merchandise_transactions', 'amount_paid') ? 'mt.amount_paid' : '0';
+    $mt_vby_col  = ave_has($pdo, 'merchandise_transactions', 'validated_by')
+        ? "COALESCE(NULLIF(TRIM(CONCAT(COALESCE(v.first_name,''),' ',COALESCE(v.last_name,''))),''), v.username, 'N/A')"
+        : "'N/A'";
+    $mt_notes_col = ave_has($pdo, 'merchandise_transactions', 'manager_notes')
+        ? 'COALESCE(mt.manager_notes, mt.rejection_reason, mt.remarks, \'\')' : "''";
+
+    $stmt = $pdo->prepare("
+        SELECT
+            mt.id                                                      AS row_id,
+            mt.transaction_id                                          AS txn_id,
+            'Merchandise'                                              AS entry_type,
+            COALESCE(NULLIF(TRIM(mt.customer_name),''),'Walk-in')     AS customer,
+            COALESCE(mt.item_sku, 'N/A')                              AS product_name,
+            COALESCE(mt.payment_method,'Cash')                        AS payment_method,
+            mt.total_amount                                            AS amount,
+            {$mt_paid_col}                                             AS amount_paid,
+            CASE WHEN mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE mt.created_at END AS txn_date,
+            COALESCE(mt.validation_status,'Pending')                   AS validation_status,
+            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''), u.username, 'Unknown') AS staff_name,
+            {$mt_vby_col}                                              AS validated_by,
+            mt.validated_at,
+            {$mt_notes_col}                                            AS notes
+        FROM merchandise_transactions mt
+        LEFT JOIN users u ON u.id = mt.staff_id
+        LEFT JOIN users v ON v.id = mt.validated_by
+        {$mt_where}
+        ORDER BY txn_date DESC
+        LIMIT 500
+    ");
+    $stmt->execute($mt_params);
+    if ($type_filter === 'all' || $type_filter === 'merchandise') {
+        $mt_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 } catch (Exception $e) { $mt_rows = []; }
 
 // ── Fetch Job Orders ──────────────────────────────────────────────────────────
 $jo_rows = [];
-try {  $jo_vs_col = ave_has($pdo, 'job_orders', 'validation_status') ? 'jo.validation_status' : 'jo.status';  $jo_where  = "WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ?";  $jo_params = [$station_id, $start_date, $end_date];  if ($status_filter !== '') {  $jo_where .= " AND LOWER(TRIM(COALESCE({$jo_vs_col},''))) = LOWER(?)";  $jo_params[] = $status_filter;  } else {  $jo_where .= " AND LOWER(TRIM(COALESCE({$jo_vs_col},''))) IN ('approved','adjusted','rejected','completed','official','validated')";  }  if ($search_filter !== '') {  $jo_where .= " AND (jo.customer_name LIKE ? OR jo.service_type LIKE ? OR jo.vehicle_plate LIKE ?)";  $jo_params[] = "%$search_filter%"; $jo_params[] = "%$search_filter%"; $jo_params[] = "%$search_filter%";  }  $jo_cost_col  = ave_has($pdo, 'job_orders', 'total_cost') ? 'COALESCE(jo.total_cost,0)' : 'COALESCE(jo.estimated_cost,0)';  $jo_paid_col  = ave_has($pdo, 'job_orders', 'amount_paid') ? 'jo.amount_paid' : '0';  $jo_pay_col  = ave_has($pdo, 'job_orders', 'payment_method') ? "COALESCE(jo.payment_method,'N/A')" : "'N/A'";  $jo_vby_col  = ave_has($pdo, 'job_orders', 'validated_by')  ? "COALESCE(NULLIF(TRIM(CONCAT(COALESCE(v.first_name,''),' ',COALESCE(v.last_name,''))),''), v.username, 'N/A')"  : "'N/A'";  $jo_notes_col = ave_has($pdo, 'job_orders', 'admin_remarks')  ? "COALESCE(jo.admin_remarks, jo.adjustment_reason, jo.rejection_reason, '')" : "''";  $stmt = $pdo->prepare("  SELECT  jo.id  AS row_id,  CONCAT('JO-', jo.id)  AS txn_id,  'Job Order'  AS entry_type,  COALESCE(NULLIF(TRIM(jo.customer_name),''),'Walk-in')  AS customer,  CONCAT(COALESCE(jo.service_type,'Service'),  CASE WHEN jo.vehicle_plate IS NOT NULL AND jo.vehicle_plate != ''  THEN CONCAT(' | ', jo.vehicle_plate) ELSE '' END)  AS product_name,  {$jo_pay_col}  AS payment_method,  {$jo_cost_col}  AS amount,  {$jo_paid_col}  AS amount_paid,  jo.created_at  AS txn_date,  COALESCE(NULLIF(TRIM({$jo_vs_col}),''),'Pending')  AS validation_status,  COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''), u.username, 'Unknown') AS staff_name,  {$jo_vby_col}  AS validated_by,  jo.validated_at,  {$jo_notes_col}  AS notes  FROM job_orders jo  LEFT JOIN users u ON u.id = COALESCE(jo.created_by, jo.user_id)  LEFT JOIN users v ON v.id = jo.validated_by  {$jo_where}  ORDER BY jo.created_at DESC  LIMIT 500  ");  $stmt->execute($jo_params);  if ($type_filter === 'all' || $type_filter === 'job_order') {  $jo_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);  }
+try {
+    $jo_vs_col = ave_has($pdo, 'job_orders', 'validation_status') ? 'jo.validation_status' : 'jo.status';
+    $jo_where  = "WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ?";
+    $jo_params = [$station_id, $start_date, $end_date];
+
+    if ($status_filter !== '') {
+        $jo_where .= " AND LOWER(TRIM(COALESCE({$jo_vs_col},''))) = LOWER(?)";
+        $jo_params[] = $status_filter;
+    } else {
+        $jo_where .= " AND LOWER(TRIM(COALESCE({$jo_vs_col},''))) IN ('approved','adjusted','rejected','completed','official','validated')";
+    }
+    if ($search_filter !== '') {
+        $jo_where .= " AND (jo.customer_name LIKE ? OR jo.service_type LIKE ? OR jo.vehicle_plate LIKE ?)";
+        $jo_params[] = "%$search_filter%"; $jo_params[] = "%$search_filter%"; $jo_params[] = "%$search_filter%";
+    }
+
+    $jo_cost_col  = ave_has($pdo, 'job_orders', 'total_cost') ? 'COALESCE(jo.total_cost,0)' : 'COALESCE(jo.estimated_cost,0)';
+    $jo_paid_col  = ave_has($pdo, 'job_orders', 'amount_paid') ? 'jo.amount_paid' : '0';
+    $jo_pay_col   = ave_has($pdo, 'job_orders', 'payment_method') ? "COALESCE(jo.payment_method,'N/A')" : "'N/A'";
+    $jo_vby_col   = ave_has($pdo, 'job_orders', 'validated_by')
+        ? "COALESCE(NULLIF(TRIM(CONCAT(COALESCE(v.first_name,''),' ',COALESCE(v.last_name,''))),''), v.username, 'N/A')"
+        : "'N/A'";
+    $jo_notes_col = ave_has($pdo, 'job_orders', 'admin_remarks')
+        ? "COALESCE(jo.admin_remarks, jo.adjustment_reason, jo.rejection_reason, '')" : "''";
+
+    $stmt = $pdo->prepare("
+        SELECT
+            jo.id                                                           AS row_id,
+            CONCAT('JO-', jo.id)                                           AS txn_id,
+            'Job Order'                                                     AS entry_type,
+            COALESCE(NULLIF(TRIM(jo.customer_name),''),'Walk-in')          AS customer,
+            CONCAT(COALESCE(jo.service_type,'Service'),
+                   CASE WHEN jo.vehicle_plate IS NOT NULL AND jo.vehicle_plate != ''
+                        THEN CONCAT(' | ', jo.vehicle_plate) ELSE '' END)  AS product_name,
+            {$jo_pay_col}                                                   AS payment_method,
+            {$jo_cost_col}                                                  AS amount,
+            {$jo_paid_col}                                                  AS amount_paid,
+            jo.created_at                                                   AS txn_date,
+            COALESCE(NULLIF(TRIM({$jo_vs_col}),''),'Pending')              AS validation_status,
+            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''), u.username, 'Unknown') AS staff_name,
+            {$jo_vby_col}                                                   AS validated_by,
+            jo.validated_at,
+            {$jo_notes_col}                                                 AS notes
+        FROM job_orders jo
+        LEFT JOIN users u ON u.id = COALESCE(jo.created_by, jo.user_id)
+        LEFT JOIN users v ON v.id = jo.validated_by
+        {$jo_where}
+        ORDER BY jo.created_at DESC
+        LIMIT 500
+    ");
+    $stmt->execute($jo_params);
+    if ($type_filter === 'all' || $type_filter === 'job_order') {
+        $jo_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 } catch (Exception $e) { $jo_rows = []; }
 
 // Merge & sort
@@ -37,7 +153,13 @@ $all_rows = array_merge($mt_rows, $jo_rows);
 usort($all_rows, fn($a, $b) => strtotime($b['txn_date']) - strtotime($a['txn_date']));
 
 // Status badge colours
-function ave_vs_cls(string $vs): string {  return match(strtolower(trim($vs))) {  'approved','completed','official','validated' => 'background:#dcfce7;color:#166534;border:1px solid #86efac;',  'adjusted' => 'background:#fef3c7;color:#92400e;border:1px solid #fde68a;',  'rejected' => 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;',  default  => 'background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;',  };
+function ave_vs_cls(string $vs): string {
+    return match(strtolower(trim($vs))) {
+        'approved','completed','official','validated' => 'background:#dcfce7;color:#166534;border:1px solid #86efac;',
+        'adjusted' => 'background:#fef3c7;color:#92400e;border:1px solid #fde68a;',
+        'rejected' => 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;',
+        default    => 'background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;',
+    };
 }
 
 include __DIR__ . '/../partials/header.php';
@@ -50,21 +172,191 @@ include __DIR__ . '/../partials/header.php';
 </style>
 
 <!-- Page head -->
-<div class="int-head">  <div>  <h1><i class="fas fa-list-alt"></i> All Transactions</h1>  <div class="sub">Monitor and review all transaction records from all operational shifts and staff accounts.</div>  </div>  <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">  <button onclick="ave_export('csv')" class="btn ghost"><i class="fas fa-file-csv"></i> CSV</button>  <button onclick="ave_export('excel')" class="btn ghost"><i class="fas fa-file-excel"></i> Excel</button>  <button onclick="window.print()" class="btn ghost"><i class="fas fa-print"></i> Print</button>  <a href="admin_dashboard.php" class="btn ghost"><i class="fas fa-arrow-left"></i> Back</a>  </div>
+<div class="int-head">
+    <div>
+        <h1><i class="fas fa-list-alt"></i> All Transactions</h1>
+        <div class="sub">Monitor and review all transaction records from all operational shifts and staff accounts.</div>
+    </div>
+    <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button onclick="ave_export('csv')" class="btn ghost"><i class="fas fa-file-csv"></i> CSV</button>
+        <button onclick="ave_export('excel')" class="btn ghost"><i class="fas fa-file-excel"></i> Excel</button>
+        <button onclick="window.print()" class="btn ghost"><i class="fas fa-print"></i> Print</button>
+        <a href="admin_dashboard.php" class="btn ghost"><i class="fas fa-arrow-left"></i> Back</a>
+    </div>
 </div>
 
 <!-- Filters -->
-<div class="card" style="margin-bottom:16px;padding:16px 20px;">  <form method="GET" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">  <div style="display:flex;flex-direction:column;gap:4px;">  <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;">Date From</label>  <input type="date" name="start_date" value="<?= htmlspecialchars($start_date) ?>" class="inp" style="height:36px;">  </div>  <div style="display:flex;flex-direction:column;gap:4px;">  <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;">Date To</label>  <input type="date" name="end_date" value="<?= htmlspecialchars($end_date) ?>" class="inp" style="height:36px;">  </div>  <div style="display:flex;flex-direction:column;gap:4px;">  <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;">Type</label>  <select name="type_filter" class="inp" style="height:36px;">  <option value="all"  <?= $type_filter==='all'  ?'selected':'' ?>>All Types</option>  <option value="merchandise"  <?= $type_filter==='merchandise' ?'selected':'' ?>>Merchandise</option>  <option value="job_order"  <?= $type_filter==='job_order'  ?'selected':'' ?>>Job Order</option>  </select>  </div>  <div style="display:flex;flex-direction:column;gap:4px;">  <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;">Status</label>  <select name="status_filter" class="inp" style="height:36px;">  <option value="" <?= $status_filter==='' ?'selected':'' ?>>All Statuses</option>  <?php foreach (['Approved','Adjusted','Rejected','Completed'] as $s): ?>  <option value="<?= strtolower($s) ?>" <?= strtolower($status_filter)===strtolower($s)?'selected':'' ?>><?= $s ?></option>  <?php endforeach; ?>  </select>  </div>  <div style="display:flex;flex-direction:column;gap:4px;">  <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;">Search</label>  <input type="text" name="search" value="<?= htmlspecialchars($search_filter) ?>" class="inp" placeholder="Customer, TXN ID…" style="height:36px;width:180px;">  </div>  <button type="submit" class="btn primary" style="height:36px;"><i class="fas fa-search"></i> Search</button>  <a href="admin_validated_entries.php" class="btn ghost" style="height:36px;">Reset</a>  </form>
+<div class="card" style="margin-bottom:16px;padding:16px 20px;">
+    <form method="GET" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+        <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;">Date From</label>
+            <input type="date" name="start_date" value="<?= htmlspecialchars($start_date) ?>" class="inp" style="height:36px;">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;">Date To</label>
+            <input type="date" name="end_date" value="<?= htmlspecialchars($end_date) ?>" class="inp" style="height:36px;">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;">Type</label>
+            <select name="type_filter" class="inp" style="height:36px;">
+                <option value="all"          <?= $type_filter==='all'         ?'selected':'' ?>>All Types</option>
+                <option value="merchandise"  <?= $type_filter==='merchandise' ?'selected':'' ?>>Merchandise</option>
+                <option value="job_order"    <?= $type_filter==='job_order'   ?'selected':'' ?>>Job Order</option>
+            </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;">Status</label>
+            <select name="status_filter" class="inp" style="height:36px;">
+                <option value="" <?= $status_filter==='' ?'selected':'' ?>>All Statuses</option>
+                <?php foreach (['Approved','Adjusted','Rejected','Completed'] as $s): ?>
+                <option value="<?= strtolower($s) ?>" <?= strtolower($status_filter)===strtolower($s)?'selected':'' ?>><?= $s ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;">Search</label>
+            <input type="text" name="search" value="<?= htmlspecialchars($search_filter) ?>" class="inp" placeholder="Customer, TXN ID…" style="height:36px;width:180px;">
+        </div>
+        <button type="submit" class="btn primary" style="height:36px;"><i class="fas fa-search"></i> Search</button>
+        <a href="admin_validated_entries.php" class="btn ghost" style="height:36px;">Reset</a>
+    </form>
 </div>
 
 <!-- Table -->
-<div class="card" style="padding:0;">  <div style="padding:14px 20px;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;">  <div style="font-size:14px;font-weight:700;color:#002F70;">  <i class="fas fa-check-circle" style="margin-right:6px;color:#16a34a;"></i>Validated Transactions  </div>  <div style="font-size:12px;color:#64748b;"><?= count($all_rows) ?> record(s)</div>  </div>  <div style="overflow-x:auto;">  <table id="ave-table" style="width:100%;border-collapse:collapse;font-size:12px;">  <thead>  <tr style="background:#002F70;">  <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:left;white-space:nowrap;">Txn ID</th>  <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:left;">Type</th>  <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:left;">Customer</th>  <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:left;">Product / Service</th>  <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:left;">Payment</th>  <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:right;">Amount</th>  <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:center;">Status</th>  <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:left;">Staff</th>  <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:left;">Validated By</th>  <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:left;">Date</th>  <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:left;">Notes</th>  </tr>  </thead>  <tbody>  <?php if (empty($all_rows)): ?>  <tr>  <td colspan="11" style="text-align:center;padding:40px 20px;color:#94a3b8;">  <i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:10px;opacity:.3;"></i>  <div style="font-size:14px;font-weight:600;color:#64748b;margin-bottom:4px;">No Transactions Found</div>  <div style="font-size:12px;">Try adjusting your filters or date range.</div>  </td>  </tr>  <?php else: foreach ($all_rows as $r):  $vs  = strtolower(trim($r['validation_status'] ?? ''));  $cls = ave_vs_cls($r['validation_status'] ?? '');  $et  = $r['entry_type'] ?? '';  $et_bg  = $et === 'Job Order' ? '#eff6ff' : '#f0fdf4';  $et_col = $et === 'Job Order' ? '#1d4ed8' : '#166534';  ?>  <tr style="border-bottom:1px solid #f1f5f9;" onmouseover="this.style.background='#f8fbff'" onmouseout="this.style.background=''">  <td style="padding:9px 12px;font-family:monospace;font-weight:600;font-size:11px;color:#002F70;white-space:nowrap;">  <?= htmlspecialchars($r['txn_id']) ?>  </td>  <td style="padding:9px 12px;">  <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:<?= $et_bg ?>;color:<?= $et_col ?>;">  <?= htmlspecialchars($et) ?>  </span>  </td>  <td style="padding:9px 12px;color:#374151;" title="<?= htmlspecialchars($r['customer']) ?>">  <?= htmlspecialchars(mb_strimwidth($r['customer'], 0, 20, '…')) ?>  </td>  <td style="padding:9px 12px;color:#475569;font-size:11px;" title="<?= htmlspecialchars($r['product_name']) ?>">  <?= htmlspecialchars(mb_strimwidth($r['product_name'], 0, 30, '…')) ?>  </td>  <td style="padding:9px 12px;color:#475569;font-size:11px;">  <?= htmlspecialchars($r['payment_method']) ?>  </td>  <td style="padding:9px 12px;text-align:right;font-weight:700;color:#002F70;white-space:nowrap;">  ₱<?= number_format((float)$r['amount'], 2) ?>  </td>  <td style="padding:9px 12px;text-align:center;">  <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;<?= $cls ?>">  <?= htmlspecialchars(ucfirst($r['validation_status'])) ?>  </span>  </td>  <td style="padding:9px 12px;color:#475569;font-size:11px;" title="<?= htmlspecialchars($r['staff_name']) ?>">  <?= htmlspecialchars(mb_strimwidth($r['staff_name'], 0, 16, '…')) ?>  </td>  <td style="padding:9px 12px;color:#475569;font-size:11px;" title="<?= htmlspecialchars($r['validated_by']) ?>">  <?= htmlspecialchars(mb_strimwidth($r['validated_by'], 0, 16, '…')) ?>  </td>  <td style="padding:9px 12px;color:#64748b;font-size:11px;white-space:nowrap;">  <?= date('M j, Y', strtotime($r['txn_date'])) ?><br>  <span style="font-size:10px;"><?= date('H:i', strtotime($r['txn_date'])) ?></span>  </td>  <td style="padding:9px 12px;color:#64748b;font-size:11px;" title="<?= htmlspecialchars($r['notes'] ?? '') ?>">  <?= htmlspecialchars(mb_strimwidth($r['notes'] ?? '', 0, 35, '…')) ?>  </td>  </tr>  <?php endforeach; endif; ?>  </tbody>  <?php if (!empty($all_rows)): ?>  <tfoot>  <tr style="background:#f0f7ff;border-top:2px solid #002F70;">  <td colspan="5" style="padding:10px 12px;text-align:right;font-weight:700;color:#002F70;font-size:12px;">TOTAL</td>  <td style="padding:10px 12px;text-align:right;font-weight:800;color:#002F70;font-size:13px;white-space:nowrap;">  ₱<?= number_format(array_sum(array_column($all_rows, 'amount')), 2) ?>  </td>  <td colspan="5" style="padding:10px 12px;font-size:11px;color:#64748b;">  <?= count($all_rows) ?> record(s) &nbsp;|&nbsp;  <?= count(array_filter($all_rows, fn($r) => $r['entry_type']==='Merchandise')) ?> merchandise,  <?= count(array_filter($all_rows, fn($r) => $r['entry_type']==='Job Order')) ?> job orders  </td>  </tr>  </tfoot>  <?php endif; ?>  </table>  </div>
+<div class="card" style="padding:0;">
+    <div style="padding:14px 20px;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:14px;font-weight:700;color:#002F70;">
+            <i class="fas fa-check-circle" style="margin-right:6px;color:#16a34a;"></i>Validated Transactions
+        </div>
+        <div style="font-size:12px;color:#64748b;"><?= count($all_rows) ?> record(s)</div>
+    </div>
+    <div style="overflow-x:auto;">
+        <table id="ave-table" style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+                <tr style="background:#002F70;">
+                    <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:left;white-space:nowrap;">Txn ID</th>
+                    <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:left;">Type</th>
+                    <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:left;">Customer</th>
+                    <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:left;">Product / Service</th>
+                    <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:left;">Payment</th>
+                    <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:right;">Amount</th>
+                    <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:center;">Status</th>
+                    <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:left;">Staff</th>
+                    <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:left;">Validated By</th>
+                    <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:left;">Date</th>
+                    <th style="padding:10px 12px;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:left;">Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if (empty($all_rows)): ?>
+                <tr>
+                    <td colspan="11" style="text-align:center;padding:40px 20px;color:#94a3b8;">
+                        <i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:10px;opacity:.3;"></i>
+                        <div style="font-size:14px;font-weight:600;color:#64748b;margin-bottom:4px;">No Transactions Found</div>
+                        <div style="font-size:12px;">Try adjusting your filters or date range.</div>
+                    </td>
+                </tr>
+            <?php else: foreach ($all_rows as $r):
+                $vs  = strtolower(trim($r['validation_status'] ?? ''));
+                $cls = ave_vs_cls($r['validation_status'] ?? '');
+                $et  = $r['entry_type'] ?? '';
+                $et_bg  = $et === 'Job Order' ? '#eff6ff' : '#f0fdf4';
+                $et_col = $et === 'Job Order' ? '#1d4ed8' : '#166534';
+            ?>
+                <tr style="border-bottom:1px solid #f1f5f9;" onmouseover="this.style.background='#f8fbff'" onmouseout="this.style.background=''">
+                    <td style="padding:9px 12px;font-family:monospace;font-weight:600;font-size:11px;color:#002F70;white-space:nowrap;">
+                        <?= htmlspecialchars($r['txn_id']) ?>
+                    </td>
+                    <td style="padding:9px 12px;">
+                        <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:<?= $et_bg ?>;color:<?= $et_col ?>;">
+                            <?= htmlspecialchars($et) ?>
+                        </span>
+                    </td>
+                    <td style="padding:9px 12px;color:#374151;" title="<?= htmlspecialchars($r['customer']) ?>">
+                        <?= htmlspecialchars(mb_strimwidth($r['customer'], 0, 20, '…')) ?>
+                    </td>
+                    <td style="padding:9px 12px;color:#475569;font-size:11px;" title="<?= htmlspecialchars($r['product_name']) ?>">
+                        <?= htmlspecialchars(mb_strimwidth($r['product_name'], 0, 30, '…')) ?>
+                    </td>
+                    <td style="padding:9px 12px;color:#475569;font-size:11px;">
+                        <?= htmlspecialchars($r['payment_method']) ?>
+                    </td>
+                    <td style="padding:9px 12px;text-align:right;font-weight:700;color:#002F70;white-space:nowrap;">
+                        ₱<?= number_format((float)$r['amount'], 2) ?>
+                    </td>
+                    <td style="padding:9px 12px;text-align:center;">
+                        <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;<?= $cls ?>">
+                            <?= htmlspecialchars(ucfirst($r['validation_status'])) ?>
+                        </span>
+                    </td>
+                    <td style="padding:9px 12px;color:#475569;font-size:11px;" title="<?= htmlspecialchars($r['staff_name']) ?>">
+                        <?= htmlspecialchars(mb_strimwidth($r['staff_name'], 0, 16, '…')) ?>
+                    </td>
+                    <td style="padding:9px 12px;color:#475569;font-size:11px;" title="<?= htmlspecialchars($r['validated_by']) ?>">
+                        <?= htmlspecialchars(mb_strimwidth($r['validated_by'], 0, 16, '…')) ?>
+                    </td>
+                    <td style="padding:9px 12px;color:#64748b;font-size:11px;white-space:nowrap;">
+                        <?= date('M j, Y', strtotime($r['txn_date'])) ?><br>
+                        <span style="font-size:10px;"><?= date('H:i', strtotime($r['txn_date'])) ?></span>
+                    </td>
+                    <td style="padding:9px 12px;color:#64748b;font-size:11px;" title="<?= htmlspecialchars($r['notes'] ?? '') ?>">
+                        <?= htmlspecialchars(mb_strimwidth($r['notes'] ?? '', 0, 35, '…')) ?>
+                    </td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+            <?php if (!empty($all_rows)): ?>
+            <tfoot>
+                <tr style="background:#f0f7ff;border-top:2px solid #002F70;">
+                    <td colspan="5" style="padding:10px 12px;text-align:right;font-weight:700;color:#002F70;font-size:12px;">TOTAL</td>
+                    <td style="padding:10px 12px;text-align:right;font-weight:800;color:#002F70;font-size:13px;white-space:nowrap;">
+                        ₱<?= number_format(array_sum(array_column($all_rows, 'amount')), 2) ?>
+                    </td>
+                    <td colspan="5" style="padding:10px 12px;font-size:11px;color:#64748b;">
+                        <?= count($all_rows) ?> record(s) &nbsp;|&nbsp;
+                        <?= count(array_filter($all_rows, fn($r) => $r['entry_type']==='Merchandise')) ?> merchandise,
+                        <?= count(array_filter($all_rows, fn($r) => $r['entry_type']==='Job Order')) ?> job orders
+                    </td>
+                </tr>
+            </tfoot>
+            <?php endif; ?>
+        </table>
+    </div>
 </div>
 
 <div style="height:80px;"></div>
 
 <script>
-function ave_export(format) {  const table = document.getElementById('ave-table');  if (!table) { alert('No data.'); return; }  const df = '<?= htmlspecialchars($start_date) ?>';  const dt = '<?= htmlspecialchars($end_date) ?>';  const fn = `All_Transactions_${df}_to_${dt}`;  if (format === 'csv') {  let csv = '';  table.querySelectorAll('thead tr').forEach(tr => {  csv += [...tr.querySelectorAll('th')].map(th => '"' + th.innerText.trim().replace(/"/g,'""') + '"').join(',') + '\n';  });  table.querySelectorAll('tbody tr').forEach(tr => {  csv += [...tr.querySelectorAll('td')].map(td => '"' + td.innerText.trim().replace(/"/g,'""') + '"').join(',') + '\n';  });  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });  const a = document.createElement('a');  a.href = URL.createObjectURL(blob);  a.download = fn + '.csv';  document.body.appendChild(a); a.click(); document.body.removeChild(a);  } else if (format === 'excel') {  if (typeof XLSX === 'undefined') { alert('Export library not loaded.'); return; }  const aoa = [];  table.querySelectorAll('thead tr').forEach(tr => aoa.push([...tr.querySelectorAll('th')].map(th => th.innerText.trim())));  table.querySelectorAll('tbody tr').forEach(tr => aoa.push([...tr.querySelectorAll('td')].map(td => td.innerText.trim())));  const wb = XLSX.utils.book_new();  const ws = XLSX.utils.aoa_to_sheet(aoa);  XLSX.utils.book_append_sheet(wb, ws, 'All Transactions');  XLSX.writeFile(wb, fn + '.xlsx');  }
+function ave_export(format) {
+    const table = document.getElementById('ave-table');
+    if (!table) { alert('No data.'); return; }
+    const df = '<?= htmlspecialchars($start_date) ?>';
+    const dt = '<?= htmlspecialchars($end_date) ?>';
+    const fn = `All_Transactions_${df}_to_${dt}`;
+
+    if (format === 'csv') {
+        let csv = '';
+        table.querySelectorAll('thead tr').forEach(tr => {
+            csv += [...tr.querySelectorAll('th')].map(th => '"' + th.innerText.trim().replace(/"/g,'""') + '"').join(',') + '\n';
+        });
+        table.querySelectorAll('tbody tr').forEach(tr => {
+            csv += [...tr.querySelectorAll('td')].map(td => '"' + td.innerText.trim().replace(/"/g,'""') + '"').join(',') + '\n';
+        });
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = fn + '.csv';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    } else if (format === 'excel') {
+        if (typeof XLSX === 'undefined') { alert('Export library not loaded.'); return; }
+        const aoa = [];
+        table.querySelectorAll('thead tr').forEach(tr => aoa.push([...tr.querySelectorAll('th')].map(th => th.innerText.trim())));
+        table.querySelectorAll('tbody tr').forEach(tr => aoa.push([...tr.querySelectorAll('td')].map(td => td.innerText.trim())));
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        XLSX.utils.book_append_sheet(wb, ws, 'All Transactions');
+        XLSX.writeFile(wb, fn + '.xlsx');
+    }
 }
 </script>
 <script src="../assets/vendor/xlsx/xlsx.full.min.js"></script>

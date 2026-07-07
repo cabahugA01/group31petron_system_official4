@@ -1,12 +1,144 @@
 <?php
-/**  * Customer API Test Page  * Verify customer operations are working  */  require_once __DIR__ . '/backend/lib.php';
+/**
+ * Customer API Test Page
+ * Verify customer operations are working
+ */
+
+require_once __DIR__ . '/backend/lib.php';
 require_once __DIR__ . '/public/db_connect.php';
-require_login();  $me = current_user();
-$station_id = user_station_id();  ?>
+require_login();
+
+$me = current_user();
+$station_id = user_station_id();
+
+?>
 <!DOCTYPE html>
 <html>
-<head>  <title>Customer API Test</title>  <style>  body{font-family:Arial,sans-serif;padding:40px;background:#f5f5f5;}  .test-container{max-width:800px;margin:0 auto;background:#fff;padding:30px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1);}  h1{color:#002F70;margin-top:0;}  .test-section{background:#f8fafc;padding:20px;border-radius:8px;margin-bottom:20px;}  .test-section h3{margin-top:0;color:#002F70;}  button{background:#002F70;color:#fff;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;margin:5px;}  button:hover{background:#0056b3;}  pre{background:#1e293b;color:#e2e8f0;padding:15px;border-radius:6px;overflow-x:auto;}  .success{color:#059669;font-weight:bold;}  .error{color:#dc2626;font-weight:bold;}  </style>
+<head>
+    <title>Customer API Test</title>
+    <style>
+        body{font-family:Arial,sans-serif;padding:40px;background:#f5f5f5;}
+        .test-container{max-width:800px;margin:0 auto;background:#fff;padding:30px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1);}
+        h1{color:#002F70;margin-top:0;}
+        .test-section{background:#f8fafc;padding:20px;border-radius:8px;margin-bottom:20px;}
+        .test-section h3{margin-top:0;color:#002F70;}
+        button{background:#002F70;color:#fff;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;margin:5px;}
+        button:hover{background:#0056b3;}
+        pre{background:#1e293b;color:#e2e8f0;padding:15px;border-radius:6px;overflow-x:auto;}
+        .success{color:#059669;font-weight:bold;}
+        .error{color:#dc2626;font-weight:bold;}
+    </style>
 </head>
-<body>  <div class="test-container">  <h1> Customer API Test</h1>  <p><strong>User:</strong> <?= htmlspecialchars($me['name']) ?> | <strong>Station ID:</strong> <?= $station_id ?></p>  <div class="test-section">  <h3>1. Check if customers table exists</h3>  <button onclick="testTableExists()">Test Table</button>  <div id="result1"></div>  </div>  <div class="test-section">  <h3>2. List Customers</h3>  <button onclick="testListCustomers()">Test List</button>  <div id="result2"></div>  </div>  <div class="test-section">  <h3>3. Test Add Customer (Sample Data)</h3>  <button onclick="testAddCustomer()">Test Add</button>  <div id="result3"></div>  </div>  <div class="test-section">  <h3>Console Logs</h3>  <p>Check browser console (F12) for detailed logs</p>  </div>  </div>  <script>  const STATION_ID = <?= $station_id ?>;  function testTableExists() {  console.log('Testing table exists...');  fetch('public/staff_customer_operations.php?action=check_table')  .then(res => res.json())  .then(data => {  console.log('Table check:', data);  const result = document.getElementById('result1');  if (data.table_exists) {  result.innerHTML = '<p class="success"> Customers table EXISTS</p><pre>' + JSON.stringify(data, null, 2) + '</pre>';  } else {  result.innerHTML = '<p class="error"> Customers table NOT FOUND</p><pre>' + JSON.stringify(data, null, 2) + '</pre>';  }  })  .catch(err => {  console.error('Error:', err);  document.getElementById('result1').innerHTML = '<p class="error"> Error: ' + err.message + '</p>';  });  }  function testListCustomers() {  console.log('Testing list customers...');  const url = `public/staff_customer_operations.php?action=list&station_id=${STATION_ID}&status=active`;  console.log('URL:', url);  fetch(url)  .then(res => {  console.log('Response status:', res.status);  return res.json();  })  .then(data => {  console.log('List response:', data);  const result = document.getElementById('result2');  if (data.success) {  result.innerHTML = '<p class="success"> List API working</p><p>Found ' + data.customers.length + ' customers</p><pre>' + JSON.stringify(data, null, 2) + '</pre>';  } else {  result.innerHTML = '<p class="error"> API Error</p><pre>' + JSON.stringify(data, null, 2) + '</pre>';  }  })  .catch(err => {  console.error('Error:', err);  document.getElementById('result2').innerHTML = '<p class="error"> Error: ' + err.message + '</p>';  });  }  function testAddCustomer() {  console.log('Testing add customer...');  const formData = new FormData();  formData.append('action', 'add');  formData.append('station_id', STATION_ID);  formData.append('first_name', 'Test');  formData.append('middle_name', 'Sample');  formData.append('last_name', 'Customer');  formData.append('contact_number', '0917-123-4567');  formData.append('address', 'Test Address, City');  formData.append('customer_type', 'walk-in');  fetch('public/staff_customer_operations.php', {  method: 'POST',  body: formData  })  .then(res => {  console.log('Response status:', res.status);  return res.json();  })  .then(data => {  console.log('Add response:', data);  const result = document.getElementById('result3');  if (data.success) {  result.innerHTML = '<p class="success"> Add API working</p><p>Customer ID: ' + data.customer_id + '</p><pre>' + JSON.stringify(data, null, 2) + '</pre>';  } else {  result.innerHTML = '<p class="error"> API Error</p><pre>' + JSON.stringify(data, null, 2) + '</pre>';  }  })  .catch(err => {  console.error('Error:', err);  document.getElementById('result3').innerHTML = '<p class="error"> Error: ' + err.message + '</p>';  });  }  </script>
+<body>
+    <div class="test-container">
+        <h1>🧪 Customer API Test</h1>
+        <p><strong>User:</strong> <?= htmlspecialchars($me['name']) ?> | <strong>Station ID:</strong> <?= $station_id ?></p>
+        
+        <div class="test-section">
+            <h3>1. Check if customers table exists</h3>
+            <button onclick="testTableExists()">Test Table</button>
+            <div id="result1"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>2. List Customers</h3>
+            <button onclick="testListCustomers()">Test List</button>
+            <div id="result2"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>3. Test Add Customer (Sample Data)</h3>
+            <button onclick="testAddCustomer()">Test Add</button>
+            <div id="result3"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Console Logs</h3>
+            <p>Check browser console (F12) for detailed logs</p>
+        </div>
+    </div>
+
+    <script>
+    const STATION_ID = <?= $station_id ?>;
+    
+    function testTableExists() {
+        console.log('Testing table exists...');
+        fetch('public/staff_customer_operations.php?action=check_table')
+            .then(res => res.json())
+            .then(data => {
+                console.log('Table check:', data);
+                const result = document.getElementById('result1');
+                if (data.table_exists) {
+                    result.innerHTML = '<p class="success">✓ Customers table EXISTS</p><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                } else {
+                    result.innerHTML = '<p class="error">✗ Customers table NOT FOUND</p><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                }
+            })
+            .catch(err => {
+                console.error('Error:', err);
+                document.getElementById('result1').innerHTML = '<p class="error">✗ Error: ' + err.message + '</p>';
+            });
+    }
+    
+    function testListCustomers() {
+        console.log('Testing list customers...');
+        const url = `public/staff_customer_operations.php?action=list&station_id=${STATION_ID}&status=active`;
+        console.log('URL:', url);
+        
+        fetch(url)
+            .then(res => {
+                console.log('Response status:', res.status);
+                return res.json();
+            })
+            .then(data => {
+                console.log('List response:', data);
+                const result = document.getElementById('result2');
+                if (data.success) {
+                    result.innerHTML = '<p class="success">✓ List API working</p><p>Found ' + data.customers.length + ' customers</p><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                } else {
+                    result.innerHTML = '<p class="error">✗ API Error</p><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                }
+            })
+            .catch(err => {
+                console.error('Error:', err);
+                document.getElementById('result2').innerHTML = '<p class="error">✗ Error: ' + err.message + '</p>';
+            });
+    }
+    
+    function testAddCustomer() {
+        console.log('Testing add customer...');
+        const formData = new FormData();
+        formData.append('action', 'add');
+        formData.append('station_id', STATION_ID);
+        formData.append('first_name', 'Test');
+        formData.append('middle_name', 'Sample');
+        formData.append('last_name', 'Customer');
+        formData.append('contact_number', '0917-123-4567');
+        formData.append('address', 'Test Address, City');
+        formData.append('customer_type', 'walk-in');
+        
+        fetch('public/staff_customer_operations.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => {
+            console.log('Response status:', res.status);
+            return res.json();
+        })
+        .then(data => {
+            console.log('Add response:', data);
+            const result = document.getElementById('result3');
+            if (data.success) {
+                result.innerHTML = '<p class="success">✓ Add API working</p><p>Customer ID: ' + data.customer_id + '</p><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            } else {
+                result.innerHTML = '<p class="error">✗ API Error</p><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            }
+        })
+        .catch(err => {
+            console.error('Error:', err);
+            document.getElementById('result3').innerHTML = '<p class="error">✗ Error: ' + err.message + '</p>';
+        });
+    }
+    </script>
 </body>
 </html>

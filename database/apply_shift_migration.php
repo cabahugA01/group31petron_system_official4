@@ -1,7 +1,97 @@
 <?php
-/**  * Apply Shift Migration Script  *  * This script adds shift assignment fields to the users table  * Run this once to update the database schema  */  require_once __DIR__ . '/../public/db_connect.php';  // Set headers for CLI or web execution
-header('Content-Type: text/plain');  echo "==============================================\n";
+/**
+ * Apply Shift Migration Script
+ * 
+ * This script adds shift assignment fields to the users table
+ * Run this once to update the database schema
+ */
+
+require_once __DIR__ . '/../public/db_connect.php';
+
+// Set headers for CLI or web execution
+header('Content-Type: text/plain');
+
+echo "==============================================\n";
 echo "SHIFT ASSIGNMENT MIGRATION\n";
-echo "==============================================\n\n";  try {  // Begin transaction  $pdo->beginTransaction();  echo "[1/5] Checking if migration is needed...\n";  // Check if columns already exist  $stmt = $pdo->query("SHOW COLUMNS FROM users LIKE 'assigned_shift'");  if ($stmt->rowCount() > 0) {  echo "  Migration already applied. Columns exist.\n";  $pdo->rollBack();  exit(0);  }  echo "[2/5] Adding shift columns to users table...\n";  // Add shift columns  $pdo->exec("  ALTER TABLE `users`  ADD COLUMN `assigned_shift` enum('Shift 1','Shift 2','Shift 3','All Shifts') DEFAULT NULL COMMENT 'Assigned shift for staff members' AFTER `role`,  ADD COLUMN `shift_start_time` time DEFAULT NULL COMMENT 'Shift start time (e.g., 06:00:00)' AFTER `assigned_shift`,  ADD COLUMN `shift_end_time` time DEFAULT NULL COMMENT 'Shift end time (e.g., 14:00:00)' AFTER `shift_start_time`  ");  echo "  Shift columns added successfully.\n";  echo "[3/5] Adding index for shift queries...\n";  // Add index  $pdo->exec("ALTER TABLE `users` ADD INDEX `idx_assigned_shift` (`assigned_shift`)");  echo "  Index created successfully.\n";  echo "[4/5] Updating existing Manager accounts...\n";  // Update managers to 'All Shifts'  $manager_count = $pdo->exec("UPDATE `users` SET `assigned_shift` = 'All Shifts' WHERE `role` = 'manager'");  echo "  Updated $manager_count manager account(s).\n";  echo "[5/5] Updating existing Admin accounts...\n";  // Update admins to 'All Shifts'  $admin_count = $pdo->exec("UPDATE `users` SET `assigned_shift` = 'All Shifts' WHERE `role` = 'admin'");  echo "  Updated $admin_count admin account(s).\n";  // Commit transaction  $pdo->commit();  echo "\n==============================================\n";  echo " MIGRATION COMPLETED SUCCESSFULLY!\n";  echo "==============================================\n\n";  echo "Summary:\n";  echo "- Shift columns added to users table\n";  echo "- Index created for shift queries\n";  echo "- Manager accounts updated: $manager_count\n";  echo "- Admin accounts updated: $admin_count\n";  echo "- Staff accounts: Ready for shift assignment\n\n";  echo "Next Steps:\n";  echo "1. Go to Admin → User Management\n";  echo "2. Edit staff accounts to assign shifts\n";  echo "3. Set shift times for each staff member\n\n";  } catch (PDOException $e) {  // Rollback on error  if ($pdo->inTransaction()) {  $pdo->rollBack();  }  echo "\n==============================================\n";  echo "MIGRATION FAILED\n";  echo "==============================================\n\n";  echo "Error: " . $e->getMessage() . "\n\n";  echo "The database has been rolled back to its previous state.\n";  exit(1);
+echo "==============================================\n\n";
+
+try {
+    // Begin transaction
+    $pdo->beginTransaction();
+    
+    echo "[1/5] Checking if migration is needed...\n";
+    
+    // Check if columns already exist
+    $stmt = $pdo->query("SHOW COLUMNS FROM users LIKE 'assigned_shift'");
+    if ($stmt->rowCount() > 0) {
+        echo "   ⚠ Migration already applied. Columns exist.\n";
+        $pdo->rollBack();
+        exit(0);
+    }
+    
+    echo "[2/5] Adding shift columns to users table...\n";
+    
+    // Add shift columns
+    $pdo->exec("
+        ALTER TABLE `users`
+        ADD COLUMN `assigned_shift` enum('Shift 1','Shift 2','Shift 3','All Shifts') DEFAULT NULL COMMENT 'Assigned shift for staff members' AFTER `role`,
+        ADD COLUMN `shift_start_time` time DEFAULT NULL COMMENT 'Shift start time (e.g., 06:00:00)' AFTER `assigned_shift`,
+        ADD COLUMN `shift_end_time` time DEFAULT NULL COMMENT 'Shift end time (e.g., 14:00:00)' AFTER `shift_start_time`
+    ");
+    
+    echo "   ✓ Shift columns added successfully.\n";
+    
+    echo "[3/5] Adding index for shift queries...\n";
+    
+    // Add index
+    $pdo->exec("ALTER TABLE `users` ADD INDEX `idx_assigned_shift` (`assigned_shift`)");
+    
+    echo "   ✓ Index created successfully.\n";
+    
+    echo "[4/5] Updating existing Manager accounts...\n";
+    
+    // Update managers to 'All Shifts'
+    $manager_count = $pdo->exec("UPDATE `users` SET `assigned_shift` = 'All Shifts' WHERE `role` = 'manager'");
+    
+    echo "   ✓ Updated $manager_count manager account(s).\n";
+    
+    echo "[5/5] Updating existing Admin accounts...\n";
+    
+    // Update admins to 'All Shifts'
+    $admin_count = $pdo->exec("UPDATE `users` SET `assigned_shift` = 'All Shifts' WHERE `role` = 'admin'");
+    
+    echo "   ✓ Updated $admin_count admin account(s).\n";
+    
+    // Commit transaction
+    $pdo->commit();
+    
+    echo "\n==============================================\n";
+    echo "✓ MIGRATION COMPLETED SUCCESSFULLY!\n";
+    echo "==============================================\n\n";
+    
+    echo "Summary:\n";
+    echo "- Shift columns added to users table\n";
+    echo "- Index created for shift queries\n";
+    echo "- Manager accounts updated: $manager_count\n";
+    echo "- Admin accounts updated: $admin_count\n";
+    echo "- Staff accounts: Ready for shift assignment\n\n";
+    
+    echo "Next Steps:\n";
+    echo "1. Go to Admin → User Management\n";
+    echo "2. Edit staff accounts to assign shifts\n";
+    echo "3. Set shift times for each staff member\n\n";
+    
+} catch (PDOException $e) {
+    // Rollback on error
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    
+    echo "\n==============================================\n";
+    echo "❌ MIGRATION FAILED\n";
+    echo "==============================================\n\n";
+    echo "Error: " . $e->getMessage() . "\n\n";
+    echo "The database has been rolled back to its previous state.\n";
+    exit(1);
 }
 ?>

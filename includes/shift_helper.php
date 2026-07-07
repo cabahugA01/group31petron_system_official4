@@ -1,19 +1,242 @@
 <?php
-/**  * Shift Helper Functions  *  * Purpose: Provide utility functions to retrieve and validate shift information  * for staff members across the system (transactions, reports, etc.)  */  require_once __DIR__ . '/../public/db_connect.php';  /**  * Get the assigned shift for a specific user  *  * @param int $user_id User ID  * @return array|null Array with shift details or null if not found  */
-function getUserShift($user_id) {  global $pdo;  try {  $stmt = $pdo->prepare("  SELECT  id,  CONCAT(first_name, ' ', last_name) as full_name,  username,  role,  assigned_shift,  shift_start_time,  shift_end_time  FROM users  WHERE id = ?  ");  $stmt->execute([$user_id]);  return $stmt->fetch(PDO::FETCH_ASSOC);  } catch (PDOException $e) {  error_log("Error fetching user shift: " . $e->getMessage());  return null;  }
-}  /**  * Get the shift name for display purposes  *  * @param string|null $assigned_shift The shift value from database  * @return string Formatted shift name  */
-function formatShiftName($assigned_shift) {  if (empty($assigned_shift)) {  return 'Not Assigned';  }  return $assigned_shift;
-}  /**  * Format shift time range for display  *  * @param string|null $start_time Start time (HH:MM:SS format)  * @param string|null $end_time End time (HH:MM:SS format)  * @return string Formatted time range  */
-function formatShiftTime($start_time, $end_time) {  if (empty($start_time) || empty($end_time)) {  return 'Not Set';  }  $start = date('g:i A', strtotime($start_time));  $end = date('g:i A', strtotime($end_time));  return "$start – $end";
-}  /**  * Check if a user belongs to a specific shift  *  * @param int $user_id User ID  * @param string $shift_name Shift name to check (e.g., 'Shift 1')  * @return bool True if user belongs to the shift  */
-function userBelongsToShift($user_id, $shift_name) {  $user = getUserShift($user_id);  if (!$user) {  return false;  }  // Managers and Admins have access to all shifts  if (in_array($user['role'], ['manager', 'admin', 'superadmin'])) {  return true;  }  // Check if user's assigned shift matches  return $user['assigned_shift'] === $shift_name;
-}  /**  * Get all staff members assigned to a specific shift  *  * @param string $shift_name Shift name (e.g., 'Shift 1')  * @param int|null $station_id Optional station ID to filter by station  * @return array Array of staff members  */
-function getStaffByShift($shift_name, $station_id = null) {  global $pdo;  try {  $sql = "  SELECT  id,  CONCAT(first_name, ' ', last_name) as full_name,  username,  role,  assigned_shift,  shift_start_time,  shift_end_time,  station_id  FROM users  WHERE role = 'staff'  AND assigned_shift = ?  AND status = 'Active'  ";  $params = [$shift_name];  if ($station_id) {  $sql .= " AND station_id = ?";  $params[] = $station_id;  }  $sql .= " ORDER BY full_name";  $stmt = $pdo->prepare($sql);  $stmt->execute($params);  return $stmt->fetchAll(PDO::FETCH_ASSOC);  } catch (PDOException $e) {  error_log("Error fetching staff by shift: " . $e->getMessage());  return [];  }
-}  /**  * Get shift statistics for a station  *  * @param int $station_id Station ID  * @return array Array with shift counts  */
-function getShiftStatistics($station_id) {  global $pdo;  try {  $stmt = $pdo->prepare("  SELECT  assigned_shift,  COUNT(*) as staff_count  FROM users  WHERE station_id = ?  AND role = 'staff'  AND status = 'Active'  AND assigned_shift IS NOT NULL  GROUP BY assigned_shift  ORDER BY assigned_shift  ");  $stmt->execute([$station_id]);  $results = $stmt->fetchAll(PDO::FETCH_ASSOC);  // Format results  $statistics = [  'Shift 1' => 0,  'Shift 2' => 0,  'Shift 3' => 0,  'Not Assigned' => 0  ];  foreach ($results as $row) {  $statistics[$row['assigned_shift']] = (int)$row['staff_count'];  }  // Count unassigned staff  $stmt = $pdo->prepare("  SELECT COUNT(*) as unassigned_count  FROM users  WHERE station_id = ?  AND role = 'staff'  AND status = 'Active'  AND assigned_shift IS NULL  ");  $stmt->execute([$station_id]);  $unassigned = $stmt->fetch(PDO::FETCH_ASSOC);  $statistics['Not Assigned'] = (int)$unassigned['unassigned_count'];  return $statistics;  } catch (PDOException $e) {  error_log("Error fetching shift statistics: " . $e->getMessage());  return [];  }
-}  /**  * Validate if shift times are properly set  *  * @param string|null $start_time Start time  * @param string|null $end_time End time  * @return bool True if times are valid  */
-function validateShiftTimes($start_time, $end_time) {  if (empty($start_time) || empty($end_time)) {  return false;  }  $start = strtotime($start_time);  $end = strtotime($end_time);  // End time should be after start time  return $end > $start;
-}  /**  * Get shift name based on current time (for auto-detection)  * This is a helper function for systems that need to auto-detect shifts  *  * @return string Detected shift name  */
-function detectCurrentShift() {  $current_hour = (int)date('H');  // Shift 1: 6:00 AM - 2:00 PM (06:00 - 14:00)  if ($current_hour >= 6 && $current_hour < 14) {  return 'Shift 1';  }  // Shift 2: 2:00 PM - 10:00 PM (14:00 - 22:00)  elseif ($current_hour >= 14 && $current_hour < 22) {  return 'Shift 2';  }  // Shift 3: 10:00 PM - 6:00 AM (22:00 - 06:00)  else {  return 'Shift 3';  }
+/**
+ * Shift Helper Functions
+ * 
+ * Purpose: Provide utility functions to retrieve and validate shift information
+ * for staff members across the system (transactions, reports, etc.)
+ */
+
+require_once __DIR__ . '/../public/db_connect.php';
+
+/**
+ * Get the assigned shift for a specific user
+ * 
+ * @param int $user_id User ID
+ * @return array|null Array with shift details or null if not found
+ */
+function getUserShift($user_id) {
+    global $pdo;
+    
+    try {
+        $stmt = $pdo->prepare("
+            SELECT 
+                id,
+                CONCAT(first_name, ' ', last_name) as full_name,
+                username,
+                role,
+                assigned_shift,
+                shift_start_time,
+                shift_end_time
+            FROM users
+            WHERE id = ?
+        ");
+        $stmt->execute([$user_id]);
+        
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("Error fetching user shift: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Get the shift name for display purposes
+ * 
+ * @param string|null $assigned_shift The shift value from database
+ * @return string Formatted shift name
+ */
+function formatShiftName($assigned_shift) {
+    if (empty($assigned_shift)) {
+        return 'Not Assigned';
+    }
+    
+    return $assigned_shift;
+}
+
+/**
+ * Format shift time range for display
+ * 
+ * @param string|null $start_time Start time (HH:MM:SS format)
+ * @param string|null $end_time End time (HH:MM:SS format)
+ * @return string Formatted time range
+ */
+function formatShiftTime($start_time, $end_time) {
+    if (empty($start_time) || empty($end_time)) {
+        return 'Not Set';
+    }
+    
+    $start = date('g:i A', strtotime($start_time));
+    $end = date('g:i A', strtotime($end_time));
+    
+    return "$start – $end";
+}
+
+/**
+ * Check if a user belongs to a specific shift
+ * 
+ * @param int $user_id User ID
+ * @param string $shift_name Shift name to check (e.g., 'Shift 1')
+ * @return bool True if user belongs to the shift
+ */
+function userBelongsToShift($user_id, $shift_name) {
+    $user = getUserShift($user_id);
+    
+    if (!$user) {
+        return false;
+    }
+    
+    // Managers and Admins have access to all shifts
+    if (in_array($user['role'], ['manager', 'admin', 'superadmin'])) {
+        return true;
+    }
+    
+    // Check if user's assigned shift matches
+    return $user['assigned_shift'] === $shift_name;
+}
+
+/**
+ * Get all staff members assigned to a specific shift
+ * 
+ * @param string $shift_name Shift name (e.g., 'Shift 1')
+ * @param int|null $station_id Optional station ID to filter by station
+ * @return array Array of staff members
+ */
+function getStaffByShift($shift_name, $station_id = null) {
+    global $pdo;
+    
+    try {
+        $sql = "
+            SELECT 
+                id,
+                CONCAT(first_name, ' ', last_name) as full_name,
+                username,
+                role,
+                assigned_shift,
+                shift_start_time,
+                shift_end_time,
+                station_id
+            FROM users
+            WHERE role = 'staff'
+            AND assigned_shift = ?
+            AND status = 'Active'
+        ";
+        
+        $params = [$shift_name];
+        
+        if ($station_id) {
+            $sql .= " AND station_id = ?";
+            $params[] = $station_id;
+        }
+        
+        $sql .= " ORDER BY full_name";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("Error fetching staff by shift: " . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * Get shift statistics for a station
+ * 
+ * @param int $station_id Station ID
+ * @return array Array with shift counts
+ */
+function getShiftStatistics($station_id) {
+    global $pdo;
+    
+    try {
+        $stmt = $pdo->prepare("
+            SELECT 
+                assigned_shift,
+                COUNT(*) as staff_count
+            FROM users
+            WHERE station_id = ?
+            AND role = 'staff'
+            AND status = 'Active'
+            AND assigned_shift IS NOT NULL
+            GROUP BY assigned_shift
+            ORDER BY assigned_shift
+        ");
+        $stmt->execute([$station_id]);
+        
+        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Format results
+        $statistics = [
+            'Shift 1' => 0,
+            'Shift 2' => 0,
+            'Shift 3' => 0,
+            'Not Assigned' => 0
+        ];
+        
+        foreach ($results as $row) {
+            $statistics[$row['assigned_shift']] = (int)$row['staff_count'];
+        }
+        
+        // Count unassigned staff
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) as unassigned_count
+            FROM users
+            WHERE station_id = ?
+            AND role = 'staff'
+            AND status = 'Active'
+            AND assigned_shift IS NULL
+        ");
+        $stmt->execute([$station_id]);
+        $unassigned = $stmt->fetch(PDO::FETCH_ASSOC);
+        $statistics['Not Assigned'] = (int)$unassigned['unassigned_count'];
+        
+        return $statistics;
+    } catch (PDOException $e) {
+        error_log("Error fetching shift statistics: " . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * Validate if shift times are properly set
+ * 
+ * @param string|null $start_time Start time
+ * @param string|null $end_time End time
+ * @return bool True if times are valid
+ */
+function validateShiftTimes($start_time, $end_time) {
+    if (empty($start_time) || empty($end_time)) {
+        return false;
+    }
+    
+    $start = strtotime($start_time);
+    $end = strtotime($end_time);
+    
+    // End time should be after start time
+    return $end > $start;
+}
+
+/**
+ * Get shift name based on current time (for auto-detection)
+ * This is a helper function for systems that need to auto-detect shifts
+ * 
+ * @return string Detected shift name
+ */
+function detectCurrentShift() {
+    $current_hour = (int)date('H');
+    
+    // Shift 1: 6:00 AM - 2:00 PM (06:00 - 14:00)
+    if ($current_hour >= 6 && $current_hour < 14) {
+        return 'Shift 1';
+    }
+    // Shift 2: 2:00 PM - 10:00 PM (14:00 - 22:00)
+    elseif ($current_hour >= 14 && $current_hour < 22) {
+        return 'Shift 2';
+    }
+    // Shift 3: 10:00 PM - 6:00 AM (22:00 - 06:00)
+    else {
+        return 'Shift 3';
+    }
 }
 ?>

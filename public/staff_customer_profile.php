@@ -1,19 +1,59 @@
 <?php
-/**  * Staff Customer Profile  * View detailed customer information  */  $page_id = 'customers';
+/**
+ * Staff Customer Profile
+ * View detailed customer information
+ */
+
+$page_id = 'customers';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
-require_login();  $me = current_user();
+require_login();
+
+$me = current_user();
 $role = role_key($me['role'] ?? '');
-$station_id = user_station_id();  // Staff only
-if (!in_array($role, ['staff', 'superadmin', 'developer'])) {  header('Location: dashboard.php');  exit;
-}  $customer_id = (int)($_GET['id'] ?? 0);
-if (!$customer_id) {  header('Location: staff_customer_list.php');  exit;
-}  // Fetch customer details
-try {  $stmt = $pdo->prepare("  SELECT c.*, u.name as registered_by_name  FROM customers c  LEFT JOIN users u ON c.registered_by = u.id  WHERE c.id = ? AND c.station_id = ?  ");  $stmt->execute([$customer_id, $station_id]);  $customer = $stmt->fetch(PDO::FETCH_ASSOC);  if (!$customer) {  $_SESSION['error'] = 'Customer not found';  header('Location: staff_customer_list.php');  exit;  }
-} catch (Exception $e) {  $_SESSION['error'] = 'Error loading customer: ' . $e->getMessage();  header('Location: staff_customer_list.php');  exit;
-}  $fullName = trim(($customer['first_name'] ?? '') . ' ' . ($customer['middle_name'] ?? '') . ' ' . ($customer['last_name'] ?? ''));  $page_title = "Customer Profile - $fullName";
+$station_id = user_station_id();
+
+// Staff only
+if (!in_array($role, ['staff', 'superadmin', 'developer'])) {
+    header('Location: dashboard.php');
+    exit;
+}
+
+$customer_id = (int)($_GET['id'] ?? 0);
+if (!$customer_id) {
+    header('Location: staff_customer_list.php');
+    exit;
+}
+
+// Fetch customer details
+try {
+    $stmt = $pdo->prepare("
+        SELECT c.*, u.name as registered_by_name
+        FROM customers c
+        LEFT JOIN users u ON c.registered_by = u.id
+        WHERE c.id = ? AND c.station_id = ?
+    ");
+    $stmt->execute([$customer_id, $station_id]);
+    $customer = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$customer) {
+        $_SESSION['error'] = 'Customer not found';
+        header('Location: staff_customer_list.php');
+        exit;
+    }
+} catch (Exception $e) {
+    $_SESSION['error'] = 'Error loading customer: ' . $e->getMessage();
+    header('Location: staff_customer_list.php');
+    exit;
+}
+
+$fullName = trim(($customer['first_name'] ?? '') . ' ' . ($customer['middle_name'] ?? '') . ' ' . ($customer['last_name'] ?? ''));
+
+$page_title = "Customer Profile - $fullName";
 include __DIR__ . '/../partials/header.php';
-?>  <style>
+?>
+
+<style>
 .profile-container{max-width:1000px;margin:0 auto;}
 .profile-header{background:#fff;border-radius:10px;border:1px solid #e5e7eb;padding:24px;margin-bottom:20px;display:flex;align-items:center;gap:20px;}
 .profile-avatar{width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#002F70,#0056b3);color:#fff;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700;}
@@ -33,9 +73,98 @@ include __DIR__ . '/../partials/header.php';
 .info-label{font-size:13px;font-weight:600;color:#6b7280;}
 .info-value{font-size:14px;color:#1f2937;font-weight:500;}
 .action-buttons{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;}
-</style>  <div class="page-head">  <div>  <h1 class="h1"><i class="fas fa-user"></i> Customer Profile</h1>  <div class="sub">View customer details and transaction history</div>  </div>  <div>  <button class="btn btn-secondary" onclick="history.back()"><i class="fas fa-arrow-left"></i> Back</button>  </div>
-</div>  <div class="profile-container">  <!-- Profile Header -->  <div class="profile-header">  <div class="profile-avatar">  <?= strtoupper(substr($customer['first_name'] ?? '', 0, 1) . substr($customer['last_name'] ?? '', 0, 1)) ?>  </div>  <div class="profile-info" style="flex:1;">  <h2><?= htmlspecialchars($fullName) ?></h2>  <p style="margin:4px 0;color:#6b7280;font-size:14px;">  <i class="fas fa-id-card"></i> <?= htmlspecialchars($customer['customer_id'] ?? 'N/A') ?>  </p>  <div class="profile-badges">  <span class="badge badge-<?= $customer['customer_type'] === 'walk-in' ? 'walkin' : ($customer['customer_type'] === 'regular' ? 'regular' : 'fleet') ?>">  <?= ucfirst($customer['customer_type'] ?? 'N/A') ?>  </span>  <span class="badge badge-<?= $customer['status'] === 'active' ? 'active' : 'inactive' ?>">  <?= ucfirst($customer['status'] ?? 'N/A') ?>  </span>  </div>  </div>  </div>  <!-- Info Cards -->  <div class="info-grid">  <!-- Contact Information -->  <div class="info-card">  <h3><i class="fas fa-address-card"></i> Contact Information</h3>  <div class="info-row">  <span class="info-label">Contact Number</span>  <span class="info-value"><?= htmlspecialchars($customer['contact_number'] ?? 'N/A') ?></span>  </div>  <div class="info-row">  <span class="info-label">Address</span>  <span class="info-value"><?= htmlspecialchars($customer['address'] ?? 'N/A') ?></span>  </div>  <?php if ($customer['gov_id_type']): ?>  <div class="info-row">  <span class="info-label">ID Type</span>  <span class="info-value"><?= htmlspecialchars($customer['gov_id_type']) ?></span>  </div>  <?php endif; ?>  </div>  <!-- Registration Details -->  <div class="info-card">  <h3><i class="fas fa-info-circle"></i> Registration Details</h3>  <div class="info-row">  <span class="info-label">Registered On</span>  <span class="info-value">  <?= $customer['registered_at'] ? date('M d, Y h:i A', strtotime($customer['registered_at'])) : 'N/A' ?>  </span>  </div>  <div class="info-row">  <span class="info-label">Registered By</span>  <span class="info-value"><?= htmlspecialchars($customer['registered_by_name'] ?? 'System') ?></span>  </div>  <?php if ($customer['updated_at']): ?>  <div class="info-row">  <span class="info-label">Last Updated</span>  <span class="info-value"><?= date('M d, Y h:i A', strtotime($customer['updated_at'])) ?></span>  </div>  <?php endif; ?>  </div>  </div>  <!-- Action Buttons -->  <div class="info-card">  <div class="action-buttons">  <button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print"></i> Print Profile</button>  <button class="btn btn-warning" onclick="editCustomer()"><i class="fas fa-edit"></i> Edit Customer</button>  <button class="btn btn-secondary" onclick="history.back()"><i class="fas fa-arrow-left"></i> Back to List</button>  </div>  </div>
-</div>  <script>
-function editCustomer() {  alert('Edit customer feature coming soon!');  // TODO: Implement edit functionality
+</style>
+
+<div class="page-head">
+    <div>
+        <h1 class="h1"><i class="fas fa-user"></i> Customer Profile</h1>
+        <div class="sub">View customer details and transaction history</div>
+    </div>
+    <div>
+        <button class="btn btn-secondary" onclick="history.back()"><i class="fas fa-arrow-left"></i> Back</button>
+    </div>
+</div>
+
+<div class="profile-container">
+    <!-- Profile Header -->
+    <div class="profile-header">
+        <div class="profile-avatar">
+            <?= strtoupper(substr($customer['first_name'] ?? '', 0, 1) . substr($customer['last_name'] ?? '', 0, 1)) ?>
+        </div>
+        <div class="profile-info" style="flex:1;">
+            <h2><?= htmlspecialchars($fullName) ?></h2>
+            <p style="margin:4px 0;color:#6b7280;font-size:14px;">
+                <i class="fas fa-id-card"></i> <?= htmlspecialchars($customer['customer_id'] ?? 'N/A') ?>
+            </p>
+            <div class="profile-badges">
+                <span class="badge badge-<?= $customer['customer_type'] === 'walk-in' ? 'walkin' : ($customer['customer_type'] === 'regular' ? 'regular' : 'fleet') ?>">
+                    <?= ucfirst($customer['customer_type'] ?? 'N/A') ?>
+                </span>
+                <span class="badge badge-<?= $customer['status'] === 'active' ? 'active' : 'inactive' ?>">
+                    <?= ucfirst($customer['status'] ?? 'N/A') ?>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Cards -->
+    <div class="info-grid">
+        <!-- Contact Information -->
+        <div class="info-card">
+            <h3><i class="fas fa-address-card"></i> Contact Information</h3>
+            <div class="info-row">
+                <span class="info-label">Contact Number</span>
+                <span class="info-value"><?= htmlspecialchars($customer['contact_number'] ?? 'N/A') ?></span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Address</span>
+                <span class="info-value"><?= htmlspecialchars($customer['address'] ?? 'N/A') ?></span>
+            </div>
+            <?php if ($customer['gov_id_type']): ?>
+            <div class="info-row">
+                <span class="info-label">ID Type</span>
+                <span class="info-value"><?= htmlspecialchars($customer['gov_id_type']) ?></span>
+            </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- Registration Details -->
+        <div class="info-card">
+            <h3><i class="fas fa-info-circle"></i> Registration Details</h3>
+            <div class="info-row">
+                <span class="info-label">Registered On</span>
+                <span class="info-value">
+                    <?= $customer['registered_at'] ? date('M d, Y h:i A', strtotime($customer['registered_at'])) : 'N/A' ?>
+                </span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Registered By</span>
+                <span class="info-value"><?= htmlspecialchars($customer['registered_by_name'] ?? 'System') ?></span>
+            </div>
+            <?php if ($customer['updated_at']): ?>
+            <div class="info-row">
+                <span class="info-label">Last Updated</span>
+                <span class="info-value"><?= date('M d, Y h:i A', strtotime($customer['updated_at'])) ?></span>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="info-card">
+        <div class="action-buttons">
+            <button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print"></i> Print Profile</button>
+            <button class="btn btn-warning" onclick="editCustomer()"><i class="fas fa-edit"></i> Edit Customer</button>
+            <button class="btn btn-secondary" onclick="history.back()"><i class="fas fa-arrow-left"></i> Back to List</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function editCustomer() {
+    alert('Edit customer feature coming soon!');
+    // TODO: Implement edit functionality
 }
-</script>  <?php include __DIR__ . '/../partials/footer.php'; ?>
+</script>
+
+<?php include __DIR__ . '/../partials/footer.php'; ?>

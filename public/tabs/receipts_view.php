@@ -1,16 +1,162 @@
 <?php
-/**  * Receipts Tab  * Shows all receipts (all transaction types)  */
-?>  <div class="receipts-container">  <h2>Receipts</h2>  <p style="color: #6b7280; margin-bottom: 2rem;">  View and print receipts for all transactions.  </p>  <!-- Receipts Table -->  <table class="data-table">  <thead>  <tr>  <th>Transaction ID</th>  <th>Type</th>  <th>Customer</th>  <th>Amount</th>  <th>Date</th>  <th>Action</th>  </tr>  </thead>  <tbody>  <?php if (empty($receipts)): ?>  <tr>  <td colspan="6" style="text-align: center; padding: 2rem; color: #6b7280;">  No receipts found  </td>  </tr>  <?php else: ?>  <?php foreach ($receipts as $receipt): ?>  <tr>  <td>  <strong><?= htmlspecialchars($receipt['transaction_id']) ?></strong>  </td>  <td>  <?php  $type = $receipt['transaction_type'];  $type_labels = [  'job_order' => 'Job Order',  'merchandise' => 'Merchandise',  'combined' => 'Combined'  ];  $type_colors = [  'job_order' => '#2563eb',  'merchandise' => '#16a34a',  'combined' => '#9333ea'  ];  ?>  <span style="color: <?= $type_colors[$type] ?? '#6b7280' ?>; font-weight: 600; font-size: 0.75rem;">  <?= $type_labels[$type] ?? ucfirst($type) ?>  </span>  </td>  <td><?= htmlspecialchars($receipt['customer_name']) ?></td>  <td>₱<?= number_format($receipt['total_amount'], 2) ?></td>  <td><?= date('M d, Y g:i A', strtotime($receipt['created_at'])) ?></td>  <td>  <button type="button" class="btn btn-primary btn-sm"  onclick="viewReceipt(<?= $receipt['id'] ?>)">  View Receipt  </button>  <button type="button" class="btn btn-secondary btn-sm"  onclick="printReceipt(<?= $receipt['id'] ?>)">  Print  </button>  </td>  </tr>  <?php endforeach; ?>  <?php endif; ?>  </tbody>  </table>  <!-- Pagination -->  <?php if ($total_pages > 1): ?>  <div class="pagination">  <?php if ($page > 1): ?>  <a href="?tab=receipts&page=<?= $page - 1 ?>">  Previous  </a>  <?php endif; ?>  <?php for ($i = 1; $i <= $total_pages; $i++): ?>  <?php if ($i == $page): ?>  <span class="active"><?= $i ?></span>  <?php else: ?>  <a href="?tab=receipts&page=<?= $i ?>">  <?= $i ?>  </a>  <?php endif; ?>  <?php endfor; ?>  <?php if ($page < $total_pages): ?>  <a href="?tab=receipts&page=<?= $page + 1 ?>">  Next  </a>  <?php endif; ?>  </div>  <?php endif; ?>
-</div>  <!-- Receipt Modal -->
-<div id="receiptModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; padding: 2rem;">  <div style="background: white; max-width: 800px; margin: 0 auto; border-radius: 0.5rem; max-height: 90vh; overflow-y: auto;">  <div style="padding: 1.5rem; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;">  <h3 style="margin: 0;">Receipt</h3>  <button onclick="closeReceiptModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">  &times;  </button>  </div>  <div id="receiptContent" style="padding: 2rem;">  <!-- Receipt content will be loaded here -->  </div>  </div>
-</div>  <script>
-function viewReceipt(transactionId) {  const modal = document.getElementById('receiptModal');  const content = document.getElementById('receiptContent');  content.innerHTML = '<p style="text-align: center;">Loading...</p>';  modal.style.display = 'block';  fetch('../backend/get_transaction_receipt.php?id=' + transactionId)  .then(response => response.json())  .then(data => {  if (data.success) {  content.innerHTML = data.html;  } else {  content.innerHTML = '<p style="color: #dc2626;">Error loading receipt: ' + (data.error || 'Unknown error') + '</p>';  }  })  .catch(error => {  content.innerHTML = '<p style="color: #dc2626;">Network error. Please try again.</p>';  });
-}  function closeReceiptModal() {  document.getElementById('receiptModal').style.display = 'none';
-}  function printReceipt(transactionId) {  window.open('../backend/print_receipt.php?id=' + transactionId, '_blank');
-}  // Close modal when clicking outside
-document.getElementById('receiptModal')?.addEventListener('click', function(e) {  if (e.target === this) {  closeReceiptModal();  }
+/**
+ * Receipts Tab
+ * Shows all receipts (all transaction types)
+ */
+?>
+
+<div class="receipts-container">
+    <h2>Receipts</h2>
+    <p style="color: #6b7280; margin-bottom: 2rem;">
+        View and print receipts for all transactions.
+    </p>
+    
+    <!-- Receipts Table -->
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Transaction ID</th>
+                <th>Type</th>
+                <th>Customer</th>
+                <th>Amount</th>
+                <th>Date</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php if (empty($receipts)): ?>
+                <tr>
+                    <td colspan="6" style="text-align: center; padding: 2rem; color: #6b7280;">
+                        No receipts found
+                    </td>
+                </tr>
+            <?php else: ?>
+                <?php foreach ($receipts as $receipt): ?>
+                    <tr>
+                        <td>
+                            <strong><?= htmlspecialchars($receipt['transaction_id']) ?></strong>
+                        </td>
+                        <td>
+                            <?php
+                            $type = $receipt['transaction_type'];
+                            $type_labels = [
+                                'job_order' => 'Job Order',
+                                'merchandise' => 'Merchandise',
+                                'combined' => 'Combined'
+                            ];
+                            $type_colors = [
+                                'job_order' => '#2563eb',
+                                'merchandise' => '#16a34a',
+                                'combined' => '#9333ea'
+                            ];
+                            ?>
+                            <span style="color: <?= $type_colors[$type] ?? '#6b7280' ?>; font-weight: 600; font-size: 0.75rem;">
+                                <?= $type_labels[$type] ?? ucfirst($type) ?>
+                            </span>
+                        </td>
+                        <td><?= htmlspecialchars($receipt['customer_name']) ?></td>
+                        <td>₱<?= number_format($receipt['total_amount'], 2) ?></td>
+                        <td><?= date('M d, Y g:i A', strtotime($receipt['created_at'])) ?></td>
+                        <td>
+                            <button type="button" class="btn btn-primary btn-sm" 
+                                    onclick="viewReceipt(<?= $receipt['id'] ?>)">
+                                View Receipt
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" 
+                                    onclick="printReceipt(<?= $receipt['id'] ?>)">
+                                Print
+                            </button>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </tbody>
+    </table>
+    
+    <!-- Pagination -->
+    <?php if ($total_pages > 1): ?>
+        <div class="pagination">
+            <?php if ($page > 1): ?>
+                <a href="?tab=receipts&page=<?= $page - 1 ?>">
+                    Previous
+                </a>
+            <?php endif; ?>
+            
+            <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+                <?php if ($i == $page): ?>
+                    <span class="active"><?= $i ?></span>
+                <?php else: ?>
+                    <a href="?tab=receipts&page=<?= $i ?>">
+                        <?= $i ?>
+                    </a>
+                <?php endif; ?>
+            <?php endfor; ?>
+            
+            <?php if ($page < $total_pages): ?>
+                <a href="?tab=receipts&page=<?= $page + 1 ?>">
+                    Next
+                </a>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
+</div>
+
+<!-- Receipt Modal -->
+<div id="receiptModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; padding: 2rem;">
+    <div style="background: white; max-width: 800px; margin: 0 auto; border-radius: 0.5rem; max-height: 90vh; overflow-y: auto;">
+        <div style="padding: 1.5rem; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0;">Receipt</h3>
+            <button onclick="closeReceiptModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">
+                ×
+            </button>
+        </div>
+        <div id="receiptContent" style="padding: 2rem;">
+            <!-- Receipt content will be loaded here -->
+        </div>
+    </div>
+</div>
+
+<script>
+function viewReceipt(transactionId) {
+    const modal = document.getElementById('receiptModal');
+    const content = document.getElementById('receiptContent');
+    
+    content.innerHTML = '<p style="text-align: center;">Loading...</p>';
+    modal.style.display = 'block';
+    
+    fetch('../backend/get_transaction_receipt.php?id=' + transactionId)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                content.innerHTML = data.html;
+            } else {
+                content.innerHTML = '<p style="color: #dc2626;">Error loading receipt: ' + (data.error || 'Unknown error') + '</p>';
+            }
+        })
+        .catch(error => {
+            content.innerHTML = '<p style="color: #dc2626;">Network error. Please try again.</p>';
+        });
+}
+
+function closeReceiptModal() {
+    document.getElementById('receiptModal').style.display = 'none';
+}
+
+function printReceipt(transactionId) {
+    window.open('../backend/print_receipt.php?id=' + transactionId, '_blank');
+}
+
+// Close modal when clicking outside
+document.getElementById('receiptModal')?.addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeReceiptModal();
+    }
 });
-</script>  <style>
-.btn-sm {  padding: 0.5rem 1rem;  font-size: 0.875rem;
+</script>
+
+<style>
+.btn-sm {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
 }
 </style>

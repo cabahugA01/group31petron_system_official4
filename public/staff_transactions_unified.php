@@ -1,51 +1,796 @@
 <?php
-/**  * Staff Transactions Hub - Unified Interface  * Single form for Merchandise/Service/Combined transactions  * Separate tabs for: Job Order Tracker, Transaction History, Merchandise History, Receipts  */
+/**
+ * Staff Transactions Hub - Unified Interface
+ * Single form for Merchandise/Service/Combined transactions
+ * Separate tabs for: Job Order Tracker, Transaction History, Merchandise History, Receipts
+ */
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
-header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');  $page_id = 'transactions';
+header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
+
+$page_id = 'transactions';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
-require_login();  $me = current_user();
+require_login();
+
+$me = current_user();
 $station_id = user_station_id();
-$role = role_key($me['role'] ?? '');  // Module gate
-if (!in_array($role, ['superadmin','developer']) && !is_module_enabled('transactions')) {  render_module_disabled_page('Transactions');
-}  if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {  header('Location: dashboard.php');  exit;
-}  // ========== SCHEMA MIGRATIONS (idempotent) ==========  // Ensure transaction_type column exists
-try {  $pdo->exec("  ALTER TABLE merchandise_transactions  ADD COLUMN transaction_type ENUM('job_order', 'merchandise', 'combined')  DEFAULT 'merchandise'  AFTER customer_contact  ");
-} catch (Exception $e) {  // Column already exists
-}  // Ensure job order fields exist
-$jo_fields = [  "ALTER TABLE merchandise_transactions ADD COLUMN job_order_service VARCHAR(255) DEFAULT NULL",  "ALTER TABLE merchandise_transactions ADD COLUMN job_order_vehicle_plate VARCHAR(20) DEFAULT NULL",  "ALTER TABLE merchandise_transactions ADD COLUMN job_order_vehicle_type VARCHAR(100) DEFAULT NULL",  "ALTER TABLE merchandise_transactions ADD COLUMN job_order_mechanic_name VARCHAR(255) DEFAULT NULL",  "ALTER TABLE merchandise_transactions ADD COLUMN workflow_status ENUM('Pending','In Progress','Completed','Rejected') DEFAULT 'Pending'",
-];  foreach ($jo_fields as $field_sql) {  try {  $pdo->exec($field_sql);  } catch (Exception $e) {  // Field already exists  }
-}  // Ensure item_type column exists in merchandise_transaction_items
-try {  $pdo->exec("  ALTER TABLE merchandise_transaction_items  ADD COLUMN item_type ENUM('merchandise', 'service')  DEFAULT 'merchandise'  ");
-} catch (Exception $e) {  // Column already exists
-}  // ========== GET ACTIVE TAB ==========  $active_tab = $_GET['tab'] ?? 'new_transaction';
-$valid_tabs = ['new_transaction', 'job_order_tracker', 'transaction_history', 'merchandise_history', 'receipts'];  if (!in_array($active_tab, $valid_tabs)) {  $active_tab = 'new_transaction';
-}  // ========== GET MERCHANDISE PRODUCTS ==========  $products = [];
-try {  $stmt = $pdo->prepare("  SELECT  ip.id AS product_id,  ip.product_name,  COALESCE(NULLIF(TRIM(ip.sku),''), CONCAT('PRD-',ip.id)) AS sku,  COALESCE(NULLIF(TRIM(ip.category),''),'General') AS category,  COALESCE(NULLIF(TRIM(ip.size),''),'') AS size,  ip.unit_price,  COALESCE(si.stock_level, 0) AS stock_level  FROM inventory_products ip  LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?  WHERE COALESCE(ip.category, 'General') != 'Fuel'  AND COALESCE(ip.unit_price, 0) > 0  ORDER BY ip.category, ip.product_name  ");  $stmt->execute([$station_id]);  $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {  $products = [];
-}  // ========== GET SERVICE TYPES ==========  $service_types = [];
-try {  $stmt = $pdo->query("  SELECT DISTINCT service_name  FROM service_types  WHERE is_active = 1  ORDER BY service_name  ");  $service_types = $stmt->fetchAll(PDO::FETCH_COLUMN);
-} catch (Exception $e) {  // Service types table might not exist, use defaults  $service_types = [  'Oil Change',  'Tire Replacement',  'Battery Replacement',  'Brake Service',  'Engine Tune-Up',  'Car Wash',  'General Repair',  'Other Service'  ];
-}  // ========== GET SHIFT INFO ==========  $shift_period = $_SESSION['current_shift_key'] ?? '';
+$role = role_key($me['role'] ?? '');
+
+// Module gate
+if (!in_array($role, ['superadmin','developer']) && !is_module_enabled('transactions')) {
+    render_module_disabled_page('Transactions');
+}
+
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+    header('Location: dashboard.php');
+    exit;
+}
+
+// ========== SCHEMA MIGRATIONS (idempotent) ==========
+
+// Ensure transaction_type column exists
+try {
+    $pdo->exec("
+        ALTER TABLE merchandise_transactions 
+        ADD COLUMN transaction_type ENUM('job_order', 'merchandise', 'combined') 
+        DEFAULT 'merchandise' 
+        AFTER customer_contact
+    ");
+} catch (Exception $e) {
+    // Column already exists
+}
+
+// Ensure job order fields exist
+$jo_fields = [
+    "ALTER TABLE merchandise_transactions ADD COLUMN job_order_service VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE merchandise_transactions ADD COLUMN job_order_vehicle_plate VARCHAR(20) DEFAULT NULL",
+    "ALTER TABLE merchandise_transactions ADD COLUMN job_order_vehicle_type VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE merchandise_transactions ADD COLUMN job_order_mechanic_name VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE merchandise_transactions ADD COLUMN workflow_status ENUM('Pending','In Progress','Completed','Rejected') DEFAULT 'Pending'",
+];
+
+foreach ($jo_fields as $field_sql) {
+    try {
+        $pdo->exec($field_sql);
+    } catch (Exception $e) {
+        // Field already exists
+    }
+}
+
+// Ensure item_type column exists in merchandise_transaction_items
+try {
+    $pdo->exec("
+        ALTER TABLE merchandise_transaction_items 
+        ADD COLUMN item_type ENUM('merchandise', 'service') 
+        DEFAULT 'merchandise'
+    ");
+} catch (Exception $e) {
+    // Column already exists
+}
+
+// ========== GET ACTIVE TAB ==========
+
+$active_tab = $_GET['tab'] ?? 'new_transaction';
+$valid_tabs = ['new_transaction', 'job_order_tracker', 'transaction_history', 'merchandise_history', 'receipts'];
+
+if (!in_array($active_tab, $valid_tabs)) {
+    $active_tab = 'new_transaction';
+}
+
+// ========== GET MERCHANDISE PRODUCTS ==========
+
+$products = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT 
+            ip.id AS product_id,
+            ip.product_name,
+            COALESCE(NULLIF(TRIM(ip.sku),''), CONCAT('PRD-',ip.id)) AS sku,
+            COALESCE(NULLIF(TRIM(ip.category),''),'General') AS category,
+            COALESCE(NULLIF(TRIM(ip.size),''),'') AS size,
+            ip.unit_price,
+            COALESCE(si.stock_level, 0) AS stock_level
+        FROM inventory_products ip
+        LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
+        WHERE COALESCE(ip.category, 'General') != 'Fuel'
+          AND COALESCE(ip.unit_price, 0) > 0
+        ORDER BY ip.category, ip.product_name
+    ");
+    $stmt->execute([$station_id]);
+    $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $products = [];
+}
+
+// ========== GET SERVICE TYPES ==========
+
+$service_types = [];
+try {
+    $stmt = $pdo->query("
+        SELECT DISTINCT service_name 
+        FROM service_types 
+        WHERE is_active = 1 
+        ORDER BY service_name
+    ");
+    $service_types = $stmt->fetchAll(PDO::FETCH_COLUMN);
+} catch (Exception $e) {
+    // Service types table might not exist, use defaults
+    $service_types = [
+        'Oil Change',
+        'Tire Replacement',
+        'Battery Replacement',
+        'Brake Service',
+        'Engine Tune-Up',
+        'Car Wash',
+        'General Repair',
+        'Other Service'
+    ];
+}
+
+// ========== GET SHIFT INFO ==========
+
+$shift_period = $_SESSION['current_shift_key'] ?? '';
 $shift_name = $_SESSION['current_shift_label'] ?? '';
-try {  // Check active labor session first  $stmt = $pdo->prepare("  SELECT shift_period, shift_name  FROM labor_sessions  WHERE user_id = ? AND end_time IS NULL  ORDER BY start_time DESC  LIMIT 1  ");  $stmt->execute([$me['id']]);  $active_shift = $stmt->fetch(PDO::FETCH_ASSOC);  if ($active_shift) {  $shift_period = $active_shift['shift_period'];  $shift_name = $active_shift['shift_name'];  } elseif (empty($shift_period)) {  // Fall back to user's assigned shift in profile  $user_assigned_shift = strtolower(trim((string)($me['assigned_shift'] ?? '')));  if (strpos($user_assigned_shift, 'shift 1') !== false || strpos($user_assigned_shift, '1') !== false || $user_assigned_shift === 'first') {  $shift_period = 'first';  $shift_name = 'First Shift: 6:00 AM – 2:00 PM';  } elseif (strpos($user_assigned_shift, 'shift 2') !== false || strpos($user_assigned_shift, '2') !== false || $user_assigned_shift === 'second') {  $shift_period = 'second';  $shift_name = 'Second Shift: 2:00 PM – 12:00 Midnight';  } else {  // Fall back to time-based detection  $current_time = date('H:i:s');  $stmt = $pdo->prepare("  SELECT shift_key, shift_name  FROM shift_periods  WHERE is_active = 1  AND start_time <= ?  AND end_time >= ?  ORDER BY sort_order ASC  LIMIT 1  ");  $stmt->execute([$current_time, $current_time]);  $detected_shift = $stmt->fetch(PDO::FETCH_ASSOC);  if ($detected_shift) {  $shift_period = $detected_shift['shift_key'];  $shift_name = $detected_shift['shift_name'];  }  }  }
-} catch (Exception $e) {  if (empty($shift_period)) {  $shift_period = 'general';  $shift_name = 'General';  }
-}  // ========== LOAD TAB-SPECIFIC DATA ==========  $job_orders = [];
+try {
+    // Check active labor session first
+    $stmt = $pdo->prepare("
+        SELECT shift_period, shift_name 
+        FROM labor_sessions 
+        WHERE user_id = ? AND end_time IS NULL 
+        ORDER BY start_time DESC 
+        LIMIT 1
+    ");
+    $stmt->execute([$me['id']]);
+    $active_shift = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($active_shift) {
+        $shift_period = $active_shift['shift_period'];
+        $shift_name = $active_shift['shift_name'];
+    } elseif (empty($shift_period)) {
+        // Fall back to user's assigned shift in profile
+        $user_assigned_shift = strtolower(trim((string)($me['assigned_shift'] ?? '')));
+        if (strpos($user_assigned_shift, 'shift 1') !== false || strpos($user_assigned_shift, '1') !== false || $user_assigned_shift === 'first') {
+            $shift_period = 'first';
+            $shift_name = 'First Shift: 6:00 AM – 2:00 PM';
+        } elseif (strpos($user_assigned_shift, 'shift 2') !== false || strpos($user_assigned_shift, '2') !== false || $user_assigned_shift === 'second') {
+            $shift_period = 'second';
+            $shift_name = 'Second Shift: 2:00 PM – 12:00 Midnight';
+        } else {
+            // Fall back to time-based detection
+            $current_time = date('H:i:s');
+            $stmt = $pdo->prepare("
+                SELECT shift_key, shift_name 
+                FROM shift_periods 
+                WHERE is_active = 1 
+                  AND start_time <= ? 
+                  AND end_time >= ? 
+                ORDER BY sort_order ASC 
+                LIMIT 1
+            ");
+            $stmt->execute([$current_time, $current_time]);
+            $detected_shift = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($detected_shift) {
+                $shift_period = $detected_shift['shift_key'];
+                $shift_name = $detected_shift['shift_name'];
+            }
+        }
+    }
+} catch (Exception $e) {
+    if (empty($shift_period)) {
+        $shift_period = 'general';
+        $shift_name = 'General';
+    }
+}
+
+// ========== LOAD TAB-SPECIFIC DATA ==========
+
+$job_orders = [];
 $transaction_history = [];
 $merchandise_history = [];
-$receipts = [];  // Pagination
+$receipts = [];
+
+// Pagination
 $page = max(1, (int)($_GET['page'] ?? 1));
 $per_page = 20;
 $offset = ($page - 1) * $per_page;
-$total_records = 0;  switch ($active_tab) {  case 'job_order_tracker':  // Load job orders (job_order and combined types only)  try {  $where = "WHERE mt.station_id = ? AND mt.transaction_type IN ('job_order', 'combined')";  $params = [$station_id];  // Filters  $filter_status = $_GET['status'] ?? '';  $filter_mechanic = $_GET['mechanic'] ?? '';  $filter_service = $_GET['service_type'] ?? '';  $filter_date_from = $_GET['date_from'] ?? '';  $filter_date_to = $_GET['date_to'] ?? '';  if ($filter_status !== '') {  $where .= " AND mt.workflow_status = ?";  $params[] = $filter_status;  }  if ($filter_mechanic !== '') {  $where .= " AND mt.job_order_mechanic_name LIKE ?";  $params[] = '%' . $filter_mechanic . '%';  }  if ($filter_service !== '') {  $where .= " AND mt.job_order_service = ?";  $params[] = $filter_service;  }  if ($filter_date_from !== '') {  $where .= " AND DATE(mt.created_at) >= ?";  $params[] = $filter_date_from;  }  if ($filter_date_to !== '') {  $where .= " AND DATE(mt.created_at) <= ?";  $params[] = $filter_date_to;  }  // Count total  $count_stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions mt $where");  $count_stmt->execute($params);  $total_records = (int)$count_stmt->fetchColumn();  // Fetch data  $stmt = $pdo->prepare("  SELECT  mt.id,  mt.transaction_id,  mt.customer_name,  mt.job_order_vehicle_plate AS vehicle_plate,  mt.job_order_vehicle_type AS vehicle_type,  mt.job_order_service AS service_type,  mt.job_order_mechanic_name AS mechanic_name,  mt.total_amount AS service_fee,  mt.workflow_status AS status,  mt.created_at AS date_created,  mt.remarks  FROM merchandise_transactions mt  $where  ORDER BY mt.created_at DESC  LIMIT $per_page OFFSET $offset  ");  $stmt->execute($params);  $job_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);  } catch (Exception $e) {  error_log('Job Order Tracker error: ' . $e->getMessage());  }  break;  case 'merchandise_history':  // Load merchandise transactions (merchandise and combined types only)  try {  $where = "WHERE mt.station_id = ? AND mt.transaction_type IN ('merchandise', 'combined')";  $params = [$station_id];  // Filters  $filter_category = $_GET['category'] ?? '';  $filter_product = $_GET['product'] ?? '';  $filter_date_from = $_GET['date_from'] ?? '';  $filter_date_to = $_GET['date_to'] ?? '';  if ($filter_date_from !== '') {  $where .= " AND DATE(mt.created_at) >= ?";  $params[] = $filter_date_from;  }  if ($filter_date_to !== '') {  $where .= " AND DATE(mt.created_at) <= ?";  $params[] = $filter_date_to;  }  // Count total  $count_stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions mt $where");  $count_stmt->execute($params);  $total_records = (int)$count_stmt->fetchColumn();  // Fetch data with items  $stmt = $pdo->prepare("  SELECT  mt.id,  mt.transaction_id,  mt.customer_name,  mt.total_amount,  mt.payment_method,  mt.created_at AS date_released  FROM merchandise_transactions mt  $where  ORDER BY mt.created_at DESC  LIMIT $per_page OFFSET $offset  ");  $stmt->execute($params);  $merchandise_history = $stmt->fetchAll(PDO::FETCH_ASSOC);  // Load items for each transaction  if (!empty($merchandise_history)) {  $ids = array_column($merchandise_history, 'id');  $placeholders = implode(',', array_fill(0, count($ids), '?'));  $items_stmt = $pdo->prepare("  SELECT  transaction_id,  product_name,  quantity,  unit_price,  (quantity * unit_price) AS total_price  FROM merchandise_transaction_items  WHERE transaction_id IN ($placeholders)  AND item_type = 'merchandise'  ORDER BY id  ");  $items_stmt->execute($ids);  $all_items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);  // Group items by transaction_id  $items_by_txn = [];  foreach ($all_items as $item) {  $items_by_txn[$item['transaction_id']][] = $item;  }  // Attach items to transactions  foreach ($merchandise_history as &$txn) {  $txn['items'] = $items_by_txn[$txn['id']] ?? [];  }  }  } catch (Exception $e) {  error_log('Merchandise History error: ' . $e->getMessage());  }  break;  case 'transaction_history':  // Load all transactions (all types)  try {  $where = "WHERE mt.station_id = ?";  $params = [$station_id];  // Filters  $filter_type = $_GET['type'] ?? '';  $filter_date_from = $_GET['date_from'] ?? '';  $filter_date_to = $_GET['date_to'] ?? '';  if ($filter_type !== '') {  $where .= " AND mt.transaction_type = ?";  $params[] = $filter_type;  }  if ($filter_date_from !== '') {  $where .= " AND DATE(mt.created_at) >= ?";  $params[] = $filter_date_from;  }  if ($filter_date_to !== '') {  $where .= " AND DATE(mt.created_at) <= ?";  $params[] = $filter_date_to;  }  // Count total  $count_stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions mt $where");  $count_stmt->execute($params);  $total_records = (int)$count_stmt->fetchColumn();  // Fetch data  $stmt = $pdo->prepare("  SELECT  mt.id,  mt.transaction_id,  mt.transaction_type,  mt.customer_name,  mt.total_amount,  mt.payment_method,  mt.created_at AS date  FROM merchandise_transactions mt  $where  ORDER BY mt.created_at DESC  LIMIT $per_page OFFSET $offset  ");  $stmt->execute($params);  $transaction_history = $stmt->fetchAll(PDO::FETCH_ASSOC);  } catch (Exception $e) {  error_log('Transaction History error: ' . $e->getMessage());  }  break;  case 'receipts':  // Load recent receipts  try {  $stmt = $pdo->prepare("  SELECT  mt.id,  mt.transaction_id,  mt.transaction_type,  mt.customer_name,  mt.total_amount,  mt.created_at  FROM merchandise_transactions mt  WHERE mt.station_id = ?  ORDER BY mt.created_at DESC  LIMIT $per_page OFFSET $offset  ");  $stmt->execute([$station_id]);  $receipts = $stmt->fetchAll(PDO::FETCH_ASSOC);  // Count total  $count_stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions WHERE station_id = ?");  $count_stmt->execute([$station_id]);  $total_records = (int)$count_stmt->fetchColumn();  } catch (Exception $e) {  error_log('Receipts error: ' . $e->getMessage());  }  break;
-}  $total_pages = ceil($total_records / $per_page);  // ========== FLASH MESSAGES ==========  $flash_success = $_SESSION['success'] ?? '';
+$total_records = 0;
+
+switch ($active_tab) {
+    case 'job_order_tracker':
+        // Load job orders (job_order and combined types only)
+        try {
+            $where = "WHERE mt.station_id = ? AND mt.transaction_type IN ('job_order', 'combined')";
+            $params = [$station_id];
+            
+            // Filters
+            $filter_status = $_GET['status'] ?? '';
+            $filter_mechanic = $_GET['mechanic'] ?? '';
+            $filter_service = $_GET['service_type'] ?? '';
+            $filter_date_from = $_GET['date_from'] ?? '';
+            $filter_date_to = $_GET['date_to'] ?? '';
+            
+            if ($filter_status !== '') {
+                $where .= " AND mt.workflow_status = ?";
+                $params[] = $filter_status;
+            }
+            if ($filter_mechanic !== '') {
+                $where .= " AND mt.job_order_mechanic_name LIKE ?";
+                $params[] = '%' . $filter_mechanic . '%';
+            }
+            if ($filter_service !== '') {
+                $where .= " AND mt.job_order_service = ?";
+                $params[] = $filter_service;
+            }
+            if ($filter_date_from !== '') {
+                $where .= " AND DATE(mt.created_at) >= ?";
+                $params[] = $filter_date_from;
+            }
+            if ($filter_date_to !== '') {
+                $where .= " AND DATE(mt.created_at) <= ?";
+                $params[] = $filter_date_to;
+            }
+            
+            // Count total
+            $count_stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions mt $where");
+            $count_stmt->execute($params);
+            $total_records = (int)$count_stmt->fetchColumn();
+            
+            // Fetch data
+            $stmt = $pdo->prepare("
+                SELECT 
+                    mt.id,
+                    mt.transaction_id,
+                    mt.customer_name,
+                    mt.job_order_vehicle_plate AS vehicle_plate,
+                    mt.job_order_vehicle_type AS vehicle_type,
+                    mt.job_order_service AS service_type,
+                    mt.job_order_mechanic_name AS mechanic_name,
+                    mt.total_amount AS service_fee,
+                    mt.workflow_status AS status,
+                    mt.created_at AS date_created,
+                    mt.remarks
+                FROM merchandise_transactions mt
+                $where
+                ORDER BY mt.created_at DESC
+                LIMIT $per_page OFFSET $offset
+            ");
+            $stmt->execute($params);
+            $job_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            error_log('Job Order Tracker error: ' . $e->getMessage());
+        }
+        break;
+    
+    case 'merchandise_history':
+        // Load merchandise transactions (merchandise and combined types only)
+        try {
+            $where = "WHERE mt.station_id = ? AND mt.transaction_type IN ('merchandise', 'combined')";
+            $params = [$station_id];
+            
+            // Filters
+            $filter_category = $_GET['category'] ?? '';
+            $filter_product = $_GET['product'] ?? '';
+            $filter_date_from = $_GET['date_from'] ?? '';
+            $filter_date_to = $_GET['date_to'] ?? '';
+            
+            if ($filter_date_from !== '') {
+                $where .= " AND DATE(mt.created_at) >= ?";
+                $params[] = $filter_date_from;
+            }
+            if ($filter_date_to !== '') {
+                $where .= " AND DATE(mt.created_at) <= ?";
+                $params[] = $filter_date_to;
+            }
+            
+            // Count total
+            $count_stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions mt $where");
+            $count_stmt->execute($params);
+            $total_records = (int)$count_stmt->fetchColumn();
+            
+            // Fetch data with items
+            $stmt = $pdo->prepare("
+                SELECT 
+                    mt.id,
+                    mt.transaction_id,
+                    mt.customer_name,
+                    mt.total_amount,
+                    mt.payment_method,
+                    mt.created_at AS date_released
+                FROM merchandise_transactions mt
+                $where
+                ORDER BY mt.created_at DESC
+                LIMIT $per_page OFFSET $offset
+            ");
+            $stmt->execute($params);
+            $merchandise_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Load items for each transaction
+            if (!empty($merchandise_history)) {
+                $ids = array_column($merchandise_history, 'id');
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                
+                $items_stmt = $pdo->prepare("
+                    SELECT 
+                        transaction_id,
+                        product_name,
+                        quantity,
+                        unit_price,
+                        (quantity * unit_price) AS total_price
+                    FROM merchandise_transaction_items
+                    WHERE transaction_id IN ($placeholders)
+                      AND item_type = 'merchandise'
+                    ORDER BY id
+                ");
+                $items_stmt->execute($ids);
+                $all_items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                // Group items by transaction_id
+                $items_by_txn = [];
+                foreach ($all_items as $item) {
+                    $items_by_txn[$item['transaction_id']][] = $item;
+                }
+                
+                // Attach items to transactions
+                foreach ($merchandise_history as &$txn) {
+                    $txn['items'] = $items_by_txn[$txn['id']] ?? [];
+                }
+            }
+        } catch (Exception $e) {
+            error_log('Merchandise History error: ' . $e->getMessage());
+        }
+        break;
+    
+    case 'transaction_history':
+        // Load all transactions (all types)
+        try {
+            $where = "WHERE mt.station_id = ?";
+            $params = [$station_id];
+            
+            // Filters
+            $filter_type = $_GET['type'] ?? '';
+            $filter_date_from = $_GET['date_from'] ?? '';
+            $filter_date_to = $_GET['date_to'] ?? '';
+            
+            if ($filter_type !== '') {
+                $where .= " AND mt.transaction_type = ?";
+                $params[] = $filter_type;
+            }
+            if ($filter_date_from !== '') {
+                $where .= " AND DATE(mt.created_at) >= ?";
+                $params[] = $filter_date_from;
+            }
+            if ($filter_date_to !== '') {
+                $where .= " AND DATE(mt.created_at) <= ?";
+                $params[] = $filter_date_to;
+            }
+            
+            // Count total
+            $count_stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions mt $where");
+            $count_stmt->execute($params);
+            $total_records = (int)$count_stmt->fetchColumn();
+            
+            // Fetch data
+            $stmt = $pdo->prepare("
+                SELECT 
+                    mt.id,
+                    mt.transaction_id,
+                    mt.transaction_type,
+                    mt.customer_name,
+                    mt.total_amount,
+                    mt.payment_method,
+                    mt.created_at AS date
+                FROM merchandise_transactions mt
+                $where
+                ORDER BY mt.created_at DESC
+                LIMIT $per_page OFFSET $offset
+            ");
+            $stmt->execute($params);
+            $transaction_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            error_log('Transaction History error: ' . $e->getMessage());
+        }
+        break;
+    
+    case 'receipts':
+        // Load recent receipts
+        try {
+            $stmt = $pdo->prepare("
+                SELECT 
+                    mt.id,
+                    mt.transaction_id,
+                    mt.transaction_type,
+                    mt.customer_name,
+                    mt.total_amount,
+                    mt.created_at
+                FROM merchandise_transactions mt
+                WHERE mt.station_id = ?
+                ORDER BY mt.created_at DESC
+                LIMIT $per_page OFFSET $offset
+            ");
+            $stmt->execute([$station_id]);
+            $receipts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Count total
+            $count_stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions WHERE station_id = ?");
+            $count_stmt->execute([$station_id]);
+            $total_records = (int)$count_stmt->fetchColumn();
+        } catch (Exception $e) {
+            error_log('Receipts error: ' . $e->getMessage());
+        }
+        break;
+}
+
+$total_pages = ceil($total_records / $per_page);
+
+// ========== FLASH MESSAGES ==========
+
+$flash_success = $_SESSION['success'] ?? '';
 $flash_error = $_SESSION['error'] ?? '';
-unset($_SESSION['success'], $_SESSION['error']);  ?>
+unset($_SESSION['success'], $_SESSION['error']);
+
+?>
 <!DOCTYPE html>
 <html lang="en">
-<head>  <meta charset="UTF-8">  <meta name="viewport" content="width=device-width, initial-scale=1.0">  <title>Staff Transactions - Petron System</title>  <link rel="stylesheet" href="../assets/css/style.css">  <style>  /* Tab Navigation */  .tabs-container {  background: white;  border-bottom: 2px solid #e5e7eb;  margin-bottom: 2rem;  }  .tabs {  display: flex;  gap: 0.5rem;  padding: 1rem 2rem 0;  overflow-x: auto;  }  .tab {  padding: 0.75rem 1.5rem;  background: transparent;  border: none;  border-bottom: 3px solid transparent;  color: #6b7280;  font-weight: 500;  cursor: pointer;  white-space: nowrap;  transition: all 0.2s;  }  .tab:hover {  color: #111827;  background: #f9fafb;  }  .tab.active {  color: #2563eb;  border-bottom-color: #2563eb;  }  .tab-content {  display: none;  padding: 2rem;  }  .tab-content.active {  display: block;  }  /* Form Styling */  .form-grid {  display: grid;  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));  gap: 1.5rem;  margin-bottom: 2rem;  }  .form-group {  display: flex;  flex-direction: column;  }  .form-group label {  font-weight: 600;  margin-bottom: 0.5rem;  color: #374151;  }  .form-group input,  .form-group select,  .form-group textarea {  padding: 0.75rem;  border: 1px solid #d1d5db;  border-radius: 0.375rem;  font-size: 0.875rem;  }  .form-group textarea {  resize: vertical;  min-height: 80px;  }  /* Cart Styling */  .cart-section {  background: #f9fafb;  padding: 1.5rem;  border-radius: 0.5rem;  margin-top: 2rem;  }  .cart-header {  display: flex;  justify-content: space-between;  align-items: center;  margin-bottom: 1rem;  }  .cart-table {  width: 100%;  border-collapse: collapse;  background: white;  border-radius: 0.375rem;  overflow: hidden;  }  .cart-table th,  .cart-table td {  padding: 0.75rem;  text-align: left;  border-bottom: 1px solid #e5e7eb;  }  .cart-table th {  background: #f3f4f6;  font-weight: 600;  color: #374151;  }  .cart-empty {  text-align: center;  padding: 2rem;  color: #6b7280;  }  /* Button Styling */  .btn {  padding: 0.75rem 1.5rem;  border: none;  border-radius: 0.375rem;  font-weight: 600;  cursor: pointer;  transition: all 0.2s;  }  .btn-primary {  background: #2563eb;  color: white;  }  .btn-primary:hover {  background: #1d4ed8;  }  .btn-secondary {  background: #6b7280;  color: white;  }  .btn-secondary:hover {  background: #4b5563;  }  .btn-success {  background: #16a34a;  color: white;  }  .btn-success:hover {  background: #15803d;  }  .btn-danger {  background: #dc2626;  color: white;  }  .btn-danger:hover {  background: #b91c1c;  }  /* Table Styling */  .data-table {  width: 100%;  border-collapse: collapse;  background: white;  border-radius: 0.5rem;  overflow: hidden;  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);  }  .data-table th,  .data-table td {  padding: 1rem;  text-align: left;  border-bottom: 1px solid #e5e7eb;  }  .data-table th {  background: #f9fafb;  font-weight: 600;  color: #374151;  }  .data-table tr:hover {  background: #f9fafb;  }  /* Status Badges */  .badge {  display: inline-block;  padding: 0.25rem 0.75rem;  border-radius: 9999px;  font-size: 0.75rem;  font-weight: 600;  }  .badge-pending {  background: #fef3c7;  color: #92400e;  }  .badge-progress {  background: #dbeafe;  color: #1e40af;  }  .badge-completed {  background: #d1fae5;  color: #065f46;  }  .badge-rejected {  background: #fee2e2;  color: #991b1b;  }  /* Pagination */  .pagination {  display: flex;  gap: 0.5rem;  justify-content: center;  margin-top: 2rem;  }  .pagination a,  .pagination span {  padding: 0.5rem 1rem;  border: 1px solid #d1d5db;  border-radius: 0.375rem;  text-decoration: none;  color: #374151;  }  .pagination a:hover {  background: #f9fafb;  }  .pagination .active {  background: #2563eb;  color: white;  border-color: #2563eb;  }  /* Flash Messages */  .flash {  padding: 1rem 1.5rem;  border-radius: 0.375rem;  margin-bottom: 1.5rem;  }  .flash-success {  background: #d1fae5;  color: #065f46;  border-left: 4px solid #16a34a;  }  .flash-error {  background: #fee2e2;  color: #991b1b;  border-left: 4px solid #dc2626;  }  /* Filters */  .filters {  background: white;  padding: 1.5rem;  border-radius: 0.5rem;  margin-bottom: 1.5rem;  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);  }  .filters-grid {  display: grid;  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));  gap: 1rem;  margin-bottom: 1rem;  }  </style>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff Transactions - Petron System</title>
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <style>
+        /* Tab Navigation */
+        .tabs-container {
+            background: white;
+            border-bottom: 2px solid #e5e7eb;
+            margin-bottom: 2rem;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            padding: 1rem 2rem 0;
+            overflow-x: auto;
+        }
+        
+        .tab {
+            padding: 0.75rem 1.5rem;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            color: #6b7280;
+            font-weight: 500;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        
+        .tab:hover {
+            color: #111827;
+            background: #f9fafb;
+        }
+        
+        .tab.active {
+            color: #2563eb;
+            border-bottom-color: #2563eb;
+        }
+        
+        .tab-content {
+            display: none;
+            padding: 2rem;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Form Styling */
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .form-group label {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #374151;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            padding: 0.75rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+        }
+        
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        
+        /* Cart Styling */
+        .cart-section {
+            background: #f9fafb;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            margin-top: 2rem;
+        }
+        
+        .cart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .cart-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 0.375rem;
+            overflow: hidden;
+        }
+        
+        .cart-table th,
+        .cart-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .cart-table th {
+            background: #f3f4f6;
+            font-weight: 600;
+            color: #374151;
+        }
+        
+        .cart-empty {
+            text-align: center;
+            padding: 2rem;
+            color: #6b7280;
+        }
+        
+        /* Button Styling */
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 0.375rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: #2563eb;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #1d4ed8;
+        }
+        
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+        
+        .btn-success {
+            background: #16a34a;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #15803d;
+        }
+        
+        .btn-danger {
+            background: #dc2626;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #b91c1c;
+        }
+        
+        /* Table Styling */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 0.5rem;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .data-table th,
+        .data-table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .data-table th {
+            background: #f9fafb;
+            font-weight: 600;
+            color: #374151;
+        }
+        
+        .data-table tr:hover {
+            background: #f9fafb;
+        }
+        
+        /* Status Badges */
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        
+        .badge-pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        
+        .badge-progress {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        
+        .badge-completed {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .badge-rejected {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        /* Pagination */
+        .pagination {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+            margin-top: 2rem;
+        }
+        
+        .pagination a,
+        .pagination span {
+            padding: 0.5rem 1rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            text-decoration: none;
+            color: #374151;
+        }
+        
+        .pagination a:hover {
+            background: #f9fafb;
+        }
+        
+        .pagination .active {
+            background: #2563eb;
+            color: white;
+            border-color: #2563eb;
+        }
+        
+        /* Flash Messages */
+        .flash {
+            padding: 1rem 1.5rem;
+            border-radius: 0.375rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .flash-success {
+            background: #d1fae5;
+            color: #065f46;
+            border-left: 4px solid #16a34a;
+        }
+        
+        .flash-error {
+            background: #fee2e2;
+            color: #991b1b;
+            border-left: 4px solid #dc2626;
+        }
+        
+        /* Filters */
+        .filters {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .filters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+    </style>
 </head>
-<body>  <?php include '../partials/header.php'; ?>  <?php include '../partials/rbac_menu.php'; ?>  <div class="main-container">  <h1>Staff Transactions</h1>  <?php if ($flash_success): ?>  <div class="flash flash-success"><?= htmlspecialchars($flash_success) ?></div>  <?php endif; ?>  <?php if ($flash_error): ?>  <div class="flash flash-error"><?= htmlspecialchars($flash_error) ?></div>  <?php endif; ?>  <!-- Tab Navigation -->  <div class="tabs-container">  <div class="tabs">  <button class="tab <?= $active_tab === 'new_transaction' ? 'active' : '' ?>"  onclick="switchTab('new_transaction')">  New Transaction  </button>  <button class="tab <?= $active_tab === 'job_order_tracker' ? 'active' : '' ?>"  onclick="switchTab('job_order_tracker')">  Job Order Tracker  </button>  <button class="tab <?= $active_tab === 'transaction_history' ? 'active' : '' ?>"  onclick="switchTab('transaction_history')">  Transaction History  </button>  <button class="tab <?= $active_tab === 'merchandise_history' ? 'active' : '' ?>"  onclick="switchTab('merchandise_history')">  Merchandise History  </button>  <button class="tab <?= $active_tab === 'receipts' ? 'active' : '' ?>"  onclick="switchTab('receipts')">  Receipts  </button>  </div>  </div>  <!-- Tab Content -->  <div class="tab-content <?= $active_tab === 'new_transaction' ? 'active' : '' ?>" id="new_transaction">  <?php include 'tabs/new_transaction_form.php'; ?>  </div>  <div class="tab-content <?= $active_tab === 'job_order_tracker' ? 'active' : '' ?>" id="job_order_tracker">  <?php include 'tabs/job_order_tracker.php'; ?>  </div>  <div class="tab-content <?= $active_tab === 'transaction_history' ? 'active' : '' ?>" id="transaction_history">  <?php include 'tabs/transaction_history.php'; ?>  </div>  <div class="tab-content <?= $active_tab === 'merchandise_history' ? 'active' : '' ?>" id="merchandise_history">  <?php include 'tabs/merchandise_history.php'; ?>  </div>  <div class="tab-content <?= $active_tab === 'receipts' ? 'active' : '' ?>" id="receipts">  <?php include 'tabs/receipts_view.php'; ?>  </div>  </div>  <script>  function switchTab(tabName) {  window.location.href = '?tab=' + tabName;  }  </script>
+<body>
+    <?php include '../partials/header.php'; ?>
+    <?php include '../partials/rbac_menu.php'; ?>
+    
+    <div class="main-container">
+        <h1>Staff Transactions</h1>
+        
+        <?php if ($flash_success): ?>
+            <div class="flash flash-success"><?= htmlspecialchars($flash_success) ?></div>
+        <?php endif; ?>
+        
+        <?php if ($flash_error): ?>
+            <div class="flash flash-error"><?= htmlspecialchars($flash_error) ?></div>
+        <?php endif; ?>
+        
+        <!-- Tab Navigation -->
+        <div class="tabs-container">
+            <div class="tabs">
+                <button class="tab <?= $active_tab === 'new_transaction' ? 'active' : '' ?>" 
+                        onclick="switchTab('new_transaction')">
+                    New Transaction
+                </button>
+                <button class="tab <?= $active_tab === 'job_order_tracker' ? 'active' : '' ?>" 
+                        onclick="switchTab('job_order_tracker')">
+                    Job Order Tracker
+                </button>
+                <button class="tab <?= $active_tab === 'transaction_history' ? 'active' : '' ?>" 
+                        onclick="switchTab('transaction_history')">
+                    Transaction History
+                </button>
+                <button class="tab <?= $active_tab === 'merchandise_history' ? 'active' : '' ?>" 
+                        onclick="switchTab('merchandise_history')">
+                    Merchandise History
+                </button>
+                <button class="tab <?= $active_tab === 'receipts' ? 'active' : '' ?>" 
+                        onclick="switchTab('receipts')">
+                    Receipts
+                </button>
+            </div>
+        </div>
+        
+        <!-- Tab Content -->
+        <div class="tab-content <?= $active_tab === 'new_transaction' ? 'active' : '' ?>" id="new_transaction">
+            <?php include 'tabs/new_transaction_form.php'; ?>
+        </div>
+        
+        <div class="tab-content <?= $active_tab === 'job_order_tracker' ? 'active' : '' ?>" id="job_order_tracker">
+            <?php include 'tabs/job_order_tracker.php'; ?>
+        </div>
+        
+        <div class="tab-content <?= $active_tab === 'transaction_history' ? 'active' : '' ?>" id="transaction_history">
+            <?php include 'tabs/transaction_history.php'; ?>
+        </div>
+        
+        <div class="tab-content <?= $active_tab === 'merchandise_history' ? 'active' : '' ?>" id="merchandise_history">
+            <?php include 'tabs/merchandise_history.php'; ?>
+        </div>
+        
+        <div class="tab-content <?= $active_tab === 'receipts' ? 'active' : '' ?>" id="receipts">
+            <?php include 'tabs/receipts_view.php'; ?>
+        </div>
+    </div>
+    
+    <script>
+        function switchTab(tabName) {
+            window.location.href = '?tab=' + tabName;
+        }
+    </script>
 </body>
 </html>

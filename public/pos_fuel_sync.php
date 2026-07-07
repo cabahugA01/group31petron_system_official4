@@ -2,22 +2,393 @@
 $page_id = 'pos_fuel_sync';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
-require_once __DIR__ . '/../backend/fuel_pos_sync.php';  require_login();  $me = current_user();
+require_once __DIR__ . '/../backend/fuel_pos_sync.php';
+
+require_login();
+
+$me = current_user();
 $station_id = user_station_id();
-$msg = '';  // Check permission: Manager+ only
+$msg = '';
+
+// Check permission: Manager+ only
 $userRole = $me['role'] ?? '';
-$isManager = in_array($userRole, ['manager', 'admin', 'superadmin']);  if (!$isManager) {  die("<div class='alert alert-danger'>Only Manager+ can access POS Inventory Sync. Your role: {$userRole}</div>");
-}  // Handle sync request
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {  $action = $_POST['action'];  if ($action === 'sync_reconciliation') {  $reconciliation_id = (int) ($_POST['reconciliation_id'] ?? 0);  if ($reconciliation_id > 0) {  $result = syncReconciliationToPOS($pdo, $reconciliation_id, $me['id']);  if ($result['success']) {  $msg = $result['message'];  // Redirect to avoid resubmission  header("Location: pos_fuel_sync.php?msg=" . urlencode($msg) . "&status=success");  exit;  } else {  $msg = $result['message'];  }  }  }
-}  // Get message from URL
-if (isset($_GET['msg'])) {  $msg = $_GET['msg'];
-}  // Get unsynced reconciliations
+$isManager = in_array($userRole, ['manager', 'admin', 'superadmin']);
+
+if (!$isManager) {
+    die("<div class='alert alert-danger'>Only Manager+ can access POS Inventory Sync. Your role: {$userRole}</div>");
+}
+
+// Handle sync request
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    $action = $_POST['action'];
+    
+    if ($action === 'sync_reconciliation') {
+        $reconciliation_id = (int) ($_POST['reconciliation_id'] ?? 0);
+        
+        if ($reconciliation_id > 0) {
+            $result = syncReconciliationToPOS($pdo, $reconciliation_id, $me['id']);
+            
+            if ($result['success']) {
+                $msg = $result['message'];
+                // Redirect to avoid resubmission
+                header("Location: pos_fuel_sync.php?msg=" . urlencode($msg) . "&status=success");
+                exit;
+            } else {
+                $msg = $result['message'];
+            }
+        }
+    }
+}
+
+// Get message from URL
+if (isset($_GET['msg'])) {
+    $msg = $_GET['msg'];
+}
+
+// Get unsynced reconciliations
 $unsynced = getUnSyncedReconciliations($pdo, $station_id);
 ?>
 <!DOCTYPE html>
 <html>
-<head>  <meta charset="UTF-8">  <meta name="viewport" content="width=device-width, initial-scale=1.0">  <title>POS Inventory Sync - Fuel Reconciliation</title>  <link rel="stylesheet" href="../assets/vendor/bootstrap/css/bootstrap.min.css">  <link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">  <style>  body {  background-color: #f8f9fa;  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;  }  .page-container {  max-width: 1200px;  margin: 0 auto;  padding: 20px;  }  .page-header {  margin-bottom: 30px;  }  .page-header h1 {  font-size: 28px;  font-weight: 600;  color: #333;  margin-bottom: 10px;  }  .page-header p {  color: #666;  margin: 0;  }  .alert {  border-radius: 6px;  margin-bottom: 20px;  }  .sync-card {  background: white;  border: 1px solid #e0e0e0;  border-radius: 8px;  padding: 20px;  margin-bottom: 20px;  transition: all 0.2s ease;  }  .sync-card:hover {  box-shadow: 0 2px 8px rgba(0,0,0,0.1);  }  .sync-card-header {  display: flex;  justify-content: space-between;  align-items: center;  margin-bottom: 15px;  border-bottom: 1px solid #f0f0f0;  padding-bottom: 15px;  }  .fuel-type-badge {  display: inline-block;  background: #667eea;  color: white;  padding: 5px 12px;  border-radius: 20px;  font-size: 12px;  font-weight: 600;  margin-right: 10px;  }  .sync-info {  display: grid;  grid-template-columns: repeat(2, 1fr);  gap: 15px;  margin-bottom: 15px;  }  .sync-info-item {  padding: 10px;  background: #f8f9fa;  border-radius: 4px;  }  .sync-info-label {  font-size: 12px;  color: #666;  font-weight: 600;  margin-bottom: 5px;  text-transform: uppercase;  }  .sync-info-value {  font-size: 18px;  font-weight: 700;  color: #333;  }  .stock-before {  color: #999;  }  .stock-after {  color: #28a745;  }  .change-amount {  display: inline-block;  padding: 5px 10px;  background: #e8f5e9;  color: #2e7d32;  border-radius: 4px;  font-weight: 600;  font-size: 13px;  }  .change-amount.negative {  background: #ffebee;  color: #c62828;  }  .empty-state {  text-align: center;  padding: 60px 20px;  color: #999;  }  .empty-state-icon {  font-size: 50px;  color: #ddd;  margin-bottom: 15px;  }  .sync-button {  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);  color: white;  border: none;  padding: 10px 20px;  border-radius: 6px;  font-weight: 600;  cursor: pointer;  transition: all 0.2s ease;  }  .sync-button:hover {  transform: translateY(-2px);  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);  color: white;  text-decoration: none;  }  .sync-button:active {  transform: translateY(0);  }  .sync-history {  background: white;  border-radius: 8px;  padding: 20px;  }  .history-item {  border-left: 4px solid #667eea;  padding: 15px 15px 15px 20px;  margin-bottom: 10px;  background: #f9f9f9;  border-radius: 4px;  }  .history-date {  font-size: 12px;  color: #999;  margin-bottom: 5px;  }  .history-details {  font-size: 14px;  color: #333;  }  .history-user {  font-size: 12px;  color: #666;  margin-top: 5px;  }  </style>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POS Inventory Sync - Fuel Reconciliation</title>
+    <link rel="stylesheet" href="../assets/vendor/bootstrap/css/bootstrap.min.css">
+    <link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        
+        .page-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .page-header {
+            margin-bottom: 30px;
+        }
+        
+        .page-header h1 {
+            font-size: 28px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .page-header p {
+            color: #666;
+            margin: 0;
+        }
+        
+        .alert {
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        
+        .sync-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            transition: all 0.2s ease;
+        }
+        
+        .sync-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .sync-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #f0f0f0;
+            padding-bottom: 15px;
+        }
+        
+        .fuel-type-badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-right: 10px;
+        }
+        
+        .sync-info {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .sync-info-item {
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .sync-info-label {
+            font-size: 12px;
+            color: #666;
+            font-weight: 600;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+        
+        .sync-info-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #333;
+        }
+        
+        .stock-before {
+            color: #999;
+        }
+        
+        .stock-after {
+            color: #28a745;
+        }
+        
+        .change-amount {
+            display: inline-block;
+            padding: 5px 10px;
+            background: #e8f5e9;
+            color: #2e7d32;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        
+        .change-amount.negative {
+            background: #ffebee;
+            color: #c62828;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+        
+        .empty-state-icon {
+            font-size: 50px;
+            color: #ddd;
+            margin-bottom: 15px;
+        }
+        
+        .sync-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .sync-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            color: white;
+            text-decoration: none;
+        }
+        
+        .sync-button:active {
+            transform: translateY(0);
+        }
+        
+        .sync-history {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        
+        .history-item {
+            border-left: 4px solid #667eea;
+            padding: 15px 15px 15px 20px;
+            margin-bottom: 10px;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+        
+        .history-date {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 5px;
+        }
+        
+        .history-details {
+            font-size: 14px;
+            color: #333;
+        }
+        
+        .history-user {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
 </head>
-<body>  <?php include __DIR__ . '/../partials/header.php'; ?>  <div class="page-container">  <!-- Page Header -->  <div class="page-header">  <h1><i class="fas fa-sync-alt"></i> POS Inventory Sync</h1>  <p>Synchronize fuel reconciliation from pump system to POS inventory</p>  </div>  <!-- Messages -->  <?php if ($msg): ?>  <div class="alert alert-success alert-dismissible fade show" role="alert">  <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($msg); ?>  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>  </div>  <?php endif; ?>  <!-- Pending Reconciliations Section -->  <div>  <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 20px;">  <i class="fas fa-list"></i> Pending Reconciliations  </h2>  <?php if (empty($unsynced) || isset($unsynced['error'])): ?>  <div class="sync-card">  <div class="empty-state">  <div class="empty-state-icon">  <i class="fas fa-check-double"></i>  </div>  <div style="font-size: 16px;">No pending reconciliations</div>  <div style="font-size: 13px; margin-top: 10px;">All reconciliations are already synced to POS</div>  </div>  </div>  <?php else: ?>  <?php foreach ($unsynced as $recon): ?>  <div class="sync-card">  <div class="sync-card-header">  <div>  <span class="fuel-type-badge"><?php echo htmlspecialchars($recon['fuel_type_name']); ?></span>  <span style="color: #666; font-size: 14px;">  Reconciliation Date: <?php echo date('M d, Y', strtotime($recon['reconciliation_date'])); ?>  </span>  </div>  <form method="POST" style="display: inline;">  <input type="hidden" name="action" value="sync_reconciliation">  <input type="hidden" name="reconciliation_id" value="<?php echo $recon['id']; ?>">  <button type="submit" class="sync-button" onclick="return confirm('Sync <?php echo htmlspecialchars($recon['fuel_type_name']); ?> reconciliation closing stock (<?php echo $recon['closing_stock']; ?>L) to POS?')">  <i class="fas fa-check"></i> Sync Now  </button>  </form>  </div>  <div class="sync-info">  <div class="sync-info-item">  <div class="sync-info-label">POS Current Stock</div>  <div class="sync-info-value stock-before">  <?php echo number_format((float)$recon['pos_current_stock'], 2); ?> L  </div>  </div>  <div class="sync-info-item">  <div class="sync-info-label">Pump Closing Stock</div>  <div class="sync-info-value stock-after">  <?php echo number_format((float)$recon['closing_stock'], 2); ?> L  </div>  </div>  <div class="sync-info-item">  <div class="sync-info-label">Change Amount</div>  <div style="margin-top: 5px;">  <?php  $difference = (float)$recon['difference'];  $cssClass = ($difference < 0) ? 'negative' : '';  $sign = ($difference > 0) ? '+' : '';  ?>  <span class="change-amount <?php echo $cssClass; ?>">  <?php echo $sign . number_format($difference, 2); ?> L  </span>  </div>  </div>  <div class="sync-info-item">  <div class="sync-info-label">Created By</div>  <div class="sync-info-value" style="font-size: 14px;">  <?php echo htmlspecialchars($recon['created_by_name'] ?? 'N/A'); ?>  </div>  </div>  </div>  <div style="font-size: 12px; color: #999; border-top: 1px solid #f0f0f0; padding-top: 10px; margin-top: 10px;">  <i class="fas fa-info-circle"></i>  Syncing will update POS <?php echo htmlspecialchars($recon['fuel_type_name']); ?> inventory to  <?php echo number_format((float)$recon['closing_stock'], 2); ?>L (closing stock from pump system)  </div>  </div>  <?php endforeach; ?>  <?php endif; ?>  </div>  <!-- Sync History Section -->  <div style="margin-top: 40px;">  <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 20px;">  <i class="fas fa-history"></i> Recent Sync History  </h2>  <div class="sync-history">  <?php  // Fetch recent syncs  $stmt = $pdo->prepare("  SELECT fr.id, fr.fuel_type, fr.closing_stock, fr.synced_at, u.name as synced_by_name,  COALESCE(si.stock_level, 0) as current_stock  FROM fuel_reconciliation fr  LEFT JOIN users u ON fr.synced_by = u.id  LEFT JOIN station_inventory si ON (fr.station_id = si.station_id AND  FIND_IN_SET(fr.fuel_type, (SELECT GROUP_CONCAT(name) FROM fuel_types WHERE id = si.fuel_type_id)))  WHERE fr.station_id = ? AND fr.synced_to_pos = TRUE  ORDER BY fr.synced_at DESC  LIMIT 10  ");  $stmt->execute([$station_id]);  $history = $stmt->fetchAll(PDO::FETCH_ASSOC);  if (empty($history)):  ?>  <div style="text-align: center; padding: 30px; color: #999;">  <i class="fas fa-inbox" style="font-size: 30px; margin-bottom: 10px; display: block;"></i>  No sync history yet  </div>  <?php else: ?>  <?php foreach ($history as $item): ?>  <div class="history-item">  <div class="history-date">  <?php echo date('M d, Y H:i', strtotime($item['synced_at'])); ?>  </div>  <div class="history-details">  <span class="fuel-type-badge" style="margin-right: 10px;"><?php echo htmlspecialchars($item['fuel_type']); ?></span>  Synced <?php echo number_format((float)$item['closing_stock'], 2); ?>L to POS  </div>  <div class="history-user">  <i class="fas fa-user"></i> <?php echo htmlspecialchars($item['synced_by_name'] ?? 'System'); ?>  </div>  </div>  <?php endforeach; ?>  <?php endif; ?>  </div>  </div>  </div>  <?php include __DIR__ . '/../partials/footer.php'; ?>  <script src="../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+<body>
+    <?php include __DIR__ . '/../partials/header.php'; ?>
+    
+    <div class="page-container">
+        <!-- Page Header -->
+        <div class="page-header">
+            <h1><i class="fas fa-sync-alt"></i> POS Inventory Sync</h1>
+            <p>Synchronize fuel reconciliation from pump system to POS inventory</p>
+        </div>
+        
+        <!-- Messages -->
+        <?php if ($msg): ?>
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($msg); ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <?php endif; ?>
+        
+        <!-- Pending Reconciliations Section -->
+        <div>
+            <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 20px;">
+                <i class="fas fa-list"></i> Pending Reconciliations
+            </h2>
+            
+            <?php if (empty($unsynced) || isset($unsynced['error'])): ?>
+            <div class="sync-card">
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-check-double"></i>
+                    </div>
+                    <div style="font-size: 16px;">No pending reconciliations</div>
+                    <div style="font-size: 13px; margin-top: 10px;">All reconciliations are already synced to POS</div>
+                </div>
+            </div>
+            <?php else: ?>
+                <?php foreach ($unsynced as $recon): ?>
+                <div class="sync-card">
+                    <div class="sync-card-header">
+                        <div>
+                            <span class="fuel-type-badge"><?php echo htmlspecialchars($recon['fuel_type_name']); ?></span>
+                            <span style="color: #666; font-size: 14px;">
+                                Reconciliation Date: <?php echo date('M d, Y', strtotime($recon['reconciliation_date'])); ?>
+                            </span>
+                        </div>
+                        <form method="POST" style="display: inline;">
+                            <input type="hidden" name="action" value="sync_reconciliation">
+                            <input type="hidden" name="reconciliation_id" value="<?php echo $recon['id']; ?>">
+                            <button type="submit" class="sync-button" onclick="return confirm('Sync <?php echo htmlspecialchars($recon['fuel_type_name']); ?> reconciliation closing stock (<?php echo $recon['closing_stock']; ?>L) to POS?')">
+                                <i class="fas fa-check"></i> Sync Now
+                            </button>
+                        </form>
+                    </div>
+                    
+                    <div class="sync-info">
+                        <div class="sync-info-item">
+                            <div class="sync-info-label">POS Current Stock</div>
+                            <div class="sync-info-value stock-before">
+                                <?php echo number_format((float)$recon['pos_current_stock'], 2); ?> L
+                            </div>
+                        </div>
+                        
+                        <div class="sync-info-item">
+                            <div class="sync-info-label">Pump Closing Stock</div>
+                            <div class="sync-info-value stock-after">
+                                <?php echo number_format((float)$recon['closing_stock'], 2); ?> L
+                            </div>
+                        </div>
+                        
+                        <div class="sync-info-item">
+                            <div class="sync-info-label">Change Amount</div>
+                            <div style="margin-top: 5px;">
+                                <?php 
+                                $difference = (float)$recon['difference'];
+                                $cssClass = ($difference < 0) ? 'negative' : '';
+                                $sign = ($difference > 0) ? '+' : '';
+                                ?>
+                                <span class="change-amount <?php echo $cssClass; ?>">
+                                    <?php echo $sign . number_format($difference, 2); ?> L
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="sync-info-item">
+                            <div class="sync-info-label">Created By</div>
+                            <div class="sync-info-value" style="font-size: 14px;">
+                                <?php echo htmlspecialchars($recon['created_by_name'] ?? 'N/A'); ?>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="font-size: 12px; color: #999; border-top: 1px solid #f0f0f0; padding-top: 10px; margin-top: 10px;">
+                        <i class="fas fa-info-circle"></i> 
+                        Syncing will update POS <?php echo htmlspecialchars($recon['fuel_type_name']); ?> inventory to 
+                        <?php echo number_format((float)$recon['closing_stock'], 2); ?>L (closing stock from pump system)
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+        
+        <!-- Sync History Section -->
+        <div style="margin-top: 40px;">
+            <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 20px;">
+                <i class="fas fa-history"></i> Recent Sync History
+            </h2>
+            
+            <div class="sync-history">
+                <?php
+                // Fetch recent syncs
+                $stmt = $pdo->prepare("
+                    SELECT fr.id, fr.fuel_type, fr.closing_stock, fr.synced_at, u.name as synced_by_name,
+                           COALESCE(si.stock_level, 0) as current_stock
+                    FROM fuel_reconciliation fr
+                    LEFT JOIN users u ON fr.synced_by = u.id
+                    LEFT JOIN station_inventory si ON (fr.station_id = si.station_id AND 
+                                                         FIND_IN_SET(fr.fuel_type, (SELECT GROUP_CONCAT(name) FROM fuel_types WHERE id = si.fuel_type_id)))
+                    WHERE fr.station_id = ? AND fr.synced_to_pos = TRUE
+                    ORDER BY fr.synced_at DESC
+                    LIMIT 10
+                ");
+                $stmt->execute([$station_id]);
+                $history = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                if (empty($history)):
+                ?>
+                <div style="text-align: center; padding: 30px; color: #999;">
+                    <i class="fas fa-inbox" style="font-size: 30px; margin-bottom: 10px; display: block;"></i>
+                    No sync history yet
+                </div>
+                <?php else: ?>
+                    <?php foreach ($history as $item): ?>
+                    <div class="history-item">
+                        <div class="history-date">
+                            <?php echo date('M d, Y H:i', strtotime($item['synced_at'])); ?>
+                        </div>
+                        <div class="history-details">
+                            <span class="fuel-type-badge" style="margin-right: 10px;"><?php echo htmlspecialchars($item['fuel_type']); ?></span>
+                            Synced <?php echo number_format((float)$item['closing_stock'], 2); ?>L to POS
+                        </div>
+                        <div class="history-user">
+                            <i class="fas fa-user"></i> <?php echo htmlspecialchars($item['synced_by_name'] ?? 'System'); ?>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+    
+    <?php include __DIR__ . '/../partials/footer.php'; ?>
+    
+    <script src="../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

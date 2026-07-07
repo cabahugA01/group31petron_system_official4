@@ -5,61 +5,860 @@ require_once __DIR__ . '/../public/db_connect.php';
 require_once __DIR__ . '/../backend/station_management.php';
 require_once __DIR__ . '/../config/email_config.php';
 require_once __DIR__ . '/../../includes/employee_id_helper.php';
-require_login();  $me = current_user();
+require_login();
+
+$me = current_user();
 $my_role = role_key($me['role'] ?? 'staff');
-$my_station_id = user_station_id();  // Access Control: Station-scoped user management for Staff/Manager/Admin
+$my_station_id = user_station_id();
+
+// Access Control: Station-scoped user management for Staff/Manager/Admin
 // SuperAdmin uses superadmin_admin_management.php instead
-if ($my_role === 'superadmin') {  header("Location: superadmin_admin_management.php");  exit;
+if ($my_role === 'superadmin') {
+    header("Location: superadmin_admin_management.php");
+    exit;
 }
-if (!in_array($my_role, ['staff', 'manager', 'admin'], true)) {  header("Location: dashboard.php");  exit;
-}  function can_manage_role(string $actor_role, string $target_role): bool {  $actor = role_key($actor_role);  $target = role_key($target_role);  if ($actor === 'superadmin') return true;  if ($actor === 'admin') return in_array($target, ['staff', 'manager'], true);  return $target === 'staff'; // manager and staff can only manage staff
-}  function log_user_creation($pdo, $created_by, $created_for, $station_id, $user_role, $username, $email_sent, $email_address) {  $stmt = $pdo->prepare("INSERT INTO user_creation_logs (created_by, created_for, station_id, user_role, username, email_sent, email_address) VALUES (?, ?, ?, ?, ?, ?, ?)");  $stmt->execute([$created_by, $created_for, $station_id, $user_role, $username, $email_sent, $email_address]);
-}  $msg = '';  // --- ACTION HANDLER ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {  $action = $_POST['action'] ?? '';  try {  // 1. Add User  if ($action === 'add_user') {  $name  = trim($_POST['name']);  $email = trim($_POST['email']);  $role  = role_key($_POST['role'] ?? 'staff');  $phone = trim($_POST['phone'] ?? '');  // Email is the username  $username = $email;  // Validation  if (empty($name))  throw new Exception("Full Name is required.");  if (empty($email)) throw new Exception("Email address is required.");  if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw new Exception("Invalid email address format.");  // Unique email / username check  $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ? OR email = ?");  $stmt->execute([$username, $email]);  if ($stmt->fetch()) throw new Exception("Email address is already in use.");  if (!can_manage_role($my_role, $role)) {  throw new Exception("You can only create allowed roles for your access level.");  }  // Admin: 1 per station only (only SuperAdmin can create Admin)  if ($role === 'admin') {  throw new Exception("Administrator account already exists for this station. Only SuperAdmin can create Admin accounts.");  }  // Manager: 1 per station only  if ($role === 'manager') {  $chk = $pdo->prepare("SELECT id FROM users WHERE role = 'manager' AND station_id = ? AND status = 'Active'");  $chk->execute([$my_station_id]);  if ($chk->fetch()) throw new Exception("Manager account already exists for this station.");  }  // Password handling  $raw_password = trim($_POST['password_hash'] ?? '');  if (empty($raw_password)) {  // Auto-generate: 12 chars, uses only allowed symbols _ . - ! @ #  $password = generateSecurePassword();  } else {  // Manual password validation: min 8 chars, upper, lower, digit, allowed symbol  if (strlen($raw_password) < 8) {  throw new Exception("Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol (_ . - ! @ #).");  }  if (!preg_match('/[A-Z]/', $raw_password)) {  throw new Exception("Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol (_ . - ! @ #).");  }  if (!preg_match('/[a-z]/', $raw_password)) {  throw new Exception("Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol (_ . - ! @ #).");  }  if (!preg_match('/[0-9]/', $raw_password)) {  throw new Exception("Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol (_ . - ! @ #).");  }  if (!preg_match('/[_.\-!@#]/', $raw_password)) {  throw new Exception("Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol (_ . - ! @ #).");  }  $password = $raw_password;  }  $hashed = password_hash($password, PASSWORD_DEFAULT);  // Station is always the Admin's own station (scoped)  try {  $station_target = StationManager::getTargetStationForUserCreation(  $me['role'],  $my_station_id,  $_POST['station_id'] ?? null  );  StationManager::logStationAssignmentAttempt($me['id'], $me['role'], $my_station_id, $station_target, true);  } catch (Exception $e) {  StationManager::logStationAssignmentAttempt($me['id'], $me['role'], $my_station_id, $_POST['station_id'] ?? null, false);  throw $e;  }  // Shift assignment: Only for staff role  $assigned_shift = null;  $shift_start_time = null;  $shift_end_time = null;  if ($role === 'staff') {  $assigned_shift = $_POST['assigned_shift'] ?? null;  $shift_start_time = !empty($_POST['shift_start_time']) ? $_POST['shift_start_time'] : null;  $shift_end_time = !empty($_POST['shift_end_time']) ? $_POST['shift_end_time'] : null;  // Validate shift assignment for staff  if (empty($assigned_shift)) {  throw new Exception("Shift assignment is required for staff members.");  }  if (!in_array($assigned_shift, ['Shift 1', 'Shift 2'])) {  throw new Exception("Invalid shift assignment for staff. Please select Shift 1 or Shift 2.");  }  } elseif (in_array($role, ['manager', 'admin'], true)) {  // Managers and Admins automatically get 'All Shifts'  $assigned_shift = 'All Shifts';  }  // Generate employee ID  $employee_id = generateEmployeeId($role, $station_target);  // Insert user — must_change_password = 1 forces password change on first login  $stmt = $pdo->prepare("INSERT INTO users (employee_id, first_name, last_name, username, role, assigned_shift, shift_start_time, shift_end_time, email, phone, password_hash, station_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', NOW())");  $stmt->execute([$employee_id, $name, $name, $username, $role, $assigned_shift, $shift_start_time, $shift_end_time, $email, $phone, $hashed, $station_target]);  $new_user_id = $pdo->lastInsertId();  // Get station name for email  $station_name_for_email = 'Unknown Station';  if ($station_target) {  $stmt_station = $pdo->prepare("SELECT name FROM stations WHERE id = ?");  $stmt_station->execute([$station_target]);  $station_data = $stmt_station->fetch(PDO::FETCH_ASSOC);  if ($station_data) $station_name_for_email = $station_data['name'];  }  // Always send credential email for manager and staff  $email_sent = sendAdminCredentialsEmail($email, $name, $station_name_for_email, $username, $password, $me['role']) ? 1 : 0;  // Log user creation  log_user_creation($pdo, $me['id'], $new_user_id, $station_target, $role, $username, $email_sent, $email);  log_activity($pdo, $me['id'], 'Add User', "Created user $username ($role)");  if ($email_sent) {  $msg = "User created successfully. Credentials have been sent to $email.";  } else {  $msg = "User created successfully. Account created but email delivery failed. Please share credentials manually.";  }  }  // 2. Edit User  elseif ($action === 'edit_user') {  $id = $_POST['user_id'];  $name = trim($_POST['name']);  $role = role_key($_POST['role'] ?? 'staff');  $phone = trim($_POST['phone']);  $email = trim($_POST['email']);  // Security check: Ensure user belongs to my station and role is manageable  $chk = $pdo->prepare("SELECT id, role FROM users WHERE id = ? AND station_id = ?");  $chk->execute([$id, $my_station_id]);  $target_user = $chk->fetch(PDO::FETCH_ASSOC);  if (!$target_user) throw new Exception("Unauthorized access to user.");  if (!can_manage_role($my_role, (string)($target_user['role'] ?? 'staff'))) {  throw new Exception("You cannot modify this user role.");  }  if (!can_manage_role($my_role, $role)) {  throw new Exception("You can only assign allowed roles for your access level.");  }  // Shift assignment handling  $assigned_shift = null;  $shift_start_time = null;  $shift_end_time = null;  if ($role === 'staff') {  $assigned_shift = $_POST['assigned_shift'] ?? null;  $shift_start_time = !empty($_POST['shift_start_time']) ? $_POST['shift_start_time'] : null;  $shift_end_time = !empty($_POST['shift_end_time']) ? $_POST['shift_end_time'] : null;  // Validate shift assignment for staff  if (empty($assigned_shift)) {  throw new Exception("Shift assignment is required for staff members.");  }  if (!in_array($assigned_shift, ['Shift 1', 'Shift 2'])) {  throw new Exception("Invalid shift assignment for staff. Please select Shift 1 or Shift 2.");  }  } elseif (in_array($role, ['manager', 'admin'], true)) {  // Managers and Admins automatically get 'All Shifts'  $assigned_shift = 'All Shifts';  }  $stmt = $pdo->prepare("UPDATE users SET name = ?, role = ?, assigned_shift = ?, shift_start_time = ?, shift_end_time = ?, email = ?, phone = ? WHERE id = ?");  $stmt->execute([$name, $role, $assigned_shift, $shift_start_time, $shift_end_time, $email, $phone, $id]);  log_activity($pdo, $me['id'], 'Edit User', "Updated details for user #$id");  $msg = "User details updated.";  }  // 3. Reset Password  elseif ($action === 'reset_password') {  // SuperAdmin is NOT allowed to manually reset passwords.  // Passwords are auto-generated at account creation and sent via Gmail only.  if ($my_role === 'superadmin') {  throw new Exception("SuperAdmin cannot manually reset passwords. Passwords are auto-generated and sent via Gmail at account creation.");  }  $id = $_POST['user_id'];  $new_pass = $_POST['new_password'] ?: 'Petron123!';  $chk = $pdo->prepare("SELECT id, role FROM users WHERE id = ? AND station_id = ?");  $chk->execute([$id, $my_station_id]);  $target_user = $chk->fetch(PDO::FETCH_ASSOC);  if (!$target_user) throw new Exception("Unauthorized access to user.");  if (!can_manage_role($my_role, (string)($target_user['role'] ?? 'staff'))) {  throw new Exception("You cannot reset password for this user.");  }  $hashed = password_hash($new_pass, PASSWORD_DEFAULT);  $stmt = $pdo->prepare("UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?");  $stmt->execute([$hashed, $id]);  log_activity($pdo, $me['id'], 'Reset Password', "Reset password for user #$id");  $msg = "Password reset successfully. Temporary password: $new_pass";  }  // 4. Deactivate/Activate User  elseif ($action === 'toggle_status') {  $id = $_POST['user_id'];  $new_status = $_POST['new_status']; // 'active' or 'inactive'  if ($my_role !== 'superadmin') {  $chk = $pdo->prepare("SELECT id, role FROM users WHERE id = ? AND station_id = ?");  $chk->execute([$id, $my_station_id]);  $target_user = $chk->fetch(PDO::FETCH_ASSOC);  if (!$target_user) throw new Exception("Unauthorized access to user.");  if (!can_manage_role($my_role, (string)($target_user['role'] ?? 'staff'))) {  throw new Exception("You cannot change status for this user.");  }  }  // Prevent deactivating self  if ($id == $me['id']) throw new Exception("You cannot deactivate your own account.");  $stmt = $pdo->prepare("UPDATE users SET status = ? WHERE id = ?");  $stmt->execute([$new_status, $id]);  log_activity($pdo, $me['id'], 'Change Status', "Changed user #$id status to $new_status");  $msg = "User status updated to $new_status.";  }  } catch (Exception $e) {  $msg = "" . $e->getMessage();  }
-}  // --- FETCH USERS ---
+if (!in_array($my_role, ['staff', 'manager', 'admin'], true)) {
+    header("Location: dashboard.php");
+    exit;
+}
+
+function can_manage_role(string $actor_role, string $target_role): bool {
+    $actor = role_key($actor_role);
+    $target = role_key($target_role);
+
+    if ($actor === 'superadmin') return true;
+    if ($actor === 'admin') return in_array($target, ['staff', 'manager'], true);
+    return $target === 'staff'; // manager and staff can only manage staff
+}
+
+function log_user_creation($pdo, $created_by, $created_for, $station_id, $user_role, $username, $email_sent, $email_address) {
+    $stmt = $pdo->prepare("INSERT INTO user_creation_logs (created_by, created_for, station_id, user_role, username, email_sent, email_address) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $stmt->execute([$created_by, $created_for, $station_id, $user_role, $username, $email_sent, $email_address]);
+}
+
+$msg = '';
+
+// --- ACTION HANDLER ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+    
+    try {
+        // 1. Add User
+        if ($action === 'add_user') {
+            $name  = trim($_POST['name']);
+            $email = trim($_POST['email']);
+            $role  = role_key($_POST['role'] ?? 'staff');
+            $phone = trim($_POST['phone'] ?? '');
+
+            // Email is the username
+            $username = $email;
+
+            // Validation
+            if (empty($name))  throw new Exception("Full Name is required.");
+            if (empty($email)) throw new Exception("Email address is required.");
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw new Exception("Invalid email address format.");
+
+            // Unique email / username check
+            $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
+            $stmt->execute([$username, $email]);
+            if ($stmt->fetch()) throw new Exception("Email address is already in use.");
+
+            if (!can_manage_role($my_role, $role)) {
+                throw new Exception("You can only create allowed roles for your access level.");
+            }
+
+            // Admin: 1 per station only (only SuperAdmin can create Admin)
+            if ($role === 'admin') {
+                throw new Exception("Administrator account already exists for this station. Only SuperAdmin can create Admin accounts.");
+            }
+
+            // Manager: 1 per station only
+            if ($role === 'manager') {
+                $chk = $pdo->prepare("SELECT id FROM users WHERE role = 'manager' AND station_id = ? AND status = 'Active'");
+                $chk->execute([$my_station_id]);
+                if ($chk->fetch()) throw new Exception("Manager account already exists for this station.");
+            }
+
+            // Password handling
+            $raw_password = trim($_POST['password_hash'] ?? '');
+            if (empty($raw_password)) {
+                // Auto-generate: 12 chars, uses only allowed symbols _ . - ! @ #
+                $password = generateSecurePassword();
+            } else {
+                // Manual password validation: min 8 chars, upper, lower, digit, allowed symbol
+                if (strlen($raw_password) < 8) {
+                    throw new Exception("Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol (_ . - ! @ #).");
+                }
+                if (!preg_match('/[A-Z]/', $raw_password)) {
+                    throw new Exception("Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol (_ . - ! @ #).");
+                }
+                if (!preg_match('/[a-z]/', $raw_password)) {
+                    throw new Exception("Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol (_ . - ! @ #).");
+                }
+                if (!preg_match('/[0-9]/', $raw_password)) {
+                    throw new Exception("Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol (_ . - ! @ #).");
+                }
+                if (!preg_match('/[_.\-!@#]/', $raw_password)) {
+                    throw new Exception("Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol (_ . - ! @ #).");
+                }
+                $password = $raw_password;
+            }
+
+            $hashed = password_hash($password, PASSWORD_DEFAULT);
+
+            // Station is always the Admin's own station (scoped)
+            try {
+                $station_target = StationManager::getTargetStationForUserCreation(
+                    $me['role'],
+                    $my_station_id,
+                    $_POST['station_id'] ?? null
+                );
+                StationManager::logStationAssignmentAttempt($me['id'], $me['role'], $my_station_id, $station_target, true);
+            } catch (Exception $e) {
+                StationManager::logStationAssignmentAttempt($me['id'], $me['role'], $my_station_id, $_POST['station_id'] ?? null, false);
+                throw $e;
+            }
+
+            // Shift assignment: Only for staff role
+            $assigned_shift = null;
+            $shift_start_time = null;
+            $shift_end_time = null;
+            
+            if ($role === 'staff') {
+                $assigned_shift = $_POST['assigned_shift'] ?? null;
+                $shift_start_time = !empty($_POST['shift_start_time']) ? $_POST['shift_start_time'] : null;
+                $shift_end_time = !empty($_POST['shift_end_time']) ? $_POST['shift_end_time'] : null;
+                
+                // Validate shift assignment for staff
+                if (empty($assigned_shift)) {
+                    throw new Exception("Shift assignment is required for staff members.");
+                }
+                if (!in_array($assigned_shift, ['Shift 1', 'Shift 2'])) {
+                    throw new Exception("Invalid shift assignment for staff. Please select Shift 1 or Shift 2.");
+                }
+            } elseif (in_array($role, ['manager', 'admin'], true)) {
+                // Managers and Admins automatically get 'All Shifts'
+                $assigned_shift = 'All Shifts';
+            }
+            
+            // Generate employee ID
+            $employee_id = generateEmployeeId($role, $station_target);
+            
+            // Insert user — must_change_password = 1 forces password change on first login
+            $stmt = $pdo->prepare("INSERT INTO users (employee_id, first_name, last_name, username, role, assigned_shift, shift_start_time, shift_end_time, email, phone, password_hash, station_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', NOW())");
+            $stmt->execute([$employee_id, $name, $name, $username, $role, $assigned_shift, $shift_start_time, $shift_end_time, $email, $phone, $hashed, $station_target]);
+            $new_user_id = $pdo->lastInsertId();
+
+            // Get station name for email
+            $station_name_for_email = 'Unknown Station';
+            if ($station_target) {
+                $stmt_station = $pdo->prepare("SELECT name FROM stations WHERE id = ?");
+                $stmt_station->execute([$station_target]);
+                $station_data = $stmt_station->fetch(PDO::FETCH_ASSOC);
+                if ($station_data) $station_name_for_email = $station_data['name'];
+            }
+
+            // Always send credential email for manager and staff
+            $email_sent = sendAdminCredentialsEmail($email, $name, $station_name_for_email, $username, $password, $me['role']) ? 1 : 0;
+
+            // Log user creation
+            log_user_creation($pdo, $me['id'], $new_user_id, $station_target, $role, $username, $email_sent, $email);
+            log_activity($pdo, $me['id'], 'Add User', "Created user $username ($role)");
+
+            if ($email_sent) {
+                $msg = "✅ User created successfully. Credentials have been sent to $email.";
+            } else {
+                $msg = "✅ User created successfully. Account created but email delivery failed. Please share credentials manually.";
+            }
+        }
+        
+        // 2. Edit User
+        elseif ($action === 'edit_user') {
+            $id = $_POST['user_id'];
+            $name = trim($_POST['name']);
+            $role = role_key($_POST['role'] ?? 'staff');
+            $phone = trim($_POST['phone']);
+            $email = trim($_POST['email']);
+            
+            // Security check: Ensure user belongs to my station and role is manageable
+            $chk = $pdo->prepare("SELECT id, role FROM users WHERE id = ? AND station_id = ?");
+            $chk->execute([$id, $my_station_id]);
+            $target_user = $chk->fetch(PDO::FETCH_ASSOC);
+            if (!$target_user) throw new Exception("Unauthorized access to user.");
+            if (!can_manage_role($my_role, (string)($target_user['role'] ?? 'staff'))) {
+                throw new Exception("You cannot modify this user role.");
+            }
+
+            if (!can_manage_role($my_role, $role)) {
+                throw new Exception("You can only assign allowed roles for your access level.");
+            }
+            
+            // Shift assignment handling
+            $assigned_shift = null;
+            $shift_start_time = null;
+            $shift_end_time = null;
+            
+            if ($role === 'staff') {
+                $assigned_shift = $_POST['assigned_shift'] ?? null;
+                $shift_start_time = !empty($_POST['shift_start_time']) ? $_POST['shift_start_time'] : null;
+                $shift_end_time = !empty($_POST['shift_end_time']) ? $_POST['shift_end_time'] : null;
+                
+                // Validate shift assignment for staff
+                if (empty($assigned_shift)) {
+                    throw new Exception("Shift assignment is required for staff members.");
+                }
+                if (!in_array($assigned_shift, ['Shift 1', 'Shift 2'])) {
+                    throw new Exception("Invalid shift assignment for staff. Please select Shift 1 or Shift 2.");
+                }
+            } elseif (in_array($role, ['manager', 'admin'], true)) {
+                // Managers and Admins automatically get 'All Shifts'
+                $assigned_shift = 'All Shifts';
+            }
+            
+            $stmt = $pdo->prepare("UPDATE users SET name = ?, role = ?, assigned_shift = ?, shift_start_time = ?, shift_end_time = ?, email = ?, phone = ? WHERE id = ?");
+            $stmt->execute([$name, $role, $assigned_shift, $shift_start_time, $shift_end_time, $email, $phone, $id]);
+            
+            log_activity($pdo, $me['id'], 'Edit User', "Updated details for user #$id");
+            $msg = "✅ User details updated.";
+        }
+        
+        // 3. Reset Password
+        elseif ($action === 'reset_password') {
+            // SuperAdmin is NOT allowed to manually reset passwords.
+            // Passwords are auto-generated at account creation and sent via Gmail only.
+            if ($my_role === 'superadmin') {
+                throw new Exception("SuperAdmin cannot manually reset passwords. Passwords are auto-generated and sent via Gmail at account creation.");
+            }
+
+            $id = $_POST['user_id'];
+            $new_pass = $_POST['new_password'] ?: 'Petron123!';
+            
+            $chk = $pdo->prepare("SELECT id, role FROM users WHERE id = ? AND station_id = ?");
+            $chk->execute([$id, $my_station_id]);
+            $target_user = $chk->fetch(PDO::FETCH_ASSOC);
+            if (!$target_user) throw new Exception("Unauthorized access to user.");
+            if (!can_manage_role($my_role, (string)($target_user['role'] ?? 'staff'))) {
+                throw new Exception("You cannot reset password for this user.");
+            }
+            
+            $hashed = password_hash($new_pass, PASSWORD_DEFAULT);
+            $stmt = $pdo->prepare("UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?");
+            $stmt->execute([$hashed, $id]);
+            
+            log_activity($pdo, $me['id'], 'Reset Password', "Reset password for user #$id");
+            $msg = "✅ Password reset successfully. Temporary password: $new_pass";
+        }
+        
+        // 4. Deactivate/Activate User
+        elseif ($action === 'toggle_status') {
+            $id = $_POST['user_id'];
+            $new_status = $_POST['new_status']; // 'active' or 'inactive'
+            
+            if ($my_role !== 'superadmin') {
+                $chk = $pdo->prepare("SELECT id, role FROM users WHERE id = ? AND station_id = ?");
+                $chk->execute([$id, $my_station_id]);
+                $target_user = $chk->fetch(PDO::FETCH_ASSOC);
+                if (!$target_user) throw new Exception("Unauthorized access to user.");
+                if (!can_manage_role($my_role, (string)($target_user['role'] ?? 'staff'))) {
+                    throw new Exception("You cannot change status for this user.");
+                }
+            }
+            
+            // Prevent deactivating self
+            if ($id == $me['id']) throw new Exception("You cannot deactivate your own account.");
+            
+            $stmt = $pdo->prepare("UPDATE users SET status = ? WHERE id = ?");
+            $stmt->execute([$new_status, $id]);
+            
+            log_activity($pdo, $me['id'], 'Change Status', "Changed user #$id status to $new_status");
+            $msg = "✅ User status updated to $new_status.";
+        }
+        
+    } catch (Exception $e) {
+        $msg = "❌ " . $e->getMessage();
+    }
+}
+
+// --- FETCH USERS ---
 $users = [];
 $station_name = '';
-if ($my_role === 'superadmin') {  $stmt = $pdo->query("SELECT u.*, s.name as station_name FROM users u LEFT JOIN stations s ON u.station_id = s.id ORDER BY u.created_at DESC");  $users = $stmt->fetchAll();  // Fetch stations for dropdown  $stations = $pdo->query("SELECT id, name FROM stations WHERE status = 'Active' ORDER BY name ASC")->fetchAll();
-} else {  if ($my_role === 'staff' || $my_role === 'manager') {  $stmt = $pdo->prepare("SELECT * FROM users WHERE station_id = ? AND LOWER(role) IN ('staff', 'operations_staff', 'operations staff') ORDER BY role, name");  $stmt->execute([$my_station_id]);  } else {  $stmt = $pdo->prepare("SELECT * FROM users WHERE station_id = ? ORDER BY role, name");  $stmt->execute([$my_station_id]);  }  $users = $stmt->fetchAll();  // Get station name for read-only display  $station_name = get_station_name($my_station_id);
-}  // Get UI configuration for station selection
-$station_ui_config = StationManager::getStationUIConfig($my_role, $my_station_id, $station_name);  include __DIR__ . '/../partials/header.php';
-?>  <div class="page-head">  <div>  <h1 class="h1">User Management</h1>  <div class="sub">Manage Manager and Staff accounts, control access, and maintain security.</div>  </div>  <div class="actions">  <button class="btn dark" onclick="openAddModal()">  <i class="fas fa-user-plus"></i> Add User  </button>  </div>
-</div>  <?php if($msg): ?>
-<div class="card" style="padding:15px; margin-bottom:20px; background: <?php echo strpos($msg, '') !== false ? '#f8d7da' : '#d4edda'; ?>; color: <?php echo strpos($msg, '') !== false ? '#721c24' : '#155724'; ?>;">  <?php echo $msg; ?>
+if ($my_role === 'superadmin') {
+    $stmt = $pdo->query("SELECT u.*, s.name as station_name FROM users u LEFT JOIN stations s ON u.station_id = s.id ORDER BY u.created_at DESC");
+    $users = $stmt->fetchAll();
+    // Fetch stations for dropdown
+    $stations = $pdo->query("SELECT id, name FROM stations WHERE status = 'Active' ORDER BY name ASC")->fetchAll();
+} else {
+    if ($my_role === 'staff' || $my_role === 'manager') {
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE station_id = ? AND LOWER(role) IN ('staff', 'operations_staff', 'operations staff') ORDER BY role, name");
+        $stmt->execute([$my_station_id]);
+    } else {
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE station_id = ? ORDER BY role, name");
+        $stmt->execute([$my_station_id]);
+    }
+    $users = $stmt->fetchAll();
+    
+    // Get station name for read-only display
+    $station_name = get_station_name($my_station_id);
+}
+
+// Get UI configuration for station selection
+$station_ui_config = StationManager::getStationUIConfig($my_role, $my_station_id, $station_name);
+
+include __DIR__ . '/../partials/header.php';
+?>
+
+<div class="page-head">
+    <div>
+        <h1 class="h1">User Management</h1>
+        <div class="sub">Manage Manager and Staff accounts, control access, and maintain security.</div>
+    </div>
+    <div class="actions">
+        <button class="btn dark" onclick="openAddModal()">
+            <i class="fas fa-user-plus"></i> Add User
+        </button>
+    </div>
 </div>
-<?php endif; ?>  <!-- Summary Cards -->
-<?php  $total_users = count($users);
+
+<?php if($msg): ?>
+<div class="card" style="padding:15px; margin-bottom:20px; background: <?php echo strpos($msg, '❌') !== false ? '#f8d7da' : '#d4edda'; ?>; color: <?php echo strpos($msg, '❌') !== false ? '#721c24' : '#155724'; ?>;">
+    <?php echo $msg; ?>
+</div>
+<?php endif; ?>
+
+<!-- Summary Cards -->
+<?php 
+$total_users = count($users);
 $active_users = count(array_filter($users, fn($u) => $u['status'] === 'Active'));
 $inactive_users = $total_users - $active_users;
 $staff_count = count(array_filter($users, fn($u) => strtolower($u['role']) === 'staff'));
 ?>
-<div class="summary-cards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">  <div class="summary-card" style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">  <div style="color: #64748b; font-size: 14px; margin-bottom: 8px;">Total Users</div>  <div style="font-size: 28px; font-weight: bold; color: #1e293b;"><?php echo $total_users; ?></div>  </div>  <div class="summary-card" style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">  <div style="color: #64748b; font-size: 14px; margin-bottom: 8px;">Active Users</div>  <div style="font-size: 28px; font-weight: bold; color: #10b981;"><?php echo $active_users; ?></div>  </div>  <div class="summary-card" style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">  <div style="color: #64748b; font-size: 14px; margin-bottom: 8px;">Inactive Users</div>  <div style="font-size: 28px; font-weight: bold; color: #ef4444;"><?php echo $inactive_users; ?></div>  </div>  <div class="summary-card" style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">  <div style="color: #64748b; font-size: 14px; margin-bottom: 8px;">Staff Accounts</div>  <div style="font-size: 28px; font-weight: bold; color: #3b82f6;"><?php echo $staff_count; ?></div>  </div>
-</div>  <!-- User List Table -->
-<div class="card">  <div class="table-wrap">  <table class="table">  <thead>  <tr>  <th>Employee ID</th>  <th>Name / Username</th>  <th>Role</th>  <th>Assigned Shift</th>  <th>Status</th>  <th>Actions</th>  </tr>  </thead>  <tbody>  <?php foreach($users as $u):  $statusClass = $u['status'] === 'active' ? 'success' : 'danger';  $roleKey = role_key($u['role'] ?? 'staff');  $roleLabel = normalize_role($u['role'] ?? $roleKey);  if ($roleLabel === '') { $roleLabel = ucfirst($roleKey); }  $roleClass = in_array($roleKey, ['manager','admin','superadmin'], true) ? 'primary' : 'secondary';  ?>  <tr>  <td><strong><?php echo htmlspecialchars($u['employee_id'] ?? 'N/A'); ?></strong></td>  <td>  <div style="font-weight:bold;"><?php echo htmlspecialchars($u['name']); ?></div>  <div class="muted" style="font-size:0.85em;">@<?php echo htmlspecialchars($u['username']); ?></div>  </td>  <td><span class="badge bg-<?php echo $roleClass; ?>"><?php echo htmlspecialchars($roleLabel); ?></span></td>  <td>  <?php if (!empty($u['assigned_shift']) && $u['assigned_shift'] !== 'All Shifts'): ?>  <span class="badge bg-info"><?php echo htmlspecialchars($u['assigned_shift']); ?></span>  <?php elseif ($u['assigned_shift'] === 'All Shifts'): ?>  <span class="muted" style="font-size: 0.9em;">—</span>  <?php else: ?>  <span class="muted">Not Assigned</span>  <?php endif; ?>  </td>  <td><span class="badge bg-<?php echo $statusClass; ?>"><?php echo ucfirst($u['status']); ?></span></td>  <td>  <div style="display:flex; gap:5px;">  <button class="btn small primary" onclick="openViewModal(<?php echo htmlspecialchars(json_encode($u)); ?>)" title="View">  <i class="fas fa-eye"></i> View  </button>  <button class="btn small ghost" onclick="openEditModal(<?php echo htmlspecialchars(json_encode($u)); ?>)" title="Edit">  <i class="fas fa-edit"></i> Edit  </button>  </div>  </td>  </tr>  <?php endforeach; ?>  <?php if(empty($users)): ?>  <tr><td colspan="6" style="text-align:center; padding:20px;">No users found.</td></tr>  <?php endif; ?>  </tbody>  </table>  </div>
-</div>  <!-- MODAL: Add User -->
-<div class="modal" id="addModal">  <div class="modal-content">  <div class="modal-header">  <h3 class="modal-title">Add New User</h3>  <button class="modal-close" onclick="closeModal('addModal')">&times;</button>  </div>  <form method="post" id="addUserForm">  <div class="modal-body">  <input type="hidden" name="action" value="add_user">  <div class="form-group mb-3">  <label class="lbl">Full Name <span style="color:red;">*</span></label>  <input type="text" name="name" class="inp full" required placeholder="e.g. Juan Dela Cruz">  </div>  <div class="form-group mb-3">  <label class="lbl">Email Address <span style="color:red;">*</span></label>  <input type="email" name="email" class="inp full" required placeholder="e.g. juan@email.com">  <small class="muted">This will also serve as the username for login.</small>  </div>  <div class="form-group mb-3">  <label class="lbl">Role <span style="color:red;">*</span></label>  <select name="role" id="add_role" class="inp full" required onchange="toggleShiftFields('add')">  <?php if($my_role === 'admin'): ?>  <option value="staff">Staff</option>  <option value="manager">Manager</option>  <?php elseif($my_role === 'superadmin'): ?>  <option value="staff">Staff</option>  <option value="manager">Manager</option>  <option value="admin">Admin</option>  <?php else: ?>  <option value="staff">Staff</option>  <?php endif; ?>  </select>  </div>  <!-- Shift Assignment Fields (visible only for Staff role) -->  <div id="add_shift_fields" style="display:none;">  <div class="form-group mb-3">  <label class="lbl">Assigned Shift <span style="color:red;">*</span></label>  <select name="assigned_shift" id="add_assigned_shift" class="inp full">  <option value="">Select Shift</option>  <option value="Shift 1">Shift 1</option>  <option value="Shift 2">Shift 2</option>  </select>  <small class="muted">Required for staff accounts. Managers and Admins automatically have access to all shifts.</small>  </div>  <div class="grid-2 mb-3" style="gap:10px;">  <div>  <label class="lbl">Shift Start Time</label>  <input type="time" name="shift_start_time" id="add_shift_start" class="inp full" placeholder="e.g. 06:00 AM">  <small class="muted">Optional - e.g. 06:00</small>  </div>  <div>  <label class="lbl">Shift End Time</label>  <input type="time" name="shift_end_time" id="add_shift_end" class="inp full" placeholder="e.g. 02:00 PM">  <small class="muted">Optional - e.g. 14:00</small>  </div>  </div>  </div>  <div class="grid-2 mb-3" style="gap:10px;">  <div>  <label class="lbl">Phone</label>  <input type="text" name="phone" class="inp full" placeholder="e.g. 09095332320">  </div>  <div>  <!-- Station: read-only for admin, dropdown for superadmin -->  <?php if($station_ui_config['type'] === 'dropdown'): ?>  <label class="lbl">Station <span style="color:red;">*</span></label>  <select name="station_id" class="inp full" required>  <option value="">Select Station</option>  <?php foreach($stations as $s): ?>  <option value="<?php echo $s['id']; ?>"><?php echo htmlspecialchars($s['name']); ?></option>  <?php endforeach; ?>  </select>  <?php else: ?>  <label class="lbl">Station</label>  <input type="text" value="<?php echo htmlspecialchars($station_ui_config['value']); ?>" class="inp full" readonly style="background:#f8f9fa;cursor:not-allowed;color:#495057;border:1px solid #ced4da;">  <input type="hidden" name="station_id" value="<?php echo $station_ui_config['hidden_input_value']; ?>">  <?php endif; ?>  </div>  </div>  <div class="form-group mb-3">  <label class="lbl">Password</label>  <div style="position:relative;">  <input type="password" name="password_hash" id="add_password" class="inp full" placeholder="Leave empty to auto-generate">  <button type="button" onclick="togglePasswordVisibility('add_password', this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#6c757d;">  <i class="fas fa-eye"></i>  </button>  </div>  <small class="muted">Leave empty to auto-generate a secure password. If set manually: min. 8 characters, must include uppercase, lowercase, number, and a symbol (_ . - ! @ #).</small>  </div>  <div class="form-group mb-3">  <label class="lbl">Confirm Password</label>  <div style="position:relative;">  <input type="password" name="confirm_password" id="add_confirm_password" class="inp full" placeholder="Re-enter password">  <button type="button" onclick="togglePasswordVisibility('add_confirm_password', this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#6c757d;">  <i class="fas fa-eye"></i>  </button>  </div>  </div>  </div>  <div class="modal-footer">  <button type="button" class="btn ghost" onclick="closeModal('addModal')">Cancel</button>  <button type="submit" class="btn primary" onclick="return validateAddUserForm()">Create User</button>  </div>  </form>  </div>
-</div>  <!-- MODAL: Edit User -->
-<div class="modal" id="editModal">  <div class="modal-content">  <div class="modal-header">  <h3 class="modal-title">Edit User</h3>  <button class="modal-close" onclick="closeModal('editModal')">&times;</button>  </div>  <form method="post">  <div class="modal-body">  <input type="hidden" name="action" value="edit_user">  <input type="hidden" name="user_id" id="edit_user_id">  <div class="form-group mb-3">  <label class="lbl">Full Name</label>  <input type="text" name="name" id="edit_name" class="inp full" required>  </div>  <div class="form-group mb-3">  <label class="lbl">Role</label>  <select name="role" id="edit_role" class="inp full" required onchange="toggleShiftFields('edit')">  <option value="staff">Staff</option>  <?php if($my_role === 'superadmin'): ?>  <option value="manager">Manager</option>  <?php else: ?>  <option value="manager" <?php echo ($edit_role ?? 'staff') === 'manager' ? 'selected' : ''; ?>>Manager</option>  <?php endif; ?>  </select>  </div>  <!-- Shift Assignment Fields (visible only for Staff role) -->  <div id="edit_shift_fields" style="display:none;">  <div class="form-group mb-3">  <label class="lbl">Assigned Shift</label>  <select name="assigned_shift" id="edit_assigned_shift" class="inp full">  <option value="">Not Assigned</option>  <option value="Shift 1">Shift 1</option>  <option value="Shift 2">Shift 2</option>  </select>  <small class="muted">Required for staff accounts. Managers and Admins automatically have access to all shifts.</small>  </div>  <div class="grid-2 mb-3" style="gap:10px;">  <div>  <label class="lbl">Shift Start Time</label>  <input type="time" name="shift_start_time" id="edit_shift_start" class="inp full">  </div>  <div>  <label class="lbl">Shift End Time</label>  <input type="time" name="shift_end_time" id="edit_shift_end" class="inp full">  </div>  </div>  </div>  <div class="grid-2 mb-3" style="gap:10px;">  <div>  <label class="lbl">Phone</label>  <input type="text" name="phone" id="edit_phone" class="inp full">  </div>  <div>  <label class="lbl">Email</label>  <input type="email" name="email" id="edit_email" class="inp full">  </div>  </div>  </div>  <div class="modal-footer">  <button type="button" class="btn ghost" onclick="closeModal('editModal')">Cancel</button>  <button type="submit" class="btn primary">Save Changes</button>  </div>  </form>  </div>
-</div>  <!-- MODAL: View User Details -->
-<div class="modal" id="viewModal">  <div class="modal-content">  <div class="modal-header">  <h3 class="modal-title">User Details</h3>  <button class="modal-close" onclick="closeModal('viewModal')">&times;</button>  </div>  <div class="modal-body">  <div class="user-details-grid" style="display: grid; gap: 15px;">  <div>  <label class="lbl">Employee ID</label>  <div id="view_employee_id" style="font-weight: bold; font-size: 1.1em;"></div>  </div>  <div>  <label class="lbl">Full Name</label>  <div id="view_name"></div>  </div>  <div>  <label class="lbl">Username</label>  <div id="view_username"></div>  </div>  <div>  <label class="lbl">Role</label>  <div id="view_role"></div>  </div>  <div>  <label class="lbl">Assigned Shift</label>  <div id="view_shift"></div>  </div>  <div>  <label class="lbl">Shift Time</label>  <div id="view_shift_time"></div>  </div>  <div>  <label class="lbl">Email</label>  <div id="view_email"></div>  </div>  <div>  <label class="lbl">Phone</label>  <div id="view_phone"></div>  </div>  <div>  <label class="lbl">Status</label>  <div id="view_status"></div>  </div>  </div>  </div>  <div class="modal-footer">  <button type="button" class="btn ghost" onclick="closeModal('viewModal')">Close</button>  </div>  </div>
-</div>  <!-- MODAL: Reset Password -->
-<div class="modal" id="resetModal">  <div class="modal-content" style="max-width: 400px;">  <div class="modal-header">  <h3 class="modal-title">Reset Password</h3>  <button class="modal-close" onclick="closeModal('resetModal')">&times;</button>  </div>  <form method="post">  <div class="modal-body">  <input type="hidden" name="action" value="reset_password">  <input type="hidden" name="user_id" id="reset_user_id">  <p>Reset password for <strong id="reset_username"></strong>?</p>  <div class="form-group mt-3">  <label class="lbl">New Password</label>  <input type="text" name="new_password" class="inp full" value="Petron123!" required>  <small class="muted">Default: Petron123!</small>  </div>  </div>  <div class="modal-footer">  <button type="button" class="btn ghost" onclick="closeModal('resetModal')">Cancel</button>  <button type="submit" class="btn warning">Reset Password</button>  </div>  </form>  </div>
-</div>  <!-- FORM: Toggle Status (Hidden) -->
-<form method="post" id="statusForm" style="display:none;">  <input type="hidden" name="action" value="toggle_status">  <input type="hidden" name="user_id" id="status_user_id">  <input type="hidden" name="new_status" id="status_new_val">
-</form>  <script>
-function openAddModal() {  document.getElementById('addModal').classList.add('show');  toggleShiftFields('add'); // Show/hide shift fields based on selected role
-}  function openViewModal(user) {  // Populate view modal with user data  document.getElementById('view_employee_id').innerText = user.employee_id || 'N/A';  document.getElementById('view_name').innerText = user.name;  document.getElementById('view_username').innerText = user.username;  document.getElementById('view_role').innerHTML = '<span class="badge bg-' + getRoleBadgeClass(user.role) + '">' + user.role + '</span>';  // Handle shift display  if (user.assigned_shift && user.assigned_shift !== 'All Shifts') {  document.getElementById('view_shift').innerHTML = '<span class="badge bg-info">' + user.assigned_shift + '</span>';  } else if (user.assigned_shift === 'All Shifts') {  document.getElementById('view_shift').innerText = '—';  } else {  document.getElementById('view_shift').innerText = 'Not Assigned';  }  // Handle shift time display  if (user.shift_start_time && user.shift_end_time) {  document.getElementById('view_shift_time').innerText = formatTime(user.shift_start_time) + ' – ' + formatTime(user.shift_end_time);  } else {  document.getElementById('view_shift_time').innerText = '—';  }  document.getElementById('view_email').innerText = user.email || 'N/A';  document.getElementById('view_phone').innerText = user.phone || 'N/A';  document.getElementById('view_status').innerHTML = '<span class="badge bg-' + (user.status === 'Active' ? 'success' : 'danger') + '">' + user.status + '</span>';  document.getElementById('viewModal').classList.add('show');
-}  function getRoleBadgeClass(role) {  const roleLower = role.toLowerCase();  if (roleLower === 'manager' || roleLower === 'admin' || roleLower === 'superadmin') return 'primary';  return 'secondary';
-}  function formatTime(timeStr) {  if (!timeStr) return '';  const parts = timeStr.split(':');  const hours = parseInt(parts[0]);  const minutes = parts[1];  const ampm = hours >= 12 ? 'PM' : 'AM';  const displayHours = hours > 12 ? hours - 12 : (hours === 0 ? 12 : hours);  return displayHours + ':' + minutes + ' ' + ampm;
-}  function openEditModal(user) {  document.getElementById('edit_user_id').value = user.id;  document.getElementById('edit_name').value = user.name;  document.getElementById('edit_role').value = user.role;  document.getElementById('edit_phone').value = user.phone;  document.getElementById('edit_email').value = user.email;  // Set shift-related fields  if (user.assigned_shift) {  document.getElementById('edit_assigned_shift').value = user.assigned_shift;  }  if (user.shift_start_time) {  document.getElementById('edit_shift_start').value = user.shift_start_time;  }  if (user.shift_end_time) {  document.getElementById('edit_shift_end').value = user.shift_end_time;  }  document.getElementById('editModal').classList.add('show');  toggleShiftFields('edit'); // Show/hide shift fields based on selected role
-}  function toggleShiftFields(mode) {  const roleSelect = document.getElementById(mode + '_role');  const shiftFields = document.getElementById(mode + '_shift_fields');  const assignedShiftSelect = document.getElementById(mode + '_assigned_shift');  if (roleSelect.value === 'staff') {  shiftFields.style.display = 'block';  // Make shift selection required for staff  if (assignedShiftSelect) {  assignedShiftSelect.setAttribute('required', 'required');  }  } else {  shiftFields.style.display = 'none';  // Remove required attribute for non-staff roles  if (assignedShiftSelect) {  assignedShiftSelect.removeAttribute('required');  assignedShiftSelect.value = ''; // Clear selection  }  }
-}  function openResetModal(id, username) {  document.getElementById('reset_user_id').value = id;  document.getElementById('reset_username').innerText = username;  document.getElementById('resetModal').classList.add('show');
-}  function toggleStatus(id, newStatus) {  if(confirm('Are you sure you want to ' + (newStatus === 'active' ? 'activate' : 'deactivate') + ' this user?')) {  document.getElementById('status_user_id').value = id;  document.getElementById('status_new_val').value = newStatus;  document.getElementById('statusForm').submit();  }
-}  function closeModal(id) {  document.getElementById(id).classList.remove('show');
-}  function togglePasswordVisibility(fieldId, btn) {  const field = document.getElementById(fieldId);  const icon = btn.querySelector('i');  if (field.type === 'password') {  field.type = 'text';  icon.classList.replace('fa-eye', 'fa-eye-slash');  } else {  field.type = 'password';  icon.classList.replace('fa-eye-slash', 'fa-eye');  }
-}  function validateAddUserForm() {  const password = document.getElementById('add_password').value;  const confirm  = document.getElementById('add_confirm_password').value;  const role = document.getElementById('add_role').value;  const assignedShift = document.getElementById('add_assigned_shift').value;  // Validate shift assignment for staff  if (role === 'staff' && !assignedShift) {  alert('Please select a shift assignment for staff members.');  return false;  }  // Only validate if password was manually entered  if (password.length > 0) {  const symbolRegex = /[_.\-!@#]/;  const errorMsg = 'Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol (_ . - ! @ #).';  if (password.length < 8 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !symbolRegex.test(password)) {  alert(errorMsg);  return false;  }  if (password !== confirm) {  alert('Passwords do not match.');  return false;  }  }  return true;
-}  // Handle role selection for Admin accounts
-document.addEventListener('DOMContentLoaded', function() {  // Initialize shift field visibility on page load  toggleShiftFields('add');
+<div class="summary-cards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
+    <div class="summary-card" style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div style="color: #64748b; font-size: 14px; margin-bottom: 8px;">Total Users</div>
+        <div style="font-size: 28px; font-weight: bold; color: #1e293b;"><?php echo $total_users; ?></div>
+    </div>
+    <div class="summary-card" style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div style="color: #64748b; font-size: 14px; margin-bottom: 8px;">Active Users</div>
+        <div style="font-size: 28px; font-weight: bold; color: #10b981;"><?php echo $active_users; ?></div>
+    </div>
+    <div class="summary-card" style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div style="color: #64748b; font-size: 14px; margin-bottom: 8px;">Inactive Users</div>
+        <div style="font-size: 28px; font-weight: bold; color: #ef4444;"><?php echo $inactive_users; ?></div>
+    </div>
+    <div class="summary-card" style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div style="color: #64748b; font-size: 14px; margin-bottom: 8px;">Staff Accounts</div>
+        <div style="font-size: 28px; font-weight: bold; color: #3b82f6;"><?php echo $staff_count; ?></div>
+    </div>
+</div>
+
+<!-- User List Table -->
+<div class="card">
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Employee ID</th>
+                    <th>Name / Username</th>
+                    <th>Role</th>
+                    <th>Assigned Shift</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach($users as $u): 
+                    $statusClass = $u['status'] === 'active' ? 'success' : 'danger';
+                    $roleKey = role_key($u['role'] ?? 'staff');
+                    $roleLabel = normalize_role($u['role'] ?? $roleKey);
+                    if ($roleLabel === '') { $roleLabel = ucfirst($roleKey); }
+                    $roleClass = in_array($roleKey, ['manager','admin','superadmin'], true) ? 'primary' : 'secondary';
+                ?>
+                <tr>
+                    <td><strong><?php echo htmlspecialchars($u['employee_id'] ?? 'N/A'); ?></strong></td>
+                    <td>
+                        <div style="font-weight:bold;"><?php echo htmlspecialchars($u['name']); ?></div>
+                        <div class="muted" style="font-size:0.85em;">@<?php echo htmlspecialchars($u['username']); ?></div>
+                    </td>
+                    <td><span class="badge bg-<?php echo $roleClass; ?>"><?php echo htmlspecialchars($roleLabel); ?></span></td>
+                    <td>
+                        <?php if (!empty($u['assigned_shift']) && $u['assigned_shift'] !== 'All Shifts'): ?>
+                            <span class="badge bg-info"><?php echo htmlspecialchars($u['assigned_shift']); ?></span>
+                        <?php elseif ($u['assigned_shift'] === 'All Shifts'): ?>
+                            <span class="muted" style="font-size: 0.9em;">—</span>
+                        <?php else: ?>
+                            <span class="muted">Not Assigned</span>
+                        <?php endif; ?>
+                    </td>
+                    <td><span class="badge bg-<?php echo $statusClass; ?>"><?php echo ucfirst($u['status']); ?></span></td>
+                    <td>
+                        <div style="display:flex; gap:5px;">
+                            <button class="btn small primary" onclick="openViewModal(<?php echo htmlspecialchars(json_encode($u)); ?>)" title="View">
+                                <i class="fas fa-eye"></i> View
+                            </button>
+                            <button class="btn small ghost" onclick="openEditModal(<?php echo htmlspecialchars(json_encode($u)); ?>)" title="Edit">
+                                <i class="fas fa-edit"></i> Edit
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+                <?php if(empty($users)): ?>
+                    <tr><td colspan="6" style="text-align:center; padding:20px;">No users found.</td></tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- MODAL: Add User -->
+<div class="modal" id="addModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">Add New User</h3>
+            <button class="modal-close" onclick="closeModal('addModal')">&times;</button>
+        </div>
+        <form method="post" id="addUserForm">
+            <div class="modal-body">
+                <input type="hidden" name="action" value="add_user">
+
+                <div class="form-group mb-3">
+                    <label class="lbl">Full Name <span style="color:red;">*</span></label>
+                    <input type="text" name="name" class="inp full" required placeholder="e.g. Juan Dela Cruz">
+                </div>
+
+                <div class="form-group mb-3">
+                    <label class="lbl">Email Address <span style="color:red;">*</span></label>
+                    <input type="email" name="email" class="inp full" required placeholder="e.g. juan@email.com">
+                    <small class="muted">This will also serve as the username for login.</small>
+                </div>
+
+                <div class="form-group mb-3">
+                    <label class="lbl">Role <span style="color:red;">*</span></label>
+                    <select name="role" id="add_role" class="inp full" required onchange="toggleShiftFields('add')">
+                        <?php if($my_role === 'admin'): ?>
+                            <option value="staff">Staff</option>
+                            <option value="manager">Manager</option>
+                        <?php elseif($my_role === 'superadmin'): ?>
+                            <option value="staff">Staff</option>
+                            <option value="manager">Manager</option>
+                            <option value="admin">Admin</option>
+                        <?php else: ?>
+                            <option value="staff">Staff</option>
+                        <?php endif; ?>
+                    </select>
+                </div>
+
+                <!-- Shift Assignment Fields (visible only for Staff role) -->
+                <div id="add_shift_fields" style="display:none;">
+                    <div class="form-group mb-3">
+                        <label class="lbl">Assigned Shift <span style="color:red;">*</span></label>
+                        <select name="assigned_shift" id="add_assigned_shift" class="inp full">
+                            <option value="">Select Shift</option>
+                            <option value="Shift 1">Shift 1</option>
+                            <option value="Shift 2">Shift 2</option>
+                        </select>
+                        <small class="muted">Required for staff accounts. Managers and Admins automatically have access to all shifts.</small>
+                    </div>
+
+                    <div class="grid-2 mb-3" style="gap:10px;">
+                        <div>
+                            <label class="lbl">Shift Start Time</label>
+                            <input type="time" name="shift_start_time" id="add_shift_start" class="inp full" placeholder="e.g. 06:00 AM">
+                            <small class="muted">Optional - e.g. 06:00</small>
+                        </div>
+                        <div>
+                            <label class="lbl">Shift End Time</label>
+                            <input type="time" name="shift_end_time" id="add_shift_end" class="inp full" placeholder="e.g. 02:00 PM">
+                            <small class="muted">Optional - e.g. 14:00</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid-2 mb-3" style="gap:10px;">
+                    <div>
+                        <label class="lbl">Phone</label>
+                        <input type="text" name="phone" class="inp full" placeholder="e.g. 09095332320">
+                    </div>
+                    <div>
+                        <!-- Station: read-only for admin, dropdown for superadmin -->
+                        <?php if($station_ui_config['type'] === 'dropdown'): ?>
+                        <label class="lbl">Station <span style="color:red;">*</span></label>
+                        <select name="station_id" class="inp full" required>
+                            <option value="">Select Station</option>
+                            <?php foreach($stations as $s): ?>
+                                <option value="<?php echo $s['id']; ?>"><?php echo htmlspecialchars($s['name']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php else: ?>
+                        <label class="lbl">Station</label>
+                        <input type="text" value="<?php echo htmlspecialchars($station_ui_config['value']); ?>" class="inp full" readonly style="background:#f8f9fa;cursor:not-allowed;color:#495057;border:1px solid #ced4da;">
+                        <input type="hidden" name="station_id" value="<?php echo $station_ui_config['hidden_input_value']; ?>">
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div class="form-group mb-3">
+                    <label class="lbl">Password</label>
+                    <div style="position:relative;">
+                        <input type="password" name="password_hash" id="add_password" class="inp full" placeholder="Leave empty to auto-generate">
+                        <button type="button" onclick="togglePasswordVisibility('add_password', this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#6c757d;">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                    <small class="muted">Leave empty to auto-generate a secure password. If set manually: min. 8 characters, must include uppercase, lowercase, number, and a symbol (_ . - ! @ #).</small>
+                </div>
+
+                <div class="form-group mb-3">
+                    <label class="lbl">Confirm Password</label>
+                    <div style="position:relative;">
+                        <input type="password" name="confirm_password" id="add_confirm_password" class="inp full" placeholder="Re-enter password">
+                        <button type="button" onclick="togglePasswordVisibility('add_confirm_password', this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#6c757d;">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn ghost" onclick="closeModal('addModal')">Cancel</button>
+                <button type="submit" class="btn primary" onclick="return validateAddUserForm()">Create User</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL: Edit User -->
+<div class="modal" id="editModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">Edit User</h3>
+            <button class="modal-close" onclick="closeModal('editModal')">&times;</button>
+        </div>
+        <form method="post">
+            <div class="modal-body">
+                <input type="hidden" name="action" value="edit_user">
+                <input type="hidden" name="user_id" id="edit_user_id">
+                
+                <div class="form-group mb-3">
+                    <label class="lbl">Full Name</label>
+                    <input type="text" name="name" id="edit_name" class="inp full" required>
+                </div>
+                <div class="form-group mb-3">
+                    <label class="lbl">Role</label>
+                    <select name="role" id="edit_role" class="inp full" required onchange="toggleShiftFields('edit')">
+                        <option value="staff">Staff</option>
+                        <?php if($my_role === 'superadmin'): ?>
+                            <option value="manager">Manager</option>
+                        <?php else: ?>
+                            <option value="manager" <?php echo ($edit_role ?? 'staff') === 'manager' ? 'selected' : ''; ?>>Manager</option>
+                        <?php endif; ?>
+                    </select>
+                </div>
+
+                <!-- Shift Assignment Fields (visible only for Staff role) -->
+                <div id="edit_shift_fields" style="display:none;">
+                    <div class="form-group mb-3">
+                        <label class="lbl">Assigned Shift</label>
+                        <select name="assigned_shift" id="edit_assigned_shift" class="inp full">
+                            <option value="">Not Assigned</option>
+                            <option value="Shift 1">Shift 1</option>
+                            <option value="Shift 2">Shift 2</option>
+                        </select>
+                        <small class="muted">Required for staff accounts. Managers and Admins automatically have access to all shifts.</small>
+                    </div>
+
+                    <div class="grid-2 mb-3" style="gap:10px;">
+                        <div>
+                            <label class="lbl">Shift Start Time</label>
+                            <input type="time" name="shift_start_time" id="edit_shift_start" class="inp full">
+                        </div>
+                        <div>
+                            <label class="lbl">Shift End Time</label>
+                            <input type="time" name="shift_end_time" id="edit_shift_end" class="inp full">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid-2 mb-3" style="gap:10px;">
+                    <div>
+                        <label class="lbl">Phone</label>
+                        <input type="text" name="phone" id="edit_phone" class="inp full">
+                    </div>
+                    <div>
+                        <label class="lbl">Email</label>
+                        <input type="email" name="email" id="edit_email" class="inp full">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn ghost" onclick="closeModal('editModal')">Cancel</button>
+                <button type="submit" class="btn primary">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL: View User Details -->
+<div class="modal" id="viewModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">User Details</h3>
+            <button class="modal-close" onclick="closeModal('viewModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="user-details-grid" style="display: grid; gap: 15px;">
+                <div>
+                    <label class="lbl">Employee ID</label>
+                    <div id="view_employee_id" style="font-weight: bold; font-size: 1.1em;"></div>
+                </div>
+                <div>
+                    <label class="lbl">Full Name</label>
+                    <div id="view_name"></div>
+                </div>
+                <div>
+                    <label class="lbl">Username</label>
+                    <div id="view_username"></div>
+                </div>
+                <div>
+                    <label class="lbl">Role</label>
+                    <div id="view_role"></div>
+                </div>
+                <div>
+                    <label class="lbl">Assigned Shift</label>
+                    <div id="view_shift"></div>
+                </div>
+                <div>
+                    <label class="lbl">Shift Time</label>
+                    <div id="view_shift_time"></div>
+                </div>
+                <div>
+                    <label class="lbl">Email</label>
+                    <div id="view_email"></div>
+                </div>
+                <div>
+                    <label class="lbl">Phone</label>
+                    <div id="view_phone"></div>
+                </div>
+                <div>
+                    <label class="lbl">Status</label>
+                    <div id="view_status"></div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn ghost" onclick="closeModal('viewModal')">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Reset Password -->
+<div class="modal" id="resetModal">
+    <div class="modal-content" style="max-width: 400px;">
+        <div class="modal-header">
+            <h3 class="modal-title">Reset Password</h3>
+            <button class="modal-close" onclick="closeModal('resetModal')">&times;</button>
+        </div>
+        <form method="post">
+            <div class="modal-body">
+                <input type="hidden" name="action" value="reset_password">
+                <input type="hidden" name="user_id" id="reset_user_id">
+                <p>Reset password for <strong id="reset_username"></strong>?</p>
+                <div class="form-group mt-3">
+                    <label class="lbl">New Password</label>
+                    <input type="text" name="new_password" class="inp full" value="Petron123!" required>
+                    <small class="muted">Default: Petron123!</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn ghost" onclick="closeModal('resetModal')">Cancel</button>
+                <button type="submit" class="btn warning">Reset Password</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- FORM: Toggle Status (Hidden) -->
+<form method="post" id="statusForm" style="display:none;">
+    <input type="hidden" name="action" value="toggle_status">
+    <input type="hidden" name="user_id" id="status_user_id">
+    <input type="hidden" name="new_status" id="status_new_val">
+</form>
+
+<script>
+function openAddModal() {
+    document.getElementById('addModal').classList.add('show');
+    toggleShiftFields('add'); // Show/hide shift fields based on selected role
+}
+
+function openViewModal(user) {
+    // Populate view modal with user data
+    document.getElementById('view_employee_id').innerText = user.employee_id || 'N/A';
+    document.getElementById('view_name').innerText = user.name;
+    document.getElementById('view_username').innerText = user.username;
+    document.getElementById('view_role').innerHTML = '<span class="badge bg-' + getRoleBadgeClass(user.role) + '">' + user.role + '</span>';
+    
+    // Handle shift display
+    if (user.assigned_shift && user.assigned_shift !== 'All Shifts') {
+        document.getElementById('view_shift').innerHTML = '<span class="badge bg-info">' + user.assigned_shift + '</span>';
+    } else if (user.assigned_shift === 'All Shifts') {
+        document.getElementById('view_shift').innerText = '—';
+    } else {
+        document.getElementById('view_shift').innerText = 'Not Assigned';
+    }
+    
+    // Handle shift time display
+    if (user.shift_start_time && user.shift_end_time) {
+        document.getElementById('view_shift_time').innerText = formatTime(user.shift_start_time) + ' – ' + formatTime(user.shift_end_time);
+    } else {
+        document.getElementById('view_shift_time').innerText = '—';
+    }
+    
+    document.getElementById('view_email').innerText = user.email || 'N/A';
+    document.getElementById('view_phone').innerText = user.phone || 'N/A';
+    document.getElementById('view_status').innerHTML = '<span class="badge bg-' + (user.status === 'Active' ? 'success' : 'danger') + '">' + user.status + '</span>';
+    
+    document.getElementById('viewModal').classList.add('show');
+}
+
+function getRoleBadgeClass(role) {
+    const roleLower = role.toLowerCase();
+    if (roleLower === 'manager' || roleLower === 'admin' || roleLower === 'superadmin') return 'primary';
+    return 'secondary';
+}
+
+function formatTime(timeStr) {
+    if (!timeStr) return '';
+    const parts = timeStr.split(':');
+    const hours = parseInt(parts[0]);
+    const minutes = parts[1];
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours > 12 ? hours - 12 : (hours === 0 ? 12 : hours);
+    return displayHours + ':' + minutes + ' ' + ampm;
+}
+
+function openEditModal(user) {
+    document.getElementById('edit_user_id').value = user.id;
+    document.getElementById('edit_name').value = user.name;
+    document.getElementById('edit_role').value = user.role;
+    document.getElementById('edit_phone').value = user.phone;
+    document.getElementById('edit_email').value = user.email;
+    
+    // Set shift-related fields
+    if (user.assigned_shift) {
+        document.getElementById('edit_assigned_shift').value = user.assigned_shift;
+    }
+    if (user.shift_start_time) {
+        document.getElementById('edit_shift_start').value = user.shift_start_time;
+    }
+    if (user.shift_end_time) {
+        document.getElementById('edit_shift_end').value = user.shift_end_time;
+    }
+    
+    document.getElementById('editModal').classList.add('show');
+    toggleShiftFields('edit'); // Show/hide shift fields based on selected role
+}
+
+function toggleShiftFields(mode) {
+    const roleSelect = document.getElementById(mode + '_role');
+    const shiftFields = document.getElementById(mode + '_shift_fields');
+    const assignedShiftSelect = document.getElementById(mode + '_assigned_shift');
+    
+    if (roleSelect.value === 'staff') {
+        shiftFields.style.display = 'block';
+        // Make shift selection required for staff
+        if (assignedShiftSelect) {
+            assignedShiftSelect.setAttribute('required', 'required');
+        }
+    } else {
+        shiftFields.style.display = 'none';
+        // Remove required attribute for non-staff roles
+        if (assignedShiftSelect) {
+            assignedShiftSelect.removeAttribute('required');
+            assignedShiftSelect.value = ''; // Clear selection
+        }
+    }
+}
+
+function openResetModal(id, username) {
+    document.getElementById('reset_user_id').value = id;
+    document.getElementById('reset_username').innerText = username;
+    document.getElementById('resetModal').classList.add('show');
+}
+
+function toggleStatus(id, newStatus) {
+    if(confirm('Are you sure you want to ' + (newStatus === 'active' ? 'activate' : 'deactivate') + ' this user?')) {
+        document.getElementById('status_user_id').value = id;
+        document.getElementById('status_new_val').value = newStatus;
+        document.getElementById('statusForm').submit();
+    }
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.remove('show');
+}
+
+function togglePasswordVisibility(fieldId, btn) {
+    const field = document.getElementById(fieldId);
+    const icon = btn.querySelector('i');
+    if (field.type === 'password') {
+        field.type = 'text';
+        icon.classList.replace('fa-eye', 'fa-eye-slash');
+    } else {
+        field.type = 'password';
+        icon.classList.replace('fa-eye-slash', 'fa-eye');
+    }
+}
+
+function validateAddUserForm() {
+    const password = document.getElementById('add_password').value;
+    const confirm  = document.getElementById('add_confirm_password').value;
+    const role = document.getElementById('add_role').value;
+    const assignedShift = document.getElementById('add_assigned_shift').value;
+
+    // Validate shift assignment for staff
+    if (role === 'staff' && !assignedShift) {
+        alert('Please select a shift assignment for staff members.');
+        return false;
+    }
+
+    // Only validate if password was manually entered
+    if (password.length > 0) {
+        const symbolRegex = /[_.\-!@#]/;
+        const errorMsg = 'Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol (_ . - ! @ #).';
+
+        if (password.length < 8 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !symbolRegex.test(password)) {
+            alert(errorMsg);
+            return false;
+        }
+
+        if (password !== confirm) {
+            alert('Passwords do not match.');
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// Handle role selection for Admin accounts
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize shift field visibility on page load
+    toggleShiftFields('add');
 });
-</script>  <style>  .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.8em; color: white; }  .bg-primary { background: #007bff; }  .bg-secondary { background: #6c757d; }  .bg-success { background: #28a745; }  .bg-danger { background: #dc3545; }  .bg-info { background: #17a2b8; }  .btn.small { padding: 4px 8px; font-size: 0.85em; }  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; }  .inp.full { width: 100%; }  .mb-3 { margin-bottom: 1rem; }  .mt-3 { margin-top: 1rem; }  .muted { color: #6c757d; }
-</style>  <?php include __DIR__ . '/../partials/footer.php'; ?>
+</script>
+
+<style>
+    .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.8em; color: white; }
+    .bg-primary { background: #007bff; }
+    .bg-secondary { background: #6c757d; }
+    .bg-success { background: #28a745; }
+    .bg-danger { background: #dc3545; }
+    .bg-info { background: #17a2b8; }
+    .btn.small { padding: 4px 8px; font-size: 0.85em; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; }
+    .inp.full { width: 100%; }
+    .mb-3 { margin-bottom: 1rem; }
+    .mt-3 { margin-top: 1rem; }
+    .muted { color: #6c757d; }
+</style>
+
+<?php include __DIR__ . '/../partials/footer.php'; ?>

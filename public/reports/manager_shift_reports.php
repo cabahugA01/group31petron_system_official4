@@ -1,40 +1,130 @@
 <?php
-/**  * MANAGER SHIFT REPORTS – COMPLETE CONTENTS  * Matches admin_shift_reports.php professional design with centered header + section tabs  * Blue theme for Manager role  */  $is_standalone = !isset($date_start) || !isset($date_end) || !isset($pdo) || !isset($station_id);  if ($is_standalone) {  if (session_status() !== PHP_SESSION_ACTIVE) session_start();  require_once __DIR__ . '/../../backend/lib.php';  require_once __DIR__ . '/../db_connect.php';  require_login();  $current_user = current_user();  $user_role  = role_key($current_user['role'] ?? 'manager');  $station_id  = user_station_id();  if (!$station_id && in_array($user_role, ['manager','admin','staff']))  render_no_station_page('manager_dashboard.php');  $date_start = $_GET['date_from'] ?? date('Y-m-d');  $date_end  = $_GET['date_to']  ?? date('Y-m-d');  if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_start)) $date_start = date('Y-m-d');  if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_end))  $date_end  = date('Y-m-d');  $page_id = 'manager_reports';  require_once __DIR__ . '/../../partials/header.php';
-}  // Station name
+/**
+ * MANAGER SHIFT REPORTS – COMPLETE CONTENTS
+ * Matches admin_shift_reports.php professional design with centered header + section tabs
+ * Blue theme for Manager role
+ */
+
+$is_standalone = !isset($date_start) || !isset($date_end) || !isset($pdo) || !isset($station_id);
+
+if ($is_standalone) {
+    if (session_status() !== PHP_SESSION_ACTIVE) session_start();
+    require_once __DIR__ . '/../../backend/lib.php';
+    require_once __DIR__ . '/../db_connect.php';
+    require_login();
+    $current_user = current_user();
+    $user_role    = role_key($current_user['role'] ?? 'manager');
+    $station_id   = user_station_id();
+    if (!$station_id && in_array($user_role, ['manager','admin','staff']))
+        render_no_station_page('manager_dashboard.php');
+    $date_start = $_GET['date_from'] ?? date('Y-m-d');
+    $date_end   = $_GET['date_to']   ?? date('Y-m-d');
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_start)) $date_start = date('Y-m-d');
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_end))   $date_end   = date('Y-m-d');
+    $page_id = 'manager_reports';
+    require_once __DIR__ . '/../../partials/header.php';
+}
+
+// Station name
 $station_name = '';
-try {  $s = $pdo->prepare("SELECT name FROM stations WHERE id=? LIMIT 1");  $s->execute([$station_id]);  $station_name = $s->fetchColumn() ?: '';
-} catch (Exception $e) {}  // Active section tab
+try {
+    $s = $pdo->prepare("SELECT name FROM stations WHERE id=? LIMIT 1");
+    $s->execute([$station_id]);
+    $station_name = $s->fetchColumn() ?: '';
+} catch (Exception $e) {}
+
+// Active section tab
 $section = $_GET['section'] ?? 'fuel_sales';
 $valid_sections = ['fuel_sales','merchandise','service_income','payments','customers'];
-if (!in_array($section, $valid_sections)) $section = 'fuel_sales';  // Active shift filter
-$active_shift = (int)($_GET['shift'] ?? 0); // 0 = all, 1 = shift1, 2 = shift2  // Shift definitions — extend Shift 2 to midnight to catch all late transactions
+if (!in_array($section, $valid_sections)) $section = 'fuel_sales';
+
+// Active shift filter
+$active_shift = (int)($_GET['shift'] ?? 0); // 0 = all, 1 = shift1, 2 = shift2
+
+// Shift definitions — extend Shift 2 to midnight to catch all late transactions
 // Ensure order: Shift 1 always comes before Shift 2
-$shifts = [  1 => ['label'=>'Shift 1 (6AM–2PM)',  'start'=>'06:00:00','end'=>'14:00:00'],  2 => ['label'=>'Shift 2 (2PM–12AM)', 'start'=>'14:00:00','end'=>'23:59:59'],
+$shifts = [
+    1 => ['label'=>'Shift 1 (6AM–2PM)',  'start'=>'06:00:00','end'=>'14:00:00'],
+    2 => ['label'=>'Shift 2 (2PM–12AM)', 'start'=>'14:00:00','end'=>'23:59:59'],
 ];
 // Sort by key to ensure Shift 1 comes first, then Shift 2
 ksort($shifts);
-?>  <style>
+?>
+
+<style>
 /* Shift Reports – matches staff_reports.php design with Manager blue theme */
-.sr-report-title {  text-align: center;  padding: 20px 0 14px;  border-bottom: 2px solid #e2e8f0;  margin-bottom: 0;
+.sr-report-title {
+    text-align: center;
+    padding: 20px 0 14px;
+    border-bottom: 2px solid #e2e8f0;
+    margin-bottom: 0;
 }
-.sr-report-title h2 {  font-size: 20px;  font-weight: 800;  color: #00264D;  text-transform: uppercase;  margin: 0 0 4px;  letter-spacing: 0.5px;
+.sr-report-title h2 {
+    font-size: 20px;
+    font-weight: 800;
+    color: #00264D;
+    text-transform: uppercase;
+    margin: 0 0 4px;
+    letter-spacing: 0.5px;
 }
-.sr-report-title h3 {  font-size: 16px;  font-weight: 700;  color: #00264D;  text-transform: uppercase;  margin: 0 0 6px;  letter-spacing: 0.3px;
+.sr-report-title h3 {
+    font-size: 16px;
+    font-weight: 700;
+    color: #00264D;
+    text-transform: uppercase;
+    margin: 0 0 6px;
+    letter-spacing: 0.3px;
 }
-.sr-report-title p {  font-size: 12px;  color: #64748b;  margin: 2px 0;
+.sr-report-title p {
+    font-size: 12px;
+    color: #64748b;
+    margin: 2px 0;
 }
 /* Section Tabs */
-.sr-section-tabs {  display: flex;  border-bottom: 2px solid #e2e8f0;  margin-bottom: 0;  overflow-x: auto;
+.sr-section-tabs {
+    display: flex;
+    border-bottom: 2px solid #e2e8f0;
+    margin-bottom: 0;
+    overflow-x: auto;
 }
-.sr-section-tab {  padding: 12px 20px;  font-size: 12px;  font-weight: 700;  text-transform: uppercase;  letter-spacing: 0.3px;  color: #64748b;  background: #f8f9fa;  border: none;  border-bottom: 3px solid transparent;  cursor: pointer;  white-space: nowrap;  transition: all 0.2s;
+.sr-section-tab {
+    padding: 12px 20px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: #64748b;
+    background: #f8f9fa;
+    border: none;
+    border-bottom: 3px solid transparent;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
 }
 .sr-section-tab:hover { background: #fff; color: #002F70; }
-.sr-section-tab.active {  background: #fff;  color: #00264D;  border-bottom-color: #002F70;  font-weight: 800;
+.sr-section-tab.active {
+    background: #fff;
+    color: #00264D;
+    border-bottom-color: #002F70;
+    font-weight: 800;
 }
 /* Shift Filter Buttons */
-.sr-shift-btns {  display: flex;  gap: 8px;  padding: 14px 0 4px;  margin-bottom: 16px;
+.sr-shift-btns {
+    display: flex;
+    gap: 8px;
+    padding: 14px 0 4px;
+    margin-bottom: 16px;
 }
-.sr-shift-btn {  padding: 8px 18px;  font-size: 12px;  font-weight: 600;  border: 2px solid #00264D;  background: white;  color: #00264D;  border-radius: 5px;  cursor: pointer;  transition: all 0.2s;
+.sr-shift-btn {
+    padding: 8px 18px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 2px solid #00264D;
+    background: white;
+    color: #00264D;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.2s;
 }
 .sr-shift-btn:hover { background: #f0f4ff; }
 .sr-shift-btn.active { background: #002F70; color: white; border-color: #002F70; }
@@ -44,48 +134,978 @@ ksort($shifts);
 /* Shift Block */
 .sr-shift-block { margin-bottom: 32px; }
 .sr-shift-block.hidden { display: none; }
-.sr-shift-heading {  font-size: 13px;  font-weight: 700;  color: #00264D;  text-transform: uppercase;  padding: 10px 0 6px;  margin-bottom: 8px;  border-bottom: 1px solid #e2e8f0;
+.sr-shift-heading {
+    font-size: 13px;
+    font-weight: 700;
+    color: #00264D;
+    text-transform: uppercase;
+    padding: 10px 0 6px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #e2e8f0;
 }
 /* Table */
-.sr-table {  width: 100%;  border-collapse: collapse;  font-size: 12px;
+.sr-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
 }
-.sr-table thead tr {  border-top: 2px solid #00264D;  border-bottom: 1px solid #e2e8f0;  background: #f8fafc;
+.sr-table thead tr {
+    border-top: 2px solid #00264D;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
 }
-.sr-table thead th {  padding: 10px 8px;  text-align: left;  font-weight: 700;  color: #475569;  font-size: 11px;  text-transform: uppercase;  white-space: nowrap;  background: #f8fafc;
+.sr-table thead th {
+    padding: 10px 8px;
+    text-align: left;
+    font-weight: 700;
+    color: #475569;
+    font-size: 11px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    background: #f8fafc;
 }
 .sr-table tbody tr { border-bottom: 1px solid #f1f5f9; }
 .sr-table tbody tr:hover { background: #f8fafc; }
 .sr-table tbody td { padding: 9px 8px; color: #334155; font-size: 12px; }
-.sr-table tfoot tr {  border-top: 2px solid #00264D;  background: #f0f4ff;
+.sr-table tfoot tr {
+    border-top: 2px solid #00264D;
+    background: #f0f4ff;
 }
-.sr-table tfoot td {  padding: 10px 8px;  font-weight: 700;  color: #00264D;  font-size: 12px;
+.sr-table tfoot td {
+    padding: 10px 8px;
+    font-weight: 700;
+    color: #00264D;
+    font-size: 12px;
 }
-.sr-empty {  text-align: center;  padding: 28px;  color: #94a3b8;  font-size: 13px;
+.sr-empty {
+    text-align: center;
+    padding: 28px;
+    color: #94a3b8;
+    font-size: 13px;
 }
-.sr-status {  display: inline-block;  padding: 2px 8px;  border-radius: 4px;  font-size: 10px;  font-weight: 700;  color: white;
-}  @media print {  @page { size: legal portrait; margin: 0.3in 0.4in; }  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }  html, body { background: white !important; padding: 0 !important; margin: 0 !important; }  .sidebar, aside, nav, .navbar, .header, .main-header, body > header,  .main-footer, .fixed-footer, .footer-sidebar-area, .main,  .sr-section-tabs, .rpt-filter-bar, .rpt-export-actions,  .notification-bell, .theme-toggle-btn, .profile-access,  .toggle-bar, .brand-mark, img.logo, .no-print {  display: none !important;  visibility: hidden !important;  }  .main, .content-wrapper, .wrapper {  margin: 0 !important; padding: 0 !important;  left: 0 !important; top: 0 !important;  width: 100% !important; position: static !important;  }  .reports-wrapper { box-shadow: none !important; border: none !important; }  .rpt-content { padding: 0 !important; }  .sr-shift-block.hidden { display: block !important; }  .sr-tbl { font-size: 10px !important; page-break-inside: auto !important; }  .sr-tbl thead th { font-size: 9px !important; padding: 6px 5px !important; }  .sr-tbl tbody td { font-size: 10px !important; padding: 5px !important; }  .sr-tbl tfoot td { font-size: 10px !important; padding: 6px 5px !important; }  .sr-shift-block { page-break-inside: avoid !important; margin-bottom: 16px !important; }  .sr-section-tabs { display: none !important; }
+.sr-status {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    color: white;
 }
-</style>  <!-- Section Tabs -->
-<div class="sr-section-tabs">  <?php  $tabs = [  'fuel_sales'  => ['label'=>'Fuel Sales Report',  'ico'=>'fas fa-gas-pump'],  'merchandise'  => ['label'=>'Daily Merchandise & Service Sales Report',  'ico'=>'fas fa-shopping-cart'],  'service_income'  => ['label'=>'Service Income Report',  'ico'=>'fas fa-wrench'],  'payments'  => ['label'=>'Payments Report',  'ico'=>'fas fa-money-bill-wave'],  'customers'  => ['label'=>'Customers Report',  'ico'=>'fas fa-users'],  ];  foreach ($tabs as $key => $tab): ?>  <button class="sr-section-tab <?= $section === $key ? 'active' : '' ?>"  onclick="srSwitchSection('<?= $key ?>')">  <i class="<?= $tab['ico'] ?>"></i> <?= $tab['label'] ?>  </button>  <?php endforeach; ?>
-</div>  <?php
-if (!function_exists('srFuelDisplayName')) {  function srFuelDisplayName($fuel_type): string {  $name = trim((string)$fuel_type);  $normalized = strtoupper(preg_replace('/\s+/', ' ', $name));  if (strpos($normalized, 'XTRA') !== false && strpos($normalized, 'UNL') !== false) {  return 'Xtra UNL';  }  return $name !== '' ? $name : 'Fuel';  }
-}  function srManagerTableExists(PDO $pdo, string $table): bool {  static $cache = [];  if (isset($cache[$table])) return $cache[$table];  try {  $stmt = $pdo->query('SHOW TABLES LIKE ' . $pdo->quote($table));  return $cache[$table] = ($stmt && $stmt->rowCount() > 0);  } catch (Exception $e) {  return $cache[$table] = false;  }
-}  function srManagerColumnExists(PDO $pdo, string $table, string $column): bool {  static $cache = [];  $key = $table . '.' . $column;  if (isset($cache[$key])) return $cache[$key];  try {  $safeTable = str_replace('`', '``', $table);  $stmt = $pdo->query("SHOW COLUMNS FROM `$safeTable` LIKE " . $pdo->quote($column));  return $cache[$key] = ($stmt && $stmt->rowCount() > 0);  } catch (Exception $e) {  return $cache[$key] = false;  }
-}  function srManagerUserNameSql(PDO $pdo, string $alias): string {  $parts = [];  if (srManagerColumnExists($pdo, 'users', 'first_name') && srManagerColumnExists($pdo, 'users', 'last_name')) {  $parts[] = "NULLIF(TRIM(CONCAT(COALESCE($alias.first_name,''),' ',COALESCE($alias.last_name,''))), '')";  }  if (srManagerColumnExists($pdo, 'users', 'name')) {  $parts[] = "NULLIF($alias.name, '')";  }  if (srManagerColumnExists($pdo, 'users', 'username')) {  $parts[] = "NULLIF($alias.username, '')";  }  $parts[] = "'N/A'";  return 'COALESCE(' . implode(', ', $parts) . ')';
-}  function srManagerMerchValidWhere(string $alias = 'mt'): string {  return "LOWER(COALESCE($alias.validation_status, '')) NOT IN ('voided','rejected','cancelled','canceled')  AND LOWER(COALESCE($alias.workflow_status, '')) NOT IN ('voided','rejected','cancelled','canceled')  AND ($alias.void_reason IS NULL OR TRIM($alias.void_reason) = '')";
-}  function srManagerFuelValidWhere(string $alias = 'ft'): string {  return "LOWER(COALESCE($alias.status, '')) NOT IN ('voided','rejected','cancelled','canceled')";
-}  function srManagerJobValidWhere(string $alias = 'jo'): string {  return "LOWER(COALESCE($alias.status, '')) NOT IN ('voided','rejected','cancelled','canceled')  AND LOWER(COALESCE($alias.validation_status, '')) NOT IN ('voided','rejected','cancelled','canceled')";
-}  function srManagerShiftCondition(string $alias, string $dateExpr, bool $isShift1): string {  $period = "LOWER(COALESCE($alias.shift_period,''))";  $name = "LOWER(COALESCE($alias.shift_name,''))";  $emptyShift = "(COALESCE($alias.shift_period,'') = '' AND COALESCE($alias.shift_name,'') = '')";  if ($isShift1) {  return "( $period IN ('first','morning','1','shift1','shift 1','first shift')  OR $name LIKE '%first%' OR $name LIKE '%morning%'  OR ($emptyShift AND TIME($dateExpr) >= '06:00:00' AND TIME($dateExpr) < '14:00:00') )";  }  return "( $period IN ('second','afternoon','evening','2','shift2','shift 2','second shift','night','midnight')  OR $name LIKE '%second%' OR $name LIKE '%afternoon%' OR $name LIKE '%evening%'  OR ($emptyShift AND (TIME($dateExpr) >= '14:00:00' OR TIME($dateExpr) < '06:00:00')) )";
-}  function srManagerJobTimeShiftCondition(string $alias, bool $isShift1): string {  if ($isShift1) {  return "(TIME($alias.created_at) >= '06:00:00' AND TIME($alias.created_at) < '14:00:00')";  }  return "NOT (TIME($alias.created_at) >= '06:00:00' AND TIME($alias.created_at) < '14:00:00')";
-}  function srManagerLineAmountSql(string $itemAlias = 'mti', string $txAlias = 'mt', string $sumAlias = 'mis'): string {  return "ROUND(COALESCE($itemAlias.subtotal, COALESCE($itemAlias.quantity, 0) * COALESCE($itemAlias.unit_price, 0), 0)  * CASE  WHEN COALESCE($sumAlias.item_subtotal, 0) > 0 AND COALESCE($txAlias.total_amount, 0) > 0  THEN $txAlias.total_amount / $sumAlias.item_subtotal  ELSE 1  END, 2)";
-}  function srManagerFetchEmbeddedServices(PDO $pdo, int $station_id, string $date_start, string $date_end, bool $isShift1, bool $forJobOrders = false): array {  if (!srManagerTableExists($pdo, 'merchandise_transactions')) return [];  $rows = [];  $encoderSql = srManagerTableExists($pdo, 'users') ? srManagerUserNameSql($pdo, 'u') : "'N/A'";  $validWhere = srManagerMerchValidWhere('mt');  $dateExpr = 'COALESCE(mt.transaction_date, mt.created_at)';  $shiftCond = srManagerShiftCondition('mt', $dateExpr, $isShift1);  $jobFilter = "(LOWER(COALESCE(mt.transaction_type, '')) IN ('job_order','combined')  OR NULLIF(TRIM(COALESCE(mt.job_order_service, '')), '') IS NOT NULL  OR mt.job_order_id IS NOT NULL  OR mt.job_order_db_id IS NOT NULL)";  if (srManagerTableExists($pdo, 'merchandise_transaction_items')) {  $lineAmount = srManagerLineAmountSql('mti', 'mt');  $stmt = $pdo->prepare("  SELECT  mt.id,  COALESCE(mt.workflow_status, mt.validation_status, 'Completed') AS status,  COALESCE(  NULLIF(mt.job_order_service, ''),  NULLIF(GROUP_CONCAT(DISTINCT CASE WHEN LOWER(COALESCE(mti.item_type, 'merchandise')) = 'service' THEN mti.product_name END ORDER BY mti.id SEPARATOR ', '), ''),  'Service'  ) AS service_type,  SUM(CASE WHEN LOWER(COALESCE(mti.item_type, 'merchandise')) = 'service' THEN $lineAmount ELSE 0 END) AS labor_fee,  SUM(CASE WHEN LOWER(COALESCE(mti.item_type, 'merchandise')) <> 'service' THEN $lineAmount ELSE 0 END) AS parts_used,  COALESCE(mt.total_amount, SUM($lineAmount), 0) AS total_amount,  $encoderSql AS encoder,  $dateExpr AS created_at  FROM merchandise_transactions mt  LEFT JOIN (  SELECT transaction_id,  SUM(COALESCE(subtotal, COALESCE(quantity, 0) * COALESCE(unit_price, 0), 0)) AS item_subtotal  FROM merchandise_transaction_items  GROUP BY transaction_id  ) mis ON mis.transaction_id = mt.id  LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id  LEFT JOIN users u ON mt.staff_id = u.id  WHERE mt.station_id = ?  AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)  AND $validWhere  AND $jobFilter  AND $shiftCond  GROUP BY mt.id, mt.workflow_status, mt.validation_status, mt.job_order_service, mt.total_amount, encoder, created_at  HAVING labor_fee > 0 OR parts_used > 0 OR total_amount > 0  ORDER BY created_at ASC, mt.id ASC  ");  $stmt->execute([$station_id, $date_start, $date_end, $date_start, $date_end]);  $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];  }  $fallbackSql = srManagerTableExists($pdo, 'merchandise_transaction_items')  ? "AND NOT EXISTS (SELECT 1 FROM merchandise_transaction_items mi WHERE mi.transaction_id = mt.id)"  : '';  $stmt = $pdo->prepare("  SELECT  mt.id,  COALESCE(mt.workflow_status, mt.validation_status, 'Completed') AS status,  COALESCE(NULLIF(mt.job_order_service, ''), NULLIF(mt.item_sku, ''), 'Service') AS service_type,  COALESCE(NULLIF(mt.subtotal_amount, 0), NULLIF(mt.unit_price, 0), mt.total_amount, 0) AS labor_fee,  0 AS parts_used,  COALESCE(mt.total_amount, 0) AS total_amount,  $encoderSql AS encoder,  $dateExpr AS created_at  FROM merchandise_transactions mt  LEFT JOIN users u ON mt.staff_id = u.id  WHERE mt.station_id = ?  AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)  AND $validWhere  AND $jobFilter  AND $shiftCond  $fallbackSql  ORDER BY created_at ASC, mt.id ASC  ");  $stmt->execute([$station_id, $date_start, $date_end, $date_start, $date_end]);  $fallbackRows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];  $seen = [];  foreach ($rows as $row) $seen[(int)$row['id']] = true;  foreach ($fallbackRows as $row) {  if (!isset($seen[(int)$row['id']])) $rows[] = $row;  }  if (!$forJobOrders) {  foreach ($rows as &$row) unset($row['status']);  unset($row);  }  return $rows;
-}  function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $date_end, string $shift_start_t, string $shift_end_t, string $section): array {  $rows = [];  $isShift1 = ($shift_start_t === '06:00:00');  $encoderSql = srManagerTableExists($pdo, 'users') ? srManagerUserNameSql($pdo, 'u') : "'N/A'";  try {  switch ($section) {  case 'fuel_sales':  if (!srManagerTableExists($pdo, 'fuel_transactions')) break;  $shiftCond = srManagerShiftCondition('ft', 'ft.transaction_date', $isShift1);  $validWhere = srManagerFuelValidWhere('ft');  $q = $pdo->prepare("  SELECT  COALESCE(ft.pump_id, '—') AS pump_name,  COALESCE(ft.fuel_type, '—') AS fuel_type,  COALESCE(ft.previous_reading, 0) AS beg_reading,  COALESCE(ft.present_reading, 0) AS end_reading,  COALESCE(ft.calibration, 0) AS calibration,  COALESCE(ft.liters_sold, GREATEST(COALESCE(ft.present_reading,0) - COALESCE(ft.previous_reading,0) - COALESCE(ft.calibration,0), 0)) AS dispensed_liters,  COALESCE(ft.price_per_liter, 0) AS unit_price,  COALESCE(ft.total_amount, 0) AS amount,  $encoderSql AS encoder  FROM fuel_transactions ft  LEFT JOIN users u ON ft.staff_id = u.id  WHERE ft.station_id = ?  AND DATE(ft.transaction_date) BETWEEN ? AND ?  AND $validWhere  AND $shiftCond  ORDER BY ft.transaction_date ASC, ft.fuel_type ASC, ft.pump_id ASC  ");  $q->execute([$station_id, $date_start, $date_end]);  $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];  foreach ($rows as &$row) {  $row['fuel_type'] = srFuelDisplayName($row['fuel_type'] ?? '');  }  unset($row);  break;  case 'merchandise':  if (!srManagerTableExists($pdo, 'merchandise_transactions') || !srManagerTableExists($pdo, 'merchandise_transaction_items')) break;  $validWhere = srManagerMerchValidWhere('mt');  $dateExpr = 'COALESCE(mt.transaction_date, mt.created_at)';  $shiftCond = srManagerShiftCondition('mt', $dateExpr, $isShift1);  $lineAmount = srManagerLineAmountSql('mti', 'mt');  $q = $pdo->prepare("  SELECT  COALESCE(NULLIF(mti.category, ''), 'General') AS category,  COALESCE(NULLIF(mti.product_name, ''), mt.item_sku, 'Item') AS product_name,  COALESCE(si.stock_level, 0) + SUM(COALESCE(mti.quantity, 0)) AS beg_stock,  0 AS stock_in,  SUM(COALESCE(mti.quantity, 0)) AS stock_out,  COALESCE(si.stock_level, 0) AS end_stock,  COALESCE(mti.unit_price, mt.unit_price, 0) AS unit_price,  SUM($lineAmount) AS amount,  GROUP_CONCAT(DISTINCT $encoderSql ORDER BY $encoderSql SEPARATOR ', ') AS encoder  FROM merchandise_transactions mt  LEFT JOIN (  SELECT transaction_id,  SUM(COALESCE(subtotal, COALESCE(quantity, 0) * COALESCE(unit_price, 0), 0)) AS item_subtotal  FROM merchandise_transaction_items  GROUP BY transaction_id  ) mis ON mis.transaction_id = mt.id  JOIN merchandise_transaction_items mti  ON mti.transaction_id = mt.id  AND LOWER(COALESCE(mti.item_type, 'merchandise')) <> 'service'  LEFT JOIN users u ON mt.staff_id = u.id  LEFT JOIN station_inventory si ON si.product_id = mti.product_id AND si.station_id = mt.station_id  WHERE mt.station_id = ?  AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)  AND $validWhere  AND $shiftCond  GROUP BY mti.product_id, mti.category, mti.product_name, unit_price, si.stock_level  ORDER BY category, product_name  ");  $q->execute([$station_id, $date_start, $date_end, $date_start, $date_end]);  $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];  break;  case 'service_income':  $rows = srManagerFetchEmbeddedServices($pdo, $station_id, $date_start, $date_end, $isShift1, false);  if (srManagerTableExists($pdo, 'job_orders')) {  $shiftCond = srManagerJobTimeShiftCondition('jo', $isShift1);  $validWhere = srManagerJobValidWhere('jo');  $serviceSql = srManagerColumnExists($pdo, 'job_orders', 'service_type')  ? "COALESCE(NULLIF(jo.service_type, ''), NULLIF(jo.service_description, ''), 'Service')"  : "COALESCE(NULLIF(jo.service_description, ''), 'Service')";  $q = $pdo->prepare("  SELECT  $serviceSql AS service_type,  COALESCE(NULLIF(jo.actual_labor_cost, 0), NULLIF(jo.estimated_labor_cost, 0), 0) AS labor_fee,  COALESCE(NULLIF(jo.actual_parts_cost, 0), NULLIF(jo.estimated_parts_cost, 0), 0) AS parts_used,  COALESCE(NULLIF(jo.total_cost, 0), NULLIF(jo.estimated_cost, 0), NULLIF(jo.amount_paid, 0), 0) AS total_amount,  $encoderSql AS encoder,  jo.created_at  FROM job_orders jo  LEFT JOIN users u ON jo.created_by = u.id  WHERE jo.station_id = ?  AND DATE(jo.created_at) BETWEEN ? AND ?  AND $validWhere  AND $shiftCond  ORDER BY jo.created_at ASC, service_type  ");  $q->execute([$station_id, $date_start, $date_end]);  $rows = array_merge($rows, $q->fetchAll(PDO::FETCH_ASSOC) ?: []);  }  usort($rows, fn($a, $b) => strcmp((string)($a['created_at'] ?? ''), (string)($b['created_at'] ?? '')));  break;  case 'payments':  $merged = [];  $addPayment = static function (array $items) use (&$merged): void {  foreach ($items as $r) {  $mode = $r['mode_of_payment'] ?: 'Cash';  if (!isset($merged[$mode])) $merged[$mode] = ['mode_of_payment' => $mode, 'txn_count' => 0, 'amount' => 0];  $merged[$mode]['txn_count'] += (int)$r['txn_count'];  $merged[$mode]['amount'] += (float)$r['amount'];  }  };  if (srManagerTableExists($pdo, 'fuel_transactions')) {  $shiftCond = srManagerShiftCondition('ft', 'ft.transaction_date', $isShift1);  $validWhere = srManagerFuelValidWhere('ft');  $q = $pdo->prepare("  SELECT  CASE  WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%fleet%' THEN 'Fleet'  WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%fuel card%' OR LOWER(COALESCE(ft.payment_method,'')) LIKE '%efuel%' THEN 'E-Fuel'  WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%card%' THEN 'Card'  WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%wallet%' OR LOWER(COALESCE(ft.payment_method,'')) LIKE '%gcash%' OR LOWER(COALESCE(ft.payment_method,'')) LIKE '%maya%' THEN 'E-Wallet'  WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%cash%' OR COALESCE(ft.payment_method,'') = '' THEN 'Cash'  ELSE COALESCE(NULLIF(ft.payment_method,''), 'Cash')  END AS mode_of_payment,  COUNT(*) AS txn_count,  SUM(COALESCE(ft.total_amount, 0)) AS amount  FROM fuel_transactions ft  WHERE ft.station_id = ?  AND DATE(ft.transaction_date) BETWEEN ? AND ?  AND $validWhere  AND $shiftCond  GROUP BY mode_of_payment  ");  $q->execute([$station_id, $date_start, $date_end]);  $addPayment($q->fetchAll(PDO::FETCH_ASSOC) ?: []);  }  if (srManagerTableExists($pdo, 'merchandise_transactions')) {  $validWhere = srManagerMerchValidWhere('mt');  $dateExpr = 'COALESCE(mt.transaction_date, mt.created_at)';  $shiftCond = srManagerShiftCondition('mt', $dateExpr, $isShift1);  $q = $pdo->prepare("  SELECT  CASE  WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%fleet%' THEN 'Fleet'  WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%fuel card%' OR LOWER(COALESCE(mt.payment_method,'')) LIKE '%efuel%' THEN 'E-Fuel'  WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%card%' THEN 'Card'  WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%wallet%' OR LOWER(COALESCE(mt.payment_method,'')) LIKE '%gcash%' OR LOWER(COALESCE(mt.payment_method,'')) LIKE '%maya%' THEN 'E-Wallet'  WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%cash%' OR COALESCE(mt.payment_method,'') = '' THEN 'Cash'  ELSE COALESCE(NULLIF(mt.payment_method,''), 'Cash')  END AS mode_of_payment,  COUNT(*) AS txn_count,  SUM(COALESCE(mt.total_amount, 0)) AS amount  FROM merchandise_transactions mt  WHERE mt.station_id = ?  AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)  AND $validWhere  AND $shiftCond  GROUP BY mode_of_payment  ");  $q->execute([$station_id, $date_start, $date_end, $date_start, $date_end]);  $addPayment($q->fetchAll(PDO::FETCH_ASSOC) ?: []);  }  $rows = array_values($merged);  usort($rows, fn($a, $b) => $b['amount'] <=> $a['amount']);  break;  case 'job_orders':  $rows = srManagerFetchEmbeddedServices($pdo, $station_id, $date_start, $date_end, $isShift1, true);  if (srManagerTableExists($pdo, 'job_orders')) {  $shiftCond = srManagerJobTimeShiftCondition('jo', $isShift1);  $validWhere = srManagerJobValidWhere('jo');  $serviceSql = srManagerColumnExists($pdo, 'job_orders', 'service_type')  ? "COALESCE(NULLIF(jo.service_type, ''), NULLIF(jo.service_description, ''), 'Service')"  : "COALESCE(NULLIF(jo.service_description, ''), 'Service')";  $q = $pdo->prepare("  SELECT  COALESCE(jo.status, 'Pending') AS status,  $serviceSql AS service_type,  COALESCE(NULLIF(jo.actual_parts_cost, 0), NULLIF(jo.estimated_parts_cost, 0), 0) AS parts_used,  COALESCE(NULLIF(jo.actual_labor_cost, 0), NULLIF(jo.estimated_labor_cost, 0), 0) AS labor_fee,  COALESCE(NULLIF(jo.total_cost, 0), NULLIF(jo.estimated_cost, 0), NULLIF(jo.amount_paid, 0), 0) AS total_amount,  $encoderSql AS encoder,  jo.created_at  FROM job_orders jo  LEFT JOIN users u ON jo.created_by = u.id  WHERE jo.station_id = ?  AND DATE(jo.created_at) BETWEEN ? AND ?  AND $validWhere  AND $shiftCond  ORDER BY FIELD(jo.status,'Pending','In Progress','Completed','Verified','finalized','Cancelled'), jo.created_at DESC  ");  $q->execute([$station_id, $date_start, $date_end]);  $rows = array_merge($rows, $q->fetchAll(PDO::FETCH_ASSOC) ?: []);  }  usort($rows, fn($a, $b) => strcmp((string)($b['created_at'] ?? ''), (string)($a['created_at'] ?? '')));  break;  case 'customers':  if (!srManagerTableExists($pdo, 'merchandise_transactions')) break;  $validWhere = srManagerMerchValidWhere('mt');  $dateExpr = 'COALESCE(mt.transaction_date, mt.created_at)';  $shiftCond = srManagerShiftCondition('mt', $dateExpr, $isShift1);  $pointsCol = srManagerColumnExists($pdo, 'customers', 'loyalty_points') ? 'c.loyalty_points' : (srManagerColumnExists($pdo, 'customers', 'points') ? 'c.points' : '0');  $q = $pdo->prepare("  SELECT  COALESCE(NULLIF(c.name, ''), NULLIF(mt.customer_name, ''), 'Walk-in Customer') AS customer_name,  COALESCE(CONCAT('#', c.id), 'Walk-in') AS customer_ref,  COUNT(DISTINCT mt.id) AS txn_count,  MAX(COALESCE(c.balance, c.current_balance, 0)) AS balance,  MAX(COALESCE($pointsCol, 0)) AS loyalty_points  FROM merchandise_transactions mt  LEFT JOIN customers c  ON c.station_id = mt.station_id  AND (  c.id = mt.credit_customer_id  OR (NULLIF(mt.customer_name, '') IS NOT NULL AND LOWER(c.name) = LOWER(mt.customer_name))  )  WHERE mt.station_id = ?  AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)  AND $validWhere  AND $shiftCond  GROUP BY customer_ref, customer_name  ORDER BY txn_count DESC, customer_name ASC  ");  $q->execute([$station_id, $date_start, $date_end, $date_start, $date_end]);  $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];  break;  }  } catch (Exception $ex) {  $rows = [];  }  return $rows;
+
+@media print {
+    @page { size: legal portrait; margin: 0.3in 0.4in; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    html, body { background: white !important; padding: 0 !important; margin: 0 !important; }
+    .sidebar, aside, nav, .navbar, .header, .main-header, body > header,
+    .main-footer, .fixed-footer, .footer-sidebar-area, .main,
+    .sr-section-tabs, .rpt-filter-bar, .rpt-export-actions,
+    .notification-bell, .theme-toggle-btn, .profile-access,
+    .toggle-bar, .brand-mark, img.logo, .no-print {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    .main, .content-wrapper, .wrapper {
+        margin: 0 !important; padding: 0 !important;
+        left: 0 !important; top: 0 !important;
+        width: 100% !important; position: static !important;
+    }
+    .reports-wrapper { box-shadow: none !important; border: none !important; }
+    .rpt-content { padding: 0 !important; }
+    .sr-shift-block.hidden { display: block !important; }
+    .sr-tbl { font-size: 10px !important; page-break-inside: auto !important; }
+    .sr-tbl thead th { font-size: 9px !important; padding: 6px 5px !important; }
+    .sr-tbl tbody td { font-size: 10px !important; padding: 5px !important; }
+    .sr-tbl tfoot td { font-size: 10px !important; padding: 6px 5px !important; }
+    .sr-shift-block { page-break-inside: avoid !important; margin-bottom: 16px !important; }
+    .sr-section-tabs { display: none !important; }
 }
-?>  <!-- Section Panels -->
-<?php foreach ($tabs as $sec_key => $tab): ?>
-<div id="sr-panel-<?= $sec_key ?>" class="sr-section-panel <?= $section === $sec_key ? 'active' : '' ?>">  <!-- Centered Report Header (matches staff reports style) -->  <?php  $report_titles = [  'fuel_sales'  => ['title'=>'FUEL SALES REPORT',  'sub'=>'SHIFT SUMMARY'],  'merchandise'  => ['title'=>'DAILY MERCHANDISE & SERVICE SALES REPORT',  'sub'=>'24-HOUR SUMMARY'],  'service_income' => ['title'=>'SERVICE INCOME REPORT',  'sub'=>'SHIFT SUMMARY'],  'payments'  => ['title'=>'PAYMENTS REPORT',  'sub'=>'SHIFT SUMMARY'],  'customers'  => ['title'=>'CUSTOMERS REPORT',  'sub'=>'SHIFT SUMMARY'],  ];  $rt = $report_titles[$sec_key] ?? ['title'=>strtoupper($tab['label']),'sub'=>'SHIFT SUMMARY'];  ?>  <div style="text-align:center;padding:22px 0 14px;border-bottom:2px solid #e2e8f0;margin-bottom:16px;">  <div style="font-size:20px;font-weight:800;color:#00264D;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">  <?= $rt['title'] ?>  </div>  <div style="font-size:16px;font-weight:700;color:#00264D;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:8px;">  <?= $rt['sub'] ?>  </div>  <div style="font-size:12px;color:#64748b;margin-bottom:2px;">  <?= htmlspecialchars($station_name) ?>  </div>  <div style="font-size:12px;color:#334155;">  <strong>Date:</strong>  <?= date('F j, Y', strtotime($date_start)) ?>  <?= $date_start !== $date_end ? ' – ' . date('F j, Y', strtotime($date_end)) : '' ?>  </div>  </div>  <!-- Section Heading -->  <div style="padding:14px 0 10px;border-bottom:1px solid #e2e8f0;margin-bottom:18px;">  <div style="font-size:14px;font-weight:700;color:#00264D;text-transform:uppercase;letter-spacing:0.3px;">  <i class="<?= $tab['ico'] ?>"></i> <?= $tab['label'] ?>  </div>  </div>  <?php  if ($sec_key === 'merchandise'):  // MERCHANDISE tab: render once as a full daily report (no shift split)  require_once __DIR__ . '/merchandise_service_report_new.php';  $reportData = fetchMerchandiseServiceReport($pdo, $station_id, $date_start, $date_end, null);  ?>  <div class="sr-shift-block" data-shift="0" data-section="<?=$sec_key?>">  <div class="sr-shift-heading">Daily Report (All Shifts)</div>  <!-- SECTION 1: MERCHANDISE SALES -->  <div style="margin-bottom: 24px;">  <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">  MERCHANDISE SALES  </div>  <table class="sr-table">  <thead><tr>  <th>Receipt No.</th><th>Customer</th><th>Category</th><th>Product</th>  <th>Qty</th><th>Unit Price</th><th>Amount</th><th>Encoder</th>  </tr></thead>  <tbody>  <?php if (empty($reportData['merchandise_sales'])): ?>  <tr><td colspan="8" class="sr-empty">No merchandise sales for this period</td></tr>  <?php else: $ta=0; foreach($reportData['merchandise_sales'] as $r): $ta+=$r['amount']; ?>  <tr>  <td><?=htmlspecialchars($r['receipt_no'])?></td>  <td><?=htmlspecialchars($r['customer'])?></td>  <td><?=htmlspecialchars($r['category'])?></td>  <td><?=htmlspecialchars($r['product'])?></td>  <td><?=number_format($r['qty'])?></td>  <td>&#x20B1;<?=number_format($r['unit_price'],2)?></td>  <td>&#x20B1;<?=number_format($r['amount'],2)?></td>  <td><?=htmlspecialchars($r['encoder'])?></td>  </tr>  <?php endforeach; endif; ?>  </tbody>  <?php if (!empty($reportData['merchandise_sales'])): ?>  <tfoot><tr>  <td colspan="6" style="text-align:right;"><strong>Total Merchandise Sales:</strong></td>  <td><strong>&#x20B1;<?=number_format($ta,2)?></strong></td>  <td></td>  </tr></tfoot>  <?php endif; ?>  </table>  </div>  <!-- SECTION 2: JOB ORDER / SERVICE SALES -->  <div style="margin-bottom: 24px;">  <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">  JOB ORDER / SERVICE SALES  </div>  <table class="sr-table">  <thead><tr>  <th>JO No.</th><th>Customer</th><th>Vehicle</th><th>Service Type</th>  <th>Labor Fee</th><th>Parts Cost</th><th>Total Amount</th><th>Encoder</th>  </tr></thead>  <tbody>  <?php if (empty($reportData['job_orders'])): ?>  <tr><td colspan="8" class="sr-empty">No job orders for this period</td></tr>  <?php else: $labor=0; $total=0; foreach($reportData['job_orders'] as $r): $labor+=$r['labor_fee']; $total+=$r['total_amount']; ?>  <tr>  <td><?=htmlspecialchars($r['jo_no'])?></td>  <td><?=htmlspecialchars($r['customer'])?></td>  <td><?=htmlspecialchars($r['vehicle'])?></td>  <td><?=htmlspecialchars($r['service_type'])?></td>  <td>&#x20B1;<?=number_format($r['labor_fee'],2)?></td>  <td>&#x20B1;<?=number_format($r['parts_cost'],2)?></td>  <td>&#x20B1;<?=number_format($r['total_amount'],2)?></td>  <td><?=htmlspecialchars($r['encoder'])?></td>  </tr>  <?php endforeach; endif; ?>  </tbody>  <?php if (!empty($reportData['job_orders'])): ?>  <tfoot>  <tr>  <td colspan="4" style="text-align:right;"><strong>Total Service Income (Labor):</strong></td>  <td><strong>&#x20B1;<?=number_format($labor,2)?></strong></td>  <td colspan="3"></td>  </tr>  <tr>  <td colspan="4" style="text-align:right;"><strong>Total Job Order Sales:</strong></td>  <td colspan="2"><strong>&#x20B1;<?=number_format($total,2)?></strong></td>  <td colspan="2"></td>  </tr>  </tfoot>  <?php endif; ?>  </table>  </div>  <!-- SECTION 3: PARTS USED IN JOB ORDERS -->  <div style="margin-bottom: 24px;">  <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">  PARTS USED IN JOB ORDERS (FROM MERCHANDISE PRODUCTS)  </div>  <p style="font-size: 11px; color: #64748b; margin: 0 0 8px 0; font-style: italic;">Source: Merchandise Inventory Products</p>  <table class="sr-table">  <thead><tr>  <th>JO No.</th><th>Customer</th><th>Product Name</th><th>Category</th>  <th>Qty Used</th><th>Unit Price</th><th>Total Cost</th>  </tr></thead>  <tbody>  <?php if (empty($reportData['parts_used'])): ?>  <tr><td colspan="7" class="sr-empty">No parts used in job orders for this period</td></tr>  <?php else: $qty=0; $cost=0; foreach($reportData['parts_used'] as $r): $qty+=$r['qty_used']; $cost+=$r['total_cost']; ?>  <tr>  <td><?=htmlspecialchars($r['jo_no'])?></td>  <td><?=htmlspecialchars($r['customer'])?></td>  <td><?=htmlspecialchars($r['product_name'])?></td>  <td><?=htmlspecialchars($r['category'])?></td>  <td><?=number_format($r['qty_used'])?></td>  <td>&#x20B1;<?=number_format($r['unit_price'],2)?></td>  <td>&#x20B1;<?=number_format($r['total_cost'],2)?></td>  </tr>  <?php endforeach; endif; ?>  </tbody>  <?php if (!empty($reportData['parts_used'])): ?>  <tfoot><tr>  <td colspan="4" style="text-align:right;"><strong>Total Parts Used:</strong></td>  <td><strong><?=number_format($qty)?></strong></td>  <td style="text-align:right;"><strong>Total Cost:</strong></td>  <td><strong>&#x20B1;<?=number_format($cost,2)?></strong></td>  </tr></tfoot>  <?php endif; ?>  </table>  </div>  <!-- SECTION 4: PAYMENT BREAKDOWN -->  <div style="margin-bottom: 24px;">  <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">  PAYMENT BREAKDOWN  </div>  <table class="sr-table">  <thead><tr>  <th>Payment Method</th><th>Transactions</th><th>Amount</th>  </tr></thead>  <tbody>  <?php if (empty($reportData['payment_breakdown'])): ?>  <tr><td colspan="3" class="sr-empty">No payment data for this period</td></tr>  <?php else: $txn=0; $amt=0; foreach($reportData['payment_breakdown'] as $r): $txn+=$r['transactions']; $amt+=$r['amount']; ?>  <tr>  <td><?=htmlspecialchars($r['payment_method'])?></td>  <td><?=number_format($r['transactions'])?></td>  <td>&#x20B1;<?=number_format($r['amount'],2)?></td>  </tr>  <?php endforeach; endif; ?>  </tbody>  <?php if (!empty($reportData['payment_breakdown'])): ?>  <tfoot><tr>  <td style="text-align:right;"><strong>TOTAL:</strong></td>  <td><strong><?=number_format($txn)?></strong></td>  <td><strong>&#x20B1;<?=number_format($amt,2)?></strong></td>  </tr></tfoot>  <?php endif; ?>  </table>  </div>  <!-- SECTION 5: SHIFT SALES SUMMARY -->  <div style="margin-bottom: 24px;">  <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">  SHIFT SALES SUMMARY  </div>  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">  <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px;">  <div style="font-weight: 700; margin-bottom: 8px;">Shift 1 (6:00 AM – 2:00 PM)</div>  <table style="width: 100%; font-size: 11px;">  <tr><td>Merchandise Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift1']['merchandise_sales']??0,2)?></td></tr>  <tr><td>Labor Income</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift1']['labor_income']??0,2)?></td></tr>  <tr><td>Parts Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift1']['parts_sales']??0,2)?></td></tr>  <tr style="border-top: 2px solid #00264D; font-weight: 700;"><td>Grand Total</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift1']['grand_total']??0,2)?></td></tr>  </table>  </div>  <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px;">  <div style="font-weight: 700; margin-bottom: 8px;">Shift 2 (2:00 PM – 12:00 AM)</div>  <table style="width: 100%; font-size: 11px;">  <tr><td>Merchandise Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift2']['merchandise_sales']??0,2)?></td></tr>  <tr><td>Labor Income</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift2']['labor_income']??0,2)?></td></tr>  <tr><td>Parts Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift2']['parts_sales']??0,2)?></td></tr>  <tr style="border-top: 2px solid #00264D; font-weight: 700;"><td>Grand Total</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift2']['grand_total']??0,2)?></td></tr>  </table>  </div>  </div>  </div>  <!-- SECTION 6: OVERALL DAILY SUMMARY -->  <div style="margin-bottom: 24px;">  <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">  OVERALL DAILY SUMMARY  </div>  <table class="sr-table">  <thead><tr>  <th>Description</th><th style="text-align: right;">Amount</th>  </tr></thead>  <tbody>  <tr><td>Merchandise Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['daily_summary']['merchandise_sales'],2)?></td></tr>  <tr><td>Labor Income</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['daily_summary']['labor_income'],2)?></td></tr>  <tr><td>Parts Used (Merchandise Products)</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['daily_summary']['parts_used'],2)?></td></tr>  <tr style="background: #f0f4ff;"><td><strong>Grand Total Sales</strong></td><td style="text-align: right;"><strong>&#x20B1;<?=number_format($reportData['daily_summary']['grand_total'],2)?></strong></td></tr>  <tr><td>Total Transactions</td><td style="text-align: right;"><?=number_format($reportData['daily_summary']['total_transactions'])?></td></tr>  <tr><td>Customers Served</td><td style="text-align: right;"><?=number_format($reportData['daily_summary']['customers_served'])?></td></tr>  </tbody>  </table>  </div>  </div><!-- end sr-shift-block merchandise -->  <?php else:  // All other tabs: render per-shift using the loop  foreach ($shifts as $snum => $sdef):  $rows = srFetchManager($pdo, (int)$station_id, $date_start, $date_end, $sdef['start'], $sdef['end'], $sec_key);  ?>  <div class="sr-shift-block <?= ($active_shift!==0 && $active_shift!==$snum)?'hidden':'' ?>" data-shift="<?=$snum?>" data-section="<?=$sec_key?>">  <div class="sr-shift-heading"><?= $sdef['label'] ?></div>  <?php if ($sec_key === 'fuel_sales'): ?>  <table class="sr-table">  <thead><tr>  <th>Name</th><th>Beginning Reading</th><th>Ending Reading</th>  <th>Calibration</th><th>Dispensed Liters</th><th>Unit Price</th><th>Amount</th><th>Encoder</th>  </tr></thead>  <tbody>  <?php if (empty($rows)): ?><tr><td colspan="8" class="sr-empty">No fuel sales for this shift</td></tr>  <?php else:  $tl=0;$ta=0;  $fuel_pump_counter = [];  foreach($rows as $r):  $tl+=$r['dispensed_liters'];  $ta+=$r['amount'];  $fuel_display = preg_replace('/\s+\d+\s*-\s*\d+$/', '', $r['fuel_type']);  if (!isset($fuel_pump_counter[$fuel_display])) $fuel_pump_counter[$fuel_display] = [];  $pump_key = $r['pump_name'];  if (!isset($fuel_pump_counter[$fuel_display][$pump_key]))  $fuel_pump_counter[$fuel_display][$pump_key] = count($fuel_pump_counter[$fuel_display]) + 1;  $pump_num = $fuel_pump_counter[$fuel_display][$pump_key];  ?>  <tr>  <td>  <div style="font-weight:700;font-size:.85rem;">Pump <?=$pump_num?></div>  <div style="font-size:.78rem;color:#555;"><?=htmlspecialchars($fuel_display)?></div>  </td>  <td><?=number_format($r['beg_reading'],2)?></td>  <td><?=number_format($r['end_reading'],2)?></td>  <td><?=number_format($r['calibration'],2)?></td>  <td><?=number_format($r['dispensed_liters'],2)?> L</td>  <td>&#x20B1;<?=number_format($r['unit_price'],2)?></td>  <td>&#x20B1;<?=number_format($r['amount'],2)?></td>  <td><?=htmlspecialchars($r['encoder'])?></td>  </tr>  <?php endforeach; endif; ?>  </tbody>  <?php if (!empty($rows)): ?>  <tfoot><tr>  <td colspan="4" style="text-align:right;"><strong>SHIFT TOTALS:</strong></td>  <td><strong><?=number_format($tl,2)?> L</strong></td>  <td></td>  <td><strong>&#x20B1;<?=number_format($ta,2)?></strong></td>  <td></td>  </tr></tfoot>  <?php endif; ?>  </table>  <?php elseif ($sec_key === 'service_income'): ?>  <table class="sr-table">  <thead><tr>  <th>Service Type</th><th>Labor Fee</th><th>Parts Used</th><th>Total Amount</th><th>Encoder</th>  </tr></thead>  <tbody>  <?php if (empty($rows)): ?><tr><td colspan="5" class="sr-empty">No service income for this shift</td></tr>  <?php else: $tl=0; $tp=0; $ta=0; foreach($rows as $r): $tl+=$r['labor_fee']; $tp+=$r['parts_used']; $ta+=$r['total_amount']; ?>  <tr>  <td><?=htmlspecialchars($r['service_type'])?></td>  <td>&#x20B1;<?=number_format($r['labor_fee'],2)?></td>  <td>&#x20B1;<?=number_format($r['parts_used'],2)?></td>  <td>&#x20B1;<?=number_format($r['total_amount'],2)?></td>  <td><?=htmlspecialchars($r['encoder'])?></td>  </tr>  <?php endforeach; endif; ?>  </tbody>  <?php if (!empty($rows)): ?>  <tfoot><tr>  <td><strong>TOTAL</strong></td>  <td><strong>&#x20B1;<?=number_format($tl,2)?></strong></td>  <td><strong>&#x20B1;<?=number_format($tp,2)?></strong></td>  <td><strong>&#x20B1;<?=number_format($ta,2)?></strong></td>  <td></td>  </tr></tfoot>  <?php endif; ?>  </table>  <?php elseif ($sec_key === 'payments'): ?>  <table class="sr-table">  <thead><tr>  <th>Mode of Payment</th><th>Transaction Count</th><th>Amount</th>  </tr></thead>  <tbody>  <?php if (empty($rows)): ?><tr><td colspan="3" class="sr-empty">No payment records for this shift</td></tr>  <?php else: $tc=0; $ta=0; foreach($rows as $r): $tc+=$r['txn_count']; $ta+=$r['amount']; ?>  <tr>  <td><?=htmlspecialchars($r['mode_of_payment'])?></td>  <td><?=number_format($r['txn_count'])?></td>  <td>&#x20B1;<?=number_format($r['amount'],2)?></td>  </tr>  <?php endforeach; endif; ?>  </tbody>  <?php if (!empty($rows)): ?>  <tfoot><tr>  <td><strong>TOTAL</strong></td>  <td><strong><?=number_format($tc)?></strong></td>  <td><strong>&#x20B1;<?=number_format($ta,2)?></strong></td>  </tr></tfoot>  <?php endif; ?>  </table>  <?php elseif ($sec_key === 'job_orders'):  $status_colors=['Pending'=>'#f59e0b','In Progress'=>'#3b82f6','Completed'=>'#22c55e','Cancelled'=>'#ef4444'];  ?>  <table class="sr-table">  <thead><tr>  <th>Status</th><th>Service Type</th><th>Parts Used</th>  <th>Labor Fee</th><th>Total Service Amount</th><th>Encoder</th>  </tr></thead>  <tbody>  <?php if (empty($rows)): ?><tr><td colspan="6" class="sr-empty">No job orders for this shift</td></tr>  <?php else: $tp=0;$tl=0;$ta=0; foreach($rows as $r): $tp+=$r['parts_used'];$tl+=$r['labor_fee'];$ta+=$r['total_amount'];  $sc=$status_colors[$r['status']]??'#64748b'; ?>  <tr>  <td><span class="sr-status" style="background:<?=$sc?>"><?=htmlspecialchars($r['status'])?></span></td>  <td><?=htmlspecialchars($r['service_type'])?></td>  <td>&#x20B1;<?=number_format($r['parts_used'],2)?></td>  <td>&#x20B1;<?=number_format($r['labor_fee'],2)?></td>  <td>&#x20B1;<?=number_format($r['total_amount'],2)?></td>  <td><?=htmlspecialchars($r['encoder'])?></td>  </tr>  <?php endforeach; endif; ?>  </tbody>  <?php if(!empty($rows)): ?>  <tfoot><tr>  <td colspan="2"><strong>TOTAL</strong></td>  <td><strong>&#x20B1;<?=number_format($tp,2)?></strong></td>  <td><strong>&#x20B1;<?=number_format($tl,2)?></strong></td>  <td><strong>&#x20B1;<?=number_format($ta,2)?></strong></td>  <td></td>  </tr></tfoot>  <?php endif; ?>  </table>  <?php elseif ($sec_key === 'customers'): ?>  <table class="sr-table">  <thead><tr>  <th>Customer Name / ID</th><th>Transactions Made</th><th>Balance</th><th>Loyalty Points</th>  </tr></thead>  <tbody>  <?php if (empty($rows)): ?><tr><td colspan="4" class="sr-empty">No customer transactions for this shift</td></tr>  <?php else: $tt=0;$tb=0;$tlp=0; foreach($rows as $r): $tt+=$r['txn_count'];$tb+=$r['balance'];$tlp+=$r['loyalty_points']; ?>  <tr>  <td><?=htmlspecialchars($r['customer_name'])?> / <?=htmlspecialchars($r['customer_ref'])?></td>  <td><?=number_format($r['txn_count'])?></td>  <td>&#x20B1;<?=number_format($r['balance'],2)?></td>  <td><?=number_format($r['loyalty_points'])?> pts</td>  </tr>  <?php endforeach; endif; ?>  </tbody>  <?php if(!empty($rows)): ?>  <tfoot><tr>  <td><strong>TOTAL</strong></td>  <td><strong><?=number_format($tt)?></strong></td>  <td><strong>&#x20B1;<?=number_format($tb,2)?></strong></td>  <td><strong><?=number_format($tlp)?> pts</strong></td>  </tr></tfoot>  <?php endif; ?>  </table>  <?php endif; ?>  </div>  <?php endforeach; // end shifts loop  endif; // end merchandise / other-tabs condition  ?>
+</style>
+
+<!-- Section Tabs -->
+<div class="sr-section-tabs">
+    <?php
+    $tabs = [
+        'fuel_sales'      => ['label'=>'Fuel Sales Report',         'ico'=>'fas fa-gas-pump'],
+        'merchandise'     => ['label'=>'Daily Merchandise & Service Sales Report',   'ico'=>'fas fa-shopping-cart'],
+        'service_income'  => ['label'=>'Service Income Report',      'ico'=>'fas fa-wrench'],
+        'payments'        => ['label'=>'Payments Report',            'ico'=>'fas fa-money-bill-wave'],
+        'customers'       => ['label'=>'Customers Report',           'ico'=>'fas fa-users'],
+    ];
+    foreach ($tabs as $key => $tab): ?>
+        <button class="sr-section-tab <?= $section === $key ? 'active' : '' ?>"
+                onclick="srSwitchSection('<?= $key ?>')">
+            <i class="<?= $tab['ico'] ?>"></i> <?= $tab['label'] ?>
+        </button>
+    <?php endforeach; ?>
 </div>
-<?php endforeach; ?>  <script>
-function srSwitchSection(sectionKey) {  // Hide all panels  document.querySelectorAll('.sr-section-panel').forEach(p => p.classList.remove('active'));  // Show selected panel  const panel = document.getElementById('sr-panel-' + sectionKey);  if (panel) panel.classList.add('active');  // Update tab buttons safely  document.querySelectorAll('.sr-section-tab').forEach(btn => btn.classList.remove('active'));  const activeTabBtn = document.querySelector(`.sr-section-tab[onclick*="'${sectionKey}'"]`);  if (activeTabBtn) activeTabBtn.classList.add('active');  // Update hidden input in the date filter form  const hiddenInput = document.getElementById('hiddenSectionInput');  if (hiddenInput) hiddenInput.value = sectionKey;  // Update URL without reload  const url = new URL(window.location);  url.searchParams.set('section', sectionKey);  window.history.pushState({}, '', url);
+
+<?php
+if (!function_exists('srFuelDisplayName')) {
+    function srFuelDisplayName($fuel_type): string {
+        $name = trim((string)$fuel_type);
+        $normalized = strtoupper(preg_replace('/\s+/', ' ', $name));
+        if (strpos($normalized, 'XTRA') !== false && strpos($normalized, 'UNL') !== false) {
+            return 'Xtra UNL';
+        }
+        return $name !== '' ? $name : 'Fuel';
+    }
 }
-</script>  <?php if ($is_standalone) require_once __DIR__ . '/../../partials/footer.php'; ?>
+
+function srManagerTableExists(PDO $pdo, string $table): bool {
+    static $cache = [];
+    if (isset($cache[$table])) return $cache[$table];
+    try {
+        $stmt = $pdo->query('SHOW TABLES LIKE ' . $pdo->quote($table));
+        return $cache[$table] = ($stmt && $stmt->rowCount() > 0);
+    } catch (Exception $e) {
+        return $cache[$table] = false;
+    }
+}
+
+function srManagerColumnExists(PDO $pdo, string $table, string $column): bool {
+    static $cache = [];
+    $key = $table . '.' . $column;
+    if (isset($cache[$key])) return $cache[$key];
+    try {
+        $safeTable = str_replace('`', '``', $table);
+        $stmt = $pdo->query("SHOW COLUMNS FROM `$safeTable` LIKE " . $pdo->quote($column));
+        return $cache[$key] = ($stmt && $stmt->rowCount() > 0);
+    } catch (Exception $e) {
+        return $cache[$key] = false;
+    }
+}
+
+function srManagerUserNameSql(PDO $pdo, string $alias): string {
+    $parts = [];
+    if (srManagerColumnExists($pdo, 'users', 'first_name') && srManagerColumnExists($pdo, 'users', 'last_name')) {
+        $parts[] = "NULLIF(TRIM(CONCAT(COALESCE($alias.first_name,''),' ',COALESCE($alias.last_name,''))), '')";
+    }
+    if (srManagerColumnExists($pdo, 'users', 'name')) {
+        $parts[] = "NULLIF($alias.name, '')";
+    }
+    if (srManagerColumnExists($pdo, 'users', 'username')) {
+        $parts[] = "NULLIF($alias.username, '')";
+    }
+    $parts[] = "'N/A'";
+    return 'COALESCE(' . implode(', ', $parts) . ')';
+}
+
+function srManagerMerchValidWhere(string $alias = 'mt'): string {
+    return "LOWER(COALESCE($alias.validation_status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+        AND LOWER(COALESCE($alias.workflow_status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+        AND ($alias.void_reason IS NULL OR TRIM($alias.void_reason) = '')";
+}
+
+function srManagerFuelValidWhere(string $alias = 'ft'): string {
+    return "LOWER(COALESCE($alias.status, '')) NOT IN ('voided','rejected','cancelled','canceled')";
+}
+
+function srManagerJobValidWhere(string $alias = 'jo'): string {
+    return "LOWER(COALESCE($alias.status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+        AND LOWER(COALESCE($alias.validation_status, '')) NOT IN ('voided','rejected','cancelled','canceled')";
+}
+
+function srManagerShiftCondition(string $alias, string $dateExpr, bool $isShift1): string {
+    $period = "LOWER(COALESCE($alias.shift_period,''))";
+    $name = "LOWER(COALESCE($alias.shift_name,''))";
+    $emptyShift = "(COALESCE($alias.shift_period,'') = '' AND COALESCE($alias.shift_name,'') = '')";
+    if ($isShift1) {
+        return "( $period IN ('first','morning','1','shift1','shift 1','first shift')
+            OR $name LIKE '%first%' OR $name LIKE '%morning%'
+            OR ($emptyShift AND TIME($dateExpr) >= '06:00:00' AND TIME($dateExpr) < '14:00:00') )";
+    }
+    return "( $period IN ('second','afternoon','evening','2','shift2','shift 2','second shift','night','midnight')
+        OR $name LIKE '%second%' OR $name LIKE '%afternoon%' OR $name LIKE '%evening%'
+        OR ($emptyShift AND (TIME($dateExpr) >= '14:00:00' OR TIME($dateExpr) < '06:00:00')) )";
+}
+
+function srManagerJobTimeShiftCondition(string $alias, bool $isShift1): string {
+    if ($isShift1) {
+        return "(TIME($alias.created_at) >= '06:00:00' AND TIME($alias.created_at) < '14:00:00')";
+    }
+    return "NOT (TIME($alias.created_at) >= '06:00:00' AND TIME($alias.created_at) < '14:00:00')";
+}
+
+function srManagerLineAmountSql(string $itemAlias = 'mti', string $txAlias = 'mt', string $sumAlias = 'mis'): string {
+    return "ROUND(COALESCE($itemAlias.subtotal, COALESCE($itemAlias.quantity, 0) * COALESCE($itemAlias.unit_price, 0), 0)
+        * CASE
+            WHEN COALESCE($sumAlias.item_subtotal, 0) > 0 AND COALESCE($txAlias.total_amount, 0) > 0
+                THEN $txAlias.total_amount / $sumAlias.item_subtotal
+            ELSE 1
+          END, 2)";
+}
+
+function srManagerFetchEmbeddedServices(PDO $pdo, int $station_id, string $date_start, string $date_end, bool $isShift1, bool $forJobOrders = false): array {
+    if (!srManagerTableExists($pdo, 'merchandise_transactions')) return [];
+
+    $rows = [];
+    $encoderSql = srManagerTableExists($pdo, 'users') ? srManagerUserNameSql($pdo, 'u') : "'N/A'";
+    $validWhere = srManagerMerchValidWhere('mt');
+    $dateExpr = 'COALESCE(mt.transaction_date, mt.created_at)';
+    $shiftCond = srManagerShiftCondition('mt', $dateExpr, $isShift1);
+    $jobFilter = "(LOWER(COALESCE(mt.transaction_type, '')) IN ('job_order','combined')
+        OR NULLIF(TRIM(COALESCE(mt.job_order_service, '')), '') IS NOT NULL
+        OR mt.job_order_id IS NOT NULL
+        OR mt.job_order_db_id IS NOT NULL)";
+
+    if (srManagerTableExists($pdo, 'merchandise_transaction_items')) {
+        $lineAmount = srManagerLineAmountSql('mti', 'mt');
+        $stmt = $pdo->prepare("
+            SELECT
+                mt.id,
+                COALESCE(mt.workflow_status, mt.validation_status, 'Completed') AS status,
+                COALESCE(
+                    NULLIF(mt.job_order_service, ''),
+                    NULLIF(GROUP_CONCAT(DISTINCT CASE WHEN LOWER(COALESCE(mti.item_type, 'merchandise')) = 'service' THEN mti.product_name END ORDER BY mti.id SEPARATOR ', '), ''),
+                    'Service'
+                ) AS service_type,
+                SUM(CASE WHEN LOWER(COALESCE(mti.item_type, 'merchandise')) = 'service' THEN $lineAmount ELSE 0 END) AS labor_fee,
+                SUM(CASE WHEN LOWER(COALESCE(mti.item_type, 'merchandise')) <> 'service' THEN $lineAmount ELSE 0 END) AS parts_used,
+                COALESCE(mt.total_amount, SUM($lineAmount), 0) AS total_amount,
+                $encoderSql AS encoder,
+                $dateExpr AS created_at
+            FROM merchandise_transactions mt
+            LEFT JOIN (
+                SELECT transaction_id,
+                       SUM(COALESCE(subtotal, COALESCE(quantity, 0) * COALESCE(unit_price, 0), 0)) AS item_subtotal
+                FROM merchandise_transaction_items
+                GROUP BY transaction_id
+            ) mis ON mis.transaction_id = mt.id
+            LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
+            LEFT JOIN users u ON mt.staff_id = u.id
+            WHERE mt.station_id = ?
+              AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
+              AND $validWhere
+              AND $jobFilter
+              AND $shiftCond
+            GROUP BY mt.id, mt.workflow_status, mt.validation_status, mt.job_order_service, mt.total_amount, encoder, created_at
+            HAVING labor_fee > 0 OR parts_used > 0 OR total_amount > 0
+            ORDER BY created_at ASC, mt.id ASC
+        ");
+        $stmt->execute([$station_id, $date_start, $date_end, $date_start, $date_end]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    $fallbackSql = srManagerTableExists($pdo, 'merchandise_transaction_items')
+        ? "AND NOT EXISTS (SELECT 1 FROM merchandise_transaction_items mi WHERE mi.transaction_id = mt.id)"
+        : '';
+    $stmt = $pdo->prepare("
+        SELECT
+            mt.id,
+            COALESCE(mt.workflow_status, mt.validation_status, 'Completed') AS status,
+            COALESCE(NULLIF(mt.job_order_service, ''), NULLIF(mt.item_sku, ''), 'Service') AS service_type,
+            COALESCE(NULLIF(mt.subtotal_amount, 0), NULLIF(mt.unit_price, 0), mt.total_amount, 0) AS labor_fee,
+            0 AS parts_used,
+            COALESCE(mt.total_amount, 0) AS total_amount,
+            $encoderSql AS encoder,
+            $dateExpr AS created_at
+        FROM merchandise_transactions mt
+        LEFT JOIN users u ON mt.staff_id = u.id
+        WHERE mt.station_id = ?
+          AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
+          AND $validWhere
+          AND $jobFilter
+          AND $shiftCond
+          $fallbackSql
+        ORDER BY created_at ASC, mt.id ASC
+    ");
+    $stmt->execute([$station_id, $date_start, $date_end, $date_start, $date_end]);
+    $fallbackRows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    $seen = [];
+    foreach ($rows as $row) $seen[(int)$row['id']] = true;
+    foreach ($fallbackRows as $row) {
+        if (!isset($seen[(int)$row['id']])) $rows[] = $row;
+    }
+
+    if (!$forJobOrders) {
+        foreach ($rows as &$row) unset($row['status']);
+        unset($row);
+    }
+    return $rows;
+}
+
+function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $date_end, string $shift_start_t, string $shift_end_t, string $section): array {
+    $rows = [];
+    $isShift1 = ($shift_start_t === '06:00:00');
+    $encoderSql = srManagerTableExists($pdo, 'users') ? srManagerUserNameSql($pdo, 'u') : "'N/A'";
+
+    try {
+        switch ($section) {
+            case 'fuel_sales':
+                if (!srManagerTableExists($pdo, 'fuel_transactions')) break;
+                $shiftCond = srManagerShiftCondition('ft', 'ft.transaction_date', $isShift1);
+                $validWhere = srManagerFuelValidWhere('ft');
+                $q = $pdo->prepare("
+                    SELECT
+                        COALESCE(ft.pump_id, '—') AS pump_name,
+                        COALESCE(ft.fuel_type, '—') AS fuel_type,
+                        COALESCE(ft.previous_reading, 0) AS beg_reading,
+                        COALESCE(ft.present_reading, 0) AS end_reading,
+                        COALESCE(ft.calibration, 0) AS calibration,
+                        COALESCE(ft.liters_sold, GREATEST(COALESCE(ft.present_reading,0) - COALESCE(ft.previous_reading,0) - COALESCE(ft.calibration,0), 0)) AS dispensed_liters,
+                        COALESCE(ft.price_per_liter, 0) AS unit_price,
+                        COALESCE(ft.total_amount, 0) AS amount,
+                        $encoderSql AS encoder
+                    FROM fuel_transactions ft
+                    LEFT JOIN users u ON ft.staff_id = u.id
+                    WHERE ft.station_id = ?
+                      AND DATE(ft.transaction_date) BETWEEN ? AND ?
+                      AND $validWhere
+                      AND $shiftCond
+                    ORDER BY ft.transaction_date ASC, ft.fuel_type ASC, ft.pump_id ASC
+                ");
+                $q->execute([$station_id, $date_start, $date_end]);
+                $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                foreach ($rows as &$row) {
+                    $row['fuel_type'] = srFuelDisplayName($row['fuel_type'] ?? '');
+                }
+                unset($row);
+                break;
+
+            case 'merchandise':
+                if (!srManagerTableExists($pdo, 'merchandise_transactions') || !srManagerTableExists($pdo, 'merchandise_transaction_items')) break;
+                $validWhere = srManagerMerchValidWhere('mt');
+                $dateExpr = 'COALESCE(mt.transaction_date, mt.created_at)';
+                $shiftCond = srManagerShiftCondition('mt', $dateExpr, $isShift1);
+                $lineAmount = srManagerLineAmountSql('mti', 'mt');
+                $q = $pdo->prepare("
+                    SELECT
+                        COALESCE(NULLIF(mti.category, ''), 'General') AS category,
+                        COALESCE(NULLIF(mti.product_name, ''), mt.item_sku, 'Item') AS product_name,
+                        COALESCE(si.stock_level, 0) + SUM(COALESCE(mti.quantity, 0)) AS beg_stock,
+                        0 AS stock_in,
+                        SUM(COALESCE(mti.quantity, 0)) AS stock_out,
+                        COALESCE(si.stock_level, 0) AS end_stock,
+                        COALESCE(mti.unit_price, mt.unit_price, 0) AS unit_price,
+                        SUM($lineAmount) AS amount,
+                        GROUP_CONCAT(DISTINCT $encoderSql ORDER BY $encoderSql SEPARATOR ', ') AS encoder
+                    FROM merchandise_transactions mt
+                    LEFT JOIN (
+                        SELECT transaction_id,
+                               SUM(COALESCE(subtotal, COALESCE(quantity, 0) * COALESCE(unit_price, 0), 0)) AS item_subtotal
+                        FROM merchandise_transaction_items
+                        GROUP BY transaction_id
+                    ) mis ON mis.transaction_id = mt.id
+                    JOIN merchandise_transaction_items mti
+                        ON mti.transaction_id = mt.id
+                       AND LOWER(COALESCE(mti.item_type, 'merchandise')) <> 'service'
+                    LEFT JOIN users u ON mt.staff_id = u.id
+                    LEFT JOIN station_inventory si ON si.product_id = mti.product_id AND si.station_id = mt.station_id
+                    WHERE mt.station_id = ?
+                      AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
+                      AND $validWhere
+                      AND $shiftCond
+                    GROUP BY mti.product_id, mti.category, mti.product_name, unit_price, si.stock_level
+                    ORDER BY category, product_name
+                ");
+                $q->execute([$station_id, $date_start, $date_end, $date_start, $date_end]);
+                $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                break;
+
+            case 'service_income':
+                $rows = srManagerFetchEmbeddedServices($pdo, $station_id, $date_start, $date_end, $isShift1, false);
+                if (srManagerTableExists($pdo, 'job_orders')) {
+                    $shiftCond = srManagerJobTimeShiftCondition('jo', $isShift1);
+                    $validWhere = srManagerJobValidWhere('jo');
+                    $serviceSql = srManagerColumnExists($pdo, 'job_orders', 'service_type')
+                        ? "COALESCE(NULLIF(jo.service_type, ''), NULLIF(jo.service_description, ''), 'Service')"
+                        : "COALESCE(NULLIF(jo.service_description, ''), 'Service')";
+                    $q = $pdo->prepare("
+                        SELECT
+                            $serviceSql AS service_type,
+                            COALESCE(NULLIF(jo.actual_labor_cost, 0), NULLIF(jo.estimated_labor_cost, 0), 0) AS labor_fee,
+                            COALESCE(NULLIF(jo.actual_parts_cost, 0), NULLIF(jo.estimated_parts_cost, 0), 0) AS parts_used,
+                            COALESCE(NULLIF(jo.total_cost, 0), NULLIF(jo.estimated_cost, 0), NULLIF(jo.amount_paid, 0), 0) AS total_amount,
+                            $encoderSql AS encoder,
+                            jo.created_at
+                        FROM job_orders jo
+                        LEFT JOIN users u ON jo.created_by = u.id
+                        WHERE jo.station_id = ?
+                          AND DATE(jo.created_at) BETWEEN ? AND ?
+                          AND $validWhere
+                          AND $shiftCond
+                        ORDER BY jo.created_at ASC, service_type
+                    ");
+                    $q->execute([$station_id, $date_start, $date_end]);
+                    $rows = array_merge($rows, $q->fetchAll(PDO::FETCH_ASSOC) ?: []);
+                }
+                usort($rows, fn($a, $b) => strcmp((string)($a['created_at'] ?? ''), (string)($b['created_at'] ?? '')));
+                break;
+
+            case 'payments':
+                $merged = [];
+                $addPayment = static function (array $items) use (&$merged): void {
+                    foreach ($items as $r) {
+                        $mode = $r['mode_of_payment'] ?: 'Cash';
+                        if (!isset($merged[$mode])) $merged[$mode] = ['mode_of_payment' => $mode, 'txn_count' => 0, 'amount' => 0];
+                        $merged[$mode]['txn_count'] += (int)$r['txn_count'];
+                        $merged[$mode]['amount'] += (float)$r['amount'];
+                    }
+                };
+                if (srManagerTableExists($pdo, 'fuel_transactions')) {
+                    $shiftCond = srManagerShiftCondition('ft', 'ft.transaction_date', $isShift1);
+                    $validWhere = srManagerFuelValidWhere('ft');
+                    $q = $pdo->prepare("
+                        SELECT
+                            CASE
+                                WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%fleet%' THEN 'Fleet'
+                                WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%fuel card%' OR LOWER(COALESCE(ft.payment_method,'')) LIKE '%efuel%' THEN 'E-Fuel'
+                                WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%card%' THEN 'Card'
+                                WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%wallet%' OR LOWER(COALESCE(ft.payment_method,'')) LIKE '%gcash%' OR LOWER(COALESCE(ft.payment_method,'')) LIKE '%maya%' THEN 'E-Wallet'
+                                WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%cash%' OR COALESCE(ft.payment_method,'') = '' THEN 'Cash'
+                                ELSE COALESCE(NULLIF(ft.payment_method,''), 'Cash')
+                            END AS mode_of_payment,
+                            COUNT(*) AS txn_count,
+                            SUM(COALESCE(ft.total_amount, 0)) AS amount
+                        FROM fuel_transactions ft
+                        WHERE ft.station_id = ?
+                          AND DATE(ft.transaction_date) BETWEEN ? AND ?
+                          AND $validWhere
+                          AND $shiftCond
+                        GROUP BY mode_of_payment
+                    ");
+                    $q->execute([$station_id, $date_start, $date_end]);
+                    $addPayment($q->fetchAll(PDO::FETCH_ASSOC) ?: []);
+                }
+                if (srManagerTableExists($pdo, 'merchandise_transactions')) {
+                    $validWhere = srManagerMerchValidWhere('mt');
+                    $dateExpr = 'COALESCE(mt.transaction_date, mt.created_at)';
+                    $shiftCond = srManagerShiftCondition('mt', $dateExpr, $isShift1);
+                    $q = $pdo->prepare("
+                        SELECT
+                            CASE
+                                WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%fleet%' THEN 'Fleet'
+                                WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%fuel card%' OR LOWER(COALESCE(mt.payment_method,'')) LIKE '%efuel%' THEN 'E-Fuel'
+                                WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%card%' THEN 'Card'
+                                WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%wallet%' OR LOWER(COALESCE(mt.payment_method,'')) LIKE '%gcash%' OR LOWER(COALESCE(mt.payment_method,'')) LIKE '%maya%' THEN 'E-Wallet'
+                                WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%cash%' OR COALESCE(mt.payment_method,'') = '' THEN 'Cash'
+                                ELSE COALESCE(NULLIF(mt.payment_method,''), 'Cash')
+                            END AS mode_of_payment,
+                            COUNT(*) AS txn_count,
+                            SUM(COALESCE(mt.total_amount, 0)) AS amount
+                        FROM merchandise_transactions mt
+                        WHERE mt.station_id = ?
+                          AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
+                          AND $validWhere
+                          AND $shiftCond
+                        GROUP BY mode_of_payment
+                    ");
+                    $q->execute([$station_id, $date_start, $date_end, $date_start, $date_end]);
+                    $addPayment($q->fetchAll(PDO::FETCH_ASSOC) ?: []);
+                }
+                $rows = array_values($merged);
+                usort($rows, fn($a, $b) => $b['amount'] <=> $a['amount']);
+                break;
+
+            case 'job_orders':
+                $rows = srManagerFetchEmbeddedServices($pdo, $station_id, $date_start, $date_end, $isShift1, true);
+                if (srManagerTableExists($pdo, 'job_orders')) {
+                    $shiftCond = srManagerJobTimeShiftCondition('jo', $isShift1);
+                    $validWhere = srManagerJobValidWhere('jo');
+                    $serviceSql = srManagerColumnExists($pdo, 'job_orders', 'service_type')
+                        ? "COALESCE(NULLIF(jo.service_type, ''), NULLIF(jo.service_description, ''), 'Service')"
+                        : "COALESCE(NULLIF(jo.service_description, ''), 'Service')";
+                    $q = $pdo->prepare("
+                        SELECT
+                            COALESCE(jo.status, 'Pending') AS status,
+                            $serviceSql AS service_type,
+                            COALESCE(NULLIF(jo.actual_parts_cost, 0), NULLIF(jo.estimated_parts_cost, 0), 0) AS parts_used,
+                            COALESCE(NULLIF(jo.actual_labor_cost, 0), NULLIF(jo.estimated_labor_cost, 0), 0) AS labor_fee,
+                            COALESCE(NULLIF(jo.total_cost, 0), NULLIF(jo.estimated_cost, 0), NULLIF(jo.amount_paid, 0), 0) AS total_amount,
+                            $encoderSql AS encoder,
+                            jo.created_at
+                        FROM job_orders jo
+                        LEFT JOIN users u ON jo.created_by = u.id
+                        WHERE jo.station_id = ?
+                          AND DATE(jo.created_at) BETWEEN ? AND ?
+                          AND $validWhere
+                          AND $shiftCond
+                        ORDER BY FIELD(jo.status,'Pending','In Progress','Completed','Verified','finalized','Cancelled'), jo.created_at DESC
+                    ");
+                    $q->execute([$station_id, $date_start, $date_end]);
+                    $rows = array_merge($rows, $q->fetchAll(PDO::FETCH_ASSOC) ?: []);
+                }
+                usort($rows, fn($a, $b) => strcmp((string)($b['created_at'] ?? ''), (string)($a['created_at'] ?? '')));
+                break;
+
+            case 'customers':
+                if (!srManagerTableExists($pdo, 'merchandise_transactions')) break;
+                $validWhere = srManagerMerchValidWhere('mt');
+                $dateExpr = 'COALESCE(mt.transaction_date, mt.created_at)';
+                $shiftCond = srManagerShiftCondition('mt', $dateExpr, $isShift1);
+                $pointsCol = srManagerColumnExists($pdo, 'customers', 'loyalty_points') ? 'c.loyalty_points' : (srManagerColumnExists($pdo, 'customers', 'points') ? 'c.points' : '0');
+                $q = $pdo->prepare("
+                    SELECT
+                        COALESCE(NULLIF(c.name, ''), NULLIF(mt.customer_name, ''), 'Walk-in Customer') AS customer_name,
+                        COALESCE(CONCAT('#', c.id), 'Walk-in') AS customer_ref,
+                        COUNT(DISTINCT mt.id) AS txn_count,
+                        MAX(COALESCE(c.balance, c.current_balance, 0)) AS balance,
+                        MAX(COALESCE($pointsCol, 0)) AS loyalty_points
+                    FROM merchandise_transactions mt
+                    LEFT JOIN customers c
+                        ON c.station_id = mt.station_id
+                       AND (
+                            c.id = mt.credit_customer_id
+                            OR (NULLIF(mt.customer_name, '') IS NOT NULL AND LOWER(c.name) = LOWER(mt.customer_name))
+                       )
+                    WHERE mt.station_id = ?
+                      AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
+                      AND $validWhere
+                      AND $shiftCond
+                    GROUP BY customer_ref, customer_name
+                    ORDER BY txn_count DESC, customer_name ASC
+                ");
+                $q->execute([$station_id, $date_start, $date_end, $date_start, $date_end]);
+                $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                break;
+        }
+    } catch (Exception $ex) {
+        $rows = [];
+    }
+    return $rows;
+}
+?>
+
+<!-- Section Panels -->
+<?php foreach ($tabs as $sec_key => $tab): ?>
+<div id="sr-panel-<?= $sec_key ?>" class="sr-section-panel <?= $section === $sec_key ? 'active' : '' ?>">
+
+    <!-- Centered Report Header (matches staff reports style) -->
+    <?php
+    $report_titles = [
+        'fuel_sales'     => ['title'=>'FUEL SALES REPORT',          'sub'=>'SHIFT SUMMARY'],
+        'merchandise'    => ['title'=>'DAILY MERCHANDISE & SERVICE SALES REPORT',    'sub'=>'24-HOUR SUMMARY'],
+        'service_income' => ['title'=>'SERVICE INCOME REPORT',       'sub'=>'SHIFT SUMMARY'],
+        'payments'       => ['title'=>'PAYMENTS REPORT',             'sub'=>'SHIFT SUMMARY'],
+        'customers'      => ['title'=>'CUSTOMERS REPORT',            'sub'=>'SHIFT SUMMARY'],
+    ];
+    $rt = $report_titles[$sec_key] ?? ['title'=>strtoupper($tab['label']),'sub'=>'SHIFT SUMMARY'];
+    ?>
+    <div style="text-align:center;padding:22px 0 14px;border-bottom:2px solid #e2e8f0;margin-bottom:16px;">
+        <div style="font-size:20px;font-weight:800;color:#00264D;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">
+            <?= $rt['title'] ?>
+        </div>
+        <div style="font-size:16px;font-weight:700;color:#00264D;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:8px;">
+            <?= $rt['sub'] ?>
+        </div>
+        <div style="font-size:12px;color:#64748b;margin-bottom:2px;">
+            <?= htmlspecialchars($station_name) ?>
+        </div>
+        <div style="font-size:12px;color:#334155;">
+            <strong>Date:</strong>
+            <?= date('F j, Y', strtotime($date_start)) ?>
+            <?= $date_start !== $date_end ? ' – ' . date('F j, Y', strtotime($date_end)) : '' ?>
+        </div>
+    </div>
+
+    <!-- Section Heading -->
+    <div style="padding:14px 0 10px;border-bottom:1px solid #e2e8f0;margin-bottom:18px;">
+        <div style="font-size:14px;font-weight:700;color:#00264D;text-transform:uppercase;letter-spacing:0.3px;">
+            <i class="<?= $tab['ico'] ?>"></i> <?= $tab['label'] ?>
+        </div>
+    </div>
+
+    <?php
+    if ($sec_key === 'merchandise'):
+        // MERCHANDISE tab: render once as a full daily report (no shift split)
+        require_once __DIR__ . '/merchandise_service_report_new.php';
+        $reportData = fetchMerchandiseServiceReport($pdo, $station_id, $date_start, $date_end, null);
+    ?>
+    <div class="sr-shift-block" data-shift="0" data-section="<?=$sec_key?>">
+        <div class="sr-shift-heading">Daily Report (All Shifts)</div>
+
+        <!-- SECTION 1: MERCHANDISE SALES -->
+        <div style="margin-bottom: 24px;">
+            <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">
+                MERCHANDISE SALES
+            </div>
+            <table class="sr-table">
+                <thead><tr>
+                    <th>Receipt No.</th><th>Customer</th><th>Category</th><th>Product</th>
+                    <th>Qty</th><th>Unit Price</th><th>Amount</th><th>Encoder</th>
+                </tr></thead>
+                <tbody>
+                <?php if (empty($reportData['merchandise_sales'])): ?>
+                    <tr><td colspan="8" class="sr-empty">No merchandise sales for this period</td></tr>
+                <?php else: $ta=0; foreach($reportData['merchandise_sales'] as $r): $ta+=$r['amount']; ?>
+                    <tr>
+                        <td><?=htmlspecialchars($r['receipt_no'])?></td>
+                        <td><?=htmlspecialchars($r['customer'])?></td>
+                        <td><?=htmlspecialchars($r['category'])?></td>
+                        <td><?=htmlspecialchars($r['product'])?></td>
+                        <td><?=number_format($r['qty'])?></td>
+                        <td>&#x20B1;<?=number_format($r['unit_price'],2)?></td>
+                        <td>&#x20B1;<?=number_format($r['amount'],2)?></td>
+                        <td><?=htmlspecialchars($r['encoder'])?></td>
+                    </tr>
+                <?php endforeach; endif; ?>
+                </tbody>
+                <?php if (!empty($reportData['merchandise_sales'])): ?>
+                <tfoot><tr>
+                    <td colspan="6" style="text-align:right;"><strong>Total Merchandise Sales:</strong></td>
+                    <td><strong>&#x20B1;<?=number_format($ta,2)?></strong></td>
+                    <td></td>
+                </tr></tfoot>
+                <?php endif; ?>
+            </table>
+        </div>
+
+        <!-- SECTION 2: JOB ORDER / SERVICE SALES -->
+        <div style="margin-bottom: 24px;">
+            <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">
+                JOB ORDER / SERVICE SALES
+            </div>
+            <table class="sr-table">
+                <thead><tr>
+                    <th>JO No.</th><th>Customer</th><th>Vehicle</th><th>Service Type</th>
+                    <th>Labor Fee</th><th>Parts Cost</th><th>Total Amount</th><th>Encoder</th>
+                </tr></thead>
+                <tbody>
+                <?php if (empty($reportData['job_orders'])): ?>
+                    <tr><td colspan="8" class="sr-empty">No job orders for this period</td></tr>
+                <?php else: $labor=0; $total=0; foreach($reportData['job_orders'] as $r): $labor+=$r['labor_fee']; $total+=$r['total_amount']; ?>
+                    <tr>
+                        <td><?=htmlspecialchars($r['jo_no'])?></td>
+                        <td><?=htmlspecialchars($r['customer'])?></td>
+                        <td><?=htmlspecialchars($r['vehicle'])?></td>
+                        <td><?=htmlspecialchars($r['service_type'])?></td>
+                        <td>&#x20B1;<?=number_format($r['labor_fee'],2)?></td>
+                        <td>&#x20B1;<?=number_format($r['parts_cost'],2)?></td>
+                        <td>&#x20B1;<?=number_format($r['total_amount'],2)?></td>
+                        <td><?=htmlspecialchars($r['encoder'])?></td>
+                    </tr>
+                <?php endforeach; endif; ?>
+                </tbody>
+                <?php if (!empty($reportData['job_orders'])): ?>
+                <tfoot>
+                    <tr>
+                        <td colspan="4" style="text-align:right;"><strong>Total Service Income (Labor):</strong></td>
+                        <td><strong>&#x20B1;<?=number_format($labor,2)?></strong></td>
+                        <td colspan="3"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="4" style="text-align:right;"><strong>Total Job Order Sales:</strong></td>
+                        <td colspan="2"><strong>&#x20B1;<?=number_format($total,2)?></strong></td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+                <?php endif; ?>
+            </table>
+        </div>
+
+        <!-- SECTION 3: PARTS USED IN JOB ORDERS -->
+        <div style="margin-bottom: 24px;">
+            <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">
+                PARTS USED IN JOB ORDERS (FROM MERCHANDISE PRODUCTS)
+            </div>
+            <p style="font-size: 11px; color: #64748b; margin: 0 0 8px 0; font-style: italic;">Source: Merchandise Inventory Products</p>
+            <table class="sr-table">
+                <thead><tr>
+                    <th>JO No.</th><th>Customer</th><th>Product Name</th><th>Category</th>
+                    <th>Qty Used</th><th>Unit Price</th><th>Total Cost</th>
+                </tr></thead>
+                <tbody>
+                <?php if (empty($reportData['parts_used'])): ?>
+                    <tr><td colspan="7" class="sr-empty">No parts used in job orders for this period</td></tr>
+                <?php else: $qty=0; $cost=0; foreach($reportData['parts_used'] as $r): $qty+=$r['qty_used']; $cost+=$r['total_cost']; ?>
+                    <tr>
+                        <td><?=htmlspecialchars($r['jo_no'])?></td>
+                        <td><?=htmlspecialchars($r['customer'])?></td>
+                        <td><?=htmlspecialchars($r['product_name'])?></td>
+                        <td><?=htmlspecialchars($r['category'])?></td>
+                        <td><?=number_format($r['qty_used'])?></td>
+                        <td>&#x20B1;<?=number_format($r['unit_price'],2)?></td>
+                        <td>&#x20B1;<?=number_format($r['total_cost'],2)?></td>
+                    </tr>
+                <?php endforeach; endif; ?>
+                </tbody>
+                <?php if (!empty($reportData['parts_used'])): ?>
+                <tfoot><tr>
+                    <td colspan="4" style="text-align:right;"><strong>Total Parts Used:</strong></td>
+                    <td><strong><?=number_format($qty)?></strong></td>
+                    <td style="text-align:right;"><strong>Total Cost:</strong></td>
+                    <td><strong>&#x20B1;<?=number_format($cost,2)?></strong></td>
+                </tr></tfoot>
+                <?php endif; ?>
+            </table>
+        </div>
+
+        <!-- SECTION 4: PAYMENT BREAKDOWN -->
+        <div style="margin-bottom: 24px;">
+            <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">
+                PAYMENT BREAKDOWN
+            </div>
+            <table class="sr-table">
+                <thead><tr>
+                    <th>Payment Method</th><th>Transactions</th><th>Amount</th>
+                </tr></thead>
+                <tbody>
+                <?php if (empty($reportData['payment_breakdown'])): ?>
+                    <tr><td colspan="3" class="sr-empty">No payment data for this period</td></tr>
+                <?php else: $txn=0; $amt=0; foreach($reportData['payment_breakdown'] as $r): $txn+=$r['transactions']; $amt+=$r['amount']; ?>
+                    <tr>
+                        <td><?=htmlspecialchars($r['payment_method'])?></td>
+                        <td><?=number_format($r['transactions'])?></td>
+                        <td>&#x20B1;<?=number_format($r['amount'],2)?></td>
+                    </tr>
+                <?php endforeach; endif; ?>
+                </tbody>
+                <?php if (!empty($reportData['payment_breakdown'])): ?>
+                <tfoot><tr>
+                    <td style="text-align:right;"><strong>TOTAL:</strong></td>
+                    <td><strong><?=number_format($txn)?></strong></td>
+                    <td><strong>&#x20B1;<?=number_format($amt,2)?></strong></td>
+                </tr></tfoot>
+                <?php endif; ?>
+            </table>
+        </div>
+
+        <!-- SECTION 5: SHIFT SALES SUMMARY -->
+        <div style="margin-bottom: 24px;">
+            <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">
+                SHIFT SALES SUMMARY
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px;">
+                    <div style="font-weight: 700; margin-bottom: 8px;">Shift 1 (6:00 AM – 2:00 PM)</div>
+                    <table style="width: 100%; font-size: 11px;">
+                        <tr><td>Merchandise Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift1']['merchandise_sales']??0,2)?></td></tr>
+                        <tr><td>Labor Income</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift1']['labor_income']??0,2)?></td></tr>
+                        <tr><td>Parts Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift1']['parts_sales']??0,2)?></td></tr>
+                        <tr style="border-top: 2px solid #00264D; font-weight: 700;"><td>Grand Total</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift1']['grand_total']??0,2)?></td></tr>
+                    </table>
+                </div>
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px;">
+                    <div style="font-weight: 700; margin-bottom: 8px;">Shift 2 (2:00 PM – 12:00 AM)</div>
+                    <table style="width: 100%; font-size: 11px;">
+                        <tr><td>Merchandise Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift2']['merchandise_sales']??0,2)?></td></tr>
+                        <tr><td>Labor Income</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift2']['labor_income']??0,2)?></td></tr>
+                        <tr><td>Parts Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift2']['parts_sales']??0,2)?></td></tr>
+                        <tr style="border-top: 2px solid #00264D; font-weight: 700;"><td>Grand Total</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift2']['grand_total']??0,2)?></td></tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 6: OVERALL DAILY SUMMARY -->
+        <div style="margin-bottom: 24px;">
+            <div style="font-size: 14px; font-weight: 700; color: #00264D; margin: 16px 0 8px 0; padding: 6px 0; border-bottom: 2px solid #00264D;">
+                OVERALL DAILY SUMMARY
+            </div>
+            <table class="sr-table">
+                <thead><tr>
+                    <th>Description</th><th style="text-align: right;">Amount</th>
+                </tr></thead>
+                <tbody>
+                    <tr><td>Merchandise Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['daily_summary']['merchandise_sales'],2)?></td></tr>
+                    <tr><td>Labor Income</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['daily_summary']['labor_income'],2)?></td></tr>
+                    <tr><td>Parts Used (Merchandise Products)</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['daily_summary']['parts_used'],2)?></td></tr>
+                    <tr style="background: #f0f4ff;"><td><strong>Grand Total Sales</strong></td><td style="text-align: right;"><strong>&#x20B1;<?=number_format($reportData['daily_summary']['grand_total'],2)?></strong></td></tr>
+                    <tr><td>Total Transactions</td><td style="text-align: right;"><?=number_format($reportData['daily_summary']['total_transactions'])?></td></tr>
+                    <tr><td>Customers Served</td><td style="text-align: right;"><?=number_format($reportData['daily_summary']['customers_served'])?></td></tr>
+                </tbody>
+            </table>
+        </div>
+
+    </div><!-- end sr-shift-block merchandise -->
+
+    <?php else:
+        // All other tabs: render per-shift using the loop
+        foreach ($shifts as $snum => $sdef):
+            $rows = srFetchManager($pdo, (int)$station_id, $date_start, $date_end, $sdef['start'], $sdef['end'], $sec_key);
+    ?>
+    <div class="sr-shift-block <?= ($active_shift!==0 && $active_shift!==$snum)?'hidden':'' ?>" data-shift="<?=$snum?>" data-section="<?=$sec_key?>">
+        <div class="sr-shift-heading"><?= $sdef['label'] ?></div>
+
+        <?php if ($sec_key === 'fuel_sales'): ?>
+        <table class="sr-table">
+            <thead><tr>
+                <th>Name</th><th>Beginning Reading</th><th>Ending Reading</th>
+                <th>Calibration</th><th>Dispensed Liters</th><th>Unit Price</th><th>Amount</th><th>Encoder</th>
+            </tr></thead>
+            <tbody>
+            <?php if (empty($rows)): ?><tr><td colspan="8" class="sr-empty">No fuel sales for this shift</td></tr>
+            <?php else:
+                $tl=0;$ta=0;
+                $fuel_pump_counter = [];
+                foreach($rows as $r):
+                    $tl+=$r['dispensed_liters'];
+                    $ta+=$r['amount'];
+                    $fuel_display = preg_replace('/\s+\d+\s*-\s*\d+$/', '', $r['fuel_type']);
+                    if (!isset($fuel_pump_counter[$fuel_display])) $fuel_pump_counter[$fuel_display] = [];
+                    $pump_key = $r['pump_name'];
+                    if (!isset($fuel_pump_counter[$fuel_display][$pump_key]))
+                        $fuel_pump_counter[$fuel_display][$pump_key] = count($fuel_pump_counter[$fuel_display]) + 1;
+                    $pump_num = $fuel_pump_counter[$fuel_display][$pump_key];
+            ?>
+                <tr>
+                    <td>
+                        <div style="font-weight:700;font-size:.85rem;">Pump <?=$pump_num?></div>
+                        <div style="font-size:.78rem;color:#555;"><?=htmlspecialchars($fuel_display)?></div>
+                    </td>
+                    <td><?=number_format($r['beg_reading'],2)?></td>
+                    <td><?=number_format($r['end_reading'],2)?></td>
+                    <td><?=number_format($r['calibration'],2)?></td>
+                    <td><?=number_format($r['dispensed_liters'],2)?> L</td>
+                    <td>&#x20B1;<?=number_format($r['unit_price'],2)?></td>
+                    <td>&#x20B1;<?=number_format($r['amount'],2)?></td>
+                    <td><?=htmlspecialchars($r['encoder'])?></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+            <?php if (!empty($rows)): ?>
+            <tfoot><tr>
+                <td colspan="4" style="text-align:right;"><strong>SHIFT TOTALS:</strong></td>
+                <td><strong><?=number_format($tl,2)?> L</strong></td>
+                <td></td>
+                <td><strong>&#x20B1;<?=number_format($ta,2)?></strong></td>
+                <td></td>
+            </tr></tfoot>
+            <?php endif; ?>
+        </table>
+
+        <?php elseif ($sec_key === 'service_income'): ?>
+        <table class="sr-table">
+            <thead><tr>
+                <th>Service Type</th><th>Labor Fee</th><th>Parts Used</th><th>Total Amount</th><th>Encoder</th>
+            </tr></thead>
+            <tbody>
+            <?php if (empty($rows)): ?><tr><td colspan="5" class="sr-empty">No service income for this shift</td></tr>
+            <?php else: $tl=0; $tp=0; $ta=0; foreach($rows as $r): $tl+=$r['labor_fee']; $tp+=$r['parts_used']; $ta+=$r['total_amount']; ?>
+                <tr>
+                    <td><?=htmlspecialchars($r['service_type'])?></td>
+                    <td>&#x20B1;<?=number_format($r['labor_fee'],2)?></td>
+                    <td>&#x20B1;<?=number_format($r['parts_used'],2)?></td>
+                    <td>&#x20B1;<?=number_format($r['total_amount'],2)?></td>
+                    <td><?=htmlspecialchars($r['encoder'])?></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+            <?php if (!empty($rows)): ?>
+            <tfoot><tr>
+                <td><strong>TOTAL</strong></td>
+                <td><strong>&#x20B1;<?=number_format($tl,2)?></strong></td>
+                <td><strong>&#x20B1;<?=number_format($tp,2)?></strong></td>
+                <td><strong>&#x20B1;<?=number_format($ta,2)?></strong></td>
+                <td></td>
+            </tr></tfoot>
+            <?php endif; ?>
+        </table>
+
+        <?php elseif ($sec_key === 'payments'): ?>
+        <table class="sr-table">
+            <thead><tr>
+                <th>Mode of Payment</th><th>Transaction Count</th><th>Amount</th>
+            </tr></thead>
+            <tbody>
+            <?php if (empty($rows)): ?><tr><td colspan="3" class="sr-empty">No payment records for this shift</td></tr>
+            <?php else: $tc=0; $ta=0; foreach($rows as $r): $tc+=$r['txn_count']; $ta+=$r['amount']; ?>
+                <tr>
+                    <td><?=htmlspecialchars($r['mode_of_payment'])?></td>
+                    <td><?=number_format($r['txn_count'])?></td>
+                    <td>&#x20B1;<?=number_format($r['amount'],2)?></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+            <?php if (!empty($rows)): ?>
+            <tfoot><tr>
+                <td><strong>TOTAL</strong></td>
+                <td><strong><?=number_format($tc)?></strong></td>
+                <td><strong>&#x20B1;<?=number_format($ta,2)?></strong></td>
+            </tr></tfoot>
+            <?php endif; ?>
+        </table>
+
+        <?php elseif ($sec_key === 'job_orders'): 
+            $status_colors=['Pending'=>'#f59e0b','In Progress'=>'#3b82f6','Completed'=>'#22c55e','Cancelled'=>'#ef4444'];
+        ?>
+        <table class="sr-table">
+            <thead><tr>
+                <th>Status</th><th>Service Type</th><th>Parts Used</th>
+                <th>Labor Fee</th><th>Total Service Amount</th><th>Encoder</th>
+            </tr></thead>
+            <tbody>
+            <?php if (empty($rows)): ?><tr><td colspan="6" class="sr-empty">No job orders for this shift</td></tr>
+            <?php else: $tp=0;$tl=0;$ta=0; foreach($rows as $r): $tp+=$r['parts_used'];$tl+=$r['labor_fee'];$ta+=$r['total_amount'];
+                $sc=$status_colors[$r['status']]??'#64748b'; ?>
+                <tr>
+                    <td><span class="sr-status" style="background:<?=$sc?>"><?=htmlspecialchars($r['status'])?></span></td>
+                    <td><?=htmlspecialchars($r['service_type'])?></td>
+                    <td>&#x20B1;<?=number_format($r['parts_used'],2)?></td>
+                    <td>&#x20B1;<?=number_format($r['labor_fee'],2)?></td>
+                    <td>&#x20B1;<?=number_format($r['total_amount'],2)?></td>
+                    <td><?=htmlspecialchars($r['encoder'])?></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+            <?php if(!empty($rows)): ?>
+            <tfoot><tr>
+                <td colspan="2"><strong>TOTAL</strong></td>
+                <td><strong>&#x20B1;<?=number_format($tp,2)?></strong></td>
+                <td><strong>&#x20B1;<?=number_format($tl,2)?></strong></td>
+                <td><strong>&#x20B1;<?=number_format($ta,2)?></strong></td>
+                <td></td>
+            </tr></tfoot>
+            <?php endif; ?>
+        </table>
+
+        <?php elseif ($sec_key === 'customers'): ?>
+        <table class="sr-table">
+            <thead><tr>
+                <th>Customer Name / ID</th><th>Transactions Made</th><th>Balance</th><th>Loyalty Points</th>
+            </tr></thead>
+            <tbody>
+            <?php if (empty($rows)): ?><tr><td colspan="4" class="sr-empty">No customer transactions for this shift</td></tr>
+            <?php else: $tt=0;$tb=0;$tlp=0; foreach($rows as $r): $tt+=$r['txn_count'];$tb+=$r['balance'];$tlp+=$r['loyalty_points']; ?>
+                <tr>
+                    <td><?=htmlspecialchars($r['customer_name'])?> / <?=htmlspecialchars($r['customer_ref'])?></td>
+                    <td><?=number_format($r['txn_count'])?></td>
+                    <td>&#x20B1;<?=number_format($r['balance'],2)?></td>
+                    <td><?=number_format($r['loyalty_points'])?> pts</td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+            <?php if(!empty($rows)): ?>
+            <tfoot><tr>
+                <td><strong>TOTAL</strong></td>
+                <td><strong><?=number_format($tt)?></strong></td>
+                <td><strong>&#x20B1;<?=number_format($tb,2)?></strong></td>
+                <td><strong><?=number_format($tlp)?> pts</strong></td>
+            </tr></tfoot>
+            <?php endif; ?>
+        </table>
+
+        <?php endif; ?>
+    </div>
+    <?php endforeach; // end shifts loop
+    endif; // end merchandise / other-tabs condition
+    ?>
+</div>
+<?php endforeach; ?>
+
+<script>
+function srSwitchSection(sectionKey) {
+    // Hide all panels
+    document.querySelectorAll('.sr-section-panel').forEach(p => p.classList.remove('active'));
+    // Show selected panel
+    const panel = document.getElementById('sr-panel-' + sectionKey);
+    if (panel) panel.classList.add('active');
+    
+    // Update tab buttons safely
+    document.querySelectorAll('.sr-section-tab').forEach(btn => btn.classList.remove('active'));
+    const activeTabBtn = document.querySelector(`.sr-section-tab[onclick*="'${sectionKey}'"]`);
+    if (activeTabBtn) activeTabBtn.classList.add('active');
+
+    // Update hidden input in the date filter form
+    const hiddenInput = document.getElementById('hiddenSectionInput');
+    if (hiddenInput) hiddenInput.value = sectionKey;
+    
+    // Update URL without reload
+    const url = new URL(window.location);
+    url.searchParams.set('section', sectionKey);
+    window.history.pushState({}, '', url);
+}
+</script>
+
+<?php if ($is_standalone) require_once __DIR__ . '/../../partials/footer.php'; ?>

@@ -1,4 +1,72 @@
 <?php
-/**  * Migration: Add Payment and Quantity Tracking Columns to deliveries_oversight  * Purpose: Add columns needed for delivery payment computation and quantity tracking  */  require_once __DIR__ . '/../backend/lib.php';
-require_once __DIR__ . '/../public/db_connect.php';  try {  echo "Starting migration: Add delivery payment columns...\n";  // Check if columns already exist  $stmt = $pdo->query("SHOW COLUMNS FROM deliveries_oversight LIKE 'actual_quantity'");  if ($stmt->rowCount() > 0) {  echo "Columns already exist. Migration skipped.\n";  exit(0);  }  // Add the new columns  $pdo->exec("  ALTER TABLE deliveries_oversight  ADD COLUMN expected_quantity DECIMAL(12,3) DEFAULT NULL COMMENT 'Expected quantity from PO' AFTER quantity,  ADD COLUMN actual_quantity DECIMAL(12,3) DEFAULT NULL COMMENT 'Actual quantity received' AFTER expected_quantity,  ADD COLUMN damaged_quantity DECIMAL(12,3) DEFAULT 0.00 COMMENT 'Damaged/unusable quantity' AFTER actual_quantity,  ADD COLUMN unit_price DECIMAL(12,2) DEFAULT NULL COMMENT 'Unit price for payment computation' AFTER damaged_quantity,  ADD COLUMN expected_amount DECIMAL(15,2) DEFAULT NULL COMMENT 'Expected total amount' AFTER unit_price,  ADD COLUMN payable_amount DECIMAL(15,2) DEFAULT NULL COMMENT 'Actual payable amount after adjustments' AFTER expected_amount  ");  echo " Added columns: expected_quantity, actual_quantity, damaged_quantity, unit_price, expected_amount, payable_amount\n";  // Migrate existing data: copy quantity to expected_quantity and actual_quantity for existing records  $pdo->exec("  UPDATE deliveries_oversight  SET expected_quantity = quantity,  actual_quantity = quantity  WHERE expected_quantity IS NULL OR actual_quantity IS NULL  ");  echo " Migrated existing quantity data to new columns\n";  // Copy unit_cost to unit_price where it exists  $pdo->exec("  UPDATE deliveries_oversight  SET unit_price = unit_cost  WHERE unit_price IS NULL AND unit_cost IS NOT NULL  ");  echo " Migrated unit_cost to unit_price\n";  // Calculate expected_amount and payable_amount for existing records  $pdo->exec("  UPDATE deliveries_oversight  SET expected_amount = expected_quantity * unit_price,  payable_amount = (actual_quantity - COALESCE(damaged_quantity, 0)) * unit_price  WHERE unit_price IS NOT NULL  AND expected_amount IS NULL  ");  echo " Calculated amounts for existing records\n";  echo "\n=== Migration completed successfully! ===\n";  echo "Summary:\n";  echo "- Added 6 new columns for payment tracking\n";  echo "- Migrated existing quantity data\n";  echo "- Calculated initial amounts\n";  } catch (PDOException $e) {  echo "ERROR: " . $e->getMessage() . "\n";  exit(1);
+/**
+ * Migration: Add Payment and Quantity Tracking Columns to deliveries_oversight
+ * Purpose: Add columns needed for delivery payment computation and quantity tracking
+ */
+
+require_once __DIR__ . '/../backend/lib.php';
+require_once __DIR__ . '/../public/db_connect.php';
+
+try {
+    echo "Starting migration: Add delivery payment columns...\n";
+    
+    // Check if columns already exist
+    $stmt = $pdo->query("SHOW COLUMNS FROM deliveries_oversight LIKE 'actual_quantity'");
+    if ($stmt->rowCount() > 0) {
+        echo "Columns already exist. Migration skipped.\n";
+        exit(0);
+    }
+    
+    // Add the new columns
+    $pdo->exec("
+        ALTER TABLE deliveries_oversight
+        ADD COLUMN expected_quantity DECIMAL(12,3) DEFAULT NULL COMMENT 'Expected quantity from PO' AFTER quantity,
+        ADD COLUMN actual_quantity DECIMAL(12,3) DEFAULT NULL COMMENT 'Actual quantity received' AFTER expected_quantity,
+        ADD COLUMN damaged_quantity DECIMAL(12,3) DEFAULT 0.00 COMMENT 'Damaged/unusable quantity' AFTER actual_quantity,
+        ADD COLUMN unit_price DECIMAL(12,2) DEFAULT NULL COMMENT 'Unit price for payment computation' AFTER damaged_quantity,
+        ADD COLUMN expected_amount DECIMAL(15,2) DEFAULT NULL COMMENT 'Expected total amount' AFTER unit_price,
+        ADD COLUMN payable_amount DECIMAL(15,2) DEFAULT NULL COMMENT 'Actual payable amount after adjustments' AFTER expected_amount
+    ");
+    
+    echo "✓ Added columns: expected_quantity, actual_quantity, damaged_quantity, unit_price, expected_amount, payable_amount\n";
+    
+    // Migrate existing data: copy quantity to expected_quantity and actual_quantity for existing records
+    $pdo->exec("
+        UPDATE deliveries_oversight 
+        SET expected_quantity = quantity,
+            actual_quantity = quantity
+        WHERE expected_quantity IS NULL OR actual_quantity IS NULL
+    ");
+    
+    echo "✓ Migrated existing quantity data to new columns\n";
+    
+    // Copy unit_cost to unit_price where it exists
+    $pdo->exec("
+        UPDATE deliveries_oversight 
+        SET unit_price = unit_cost
+        WHERE unit_price IS NULL AND unit_cost IS NOT NULL
+    ");
+    
+    echo "✓ Migrated unit_cost to unit_price\n";
+    
+    // Calculate expected_amount and payable_amount for existing records
+    $pdo->exec("
+        UPDATE deliveries_oversight 
+        SET expected_amount = expected_quantity * unit_price,
+            payable_amount = (actual_quantity - COALESCE(damaged_quantity, 0)) * unit_price
+        WHERE unit_price IS NOT NULL 
+          AND expected_amount IS NULL
+    ");
+    
+    echo "✓ Calculated amounts for existing records\n";
+    
+    echo "\n=== Migration completed successfully! ===\n";
+    echo "Summary:\n";
+    echo "- Added 6 new columns for payment tracking\n";
+    echo "- Migrated existing quantity data\n";
+    echo "- Calculated initial amounts\n";
+    
+} catch (PDOException $e) {
+    echo "ERROR: " . $e->getMessage() . "\n";
+    exit(1);
 }

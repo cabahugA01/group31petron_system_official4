@@ -1,24 +1,389 @@
 ﻿<?php
-/**  * EXPORT STAFF TRANSACTIONS  *  * Exports staff job orders (tracker) or merchandise sales (history) to Excel, CSV, or PDF.  *  * Parameters:  * - $_GET['type'] - 'job_orders' or 'merchandise'  * - $_GET['format'] - 'excel', 'csv', or 'pdf'  */  require_once __DIR__ . '/../public/db_connect.php';
-require_once __DIR__ . '/lib.php';  // Verify login
+/**
+ * EXPORT STAFF TRANSACTIONS
+ * 
+ * Exports staff job orders (tracker) or merchandise sales (history) to Excel, CSV, or PDF.
+ * 
+ * Parameters:
+ * - $_GET['type'] - 'job_orders' or 'merchandise'
+ * - $_GET['format'] - 'excel', 'csv', or 'pdf'
+ */
+
+require_once __DIR__ . '/../public/db_connect.php';
+require_once __DIR__ . '/lib.php';
+
+// Verify login
 session_start();
-if (!isset($_SESSION['user_id'])) {  die('Unauthorized access');
-}  $me = current_user();
+if (!isset($_SESSION['user_id'])) {
+    die('Unauthorized access');
+}
+
+$me = current_user();
 $station_id = (int) user_station_id();
-$staff_id = (int) $me['id'];  // Get parameters
+$staff_id = (int) $me['id'];
+
+// Get parameters
 $type = trim($_GET['type'] ?? 'job_orders');
-$format = trim($_GET['format'] ?? 'csv');  // Validate parameters
-if (!in_array($type, ['job_orders', 'merchandise'])) {  die('Invalid type');
+$format = trim($_GET['format'] ?? 'csv');
+
+// Validate parameters
+if (!in_array($type, ['job_orders', 'merchandise'])) {
+    die('Invalid type');
 }
-if (!in_array($format, ['excel', 'csv', 'pdf'])) {  die('Invalid format');
-}  // Helper functions for dynamic schema columns
-function st_cols(PDO $pdo, string $table): array {  try {  $rows = $pdo->query("SHOW COLUMNS FROM `{$table}`")->fetchAll(PDO::FETCH_ASSOC);  $map = [];  foreach ($rows as $r) $map[strtolower($r['Field'])] = true;  return $map;  } catch (Exception $e) { return []; }
+if (!in_array($format, ['excel', 'csv', 'pdf'])) {
+    die('Invalid format');
 }
-function st_has(array $map, string $col): bool { return isset($map[strtolower($col)]); }  $mt_cols = st_cols($pdo, 'merchandise_transactions');
-$jo_cols = st_cols($pdo, 'job_orders');  if ($type === 'job_orders') {  // Fetch Job Orders data (combined native job_orders + merchandise_transactions job_orders)  $jo_rows = [];  try {  $stmt = $pdo->prepare("  SELECT jo.id,  jo.customer_name,  jo.service_type,  jo.vehicle_plate,  jo.vehicle_type,  COALESCE(jo.total_cost, jo.estimated_cost, 0) AS total_amount,  COALESCE(jo.amount_paid, 0) AS amount_paid,  COALESCE(jo.balance_due, COALESCE(jo.total_cost, jo.estimated_cost, 0)) AS balance_due,  COALESCE(jo.payment_status, 'Pending Payment') AS payment_status,  COALESCE(jo.payment_method, 'Cash') AS payment_method,  jo.status AS workflow_status,  jo.created_at,  COALESCE(u.name, u.username) AS mechanic_name  FROM job_orders jo  LEFT JOIN users u ON u.user_id = jo.assigned_mechanic_id  WHERE jo.station_id = ?  ORDER BY jo.created_at DESC  ");  $stmt->execute([$station_id]);  $jo_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);  } catch (Exception $e) { $jo_rows = []; }  $mt_rows = [];  try {  $stmt2 = $pdo->prepare("  SELECT mt.id,  mt.customer_name,  COALESCE(mt.job_order_service, 'Service') AS service_type,  COALESCE(mt.job_order_vehicle_plate, '') AS vehicle_plate,  COALESCE(mt.job_order_vehicle_type, '') AS vehicle_type,  mt.total_amount,  COALESCE(mt.amount_paid, 0) AS amount_paid,  COALESCE(mt.balance_due, mt.total_amount) AS balance_due,  COALESCE(mt.payment_status, 'Pending Payment') AS payment_status,  COALESCE(mt.payment_method, 'Cash') AS payment_method,  COALESCE(mt.workflow_status, mt.validation_status, 'Pending') AS workflow_status,  mt.created_at,  COALESCE(mt.job_order_mechanic_name, '') AS mechanic_name  FROM merchandise_transactions mt  WHERE mt.station_id = ?  AND mt.transaction_type IN ('job_order', 'combined')  ORDER BY mt.created_at DESC  ");  $stmt2->execute([$station_id]);  $mt_rows = $stmt2->fetchAll(PDO::FETCH_ASSOC);  } catch (Exception $e) { $mt_rows = []; }  // Merge and sort  $data = array_merge($jo_rows, $mt_rows);  usort($data, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['created_at']));  // Output file configuration  $filename = "job_order_tracker_" . date('Y-m-d_His');  $title = "Job Order Tracker Report";  $headers = ['Job ID', 'Customer', 'Service Type', 'Plate Number', 'Vehicle Type', 'Total Cost', 'Amount Paid', 'Balance Due', 'Payment Status', 'Payment Method', 'Workflow Status', 'Date Created', 'Mechanic'];  $rows_formatted = [];  foreach ($data as $row) {  $prefix = isset($row['id']) && is_numeric($row['id']) ? 'JO-' : '';  $rows_formatted[] = [  $prefix . $row['id'],  $row['customer_name'] ?: 'Walk-in Customer',  $row['service_type'],  $row['vehicle_plate'] ?: 'N/A',  $row['vehicle_type'] ?: 'N/A',  (float)$row['total_amount'],  (float)$row['amount_paid'],  (float)$row['balance_due'],  $row['payment_status'],  $row['payment_method'],  $row['workflow_status'],  date('M d, Y H:i', strtotime($row['created_at'])),  $row['mechanic_name'] ?: 'Unassigned'  ];  }
-} else {  // Fetch Merchandise transactions history for the logged-in staff member  $data = [];  try {  $mh_date_col = st_has($mt_cols, 'transaction_date') ? 'mt.transaction_date' : 'mt.created_at';  $mh_status_col = st_has($mt_cols, 'validation_status') ? 'mt.validation_status' : (st_has($mt_cols, 'status') ? 'mt.status' : "'Pending'");  $mh_txnid_col  = st_has($mt_cols, 'transaction_id')  ? 'mt.transaction_id'  : 'mt.id';  $txnTypeFilter = st_has($mt_cols, 'transaction_type')  ? "AND (mt.transaction_type = 'merchandise' OR mt.transaction_type IS NULL OR mt.transaction_type = '')"  : "";  $stmt = $pdo->prepare("  SELECT mt.id,  $mh_txnid_col AS transaction_id,  mt.customer_name,  mt.item_sku AS items,  mt.quantity,  mt.total_amount,  mt.payment_method,  COALESCE(mt.amount_paid, 0) AS amount_paid,  COALESCE(mt.balance_due, mt.total_amount) AS balance_due,  COALESCE(mt.payment_status, 'Pending Payment') AS payment_status,  $mh_date_col AS transaction_date,  $mh_status_col AS status,  mt.shift_name  FROM merchandise_transactions mt  WHERE mt.station_id = ? AND mt.staff_id = ?  $txnTypeFilter  ORDER BY $mh_date_col DESC  ");  $stmt->execute([$station_id, $staff_id]);  $data = $stmt->fetchAll(PDO::FETCH_ASSOC);  } catch (Exception $e) { $data = []; }  // Output file configuration  $filename = "merchandise_history_" . date('Y-m-d_His');  $title = "Merchandise Sales Report";  $headers = ['Transaction ID', 'Customer', 'Items Sold', 'Qty', 'Total Amount', 'Amount Paid', 'Balance Due', 'Payment Status', 'Payment Method', 'Date Created', 'Shift', 'Validation Status'];  $rows_formatted = [];  foreach ($data as $row) {  $rows_formatted[] = [  $row['transaction_id'],  $row['customer_name'] ?: 'Walk-in Customer',  $row['items'] ?: 'N/A',  (int)($row['quantity'] ?? 0),  (float)$row['total_amount'],  (float)$row['amount_paid'],  (float)$row['balance_due'],  $row['payment_status'],  $row['payment_method'],  date('M d, Y H:i', strtotime($row['transaction_date'])),  $row['shift_name'] ?: 'General',  $row['status']  ];  }
-}  // Perform export
-if ($format === 'csv') {  header('Content-Type: text/csv; charset=utf-8');  header('Content-Disposition: attachment; filename="' . $filename . '.csv"');  $output = fopen('php://output', 'w');  fputcsv($output, $headers);  foreach ($rows_formatted as $row) {  // Format float values  $formatted_row = $row;  if ($type === 'job_orders') {  $formatted_row[5] = number_format($row[5], 2);  $formatted_row[6] = number_format($row[6], 2);  $formatted_row[7] = number_format($row[7], 2);  } else {  // Merchandise: indices 4=Total, 5=AmountPaid, 6=BalanceDue  $formatted_row[4] = number_format($row[4], 2);  $formatted_row[5] = number_format($row[5], 2);  $formatted_row[6] = number_format($row[6], 2);  }  fputcsv($output, $formatted_row);  }  fclose($output);  exit;
-} elseif ($format === 'excel') {  header('Content-Type: application/vnd.ms-excel; charset=utf-8');  header('Content-Disposition: attachment; filename="' . $filename . '.xls"');  echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel">';  echo '<head><meta charset="UTF-8"><style>table { border-collapse: collapse; } td, th { border: 1px solid #ddd; padding: 8px; } th { background-color: #002F70; color: white; font-weight: bold; }</style></head>';  echo '<body>';  echo '<h2>' . htmlspecialchars($title) . '</h2>';  echo '<p>Generated: ' . date('F d, Y h:i A') . '</p>';  echo '<table>';  echo '<thead><tr>';  foreach ($headers as $h) {  echo '<th>' . htmlspecialchars($h) . '</th>';  }  echo '</tr></thead>';  echo '<tbody>';  foreach ($rows_formatted as $row) {  echo '<tr>';  foreach ($row as $idx => $val) {  // Right align currency values  if (($type === 'job_orders' && in_array($idx, [5,6,7])) || ($type === 'merchandise' && in_array($idx, [4,5,6]))) {  echo '<td style="text-align:right;">' . number_format((float)$val, 2) . '</td>';  } else {  echo '<td>' . htmlspecialchars((string)$val) . '</td>';  }  }  echo '</tr>';  }  echo '</tbody></table></body></html>';  exit;
-} elseif ($format === 'pdf') {  header('Content-Type: text/html; charset=utf-8');  // Resolve logo path relative to this script (backend/ → assets/img/)  $logo_url = '../assets/img/Petron%20Logo.png';  $generated = date('F d, Y  h:i A');  $total_records = count($rows_formatted);  echo '<!DOCTYPE html>';  echo '<html lang="en">';  echo '<head>';  echo '<meta charset="UTF-8">';  echo '<meta name="viewport" content="width=device-width,initial-scale=1">';  echo '<title>' . htmlspecialchars($title) . ' | Petron Station Management</title>';  echo '<link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">';  echo '<style>';  /* ── Base ── */  echo 'body{font-family:Arial,Helvetica,sans-serif;font-size:12px;margin:0;padding:0;background:#f1f5f9;color:#1e293b;}';  /* ── Top action bar (hidden on print) ── */  echo '.action-bar{background:#002F70;padding:12px 24px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:999;}';  echo '.action-bar h2{color:#fff;font-size:15px;margin:0;flex:1;}';  echo '.btn-print{display:inline-flex;align-items:center;gap:7px;padding:9px 20px;background:#DC0032;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;text-decoration:none;}';  echo '.btn-back{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;}';  echo '.btn-back:hover{background:rgba(255,255,255,.28);}';  echo '.btn-print:hover{background:#b5002a;}';  /* ── Report wrapper ── */  echo '.report{background:#fff;max-width:1100px;margin:20px auto;border-radius:10px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.12);}';  /* ── Branded header ── */  echo '.rpt-header{background:linear-gradient(135deg,#002F70 0%,#003d8a 100%);padding:22px 28px;display:flex;align-items:center;gap:18px;}';  echo '.rpt-header img{height:52px;width:auto;object-fit:contain;}';  echo '.rpt-header-text h1{color:#fff;font-size:18px;font-weight:800;margin:0 0 3px;letter-spacing:.3px;}';  echo '.rpt-header-text p{color:#93c5fd;font-size:11px;margin:0;}';  echo '.rpt-header-meta{margin-left:auto;text-align:right;color:#bfdbfe;font-size:11px;line-height:1.7;}';  echo '.rpt-header-meta strong{color:#fff;}';  /* ── Table ── */  echo '.rpt-body{padding:20px;}';  echo 'table{width:100%;border-collapse:collapse;margin-top:8px;font-size:11px;}';  echo 'thead tr{background:#002F70;}';  echo 'th{padding:9px 8px;color:#fff;font-weight:700;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;}';  echo 'td{padding:8px;border-bottom:1px solid #e2e8f0;vertical-align:top;}';  echo 'tr:nth-child(even) td{background:#f8fafc;}';  echo 'tr:last-child td{border-bottom:none;}';  echo '.amount{text-align:right;font-weight:700;color:#002F70;}';  echo '.total-row td{background:#f0f7ff!important;font-weight:800;color:#002F70;border-top:2px solid #002F70;}';  /* ── Footer ── */  echo '.rpt-footer{padding:16px 28px;background:#f8fafc;border-top:2px solid #e2e8f0;font-size:10px;color:#64748b;text-align:center;}';  /* ── Print overrides ── */  echo '@media print{';  echo '  .action-bar{display:none!important;}';  echo '  body{background:#fff;margin:0;padding:0;}';  echo '  .report{box-shadow:none;border-radius:0;margin:0;max-width:100%;}';  echo '  table{font-size:9px;}';  echo '  th{font-size:9px;padding:6px 4px;}';  echo '  td{padding:6px 4px;}';  echo '}';  echo '</style>';  echo '</head><body>';  /* ── Action bar ── */  echo '<div class="action-bar">';  echo '  <h2><i class="fas fa-file-alt" style="margin-right:8px;"></i>' . htmlspecialchars($title) . '</h2>';  echo '  <a href="javascript:window.print()" class="btn-print"><i class="fas fa-print" style="margin-right:6px;"></i> Print / Save as PDF</a>';  echo '  <a href="javascript:void(0)" onclick="window.history.length>1?window.history.back():window.close()" class="btn-back"><i class="fas fa-arrow-left" style="margin-right:6px;"></i> Back</a>';  echo '</div>';  /* ── Report ── */  echo '<div class="report">';  /* Branded header */  echo '<div class="rpt-header">';  echo '  <img src="' . $logo_url . '" alt="Petron Logo">';  echo '  <div class="rpt-header-text">';  echo '  <h1>Petron Station Management System</h1>';  echo '  <p>' . htmlspecialchars($title) . '</p>';  echo '  </div>';  echo '  <div class="rpt-header-meta">';  echo '  <div><strong>Generated:</strong> ' . $generated . '</div>';  echo '  <div><strong>Total Records:</strong> ' . $total_records . '</div>';  echo '  </div>';  echo '</div>';  /* Table */  echo '<div class="rpt-body">';  echo '<table>';  echo '<thead><tr>';  foreach ($headers as $h) {  echo '<th>' . htmlspecialchars($h) . '</th>';  }  echo '</tr></thead>';  echo '<tbody>';  $total_val = 0;  foreach ($rows_formatted as $row) {  echo '<tr>';  foreach ($row as $idx => $val) {  $is_amount = ($type === 'job_orders' && in_array($idx, [5,6,7]))  || ($type === 'merchandise' && in_array($idx, [4,5,6]));  if ($is_amount) {  // Accumulate only the primary total column  if (($type === 'job_orders' && $idx === 5) || ($type === 'merchandise' && $idx === 4)) {  $total_val += (float)$val;  }  echo '<td class="amount">&#8369;' . number_format((float)$val, 2) . '</td>';  } else {  echo '<td>' . htmlspecialchars((string)$val) . '</td>';  }  }  echo '</tr>';  }  // Determine which column index holds the "primary total" value  // and render a structurally correct total row  $total_col_idx  = ($type === 'job_orders') ? 5 : 4;  // 0-based index of Total Amount  $col_count  = count($headers);  $trailing_count = $col_count - $total_col_idx - 1;  // columns after the total  echo '<tr class="total-row">';  echo '<td colspan="' . $total_col_idx . '" style="text-align:right;padding-right:14px;font-size:12px;font-weight:800;">TOTAL</td>';  echo '<td class="amount" style="white-space:nowrap;">&#8369;' . number_format($total_val, 2) . '</td>';  for ($i = 0; $i < $trailing_count; $i++) {  echo '<td class="amount" style="color:#94a3b8;">&mdash;</td>';  }  echo '</tr>';  echo '</tbody></table>';  echo '</div>'; // /rpt-body  /* Footer */  echo '<div class="rpt-footer">';  echo '  <span>&#169; ' . date('Y') . ' Petron Station &amp; Service Center Management System. All Rights Reserved.</span>';  echo '</div>';  echo '</div>'; // /report  echo '</body></html>';  exit;
-}  
+
+// Helper functions for dynamic schema columns
+function st_cols(PDO $pdo, string $table): array {
+    try {
+        $rows = $pdo->query("SHOW COLUMNS FROM `{$table}`")->fetchAll(PDO::FETCH_ASSOC);
+        $map = [];
+        foreach ($rows as $r) $map[strtolower($r['Field'])] = true;
+        return $map;
+    } catch (Exception $e) { return []; }
+}
+function st_has(array $map, string $col): bool { return isset($map[strtolower($col)]); }
+
+$mt_cols = st_cols($pdo, 'merchandise_transactions');
+$jo_cols = st_cols($pdo, 'job_orders');
+
+if ($type === 'job_orders') {
+    // Fetch Job Orders data (combined native job_orders + merchandise_transactions job_orders)
+    $jo_rows = [];
+    try {
+        $stmt = $pdo->prepare("
+            SELECT jo.id,
+                   jo.customer_name,
+                   jo.service_type,
+                   jo.vehicle_plate,
+                   jo.vehicle_type,
+                   COALESCE(jo.total_cost, jo.estimated_cost, 0) AS total_amount,
+                   COALESCE(jo.amount_paid, 0) AS amount_paid,
+                   COALESCE(jo.balance_due, COALESCE(jo.total_cost, jo.estimated_cost, 0)) AS balance_due,
+                   COALESCE(jo.payment_status, 'Pending Payment') AS payment_status,
+                   COALESCE(jo.payment_method, 'Cash') AS payment_method,
+                   jo.status AS workflow_status,
+                   jo.created_at,
+                   COALESCE(u.name, u.username) AS mechanic_name
+            FROM job_orders jo
+            LEFT JOIN users u ON u.user_id = jo.assigned_mechanic_id
+            WHERE jo.station_id = ?
+            ORDER BY jo.created_at DESC
+        ");
+        $stmt->execute([$station_id]);
+        $jo_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) { $jo_rows = []; }
+
+    $mt_rows = [];
+    try {
+        $stmt2 = $pdo->prepare("
+            SELECT mt.id,
+                   mt.customer_name,
+                   COALESCE(mt.job_order_service, 'Service') AS service_type,
+                   COALESCE(mt.job_order_vehicle_plate, '') AS vehicle_plate,
+                   COALESCE(mt.job_order_vehicle_type, '') AS vehicle_type,
+                   mt.total_amount,
+                   COALESCE(mt.amount_paid, 0) AS amount_paid,
+                   COALESCE(mt.balance_due, mt.total_amount) AS balance_due,
+                   COALESCE(mt.payment_status, 'Pending Payment') AS payment_status,
+                   COALESCE(mt.payment_method, 'Cash') AS payment_method,
+                   COALESCE(mt.workflow_status, mt.validation_status, 'Pending') AS workflow_status,
+                   mt.created_at,
+                   COALESCE(mt.job_order_mechanic_name, '') AS mechanic_name
+            FROM merchandise_transactions mt
+            WHERE mt.station_id = ?
+              AND mt.transaction_type IN ('job_order', 'combined')
+            ORDER BY mt.created_at DESC
+        ");
+        $stmt2->execute([$station_id]);
+        $mt_rows = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) { $mt_rows = []; }
+
+    // Merge and sort
+    $data = array_merge($jo_rows, $mt_rows);
+    usort($data, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['created_at']));
+    
+    // Output file configuration
+    $filename = "job_order_tracker_" . date('Y-m-d_His');
+    $title = "Job Order Tracker Report";
+    $headers = ['Job ID', 'Customer', 'Service Type', 'Plate Number', 'Vehicle Type', 'Total Cost', 'Amount Paid', 'Balance Due', 'Payment Status', 'Payment Method', 'Workflow Status', 'Date Created', 'Mechanic'];
+    
+    $rows_formatted = [];
+    foreach ($data as $row) {
+        $prefix = isset($row['id']) && is_numeric($row['id']) ? 'JO-' : '';
+        $rows_formatted[] = [
+            $prefix . $row['id'],
+            $row['customer_name'] ?: 'Walk-in Customer',
+            $row['service_type'],
+            $row['vehicle_plate'] ?: 'N/A',
+            $row['vehicle_type'] ?: 'N/A',
+            (float)$row['total_amount'],
+            (float)$row['amount_paid'],
+            (float)$row['balance_due'],
+            $row['payment_status'],
+            $row['payment_method'],
+            $row['workflow_status'],
+            date('M d, Y H:i', strtotime($row['created_at'])),
+            $row['mechanic_name'] ?: 'Unassigned'
+        ];
+    }
+} else {
+    // Fetch Merchandise transactions history for the logged-in staff member
+    $data = [];
+    try {
+        $mh_date_col = st_has($mt_cols, 'transaction_date') ? 'mt.transaction_date' : 'mt.created_at';
+        $mh_status_col = st_has($mt_cols, 'validation_status') ? 'mt.validation_status' : (st_has($mt_cols, 'status') ? 'mt.status' : "'Pending'");
+        $mh_txnid_col  = st_has($mt_cols, 'transaction_id')   ? 'mt.transaction_id'   : 'mt.id';
+
+        $txnTypeFilter = st_has($mt_cols, 'transaction_type')
+            ? "AND (mt.transaction_type = 'merchandise' OR mt.transaction_type IS NULL OR mt.transaction_type = '')"
+            : "";
+
+        $stmt = $pdo->prepare("
+            SELECT mt.id,
+                   $mh_txnid_col AS transaction_id,
+                   mt.customer_name,
+                   mt.item_sku AS items,
+                   mt.quantity,
+                   mt.total_amount,
+                   mt.payment_method,
+                   COALESCE(mt.amount_paid, 0) AS amount_paid,
+                   COALESCE(mt.balance_due, mt.total_amount) AS balance_due,
+                   COALESCE(mt.payment_status, 'Pending Payment') AS payment_status,
+                   $mh_date_col AS transaction_date,
+                   $mh_status_col AS status,
+                   mt.shift_name
+            FROM merchandise_transactions mt
+            WHERE mt.station_id = ? AND mt.staff_id = ?
+              $txnTypeFilter
+            ORDER BY $mh_date_col DESC
+        ");
+        $stmt->execute([$station_id, $staff_id]);
+        $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) { $data = []; }
+
+    // Output file configuration
+    $filename = "merchandise_history_" . date('Y-m-d_His');
+    $title = "Merchandise Sales Report";
+    $headers = ['Transaction ID', 'Customer', 'Items Sold', 'Qty', 'Total Amount', 'Amount Paid', 'Balance Due', 'Payment Status', 'Payment Method', 'Date Created', 'Shift', 'Validation Status'];
+
+    $rows_formatted = [];
+    foreach ($data as $row) {
+        $rows_formatted[] = [
+            $row['transaction_id'],
+            $row['customer_name'] ?: 'Walk-in Customer',
+            $row['items'] ?: 'N/A',
+            (int)($row['quantity'] ?? 0),
+            (float)$row['total_amount'],
+            (float)$row['amount_paid'],
+            (float)$row['balance_due'],
+            $row['payment_status'],
+            $row['payment_method'],
+            date('M d, Y H:i', strtotime($row['transaction_date'])),
+            $row['shift_name'] ?: 'General',
+            $row['status']
+        ];
+    }
+}
+
+// Perform export
+if ($format === 'csv') {
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
+    
+    $output = fopen('php://output', 'w');
+    fputcsv($output, $headers);
+    foreach ($rows_formatted as $row) {
+        // Format float values
+        $formatted_row = $row;
+        if ($type === 'job_orders') {
+            $formatted_row[5] = number_format($row[5], 2);
+            $formatted_row[6] = number_format($row[6], 2);
+            $formatted_row[7] = number_format($row[7], 2);
+        } else {
+            // Merchandise: indices 4=Total, 5=AmountPaid, 6=BalanceDue
+            $formatted_row[4] = number_format($row[4], 2);
+            $formatted_row[5] = number_format($row[5], 2);
+            $formatted_row[6] = number_format($row[6], 2);
+        }
+        fputcsv($output, $formatted_row);
+    }
+    fclose($output);
+    exit;
+} elseif ($format === 'excel') {
+    header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '.xls"');
+    
+    echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel">';
+    echo '<head><meta charset="UTF-8"><style>table { border-collapse: collapse; } td, th { border: 1px solid #ddd; padding: 8px; } th { background-color: #002F70; color: white; font-weight: bold; }</style></head>';
+    echo '<body>';
+    echo '<h2>' . htmlspecialchars($title) . '</h2>';
+    echo '<p>Generated: ' . date('F d, Y h:i A') . '</p>';
+    echo '<table>';
+    echo '<thead><tr>';
+    foreach ($headers as $h) {
+        echo '<th>' . htmlspecialchars($h) . '</th>';
+    }
+    echo '</tr></thead>';
+    echo '<tbody>';
+    
+    foreach ($rows_formatted as $row) {
+        echo '<tr>';
+        foreach ($row as $idx => $val) {
+            // Right align currency values
+            if (($type === 'job_orders' && in_array($idx, [5,6,7])) || ($type === 'merchandise' && in_array($idx, [4,5,6]))) {
+                echo '<td style="text-align:right;">' . number_format((float)$val, 2) . '</td>';
+            } else {
+                echo '<td>' . htmlspecialchars((string)$val) . '</td>';
+            }
+        }
+        echo '</tr>';
+    }
+    echo '</tbody></table></body></html>';
+    exit;
+} elseif ($format === 'pdf') {
+    header('Content-Type: text/html; charset=utf-8');
+    
+    // Resolve logo path relative to this script (backend/ → assets/img/)
+    $logo_url = '../assets/img/Petron%20Logo.png';
+    $generated = date('F d, Y  h:i A');
+    $total_records = count($rows_formatted);
+
+    echo '<!DOCTYPE html>';
+    echo '<html lang="en">';
+    echo '<head>';
+    echo '<meta charset="UTF-8">';
+    echo '<meta name="viewport" content="width=device-width,initial-scale=1">';
+    echo '<title>' . htmlspecialchars($title) . ' | Petron Station Management</title>';
+    echo '<link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">';
+    echo '<style>';
+
+    /* ── Base ── */
+    echo 'body{font-family:Arial,Helvetica,sans-serif;font-size:12px;margin:0;padding:0;background:#f1f5f9;color:#1e293b;}';
+
+    /* ── Top action bar (hidden on print) ── */
+    echo '.action-bar{background:#002F70;padding:12px 24px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:999;}';
+    echo '.action-bar h2{color:#fff;font-size:15px;margin:0;flex:1;}';
+    echo '.btn-print{display:inline-flex;align-items:center;gap:7px;padding:9px 20px;background:#DC0032;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;text-decoration:none;}';
+    echo '.btn-back{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;}';
+    echo '.btn-back:hover{background:rgba(255,255,255,.28);}';
+    echo '.btn-print:hover{background:#b5002a;}';
+
+    /* ── Report wrapper ── */
+    echo '.report{background:#fff;max-width:1100px;margin:20px auto;border-radius:10px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.12);}';
+
+    /* ── Branded header ── */
+    echo '.rpt-header{background:linear-gradient(135deg,#002F70 0%,#003d8a 100%);padding:22px 28px;display:flex;align-items:center;gap:18px;}';
+    echo '.rpt-header img{height:52px;width:auto;object-fit:contain;}';
+    echo '.rpt-header-text h1{color:#fff;font-size:18px;font-weight:800;margin:0 0 3px;letter-spacing:.3px;}';
+    echo '.rpt-header-text p{color:#93c5fd;font-size:11px;margin:0;}';
+    echo '.rpt-header-meta{margin-left:auto;text-align:right;color:#bfdbfe;font-size:11px;line-height:1.7;}';
+    echo '.rpt-header-meta strong{color:#fff;}';
+
+    /* ── Table ── */
+    echo '.rpt-body{padding:20px;}';
+    echo 'table{width:100%;border-collapse:collapse;margin-top:8px;font-size:11px;}';
+    echo 'thead tr{background:#002F70;}';
+    echo 'th{padding:9px 8px;color:#fff;font-weight:700;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;}';
+    echo 'td{padding:8px;border-bottom:1px solid #e2e8f0;vertical-align:top;}';
+    echo 'tr:nth-child(even) td{background:#f8fafc;}';
+    echo 'tr:last-child td{border-bottom:none;}';
+    echo '.amount{text-align:right;font-weight:700;color:#002F70;}';
+    echo '.total-row td{background:#f0f7ff!important;font-weight:800;color:#002F70;border-top:2px solid #002F70;}';
+
+    /* ── Footer ── */
+    echo '.rpt-footer{padding:16px 28px;background:#f8fafc;border-top:2px solid #e2e8f0;font-size:10px;color:#64748b;text-align:center;}';
+
+    /* ── Print overrides ── */
+    echo '@media print{';
+    echo '  .action-bar{display:none!important;}';
+    echo '  body{background:#fff;margin:0;padding:0;}';
+    echo '  .report{box-shadow:none;border-radius:0;margin:0;max-width:100%;}';
+    echo '  table{font-size:9px;}';
+    echo '  th{font-size:9px;padding:6px 4px;}';
+    echo '  td{padding:6px 4px;}';
+    echo '}';
+
+    echo '</style>';
+    echo '</head><body>';
+
+    /* ── Action bar ── */
+    echo '<div class="action-bar">';
+    echo '  <h2><i class="fas fa-file-alt" style="margin-right:8px;"></i>' . htmlspecialchars($title) . '</h2>';
+    echo '  <a href="javascript:window.print()" class="btn-print"><i class="fas fa-print" style="margin-right:6px;"></i> Print / Save as PDF</a>';
+    echo '  <a href="javascript:void(0)" onclick="window.history.length>1?window.history.back():window.close()" class="btn-back"><i class="fas fa-arrow-left" style="margin-right:6px;"></i> Back</a>';
+    echo '</div>';
+
+    /* ── Report ── */
+    echo '<div class="report">';
+
+    /* Branded header */
+    echo '<div class="rpt-header">';
+    echo '  <img src="' . $logo_url . '" alt="Petron Logo">';
+    echo '  <div class="rpt-header-text">';
+    echo '    <h1>Petron Station Management System</h1>';
+    echo '    <p>' . htmlspecialchars($title) . '</p>';
+    echo '  </div>';
+    echo '  <div class="rpt-header-meta">';
+    echo '    <div><strong>Generated:</strong> ' . $generated . '</div>';
+    echo '    <div><strong>Total Records:</strong> ' . $total_records . '</div>';
+    echo '  </div>';
+    echo '</div>';
+
+    /* Table */
+    echo '<div class="rpt-body">';
+    echo '<table>';
+    echo '<thead><tr>';
+    foreach ($headers as $h) {
+        echo '<th>' . htmlspecialchars($h) . '</th>';
+    }
+    echo '</tr></thead>';
+    echo '<tbody>';
+
+    $total_val = 0;
+    foreach ($rows_formatted as $row) {
+        echo '<tr>';
+        foreach ($row as $idx => $val) {
+            $is_amount = ($type === 'job_orders' && in_array($idx, [5,6,7]))
+                      || ($type === 'merchandise' && in_array($idx, [4,5,6]));
+            if ($is_amount) {
+                // Accumulate only the primary total column
+                if (($type === 'job_orders' && $idx === 5) || ($type === 'merchandise' && $idx === 4)) {
+                    $total_val += (float)$val;
+                }
+                echo '<td class="amount">&#8369;' . number_format((float)$val, 2) . '</td>';
+            } else {
+                echo '<td>' . htmlspecialchars((string)$val) . '</td>';
+            }
+        }
+        echo '</tr>';
+    }
+
+    // Determine which column index holds the "primary total" value
+    // and render a structurally correct total row
+    $total_col_idx  = ($type === 'job_orders') ? 5 : 4;   // 0-based index of Total Amount
+    $col_count      = count($headers);
+    $trailing_count = $col_count - $total_col_idx - 1;     // columns after the total
+
+    echo '<tr class="total-row">';
+    echo '<td colspan="' . $total_col_idx . '" style="text-align:right;padding-right:14px;font-size:12px;font-weight:800;">TOTAL</td>';
+    echo '<td class="amount" style="white-space:nowrap;">&#8369;' . number_format($total_val, 2) . '</td>';
+    for ($i = 0; $i < $trailing_count; $i++) {
+        echo '<td class="amount" style="color:#94a3b8;">&mdash;</td>';
+    }
+    echo '</tr>';
+
+    echo '</tbody></table>';
+    echo '</div>'; // /rpt-body
+
+    /* Footer */
+    echo '<div class="rpt-footer">';
+    echo '  <span>&#169; ' . date('Y') . ' Petron Station &amp; Service Center Management System. All Rights Reserved.</span>';
+    echo '</div>';
+
+    echo '</div>'; // /report
+    echo '</body></html>';
+    exit;
+}
+

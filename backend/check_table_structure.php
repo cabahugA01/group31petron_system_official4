@@ -1,4 +1,45 @@
 <?php
-/**  * Check table structure for job_order_service_types  */  require_once __DIR__ . '/lib.php';
-require_once __DIR__ . '/../public/db_connect.php';  try {  echo "Table Structure: job_order_service_types\n";  echo str_repeat("=", 100) . "\n";  $stmt = $pdo->query("DESCRIBE job_order_service_types");  $columns = $stmt->fetchAll(PDO::FETCH_ASSOC);  printf("%-25s | %-20s | %-8s | %-8s | %-20s\n", "Field", "Type", "Null", "Key", "Default");  echo str_repeat("-", 100) . "\n";  foreach ($columns as $col) {  printf("%-25s | %-20s | %-8s | %-8s | %-20s\n",  $col['Field'],  $col['Type'],  $col['Null'],  $col['Key'],  $col['Default'] ?? '(NULL)'  );  }  echo str_repeat("=", 100) . "\n";  // Try direct SQL update  echo "\nAttempting direct UPDATE...\n";  $pdo->beginTransaction();  $stmt = $pdo->prepare("UPDATE job_order_service_types SET status = 'active' WHERE id = 47");  $stmt->execute();  echo "Rows affected: " . $stmt->rowCount() . "\n";  $pdo->commit();  // Check the specific record  $check = $pdo->query("SELECT id, service_name, status, active FROM job_order_service_types WHERE id = 47")->fetch();  echo "After update - ID 47: status='" . ($check['status'] ?? '(null)') . "', active=" . $check['active'] . "\n";  } catch (Exception $e) {  echo "ERROR: " . $e->getMessage() . "\n";
+/**
+ * Check table structure for job_order_service_types
+ */
+
+require_once __DIR__ . '/lib.php';
+require_once __DIR__ . '/../public/db_connect.php';
+
+try {
+    echo "Table Structure: job_order_service_types\n";
+    echo str_repeat("=", 100) . "\n";
+    
+    $stmt = $pdo->query("DESCRIBE job_order_service_types");
+    $columns = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    printf("%-25s | %-20s | %-8s | %-8s | %-20s\n", "Field", "Type", "Null", "Key", "Default");
+    echo str_repeat("-", 100) . "\n";
+    
+    foreach ($columns as $col) {
+        printf("%-25s | %-20s | %-8s | %-8s | %-20s\n", 
+            $col['Field'], 
+            $col['Type'], 
+            $col['Null'], 
+            $col['Key'],
+            $col['Default'] ?? '(NULL)'
+        );
+    }
+    
+    echo str_repeat("=", 100) . "\n";
+    
+    // Try direct SQL update
+    echo "\nAttempting direct UPDATE...\n";
+    $pdo->beginTransaction();
+    $stmt = $pdo->prepare("UPDATE job_order_service_types SET status = 'active' WHERE id = 47");
+    $stmt->execute();
+    echo "Rows affected: " . $stmt->rowCount() . "\n";
+    $pdo->commit();
+    
+    // Check the specific record
+    $check = $pdo->query("SELECT id, service_name, status, active FROM job_order_service_types WHERE id = 47")->fetch();
+    echo "After update - ID 47: status='" . ($check['status'] ?? '(null)') . "', active=" . $check['active'] . "\n";
+    
+} catch (Exception $e) {
+    echo "ERROR: " . $e->getMessage() . "\n";
 }

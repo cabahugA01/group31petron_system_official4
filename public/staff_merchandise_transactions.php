@@ -2,97 +2,1189 @@
 $page_id = 'staff_merchandise_transactions';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
-require_login();  $me = current_user();
+require_login();
+
+$me = current_user();
 $station_id = user_station_id();
-$role = role_key($me['role'] ?? '');  // Only staff can access this page
-if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {  header('Location: dashboard.php');  exit;
-}  $msg = '';
-if (isset($_SESSION['success'])) {  $msg = $_SESSION['success'];  unset($_SESSION['success']);  }
-if (isset($_SESSION['error'])) {  $msg = $_SESSION['error'];  unset($_SESSION['error']);  }  // Get current shift info
-$current_shift = null;
-try {  $stmt = $pdo->prepare("SELECT * FROM labor_sessions WHERE user_id = ? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1");  $stmt->execute([$me['id']]);  $current_shift = $stmt->fetch(PDO::FETCH_ASSOC);
-} catch (Exception $e) {  $current_shift = null;
-}  include __DIR__ . '/../partials/header.php';
-?>  <style>
-.merch-transaction-container {  max-width: 1400px;  margin: 0 auto;  padding: 20px;  display: grid;  grid-template-columns: 1fr 400px;  gap: 30px;
-}  .form-section {  background: #fff;  border-radius: 12px;  box-shadow: 0 2px 8px rgba(0,0,0,0.08);  border: 1px solid #e9ecef;  padding: 30px;
-}  .cart-section {  background: #fff;  border-radius: 12px;  box-shadow: 0 2px 8px rgba(0,0,0,0.08);  border: 1px solid #e9ecef;  padding: 25px;  position: sticky;  top: 20px;  max-height: calc(100vh - 40px);  overflow-y: auto;
-}  .section-title {  font-size: 20px;  font-weight: 600;  color: #2c3e50;  margin-bottom: 25px;  padding-bottom: 15px;  border-bottom: 2px solid #003d7a;
-}  .form-row {  display: grid;  grid-template-columns: 1fr 1fr;  gap: 20px;  margin-bottom: 20px;
-}  .form-group {  margin-bottom: 20px;
-}  .form-label {  display: block;  margin-bottom: 8px;  font-weight: 600;  color: #333;  font-size: 14px;
-}  .form-input, .form-select {  width: 100%;  padding: 12px;  border: 1px solid #ddd;  border-radius: 6px;  font-size: 14px;  transition: all 0.3s ease;
-}  .form-input:focus, .form-select:focus {  outline: none;  border-color: #003d7a;  box-shadow: 0 0 0 3px rgba(0,61,122,0.1);
-}  .auto-pulled {  background: #f8f9fa;  border-color: #28a745;  color: #28a745;
-}  .computed {  background: #e3f2fd;  border-color: #2196f3;  color: #1976d2;
-}  .product-search {  position: relative;
-}  .product-suggestions {  position: absolute;  top: 100%;  left: 0;  right: 0;  background: #fff;  border: 1px solid #ddd;  border-top: none;  max-height: 200px;  overflow-y: auto;  z-index: 1000;  display: none;
-}  .product-suggestion {  padding: 10px;  cursor: pointer;  border-bottom: 1px solid #f0f0f0;
-}  .product-suggestion:hover {  background: #f8f9fa;
-}  .product-suggestion.selected {  background: #e3f2fd;
-}  .cart-items {  margin-bottom: 20px;  max-height: 300px;  overflow-y: auto;
-}  .cart-item {  background: #f8f9fa;  border-radius: 8px;  padding: 15px;  margin-bottom: 10px;  border: 1px solid #e9ecef;
-}  .cart-item-header {  display: flex;  justify-content: between;  align-items: center;  margin-bottom: 10px;
-}  .cart-item-name {  font-weight: 600;  color: #2c3e50;  flex: 1;
-}  .cart-item-remove {  background: #dc3545;  color: white;  border: none;  border-radius: 4px;  padding: 4px 8px;  cursor: pointer;  font-size: 12px;
-}  .cart-item-details {  display: grid;  grid-template-columns: 1fr 1fr;  gap: 10px;  font-size: 13px;  color: #666;
-}  .cart-summary {  background: linear-gradient(135deg, #003d7a, #0056b3);  color: white;  padding: 20px;  border-radius: 8px;  margin-bottom: 20px;
-}  .summary-row {  display: flex;  justify-content: space-between;  margin-bottom: 10px;  font-size: 14px;
-}  .summary-row.total {  font-size: 18px;  font-weight: 700;  border-top: 2px solid rgba(255,255,255,0.3);  padding-top: 10px;  margin-top: 10px;
-}  .payment-section {  background: #f8f9fa;  padding: 15px;  border-radius: 8px;  margin-bottom: 20px;
-}  .action-buttons {  display: grid;  grid-template-columns: 1fr 1fr;  gap: 10px;
-}  .btn {  padding: 12px 20px;  border: none;  border-radius: 6px;  cursor: pointer;  font-weight: 600;  text-decoration: none;  display: inline-block;  text-align: center;  transition: all 0.3s ease;
-}  .btn-primary {  background: #003d7a;  color: white;
-}  .btn-primary:hover {  background: #0056b3;  transform: translateY(-2px);
-}  .btn-success {  background: #28a745;  color: white;
-}  .btn-success:hover {  background: #218838;  transform: translateY(-2px);
-}  .btn-warning {  background: #ffc107;  color: #212529;
-}  .btn-warning:hover {  background: #e0a800;  transform: translateY(-2px);
-}  .btn-danger {  background: #dc3545;  color: white;
-}  .btn-danger:hover {  background: #c82333;  transform: translateY(-2px);
-}  .btn:disabled {  opacity: 0.6;  cursor: not-allowed;  transform: none;
-}  .staff-info {  background: #e8f5e8;  padding: 15px;  border-radius: 8px;  margin-bottom: 20px;  border: 1px solid #28a745;
-}  .info-row {  display: flex;  justify-content: space-between;  margin-bottom: 5px;  font-size: 13px;
-}  .validation-status {  background: #fff3cd;  border: 1px solid #ffc107;  color: #856404;  padding: 10px;  border-radius: 6px;  text-align: center;  font-weight: 600;  margin-bottom: 20px;
-}  .notification {  position: fixed;  top: 20px;  right: 20px;  padding: 15px 20px;  border-radius: 8px;  color: white;  font-weight: 600;  z-index: 10000;  animation: slideIn 0.3s ease;
-}  .notification.success {  background: #28a745;
-}  .notification.error {  background: #dc3545;
-}  .notification.warning {  background: #ffc107;  color: #212529;
-}  @keyframes slideIn {  from {  transform: translateX(100%);  opacity: 0;  }  to {  transform: translateX(0);  opacity: 1;  }
-}  @media (max-width: 1024px) {  .merch-transaction-container {  grid-template-columns: 1fr;  }  .cart-section {  position: static;  max-height: none;  }
-}  @media (max-width: 768px) {  .form-row {  grid-template-columns: 1fr;  }  .action-buttons {  grid-template-columns: 1fr;  }  .cart-item-details {  grid-template-columns: 1fr;  }
+$role = role_key($me['role'] ?? '');
+
+// Only staff can access this page
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+    header('Location: dashboard.php');
+    exit;
 }
-</style>  <div class="merch-transaction-container">  <!-- Transaction Form Section -->  <div class="form-section">  <h2 class="section-title">  <i class="fas fa-shopping-cart"></i> Merchandise Transaction  </h2>  <!-- Staff Information -->  <div class="staff-info">  <div class="info-row">  <span><strong>Staff ID:</strong> <?php echo htmlspecialchars($me['id']); ?></span>  <span><strong>Staff Name:</strong> <?php echo htmlspecialchars($me['name'] ?? $me['username']); ?></span>  </div>  <div class="info-row">  <span><strong>Station:</strong> #<?php echo (int)$station_id; ?></span>  <span><strong>Shift ID:</strong> <?php echo $current_shift ? '#' . (int)$current_shift['id'] : 'Not clocked in'; ?></span>  </div>  <div class="info-row">  <span><strong>Current Time:</strong> <span id="current_time"><?php echo date('Y-m-d H:i:s'); ?></span></span>  <span><strong>Status:</strong> <span class="validation-status">Pending Validation</span></span>  </div>  </div>  <?php if($msg): ?>  <div class="notification <?php echo strpos($msg, 'Error') !== false ? 'error' : 'success'; ?>" style="position: static; margin-bottom: 20px;">  <?php echo htmlspecialchars($msg); ?>  </div>  <?php endif; ?>  <form id="merchandiseForm">  <!-- Product Selection -->  <div class="form-group">  <label class="form-label">Product Search</label>  <div class="product-search">  <input type="text" id="product_search" class="form-input" placeholder="Type to search products...">  <div id="product_suggestions" class="product-suggestions"></div>  </div>  </div>  <!-- Auto-populated Product Details -->  <div class="form-row">  <div class="form-group">  <label class="form-label">Item Name</label>  <input type="text" id="item_name" class="form-input auto-pulled" readonly placeholder="Auto-populated">  </div>  <div class="form-group">  <label class="form-label">Category</label>  <input type="text" id="item_category" class="form-input auto-pulled" readonly placeholder="Auto-populated">  </div>  </div>  <div class="form-row">  <div class="form-group">  <label class="form-label">Size Variant</label>  <input type="text" id="item_size" class="form-input auto-pulled" readonly placeholder="Auto-populated">  </div>  <div class="form-group">  <label class="form-label">Quantity</label>  <input type="number" id="item_quantity" class="form-input" min="1" step="0.01" placeholder="Enter quantity">  </div>  </div>  <div class="form-row">  <div class="form-group">  <label class="form-label">Unit Price</label>  <input type="text" id="item_unit_price" class="form-input auto-pulled" readonly placeholder="Auto-pulled">  </div>  <div class="form-group">  <label class="form-label">Subtotal</label>  <input type="text" id="item_subtotal" class="form-input computed" readonly placeholder="Computed">  </div>  </div>  <div style="text-align: center; margin: 20px 0;">  <button type="button" id="add_to_cart" class="btn btn-primary">  <i class="fas fa-plus"></i> Add to Cart  </button>  </div>  <hr style="margin: 30px 0; border: none; border-top: 1px solid #e9ecef;">  <!-- Customer & Payment Information -->  <div class="form-row">  <div class="form-group">  <label class="form-label">Job Order # <span style="font-weight:400;color:#888;font-size:12px;">(optional — auto-fills customer name)</span></label>  <div style="position:relative;">  <input type="text" id="job_order_ref" class="form-input" placeholder="e.g. JO-2026-001" autocomplete="off"  oninput="lookupJobOrder(this.value)">  <div id="jo_lookup_status" style="font-size:12px;margin-top:4px;min-height:16px;"></div>  <div id="jo_suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #ddd;border-top:none;border-radius:0 0 6px 6px;max-height:180px;overflow-y:auto;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>  </div>  </div>  <div class="form-group">  <label class="form-label">Customer Name</label>  <input type="text" id="customer_name" class="form-input" placeholder="Enter customer name or select a JO above" required>  </div>  </div>  <div class="form-group">  <label class="form-label">Payment Method</label>  <select id="payment_method" class="form-select" required>  <option value="">Select payment method</option>  <option value="Cash">Cash</option>  <option value="Card">Card</option>  <option value="E-Wallet">E-Wallet</option>  <option value="Petron E-Fuel">Petron E-Fuel</option>  <option value="Fleet Card">Fleet Card</option>  <option value="Credit">Credit</option>  </select>  </div>  </div>  <!-- Credit Customer Selection -->  <div id="credit_customer_section" style="display: none;">  <div class="form-group">  <label class="form-label">Credit Customer ID</label>  <select id="credit_customer_id" class="form-select">  <option value="">Select credit customer</option>  </select>  </div>  </div>  <!-- Payment Details (conditional) -->  <div id="cash_payment_section" class="payment-section" style="display: none;">  <div class="form-row">  <div class="form-group">  <label class="form-label">Amount Tendered</label>  <input type="number" id="amount_tendered" class="form-input" min="0" step="0.01" placeholder="Enter amount">  <div id="insufficient_cash_msg" style="display:none; color:#dc3545; font-size:13px; font-weight:600; margin-top:5px;"></div>  </div>  <div class="form-group">  <label class="form-label">Change Amount</label>  <input type="text" id="change_amount" class="form-input computed" readonly placeholder="Computed">  </div>  </div>  </div>  <div id="card_payment_section" class="payment-section" style="display: none;">  <div class="form-row">  <div class="form-group">  <label class="form-label">Card Reference</label>  <input type="text" id="card_reference" class="form-input" placeholder="Card reference number">  </div>  <div class="form-group">  <label class="form-label">Card Type</label>  <select id="card_type" class="form-select">  <option value="">Select card type</option>  <option value="Visa">Visa</option>  <option value="Mastercard">Mastercard</option>  <option value="Amex">American Express</option>  </select>  </div>  </div>  </div>  <div id="ewallet_payment_section" class="payment-section" style="display: none;">  <div class="form-row">  <div class="form-group">  <label class="form-label">E-Wallet Reference</label>  <input type="text" id="ewallet_reference" class="form-input" placeholder="Reference number">  </div>  <div class="form-group">  <label class="form-label">E-Wallet Provider</label>  <select id="ewallet_provider" class="form-select">  <option value="">Select provider</option>  <option value="GCash">GCash</option>  <option value="PayMaya">PayMaya</option>  <option value="Coins.ph">Coins.ph</option>  </select>  </div>  </div>  </div>  <div id="efuel_payment_section" class="payment-section" style="display: none;">  <div class="form-group">  <label class="form-label">E-Fuel Card Number</label>  <input type="text" id="efuel_card_number" class="form-input" placeholder="E-Fuel card number">  </div>  </div>  <!-- Remarks -->  <div class="form-group">  <label class="form-label">Remarks / Notes</label>  <textarea id="remarks" class="form-input" rows="3" placeholder="Enter any remarks or notes..."></textarea>  </div>  <!-- Hidden Fields -->  <input type="hidden" id="staff_id" value="<?php echo (int)$me['id']; ?>">  <input type="hidden" id="shift_id" value="<?php echo $current_shift ? (int)$current_shift['id'] : ''; ?>">  </form>  </div>  <!-- Shopping Cart Section -->  <div class="cart-section">  <h3 class="section-title">  <i class="fas fa-shopping-basket"></i> Shopping Cart  </h3>  <div id="cart_items" class="cart-items">  <!-- Cart items will be dynamically added here -->  </div>  <div class="cart-summary">  <div class="summary-row">  <span>Subtotal:</span>  <span id="cart_subtotal">0.00</span>  </div>  <div class="summary-row">  <span>Items:</span>  <span id="cart_items_count">0</span>  </div>  <div class="summary-row total">  <span>Grand Total:</span>  <span id="cart_total">0.00</span>  </div>  </div>  <div class="action-buttons">  <button type="button" id="clear_cart" class="btn btn-danger">  <i class="fas fa-trash"></i> Clear Cart  </button>  <button type="button" id="submit_transaction" class="btn btn-success" disabled>  <i class="fas fa-check"></i> Submit Transaction  </button>  </div>  </div>
-</div>  <script>
+
+$msg = '';
+if (isset($_SESSION['success'])) { 
+    $msg = $_SESSION['success']; 
+    unset($_SESSION['success']); 
+}
+if (isset($_SESSION['error'])) { 
+    $msg = $_SESSION['error']; 
+    unset($_SESSION['error']); 
+}
+
+// Get current shift info
+$current_shift = null;
+try {
+    $stmt = $pdo->prepare("SELECT * FROM labor_sessions WHERE user_id = ? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1");
+    $stmt->execute([$me['id']]);
+    $current_shift = $stmt->fetch(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $current_shift = null;
+}
+
+include __DIR__ . '/../partials/header.php';
+?>
+
+<style>
+.merch-transaction-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    gap: 30px;
+}
+
+.form-section {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    border: 1px solid #e9ecef;
+    padding: 30px;
+}
+
+.cart-section {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    border: 1px solid #e9ecef;
+    padding: 25px;
+    position: sticky;
+    top: 20px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+}
+
+.section-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 25px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #003d7a;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
+}
+
+.form-input, .form-select {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: all 0.3s ease;
+}
+
+.form-input:focus, .form-select:focus {
+    outline: none;
+    border-color: #003d7a;
+    box-shadow: 0 0 0 3px rgba(0,61,122,0.1);
+}
+
+.auto-pulled {
+    background: #f8f9fa;
+    border-color: #28a745;
+    color: #28a745;
+}
+
+.computed {
+    background: #e3f2fd;
+    border-color: #2196f3;
+    color: #1976d2;
+}
+
+.product-search {
+    position: relative;
+}
+
+.product-suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-top: none;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+    display: none;
+}
+
+.product-suggestion {
+    padding: 10px;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.product-suggestion:hover {
+    background: #f8f9fa;
+}
+
+.product-suggestion.selected {
+    background: #e3f2fd;
+}
+
+.cart-items {
+    margin-bottom: 20px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.cart-item {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 10px;
+    border: 1px solid #e9ecef;
+}
+
+.cart-item-header {
+    display: flex;
+    justify-content: between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.cart-item-name {
+    font-weight: 600;
+    color: #2c3e50;
+    flex: 1;
+}
+
+.cart-item-remove {
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.cart-item-details {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    font-size: 13px;
+    color: #666;
+}
+
+.cart-summary {
+    background: linear-gradient(135deg, #003d7a, #0056b3);
+    color: white;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.summary-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+.summary-row.total {
+    font-size: 18px;
+    font-weight: 700;
+    border-top: 2px solid rgba(255,255,255,0.3);
+    padding-top: 10px;
+    margin-top: 10px;
+}
+
+.payment-section {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.action-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.btn {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-block;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.btn-primary {
+    background: #003d7a;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #0056b3;
+    transform: translateY(-2px);
+}
+
+.btn-success {
+    background: #28a745;
+    color: white;
+}
+
+.btn-success:hover {
+    background: #218838;
+    transform: translateY(-2px);
+}
+
+.btn-warning {
+    background: #ffc107;
+    color: #212529;
+}
+
+.btn-warning:hover {
+    background: #e0a800;
+    transform: translateY(-2px);
+}
+
+.btn-danger {
+    background: #dc3545;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #c82333;
+    transform: translateY(-2px);
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.staff-info {
+    background: #e8f5e8;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    border: 1px solid #28a745;
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+    font-size: 13px;
+}
+
+.validation-status {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    color: #856404;
+    padding: 10px;
+    border-radius: 6px;
+    text-align: center;
+    font-weight: 600;
+    margin-bottom: 20px;
+}
+
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 15px 20px;
+    border-radius: 8px;
+    color: white;
+    font-weight: 600;
+    z-index: 10000;
+    animation: slideIn 0.3s ease;
+}
+
+.notification.success {
+    background: #28a745;
+}
+
+.notification.error {
+    background: #dc3545;
+}
+
+.notification.warning {
+    background: #ffc107;
+    color: #212529;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@media (max-width: 1024px) {
+    .merch-transaction-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .cart-section {
+        position: static;
+        max-height: none;
+    }
+}
+
+@media (max-width: 768px) {
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .action-buttons {
+        grid-template-columns: 1fr;
+    }
+    
+    .cart-item-details {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+
+<div class="merch-transaction-container">
+    <!-- Transaction Form Section -->
+    <div class="form-section">
+        <h2 class="section-title">
+            <i class="fas fa-shopping-cart"></i> Merchandise Transaction
+        </h2>
+
+        <!-- Staff Information -->
+        <div class="staff-info">
+            <div class="info-row">
+                <span><strong>Staff ID:</strong> <?php echo htmlspecialchars($me['id']); ?></span>
+                <span><strong>Staff Name:</strong> <?php echo htmlspecialchars($me['name'] ?? $me['username']); ?></span>
+            </div>
+            <div class="info-row">
+                <span><strong>Station:</strong> #<?php echo (int)$station_id; ?></span>
+                <span><strong>Shift ID:</strong> <?php echo $current_shift ? '#' . (int)$current_shift['id'] : 'Not clocked in'; ?></span>
+            </div>
+            <div class="info-row">
+                <span><strong>Current Time:</strong> <span id="current_time"><?php echo date('Y-m-d H:i:s'); ?></span></span>
+                <span><strong>Status:</strong> <span class="validation-status">Pending Validation</span></span>
+            </div>
+        </div>
+
+        <?php if($msg): ?>
+            <div class="notification <?php echo strpos($msg, 'Error') !== false ? 'error' : 'success'; ?>" style="position: static; margin-bottom: 20px;">
+                <?php echo htmlspecialchars($msg); ?>
+            </div>
+        <?php endif; ?>
+
+        <form id="merchandiseForm">
+            <!-- Product Selection -->
+            <div class="form-group">
+                <label class="form-label">Product Search</label>
+                <div class="product-search">
+                    <input type="text" id="product_search" class="form-input" placeholder="Type to search products...">
+                    <div id="product_suggestions" class="product-suggestions"></div>
+                </div>
+            </div>
+
+            <!-- Auto-populated Product Details -->
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Item Name</label>
+                    <input type="text" id="item_name" class="form-input auto-pulled" readonly placeholder="Auto-populated">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Category</label>
+                    <input type="text" id="item_category" class="form-input auto-pulled" readonly placeholder="Auto-populated">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Size Variant</label>
+                    <input type="text" id="item_size" class="form-input auto-pulled" readonly placeholder="Auto-populated">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Quantity</label>
+                    <input type="number" id="item_quantity" class="form-input" min="1" step="0.01" placeholder="Enter quantity">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Unit Price</label>
+                    <input type="text" id="item_unit_price" class="form-input auto-pulled" readonly placeholder="Auto-pulled">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Subtotal</label>
+                    <input type="text" id="item_subtotal" class="form-input computed" readonly placeholder="Computed">
+                </div>
+            </div>
+
+            <div style="text-align: center; margin: 20px 0;">
+                <button type="button" id="add_to_cart" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Add to Cart
+                </button>
+            </div>
+
+            <hr style="margin: 30px 0; border: none; border-top: 1px solid #e9ecef;">
+
+            <!-- Customer & Payment Information -->
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Job Order # <span style="font-weight:400;color:#888;font-size:12px;">(optional — auto-fills customer name)</span></label>
+                    <div style="position:relative;">
+                        <input type="text" id="job_order_ref" class="form-input" placeholder="e.g. JO-2026-001" autocomplete="off"
+                               oninput="lookupJobOrder(this.value)">
+                        <div id="jo_lookup_status" style="font-size:12px;margin-top:4px;min-height:16px;"></div>
+                        <div id="jo_suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #ddd;border-top:none;border-radius:0 0 6px 6px;max-height:180px;overflow-y:auto;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Customer Name</label>
+                    <input type="text" id="customer_name" class="form-input" placeholder="Enter customer name or select a JO above" required>
+                </div>
+            </div>
+                <div class="form-group">
+                    <label class="form-label">Payment Method</label>
+                    <select id="payment_method" class="form-select" required>
+                        <option value="">Select payment method</option>
+                        <option value="Cash">Cash</option>
+                        <option value="Card">Card</option>
+                        <option value="E-Wallet">E-Wallet</option>
+                        <option value="Petron E-Fuel">Petron E-Fuel</option>
+                        <option value="Fleet Card">Fleet Card</option>
+                        <option value="Credit">Credit</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Credit Customer Selection -->
+            <div id="credit_customer_section" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label">Credit Customer ID</label>
+                    <select id="credit_customer_id" class="form-select">
+                        <option value="">Select credit customer</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Payment Details (conditional) -->
+            <div id="cash_payment_section" class="payment-section" style="display: none;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Amount Tendered</label>
+                        <input type="number" id="amount_tendered" class="form-input" min="0" step="0.01" placeholder="Enter amount">
+                        <div id="insufficient_cash_msg" style="display:none; color:#dc3545; font-size:13px; font-weight:600; margin-top:5px;"></div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Change Amount</label>
+                        <input type="text" id="change_amount" class="form-input computed" readonly placeholder="Computed">
+                    </div>
+                </div>
+            </div>
+
+            <div id="card_payment_section" class="payment-section" style="display: none;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Card Reference</label>
+                        <input type="text" id="card_reference" class="form-input" placeholder="Card reference number">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Card Type</label>
+                        <select id="card_type" class="form-select">
+                            <option value="">Select card type</option>
+                            <option value="Visa">Visa</option>
+                            <option value="Mastercard">Mastercard</option>
+                            <option value="Amex">American Express</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div id="ewallet_payment_section" class="payment-section" style="display: none;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">E-Wallet Reference</label>
+                        <input type="text" id="ewallet_reference" class="form-input" placeholder="Reference number">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">E-Wallet Provider</label>
+                        <select id="ewallet_provider" class="form-select">
+                            <option value="">Select provider</option>
+                            <option value="GCash">GCash</option>
+                            <option value="PayMaya">PayMaya</option>
+                            <option value="Coins.ph">Coins.ph</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div id="efuel_payment_section" class="payment-section" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label">E-Fuel Card Number</label>
+                    <input type="text" id="efuel_card_number" class="form-input" placeholder="E-Fuel card number">
+                </div>
+            </div>
+
+            <!-- Remarks -->
+            <div class="form-group">
+                <label class="form-label">Remarks / Notes</label>
+                <textarea id="remarks" class="form-input" rows="3" placeholder="Enter any remarks or notes..."></textarea>
+            </div>
+
+            <!-- Hidden Fields -->
+            <input type="hidden" id="staff_id" value="<?php echo (int)$me['id']; ?>">
+            <input type="hidden" id="shift_id" value="<?php echo $current_shift ? (int)$current_shift['id'] : ''; ?>">
+        </form>
+    </div>
+
+    <!-- Shopping Cart Section -->
+    <div class="cart-section">
+        <h3 class="section-title">
+            <i class="fas fa-shopping-basket"></i> Shopping Cart
+        </h3>
+
+        <div id="cart_items" class="cart-items">
+            <!-- Cart items will be dynamically added here -->
+        </div>
+
+        <div class="cart-summary">
+            <div class="summary-row">
+                <span>Subtotal:</span>
+                <span id="cart_subtotal">0.00</span>
+            </div>
+            <div class="summary-row">
+                <span>Items:</span>
+                <span id="cart_items_count">0</span>
+            </div>
+            <div class="summary-row total">
+                <span>Grand Total:</span>
+                <span id="cart_total">0.00</span>
+            </div>
+        </div>
+
+        <div class="action-buttons">
+            <button type="button" id="clear_cart" class="btn btn-danger">
+                <i class="fas fa-trash"></i> Clear Cart
+            </button>
+            <button type="button" id="submit_transaction" class="btn btn-success" disabled>
+                <i class="fas fa-check"></i> Submit Transaction
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
 // Global variables
 let products = [];
 let customers = [];
 let cart = [];
-let selectedProduct = null;  // Initialize the page
-document.addEventListener('DOMContentLoaded', function() {  loadProducts();  loadCustomers();  setupEventListeners();  updateCurrentTime();  setInterval(updateCurrentTime, 1000);
-});  function updateCurrentTime() {  document.getElementById('current_time').textContent = new Date().toLocaleString();
-}  function setupEventListeners() {  // Product search  document.getElementById('product_search').addEventListener('input', handleProductSearch);  document.getElementById('product_search').addEventListener('focus', handleProductSearch);  // Quantity change  document.getElementById('item_quantity').addEventListener('input', calculateSubtotal);  // Add to cart  document.getElementById('add_to_cart').addEventListener('click', addToCart);  // Payment method change  document.getElementById('payment_method').addEventListener('change', handlePaymentMethodChange);  // Cash payment  document.getElementById('amount_tendered')?.addEventListener('input', calculateChange);  // Cart actions  document.getElementById('clear_cart').addEventListener('click', clearCart);  document.getElementById('submit_transaction').addEventListener('click', submitTransaction);  // Click outside to close suggestions  document.addEventListener('click', function(e) {  if (!e.target.closest('.product-search')) {  document.getElementById('product_suggestions').style.display = 'none';  }  });
-}  async function loadProducts() {  try {  const response = await fetch(`../backend/api/merchandise_transactions.php?action=get_products`);  const data = await response.json();  if (data.success) {  products = data.products;  } else {  showNotification('Error loading products', 'error');  }  } catch (error) {  console.error('Error loading products:', error);  showNotification('Error loading products', 'error');  }
-}  async function loadCustomers() {  try {  const response = await fetch(`../backend/api/merchandise_transactions.php?action=get_customers`);  const data = await response.json();  if (data.success) {  customers = data.customers;  populateCustomerDropdown();  } else {  showNotification('Error loading customers', 'error');  }  } catch (error) {  console.error('Error loading customers:', error);  }
-}  function populateCustomerDropdown() {  const select = document.getElementById('credit_customer_id');  select.innerHTML = '<option value="">Select credit customer</option>';  customers.forEach(customer => {  const option = document.createElement('option');  option.value = customer.id;  option.textContent = `${customer.name} (Available: ${customer.available_credit})`;  select.appendChild(option);  });
-}  function handleProductSearch(e) {  const searchTerm = e.target.value.toLowerCase();  const suggestionsDiv = document.getElementById('product_suggestions');  if (searchTerm.length < 2) {  suggestionsDiv.style.display = 'none';  return;  }  const filtered = products.filter(product =>  product.product_name.toLowerCase().includes(searchTerm) ||  product.category.toLowerCase().includes(searchTerm) ||  (product.sku && product.sku.toLowerCase().includes(searchTerm))  );  if (filtered.length === 0) {  suggestionsDiv.style.display = 'none';  return;  }  suggestionsDiv.innerHTML = '';  filtered.slice(0, 10).forEach(product => {  const div = document.createElement('div');  div.className = 'product-suggestion';  const isOutOfStock = product.availability_status === 'Out of Stock' || parseFloat(product.stock_level) <= 0;  const isNotAvailable = product.availability_status === 'Not Available';  let availabilityColor = '#28a745';  let availabilityText = `In Stock (${parseFloat(product.stock_level || 0).toFixed(0)} available)`;  if (isOutOfStock) {  availabilityColor = '#dc3545';  availabilityText = 'Out of Stock';  div.style.opacity = '0.5';  div.style.cursor = 'not-allowed';  div.style.background = '#fff5f5';  } else if (isNotAvailable) {  availabilityColor = '#ffc107';  availabilityText = 'Not Available';  }  div.innerHTML = `  <strong>${product.product_name}</strong>  ${isOutOfStock ? '<span style="color:#dc3545;font-size:11px;font-weight:700;margin-left:6px"> OUT OF STOCK</span>' : ''}  <br>  <small>${product.category} | ${product.size || 'N/A'} | <span style="color: ${availabilityColor}">${availabilityText}</span> | Price: ₱${parseFloat(product.unit_price).toFixed(2)}</small>  `;  if (!isOutOfStock && !isNotAvailable) {  div.addEventListener('click', () => selectProduct(product));  } else {  div.addEventListener('click', (e) => {  e.stopPropagation();  showNotification(isOutOfStock ? 'This product is out of stock.' : 'This product is not available.', 'error');  });  }  suggestionsDiv.appendChild(div);  });  suggestionsDiv.style.display = 'block';
-}  function selectProduct(product) {  selectedProduct = product;  // Populate auto-pulled fields  document.getElementById('item_name').value = product.product_name;  document.getElementById('item_category').value = product.category;  document.getElementById('item_size').value = product.size || '';  document.getElementById('item_unit_price').value = parseFloat(product.unit_price).toFixed(2);  // Clear search  document.getElementById('product_search').value = '';  document.getElementById('product_suggestions').style.display = 'none';  // Set quantity to 1 and calculate subtotal  document.getElementById('item_quantity').value = 1;  calculateSubtotal();  // Focus on quantity for easy modification  document.getElementById('item_quantity').focus();
-}  function calculateSubtotal() {  const quantity = parseFloat(document.getElementById('item_quantity').value) || 0;  const unitPrice = parseFloat(document.getElementById('item_unit_price').value) || 0;  const subtotal = quantity * unitPrice;  document.getElementById('item_subtotal').value = subtotal.toFixed(2);
-}  function addToCart() {  if (!selectedProduct) {  showNotification('Please select a product first', 'warning');  return;  }  const quantity = parseFloat(document.getElementById('item_quantity').value);  if (!quantity || quantity <= 0) {  showNotification('Please enter a valid quantity', 'warning');  return;  }  // Block out-of-stock products  if (selectedProduct.availability_status === 'Out of Stock') {  showNotification('Cannot add: Product is out of stock.', 'error');  return;  }  if (selectedProduct.availability_status === 'Not Available') {  showNotification('Cannot add: Product is not available.', 'error');  return;  }  // Check if quantity exceeds available stock  const availableStock = parseFloat(selectedProduct.stock_level) || 0;  const existingInCart = cart.find(item => item.product_id === selectedProduct.product_id);  const alreadyInCart = existingInCart ? existingInCart.quantity : 0;  if ((alreadyInCart + quantity) > availableStock) {  showNotification(`Insufficient stock. Available: ${availableStock - alreadyInCart}`, 'error');  return;  }  // Check if item already in cart  const existingItem = cart.find(item => item.product_id === selectedProduct.product_id);  if (existingItem) {  existingItem.quantity += quantity;  existingItem.subtotal = existingItem.quantity * existingItem.unit_price;  } else {  cart.push({  product_id: selectedProduct.product_id,  product_name: selectedProduct.product_name,  category: selectedProduct.category,  size_variant: selectedProduct.size || '',  quantity: quantity,  unit_price: selectedProduct.unit_price,  subtotal: quantity * selectedProduct.unit_price  });  }  // Reset form  resetProductForm();  // Update cart display  updateCartDisplay();  showNotification('Item added to cart', 'success');
-}  function resetProductForm() {  document.getElementById('product_search').value = '';  document.getElementById('item_name').value = '';  document.getElementById('item_category').value = '';  document.getElementById('item_size').value = '';  document.getElementById('item_unit_price').value = '';  document.getElementById('item_subtotal').value = '';  document.getElementById('item_quantity').value = '';  selectedProduct = null;
-}  function updateCartDisplay() {  const cartItemsDiv = document.getElementById('cart_items');  if (cart.length === 0) {  cartItemsDiv.innerHTML = '<p style="text-align: center; color: #666;">Your cart is empty</p>';  document.getElementById('submit_transaction').disabled = true;  } else {  cartItemsDiv.innerHTML = cart.map((item, index) => `  <div class="cart-item">  <div class="cart-item-header">  <div class="cart-item-name">${item.product_name}</div>  <button class="cart-item-remove" onclick="removeFromCart(${index})">Remove</button>  </div>  <div class="cart-item-details">  <span>Category: ${item.category}</span>  <span>Size: ${item.size_variant || 'N/A'}</span>  <span>Qty: ${item.quantity}</span>  <span>Price: ${item.unit_price}</span>  <span>Subtotal: ${item.subtotal.toFixed(2)}</span>  </div>  </div>  `).join('');  document.getElementById('submit_transaction').disabled = false;  }  updateCartSummary();
-}  function updateCartSummary() {  const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);  const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0);  document.getElementById('cart_subtotal').textContent = subtotal.toFixed(2);  document.getElementById('cart_items_count').textContent = itemCount;  document.getElementById('cart_total').textContent = subtotal.toFixed(2);
-}  function removeFromCart(index) {  cart.splice(index, 1);  updateCartDisplay();  showNotification('Item removed from cart', 'success');
-}  function clearCart() {  if (cart.length === 0) return;  if (confirm('Are you sure you want to clear the cart?')) {  cart = [];  updateCartDisplay();  showNotification('Cart cleared', 'success');  }
-}  function handlePaymentMethodChange() {  const method = document.getElementById('payment_method').value;  // Hide all payment sections  document.getElementById('credit_customer_section').style.display = 'none';  document.getElementById('cash_payment_section').style.display = 'none';  document.getElementById('card_payment_section').style.display = 'none';  document.getElementById('ewallet_payment_section').style.display = 'none';  document.getElementById('efuel_payment_section').style.display = 'none';  // Show relevant section  switch (method) {  case 'Credit':  document.getElementById('credit_customer_section').style.display = 'block';  break;  case 'Cash':  document.getElementById('cash_payment_section').style.display = 'block';  break;  case 'Card':  case 'Fleet Card':  document.getElementById('card_payment_section').style.display = 'block';  break;  case 'E-Wallet':  document.getElementById('ewallet_payment_section').style.display = 'block';  break;  case 'Petron E-Fuel':  document.getElementById('efuel_payment_section').style.display = 'block';  break;  }
-}  function calculateChange() {  const amountTendered = parseFloat(document.getElementById('amount_tendered').value) || 0;  const cartTotal = cart.reduce((sum, item) => sum + item.subtotal, 0);  const change = amountTendered - cartTotal;  const changeField = document.getElementById('change_amount');  const amountField = document.getElementById('amount_tendered');  const insufficientMsg = document.getElementById('insufficient_cash_msg');  if (amountTendered > 0 && amountTendered < cartTotal) {  changeField.value = '';  changeField.style.borderColor = '#dc3545';  amountField.style.borderColor = '#dc3545';  if (insufficientMsg) {  insufficientMsg.style.display = 'block';  insufficientMsg.textContent = `Insufficient! Short by ₱${(cartTotal - amountTendered).toFixed(2)}`;  }  } else {  changeField.value = change >= 0 ? change.toFixed(2) : '0.00';  changeField.style.borderColor = '';  amountField.style.borderColor = '';  if (insufficientMsg) insufficientMsg.style.display = 'none';  }
-}  async function submitTransaction() {  if (cart.length === 0) {  showNotification('Your cart is empty', 'warning');  return;  }  // Validate required fields  const customerName = document.getElementById('customer_name').value.trim();  const paymentMethod = document.getElementById('payment_method').value;  if (!customerName) {  showNotification('Please enter customer name', 'warning');  return;  }  if (!paymentMethod) {  showNotification('Please select payment method', 'warning');  return;  }  // Validate payment details  if (paymentMethod === 'Account Receivable') {  const creditCustomerId = document.getElementById('credit_customer_id').value;  if (!creditCustomerId) {  showNotification('Please select credit customer', 'warning');  return;  }  }  if (paymentMethod === 'Cash') {  const amountTendered = parseFloat(document.getElementById('amount_tendered').value) || 0;  const cartTotal = cart.reduce((sum, item) => sum + item.subtotal, 0);  if (amountTendered <= 0) {  showInsufficientError('amount_tendered', 'Please enter the amount tendered.');  return;  }  if (amountTendered < cartTotal) {  showInsufficientError('amount_tendered', `Insufficient payment. Short by ₱${(cartTotal - amountTendered).toFixed(2)}`);  return;  }  }  if (paymentMethod === 'Credit Card') {  const cardRef = document.getElementById('card_reference').value.trim();  if (!cardRef) {  showNotification('Please enter the card reference number.', 'warning');  return;  }  }  if (paymentMethod === 'E-Wallet') {  const eRef = document.getElementById('ewallet_reference').value.trim();  if (!eRef) {  showNotification('Please enter the e-wallet reference number.', 'warning');  return;  }  }  if (paymentMethod === 'E-Fuel Card') {  const efuelNum = document.getElementById('efuel_card_number').value.trim();  if (!efuelNum) {  showNotification('Please enter the E-Fuel card number.', 'warning');  return;  }  }  // Prepare transaction data  const transactionData = {  items: cart,  customer_name: customerName,  payment_method: paymentMethod,  credit_customer_id: paymentMethod === 'Account Receivable' ? document.getElementById('credit_customer_id').value : null,  remarks: document.getElementById('remarks').value,  amount_tendered: paymentMethod === 'Cash' ? parseFloat(document.getElementById('amount_tendered').value) : null,  change_amount: paymentMethod === 'Cash' ? parseFloat(document.getElementById('change_amount').value) : null,  card_reference: paymentMethod === 'Credit Card' ? document.getElementById('card_reference').value : null,  card_type: paymentMethod === 'Credit Card' ? document.getElementById('card_type').value : null,  ewallet_reference: paymentMethod === 'E-Wallet' ? document.getElementById('ewallet_reference').value : null,  ewallet_provider: paymentMethod === 'E-Wallet' ? document.getElementById('ewallet_provider').value : null,  efuel_card_number: paymentMethod === 'E-Fuel Card' ? document.getElementById('efuel_card_number').value : null  };  try {  const response = await fetch('../backend/api/merchandise_transactions.php', {  method: 'POST',  headers: {  'Content-Type': 'application/json',  },  body: JSON.stringify({  action: 'create_transaction',  ...transactionData  })  });  const result = await response.json();  if (result.success) {  showNotification(`Transaction created successfully! ID: ${result.transaction_id}`, 'success');  // Clear form and cart  clearCart();  document.getElementById('customer_name').value = '';  document.getElementById('customer_name').classList.remove('auto-pulled');  document.getElementById('job_order_ref').value = '';  document.getElementById('jo_lookup_status').textContent = '';  document.getElementById('payment_method').value = '';  document.getElementById('remarks').value = '';  handlePaymentMethodChange(); // Hide payment sections  // Optionally print receipt  setTimeout(() => {  if (confirm('Would you like to print a receipt?')) {  printReceipt(result.transaction_id, transactionData);  }  }, 1000);  } else {  showNotification(result.error || 'Error creating transaction', 'error');  }  } catch (error) {  console.error('Error submitting transaction:', error);  showNotification('Error creating transaction', 'error');  }
-}  function printReceipt(transactionId, transactionData) {  var url = `receipt.php?id=${encodeURIComponent(transactionId)}&type=merchandise`;  window.open(url, '_blank');
-}  // ── Job Order lookup ──────────────────────────────────────────────────────────
-let _joLookupTimer = null;  function lookupJobOrder(val) {  const statusEl = document.getElementById('jo_lookup_status');  const suggestEl = document.getElementById('jo_suggestions');  clearTimeout(_joLookupTimer);  if (!val || val.trim().length < 2) {  statusEl.textContent = '';  suggestEl.style.display = 'none';  return;  }  statusEl.innerHTML = '<span style="color:#888;"><i class="fas fa-spinner fa-spin"></i> Searching…</span>';  _joLookupTimer = setTimeout(async () => {  try {  const res  = await fetch(`../backend/api/merchandise_transactions.php?action=lookup_job_order&q=${encodeURIComponent(val.trim())}`, {credentials:'same-origin'});  const data = await res.json();  if (data.success && data.results && data.results.length > 0) {  statusEl.textContent = '';  suggestEl.innerHTML = '';  data.results.forEach(jo => {  const row = document.createElement('div');  row.style.cssText = 'padding:10px 12px;cursor:pointer;border-bottom:1px solid #f0f0f0;font-size:13px;';  row.innerHTML = `<strong style="color:#003d7a;">${jo.jo_ref}</strong> — <span style="color:#333;">${jo.customer_name}</span>`  + (jo.service_type ? `<span style="color:#888;font-size:11px;">  ${jo.service_type}</span>` : '');  row.addEventListener('mouseenter', () => row.style.background = '#f0f4ff');  row.addEventListener('mouseleave', () => row.style.background = '');  row.addEventListener('click', () => {  document.getElementById('job_order_ref').value  = jo.jo_ref;  document.getElementById('customer_name').value  = jo.customer_name;  document.getElementById('customer_name').classList.add('auto-pulled');  statusEl.innerHTML = `<span style="color:#28a745;"><i class="fas fa-check-circle"></i> Customer auto-filled from ${jo.jo_ref}</span>`;  suggestEl.style.display = 'none';  });  suggestEl.appendChild(row);  });  suggestEl.style.display = 'block';  } else {  statusEl.innerHTML = '<span style="color:#888;">No matching job orders found.</span>';  suggestEl.style.display = 'none';  }  } catch (e) {  statusEl.innerHTML = '<span style="color:#dc3545;">Lookup failed.</span>';  suggestEl.style.display = 'none';  }  }, 350);
-}  // Close JO suggestions when clicking outside
-document.addEventListener('click', function(e) {  if (!document.getElementById('job_order_ref')?.contains(e.target)) {  const s = document.getElementById('jo_suggestions');  if (s) s.style.display = 'none';  }
-});  function showInsufficientError(fieldId, message) {  const field = document.getElementById(fieldId);  if (field) {  field.style.borderColor = '#dc3545';  field.style.boxShadow = '0 0 0 3px rgba(220,53,69,0.2)';  field.focus();  // Clear red border after user types  field.addEventListener('input', function clearErr() {  field.style.borderColor = '';  field.style.boxShadow = '';  field.removeEventListener('input', clearErr);  });  }  showNotification(message, 'error');
-}  function showNotification(message, type = 'success') {  const notification = document.createElement('div');  notification.className = `notification ${type}`;  notification.textContent = message;  document.body.appendChild(notification);  setTimeout(() => {  notification.remove();  }, 3000);
+let selectedProduct = null;
+
+// Initialize the page
+document.addEventListener('DOMContentLoaded', function() {
+    loadProducts();
+    loadCustomers();
+    setupEventListeners();
+    updateCurrentTime();
+    setInterval(updateCurrentTime, 1000);
+});
+
+function updateCurrentTime() {
+    document.getElementById('current_time').textContent = new Date().toLocaleString();
 }
-</script>  <?php include __DIR__ . '/../partials/footer.php'; ?>
+
+function setupEventListeners() {
+    // Product search
+    document.getElementById('product_search').addEventListener('input', handleProductSearch);
+    document.getElementById('product_search').addEventListener('focus', handleProductSearch);
+    
+    // Quantity change
+    document.getElementById('item_quantity').addEventListener('input', calculateSubtotal);
+    
+    // Add to cart
+    document.getElementById('add_to_cart').addEventListener('click', addToCart);
+    
+    // Payment method change
+    document.getElementById('payment_method').addEventListener('change', handlePaymentMethodChange);
+    
+    // Cash payment
+    document.getElementById('amount_tendered')?.addEventListener('input', calculateChange);
+    
+    // Cart actions
+    document.getElementById('clear_cart').addEventListener('click', clearCart);
+    document.getElementById('submit_transaction').addEventListener('click', submitTransaction);
+    
+    // Click outside to close suggestions
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.product-search')) {
+            document.getElementById('product_suggestions').style.display = 'none';
+        }
+    });
+}
+
+async function loadProducts() {
+    try {
+        const response = await fetch(`../backend/api/merchandise_transactions.php?action=get_products`);
+        const data = await response.json();
+        
+        if (data.success) {
+            products = data.products;
+        } else {
+            showNotification('Error loading products', 'error');
+        }
+    } catch (error) {
+        console.error('Error loading products:', error);
+        showNotification('Error loading products', 'error');
+    }
+}
+
+async function loadCustomers() {
+    try {
+        const response = await fetch(`../backend/api/merchandise_transactions.php?action=get_customers`);
+        const data = await response.json();
+        
+        if (data.success) {
+            customers = data.customers;
+            populateCustomerDropdown();
+        } else {
+            showNotification('Error loading customers', 'error');
+        }
+    } catch (error) {
+        console.error('Error loading customers:', error);
+    }
+}
+
+function populateCustomerDropdown() {
+    const select = document.getElementById('credit_customer_id');
+    select.innerHTML = '<option value="">Select credit customer</option>';
+    
+    customers.forEach(customer => {
+        const option = document.createElement('option');
+        option.value = customer.id;
+        option.textContent = `${customer.name} (Available: ${customer.available_credit})`;
+        select.appendChild(option);
+    });
+}
+
+function handleProductSearch(e) {
+    const searchTerm = e.target.value.toLowerCase();
+    const suggestionsDiv = document.getElementById('product_suggestions');
+    
+    if (searchTerm.length < 2) {
+        suggestionsDiv.style.display = 'none';
+        return;
+    }
+    
+    const filtered = products.filter(product => 
+        product.product_name.toLowerCase().includes(searchTerm) ||
+        product.category.toLowerCase().includes(searchTerm) ||
+        (product.sku && product.sku.toLowerCase().includes(searchTerm))
+    );
+    
+    if (filtered.length === 0) {
+        suggestionsDiv.style.display = 'none';
+        return;
+    }
+    
+    suggestionsDiv.innerHTML = '';
+    filtered.slice(0, 10).forEach(product => {
+        const div = document.createElement('div');
+        div.className = 'product-suggestion';
+
+        const isOutOfStock = product.availability_status === 'Out of Stock' || parseFloat(product.stock_level) <= 0;
+        const isNotAvailable = product.availability_status === 'Not Available';
+
+        let availabilityColor = '#28a745';
+        let availabilityText = `In Stock (${parseFloat(product.stock_level || 0).toFixed(0)} available)`;
+
+        if (isOutOfStock) {
+            availabilityColor = '#dc3545';
+            availabilityText = 'Out of Stock';
+            div.style.opacity = '0.5';
+            div.style.cursor = 'not-allowed';
+            div.style.background = '#fff5f5';
+        } else if (isNotAvailable) {
+            availabilityColor = '#ffc107';
+            availabilityText = 'Not Available';
+        }
+
+        div.innerHTML = `
+            <strong>${product.product_name}</strong>
+            ${isOutOfStock ? '<span style="color:#dc3545;font-size:11px;font-weight:700;margin-left:6px">✗ OUT OF STOCK</span>' : ''}
+            <br>
+            <small>${product.category} | ${product.size || 'N/A'} | <span style="color: ${availabilityColor}">${availabilityText}</span> | Price: ₱${parseFloat(product.unit_price).toFixed(2)}</small>
+        `;
+
+        if (!isOutOfStock && !isNotAvailable) {
+            div.addEventListener('click', () => selectProduct(product));
+        } else {
+            div.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showNotification(isOutOfStock ? 'This product is out of stock.' : 'This product is not available.', 'error');
+            });
+        }
+        suggestionsDiv.appendChild(div);
+    });
+    
+    suggestionsDiv.style.display = 'block';
+}
+
+function selectProduct(product) {
+    selectedProduct = product;
+    
+    // Populate auto-pulled fields
+    document.getElementById('item_name').value = product.product_name;
+    document.getElementById('item_category').value = product.category;
+    document.getElementById('item_size').value = product.size || '';
+    document.getElementById('item_unit_price').value = parseFloat(product.unit_price).toFixed(2);
+    
+    // Clear search
+    document.getElementById('product_search').value = '';
+    document.getElementById('product_suggestions').style.display = 'none';
+    
+    // Set quantity to 1 and calculate subtotal
+    document.getElementById('item_quantity').value = 1;
+    calculateSubtotal();
+    
+    // Focus on quantity for easy modification
+    document.getElementById('item_quantity').focus();
+}
+
+function calculateSubtotal() {
+    const quantity = parseFloat(document.getElementById('item_quantity').value) || 0;
+    const unitPrice = parseFloat(document.getElementById('item_unit_price').value) || 0;
+    const subtotal = quantity * unitPrice;
+    
+    document.getElementById('item_subtotal').value = subtotal.toFixed(2);
+}
+
+function addToCart() {
+    if (!selectedProduct) {
+        showNotification('Please select a product first', 'warning');
+        return;
+    }
+    
+    const quantity = parseFloat(document.getElementById('item_quantity').value);
+    if (!quantity || quantity <= 0) {
+        showNotification('Please enter a valid quantity', 'warning');
+        return;
+    }
+    
+    // Block out-of-stock products
+    if (selectedProduct.availability_status === 'Out of Stock') {
+        showNotification('Cannot add: Product is out of stock.', 'error');
+        return;
+    }
+    if (selectedProduct.availability_status === 'Not Available') {
+        showNotification('Cannot add: Product is not available.', 'error');
+        return;
+    }
+
+    // Check if quantity exceeds available stock
+    const availableStock = parseFloat(selectedProduct.stock_level) || 0;
+    const existingInCart = cart.find(item => item.product_id === selectedProduct.product_id);
+    const alreadyInCart = existingInCart ? existingInCart.quantity : 0;
+    if ((alreadyInCart + quantity) > availableStock) {
+        showNotification(`Insufficient stock. Available: ${availableStock - alreadyInCart}`, 'error');
+        return;
+    }
+
+    // Check if item already in cart
+    const existingItem = cart.find(item => item.product_id === selectedProduct.product_id);
+    if (existingItem) {
+        existingItem.quantity += quantity;
+        existingItem.subtotal = existingItem.quantity * existingItem.unit_price;
+    } else {
+        cart.push({
+            product_id: selectedProduct.product_id,
+            product_name: selectedProduct.product_name,
+            category: selectedProduct.category,
+            size_variant: selectedProduct.size || '',
+            quantity: quantity,
+            unit_price: selectedProduct.unit_price,
+            subtotal: quantity * selectedProduct.unit_price
+        });
+    }
+    
+    // Reset form
+    resetProductForm();
+    
+    // Update cart display
+    updateCartDisplay();
+    
+    showNotification('Item added to cart', 'success');
+}
+
+function resetProductForm() {
+    document.getElementById('product_search').value = '';
+    document.getElementById('item_name').value = '';
+    document.getElementById('item_category').value = '';
+    document.getElementById('item_size').value = '';
+    document.getElementById('item_unit_price').value = '';
+    document.getElementById('item_subtotal').value = '';
+    document.getElementById('item_quantity').value = '';
+    selectedProduct = null;
+}
+
+function updateCartDisplay() {
+    const cartItemsDiv = document.getElementById('cart_items');
+    
+    if (cart.length === 0) {
+        cartItemsDiv.innerHTML = '<p style="text-align: center; color: #666;">Your cart is empty</p>';
+        document.getElementById('submit_transaction').disabled = true;
+    } else {
+        cartItemsDiv.innerHTML = cart.map((item, index) => `
+            <div class="cart-item">
+                <div class="cart-item-header">
+                    <div class="cart-item-name">${item.product_name}</div>
+                    <button class="cart-item-remove" onclick="removeFromCart(${index})">Remove</button>
+                </div>
+                <div class="cart-item-details">
+                    <span>Category: ${item.category}</span>
+                    <span>Size: ${item.size_variant || 'N/A'}</span>
+                    <span>Qty: ${item.quantity}</span>
+                    <span>Price: ${item.unit_price}</span>
+                    <span>Subtotal: ${item.subtotal.toFixed(2)}</span>
+                </div>
+            </div>
+        `).join('');
+        document.getElementById('submit_transaction').disabled = false;
+    }
+    
+    updateCartSummary();
+}
+
+function updateCartSummary() {
+    const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
+    const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+    
+    document.getElementById('cart_subtotal').textContent = subtotal.toFixed(2);
+    document.getElementById('cart_items_count').textContent = itemCount;
+    document.getElementById('cart_total').textContent = subtotal.toFixed(2);
+}
+
+function removeFromCart(index) {
+    cart.splice(index, 1);
+    updateCartDisplay();
+    showNotification('Item removed from cart', 'success');
+}
+
+function clearCart() {
+    if (cart.length === 0) return;
+    
+    if (confirm('Are you sure you want to clear the cart?')) {
+        cart = [];
+        updateCartDisplay();
+        showNotification('Cart cleared', 'success');
+    }
+}
+
+function handlePaymentMethodChange() {
+    const method = document.getElementById('payment_method').value;
+    
+    // Hide all payment sections
+    document.getElementById('credit_customer_section').style.display = 'none';
+    document.getElementById('cash_payment_section').style.display = 'none';
+    document.getElementById('card_payment_section').style.display = 'none';
+    document.getElementById('ewallet_payment_section').style.display = 'none';
+    document.getElementById('efuel_payment_section').style.display = 'none';
+    
+    // Show relevant section
+    switch (method) {
+        case 'Credit':
+            document.getElementById('credit_customer_section').style.display = 'block';
+            break;
+        case 'Cash':
+            document.getElementById('cash_payment_section').style.display = 'block';
+            break;
+        case 'Card':
+        case 'Fleet Card':
+            document.getElementById('card_payment_section').style.display = 'block';
+            break;
+        case 'E-Wallet':
+            document.getElementById('ewallet_payment_section').style.display = 'block';
+            break;
+        case 'Petron E-Fuel':
+            document.getElementById('efuel_payment_section').style.display = 'block';
+            break;
+    }
+}
+
+function calculateChange() {
+    const amountTendered = parseFloat(document.getElementById('amount_tendered').value) || 0;
+    const cartTotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
+    const change = amountTendered - cartTotal;
+    const changeField = document.getElementById('change_amount');
+    const amountField = document.getElementById('amount_tendered');
+    const insufficientMsg = document.getElementById('insufficient_cash_msg');
+
+    if (amountTendered > 0 && amountTendered < cartTotal) {
+        changeField.value = '';
+        changeField.style.borderColor = '#dc3545';
+        amountField.style.borderColor = '#dc3545';
+        if (insufficientMsg) {
+            insufficientMsg.style.display = 'block';
+            insufficientMsg.textContent = `⚠ Insufficient! Short by ₱${(cartTotal - amountTendered).toFixed(2)}`;
+        }
+    } else {
+        changeField.value = change >= 0 ? change.toFixed(2) : '0.00';
+        changeField.style.borderColor = '';
+        amountField.style.borderColor = '';
+        if (insufficientMsg) insufficientMsg.style.display = 'none';
+    }
+}
+
+async function submitTransaction() {
+    if (cart.length === 0) {
+        showNotification('Your cart is empty', 'warning');
+        return;
+    }
+    
+    // Validate required fields
+    const customerName = document.getElementById('customer_name').value.trim();
+    const paymentMethod = document.getElementById('payment_method').value;
+    
+    if (!customerName) {
+        showNotification('Please enter customer name', 'warning');
+        return;
+    }
+    
+    if (!paymentMethod) {
+        showNotification('Please select payment method', 'warning');
+        return;
+    }
+    
+    // Validate payment details
+    if (paymentMethod === 'Account Receivable') {
+        const creditCustomerId = document.getElementById('credit_customer_id').value;
+        if (!creditCustomerId) {
+            showNotification('Please select credit customer', 'warning');
+            return;
+        }
+    }
+    
+    if (paymentMethod === 'Cash') {
+        const amountTendered = parseFloat(document.getElementById('amount_tendered').value) || 0;
+        const cartTotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
+        if (amountTendered <= 0) {
+            showInsufficientError('amount_tendered', 'Please enter the amount tendered.');
+            return;
+        }
+        if (amountTendered < cartTotal) {
+            showInsufficientError('amount_tendered', `Insufficient payment. Short by ₱${(cartTotal - amountTendered).toFixed(2)}`);
+            return;
+        }
+    }
+
+    if (paymentMethod === 'Credit Card') {
+        const cardRef = document.getElementById('card_reference').value.trim();
+        if (!cardRef) {
+            showNotification('Please enter the card reference number.', 'warning');
+            return;
+        }
+    }
+
+    if (paymentMethod === 'E-Wallet') {
+        const eRef = document.getElementById('ewallet_reference').value.trim();
+        if (!eRef) {
+            showNotification('Please enter the e-wallet reference number.', 'warning');
+            return;
+        }
+    }
+
+    if (paymentMethod === 'E-Fuel Card') {
+        const efuelNum = document.getElementById('efuel_card_number').value.trim();
+        if (!efuelNum) {
+            showNotification('Please enter the E-Fuel card number.', 'warning');
+            return;
+        }
+    }
+    
+    // Prepare transaction data
+    const transactionData = {
+        items: cart,
+        customer_name: customerName,
+        payment_method: paymentMethod,
+        credit_customer_id: paymentMethod === 'Account Receivable' ? document.getElementById('credit_customer_id').value : null,
+        remarks: document.getElementById('remarks').value,
+        amount_tendered: paymentMethod === 'Cash' ? parseFloat(document.getElementById('amount_tendered').value) : null,
+        change_amount: paymentMethod === 'Cash' ? parseFloat(document.getElementById('change_amount').value) : null,
+        card_reference: paymentMethod === 'Credit Card' ? document.getElementById('card_reference').value : null,
+        card_type: paymentMethod === 'Credit Card' ? document.getElementById('card_type').value : null,
+        ewallet_reference: paymentMethod === 'E-Wallet' ? document.getElementById('ewallet_reference').value : null,
+        ewallet_provider: paymentMethod === 'E-Wallet' ? document.getElementById('ewallet_provider').value : null,
+        efuel_card_number: paymentMethod === 'E-Fuel Card' ? document.getElementById('efuel_card_number').value : null
+    };
+    
+    try {
+        const response = await fetch('../backend/api/merchandise_transactions.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                action: 'create_transaction',
+                ...transactionData
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification(`Transaction created successfully! ID: ${result.transaction_id}`, 'success');
+            
+            // Clear form and cart
+            clearCart();
+            document.getElementById('customer_name').value = '';
+            document.getElementById('customer_name').classList.remove('auto-pulled');
+            document.getElementById('job_order_ref').value = '';
+            document.getElementById('jo_lookup_status').textContent = '';
+            document.getElementById('payment_method').value = '';
+            document.getElementById('remarks').value = '';
+            handlePaymentMethodChange(); // Hide payment sections
+            
+            // Optionally print receipt
+            setTimeout(() => {
+                if (confirm('Would you like to print a receipt?')) {
+                    printReceipt(result.transaction_id, transactionData);
+                }
+            }, 1000);
+            
+        } else {
+            showNotification(result.error || 'Error creating transaction', 'error');
+        }
+    } catch (error) {
+        console.error('Error submitting transaction:', error);
+        showNotification('Error creating transaction', 'error');
+    }
+}
+
+function printReceipt(transactionId, transactionData) {
+    var url = `receipt.php?id=${encodeURIComponent(transactionId)}&type=merchandise`;
+    window.open(url, '_blank');
+}
+
+// ── Job Order lookup ──────────────────────────────────────────────────────────
+let _joLookupTimer = null;
+
+function lookupJobOrder(val) {
+    const statusEl = document.getElementById('jo_lookup_status');
+    const suggestEl = document.getElementById('jo_suggestions');
+    clearTimeout(_joLookupTimer);
+
+    if (!val || val.trim().length < 2) {
+        statusEl.textContent = '';
+        suggestEl.style.display = 'none';
+        return;
+    }
+
+    statusEl.innerHTML = '<span style="color:#888;"><i class="fas fa-spinner fa-spin"></i> Searching…</span>';
+
+    _joLookupTimer = setTimeout(async () => {
+        try {
+            const res  = await fetch(`../backend/api/merchandise_transactions.php?action=lookup_job_order&q=${encodeURIComponent(val.trim())}`, {credentials:'same-origin'});
+            const data = await res.json();
+
+            if (data.success && data.results && data.results.length > 0) {
+                statusEl.textContent = '';
+                suggestEl.innerHTML = '';
+                data.results.forEach(jo => {
+                    const row = document.createElement('div');
+                    row.style.cssText = 'padding:10px 12px;cursor:pointer;border-bottom:1px solid #f0f0f0;font-size:13px;';
+                    row.innerHTML = `<strong style="color:#003d7a;">${jo.jo_ref}</strong> — <span style="color:#333;">${jo.customer_name}</span>`
+                                  + (jo.service_type ? `<span style="color:#888;font-size:11px;"> · ${jo.service_type}</span>` : '');
+                    row.addEventListener('mouseenter', () => row.style.background = '#f0f4ff');
+                    row.addEventListener('mouseleave', () => row.style.background = '');
+                    row.addEventListener('click', () => {
+                        document.getElementById('job_order_ref').value  = jo.jo_ref;
+                        document.getElementById('customer_name').value  = jo.customer_name;
+                        document.getElementById('customer_name').classList.add('auto-pulled');
+                        statusEl.innerHTML = `<span style="color:#28a745;"><i class="fas fa-check-circle"></i> Customer auto-filled from ${jo.jo_ref}</span>`;
+                        suggestEl.style.display = 'none';
+                    });
+                    suggestEl.appendChild(row);
+                });
+                suggestEl.style.display = 'block';
+            } else {
+                statusEl.innerHTML = '<span style="color:#888;">No matching job orders found.</span>';
+                suggestEl.style.display = 'none';
+            }
+        } catch (e) {
+            statusEl.innerHTML = '<span style="color:#dc3545;">Lookup failed.</span>';
+            suggestEl.style.display = 'none';
+        }
+    }, 350);
+}
+
+// Close JO suggestions when clicking outside
+document.addEventListener('click', function(e) {
+    if (!document.getElementById('job_order_ref')?.contains(e.target)) {
+        const s = document.getElementById('jo_suggestions');
+        if (s) s.style.display = 'none';
+    }
+});
+
+function showInsufficientError(fieldId, message) {
+    const field = document.getElementById(fieldId);
+    if (field) {
+        field.style.borderColor = '#dc3545';
+        field.style.boxShadow = '0 0 0 3px rgba(220,53,69,0.2)';
+        field.focus();
+        // Clear red border after user types
+        field.addEventListener('input', function clearErr() {
+            field.style.borderColor = '';
+            field.style.boxShadow = '';
+            field.removeEventListener('input', clearErr);
+        });
+    }
+    showNotification(message, 'error');
+}
+
+function showNotification(message, type = 'success') {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.remove();
+    }, 3000);
+}
+</script>
+
+<?php include __DIR__ . '/../partials/footer.php'; ?>

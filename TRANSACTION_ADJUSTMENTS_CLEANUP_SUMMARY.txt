@@ -1,0 +1,81 @@
+====================================
+TRANSACTION ADJUSTMENTS PAGE CLEANUP
+====================================
+Date: July 1, 2026
+File: public/manager_transaction_monitoring.php
+
+CHANGES MADE:
+============
+
+1. ✅ REMOVED "Transactions" Tab
+   - Removed the tab button for "Transactions"
+   - Hidden the transactions table (tab_transactions)
+   - Removed ability to adjust transactions from this page
+
+2. ✅ REMOVED "ACTION" Column
+   - Removed the "Action" column from Adjustment History table
+   - Removed "View" buttons from each row
+   - Table now shows 18 columns instead of 19
+   - Column widths adjusted for better display
+
+3. ✅ SIMPLIFIED DISPLAY
+   - Only "Adjustment History" tab is shown now
+   - Removed tab switching functionality
+   - Export buttons (Excel, CSV) moved to card header
+   - Cleaner, simpler interface
+
+4. ✅ REMOVED UNUSED MODALS
+   - Removed "Adjust Transaction" modal
+   - Removed modal opening JavaScript functions
+   - Kept only essential read-only display functions
+
+WHAT REMAINS:
+============
+
+✅ Adjustment History Table with columns:
+   - Adj ID
+   - Trans ID
+   - JO No.
+   - Customer
+   - Plate
+   - Type
+   - Items/Service
+   - Orig Qty
+   - Upd Qty
+   - Orig Amt
+   - Upd Amt
+   - Diff
+   - Payment
+   - Adj Type
+   - Reason
+   - By
+   - Status
+   - Date/Time
+
+✅ Filters (working):
+   - Date From / Date To
+   - Staff Encoder
+   - Transaction Type
+
+✅ KPI Cards:
+   - Total Adjustments
+   - Adjustments Today
+   - Adjusted Amount
+
+✅ Export Functions:
+   - Excel export
+   - CSV export
+
+RESULT:
+======
+
+The page now shows ONLY adjustment history.
+No more actions can be performed on this page.
+It's now a READ-ONLY history/audit log.
+
+Perfect for viewing past adjustments without
+the clutter of transaction management features.
+
+====================================
+CLEAN AND SIMPLE! ✅
+====================================

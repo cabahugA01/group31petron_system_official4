@@ -1,9 +1,184 @@
 <?php
-/**  * Export Admin Variance Alerts Summary (PDF)  * Compliance alerts for admin oversight  * Admin Side Only  */
-if (session_status() === PHP_SESSION_NONE) session_start();  require_once __DIR__ . '/../lib.php';
+/**
+ * Export Admin Variance Alerts Summary (PDF)
+ * Compliance alerts for admin oversight
+ * Admin Side Only
+ */
+if (session_status() === PHP_SESSION_NONE) session_start();
+
+require_once __DIR__ . '/../lib.php';
 require_once __DIR__ . '/../../public/db_connect.php';
-require_login();  $me = current_user();
-$role = role_key($me['role'] ?? '');  if (!in_array($role, ['admin', 'superadmin'])) {  die('Access denied');
-}  $date_from = $_GET['date_from'] ?? date('Y-m-01');
-$date_to = $_GET['date_to'] ?? date('Y-m-d');  try {  // Fetch variance alerts from multiple sources  $variance_alerts = [];  // 1. Merchandise transaction variances (stock mismatches, amount mismatches)  $merch_stmt = $pdo->prepare("  SELECT  mt.id,  CONCAT('MT-', LPAD(mt.id, 5, '0')) AS reference,  'Merchandise Transaction' AS source,  s.name AS station_name,  mt.customer_name,  mt.total_amount,  mt.created_at,  'Amount/Stock Variance' AS alert_type,  CONCAT('Transaction may have stock or pricing discrepancies') AS alert_message  FROM merchandise_transactions mt  LEFT JOIN stations s ON mt.station_id = s.id  WHERE DATE(mt.created_at) BETWEEN ? AND ?  AND COALESCE(mt.validation_status, 'Pending') = 'Pending'  AND mt.total_amount > 0  ORDER BY mt.created_at DESC  LIMIT 100  ");  $merch_stmt->execute([$date_from, $date_to]);  $merch_alerts = $merch_stmt->fetchAll(PDO::FETCH_ASSOC);  $variance_alerts = array_merge($variance_alerts, $merch_alerts);  // 2. Fuel delivery variances  $fuel_stmt = $pdo->prepare("  SELECT  fd.id,  CONCAT('FD-', LPAD(fd.id, 5, '0')) AS reference,  'Fuel Delivery' AS source,  s.name AS station_name,  fd.supplier AS customer_name,  fd.delivered_liters * fd.price_per_liter AS total_amount,  fd.delivery_date AS created_at,  'Delivery Variance' AS alert_type,  CASE  WHEN ABS(fd.delivered_liters - fd.ordered_liters) > (fd.ordered_liters * 0.02)  THEN CONCAT('Delivered ', ROUND(fd.delivered_liters, 2), 'L vs Ordered ', ROUND(fd.ordered_liters, 2), 'L - Variance exceeds 2%')  ELSE 'Pending validation'  END AS alert_message  FROM fuel_deliveries fd  LEFT JOIN stations s ON fd.station_id = s.id  WHERE DATE(fd.delivery_date) BETWEEN ? AND ?  AND LOWER(fd.status) IN ('pending validation', 'pending')  ORDER BY fd.delivery_date DESC  LIMIT 100  ");  $fuel_stmt->execute([$date_from, $date_to]);  $fuel_alerts = $fuel_stmt->fetchAll(PDO::FETCH_ASSOC);  $variance_alerts = array_merge($variance_alerts, $fuel_alerts);  // 3. Job order validation alerts  $jo_stmt = $pdo->prepare("  SELECT  jo.id,  CONCAT('JO-', LPAD(jo.id, 5, '0')) AS reference,  'Job Order' AS source,  s.name AS station_name,  jo.customer_name,  jo.total_cost AS total_amount,  jo.created_at,  'Validation Pending' AS alert_type,  CONCAT('Service: ', jo.service_type, ' - Awaiting manager validation') AS alert_message  FROM job_orders jo  LEFT JOIN stations s ON jo.station_id = s.id  WHERE DATE(jo.created_at) BETWEEN ? AND ?  AND LOWER(COALESCE(jo.validation_status, jo.status)) IN ('pending validation', 'pending')  ORDER BY jo.created_at DESC  LIMIT 100  ");  $jo_stmt->execute([$date_from, $date_to]);  $jo_alerts = $jo_stmt->fetchAll(PDO::FETCH_ASSOC);  $variance_alerts = array_merge($variance_alerts, $jo_alerts);  // Sort by date  usort($variance_alerts, function($a, $b) {  return strtotime($b['created_at']) - strtotime($a['created_at']);  });  if (empty($variance_alerts)) {  die('No variance alerts found for the selected period');  }  // Generate PDF Report  header('Content-Type: text/html; charset=utf-8');  echo '<!DOCTYPE html><html><head>';  echo '<meta charset="UTF-8"><title>Variance Alerts Summary - ' . date('Y-m-d') . '</title>';  echo '<style>';  echo '@page{size:legal portrait;margin:0.5in;}';  echo 'body{font-family:Arial,sans-serif;font-size:11px;margin:0;padding:20px;color:#000;}';  echo 'h1{color:#dc2626;font-size:20px;text-align:center;margin-bottom:5px;text-transform:uppercase;}';  echo '.info{text-align:center;font-size:12px;color:#555;margin-bottom:20px;border-bottom:2px solid #dc2626;padding-bottom:10px;}';  echo 'table{width:100%;border-collapse:collapse;margin:15px 0;font-size:10px;}';  echo 'th,td{border:1px solid #ddd;padding:6px;text-align:left;}';  echo 'th{background-color:#dc2626;color:white;font-weight:bold;font-size:10px;}';  echo '.alert-high{background:#fee;color:#b91c1c;}';  echo '.alert-medium{background:#fef3c7;color:#92400e;}';  echo '.alert-low{background:#f0f9ff;color:#075985;}';  echo '.summary-box{background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:12px;margin:10px 0;}';  echo '@media print{button{display:none;}}';  echo '</style></head><body>';  echo '<h1>Variance Alerts & Compliance Summary</h1>';  echo '<div class="info">Report Period: ' . date('F d, Y', strtotime($date_from)) . ' to ' . date('F d, Y', strtotime($date_to)) . ' | Generated: ' . date('F d, Y h:i A') . ' | Admin: ' . htmlspecialchars($me['name']) . '</div>';  echo '<button onclick="window.print()" style="padding:10px 20px;background:#dc2626;color:white;border:none;border-radius:6px;cursor:pointer;margin-bottom:15px;font-size:12px;font-weight:600;">Print / Save as PDF</button>';  // Summary Box  echo '<div class="summary-box">';  echo '<strong style="font-size:14px;color:#dc2626;">ALERT SUMMARY</strong><br>';  echo 'Total Alerts: ' . count($variance_alerts) . ' | ';  echo 'Merchandise: ' . count(array_filter($variance_alerts, fn($a) => $a['source'] === 'Merchandise Transaction')) . ' | ';  echo 'Fuel Deliveries: ' . count(array_filter($variance_alerts, fn($a) => $a['source'] === 'Fuel Delivery')) . ' | ';  echo 'Job Orders: ' . count(array_filter($variance_alerts, fn($a) => $a['source'] === 'Job Order'));  echo '</div>';  // Alerts Table  echo '<table>';  echo '<thead><tr>';  echo '<th>Reference</th><th>Source</th><th>Station</th><th>Customer</th><th>Amount</th><th>Alert Type</th><th>Message</th><th>Date</th>';  echo '</tr></thead><tbody>';  foreach ($variance_alerts as $alert) {  $row_class = '';  if (strpos($alert['alert_message'], 'exceeds') !== false) {  $row_class = 'alert-high';  } elseif (strpos($alert['alert_message'], 'Variance') !== false) {  $row_class = 'alert-medium';  } else {  $row_class = 'alert-low';  }  echo '<tr class="' . $row_class . '">';  echo '<td>' . htmlspecialchars($alert['reference']) . '</td>';  echo '<td>' . htmlspecialchars($alert['source']) . '</td>';  echo '<td>' . htmlspecialchars($alert['station_name'] ?: 'N/A') . '</td>';  echo '<td>' . htmlspecialchars(substr($alert['customer_name'] ?: 'N/A', 0, 20)) . '</td>';  echo '<td style="text-align:right;">₱' . number_format((float)$alert['total_amount'], 2) . '</td>';  echo '<td>' . htmlspecialchars($alert['alert_type']) . '</td>';  echo '<td>' . htmlspecialchars($alert['alert_message']) . '</td>';  echo '<td>' . date('M d, Y', strtotime($alert['created_at'])) . '</td>';  echo '</tr>';  }  echo '</tbody></table>';  echo '<div style="margin-top:20px;padding:10px;background:#fef2f2;border-left:4px solid #dc2626;font-size:10px;">';  echo '<strong>Compliance Note:</strong> All alerts require immediate manager review. High-priority variances (red) should be addressed within 24 hours. ';  echo 'This report is for administrative oversight and audit trail purposes.';  echo '</div>';  echo '</body></html>';  exit;  } catch (Exception $e) {  die('Export error: ' . $e->getMessage());
+require_login();
+
+$me = current_user();
+$role = role_key($me['role'] ?? '');
+
+if (!in_array($role, ['admin', 'superadmin'])) {
+    die('Access denied');
+}
+
+$date_from = $_GET['date_from'] ?? date('Y-m-01');
+$date_to = $_GET['date_to'] ?? date('Y-m-d');
+
+try {
+    // Fetch variance alerts from multiple sources
+    $variance_alerts = [];
+
+    // 1. Merchandise transaction variances (stock mismatches, amount mismatches)
+    $merch_stmt = $pdo->prepare("
+        SELECT 
+            mt.id,
+            CONCAT('MT-', LPAD(mt.id, 5, '0')) AS reference,
+            'Merchandise Transaction' AS source,
+            s.name AS station_name,
+            mt.customer_name,
+            mt.total_amount,
+            mt.created_at,
+            'Amount/Stock Variance' AS alert_type,
+            CONCAT('Transaction may have stock or pricing discrepancies') AS alert_message
+        FROM merchandise_transactions mt
+        LEFT JOIN stations s ON mt.station_id = s.id
+        WHERE DATE(mt.created_at) BETWEEN ? AND ?
+          AND COALESCE(mt.validation_status, 'Pending') = 'Pending'
+          AND mt.total_amount > 0
+        ORDER BY mt.created_at DESC
+        LIMIT 100
+    ");
+    $merch_stmt->execute([$date_from, $date_to]);
+    $merch_alerts = $merch_stmt->fetchAll(PDO::FETCH_ASSOC);
+    $variance_alerts = array_merge($variance_alerts, $merch_alerts);
+
+    // 2. Fuel delivery variances
+    $fuel_stmt = $pdo->prepare("
+        SELECT 
+            fd.id,
+            CONCAT('FD-', LPAD(fd.id, 5, '0')) AS reference,
+            'Fuel Delivery' AS source,
+            s.name AS station_name,
+            fd.supplier AS customer_name,
+            fd.delivered_liters * fd.price_per_liter AS total_amount,
+            fd.delivery_date AS created_at,
+            'Delivery Variance' AS alert_type,
+            CASE 
+                WHEN ABS(fd.delivered_liters - fd.ordered_liters) > (fd.ordered_liters * 0.02) 
+                THEN CONCAT('Delivered ', ROUND(fd.delivered_liters, 2), 'L vs Ordered ', ROUND(fd.ordered_liters, 2), 'L - Variance exceeds 2%')
+                ELSE 'Pending validation'
+            END AS alert_message
+        FROM fuel_deliveries fd
+        LEFT JOIN stations s ON fd.station_id = s.id
+        WHERE DATE(fd.delivery_date) BETWEEN ? AND ?
+          AND LOWER(fd.status) IN ('pending validation', 'pending')
+        ORDER BY fd.delivery_date DESC
+        LIMIT 100
+    ");
+    $fuel_stmt->execute([$date_from, $date_to]);
+    $fuel_alerts = $fuel_stmt->fetchAll(PDO::FETCH_ASSOC);
+    $variance_alerts = array_merge($variance_alerts, $fuel_alerts);
+
+    // 3. Job order validation alerts
+    $jo_stmt = $pdo->prepare("
+        SELECT 
+            jo.id,
+            CONCAT('JO-', LPAD(jo.id, 5, '0')) AS reference,
+            'Job Order' AS source,
+            s.name AS station_name,
+            jo.customer_name,
+            jo.total_cost AS total_amount,
+            jo.created_at,
+            'Validation Pending' AS alert_type,
+            CONCAT('Service: ', jo.service_type, ' - Awaiting manager validation') AS alert_message
+        FROM job_orders jo
+        LEFT JOIN stations s ON jo.station_id = s.id
+        WHERE DATE(jo.created_at) BETWEEN ? AND ?
+          AND LOWER(COALESCE(jo.validation_status, jo.status)) IN ('pending validation', 'pending')
+        ORDER BY jo.created_at DESC
+        LIMIT 100
+    ");
+    $jo_stmt->execute([$date_from, $date_to]);
+    $jo_alerts = $jo_stmt->fetchAll(PDO::FETCH_ASSOC);
+    $variance_alerts = array_merge($variance_alerts, $jo_alerts);
+
+    // Sort by date
+    usort($variance_alerts, function($a, $b) {
+        return strtotime($b['created_at']) - strtotime($a['created_at']);
+    });
+
+    if (empty($variance_alerts)) {
+        die('No variance alerts found for the selected period');
+    }
+
+    // Generate PDF Report
+    header('Content-Type: text/html; charset=utf-8');
+    
+    echo '<!DOCTYPE html><html><head>';
+    echo '<meta charset="UTF-8"><title>Variance Alerts Summary - ' . date('Y-m-d') . '</title>';
+    echo '<style>';
+    echo '@page{size:legal portrait;margin:0.5in;}';
+    echo 'body{font-family:Arial,sans-serif;font-size:11px;margin:0;padding:20px;color:#000;}';
+    echo 'h1{color:#dc2626;font-size:20px;text-align:center;margin-bottom:5px;text-transform:uppercase;}';
+    echo '.info{text-align:center;font-size:12px;color:#555;margin-bottom:20px;border-bottom:2px solid #dc2626;padding-bottom:10px;}';
+    echo 'table{width:100%;border-collapse:collapse;margin:15px 0;font-size:10px;}';
+    echo 'th,td{border:1px solid #ddd;padding:6px;text-align:left;}';
+    echo 'th{background-color:#dc2626;color:white;font-weight:bold;font-size:10px;}';
+    echo '.alert-high{background:#fee;color:#b91c1c;}';
+    echo '.alert-medium{background:#fef3c7;color:#92400e;}';
+    echo '.alert-low{background:#f0f9ff;color:#075985;}';
+    echo '.summary-box{background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:12px;margin:10px 0;}';
+    echo '@media print{button{display:none;}}';
+    echo '</style></head><body>';
+    
+    echo '<h1>Variance Alerts & Compliance Summary</h1>';
+    echo '<div class="info">Report Period: ' . date('F d, Y', strtotime($date_from)) . ' to ' . date('F d, Y', strtotime($date_to)) . ' | Generated: ' . date('F d, Y h:i A') . ' | Admin: ' . htmlspecialchars($me['name']) . '</div>';
+    
+    echo '<button onclick="window.print()" style="padding:10px 20px;background:#dc2626;color:white;border:none;border-radius:6px;cursor:pointer;margin-bottom:15px;font-size:12px;font-weight:600;">Print / Save as PDF</button>';
+
+    // Summary Box
+    echo '<div class="summary-box">';
+    echo '<strong style="font-size:14px;color:#dc2626;">ALERT SUMMARY</strong><br>';
+    echo 'Total Alerts: ' . count($variance_alerts) . ' | ';
+    echo 'Merchandise: ' . count(array_filter($variance_alerts, fn($a) => $a['source'] === 'Merchandise Transaction')) . ' | ';
+    echo 'Fuel Deliveries: ' . count(array_filter($variance_alerts, fn($a) => $a['source'] === 'Fuel Delivery')) . ' | ';
+    echo 'Job Orders: ' . count(array_filter($variance_alerts, fn($a) => $a['source'] === 'Job Order'));
+    echo '</div>';
+
+    // Alerts Table
+    echo '<table>';
+    echo '<thead><tr>';
+    echo '<th>Reference</th><th>Source</th><th>Station</th><th>Customer</th><th>Amount</th><th>Alert Type</th><th>Message</th><th>Date</th>';
+    echo '</tr></thead><tbody>';
+    
+    foreach ($variance_alerts as $alert) {
+        $row_class = '';
+        if (strpos($alert['alert_message'], 'exceeds') !== false) {
+            $row_class = 'alert-high';
+        } elseif (strpos($alert['alert_message'], 'Variance') !== false) {
+            $row_class = 'alert-medium';
+        } else {
+            $row_class = 'alert-low';
+        }
+        
+        echo '<tr class="' . $row_class . '">';
+        echo '<td>' . htmlspecialchars($alert['reference']) . '</td>';
+        echo '<td>' . htmlspecialchars($alert['source']) . '</td>';
+        echo '<td>' . htmlspecialchars($alert['station_name'] ?: 'N/A') . '</td>';
+        echo '<td>' . htmlspecialchars(substr($alert['customer_name'] ?: 'N/A', 0, 20)) . '</td>';
+        echo '<td style="text-align:right;">₱' . number_format((float)$alert['total_amount'], 2) . '</td>';
+        echo '<td>' . htmlspecialchars($alert['alert_type']) . '</td>';
+        echo '<td>' . htmlspecialchars($alert['alert_message']) . '</td>';
+        echo '<td>' . date('M d, Y', strtotime($alert['created_at'])) . '</td>';
+        echo '</tr>';
+    }
+    
+    echo '</tbody></table>';
+
+    echo '<div style="margin-top:20px;padding:10px;background:#fef2f2;border-left:4px solid #dc2626;font-size:10px;">';
+    echo '<strong>Compliance Note:</strong> All alerts require immediate manager review. High-priority variances (red) should be addressed within 24 hours. ';
+    echo 'This report is for administrative oversight and audit trail purposes.';
+    echo '</div>';
+
+    echo '</body></html>';
+    exit;
+
+} catch (Exception $e) {
+    die('Export error: ' . $e->getMessage());
 }

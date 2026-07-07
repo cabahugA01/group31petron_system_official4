@@ -1,25 +1,349 @@
 ﻿<?php
-/**  * FORCE DELETE ALL PUMP RECORDS - IMMEDIATE EXECUTION  * WARNING: This will DELETE ALL pump data IMMEDIATELY when you visit this page!  * Access: http://localhost/group31petron_system_official4/public/force_delete_pumps_now.php  */  session_start();
+/**
+ * FORCE DELETE ALL PUMP RECORDS - IMMEDIATE EXECUTION
+ * WARNING: This will DELETE ALL pump data IMMEDIATELY when you visit this page!
+ * Access: http://localhost/group31petron_system_official4/public/force_delete_pumps_now.php
+ */
+
+session_start();
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
-require_login();  // Only allow admin/manager/superadmin
+require_login();
+
+// Only allow admin/manager/superadmin
 $me = current_user();
 $role = role_key($me['role'] ?? '');
-if (!in_array($role, ['superadmin', 'admin', 'manager', 'developer'])) {  die('Access Denied: Only admins and managers can delete pump records.');
-}  $results = [];
-$total_deleted = 0;  try {  // Disable foreign key checks  $pdo->exec("SET FOREIGN_KEY_CHECKS = 0");  $results[] = " Foreign key checks disabled";  // 1. DELETE fuel_pumps  $stmt = $pdo->exec("DELETE FROM fuel_pumps");  $count1 = $pdo->query("SELECT ROW_COUNT()")->fetchColumn();  $results[] = " fuel_pumps: Deleted $count1 records";  $total_deleted += $count1;  // 2. DELETE pump_calibration_history  try {  $stmt = $pdo->exec("DELETE FROM pump_calibration_history");  $count2 = $pdo->query("SELECT ROW_COUNT()")->fetchColumn();  $results[] = " pump_calibration_history: Deleted $count2 records";  $total_deleted += $count2;  } catch (Exception $e) {  $results[] = "pump_calibration_history: Table not found or error - " . $e->getMessage();  }  // 3. DELETE fuel_calibration_records  try {  $stmt = $pdo->exec("DELETE FROM fuel_calibration_records");  $count3 = $pdo->query("SELECT ROW_COUNT()")->fetchColumn();  $results[] = " fuel_calibration_records: Deleted $count3 records";  $total_deleted += $count3;  } catch (Exception $e) {  $results[] = "fuel_calibration_records: Table not found or error - " . $e->getMessage();  }  // 4. DELETE calibration_logs  try {  $stmt = $pdo->exec("DELETE FROM calibration_logs");  $count4 = $pdo->query("SELECT ROW_COUNT()")->fetchColumn();  $results[] = " calibration_logs: Deleted $count4 records";  $total_deleted += $count4;  } catch (Exception $e) {  $results[] = "calibration_logs: Table not found or error - " . $e->getMessage();  }  // 5. DELETE pump_configuration  try {  $stmt = $pdo->exec("DELETE FROM pump_configuration");  $count5 = $pdo->query("SELECT ROW_COUNT()")->fetchColumn();  $results[] = " pump_configuration: Deleted $count5 records";  $total_deleted += $count5;  } catch (Exception $e) {  $results[] = "pump_configuration: Table not found or error - " . $e->getMessage();  }  // Reset AUTO_INCREMENT  $pdo->exec("ALTER TABLE fuel_pumps AUTO_INCREMENT = 1");  $results[] = " Reset fuel_pumps AUTO_INCREMENT to 1";  try { $pdo->exec("ALTER TABLE pump_calibration_history AUTO_INCREMENT = 1"); } catch (Exception $e) {}  try { $pdo->exec("ALTER TABLE fuel_calibration_records AUTO_INCREMENT = 1"); } catch (Exception $e) {}  try { $pdo->exec("ALTER TABLE calibration_logs AUTO_INCREMENT = 1"); } catch (Exception $e) {}  try { $pdo->exec("ALTER TABLE pump_configuration AUTO_INCREMENT = 1"); } catch (Exception $e) {}  // Re-enable foreign key checks  $pdo->exec("SET FOREIGN_KEY_CHECKS = 1");  $results[] = " Foreign key checks re-enabled";  $success = true;  } catch (Exception $e) {  $results[] = "ERROR: " . $e->getMessage();  $success = false;
-}  // Verify deletion
+if (!in_array($role, ['superadmin', 'admin', 'manager', 'developer'])) {
+    die('Access Denied: Only admins and managers can delete pump records.');
+}
+
+$results = [];
+$total_deleted = 0;
+
+try {
+    // Disable foreign key checks
+    $pdo->exec("SET FOREIGN_KEY_CHECKS = 0");
+    $results[] = "✓ Foreign key checks disabled";
+    
+    // 1. DELETE fuel_pumps
+    $stmt = $pdo->exec("DELETE FROM fuel_pumps");
+    $count1 = $pdo->query("SELECT ROW_COUNT()")->fetchColumn();
+    $results[] = "✓ fuel_pumps: Deleted $count1 records";
+    $total_deleted += $count1;
+    
+    // 2. DELETE pump_calibration_history
+    try {
+        $stmt = $pdo->exec("DELETE FROM pump_calibration_history");
+        $count2 = $pdo->query("SELECT ROW_COUNT()")->fetchColumn();
+        $results[] = "✓ pump_calibration_history: Deleted $count2 records";
+        $total_deleted += $count2;
+    } catch (Exception $e) {
+        $results[] = "⚠ pump_calibration_history: Table not found or error - " . $e->getMessage();
+    }
+    
+    // 3. DELETE fuel_calibration_records
+    try {
+        $stmt = $pdo->exec("DELETE FROM fuel_calibration_records");
+        $count3 = $pdo->query("SELECT ROW_COUNT()")->fetchColumn();
+        $results[] = "✓ fuel_calibration_records: Deleted $count3 records";
+        $total_deleted += $count3;
+    } catch (Exception $e) {
+        $results[] = "⚠ fuel_calibration_records: Table not found or error - " . $e->getMessage();
+    }
+    
+    // 4. DELETE calibration_logs
+    try {
+        $stmt = $pdo->exec("DELETE FROM calibration_logs");
+        $count4 = $pdo->query("SELECT ROW_COUNT()")->fetchColumn();
+        $results[] = "✓ calibration_logs: Deleted $count4 records";
+        $total_deleted += $count4;
+    } catch (Exception $e) {
+        $results[] = "⚠ calibration_logs: Table not found or error - " . $e->getMessage();
+    }
+    
+    // 5. DELETE pump_configuration
+    try {
+        $stmt = $pdo->exec("DELETE FROM pump_configuration");
+        $count5 = $pdo->query("SELECT ROW_COUNT()")->fetchColumn();
+        $results[] = "✓ pump_configuration: Deleted $count5 records";
+        $total_deleted += $count5;
+    } catch (Exception $e) {
+        $results[] = "⚠ pump_configuration: Table not found or error - " . $e->getMessage();
+    }
+    
+    // Reset AUTO_INCREMENT
+    $pdo->exec("ALTER TABLE fuel_pumps AUTO_INCREMENT = 1");
+    $results[] = "✓ Reset fuel_pumps AUTO_INCREMENT to 1";
+    
+    try { $pdo->exec("ALTER TABLE pump_calibration_history AUTO_INCREMENT = 1"); } catch (Exception $e) {}
+    try { $pdo->exec("ALTER TABLE fuel_calibration_records AUTO_INCREMENT = 1"); } catch (Exception $e) {}
+    try { $pdo->exec("ALTER TABLE calibration_logs AUTO_INCREMENT = 1"); } catch (Exception $e) {}
+    try { $pdo->exec("ALTER TABLE pump_configuration AUTO_INCREMENT = 1"); } catch (Exception $e) {}
+    
+    // Re-enable foreign key checks
+    $pdo->exec("SET FOREIGN_KEY_CHECKS = 1");
+    $results[] = "✓ Foreign key checks re-enabled";
+    
+    $success = true;
+    
+} catch (Exception $e) {
+    $results[] = "❌ ERROR: " . $e->getMessage();
+    $success = false;
+}
+
+// Verify deletion
 $verify_counts = [];
-try {  $stmt = $pdo->query("SELECT COUNT(*) FROM fuel_pumps");  $verify_counts['fuel_pumps'] = $stmt->fetchColumn();
-} catch (Exception $e) {}  try {  $stmt = $pdo->query("SELECT COUNT(*) FROM pump_calibration_history");  $verify_counts['pump_calibration_history'] = $stmt->fetchColumn();
-} catch (Exception $e) {}  try {  $stmt = $pdo->query("SELECT COUNT(*) FROM fuel_calibration_records");  $verify_counts['fuel_calibration_records'] = $stmt->fetchColumn();
-} catch (Exception $e) {}  try {  $stmt = $pdo->query("SELECT COUNT(*) FROM calibration_logs");  $verify_counts['calibration_logs'] = $stmt->fetchColumn();
-} catch (Exception $e) {}  try {  $stmt = $pdo->query("SELECT COUNT(*) FROM pump_configuration");  $verify_counts['pump_configuration'] = $stmt->fetchColumn();
-} catch (Exception $e) {}  ?>
+try {
+    $stmt = $pdo->query("SELECT COUNT(*) FROM fuel_pumps");
+    $verify_counts['fuel_pumps'] = $stmt->fetchColumn();
+} catch (Exception $e) {}
+
+try {
+    $stmt = $pdo->query("SELECT COUNT(*) FROM pump_calibration_history");
+    $verify_counts['pump_calibration_history'] = $stmt->fetchColumn();
+} catch (Exception $e) {}
+
+try {
+    $stmt = $pdo->query("SELECT COUNT(*) FROM fuel_calibration_records");
+    $verify_counts['fuel_calibration_records'] = $stmt->fetchColumn();
+} catch (Exception $e) {}
+
+try {
+    $stmt = $pdo->query("SELECT COUNT(*) FROM calibration_logs");
+    $verify_counts['calibration_logs'] = $stmt->fetchColumn();
+} catch (Exception $e) {}
+
+try {
+    $stmt = $pdo->query("SELECT COUNT(*) FROM pump_configuration");
+    $verify_counts['pump_configuration'] = $stmt->fetchColumn();
+} catch (Exception $e) {}
+
+?>
 <!DOCTYPE html>
 <html lang="en">
-<head>  <meta charset="UTF-8">  <meta name="viewport" content="width=device-width, initial-scale=1.0">  <title>Pump Records Deleted</title>  <link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">  <style>  * { margin: 0; padding: 0; box-sizing: border-box; }  body {  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);  min-height: 100vh;  display: flex;  align-items: center;  justify-content: center;  padding: 20px;  }  .container { max-width: 700px; width: 100%; }  .card {  background: #fff;  border-radius: 16px;  box-shadow: 0 20px 60px rgba(0,0,0,0.3);  overflow: hidden;  }  .card-header {  background: linear-gradient(135deg, #16a34a, #15803d);  color: #fff;  padding: 30px;  text-align: center;  }  .card-header i {  font-size: 48px;  margin-bottom: 16px;  display: block;  }  .card-header h1 {  font-size: 28px;  margin-bottom: 8px;  }  .card-header p {  font-size: 14px;  color: #bbf7d0;  }  .card-body {  padding: 30px;  }  .results-box {  background: #f0fdf4;  border: 2px solid #16a34a;  border-radius: 12px;  padding: 20px;  margin-bottom: 24px;  }  .results-box h3 {  color: #166534;  font-size: 18px;  margin-bottom: 16px;  display: flex;  align-items: center;  gap: 10px;  }  .result-item {  padding: 8px 12px;  margin: 6px 0;  background: #fff;  border-left: 4px solid #16a34a;  border-radius: 6px;  font-size: 14px;  color: #166534;  font-family: 'Courier New', monospace;  }  .result-item.warning {  border-left-color: #f59e0b;  color: #92400e;  }  .summary-box {  background: #eff6ff;  border: 2px solid #3b82f6;  border-radius: 12px;  padding: 20px;  margin-bottom: 24px;  }  .summary-box h3 {  color: #1e40af;  font-size: 16px;  margin-bottom: 12px;  }  .summary-grid {  display: grid;  grid-template-columns: 1fr 1fr;  gap: 12px;  }  .summary-item {  background: #fff;  padding: 12px;  border-radius: 8px;  border: 1px solid #dbeafe;  }  .summary-item .label {  font-size: 11px;  color: #64748b;  text-transform: uppercase;  letter-spacing: 0.5px;  margin-bottom: 4px;  }  .summary-item .value {  font-size: 24px;  font-weight: 800;  color: #1e40af;  }  .summary-item .value.zero {  color: #16a34a;  }  .total-banner {  background: linear-gradient(135deg, #16a34a, #15803d);  color: #fff;  padding: 20px;  border-radius: 12px;  text-align: center;  margin-bottom: 24px;  }  .total-banner .number {  font-size: 48px;  font-weight: 800;  margin: 8px 0;  }  .total-banner .label {  font-size: 14px;  color: #bbf7d0;  text-transform: uppercase;  letter-spacing: 1px;  }  .btn {  display: inline-block;  padding: 12px 24px;  border-radius: 8px;  font-weight: 600;  font-size: 14px;  text-decoration: none;  transition: all 0.2s;  border: none;  cursor: pointer;  }  .btn-primary {  background: #3b82f6;  color: #fff;  margin-right: 8px;  }  .btn-primary:hover {  background: #2563eb;  }  .btn-secondary {  background: #64748b;  color: #fff;  }  .btn-secondary:hover {  background: #475569;  }  .action-buttons {  display: flex;  gap: 12px;  justify-content: center;  margin-top: 24px;  }  </style>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pump Records Deleted</title>
+    <link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container { max-width: 700px; width: 100%; }
+        .card { 
+            background: #fff; 
+            border-radius: 16px; 
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3); 
+            overflow: hidden;
+        }
+        .card-header { 
+            background: linear-gradient(135deg, #16a34a, #15803d); 
+            color: #fff; 
+            padding: 30px; 
+            text-align: center;
+        }
+        .card-header i { 
+            font-size: 48px; 
+            margin-bottom: 16px; 
+            display: block;
+        }
+        .card-header h1 { 
+            font-size: 28px; 
+            margin-bottom: 8px;
+        }
+        .card-header p { 
+            font-size: 14px; 
+            color: #bbf7d0; 
+        }
+        .card-body { 
+            padding: 30px; 
+        }
+        
+        .results-box {
+            background: #f0fdf4;
+            border: 2px solid #16a34a;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        .results-box h3 {
+            color: #166534;
+            font-size: 18px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .result-item {
+            padding: 8px 12px;
+            margin: 6px 0;
+            background: #fff;
+            border-left: 4px solid #16a34a;
+            border-radius: 6px;
+            font-size: 14px;
+            color: #166534;
+            font-family: 'Courier New', monospace;
+        }
+        .result-item.warning {
+            border-left-color: #f59e0b;
+            color: #92400e;
+        }
+        
+        .summary-box {
+            background: #eff6ff;
+            border: 2px solid #3b82f6;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        .summary-box h3 {
+            color: #1e40af;
+            font-size: 16px;
+            margin-bottom: 12px;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .summary-item {
+            background: #fff;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #dbeafe;
+        }
+        .summary-item .label {
+            font-size: 11px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .summary-item .value {
+            font-size: 24px;
+            font-weight: 800;
+            color: #1e40af;
+        }
+        .summary-item .value.zero {
+            color: #16a34a;
+        }
+        
+        .total-banner {
+            background: linear-gradient(135deg, #16a34a, #15803d);
+            color: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .total-banner .number {
+            font-size: 48px;
+            font-weight: 800;
+            margin: 8px 0;
+        }
+        .total-banner .label {
+            font-size: 14px;
+            color: #bbf7d0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            text-decoration: none;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+        }
+        .btn-primary {
+            background: #3b82f6;
+            color: #fff;
+            margin-right: 8px;
+        }
+        .btn-primary:hover {
+            background: #2563eb;
+        }
+        .btn-secondary {
+            background: #64748b;
+            color: #fff;
+        }
+        .btn-secondary:hover {
+            background: #475569;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-top: 24px;
+        }
+    </style>
 </head>
-<body>  <div class="container">  <div class="card">  <div class="card-header">  <i class="fas fa-check-circle"></i>  <h1>Pump Records Deleted!</h1>  <p>All pump-related data has been permanently removed from the database</p>  </div>  <div class="card-body">  <div class="total-banner">  <div class="label">Total Records Deleted</div>  <div class="number"><?php echo $total_deleted; ?></div>  <div class="label">records across <?php echo count($results) - 2; ?> tables</div>  </div>  <div class="results-box">  <h3><i class="fas fa-list-check"></i> Deletion Log</h3>  <?php foreach ($results as $result): ?>  <div class="result-item <?php echo strpos($result, '') !== false ? 'warning' : ''; ?>">  <?php echo htmlspecialchars($result); ?>  </div>  <?php endforeach; ?>  </div>  <div class="summary-box">  <h3>Current Table Status (After Deletion)</h3>  <div class="summary-grid">  <?php foreach ($verify_counts as $table => $count): ?>  <div class="summary-item">  <div class="label"><?php echo $table; ?></div>  <div class="value <?php echo $count == 0 ? 'zero' : ''; ?>">  <?php echo $count; ?> <span style="font-size:14px;color:#64748b;">records</span>  </div>  </div>  <?php endforeach; ?>  </div>  </div>  <div class="action-buttons">  <a href="dashboard.php" class="btn btn-primary">  <i class="fas fa-home"></i> Back to Dashboard  </a>  <a href="force_delete_pumps_now.php" class="btn btn-secondary">  <i class="fas fa-sync"></i> Refresh Status  </a>  </div>  <div style="text-align: center; margin-top: 24px; padding-top: 24px; border-top: 2px solid #e2e8f0; color: #64748b; font-size: 13px;">  <p><i class="fas fa-user"></i> Executed by: <strong><?php echo htmlspecialchars($me['username'] ?? 'Unknown'); ?></strong></p>  <p><i class="fas fa-clock"></i> Time: <strong><?php echo date('F j, Y g:i A'); ?></strong></p>  </div>  </div>  </div>  </div>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-check-circle"></i>
+                <h1>Pump Records Deleted!</h1>
+                <p>All pump-related data has been permanently removed from the database</p>
+            </div>
+            <div class="card-body">
+                <div class="total-banner">
+                    <div class="label">Total Records Deleted</div>
+                    <div class="number"><?php echo $total_deleted; ?></div>
+                    <div class="label">records across <?php echo count($results) - 2; ?> tables</div>
+                </div>
+                
+                <div class="results-box">
+                    <h3><i class="fas fa-list-check"></i> Deletion Log</h3>
+                    <?php foreach ($results as $result): ?>
+                    <div class="result-item <?php echo strpos($result, '⚠') !== false ? 'warning' : ''; ?>">
+                        <?php echo htmlspecialchars($result); ?>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                
+                <div class="summary-box">
+                    <h3>Current Table Status (After Deletion)</h3>
+                    <div class="summary-grid">
+                        <?php foreach ($verify_counts as $table => $count): ?>
+                        <div class="summary-item">
+                            <div class="label"><?php echo $table; ?></div>
+                            <div class="value <?php echo $count == 0 ? 'zero' : ''; ?>">
+                                <?php echo $count; ?> <span style="font-size:14px;color:#64748b;">records</span>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                
+                <div class="action-buttons">
+                    <a href="dashboard.php" class="btn btn-primary">
+                        <i class="fas fa-home"></i> Back to Dashboard
+                    </a>
+                    <a href="force_delete_pumps_now.php" class="btn btn-secondary">
+                        <i class="fas fa-sync"></i> Refresh Status
+                    </a>
+                </div>
+                
+                <div style="text-align: center; margin-top: 24px; padding-top: 24px; border-top: 2px solid #e2e8f0; color: #64748b; font-size: 13px;">
+                    <p><i class="fas fa-user"></i> Executed by: <strong><?php echo htmlspecialchars($me['username'] ?? 'Unknown'); ?></strong></p>
+                    <p><i class="fas fa-clock"></i> Time: <strong><?php echo date('F j, Y g:i A'); ?></strong></p>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

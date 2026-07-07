@@ -1,5 +1,53 @@
 <?php
-/**  * Database Configuration - Table Names and Settings  * This file centralizes all database table names and configurations  */  // Database table names - centralized for easy maintenance
-return [  // Core job orders tables  'job_orders' => 'job_orders',  'job_order_audit' => 'job_order_audit',  'staff_notifications' => 'staff_notifications',  // Related tables  'customers' => 'customers',  'mechanics' => 'mechanics',  'users' => 'users',  'accounts_receivable' => 'accounts_receivable',  'stations' => 'stations',  // Job order statuses  'job_statuses' => [  'pending' => 'Pending',  'in_progress' => 'In Progress',  'completed' => 'Completed',  'rejected' => 'Rejected',  'approved' => 'Approved'  ],  // Audit actions  'audit_actions' => [  'job_created' => 'JOB_CREATED',  'job_updated' => 'JOB_UPDATED',  'technician_assigned' => 'TECHNICIAN_ASSIGNED',  'job_approved' => 'JOB_APPROVED',  'job_rejected' => 'JOB_REJECTED',  'status_update' => 'STATUS_UPDATE'  ],  // Notification types  'notification_types' => [  'info' => 'info',  'success' => 'success',  'warning' => 'warning',  'error' => 'error'  ],  // Default settings  'auto_refresh_interval' => 30, // seconds  'max_records_per_page' => 50,  'sample_data_enabled' => true
+/**
+ * Database Configuration - Table Names and Settings
+ * This file centralizes all database table names and configurations
+ */
+
+// Database table names - centralized for easy maintenance
+return [
+    // Core job orders tables
+    'job_orders' => 'job_orders',
+    'job_order_audit' => 'job_order_audit',
+    'staff_notifications' => 'staff_notifications',
+    
+    // Related tables
+    'customers' => 'customers',
+    'mechanics' => 'mechanics', 
+    'users' => 'users',
+    'accounts_receivable' => 'accounts_receivable',
+    'stations' => 'stations',
+    
+    // Job order statuses
+    'job_statuses' => [
+        'pending' => 'Pending',
+        'in_progress' => 'In Progress',
+        'completed' => 'Completed',
+        'rejected' => 'Rejected',
+        'approved' => 'Approved'
+    ],
+    
+    // Audit actions
+    'audit_actions' => [
+        'job_created' => 'JOB_CREATED',
+        'job_updated' => 'JOB_UPDATED',
+        'technician_assigned' => 'TECHNICIAN_ASSIGNED',
+        'job_approved' => 'JOB_APPROVED',
+        'job_rejected' => 'JOB_REJECTED',
+        'status_update' => 'STATUS_UPDATE'
+    ],
+    
+    // Notification types
+    'notification_types' => [
+        'info' => 'info',
+        'success' => 'success', 
+        'warning' => 'warning',
+        'error' => 'error'
+    ],
+    
+    // Default settings
+    'auto_refresh_interval' => 30, // seconds
+    'max_records_per_page' => 50,
+    'sample_data_enabled' => true
 ];
 ?>

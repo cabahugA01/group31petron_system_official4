@@ -1,21 +1,483 @@
 <?php
-/**  * Fuel Readings API  * Internal reconciliation — staff encodes per-shift pump readings,  * manager approves/rejects, back-office generates weekly/monthly reports.  */
+/**
+ * Fuel Readings API
+ * Internal reconciliation — staff encodes per-shift pump readings,
+ * manager approves/rejects, back-office generates weekly/monthly reports.
+ */
 // Suppress PHP warnings/notices from corrupting JSON output
 error_reporting(0);
 @ini_set('display_errors', '0');
-ob_start(); // buffer any accidental output  header('Content-Type: application/json');
+ob_start(); // buffer any accidental output
+
+header('Content-Type: application/json');
 require_once __DIR__ . '/../lib.php';
 require_once __DIR__ . '/../../public/db_connect.php';
-require_login();  $me  = current_user();
-$role  = role_key($me['role'] ?? '');
+require_login();
+
+$me         = current_user();
+$role       = role_key($me['role'] ?? '');
 $station_id = user_station_id();
-$action  = $_GET['action'] ?? $_POST['action'] ?? '';
-$method  = $_SERVER['REQUEST_METHOD'];  // ── Safe schema migration (run once, idempotent) ──────────────────────────────
-try {  $existing = array_column(  $pdo->query("SHOW COLUMNS FROM fuel_transactions")->fetchAll(PDO::FETCH_ASSOC),  'Field'  );  $add = [  'shift_period'  => "VARCHAR(50)  NULL",  'shift_name'  => "VARCHAR(100) NULL",  'shift_id'  => "INT  NULL",  'notes'  => "TEXT  NULL",  'status'  => "VARCHAR(50)  NULL DEFAULT 'Pending Validation'",  'validated_by'  => "INT  NULL",  'validated_at'  => "DATETIME  NULL",  'reject_reason' => "TEXT  NULL",  ];  foreach ($add as $col => $def) {  if (!in_array($col, $existing)) {  $pdo->exec("ALTER TABLE fuel_transactions ADD COLUMN `$col` $def");  }  }  // If status column exists but has wrong length, widen it silently  try {  $pdo->exec("ALTER TABLE fuel_transactions MODIFY COLUMN `status` VARCHAR(50) NULL DEFAULT 'Pending Validation'");  } catch (Exception $e2) { /* ignore */ }
-} catch (Exception $e) { /* non-fatal */ }  try {  switch ($action) {  // ══════════════════════════════════════════════════════════════════════  // STAFF: encode a pump reading for the current shift  // ══════════════════════════════════════════════════════════════════════  case 'encode_reading':  if ($method !== 'POST') { respond(false, 'Method not allowed'); }  if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {  respond(false, 'Only staff can encode readings.');  }  $fuel_type  = trim($_POST['fuel_type']  ?? '');  $present  = (float)($_POST['present_reading']  ?? 0);  $previous  = (float)($_POST['previous_reading'] ?? 0);  $calibration  = (float)($_POST['calibration']  ?? 0);  $price  = (float)($_POST['price_per_liter']  ?? 0);  $reading_date  = $_POST['reading_date']  ?? date('Y-m-d');  $shift_period  = $_POST['shift_period']  ?? 'first';  $shift_name  = $_POST['shift_name']  ?? '';  $shift_id  = (int)($_POST['shift_id'] ?? 0) ?: null;  $notes  = trim($_POST['notes'] ?? '');  if (empty($fuel_type))  respond(false, 'Fuel type is required.');  if ($present  <= 0)  respond(false, 'Present reading must be greater than 0.');  if ($price  <= 0)  respond(false, 'Price per liter must be greater than 0.');  // Validate readings  $v = validate_readings($present, $previous, $calibration);  if (!$v['valid']) respond(false, implode(' ', $v['errors']));  $liters_sold  = $v['liters_sold'];  $total_amount = round($liters_sold * $price, 2);  // Generate transaction ID  $txn_id = 'FUEL' . date('Y') . str_pad($station_id, 3, '0', STR_PAD_LEFT)  . str_pad(mt_rand(1, 99999), 5, '0', STR_PAD_LEFT);  // Ensure all required columns exist before inserting  $cols_check = array_column(  $pdo->query("SHOW COLUMNS FROM fuel_transactions")->fetchAll(PDO::FETCH_ASSOC),  'Field'  );  $required_cols = ['shift_period','shift_name','shift_id','notes','status'];  foreach ($required_cols as $rc) {  if (!in_array($rc, $cols_check)) {  $default = ($rc === 'status') ? "VARCHAR(50) NULL DEFAULT 'Pending Validation'" : "TEXT NULL";  $pdo->exec("ALTER TABLE fuel_transactions ADD COLUMN `$rc` $default");  }  }  $pdo->beginTransaction();  $pdo->prepare("  INSERT INTO fuel_transactions  (transaction_id, station_id, fuel_type,  present_reading, previous_reading, calibration,  liters_sold, price_per_liter, total_amount,  staff_id, transaction_date,  shift_period, shift_name, shift_id, notes, status)  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Pending Validation')  ")->execute([  $txn_id, $station_id, $fuel_type,  $present, $previous, $calibration,  $liters_sold, $price, $total_amount,  $me['id'], $reading_date . ' ' . date('H:i:s'),  $shift_period, $shift_name, $shift_id, $notes,  ]);  $insert_id = $pdo->lastInsertId();  // Update fuel_inventory previous reading for next auto-pull  try {  $pdo->prepare("  UPDATE fuel_inventory  SET last_updated = NOW()  WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))  ")->execute([$station_id, $fuel_type]);  } catch (Exception $e) {}  $pdo->commit();  try {  log_activity($pdo, $me['id'], 'Fuel Reading Encoded',  "{$fuel_type}: Present={$present}, Prev={$previous}, Calib={$calibration}, Liters={$liters_sold}");  } catch (Exception $e) {}  // ── Audit log ──  try {  $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';  $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';  $detail = "Fuel reading encoded | {$fuel_type} | Present: {$present} | Prev: {$previous} | Liters sold: {$liters_sold} L | Total: ₱" . number_format($total_amount, 2) . " | Shift: {$shift_period}";  $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', 'Create', ?, 'fuel_readings', ?, 'Success', ?, ?, NOW())")  ->execute([$me['id'], $detail, $insert_id, $ip, $ua]);  } catch (Exception $e) {}  respond(true, 'Reading submitted. Pending manager approval.', [  'transaction_id' => $txn_id,  'liters_sold'  => $liters_sold,  'total_amount'  => $total_amount,  ]);  // ══════════════════════════════════════════════════════════════════════  // MANAGER: get pending readings (per date + shift filter)  // ══════════════════════════════════════════════════════════════════════  case 'get_pending':  if (!in_array($role, ['manager', 'admin', 'superadmin'])) {  respond(false, 'Manager access required.');  }  $date  = $_GET['date']  ?? date('Y-m-d');  $shift = $_GET['shift'] ?? '';  $sql = "  SELECT ft.*, u.name AS staff_name  FROM  fuel_transactions ft  LEFT JOIN users u ON ft.staff_id = u.id  WHERE  ft.station_id = ?  AND  DATE(ft.transaction_date) = ?  AND  ft.status = 'Pending Validation'  ";  $params = [$station_id, $date];  if ($shift) { $sql .= " AND ft.shift_period = ?"; $params[] = $shift; }  $sql .= " ORDER BY ft.transaction_date ASC";  $rows = $pdo->prepare($sql);  $rows->execute($params);  respond(true, '', ['readings' => $rows->fetchAll(PDO::FETCH_ASSOC)]);  // ══════════════════════════════════════════════════════════════════════  // MANAGER: approve or reject a reading  // ══════════════════════════════════════════════════════════════════════  case 'validate_reading':  if ($method !== 'POST') respond(false, 'Method not allowed.');  if (!in_array($role, ['manager', 'admin', 'superadmin'])) {  respond(false, 'Manager access required.');  }  $txn_id  = trim($_POST['transaction_id'] ?? '');  $new_status  = $_POST['status'] ?? '';  // 'Approved' | 'Rejected'  $reject_reason= trim($_POST['reject_reason'] ?? '');  if (!in_array($new_status, ['Approved', 'Rejected'])) {  respond(false, 'Status must be Approved or Rejected.');  }  if ($new_status === 'Rejected' && empty($reject_reason)) {  respond(false, 'Rejection reason is required.');  }  $row = $pdo->prepare("  SELECT * FROM fuel_transactions  WHERE transaction_id = ? AND station_id = ? AND status = 'Pending Validation'  ");  $row->execute([$txn_id, $station_id]);  $txn = $row->fetch(PDO::FETCH_ASSOC);  if (!$txn) respond(false, 'Transaction not found or already processed.');  $pdo->beginTransaction();  $pdo->prepare("  UPDATE fuel_transactions  SET status = ?, validated_by = ?, validated_at = NOW(), reject_reason = ?  WHERE transaction_id = ? AND station_id = ?  ")->execute([$new_status, $me['id'], $reject_reason ?: null, $txn_id, $station_id]);  if ($new_status === 'Approved') {  // Deduct liters from tank  try {  $pdo->prepare("  UPDATE fuel_inventory  SET current_level = GREATEST(0, COALESCE(current_level, current_stock, 0) - ?),  current_stock = GREATEST(0, COALESCE(current_stock, current_level, 0) - ?),  last_updated  = NOW()  WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))  ")->execute([$txn['liters_sold'], $txn['liters_sold'], $station_id, $txn['fuel_type']]);  } catch (Exception $e) {}  }  // Sync status with fuel_readings table & record in fuel_audit_trail if transaction originated from there  $reading_db_id = null;  if (strpos($txn_id, 'FUEL') === 0 && strlen($txn_id) >= 17) {  $reading_db_id = (int)substr($txn_id, 11);  }  if ($reading_db_id) {  try {  $mapped_status = ($new_status === 'Approved') ? 'verified' : 'rejected';  $pdo->prepare("UPDATE fuel_readings SET status = ? WHERE id = ? AND station_id = ?")->execute([$mapped_status, $reading_db_id, $station_id]);  // Retrieve updated stock level  $stock_stmt = $pdo->prepare("SELECT current_level FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");  $stock_stmt->execute([$station_id, $txn['fuel_type']]);  $stock_after_val = $stock_stmt->fetchColumn();  $stock_after_amount = ($stock_after_val !== false) ? (float)$stock_after_val : 0.0;  $stock_before_amount = $stock_after_amount + (($new_status === 'Approved') ? (float)$txn['liters_sold'] : 0.0);  $audit_action = ($new_status === 'Approved') ? 'FUEL_READING_VERIFIED' : 'FUEL_READING_REJECTED';  $audit_notes = "Manager validation via API: " . $new_status . ($reject_reason ? " | Reason: " . $reject_reason : "");  $pdo->prepare("  INSERT INTO fuel_audit_trail (  reading_id, action, before_value, after_value, stock_before, stock_after,  performed_by, performed_at, notes  ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?)  ")->execute([  $reading_db_id,  $audit_action,  (float)($txn['previous_reading'] ?? 0),  (float)($txn['present_reading'] ?? 0),  $stock_before_amount,  $stock_after_amount,  $me['id'],  $audit_notes  ]);  } catch (Exception $e) {  error_log('API validate_reading sync error: ' . $e->getMessage());  }  }  $pdo->commit();  log_activity($pdo, $me['id'], "Fuel Reading {$new_status}",  "TXN {$txn_id} | {$txn['fuel_type']} | {$txn['liters_sold']} L");  // ── Audit log ──  try {  $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';  $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';  $action_type = $new_status === 'Approved' ? 'Approve' : 'Reject';  $detail = "Fuel reading {$new_status} | TXN: {$txn_id} | {$txn['fuel_type']} | {$txn['liters_sold']} L" . ($reject_reason ? " | Reason: {$reject_reason}" : '');  $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', ?, ?, 'fuel_readings', ?, 'Success', ?, ?, NOW())")  ->execute([$me['id'], $action_type, $detail, $txn['id'] ?? null, $ip, $ua]);  } catch (Exception $e) {}  respond(true, "Reading {$new_status}.");  // ══════════════════════════════════════════════════════════════════════  // STAFF: today's entries for this staff member (for the "my entries" panel)  // ══════════════════════════════════════════════════════════════════════  case 'my_entries':  $date = $_GET['date'] ?? date('Y-m-d');  $rows = $pdo->prepare("  SELECT transaction_id, fuel_type, present_reading, previous_reading,  calibration, liters_sold, price_per_liter, total_amount,  shift_period, shift_name, status, transaction_date, notes  FROM  fuel_transactions  WHERE  station_id = ? AND staff_id = ? AND DATE(transaction_date) = ?  ORDER  BY transaction_date DESC  ");  $rows->execute([$station_id, $me['id'], $date]);  respond(true, '', ['entries' => $rows->fetchAll(PDO::FETCH_ASSOC)]);  // ══════════════════════════════════════════════════════════════════════  // REPORTS: daily / weekly / monthly summary per fuel type  // Returns 3 datasets: meter_readings, vol_sales_summary, vol_amt_summary  // ══════════════════════════════════════════════════════════════════════  case 'summary':  if (!in_array($role, ['manager', 'admin', 'superadmin'])) {  respond(false, 'Manager access required.');  }  $period  = $_GET['period']  ?? 'daily';  $date_from  = $_GET['date_from']  ?? date('Y-m-d');  $date_to  = $_GET['date_to']  ?? date('Y-m-d');  $shift  = $_GET['shift']  ?? '';  $base_where = "ft.station_id = ? AND DATE(ft.transaction_date) BETWEEN ? AND ? AND LOWER(ft.status) IN ('approved','verified')";  $base_params = [$station_id, $date_from, $date_to];  if ($shift) { $base_where .= " AND ft.shift_period = ?"; $base_params[] = $shift; }  // ── TABLE 1: Meter Reading Table (raw per-transaction rows) ──────  $mr_sql = "  SELECT  ft.transaction_id,  ft.fuel_type,  ft.previous_reading  AS beginning,  ft.present_reading  AS ending,  ft.calibration  AS cal,  ft.liters_sold  AS volume_liters,  ft.price_per_liter,  ft.total_amount  AS amount,  ft.shift_period,  ft.shift_name,  DATE(ft.transaction_date) AS reading_date,  u.name  AS staff_name,  ft.status,  ft.validated_at,  vm.name  AS validated_by_name  FROM fuel_transactions ft  LEFT JOIN users u  ON ft.staff_id  = u.id  LEFT JOIN users vm ON ft.validated_by = vm.id  WHERE {$base_where}  ORDER BY ft.fuel_type ASC, ft.transaction_date ASC  ";  $mr_rows = $pdo->prepare($mr_sql);  $mr_rows->execute($base_params);  $meter_readings = $mr_rows->fetchAll(PDO::FETCH_ASSOC);  // ── TABLE 2: Volume Sales Summary (liters per fuel type) ─────────  $vs_sql = "  SELECT  ft.fuel_type,  SUM(ft.liters_sold) AS volume_sales  FROM fuel_transactions ft  WHERE {$base_where}  GROUP BY ft.fuel_type  ORDER BY ft.fuel_type ASC  ";  $vs_rows = $pdo->prepare($vs_sql);  $vs_rows->execute($base_params);  $vol_sales_summary = $vs_rows->fetchAll(PDO::FETCH_ASSOC);  // ── TABLE 3: Volume & Amount Summary (liters + amount per fuel type) ──  $va_sql = "  SELECT  ft.fuel_type,  SUM(ft.liters_sold)  AS volume_sales,  SUM(ft.total_amount) AS amount_sales  FROM fuel_transactions ft  WHERE {$base_where}  GROUP BY ft.fuel_type  ORDER BY ft.fuel_type ASC  ";  $va_rows = $pdo->prepare($va_sql);  $va_rows->execute($base_params);  $vol_amt_summary = $va_rows->fetchAll(PDO::FETCH_ASSOC);  // ── Legacy summary (for KPI cards / chart) ───────────────────────  $summary = array_map(function($r) {  return [  'fuel_type'  => $r['fuel_type'],  'total_liters' => $r['volume_sales'],  'total_sales'  => $r['amount_sales'],  'avg_price'  => $r['volume_sales'] > 0 ? $r['amount_sales'] / $r['volume_sales'] : 0,  'entry_count'  => 0,  ];  }, $vol_amt_summary);  // Fill entry_count from meter_readings  $entry_counts = [];  foreach ($meter_readings as $mr) {  $entry_counts[$mr['fuel_type']] = ($entry_counts[$mr['fuel_type']] ?? 0) + 1;  }  foreach ($summary as &$s) {  $s['entry_count'] = $entry_counts[$s['fuel_type']] ?? 0;  }  unset($s);  // ── Daily breakdown for chart ────────────────────────────────────  $daily_sql = "  SELECT  DATE(ft.transaction_date) AS day,  ft.fuel_type,  SUM(ft.liters_sold)  AS liters,  SUM(ft.total_amount)  AS sales,  AVG(ft.price_per_liter)  AS avg_price,  u.name  AS staff_name,  ft.shift_period  FROM fuel_transactions ft  JOIN users u ON ft.staff_id = u.id  WHERE {$base_where}  GROUP BY DATE(ft.transaction_date), ft.fuel_type, u.name, ft.shift_period  ORDER BY day ASC, ft.fuel_type ASC  ";  $daily_rows = $pdo->prepare($daily_sql);  $daily_rows->execute($base_params);  $daily = $daily_rows->fetchAll(PDO::FETCH_ASSOC);  // ── Comparison (all statuses) ────────────────────────────────────  $cmp_where  = "ft.station_id = ? AND DATE(ft.transaction_date) BETWEEN ? AND ?";  $cmp_params = [$station_id, $date_from, $date_to];  if ($shift) { $cmp_where .= " AND ft.shift_period = ?"; $cmp_params[] = $shift; }  $compare_sql = "  SELECT  ft.fuel_type,  SUM(CASE WHEN LOWER(ft.status) IN ('approved','verified') THEN ft.liters_sold ELSE 0 END) AS approved_liters,  SUM(ft.liters_sold) AS total_encoded_liters,  COUNT(*) AS total_readings,  SUM(CASE WHEN LOWER(ft.status) IN ('approved','verified') THEN 1 ELSE 0 END) AS approved_count,  SUM(CASE WHEN LOWER(ft.status) LIKE '%pending%' THEN 1 ELSE 0 END) AS pending_count,  SUM(CASE WHEN LOWER(ft.status) = 'rejected' THEN 1 ELSE 0 END) AS rejected_count  FROM fuel_transactions ft  WHERE {$cmp_where}  GROUP BY ft.fuel_type  ORDER BY ft.fuel_type ASC  ";  $compare_rows = $pdo->prepare($compare_sql);  $compare_rows->execute($cmp_params);  $comparison = $compare_rows->fetchAll(PDO::FETCH_ASSOC);  respond(true, '', [  'meter_readings'  => $meter_readings,  'vol_sales_summary' => $vol_sales_summary,  'vol_amt_summary'  => $vol_amt_summary,  'summary'  => $summary,  'daily'  => $daily,  'comparison'  => $comparison,  ]);  default:  respond(false, 'Invalid action.');  }
-} catch (Exception $e) {  if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();  error_log("fuel_readings.php error: " . $e->getMessage());  if (ob_get_level()) ob_end_clean();  respond(false, 'Server error: ' . $e->getMessage());
+$action     = $_GET['action'] ?? $_POST['action'] ?? '';
+$method     = $_SERVER['REQUEST_METHOD'];
+
+// ── Safe schema migration (run once, idempotent) ──────────────────────────────
+try {
+    $existing = array_column(
+        $pdo->query("SHOW COLUMNS FROM fuel_transactions")->fetchAll(PDO::FETCH_ASSOC),
+        'Field'
+    );
+    $add = [
+        'shift_period'  => "VARCHAR(50)  NULL",
+        'shift_name'    => "VARCHAR(100) NULL",
+        'shift_id'      => "INT          NULL",
+        'notes'         => "TEXT         NULL",
+        'status'        => "VARCHAR(50)  NULL DEFAULT 'Pending Validation'",
+        'validated_by'  => "INT          NULL",
+        'validated_at'  => "DATETIME     NULL",
+        'reject_reason' => "TEXT         NULL",
+    ];
+    foreach ($add as $col => $def) {
+        if (!in_array($col, $existing)) {
+            $pdo->exec("ALTER TABLE fuel_transactions ADD COLUMN `$col` $def");
+        }
+    }
+    // If status column exists but has wrong length, widen it silently
+    try {
+        $pdo->exec("ALTER TABLE fuel_transactions MODIFY COLUMN `status` VARCHAR(50) NULL DEFAULT 'Pending Validation'");
+    } catch (Exception $e2) { /* ignore */ }
+} catch (Exception $e) { /* non-fatal */ }
+
+try {
+    switch ($action) {
+
+        // ══════════════════════════════════════════════════════════════════════
+        // STAFF: encode a pump reading for the current shift
+        // ══════════════════════════════════════════════════════════════════════
+        case 'encode_reading':
+            if ($method !== 'POST') { respond(false, 'Method not allowed'); }
+            if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+                respond(false, 'Only staff can encode readings.');
+            }
+
+            $fuel_type       = trim($_POST['fuel_type']       ?? '');
+            $present         = (float)($_POST['present_reading']  ?? 0);
+            $previous        = (float)($_POST['previous_reading'] ?? 0);
+            $calibration     = (float)($_POST['calibration']      ?? 0);
+            $price           = (float)($_POST['price_per_liter']  ?? 0);
+            $reading_date    = $_POST['reading_date']  ?? date('Y-m-d');
+            $shift_period    = $_POST['shift_period']  ?? 'first';
+            $shift_name      = $_POST['shift_name']    ?? '';
+            $shift_id        = (int)($_POST['shift_id'] ?? 0) ?: null;
+            $notes           = trim($_POST['notes'] ?? '');
+
+            if (empty($fuel_type))  respond(false, 'Fuel type is required.');
+            if ($present  <= 0)     respond(false, 'Present reading must be greater than 0.');
+            if ($price    <= 0)     respond(false, 'Price per liter must be greater than 0.');
+
+            // Validate readings
+            $v = validate_readings($present, $previous, $calibration);
+            if (!$v['valid']) respond(false, implode(' ', $v['errors']));
+
+            $liters_sold  = $v['liters_sold'];
+            $total_amount = round($liters_sold * $price, 2);
+
+            // Generate transaction ID
+            $txn_id = 'FUEL' . date('Y') . str_pad($station_id, 3, '0', STR_PAD_LEFT)
+                    . str_pad(mt_rand(1, 99999), 5, '0', STR_PAD_LEFT);
+
+            // Ensure all required columns exist before inserting
+            $cols_check = array_column(
+                $pdo->query("SHOW COLUMNS FROM fuel_transactions")->fetchAll(PDO::FETCH_ASSOC),
+                'Field'
+            );
+            $required_cols = ['shift_period','shift_name','shift_id','notes','status'];
+            foreach ($required_cols as $rc) {
+                if (!in_array($rc, $cols_check)) {
+                    $default = ($rc === 'status') ? "VARCHAR(50) NULL DEFAULT 'Pending Validation'" : "TEXT NULL";
+                    $pdo->exec("ALTER TABLE fuel_transactions ADD COLUMN `$rc` $default");
+                }
+            }
+
+            $pdo->beginTransaction();
+
+            $pdo->prepare("
+                INSERT INTO fuel_transactions
+                    (transaction_id, station_id, fuel_type,
+                     present_reading, previous_reading, calibration,
+                     liters_sold, price_per_liter, total_amount,
+                     staff_id, transaction_date,
+                     shift_period, shift_name, shift_id, notes, status)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Pending Validation')
+            ")->execute([
+                $txn_id, $station_id, $fuel_type,
+                $present, $previous, $calibration,
+                $liters_sold, $price, $total_amount,
+                $me['id'], $reading_date . ' ' . date('H:i:s'),
+                $shift_period, $shift_name, $shift_id, $notes,
+            ]);
+
+            $insert_id = $pdo->lastInsertId();
+
+            // Update fuel_inventory previous reading for next auto-pull
+            try {
+                $pdo->prepare("
+                    UPDATE fuel_inventory
+                    SET last_updated = NOW()
+                    WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                ")->execute([$station_id, $fuel_type]);
+            } catch (Exception $e) {}
+
+            $pdo->commit();
+
+            try {
+                log_activity($pdo, $me['id'], 'Fuel Reading Encoded',
+                    "{$fuel_type}: Present={$present}, Prev={$previous}, Calib={$calibration}, Liters={$liters_sold}");
+            } catch (Exception $e) {}
+
+            // ── Audit log ──
+            try {
+                $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                $detail = "Fuel reading encoded | {$fuel_type} | Present: {$present} | Prev: {$previous} | Liters sold: {$liters_sold} L | Total: ₱" . number_format($total_amount, 2) . " | Shift: {$shift_period}";
+                $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', 'Create', ?, 'fuel_readings', ?, 'Success', ?, ?, NOW())")
+                    ->execute([$me['id'], $detail, $insert_id, $ip, $ua]);
+            } catch (Exception $e) {}
+
+            respond(true, 'Reading submitted. Pending manager approval.', [
+                'transaction_id' => $txn_id,
+                'liters_sold'    => $liters_sold,
+                'total_amount'   => $total_amount,
+            ]);
+
+        // ══════════════════════════════════════════════════════════════════════
+        // MANAGER: get pending readings (per date + shift filter)
+        // ══════════════════════════════════════════════════════════════════════
+        case 'get_pending':
+            if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
+                respond(false, 'Manager access required.');
+            }
+            $date  = $_GET['date']  ?? date('Y-m-d');
+            $shift = $_GET['shift'] ?? '';
+
+            $sql = "
+                SELECT ft.*, u.name AS staff_name
+                FROM   fuel_transactions ft
+                LEFT JOIN users u ON ft.staff_id = u.id
+                WHERE  ft.station_id = ?
+                  AND  DATE(ft.transaction_date) = ?
+                  AND  ft.status = 'Pending Validation'
+            ";
+            $params = [$station_id, $date];
+            if ($shift) { $sql .= " AND ft.shift_period = ?"; $params[] = $shift; }
+            $sql .= " ORDER BY ft.transaction_date ASC";
+
+            $rows = $pdo->prepare($sql);
+            $rows->execute($params);
+            respond(true, '', ['readings' => $rows->fetchAll(PDO::FETCH_ASSOC)]);
+
+        // ══════════════════════════════════════════════════════════════════════
+        // MANAGER: approve or reject a reading
+        // ══════════════════════════════════════════════════════════════════════
+        case 'validate_reading':
+            if ($method !== 'POST') respond(false, 'Method not allowed.');
+            if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
+                respond(false, 'Manager access required.');
+            }
+
+            $txn_id       = trim($_POST['transaction_id'] ?? '');
+            $new_status   = $_POST['status'] ?? '';   // 'Approved' | 'Rejected'
+            $reject_reason= trim($_POST['reject_reason'] ?? '');
+
+            if (!in_array($new_status, ['Approved', 'Rejected'])) {
+                respond(false, 'Status must be Approved or Rejected.');
+            }
+            if ($new_status === 'Rejected' && empty($reject_reason)) {
+                respond(false, 'Rejection reason is required.');
+            }
+
+            $row = $pdo->prepare("
+                SELECT * FROM fuel_transactions
+                WHERE transaction_id = ? AND station_id = ? AND status = 'Pending Validation'
+            ");
+            $row->execute([$txn_id, $station_id]);
+            $txn = $row->fetch(PDO::FETCH_ASSOC);
+            if (!$txn) respond(false, 'Transaction not found or already processed.');
+
+            $pdo->beginTransaction();
+
+            $pdo->prepare("
+                UPDATE fuel_transactions
+                SET status = ?, validated_by = ?, validated_at = NOW(), reject_reason = ?
+                WHERE transaction_id = ? AND station_id = ?
+            ")->execute([$new_status, $me['id'], $reject_reason ?: null, $txn_id, $station_id]);
+
+            if ($new_status === 'Approved') {
+                // Deduct liters from tank
+                try {
+                    $pdo->prepare("
+                        UPDATE fuel_inventory
+                        SET current_level = GREATEST(0, COALESCE(current_level, current_stock, 0) - ?),
+                            current_stock = GREATEST(0, COALESCE(current_stock, current_level, 0) - ?),
+                            last_updated  = NOW()
+                        WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                    ")->execute([$txn['liters_sold'], $txn['liters_sold'], $station_id, $txn['fuel_type']]);
+                } catch (Exception $e) {}
+            }
+
+            // Sync status with fuel_readings table & record in fuel_audit_trail if transaction originated from there
+            $reading_db_id = null;
+            if (strpos($txn_id, 'FUEL') === 0 && strlen($txn_id) >= 17) {
+                $reading_db_id = (int)substr($txn_id, 11);
+            }
+            if ($reading_db_id) {
+                try {
+                    $mapped_status = ($new_status === 'Approved') ? 'verified' : 'rejected';
+                    $pdo->prepare("UPDATE fuel_readings SET status = ? WHERE id = ? AND station_id = ?")->execute([$mapped_status, $reading_db_id, $station_id]);
+
+                    // Retrieve updated stock level
+                    $stock_stmt = $pdo->prepare("SELECT current_level FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
+                    $stock_stmt->execute([$station_id, $txn['fuel_type']]);
+                    $stock_after_val = $stock_stmt->fetchColumn();
+                    $stock_after_amount = ($stock_after_val !== false) ? (float)$stock_after_val : 0.0;
+                    $stock_before_amount = $stock_after_amount + (($new_status === 'Approved') ? (float)$txn['liters_sold'] : 0.0);
+
+                    $audit_action = ($new_status === 'Approved') ? 'FUEL_READING_VERIFIED' : 'FUEL_READING_REJECTED';
+                    $audit_notes = "Manager validation via API: " . $new_status . ($reject_reason ? " | Reason: " . $reject_reason : "");
+
+                    $pdo->prepare("
+                        INSERT INTO fuel_audit_trail (
+                            reading_id, action, before_value, after_value, stock_before, stock_after,
+                            performed_by, performed_at, notes
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+                    ")->execute([
+                        $reading_db_id,
+                        $audit_action,
+                        (float)($txn['previous_reading'] ?? 0),
+                        (float)($txn['present_reading'] ?? 0),
+                        $stock_before_amount,
+                        $stock_after_amount,
+                        $me['id'],
+                        $audit_notes
+                    ]);
+                } catch (Exception $e) {
+                    error_log('API validate_reading sync error: ' . $e->getMessage());
+                }
+            }
+
+            $pdo->commit();
+
+            log_activity($pdo, $me['id'], "Fuel Reading {$new_status}",
+                "TXN {$txn_id} | {$txn['fuel_type']} | {$txn['liters_sold']} L");
+
+            // ── Audit log ──
+            try {
+                $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                $action_type = $new_status === 'Approved' ? 'Approve' : 'Reject';
+                $detail = "Fuel reading {$new_status} | TXN: {$txn_id} | {$txn['fuel_type']} | {$txn['liters_sold']} L" . ($reject_reason ? " | Reason: {$reject_reason}" : '');
+                $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', ?, ?, 'fuel_readings', ?, 'Success', ?, ?, NOW())")
+                    ->execute([$me['id'], $action_type, $detail, $txn['id'] ?? null, $ip, $ua]);
+            } catch (Exception $e) {}
+
+            respond(true, "Reading {$new_status}.");
+
+        // ══════════════════════════════════════════════════════════════════════
+        // STAFF: today's entries for this staff member (for the "my entries" panel)
+        // ══════════════════════════════════════════════════════════════════════
+        case 'my_entries':
+            $date = $_GET['date'] ?? date('Y-m-d');
+            $rows = $pdo->prepare("
+                SELECT transaction_id, fuel_type, present_reading, previous_reading,
+                       calibration, liters_sold, price_per_liter, total_amount,
+                       shift_period, shift_name, status, transaction_date, notes
+                FROM   fuel_transactions
+                WHERE  station_id = ? AND staff_id = ? AND DATE(transaction_date) = ?
+                ORDER  BY transaction_date DESC
+            ");
+            $rows->execute([$station_id, $me['id'], $date]);
+            respond(true, '', ['entries' => $rows->fetchAll(PDO::FETCH_ASSOC)]);
+
+        // ══════════════════════════════════════════════════════════════════════
+        // REPORTS: daily / weekly / monthly summary per fuel type
+        // Returns 3 datasets: meter_readings, vol_sales_summary, vol_amt_summary
+        // ══════════════════════════════════════════════════════════════════════
+        case 'summary':
+            if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
+                respond(false, 'Manager access required.');
+            }
+            $period     = $_GET['period']     ?? 'daily';
+            $date_from  = $_GET['date_from']  ?? date('Y-m-d');
+            $date_to    = $_GET['date_to']    ?? date('Y-m-d');
+            $shift      = $_GET['shift']      ?? '';
+
+            $base_where = "ft.station_id = ? AND DATE(ft.transaction_date) BETWEEN ? AND ? AND LOWER(ft.status) IN ('approved','verified')";
+            $base_params = [$station_id, $date_from, $date_to];
+            if ($shift) { $base_where .= " AND ft.shift_period = ?"; $base_params[] = $shift; }
+
+            // ── TABLE 1: Meter Reading Table (raw per-transaction rows) ──────
+            $mr_sql = "
+                SELECT
+                    ft.transaction_id,
+                    ft.fuel_type,
+                    ft.previous_reading   AS beginning,
+                    ft.present_reading    AS ending,
+                    ft.calibration        AS cal,
+                    ft.liters_sold        AS volume_liters,
+                    ft.price_per_liter,
+                    ft.total_amount       AS amount,
+                    ft.shift_period,
+                    ft.shift_name,
+                    DATE(ft.transaction_date) AS reading_date,
+                    u.name                AS staff_name,
+                    ft.status,
+                    ft.validated_at,
+                    vm.name               AS validated_by_name
+                FROM fuel_transactions ft
+                LEFT JOIN users u  ON ft.staff_id    = u.id
+                LEFT JOIN users vm ON ft.validated_by = vm.id
+                WHERE {$base_where}
+                ORDER BY ft.fuel_type ASC, ft.transaction_date ASC
+            ";
+            $mr_rows = $pdo->prepare($mr_sql);
+            $mr_rows->execute($base_params);
+            $meter_readings = $mr_rows->fetchAll(PDO::FETCH_ASSOC);
+
+            // ── TABLE 2: Volume Sales Summary (liters per fuel type) ─────────
+            $vs_sql = "
+                SELECT
+                    ft.fuel_type,
+                    SUM(ft.liters_sold) AS volume_sales
+                FROM fuel_transactions ft
+                WHERE {$base_where}
+                GROUP BY ft.fuel_type
+                ORDER BY ft.fuel_type ASC
+            ";
+            $vs_rows = $pdo->prepare($vs_sql);
+            $vs_rows->execute($base_params);
+            $vol_sales_summary = $vs_rows->fetchAll(PDO::FETCH_ASSOC);
+
+            // ── TABLE 3: Volume & Amount Summary (liters + amount per fuel type) ──
+            $va_sql = "
+                SELECT
+                    ft.fuel_type,
+                    SUM(ft.liters_sold)  AS volume_sales,
+                    SUM(ft.total_amount) AS amount_sales
+                FROM fuel_transactions ft
+                WHERE {$base_where}
+                GROUP BY ft.fuel_type
+                ORDER BY ft.fuel_type ASC
+            ";
+            $va_rows = $pdo->prepare($va_sql);
+            $va_rows->execute($base_params);
+            $vol_amt_summary = $va_rows->fetchAll(PDO::FETCH_ASSOC);
+
+            // ── Legacy summary (for KPI cards / chart) ───────────────────────
+            $summary = array_map(function($r) {
+                return [
+                    'fuel_type'    => $r['fuel_type'],
+                    'total_liters' => $r['volume_sales'],
+                    'total_sales'  => $r['amount_sales'],
+                    'avg_price'    => $r['volume_sales'] > 0 ? $r['amount_sales'] / $r['volume_sales'] : 0,
+                    'entry_count'  => 0,
+                ];
+            }, $vol_amt_summary);
+
+            // Fill entry_count from meter_readings
+            $entry_counts = [];
+            foreach ($meter_readings as $mr) {
+                $entry_counts[$mr['fuel_type']] = ($entry_counts[$mr['fuel_type']] ?? 0) + 1;
+            }
+            foreach ($summary as &$s) {
+                $s['entry_count'] = $entry_counts[$s['fuel_type']] ?? 0;
+            }
+            unset($s);
+
+            // ── Daily breakdown for chart ────────────────────────────────────
+            $daily_sql = "
+                SELECT
+                    DATE(ft.transaction_date) AS day,
+                    ft.fuel_type,
+                    SUM(ft.liters_sold)       AS liters,
+                    SUM(ft.total_amount)      AS sales,
+                    AVG(ft.price_per_liter)   AS avg_price,
+                    u.name                    AS staff_name,
+                    ft.shift_period
+                FROM fuel_transactions ft
+                JOIN users u ON ft.staff_id = u.id
+                WHERE {$base_where}
+                GROUP BY DATE(ft.transaction_date), ft.fuel_type, u.name, ft.shift_period
+                ORDER BY day ASC, ft.fuel_type ASC
+            ";
+            $daily_rows = $pdo->prepare($daily_sql);
+            $daily_rows->execute($base_params);
+            $daily = $daily_rows->fetchAll(PDO::FETCH_ASSOC);
+
+            // ── Comparison (all statuses) ────────────────────────────────────
+            $cmp_where  = "ft.station_id = ? AND DATE(ft.transaction_date) BETWEEN ? AND ?";
+            $cmp_params = [$station_id, $date_from, $date_to];
+            if ($shift) { $cmp_where .= " AND ft.shift_period = ?"; $cmp_params[] = $shift; }
+            $compare_sql = "
+                SELECT
+                    ft.fuel_type,
+                    SUM(CASE WHEN LOWER(ft.status) IN ('approved','verified') THEN ft.liters_sold ELSE 0 END) AS approved_liters,
+                    SUM(ft.liters_sold) AS total_encoded_liters,
+                    COUNT(*) AS total_readings,
+                    SUM(CASE WHEN LOWER(ft.status) IN ('approved','verified') THEN 1 ELSE 0 END) AS approved_count,
+                    SUM(CASE WHEN LOWER(ft.status) LIKE '%pending%' THEN 1 ELSE 0 END) AS pending_count,
+                    SUM(CASE WHEN LOWER(ft.status) = 'rejected' THEN 1 ELSE 0 END) AS rejected_count
+                FROM fuel_transactions ft
+                WHERE {$cmp_where}
+                GROUP BY ft.fuel_type
+                ORDER BY ft.fuel_type ASC
+            ";
+            $compare_rows = $pdo->prepare($compare_sql);
+            $compare_rows->execute($cmp_params);
+            $comparison = $compare_rows->fetchAll(PDO::FETCH_ASSOC);
+
+            respond(true, '', [
+                'meter_readings'    => $meter_readings,
+                'vol_sales_summary' => $vol_sales_summary,
+                'vol_amt_summary'   => $vol_amt_summary,
+                'summary'           => $summary,
+                'daily'             => $daily,
+                'comparison'        => $comparison,
+            ]);
+
+        default:
+            respond(false, 'Invalid action.');
+    }
+} catch (Exception $e) {
+    if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
+    error_log("fuel_readings.php error: " . $e->getMessage());
+    if (ob_get_level()) ob_end_clean();
+    respond(false, 'Server error: ' . $e->getMessage());
 }
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function respond(bool $ok, string $msg = '', array $data = []): void {  // Discard any accidental output (PHP warnings, notices) before JSON  if (ob_get_level()) ob_end_clean();  echo json_encode(array_merge(['success' => $ok, 'message' => $msg], $data));  exit;
-}  function validate_readings(float $present, float $previous, float $calibration): array {  $errors = [];  // Rule 1: Ending Reading ≥ Beginning Reading  if ($present < $previous)  $errors[] = "Ending reading ({$present}) cannot be less than Beginning reading ({$previous}).";  // Rule 2: Calibration ≥ 0  if ($calibration < 0)  $errors[] = "Calibration ({$calibration}) cannot be negative.";  // Rule 3: Calibration cannot exceed Gross Volume  $gross_volume = $present - $previous;  if ($calibration > 0 && $gross_volume > 0 && $calibration > $gross_volume)  $errors[] = "Calibration ({$calibration}L) cannot be greater than Gross Volume ({$gross_volume}L).";  // Formula: Net Volume = Gross Volume − Calibration  $liters = max(0, $gross_volume - $calibration);  return ['valid' => empty($errors), 'errors' => $errors, 'liters_sold' => $liters];
+function respond(bool $ok, string $msg = '', array $data = []): void {
+    // Discard any accidental output (PHP warnings, notices) before JSON
+    if (ob_get_level()) ob_end_clean();
+    echo json_encode(array_merge(['success' => $ok, 'message' => $msg], $data));
+    exit;
+}
+
+function validate_readings(float $present, float $previous, float $calibration): array {
+    $errors = [];
+
+    // Rule 1: Ending Reading ≥ Beginning Reading
+    if ($present < $previous)
+        $errors[] = "Ending reading ({$present}) cannot be less than Beginning reading ({$previous}).";
+
+    // Rule 2: Calibration ≥ 0
+    if ($calibration < 0)
+        $errors[] = "Calibration ({$calibration}) cannot be negative.";
+
+    // Rule 3: Calibration cannot exceed Gross Volume
+    $gross_volume = $present - $previous;
+    if ($calibration > 0 && $gross_volume > 0 && $calibration > $gross_volume)
+        $errors[] = "Calibration ({$calibration}L) cannot be greater than Gross Volume ({$gross_volume}L).";
+
+    // Formula: Net Volume = Gross Volume − Calibration
+    $liters = max(0, $gross_volume - $calibration);
+
+    return ['valid' => empty($errors), 'errors' => $errors, 'liters_sold' => $liters];
 }

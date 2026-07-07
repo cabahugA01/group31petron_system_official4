@@ -1,0 +1,40 @@
+====================================
+PETRON POS DATABASE IMPORT GUIDE
+====================================
+
+MAIN DATABASE FILE:
+- database/petron_pos_db_secure.sql
+
+IMPORT INSTRUCTIONS:
+
+1. Open phpMyAdmin (http://localhost/phpmyadmin)
+
+2. Create new database:
+   - Click "New" in left sidebar
+   - Database name: petron_pos_db_secure
+   - Collation: utf8mb4_general_ci
+   - Click "Create"
+
+3. Import the SQL file:
+   - Select "petron_pos_db_secure" database
+   - Click "Import" tab
+   - Click "Choose File"
+   - Select: database/petron_pos_db_secure.sql
+   - Click "Go" at bottom
+   - Wait for import to complete
+
+4. Verify import:
+   - Check that all tables are created (should see 100+ tables)
+   - No error messages should appear
+
+5. Update database config:
+   - File: config/database_config.php
+   - Ensure DB_NAME is set to 'petron_pos_db_secure'
+
+IMPORTANT NOTES:
+- This is the ONLY SQL file you need to import
+- All tables, data, and structure are in this one file
+- Migration PHP files are for reference only
+- Do NOT import multiple SQL files
+
+====================================

@@ -1,10 +1,170 @@
 <?php
-/**  * Pump Configuration API  * Database-driven pump assignment and management  */  header('Content-Type: application/json');
+/**
+ * Pump Configuration API
+ * Database-driven pump assignment and management
+ */
+
+header('Content-Type: application/json');
 require_once __DIR__ . '/../lib.php';
-require_once __DIR__ . '/../../public/db_connect.php';  // Check authentication
-require_login();  $action = $_GET['action'] ?? $_POST['action'] ?? 'get_pump_assignment';
+require_once __DIR__ . '/../../public/db_connect.php';
+
+// Check authentication
+require_login();
+
+$action = $_GET['action'] ?? $_POST['action'] ?? 'get_pump_assignment';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $current_user = current_user();
-$station_id = $current_user['station_id'] ?? null;  try {  switch ($action) {  case 'get_pump_assignment':  // Get pump assignment for a specific fuel type  if ($method !== 'GET') {  throw new Exception('Method not allowed');  }  $fuel_type = $_GET['fuel_type'] ?? '';  if (empty($fuel_type)) {  throw new Exception('Fuel type is required');  }  $stmt = $pdo->prepare("  SELECT pump_number, fuel_type, pump_status  FROM pump_configuration  WHERE station_id = ?  AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))  AND pump_status = 'Active'  LIMIT 1  ");  $stmt->execute([$station_id, $fuel_type]);  $pump_config = $stmt->fetch(PDO::FETCH_ASSOC);  if (!$pump_config) {  // Auto-create pump assignment if not exists  $stmt = $pdo->prepare("  SELECT COUNT(*) as pump_count  FROM pump_configuration  WHERE station_id = ?  ");  $stmt->execute([$station_id]);  $pump_count = $stmt->fetch()['pump_count'];  $new_pump_number = (string)($pump_count + 1);  $stmt = $pdo->prepare("  INSERT INTO pump_configuration (station_id, pump_number, fuel_type, pump_status)  VALUES (?, ?, ?, 'active')  ");  $stmt->execute([$station_id, $new_pump_number, $fuel_type]);  $pump_config = [  'pump_number' => $new_pump_number,  'fuel_type' => $fuel_type,  'pump_status' => 'active'  ];  }  echo json_encode([  'success' => true,  'pump_id' => $pump_config['pump_number'],  'fuel_type' => $pump_config['fuel_type'],  'status' => $pump_config['pump_status']  ]);  break;  case 'get_station_pumps':  // Get all pump configurations for the station  if ($method !== 'GET') {  throw new Exception('Method not allowed');  }  $stmt = $pdo->prepare("  SELECT pump_number, fuel_type, pump_status  FROM pump_configuration  WHERE station_id = ?  ORDER BY CAST(pump_number AS UNSIGNED)  ");  $stmt->execute([$station_id]);  $pumps = $stmt->fetchAll(PDO::FETCH_ASSOC);  echo json_encode([  'success' => true,  'pumps' => $pumps  ]);  break;  case 'get_shift_periods':  // Get configured shift periods  if ($method !== 'GET') {  throw new Exception('Method not allowed');  }  $stmt = $pdo->prepare("  SELECT shift_name, start_hour, end_hour, sort_order  FROM shift_period_config  WHERE is_active = TRUE  ORDER BY sort_order  ");  $stmt->execute();  $shifts = $stmt->fetchAll(PDO::FETCH_ASSOC);  echo json_encode([  'success' => true,  'shifts' => $shifts  ]);  break;  case 'get_current_shift':  // Get current shift based on time  if ($method !== 'GET') {  throw new Exception('Method not allowed');  }  $current_hour = (int)date('G');  $stmt = $pdo->prepare("  SELECT shift_name, start_hour, end_hour  FROM shift_period_config  WHERE is_active = TRUE  AND (  (start_hour <= end_hour AND ? BETWEEN start_hour AND end_hour)  OR (start_hour > end_hour AND (? >= start_hour OR ? <= end_hour))  )  ORDER BY sort_order  LIMIT 1  ");  $stmt->execute([$current_hour, $current_hour, $current_hour]);  $current_shift = $stmt->fetch(PDO::FETCH_ASSOC);  if (!$current_shift) {  // Default to first shift if no match found  $stmt = $pdo->prepare("  SELECT shift_name, start_hour, end_hour  FROM shift_period_config  WHERE is_active = TRUE  ORDER BY sort_order  LIMIT 1  ");  $stmt->execute();  $current_shift = $stmt->fetch(PDO::FETCH_ASSOC);  }  echo json_encode([  'success' => true,  'current_shift' => $current_shift,  'current_hour' => $current_hour  ]);  break;  default:  throw new Exception('Invalid action');  }  } catch (Exception $e) {  echo json_encode([  'success' => false,  'error' => $e->getMessage()  ]);
+$station_id = $current_user['station_id'] ?? null;
+
+try {
+    switch ($action) {
+        case 'get_pump_assignment':
+            // Get pump assignment for a specific fuel type
+            if ($method !== 'GET') {
+                throw new Exception('Method not allowed');
+            }
+            
+            $fuel_type = $_GET['fuel_type'] ?? '';
+            if (empty($fuel_type)) {
+                throw new Exception('Fuel type is required');
+            }
+            
+            $stmt = $pdo->prepare("
+                SELECT pump_number, fuel_type, pump_status
+                FROM pump_configuration 
+                WHERE station_id = ? 
+                  AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                  AND pump_status = 'Active'
+                LIMIT 1
+            ");
+            $stmt->execute([$station_id, $fuel_type]);
+            $pump_config = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$pump_config) {
+                // Auto-create pump assignment if not exists
+                $stmt = $pdo->prepare("
+                    SELECT COUNT(*) as pump_count
+                    FROM pump_configuration 
+                    WHERE station_id = ?
+                ");
+                $stmt->execute([$station_id]);
+                $pump_count = $stmt->fetch()['pump_count'];
+                
+                $new_pump_number = (string)($pump_count + 1);
+                
+                $stmt = $pdo->prepare("
+                    INSERT INTO pump_configuration (station_id, pump_number, fuel_type, pump_status)
+                    VALUES (?, ?, ?, 'active')
+                ");
+                $stmt->execute([$station_id, $new_pump_number, $fuel_type]);
+                
+                $pump_config = [
+                    'pump_number' => $new_pump_number,
+                    'fuel_type' => $fuel_type,
+                    'pump_status' => 'active'
+                ];
+            }
+            
+            echo json_encode([
+                'success' => true,
+                'pump_id' => $pump_config['pump_number'],
+                'fuel_type' => $pump_config['fuel_type'],
+                'status' => $pump_config['pump_status']
+            ]);
+            break;
+            
+        case 'get_station_pumps':
+            // Get all pump configurations for the station
+            if ($method !== 'GET') {
+                throw new Exception('Method not allowed');
+            }
+            
+            $stmt = $pdo->prepare("
+                SELECT pump_number, fuel_type, pump_status
+                FROM pump_configuration 
+                WHERE station_id = ?
+                ORDER BY CAST(pump_number AS UNSIGNED)
+            ");
+            $stmt->execute([$station_id]);
+            $pumps = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            echo json_encode([
+                'success' => true,
+                'pumps' => $pumps
+            ]);
+            break;
+            
+        case 'get_shift_periods':
+            // Get configured shift periods
+            if ($method !== 'GET') {
+                throw new Exception('Method not allowed');
+            }
+            
+            $stmt = $pdo->prepare("
+                SELECT shift_name, start_hour, end_hour, sort_order
+                FROM shift_period_config 
+                WHERE is_active = TRUE
+                ORDER BY sort_order
+            ");
+            $stmt->execute();
+            $shifts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            echo json_encode([
+                'success' => true,
+                'shifts' => $shifts
+            ]);
+            break;
+            
+        case 'get_current_shift':
+            // Get current shift based on time
+            if ($method !== 'GET') {
+                throw new Exception('Method not allowed');
+            }
+            
+            $current_hour = (int)date('G');
+            
+            $stmt = $pdo->prepare("
+                SELECT shift_name, start_hour, end_hour
+                FROM shift_period_config 
+                WHERE is_active = TRUE
+                  AND (
+                      (start_hour <= end_hour AND ? BETWEEN start_hour AND end_hour)
+                      OR (start_hour > end_hour AND (? >= start_hour OR ? <= end_hour))
+                  )
+                ORDER BY sort_order
+                LIMIT 1
+            ");
+            $stmt->execute([$current_hour, $current_hour, $current_hour]);
+            $current_shift = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$current_shift) {
+                // Default to first shift if no match found
+                $stmt = $pdo->prepare("
+                    SELECT shift_name, start_hour, end_hour
+                    FROM shift_period_config 
+                    WHERE is_active = TRUE
+                    ORDER BY sort_order
+                    LIMIT 1
+                ");
+                $stmt->execute();
+                $current_shift = $stmt->fetch(PDO::FETCH_ASSOC);
+            }
+            
+            echo json_encode([
+                'success' => true,
+                'current_shift' => $current_shift,
+                'current_hour' => $current_hour
+            ]);
+            break;
+            
+        default:
+            throw new Exception('Invalid action');
+    }
+    
+} catch (Exception $e) {
+    echo json_encode([
+        'success' => false,
+        'error' => $e->getMessage()
+    ]);
 }
 ?>

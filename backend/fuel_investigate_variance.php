@@ -1,26 +1,496 @@
 <?php
-/**  * Backend Modal: Fuel Variance Investigation  * Allows administrators to investigate variance reports  */  require_once __DIR__ . '/lib.php';
-require_once __DIR__ . '/../public/db_connect.php';  // Check if user is logged in and has proper role
+/**
+ * Backend Modal: Fuel Variance Investigation
+ * Allows administrators to investigate variance reports
+ */
+
+require_once __DIR__ . '/lib.php';
+require_once __DIR__ . '/../public/db_connect.php';
+
+// Check if user is logged in and has proper role
 require_login();
-$me = current_user();  if (!in_array($me['role'], ['manager', 'admin', 'superadmin'])) {  http_response_code(403);  echo '<div class="alert alert-danger">Access denied. Only managers and administrators can investigate variances.</div>';  exit;
-}  $id = $_GET['id'] ?? 0;  if (!$id) {  echo '<div class="alert alert-danger">Invalid variance report ID.</div>';  exit;
-}  // Fetch variance report details
-try {  $stmt = $pdo->prepare("  SELECT vr.*, i.name as investigator_name, s.name as station_name  FROM fuel_variance_reports vr  LEFT JOIN users i ON vr.investigated_by = i.id  LEFT JOIN stations s ON vr.station_id = s.id  WHERE vr.id = ?  ");  $stmt->execute([$id]);  $variance = $stmt->fetch();  if (!$variance) {  echo '<div class="alert alert-danger">Variance report not found.</div>';  exit;  }  // Check access for non-superadmin  if ($me['role'] !== 'superadmin' && $variance['station_id'] != user_station_id()) {  echo '<div class="alert alert-danger">Access denied for this station\'s variance report.</div>';  exit;  }  } catch (Exception $e) {  echo '<div class="alert alert-danger">Database error: ' . htmlspecialchars($e->getMessage()) . '</div>';  exit;
-}  $variance_severity = abs($variance['variance_percent']);
+$me = current_user();
+
+if (!in_array($me['role'], ['manager', 'admin', 'superadmin'])) {
+    http_response_code(403);
+    echo '<div class="alert alert-danger">Access denied. Only managers and administrators can investigate variances.</div>';
+    exit;
+}
+
+$id = $_GET['id'] ?? 0;
+
+if (!$id) {
+    echo '<div class="alert alert-danger">Invalid variance report ID.</div>';
+    exit;
+}
+
+// Fetch variance report details
+try {
+    $stmt = $pdo->prepare("
+        SELECT vr.*, i.name as investigator_name, s.name as station_name
+        FROM fuel_variance_reports vr 
+        LEFT JOIN users i ON vr.investigated_by = i.id 
+        LEFT JOIN stations s ON vr.station_id = s.id
+        WHERE vr.id = ?
+    ");
+    $stmt->execute([$id]);
+    $variance = $stmt->fetch();
+    
+    if (!$variance) {
+        echo '<div class="alert alert-danger">Variance report not found.</div>';
+        exit;
+    }
+    
+    // Check access for non-superadmin
+    if ($me['role'] !== 'superadmin' && $variance['station_id'] != user_station_id()) {
+        echo '<div class="alert alert-danger">Access denied for this station\'s variance report.</div>';
+        exit;
+    }
+    
+} catch (Exception $e) {
+    echo '<div class="alert alert-danger">Database error: ' . htmlspecialchars($e->getMessage()) . '</div>';
+    exit;
+}
+
+$variance_severity = abs($variance['variance_percent']);
 $severity_class = $variance_severity > 5 ? 'danger' : ($variance_severity > 2 ? 'warning' : 'info');
 $severity_label = $variance_severity > 5 ? 'Critical' : ($variance_severity > 2 ? 'Significant' : 'Minor');
-?>  <div class="modal-dialog modal-xl">  <div class="modal-content">  <div class="modal-header">  <h5 class="modal-title">Investigate Fuel Variance</h5>  <button type="button" class="btn-close" onclick="this.closest('.modal').classList.remove('show')"></button>  </div>  <div class="modal-body">  <!-- Variance Overview -->  <div class="card mb-3">  <div class="card-header">  <strong>Variance Overview</strong>  </div>  <div class="card-body">  <div class="row">  <div class="col-md-3">  <div class="metric text-center">  <div class="metric-value"><?php echo date('M d, Y', strtotime($variance['report_date'])); ?></div>  <div class="metric-label">Report Date</div>  </div>  </div>  <div class="col-md-3">  <div class="metric text-center">  <div class="metric-value"><?php echo htmlspecialchars($variance['station_name'] ?: 'Station ' . $variance['station_id']); ?></div>  <div class="metric-label">Station</div>  </div>  </div>  <div class="col-md-3">  <div class="metric text-center">  <div class="metric-value"><?php echo htmlspecialchars($variance['fuel_type']); ?></div>  <div class="metric-label">Fuel Type</div>  </div>  </div>  <div class="col-md-3">  <div class="metric text-center">  <div class="metric-value">  <span class="badge bg-<?php echo $severity_class; ?> fs-6"><?php echo $severity_label; ?></span>  </div>  <div class="metric-label">Severity Level</div>  </div>  </div>  </div>  </div>  </div>  <!-- Variance Numbers -->  <div class="card mb-3">  <div class="card-header">  <strong> Variance Analysis</strong>  </div>  <div class="card-body">  <div class="row">  <div class="col-md-3">  <div class="metric text-center">  <div class="metric-value text-primary"><?php echo number_format($variance['expected_stock'], 2); ?>L</div>  <div class="metric-label">Expected Stock</div>  </div>  </div>  <div class="col-md-3">  <div class="metric text-center">  <div class="metric-value text-info"><?php echo number_format($variance['actual_stock'], 2); ?>L</div>  <div class="metric-label">Actual Stock</div>  </div>  </div>  <div class="col-md-3">  <div class="metric text-center">  <div class="metric-value text-<?php echo $variance['variance_liters'] >= 0 ? 'success' : 'danger'; ?>">  <?php echo ($variance['variance_liters'] >= 0 ? '+' : '') . number_format($variance['variance_liters'], 2); ?>L  </div>  <div class="metric-label">Variance (Liters)</div>  </div>  </div>  <div class="col-md-3">  <div class="metric text-center">  <div class="metric-value text-<?php echo $variance['variance_percent'] >= 0 ? 'success' : 'danger'; ?>">  <?php echo ($variance['variance_percent'] >= 0 ? '+' : '') . number_format($variance['variance_percent'], 2); ?>%  </div>  <div class="metric-label">Variance (%)</div>  </div>  </div>  </div>  <?php if ($variance['reason']): ?>  <div class="mt-3">  <strong>Initial Reason/Notes:</strong>  <div class="border rounded p-3 bg-light">  <?php echo nl2br(htmlspecialchars($variance['reason'])); ?>  </div>  </div>  <?php endif; ?>  </div>  </div>  <!-- Investigation History -->  <?php if ($variance['investigated_by']): ?>  <div class="card mb-3">  <div class="card-header">  <strong>️ Previous Investigation</strong>  </div>  <div class="card-body">  <p><strong>Investigated by:</strong> <?php echo htmlspecialchars($variance['investigator_name']); ?></p>  <p><strong>Status:</strong> <span class="badge bg-<?php echo strtolower($variance['status']) == 'resolved' ? 'success' : 'warning'; ?>"><?php echo $variance['status']; ?></span></p>  <?php if ($variance['resolution_notes']): ?>  <div class="mt-2">  <strong>Investigation Notes:</strong>  <div class="border rounded p-3 bg-light">  <?php echo nl2br(htmlspecialchars($variance['resolution_notes'])); ?>  </div>  </div>  <?php endif; ?>  </div>  </div>  <?php endif; ?>  <!-- Related Data -->  <div class="card mb-3">  <div class="card-header">  <strong>Related Transaction Data</strong>  <small class="text-muted ms-2">(For <?php echo date('M d, Y', strtotime($variance['report_date'])); ?>)</small>  </div>  <div class="card-body">  <div class="row">  <!-- Daily Readings -->  <div class="col-md-6">  <h6>Daily Readings</h6>  <?php  try {  $stmt = $pdo->prepare("  SELECT dr.*, fs.pump_number, u.name as staff_name  FROM fuel_daily_readings dr  LEFT JOIN fuel_stations fs ON dr.fuel_station_id = fs.id  LEFT JOIN users u ON dr.user_id = u.id  WHERE dr.station_id = ? AND dr.reading_date = ?  AND fs.fuel_type = ?  ORDER BY dr.shift, fs.pump_number  ");  $stmt->execute([$variance['station_id'], $variance['report_date'], $variance['fuel_type']]);  $readings = $stmt->fetchAll();  if ($readings):  ?>  <div class="table-responsive">  <table class="table table-sm">  <thead>  <tr>  <th>Pump</th>  <th>Shift</th>  <th>Sales</th>  <th>Status</th>  </tr>  </thead>  <tbody>  <?php foreach ($readings as $reading): ?>  <tr>  <td><?php echo htmlspecialchars($reading['pump_number']); ?></td>  <td><span class="badge bg-secondary"><?php echo $reading['shift']; ?></span></td>  <td><?php echo number_format($reading['sales_liters'], 2); ?>L</td>  <td><span class="badge bg-<?php echo strtolower($reading['status']) == 'verified' ? 'success' : 'warning'; ?>"><?php echo $reading['status']; ?></span></td>  </tr>  <?php endforeach; ?>  </tbody>  </table>  </div>  <?php else: ?>  <p class="text-muted">No readings found for this date.</p>  <?php endif; ?>  <?php } catch (Exception $e) { echo '<div class="alert alert-danger">Database error: ' . htmlspecialchars($e->getMessage()) . '</div>'; } ?>  </div>  <!-- Deliveries -->  <div class="col-md-6">  <h6> Deliveries</h6>  <?php  $stmt = $pdo->prepare("  SELECT * FROM fuel_deliveries  WHERE station_id = ? AND delivery_date = ?  AND fuel_type = ?  ORDER BY created_at  ");  $stmt->execute([$variance['station_id'], $variance['report_date'], $variance['fuel_type']]);  $deliveries = $stmt->fetchAll();  if ($deliveries):  ?>  <div class="table-responsive">  <table class="table table-sm">  <thead>  <tr>  <th>Supplier</th>  <th>Liters</th>  <th>Status</th>  </tr>  </thead>  <tbody>  <?php foreach ($deliveries as $delivery): ?>  <tr>  <td><?php echo htmlspecialchars($delivery['supplier']); ?></td>  <td><?php echo number_format($delivery['delivery_liters'], 2); ?>L</td>  <td><span class="badge bg-<?php echo strtolower($delivery['status']) == 'verified' ? 'success' : 'warning'; ?>"><?php echo $delivery['status']; ?></span></td>  </tr>  <?php endforeach; ?>  </tbody>  </table>  </div>  <?php else: ?>  <p class="text-muted">No deliveries on this date.</p>  <?php endif; ?>  </div>  </div>  <!-- Adjustments -->  <?php  $stmt = $pdo->prepare("  SELECT a.*, u.name as staff_name  FROM fuel_adjustments a  LEFT JOIN users u ON a.user_id = u.id  WHERE a.station_id = ? AND a.adjustment_date = ?  AND a.fuel_type = ?  ORDER BY a.created_at  ");  $stmt->execute([$variance['station_id'], $variance['report_date'], $variance['fuel_type']]);  $adjustments = $stmt->fetchAll();  if ($adjustments):  ?>  <div class="mt-3">  <h6>️ Adjustments</h6>  <div class="table-responsive">  <table class="table table-sm">  <thead>  <tr>  <th>Type</th>  <th>Amount</th>  <th>Reason</th>  <th>Status</th>  </tr>  </thead>  <tbody>  <?php foreach ($adjustments as $adj): ?>  <tr>  <td><span class="badge bg-<?php echo $adj['adjustment_type'] == 'Loss' ? 'danger' : 'info'; ?>"><?php echo $adj['adjustment_type']; ?></span></td>  <td class="<?php echo $adj['adjustment_type'] == 'Loss' ? 'text-danger' : 'text-success'; ?>">  <?php echo ($adj['adjustment_type'] == 'Loss' ? '-' : '+') . number_format($adj['liters'], 2); ?>L  </td>  <td><?php echo htmlspecialchars($adj['reason']); ?></td>  <td><span class="badge bg-<?php echo strtolower($adj['status']) == 'approved' ? 'success' : 'warning'; ?>"><?php echo $adj['status']; ?></span></td>  </tr>  <?php endforeach; ?>  </tbody>  </table>  </div>  </div>  <?php endif; ?>  </div>  </div>  <!-- Investigation Form -->  <form id="investigateVarianceForm" method="POST" action="../backend/fuel_process_verification.php">  <input type="hidden" name="action" value="investigate_variance">  <input type="hidden" name="id" value="<?php echo $id; ?>">  <div class="card">  <div class="card-header">  <strong>️ Investigation Resolution</strong>  </div>  <div class="card-body">  <div class="mb-3">  <label class="form-label"><strong>Investigation Status *</strong></label>  <div class="d-flex gap-3">  <div class="form-check">  <input class="form-check-input" type="radio" name="status" id="statusInvestigating" value="Under Investigation" required>  <label class="form-check-label text-warning" for="statusInvestigating">  <i class="fas fa-search"></i> Under Investigation  </label>  </div>  <div class="form-check">  <input class="form-check-input" type="radio" name="status" id="statusResolved" value="Resolved" required>  <label class="form-check-label text-success" for="statusResolved">  <i class="fas fa-check-circle"></i> Resolved  </label>  </div>  </div>  </div>  <div class="row">  <div class="col-md-6">  <div class="mb-3">  <label for="rootCause" class="form-label">Root Cause Category</label>  <select class="form-control" id="rootCause" name="root_cause">  <option value="">Select category...</option>  <option value="Measurement Error">Measurement/Calibration Error</option>  <option value="Recording Error">Data Recording Error</option>  <option value="Equipment Malfunction">Equipment Malfunction</option>  <option value="Fuel Loss">Actual Fuel Loss/Theft</option>  <option value="Process Issue">Process/Procedure Issue</option>  <option value="Environmental">Environmental Factors</option>  <option value="Other">Other</option>  </select>  </div>  </div>  <div class="col-md-6">  <div class="mb-3">  <label for="priority" class="form-label">Priority Level</label>  <select class="form-control" id="priority" name="priority">  <option value="Normal">Normal</option>  <option value="High">High - Requires monitoring</option>  <option value="Critical">Critical - Immediate action needed</option>  </select>  </div>  </div>  </div>  <div class="mb-3">  <label for="investigationNotes" class="form-label">Investigation Notes *</label>  <textarea class="form-control" id="investigationNotes" name="notes" rows="5" required  placeholder="Enter detailed investigation findings, root cause analysis, corrective actions taken, and recommendations..."><?php echo htmlspecialchars($variance['resolution_notes'] ?? ''); ?></textarea>  </div>  <div class="mb-3">  <label for="correctiveActions" class="form-label">Corrective Actions</label>  <textarea class="form-control" id="correctiveActions" name="corrective_actions" rows="3"  placeholder="List specific actions taken or recommended to prevent recurrence..."></textarea>  </div>  </div>  </div>  </form>  </div>  <div class="modal-footer">  <button type="button" class="btn btn-secondary" onclick="this.closest('.modal').classList.remove('show')">  <i class="fas fa-times"></i> Cancel  </button>  <button type="button" class="btn btn-primary" id="submitBtn" onclick="submitInvestigationForm(event)">  <i class="fas fa-save"></i> Save Investigation  </button>  </div>  </div>
-</div>  <style>
-.metric {  padding: 15px;  border-radius: 8px;  background: #f8f9fa;  margin-bottom: 10px;
+?>
+
+<div class="modal-dialog modal-xl">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title">🔍 Investigate Fuel Variance</h5>
+            <button type="button" class="btn-close" onclick="this.closest('.modal').classList.remove('show')"></button>
+        </div>
+        
+        <div class="modal-body">
+            <!-- Variance Overview -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <strong>📊 Variance Overview</strong>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="metric text-center">
+                                <div class="metric-value"><?php echo date('M d, Y', strtotime($variance['report_date'])); ?></div>
+                                <div class="metric-label">Report Date</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="metric text-center">
+                                <div class="metric-value"><?php echo htmlspecialchars($variance['station_name'] ?: 'Station ' . $variance['station_id']); ?></div>
+                                <div class="metric-label">Station</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="metric text-center">
+                                <div class="metric-value"><?php echo htmlspecialchars($variance['fuel_type']); ?></div>
+                                <div class="metric-label">Fuel Type</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="metric text-center">
+                                <div class="metric-value">
+                                    <span class="badge bg-<?php echo $severity_class; ?> fs-6"><?php echo $severity_label; ?></span>
+                                </div>
+                                <div class="metric-label">Severity Level</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Variance Numbers -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <strong>⛽ Variance Analysis</strong>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="metric text-center">
+                                <div class="metric-value text-primary"><?php echo number_format($variance['expected_stock'], 2); ?>L</div>
+                                <div class="metric-label">Expected Stock</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="metric text-center">
+                                <div class="metric-value text-info"><?php echo number_format($variance['actual_stock'], 2); ?>L</div>
+                                <div class="metric-label">Actual Stock</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="metric text-center">
+                                <div class="metric-value text-<?php echo $variance['variance_liters'] >= 0 ? 'success' : 'danger'; ?>">
+                                    <?php echo ($variance['variance_liters'] >= 0 ? '+' : '') . number_format($variance['variance_liters'], 2); ?>L
+                                </div>
+                                <div class="metric-label">Variance (Liters)</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="metric text-center">
+                                <div class="metric-value text-<?php echo $variance['variance_percent'] >= 0 ? 'success' : 'danger'; ?>">
+                                    <?php echo ($variance['variance_percent'] >= 0 ? '+' : '') . number_format($variance['variance_percent'], 2); ?>%
+                                </div>
+                                <div class="metric-label">Variance (%)</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <?php if ($variance['reason']): ?>
+                    <div class="mt-3">
+                        <strong>Initial Reason/Notes:</strong>
+                        <div class="border rounded p-3 bg-light">
+                            <?php echo nl2br(htmlspecialchars($variance['reason'])); ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            
+            <!-- Investigation History -->
+            <?php if ($variance['investigated_by']): ?>
+            <div class="card mb-3">
+                <div class="card-header">
+                    <strong>🕵️ Previous Investigation</strong>
+                </div>
+                <div class="card-body">
+                    <p><strong>Investigated by:</strong> <?php echo htmlspecialchars($variance['investigator_name']); ?></p>
+                    <p><strong>Status:</strong> <span class="badge bg-<?php echo strtolower($variance['status']) == 'resolved' ? 'success' : 'warning'; ?>"><?php echo $variance['status']; ?></span></p>
+                    
+                    <?php if ($variance['resolution_notes']): ?>
+                    <div class="mt-2">
+                        <strong>Investigation Notes:</strong>
+                        <div class="border rounded p-3 bg-light">
+                            <?php echo nl2br(htmlspecialchars($variance['resolution_notes'])); ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+            
+            <!-- Related Data -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <strong>📋 Related Transaction Data</strong>
+                    <small class="text-muted ms-2">(For <?php echo date('M d, Y', strtotime($variance['report_date'])); ?>)</small>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <!-- Daily Readings -->
+                        <div class="col-md-6">
+                            <h6>📊 Daily Readings</h6>
+                            <?php
+                            try {
+                                $stmt = $pdo->prepare("
+                                    SELECT dr.*, fs.pump_number, u.name as staff_name
+                                    FROM fuel_daily_readings dr
+                                    LEFT JOIN fuel_stations fs ON dr.fuel_station_id = fs.id
+                                    LEFT JOIN users u ON dr.user_id = u.id
+                                    WHERE dr.station_id = ? AND dr.reading_date = ? 
+                                    AND fs.fuel_type = ?
+                                    ORDER BY dr.shift, fs.pump_number
+                                ");
+                                $stmt->execute([$variance['station_id'], $variance['report_date'], $variance['fuel_type']]);
+                                $readings = $stmt->fetchAll();
+                                
+                                if ($readings):
+                            ?>
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Pump</th>
+                                            <th>Shift</th>
+                                            <th>Sales</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($readings as $reading): ?>
+                                        <tr>
+                                            <td><?php echo htmlspecialchars($reading['pump_number']); ?></td>
+                                            <td><span class="badge bg-secondary"><?php echo $reading['shift']; ?></span></td>
+                                            <td><?php echo number_format($reading['sales_liters'], 2); ?>L</td>
+                                            <td><span class="badge bg-<?php echo strtolower($reading['status']) == 'verified' ? 'success' : 'warning'; ?>"><?php echo $reading['status']; ?></span></td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <?php else: ?>
+                            <p class="text-muted">No readings found for this date.</p>
+                            <?php endif; ?>
+                            <?php } catch (Exception $e) { echo '<div class="alert alert-danger">Database error: ' . htmlspecialchars($e->getMessage()) . '</div>'; } ?>
+                        </div>
+                        
+                        <!-- Deliveries -->
+                        <div class="col-md-6">
+                            <h6>🚛 Deliveries</h6>
+                            <?php
+                                $stmt = $pdo->prepare("
+                                    SELECT * FROM fuel_deliveries 
+                                    WHERE station_id = ? AND delivery_date = ? 
+                                    AND fuel_type = ?
+                                    ORDER BY created_at
+                                ");
+                                $stmt->execute([$variance['station_id'], $variance['report_date'], $variance['fuel_type']]);
+                                $deliveries = $stmt->fetchAll();
+                                
+                                if ($deliveries):
+                            ?>
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Supplier</th>
+                                            <th>Liters</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($deliveries as $delivery): ?>
+                                        <tr>
+                                            <td><?php echo htmlspecialchars($delivery['supplier']); ?></td>
+                                            <td><?php echo number_format($delivery['delivery_liters'], 2); ?>L</td>
+                                            <td><span class="badge bg-<?php echo strtolower($delivery['status']) == 'verified' ? 'success' : 'warning'; ?>"><?php echo $delivery['status']; ?></span></td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <?php else: ?>
+                            <p class="text-muted">No deliveries on this date.</p>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    
+                    <!-- Adjustments -->
+                    <?php
+                        $stmt = $pdo->prepare("
+                            SELECT a.*, u.name as staff_name
+                            FROM fuel_adjustments a
+                            LEFT JOIN users u ON a.user_id = u.id
+                            WHERE a.station_id = ? AND a.adjustment_date = ? 
+                            AND a.fuel_type = ?
+                            ORDER BY a.created_at
+                        ");
+                        $stmt->execute([$variance['station_id'], $variance['report_date'], $variance['fuel_type']]);
+                        $adjustments = $stmt->fetchAll();
+                        
+                        if ($adjustments):
+                    ?>
+                    <div class="mt-3">
+                        <h6>⚖️ Adjustments</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Type</th>
+                                        <th>Amount</th>
+                                        <th>Reason</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($adjustments as $adj): ?>
+                                    <tr>
+                                        <td><span class="badge bg-<?php echo $adj['adjustment_type'] == 'Loss' ? 'danger' : 'info'; ?>"><?php echo $adj['adjustment_type']; ?></span></td>
+                                        <td class="<?php echo $adj['adjustment_type'] == 'Loss' ? 'text-danger' : 'text-success'; ?>">
+                                            <?php echo ($adj['adjustment_type'] == 'Loss' ? '-' : '+') . number_format($adj['liters'], 2); ?>L
+                                        </td>
+                                        <td><?php echo htmlspecialchars($adj['reason']); ?></td>
+                                        <td><span class="badge bg-<?php echo strtolower($adj['status']) == 'approved' ? 'success' : 'warning'; ?>"><?php echo $adj['status']; ?></span></td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            
+            <!-- Investigation Form -->
+            <form id="investigateVarianceForm" method="POST" action="../backend/fuel_process_verification.php">
+                <input type="hidden" name="action" value="investigate_variance">
+                <input type="hidden" name="id" value="<?php echo $id; ?>">
+                
+                <div class="card">
+                    <div class="card-header">
+                        <strong>🕵️ Investigation Resolution</strong>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label"><strong>Investigation Status *</strong></label>
+                            <div class="d-flex gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="status" id="statusInvestigating" value="Under Investigation" required>
+                                    <label class="form-check-label text-warning" for="statusInvestigating">
+                                        <i class="fas fa-search"></i> Under Investigation
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="status" id="statusResolved" value="Resolved" required>
+                                    <label class="form-check-label text-success" for="statusResolved">
+                                        <i class="fas fa-check-circle"></i> Resolved
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="rootCause" class="form-label">Root Cause Category</label>
+                                    <select class="form-control" id="rootCause" name="root_cause">
+                                        <option value="">Select category...</option>
+                                        <option value="Measurement Error">Measurement/Calibration Error</option>
+                                        <option value="Recording Error">Data Recording Error</option>
+                                        <option value="Equipment Malfunction">Equipment Malfunction</option>
+                                        <option value="Fuel Loss">Actual Fuel Loss/Theft</option>
+                                        <option value="Process Issue">Process/Procedure Issue</option>
+                                        <option value="Environmental">Environmental Factors</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="priority" class="form-label">Priority Level</label>
+                                    <select class="form-control" id="priority" name="priority">
+                                        <option value="Normal">Normal</option>
+                                        <option value="High">High - Requires monitoring</option>
+                                        <option value="Critical">Critical - Immediate action needed</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="investigationNotes" class="form-label">Investigation Notes *</label>
+                            <textarea class="form-control" id="investigationNotes" name="notes" rows="5" required
+                                      placeholder="Enter detailed investigation findings, root cause analysis, corrective actions taken, and recommendations..."><?php echo htmlspecialchars($variance['resolution_notes'] ?? ''); ?></textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="correctiveActions" class="form-label">Corrective Actions</label>
+                            <textarea class="form-control" id="correctiveActions" name="corrective_actions" rows="3"
+                                      placeholder="List specific actions taken or recommended to prevent recurrence..."></textarea>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+        
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="this.closest('.modal').classList.remove('show')">
+                <i class="fas fa-times"></i> Cancel
+            </button>
+            <button type="button" class="btn btn-primary" id="submitBtn" onclick="submitInvestigationForm(event)">
+                <i class="fas fa-save"></i> Save Investigation
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+.metric {
+    padding: 15px;
+    border-radius: 8px;
+    background: #f8f9fa;
+    margin-bottom: 10px;
 }
-.metric-value {  font-size: 16px;  font-weight: bold;  margin-bottom: 5px;
+.metric-value {
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 5px;
 }
-.metric-label {  font-size: 11px;  color: #6c757d;  text-transform: uppercase;  font-weight: 600;
+.metric-label {
+    font-size: 11px;
+    color: #6c757d;
+    text-transform: uppercase;
+    font-weight: 600;
 }
-</style>  <script>
+</style>
+
+<script>
 // Direct function for onclick handler
-function submitInvestigationForm(event) {  event.preventDefault();  event.stopPropagation();  console.log('Submit button clicked'); // Debug log  const status = document.querySelector('input[name="status"]:checked')?.value;  const notes = document.getElementById('investigationNotes').value.trim();  console.log('Status:', status); // Debug log  console.log('Notes:', notes); // Debug log  if (!status) {  alert('Please select an investigation status.');  return;  }  if (!notes) {  alert('Please enter investigation notes.');  return;  }  // Confirm action  const confirmMsg = `Are you sure you want to update this variance investigation?`;  if (confirm(confirmMsg)) {  const formData = new FormData(document.getElementById('investigateVarianceForm'));  console.log('Sending form data...'); // Debug log  fetch('../backend/fuel_process_verification.php', {  method: 'POST',  body: formData  })  .then(response => {  console.log('Response received:', response); // Debug log  // Check if response is actually JSON  const contentType = response.headers.get('content-type');  if (contentType && contentType.includes('application/json')) {  return response.json();  } else {  throw new Error('Server returned non-JSON response');  }  })  .then(data => {  console.log('Data received:', data); // Debug log  if (data.success) {  alert('Variance investigation updated successfully!');  // Close the modal first  const modal = document.querySelector('.modal');  if (modal) {  modal.classList.remove('show');  }  // Then reload the page  setTimeout(() => {  window.location.reload();  }, 500);  } else {  alert('Error: ' + (data.message || 'Unknown error occurred'));  }  })  .catch(error => {  console.error('Error:', error);  alert('Network error occurred. Please try again.');  });  }
-}  // Prevent form submission on Enter key
-document.getElementById('investigateVarianceForm').addEventListener('submit', function(e) {  e.preventDefault();  e.stopPropagation();  return false;
+function submitInvestigationForm(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    console.log('Submit button clicked'); // Debug log
+    
+    const status = document.querySelector('input[name="status"]:checked')?.value;
+    const notes = document.getElementById('investigationNotes').value.trim();
+    
+    console.log('Status:', status); // Debug log
+    console.log('Notes:', notes); // Debug log
+    
+    if (!status) {
+        alert('Please select an investigation status.');
+        return;
+    }
+    
+    if (!notes) {
+        alert('Please enter investigation notes.');
+        return;
+    }
+    
+    // Confirm action
+    const confirmMsg = `Are you sure you want to update this variance investigation?`;
+    
+    if (confirm(confirmMsg)) {
+        const formData = new FormData(document.getElementById('investigateVarianceForm'));
+        
+        console.log('Sending form data...'); // Debug log
+        
+        fetch('../backend/fuel_process_verification.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            console.log('Response received:', response); // Debug log
+            // Check if response is actually JSON
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                return response.json();
+            } else {
+                throw new Error('Server returned non-JSON response');
+            }
+        })
+        .then(data => {
+            console.log('Data received:', data); // Debug log
+            if (data.success) {
+                alert('Variance investigation updated successfully!');
+                // Close the modal first
+                const modal = document.querySelector('.modal');
+                if (modal) {
+                    modal.classList.remove('show');
+                }
+                // Then reload the page
+                setTimeout(() => {
+                    window.location.reload();
+                }, 500);
+            } else {
+                alert('Error: ' + (data.message || 'Unknown error occurred'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Network error occurred. Please try again.');
+        });
+    }
+}
+
+// Prevent form submission on Enter key
+document.getElementById('investigateVarianceForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    return false;
 });
 </script>

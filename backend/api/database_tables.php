@@ -3,25 +3,379 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE');
-header('Access-Control-Allow-Headers: Content-Type, X-Requested-With');  require_once '../../backend/rbac.php';
-require_once '../public/db_connect.php';  // Start session for authentication
-session_start();  // Check if user is logged in
-if (!isset($_SESSION['user_id'])) {  http_response_code(401);  echo json_encode(['success' => false, 'message' => 'Unauthorized access']);  exit();
-}  // Database connection is available as global $pdo from db_connect.php  // Check role-based access control
-if (!hasPermission('database_management', 'view')) {  http_response_code(403);  echo json_encode(['success' => false, 'message' => 'Access denied']);  exit();
-}  // Get action from request
-$action = $_GET['action'] ?? '';  try {  switch ($action) {  case 'view':  handleViewTable($pdo);  break;  case 'list':  handleListTables($pdo);  break;  case 'list_all':  handleListAllTables($pdo);  break;  case 'search':  handleSearchTable($pdo);  break;  case 'export':  handleExportTable($pdo);  break;  default:  http_response_code(400);  echo json_encode(['success' => false, 'message' => 'Invalid action']);  }
-} catch (Exception $e) {  http_response_code(500);  echo json_encode(['success' => false, 'message' => 'Server error: ' . $e->getMessage()]);
-}  function handleViewTable($pdo) {  $tableName = $_GET['table'] ?? '';  if (empty($tableName)) {  http_response_code(400);  echo json_encode(['success' => false, 'message' => 'Table name is required']);  return;  }  // Validate table name against allowed tables  $allowedTables = getAllowedTables($pdo);  if (!in_array($tableName, $allowedTables)) {  http_response_code(403);  echo json_encode(['success' => false, 'message' => 'Table not allowed for viewing']);  return;  }  // Get table columns  $columns = getTableColumns($pdo, $tableName);  // Get table data with pagination  $page = intval($_GET['page'] ?? 1);  $limit = intval($_GET['limit'] ?? 50);  $offset = ($page - 1) * $limit;  $search = $_GET['search'] ?? '';  $filter = $_GET['filter'] ?? '';  $data = getTableData($pdo, $tableName, $columns, $offset, $limit, $search, $filter);  // Log the action  logDatabaseAction($pdo, $_SESSION['user_id'], 'view_table', "Viewed table: $tableName");  echo json_encode([  'success' => true,  'data' => [  'columns' => $columns,  'rows' => $data['rows'],  'total_count' => $data['total_count'],  'page' => $page,  'limit' => $limit  ]  ]);
-}  function handleListTables($pdo) {  $category = $_GET['category'] ?? '';  $stmt = $pdo->prepare("SELECT * FROM db_tables_config WHERE is_active = TRUE ORDER BY category, sort_order");  $stmt->execute();  $tables = $stmt->fetchAll(PDO::FETCH_ASSOC);  echo json_encode([  'success' => true,  'tables' => array_values($tables)  ]);
-}  function handleListAllTables($pdo) {  $tables = getAllowedTables($pdo);  echo json_encode([  'success' => true,  'tables' => $tables  ]);
-}  function handleSearchTable($pdo) {  $tableName = $_GET['table'] ?? '';  $searchTerm = $_GET['search'] ?? '';  if (empty($tableName) || empty($searchTerm)) {  http_response_code(400);  echo json_encode(['success' => false, 'message' => 'Table name and search term are required']);  return;  }  // Validate table name  $allowedTables = getAllowedTables($pdo);  if (!in_array($tableName, $allowedTables)) {  http_response_code(403);  echo json_encode(['success' => false, 'message' => 'Table not allowed for searching']);  return;  }  // Get table columns  $columns = getTableColumns($pdo, $tableName);  // Build search query  $searchConditions = [];  $params = [];  foreach ($columns as $column) {  $searchConditions[] = "`$column` LIKE ?";  $params[] = "%$searchTerm%";  }  $searchClause = implode(' OR ', $searchConditions);  $limit = min(100, intval($_GET['limit'] ?? 50)); // Cap at 100 results  $sql = "SELECT * FROM `$tableName` WHERE $searchClause LIMIT $limit";  $stmt = $pdo->prepare($sql);  $stmt->execute($params);  $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);  // Convert rows to column format  $formattedRows = [];  foreach ($rows as $row) {  $formattedRows[] = array_values($row);  }  // Log the search action  logDatabaseAction($pdo, $_SESSION['user_id'], 'search_table', "Searched table: $tableName for: $searchTerm");  echo json_encode([  'success' => true,  'data' => [  'columns' => $columns,  'rows' => $formattedRows,  'search_term' => $searchTerm,  'total_count' => count($formattedRows)  ]  ]);
-}  function handleExportTable($pdo) {  $tableName = $_GET['table'] ?? '';  $format = $_GET['format'] ?? 'csv';  if (empty($tableName)) {  http_response_code(400);  echo json_encode(['success' => false, 'message' => 'Table name is required']);  return;  }  // Validate table name  $allowedTables = getAllowedTables($pdo);  if (!in_array($tableName, $allowedTables)) {  http_response_code(403);  echo json_encode(['success' => false, 'message' => 'Table not allowed for export']);  return;  }  // Get table data  $columns = getTableColumns($pdo, $tableName);  $data = getTableData($pdo, $tableName, $columns, 0, 10000); // Export up to 10,000 records  // Generate export file  $filename = $tableName . '_export_' . date('Y-m-d_H-i-s');  if ($format === 'csv') {  $csv = generateCSV($columns, $data['rows']);  header('Content-Type: text/csv');  header('Content-Disposition: attachment; filename="' . $filename . '.csv"');  echo $csv;  } elseif ($format === 'json') {  $json = generateJSON($columns, $data['rows']);  header('Content-Type: application/json');  header('Content-Disposition: attachment; filename="' . $filename . '.json"');  echo $json;  } else {  http_response_code(400);  echo json_encode(['success' => false, 'message' => 'Unsupported export format']);  return;  }  // Log the export action  logDatabaseAction($pdo, $_SESSION['user_id'], 'export_table', "Exported table: $tableName as $format");
-}  function getAllowedTables($pdo) {  // Get actual database tables dynamically from information_schema  $stmt = $pdo->prepare("  SELECT TABLE_NAME as table_name,  TABLE_COMMENT as description,  TABLE_ROWS as estimated_rows  FROM information_schema.TABLES  WHERE TABLE_SCHEMA = DATABASE()  AND TABLE_TYPE = 'BASE TABLE'  ORDER BY TABLE_NAME  ");  $stmt->execute();  $tables = [];  // Define system tables that should be included  $systemTables = [  'sales' => ['display_name' => 'Transactions', 'category' => 'transactions', 'description' => 'All fuel sales, job orders, payments'],  'inventory_products' => ['display_name' => 'Inventory', 'category' => 'inventory', 'description' => 'Stock levels of merchandise, lubricants, accessories'],  'customers' => ['display_name' => 'Customers', 'category' => 'customers', 'description' => 'Customer profiles, credit limits, balances'],  'users' => ['display_name' => 'Staff', 'category' => 'staff', 'description' => 'User accounts, roles, employment details'],  'audit_log' => ['display_name' => 'Audit Logs', 'category' => 'audit', 'description' => 'Record of all actions (login, edits, deletes, approvals)'],  'stations' => ['display_name' => 'Stations', 'category' => 'system', 'description' => 'Station information and configuration'],  'fuel_inventory' => ['display_name' => 'Fuel Inventory', 'category' => 'fuel', 'description' => 'Fuel tank levels and pricing'],  'shift_reconciliation' => ['display_name' => 'Shift Reconciliation', 'category' => 'transactions', 'description' => 'Shift summary and reconciliation data']  ];  while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {  $tableName = $row['table_name'];  // Check if this is a system table we want to include  if (isset($systemTables[$tableName])) {  $tables[] = [  'table_name' => $tableName,  'display_name' => $systemTables[$tableName]['display_name'],  'category' => $systemTables[$tableName]['category'],  'description' => $systemTables[$tableName]['description'],  'estimated_rows' => $row['estimated_rows'] ?? 0  ];  }  }  return $tables;
-}  function getTableColumns($pdo, $tableName) {  $stmt = $pdo->prepare("DESCRIBE `$tableName`");  $stmt->execute();  $columns = [];  while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {  $columns[] = $row['Field'];  }  return $columns;
-}  function getTableData($pdo, $tableName, $columns, $offset, $limit, $search = '', $filter = '') {  // Build base query  $sql = "SELECT * FROM `$tableName`";  $params = [];  // Add search conditions  if ($search) {  $searchConditions = [];  foreach ($columns as $column) {  $searchConditions[] = "`$column` LIKE ?";  $params[] = "%$search%";  }  $sql .= " WHERE " . implode(' OR ', $searchConditions);  }  // Add filter conditions  if ($filter) {  $sql .= $search ? " AND " : " WHERE ";  $sql .= "`status` = ?";  $params[] = $filter;  }  // Get total count  $countSql = str_replace("SELECT *", "SELECT COUNT(*)", $sql);  $countStmt = $pdo->prepare($countSql);  $countStmt->execute($params);  $totalCount = $countStmt->fetchColumn();  // Add pagination  $sql .= " ORDER BY id DESC LIMIT $limit OFFSET $offset";  $stmt = $pdo->prepare($sql);  $stmt->execute($params);  $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);  // Convert rows to column format  $formattedRows = [];  foreach ($rows as $row) {  $formattedRows[] = array_values($row);  }  return [  'rows' => $formattedRows,  'total_count' => $totalCount  ];
-}  function generateCSV($columns, $rows) {  $csv = '';  // Add header row  $csv .= implode(',', $columns) . "\n";  // Add data rows  foreach ($rows as $row) {  $escapedRow = array_map(function($value) {  // Escape commas and quotes in CSV  $value = str_replace('"', '""', $value);  if (strpos($value, ',') !== false || strpos($value, '"') !== false) {  $value = '"' . $value . '"';  }  return $value;  }, $row);  $csv .= implode(',', $escapedRow) . "\n";  }  return $csv;
-}  function generateJSON($columns, $rows) {  $data = [];  foreach ($rows as $row) {  $rowData = [];  foreach ($columns as $index => $column) {  $rowData[$column] = $row[$index] ?? null;  }  $data[] = $rowData;  }  return json_encode($data, JSON_PRETTY_PRINT);
-}  function logDatabaseAction($pdo, $userId, $action, $details) {  try {  $stmt = $pdo->prepare("INSERT INTO audit_log (user_id, action, details, ip_address, user_agent, created_at) VALUES (?, ?, ?, ?, ?, NOW())");  $stmt->execute([  $userId,  $action,  $details,  $_SERVER['REMOTE_ADDR'] ?? 'unknown',  $_SERVER['HTTP_USER_AGENT'] ?? 'unknown'  ]);  } catch (Exception $e) {  // Log error but don't break the main functionality  error_log("Failed to log database action: " . $e->getMessage());  }
+header('Access-Control-Allow-Headers: Content-Type, X-Requested-With');
+
+require_once '../../backend/rbac.php';
+require_once '../public/db_connect.php';
+
+// Start session for authentication
+session_start();
+
+// Check if user is logged in
+if (!isset($_SESSION['user_id'])) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
+    exit();
+}
+
+// Database connection is available as global $pdo from db_connect.php
+
+// Check role-based access control
+if (!hasPermission('database_management', 'view')) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Access denied']);
+    exit();
+}
+
+// Get action from request
+$action = $_GET['action'] ?? '';
+
+try {
+    switch ($action) {
+        case 'view':
+            handleViewTable($pdo);
+            break;
+        case 'list':
+            handleListTables($pdo);
+            break;
+        case 'list_all':
+            handleListAllTables($pdo);
+            break;
+        case 'search':
+            handleSearchTable($pdo);
+            break;
+        case 'export':
+            handleExportTable($pdo);
+            break;
+        default:
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'Invalid action']);
+    }
+} catch (Exception $e) {
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Server error: ' . $e->getMessage()]);
+}
+
+function handleViewTable($pdo) {
+    $tableName = $_GET['table'] ?? '';
+    
+    if (empty($tableName)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Table name is required']);
+        return;
+    }
+    
+    // Validate table name against allowed tables
+    $allowedTables = getAllowedTables($pdo);
+    if (!in_array($tableName, $allowedTables)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Table not allowed for viewing']);
+        return;
+    }
+    
+    // Get table columns
+    $columns = getTableColumns($pdo, $tableName);
+    
+    // Get table data with pagination
+    $page = intval($_GET['page'] ?? 1);
+    $limit = intval($_GET['limit'] ?? 50);
+    $offset = ($page - 1) * $limit;
+    
+    $search = $_GET['search'] ?? '';
+    $filter = $_GET['filter'] ?? '';
+    
+    $data = getTableData($pdo, $tableName, $columns, $offset, $limit, $search, $filter);
+    
+    // Log the action
+    logDatabaseAction($pdo, $_SESSION['user_id'], 'view_table', "Viewed table: $tableName");
+    
+    echo json_encode([
+        'success' => true,
+        'data' => [
+            'columns' => $columns,
+            'rows' => $data['rows'],
+            'total_count' => $data['total_count'],
+            'page' => $page,
+            'limit' => $limit
+        ]
+    ]);
+}
+
+function handleListTables($pdo) {
+    $category = $_GET['category'] ?? '';
+    
+    $stmt = $pdo->prepare("SELECT * FROM db_tables_config WHERE is_active = TRUE ORDER BY category, sort_order");
+    $stmt->execute();
+    $tables = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    echo json_encode([
+        'success' => true,
+        'tables' => array_values($tables)
+    ]);
+}
+
+function handleListAllTables($pdo) {
+    $tables = getAllowedTables($pdo);
+    
+    echo json_encode([
+        'success' => true,
+        'tables' => $tables
+    ]);
+}
+
+function handleSearchTable($pdo) {
+    $tableName = $_GET['table'] ?? '';
+    $searchTerm = $_GET['search'] ?? '';
+    
+    if (empty($tableName) || empty($searchTerm)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Table name and search term are required']);
+        return;
+    }
+    
+    // Validate table name
+    $allowedTables = getAllowedTables($pdo);
+    if (!in_array($tableName, $allowedTables)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Table not allowed for searching']);
+        return;
+    }
+    
+    // Get table columns
+    $columns = getTableColumns($pdo, $tableName);
+    
+    // Build search query
+    $searchConditions = [];
+    $params = [];
+    
+    foreach ($columns as $column) {
+        $searchConditions[] = "`$column` LIKE ?";
+        $params[] = "%$searchTerm%";
+    }
+    
+    $searchClause = implode(' OR ', $searchConditions);
+    $limit = min(100, intval($_GET['limit'] ?? 50)); // Cap at 100 results
+    
+    $sql = "SELECT * FROM `$tableName` WHERE $searchClause LIMIT $limit";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Convert rows to column format
+    $formattedRows = [];
+    foreach ($rows as $row) {
+        $formattedRows[] = array_values($row);
+    }
+    
+    // Log the search action
+    logDatabaseAction($pdo, $_SESSION['user_id'], 'search_table', "Searched table: $tableName for: $searchTerm");
+    
+    echo json_encode([
+        'success' => true,
+        'data' => [
+            'columns' => $columns,
+            'rows' => $formattedRows,
+            'search_term' => $searchTerm,
+            'total_count' => count($formattedRows)
+        ]
+    ]);
+}
+
+function handleExportTable($pdo) {
+    $tableName = $_GET['table'] ?? '';
+    $format = $_GET['format'] ?? 'csv';
+    
+    if (empty($tableName)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Table name is required']);
+        return;
+    }
+    
+    // Validate table name
+    $allowedTables = getAllowedTables($pdo);
+    if (!in_array($tableName, $allowedTables)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Table not allowed for export']);
+        return;
+    }
+    
+    // Get table data
+    $columns = getTableColumns($pdo, $tableName);
+    $data = getTableData($pdo, $tableName, $columns, 0, 10000); // Export up to 10,000 records
+    
+    // Generate export file
+    $filename = $tableName . '_export_' . date('Y-m-d_H-i-s');
+    
+    if ($format === 'csv') {
+        $csv = generateCSV($columns, $data['rows']);
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
+        echo $csv;
+    } elseif ($format === 'json') {
+        $json = generateJSON($columns, $data['rows']);
+        header('Content-Type: application/json');
+        header('Content-Disposition: attachment; filename="' . $filename . '.json"');
+        echo $json;
+    } else {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Unsupported export format']);
+        return;
+    }
+    
+    // Log the export action
+    logDatabaseAction($pdo, $_SESSION['user_id'], 'export_table', "Exported table: $tableName as $format");
+}
+
+function getAllowedTables($pdo) {
+    // Get actual database tables dynamically from information_schema
+    $stmt = $pdo->prepare("
+        SELECT TABLE_NAME as table_name, 
+               TABLE_COMMENT as description,
+               TABLE_ROWS as estimated_rows
+        FROM information_schema.TABLES 
+        WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_TYPE = 'BASE TABLE'
+        ORDER BY TABLE_NAME
+    ");
+    $stmt->execute();
+    $tables = [];
+    
+    // Define system tables that should be included
+    $systemTables = [
+        'sales' => ['display_name' => 'Transactions', 'category' => 'transactions', 'description' => 'All fuel sales, job orders, payments'],
+        'inventory_products' => ['display_name' => 'Inventory', 'category' => 'inventory', 'description' => 'Stock levels of merchandise, lubricants, accessories'],
+        'customers' => ['display_name' => 'Customers', 'category' => 'customers', 'description' => 'Customer profiles, credit limits, balances'],
+        'users' => ['display_name' => 'Staff', 'category' => 'staff', 'description' => 'User accounts, roles, employment details'],
+        'audit_log' => ['display_name' => 'Audit Logs', 'category' => 'audit', 'description' => 'Record of all actions (login, edits, deletes, approvals)'],
+        'stations' => ['display_name' => 'Stations', 'category' => 'system', 'description' => 'Station information and configuration'],
+        'fuel_inventory' => ['display_name' => 'Fuel Inventory', 'category' => 'fuel', 'description' => 'Fuel tank levels and pricing'],
+        'shift_reconciliation' => ['display_name' => 'Shift Reconciliation', 'category' => 'transactions', 'description' => 'Shift summary and reconciliation data']
+    ];
+    
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $tableName = $row['table_name'];
+        
+        // Check if this is a system table we want to include
+        if (isset($systemTables[$tableName])) {
+            $tables[] = [
+                'table_name' => $tableName,
+                'display_name' => $systemTables[$tableName]['display_name'],
+                'category' => $systemTables[$tableName]['category'],
+                'description' => $systemTables[$tableName]['description'],
+                'estimated_rows' => $row['estimated_rows'] ?? 0
+            ];
+        }
+    }
+    
+    return $tables;
+}
+
+function getTableColumns($pdo, $tableName) {
+    $stmt = $pdo->prepare("DESCRIBE `$tableName`");
+    $stmt->execute();
+    $columns = [];
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $columns[] = $row['Field'];
+    }
+    return $columns;
+}
+
+function getTableData($pdo, $tableName, $columns, $offset, $limit, $search = '', $filter = '') {
+    // Build base query
+    $sql = "SELECT * FROM `$tableName`";
+    $params = [];
+    
+    // Add search conditions
+    if ($search) {
+        $searchConditions = [];
+        foreach ($columns as $column) {
+            $searchConditions[] = "`$column` LIKE ?";
+            $params[] = "%$search%";
+        }
+        $sql .= " WHERE " . implode(' OR ', $searchConditions);
+    }
+    
+    // Add filter conditions
+    if ($filter) {
+        $sql .= $search ? " AND " : " WHERE ";
+        $sql .= "`status` = ?";
+        $params[] = $filter;
+    }
+    
+    // Get total count
+    $countSql = str_replace("SELECT *", "SELECT COUNT(*)", $sql);
+    $countStmt = $pdo->prepare($countSql);
+    $countStmt->execute($params);
+    $totalCount = $countStmt->fetchColumn();
+    
+    // Add pagination
+    $sql .= " ORDER BY id DESC LIMIT $limit OFFSET $offset";
+    
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Convert rows to column format
+    $formattedRows = [];
+    foreach ($rows as $row) {
+        $formattedRows[] = array_values($row);
+    }
+    
+    return [
+        'rows' => $formattedRows,
+        'total_count' => $totalCount
+    ];
+}
+
+function generateCSV($columns, $rows) {
+    $csv = '';
+    
+    // Add header row
+    $csv .= implode(',', $columns) . "\n";
+    
+    // Add data rows
+    foreach ($rows as $row) {
+        $escapedRow = array_map(function($value) {
+            // Escape commas and quotes in CSV
+            $value = str_replace('"', '""', $value);
+            if (strpos($value, ',') !== false || strpos($value, '"') !== false) {
+                $value = '"' . $value . '"';
+            }
+            return $value;
+        }, $row);
+        $csv .= implode(',', $escapedRow) . "\n";
+    }
+    
+    return $csv;
+}
+
+function generateJSON($columns, $rows) {
+    $data = [];
+    
+    foreach ($rows as $row) {
+        $rowData = [];
+        foreach ($columns as $index => $column) {
+            $rowData[$column] = $row[$index] ?? null;
+        }
+        $data[] = $rowData;
+    }
+    
+    return json_encode($data, JSON_PRETTY_PRINT);
+}
+
+function logDatabaseAction($pdo, $userId, $action, $details) {
+    try {
+        $stmt = $pdo->prepare("INSERT INTO audit_log (user_id, action, details, ip_address, user_agent, created_at) VALUES (?, ?, ?, ?, ?, NOW())");
+        $stmt->execute([
+            $userId,
+            $action,
+            $details,
+            $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+            $_SERVER['HTTP_USER_AGENT'] ?? 'unknown'
+        ]);
+    } catch (Exception $e) {
+        // Log error but don't break the main functionality
+        error_log("Failed to log database action: " . $e->getMessage());
+    }
 }
 ?>

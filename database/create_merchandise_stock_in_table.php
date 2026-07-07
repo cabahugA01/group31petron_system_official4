@@ -1,4 +1,56 @@
 <?php
-/**  * Create merchandise_stock_in table if it doesn't exist  */
-require_once __DIR__ . '/../public/db_connect.php';  try {  echo "Creating merchandise_stock_in table...\n";  $pdo->exec("CREATE TABLE IF NOT EXISTS merchandise_stock_in (  id  INT AUTO_INCREMENT PRIMARY KEY,  po_id  INT NULL,  po_number  VARCHAR(100) NULL,  station_id  INT NOT NULL,  product_id  INT NOT NULL,  product_name  VARCHAR(255) NOT NULL,  sku  VARCHAR(100) NULL,  category  VARCHAR(100) NULL,  qty_ordered  INT NOT NULL DEFAULT 0,  qty_received  INT NOT NULL DEFAULT 0,  qty_variance  INT NOT NULL DEFAULT 0,  unit_cost  DECIMAL(10,2) NOT NULL DEFAULT 0,  total_cost  DECIMAL(12,2) NOT NULL DEFAULT 0,  condition_flag ENUM('Good','Damaged','Short','Excess') NOT NULL DEFAULT 'Good',  remarks  TEXT NULL,  stock_before  INT NOT NULL DEFAULT 0,  stock_after  INT NOT NULL DEFAULT 0,  encoded_by  INT NOT NULL,  encoded_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,  batch_ref  VARCHAR(100) NULL,  INDEX idx_station  (station_id),  INDEX idx_encoded_at (encoded_at),  INDEX idx_po_id  (po_id)  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");  echo " merchandise_stock_in table created successfully!\n";  // Verify it was created  $result = $pdo->query("SHOW TABLES LIKE 'merchandise_stock_in'");  if ($result->rowCount() > 0) {  echo " Table verified in database.\n";  // Show table structure  $columns = $pdo->query("DESCRIBE merchandise_stock_in")->fetchAll(PDO::FETCH_ASSOC);  echo "\nTable structure:\n";  foreach ($columns as $col) {  echo "  - {$col['Field']} ({$col['Type']})\n";  }  }  } catch (Exception $e) {  echo " Error: " . $e->getMessage() . "\n";  exit(1);
-}  echo "\nDone!\n";
+/**
+ * Create merchandise_stock_in table if it doesn't exist
+ */
+require_once __DIR__ . '/../public/db_connect.php';
+
+try {
+    echo "Creating merchandise_stock_in table...\n";
+    
+    $pdo->exec("CREATE TABLE IF NOT EXISTS merchandise_stock_in (
+        id             INT AUTO_INCREMENT PRIMARY KEY,
+        po_id          INT NULL,
+        po_number      VARCHAR(100) NULL,
+        station_id     INT NOT NULL,
+        product_id     INT NOT NULL,
+        product_name   VARCHAR(255) NOT NULL,
+        sku            VARCHAR(100) NULL,
+        category       VARCHAR(100) NULL,
+        qty_ordered    INT NOT NULL DEFAULT 0,
+        qty_received   INT NOT NULL DEFAULT 0,
+        qty_variance   INT NOT NULL DEFAULT 0,
+        unit_cost      DECIMAL(10,2) NOT NULL DEFAULT 0,
+        total_cost     DECIMAL(12,2) NOT NULL DEFAULT 0,
+        condition_flag ENUM('Good','Damaged','Short','Excess') NOT NULL DEFAULT 'Good',
+        remarks        TEXT NULL,
+        stock_before   INT NOT NULL DEFAULT 0,
+        stock_after    INT NOT NULL DEFAULT 0,
+        encoded_by     INT NOT NULL,
+        encoded_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        batch_ref      VARCHAR(100) NULL,
+        INDEX idx_station    (station_id),
+        INDEX idx_encoded_at (encoded_at),
+        INDEX idx_po_id      (po_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    
+    echo "✓ merchandise_stock_in table created successfully!\n";
+    
+    // Verify it was created
+    $result = $pdo->query("SHOW TABLES LIKE 'merchandise_stock_in'");
+    if ($result->rowCount() > 0) {
+        echo "✓ Table verified in database.\n";
+        
+        // Show table structure
+        $columns = $pdo->query("DESCRIBE merchandise_stock_in")->fetchAll(PDO::FETCH_ASSOC);
+        echo "\nTable structure:\n";
+        foreach ($columns as $col) {
+            echo "  - {$col['Field']} ({$col['Type']})\n";
+        }
+    }
+    
+} catch (Exception $e) {
+    echo "✗ Error: " . $e->getMessage() . "\n";
+    exit(1);
+}
+
+echo "\nDone!\n";

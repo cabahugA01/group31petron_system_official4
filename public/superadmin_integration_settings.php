@@ -3,55 +3,265 @@
 // SuperAdmin – Integration Settings
 // public/superadmin_integration_settings.php
 // ============================================================
-if (session_status() === PHP_SESSION_NONE) session_start();  require_once __DIR__ . '/../backend/lib.php';
+if (session_status() === PHP_SESSION_NONE) session_start();
+
+require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
-require_login();  $me  = current_user();
+require_login();
+
+$me   = current_user();
 $role = role_key($me['role'] ?? '');
-if (!in_array($role, ['superadmin', 'developer', 'admin', 'manager'])) {  header('Location: index.php'); exit;
+if (!in_array($role, ['superadmin', 'developer', 'admin', 'manager'])) {
+    header('Location: index.php'); exit;
 }
-$can_edit = in_array($role, ['superadmin', 'developer']);  if (empty($_SESSION['csrf_token'])) {  $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+$can_edit = in_array($role, ['superadmin', 'developer']);
+
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
-$csrf = $_SESSION['csrf_token'];  // ── Active section ────────────────────────────────────────────
+$csrf = $_SESSION['csrf_token'];
+
+// ── Active section ────────────────────────────────────────────
 $section  = trim($_GET['section'] ?? 'pos_import');
 $allowed  = ['pos_import', 'api_connections', 'git_workflow', 'external_sync', 'audit_trail'];
-if (!in_array($section, $allowed)) $section = 'pos_import';  $page_id = match($section) {  'pos_import'  => 'int_pos_import',  'api_connections'=> 'int_api_connections',  'git_workflow'  => 'int_git_workflow',  'external_sync'  => 'int_external_sync',  'audit_trail'  => 'int_audit_trail',  default  => 'int_pos_import',
-};  // ── Bootstrap tables ─────────────────────────────────────────
-try {  $pdo->exec("CREATE TABLE IF NOT EXISTS integration_pos_parsers (  id  INT AUTO_INCREMENT PRIMARY KEY,  name  VARCHAR(120) NOT NULL,  file_type  ENUM('csv','excel') NOT NULL DEFAULT 'csv',  delimiter  VARCHAR(5) NOT NULL DEFAULT ',',  has_header  TINYINT(1) NOT NULL DEFAULT 1,  column_map  JSON NOT NULL,  sample_data TEXT,  is_active  TINYINT(1) NOT NULL DEFAULT 1,  created_by  INT NOT NULL,  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,  updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");  $pdo->exec("CREATE TABLE IF NOT EXISTS api_config (  id  INT AUTO_INCREMENT PRIMARY KEY,  config_name  VARCHAR(120) NOT NULL,  api_key  TEXT,  endpoint_url  VARCHAR(500) NOT NULL,  auth_type  ENUM('none','api_key','bearer','basic') NOT NULL DEFAULT 'api_key',  auth_keys  TEXT,  last_tested_at  DATETIME NULL,  test_status  ENUM('ok','fail','untested') NOT NULL DEFAULT 'untested',  is_active  TINYINT(1) NOT NULL DEFAULT 1,  created_by  INT NOT NULL,  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,  updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");  $pdo->exec("CREATE TABLE IF NOT EXISTS erp_connections (  id  INT AUTO_INCREMENT PRIMARY KEY,  connection_name  VARCHAR(120) NOT NULL,  endpoint_url  VARCHAR(500) NOT NULL,  auth_keys  TEXT,  connection_status ENUM('connected','disconnected','error') NOT NULL DEFAULT 'disconnected',  last_connected_at DATETIME NULL,  is_active  TINYINT(1) NOT NULL DEFAULT 1,  created_by  INT NOT NULL,  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,  updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");  $pdo->exec("CREATE TABLE IF NOT EXISTS git_repos (  id  INT AUTO_INCREMENT PRIMARY KEY,  repo_name  VARCHAR(120) NOT NULL,  repo_url  VARCHAR(500) NOT NULL,  current_branch  VARCHAR(100) NOT NULL DEFAULT 'main',  merge_rules  TEXT,  last_push_at  DATETIME NULL,  last_pull_at  DATETIME NULL,  is_active  TINYINT(1) NOT NULL DEFAULT 1,  created_by  INT NOT NULL,  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,  updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");  $pdo->exec("CREATE TABLE IF NOT EXISTS git_commits (  id  INT AUTO_INCREMENT PRIMARY KEY,  repo_id  INT NOT NULL,  commit_hash  VARCHAR(64) NOT NULL,  author  VARCHAR(120) NOT NULL,  commit_message  TEXT,  branch_name  VARCHAR(100) NOT NULL,  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,  FOREIGN KEY (repo_id) REFERENCES git_repos(id) ON DELETE CASCADE  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");  $pdo->exec("CREATE TABLE IF NOT EXISTS deployment_history (  id  INT AUTO_INCREMENT PRIMARY KEY,  repo_id  INT NOT NULL,  commit_hash  VARCHAR(64),  deployment_type  VARCHAR(50) NOT NULL DEFAULT 'manual',  status  ENUM('success','failed','pending') NOT NULL DEFAULT 'pending',  deployed_by  INT NOT NULL,  deployed_at  DATETIME DEFAULT CURRENT_TIMESTAMP,  notes  TEXT,  FOREIGN KEY (repo_id) REFERENCES git_repos(id) ON DELETE CASCADE  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");  $pdo->exec("CREATE TABLE IF NOT EXISTS sync_jobs (  id  INT AUTO_INCREMENT PRIMARY KEY,  job_name  VARCHAR(120) NOT NULL,  sync_frequency  ENUM('realtime','hourly','daily','weekly','manual') NOT NULL DEFAULT 'daily',  external_feed_url  VARCHAR(500),  conflict_resolution ENUM('overwrite','merge','skip') NOT NULL DEFAULT 'merge',  last_synced_at  DATETIME NULL,  sync_status  ENUM('success','failed','pending') NOT NULL DEFAULT 'pending',  is_active  TINYINT(1) NOT NULL DEFAULT 1,  created_by  INT NOT NULL,  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,  updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");  $pdo->exec("CREATE TABLE IF NOT EXISTS sync_logs (  id  INT AUTO_INCREMENT PRIMARY KEY,  sync_job_id  INT NOT NULL,  sync_status  ENUM('success','failed','pending') NOT NULL DEFAULT 'pending',  records_synced  INT DEFAULT 0,  error_message  TEXT,  synced_at  DATETIME DEFAULT CURRENT_TIMESTAMP,  FOREIGN KEY (sync_job_id) REFERENCES sync_jobs(id) ON DELETE CASCADE  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");  $pdo->exec("CREATE TABLE IF NOT EXISTS integration_audit (  id  INT AUTO_INCREMENT PRIMARY KEY,  user_id  INT NOT NULL,  action_type VARCHAR(80) NOT NULL,  target_type ENUM('pos_parser','api_config','erp_connection','git_repo','sync_job','deployment') NOT NULL,  target_id  INT NOT NULL,  target_name VARCHAR(200) NOT NULL DEFAULT '',  details  TEXT,  ip_address  VARCHAR(45),  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,  INDEX idx_user  (user_id),  INDEX idx_created (created_at)  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-} catch (Exception $e) { /* tables may already exist */ }  // ── Fetch data for each section ───────────────────────────────
-$parsers  = $pdo->query("SELECT * FROM integration_pos_parsers ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
-$api_configs  = [];
+if (!in_array($section, $allowed)) $section = 'pos_import';
+
+$page_id = match($section) {
+    'pos_import'     => 'int_pos_import',
+    'api_connections'=> 'int_api_connections',
+    'git_workflow'   => 'int_git_workflow',
+    'external_sync'  => 'int_external_sync',
+    'audit_trail'    => 'int_audit_trail',
+    default          => 'int_pos_import',
+};
+
+// ── Bootstrap tables ─────────────────────────────────────────
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS integration_pos_parsers (
+        id          INT AUTO_INCREMENT PRIMARY KEY,
+        name        VARCHAR(120) NOT NULL,
+        file_type   ENUM('csv','excel') NOT NULL DEFAULT 'csv',
+        delimiter   VARCHAR(5) NOT NULL DEFAULT ',',
+        has_header  TINYINT(1) NOT NULL DEFAULT 1,
+        column_map  JSON NOT NULL,
+        sample_data TEXT,
+        is_active   TINYINT(1) NOT NULL DEFAULT 1,
+        created_by  INT NOT NULL,
+        created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS api_config (
+        id               INT AUTO_INCREMENT PRIMARY KEY,
+        config_name      VARCHAR(120) NOT NULL,
+        api_key          TEXT,
+        endpoint_url     VARCHAR(500) NOT NULL,
+        auth_type        ENUM('none','api_key','bearer','basic') NOT NULL DEFAULT 'api_key',
+        auth_keys        TEXT,
+        last_tested_at   DATETIME NULL,
+        test_status      ENUM('ok','fail','untested') NOT NULL DEFAULT 'untested',
+        is_active        TINYINT(1) NOT NULL DEFAULT 1,
+        created_by       INT NOT NULL,
+        created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS erp_connections (
+        id               INT AUTO_INCREMENT PRIMARY KEY,
+        connection_name  VARCHAR(120) NOT NULL,
+        endpoint_url     VARCHAR(500) NOT NULL,
+        auth_keys        TEXT,
+        connection_status ENUM('connected','disconnected','error') NOT NULL DEFAULT 'disconnected',
+        last_connected_at DATETIME NULL,
+        is_active        TINYINT(1) NOT NULL DEFAULT 1,
+        created_by       INT NOT NULL,
+        created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS git_repos (
+        id               INT AUTO_INCREMENT PRIMARY KEY,
+        repo_name        VARCHAR(120) NOT NULL,
+        repo_url         VARCHAR(500) NOT NULL,
+        current_branch   VARCHAR(100) NOT NULL DEFAULT 'main',
+        merge_rules      TEXT,
+        last_push_at     DATETIME NULL,
+        last_pull_at     DATETIME NULL,
+        is_active        TINYINT(1) NOT NULL DEFAULT 1,
+        created_by       INT NOT NULL,
+        created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS git_commits (
+        id               INT AUTO_INCREMENT PRIMARY KEY,
+        repo_id          INT NOT NULL,
+        commit_hash      VARCHAR(64) NOT NULL,
+        author           VARCHAR(120) NOT NULL,
+        commit_message   TEXT,
+        branch_name      VARCHAR(100) NOT NULL,
+        created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (repo_id) REFERENCES git_repos(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS deployment_history (
+        id               INT AUTO_INCREMENT PRIMARY KEY,
+        repo_id          INT NOT NULL,
+        commit_hash      VARCHAR(64),
+        deployment_type  VARCHAR(50) NOT NULL DEFAULT 'manual',
+        status           ENUM('success','failed','pending') NOT NULL DEFAULT 'pending',
+        deployed_by      INT NOT NULL,
+        deployed_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+        notes            TEXT,
+        FOREIGN KEY (repo_id) REFERENCES git_repos(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS sync_jobs (
+        id                  INT AUTO_INCREMENT PRIMARY KEY,
+        job_name            VARCHAR(120) NOT NULL,
+        sync_frequency      ENUM('realtime','hourly','daily','weekly','manual') NOT NULL DEFAULT 'daily',
+        external_feed_url   VARCHAR(500),
+        conflict_resolution ENUM('overwrite','merge','skip') NOT NULL DEFAULT 'merge',
+        last_synced_at      DATETIME NULL,
+        sync_status         ENUM('success','failed','pending') NOT NULL DEFAULT 'pending',
+        is_active           TINYINT(1) NOT NULL DEFAULT 1,
+        created_by          INT NOT NULL,
+        created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS sync_logs (
+        id               INT AUTO_INCREMENT PRIMARY KEY,
+        sync_job_id      INT NOT NULL,
+        sync_status      ENUM('success','failed','pending') NOT NULL DEFAULT 'pending',
+        records_synced   INT DEFAULT 0,
+        error_message    TEXT,
+        synced_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (sync_job_id) REFERENCES sync_jobs(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS integration_audit (
+        id          INT AUTO_INCREMENT PRIMARY KEY,
+        user_id     INT NOT NULL,
+        action_type VARCHAR(80) NOT NULL,
+        target_type ENUM('pos_parser','api_config','erp_connection','git_repo','sync_job','deployment') NOT NULL,
+        target_id   INT NOT NULL,
+        target_name VARCHAR(200) NOT NULL DEFAULT '',
+        details     TEXT,
+        ip_address  VARCHAR(45),
+        created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_user    (user_id),
+        INDEX idx_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (Exception $e) { /* tables may already exist */ }
+
+// ── Fetch data for each section ───────────────────────────────
+$parsers       = $pdo->query("SELECT * FROM integration_pos_parsers ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
+$api_configs   = [];
 $erp_connections = [];
-$git_repos  = [];
-$git_commits  = [];
+$git_repos     = [];
+$git_commits   = [];
 $deployment_history = [];
-$sync_jobs  = [];
-$sync_logs  = [];  try {  $api_configs = $pdo->query("SELECT * FROM api_config ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}  try {  $erp_connections = $pdo->query("SELECT * FROM erp_connections ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}  try {  $git_repos = $pdo->query("SELECT * FROM git_repos ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}  try {  $git_commits = $pdo->query("SELECT gc.*, gr.repo_name FROM git_commits gc LEFT JOIN git_repos gr ON gc.repo_id = gr.id ORDER BY gc.created_at DESC LIMIT 50")->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}  try {  $deployment_history = $pdo->query("SELECT dh.*, gr.repo_name, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS deployed_by_name FROM deployment_history dh LEFT JOIN git_repos gr ON dh.repo_id = gr.id LEFT JOIN users u ON dh.deployed_by = u.id ORDER BY dh.deployed_at DESC LIMIT 50")->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}  try {  $sync_jobs = $pdo->query("SELECT * FROM sync_jobs ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}  try {  $sync_logs = $pdo->query("SELECT sl.*, sj.job_name FROM sync_logs sl LEFT JOIN sync_jobs sj ON sl.sync_job_id = sj.id ORDER BY sl.synced_at DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}  $audit_rows = [];
-try {  $audit_rows = $pdo->query(  "SELECT ia.*, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS user_name  FROM integration_audit ia  LEFT JOIN users u ON u.id = ia.user_id  ORDER BY ia.created_at DESC LIMIT 100"  )->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}  $fc_config = !empty($api_configs) ? $api_configs[0] : null;
+$sync_jobs     = [];
+$sync_logs     = [];
+
+try {
+    $api_configs = $pdo->query("SELECT * FROM api_config ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+try {
+    $erp_connections = $pdo->query("SELECT * FROM erp_connections ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+try {
+    $git_repos = $pdo->query("SELECT * FROM git_repos ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+try {
+    $git_commits = $pdo->query("SELECT gc.*, gr.repo_name FROM git_commits gc LEFT JOIN git_repos gr ON gc.repo_id = gr.id ORDER BY gc.created_at DESC LIMIT 50")->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+try {
+    $deployment_history = $pdo->query("SELECT dh.*, gr.repo_name, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS deployed_by_name FROM deployment_history dh LEFT JOIN git_repos gr ON dh.repo_id = gr.id LEFT JOIN users u ON dh.deployed_by = u.id ORDER BY dh.deployed_at DESC LIMIT 50")->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+try {
+    $sync_jobs = $pdo->query("SELECT * FROM sync_jobs ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+try {
+    $sync_logs = $pdo->query("SELECT sl.*, sj.job_name FROM sync_logs sl LEFT JOIN sync_jobs sj ON sl.sync_job_id = sj.id ORDER BY sl.synced_at DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+$audit_rows = [];
+try {
+    $audit_rows = $pdo->query(
+        "SELECT ia.*, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS user_name
+         FROM integration_audit ia
+         LEFT JOIN users u ON u.id = ia.user_id
+         ORDER BY ia.created_at DESC LIMIT 100"
+    )->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+$fc_config = !empty($api_configs) ? $api_configs[0] : null;
 $erp_config = !empty($erp_connections) ? $erp_connections[0] : null;
 $git_config = !empty($git_repos) ? $git_repos[0] : null;
-$sync_config = !empty($sync_jobs) ? $sync_jobs[0] : null;  // ── Available modules for sync rules (DB-driven) ─────────────
+$sync_config = !empty($sync_jobs) ? $sync_jobs[0] : null;
+
+// ── Available modules for sync rules (DB-driven) ─────────────
 $available_modules = [];
-try {  $available_modules = $pdo->query("SELECT module_key, module_name FROM module_settings WHERE is_enabled=1 ORDER BY module_order")  ->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {  // Fallback: use known module keys  $available_modules = [  ['module_key' => 'transactions',  'module_name' => 'Transactions'],  ['module_key' => 'job_orders',  'module_name' => 'Job Orders'],  ['module_key' => 'fuel_management', 'module_name' => 'Fuel Management'],  ['module_key' => 'calendar',  'module_name' => 'Calendar'],  ['module_key' => 'reports',  'module_name' => 'Reports'],  ];
-}  // ── System fields for POS column mapping (DB-driven) ─────────
+try {
+    $available_modules = $pdo->query("SELECT module_key, module_name FROM module_settings WHERE is_enabled=1 ORDER BY module_order")
+        ->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    // Fallback: use known module keys
+    $available_modules = [
+        ['module_key' => 'transactions',    'module_name' => 'Transactions'],
+        ['module_key' => 'job_orders',      'module_name' => 'Job Orders'],
+        ['module_key' => 'fuel_management', 'module_name' => 'Fuel Management'],
+        ['module_key' => 'calendar',        'module_name' => 'Calendar'],
+        ['module_key' => 'reports',         'module_name' => 'Reports'],
+    ];
+}
+
+// ── System fields for POS column mapping (DB-driven) ─────────
 $system_fields = [];
-try {  // Pull actual column names from key tables  $field_tables = ['transactions', 'inventory', 'station_inventory', 'users'];  foreach ($field_tables as $tbl) {  try {  $cols = $pdo->query("DESCRIBE `{$tbl}`")->fetchAll(PDO::FETCH_COLUMN);  foreach ($cols as $col) {  $system_fields["{$tbl}.{$col}"] = "{$tbl} → {$col}";  }  } catch (Exception $e) {}  }
+try {
+    // Pull actual column names from key tables
+    $field_tables = ['transactions', 'inventory', 'station_inventory', 'users'];
+    foreach ($field_tables as $tbl) {
+        try {
+            $cols = $pdo->query("DESCRIBE `{$tbl}`")->fetchAll(PDO::FETCH_COLUMN);
+            foreach ($cols as $col) {
+                $system_fields["{$tbl}.{$col}"] = "{$tbl} → {$col}";
+            }
+        } catch (Exception $e) {}
+    }
 } catch (Exception $e) {}
-if (empty($system_fields)) {  $system_fields = [  'transactions.amount'  => 'transactions → amount',  'inventory.product_name'  => 'inventory → product_name',  'inventory.stock_level'  => 'inventory → stock_level',  'users.name'  => 'users → name',  ];
-}  // Log this page view
-log_activity($pdo, $me['id'], 'Integration Settings View', "Viewed section: {$section}");  // ── Fetch all stations for station selector ───────────────────
+if (empty($system_fields)) {
+    $system_fields = [
+        'transactions.amount'      => 'transactions → amount',
+        'inventory.product_name'   => 'inventory → product_name',
+        'inventory.stock_level'    => 'inventory → stock_level',
+        'users.name'               => 'users → name',
+    ];
+}
+
+// Log this page view
+log_activity($pdo, $me['id'], 'Integration Settings View', "Viewed section: {$section}");
+
+// ── Fetch all stations for station selector ───────────────────
 $stations = [];
-try {  $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'active' ORDER BY name ASC");  $stations = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {  try {  $stations = $pdo->query("SELECT id, name FROM stations ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);  } catch (Exception $e2) { $stations = []; }
-}  include __DIR__ . '/../partials/header.php';
+try {
+    $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'active' ORDER BY name ASC");
+    $stations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    try {
+        $stations = $pdo->query("SELECT id, name FROM stations ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e2) { $stations = []; }
+}
+
+include __DIR__ . '/../partials/header.php';
 ?>
 <style>
 .int-page{padding:0 24px 28px}
@@ -132,7 +342,9 @@ try {  $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'active
 .col-map-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .col-map-row input{flex:1;padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:12px;outline:none}
 .col-map-row select{flex:1;padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:12px;outline:none;background:#fff}
-.col-map-row .rm-btn{background:none;border:none;color:#cc0000;cursor:pointer;font-size:14px;padding:4px}  /* ── Station Combo (same as module_configuration) ─────────── */
+.col-map-row .rm-btn{background:none;border:none;color:#cc0000;cursor:pointer;font-size:14px;padding:4px}
+
+/* ── Station Combo (same as module_configuration) ─────────── */
 .int-station-card{background:#fff;border:1px solid #eaeaea;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,.04);margin-bottom:20px;overflow:visible !important;}
 .int-station-card .int-card-header{padding:14px 20px;border-bottom:1px solid #eee;background:#f8f9fa;border-radius:14px 14px 0 0;}
 .int-station-card .int-card-header h3{font-size:13px!important;font-weight:700!important;color:var(--petron-blue)!important;margin:0!important;text-transform:uppercase!important;display:flex;align-items:center;gap:8px;}
@@ -154,70 +366,1396 @@ try {  $stmt = $pdo->query("SELECT id, name FROM stations WHERE status = 'active
 .am-combo-option .opt-icon{color:#bbb;font-size:11px;flex-shrink:0}
 .am-combo-option.selected .opt-icon{color:var(--petron-blue)}
 .am-combo-empty{padding:18px 14px;font-size:13px;color:#bbb;text-align:center}
-</style>  <div class="int-page">  <!-- Page Header -->
-<div class="int-head">  <div>  <h1><i class="fas fa-plug"></i> Integration Settings</h1>  <div class="sub">Developer & System Connectivity Configuration</div>  </div>
-</div>  <!-- Station Selector Card (same as Module Configuration) -->
-<div class="int-station-card" id="int_station_card">  <div class="int-card-header">  <h3><i class="fas fa-map-marker-alt"></i> Station-Dependent Configuration</h3>  </div>  <div class="int-card-body">  <div style="display:flex;align-items:center;gap:15px;position:relative;margin-bottom:15px;">  <label style="font-weight:600;color:#374151;font-size:13px;text-transform:uppercase;letter-spacing:.5px;flex-shrink:0;">  Search Station  </label>  <div class="am-combo" id="int_station_combo" style="width:450px;position:relative;z-index:100;">  <input type="text" class="am-combo-input" id="int_station_display"  placeholder="Type to search stations..." autocomplete="off"  style="padding-right:80px;cursor:text;">  <button type="button" class="am-combo-clear" id="int_station_clear" tabindex="-1" title="Clear">  <i class="fas fa-times"></i>  </button>  <i class="fas fa-chevron-down am-combo-arrow"></i>  <input type="hidden" id="int_station_val">  <div class="am-combo-dropdown" id="int_station_dropdown">  <div class="am-combo-list" id="int_station_list"></div>  </div>  </div>  </div>  <div id="int_station_banner" style="display:none;padding:12px 16px;background:#dbeafe;border-left:4px solid #3b82f6;border-radius:6px;margin-top:12px;">  <div style="display:flex;align-items:center;gap:10px;">  <i class="fas fa-info-circle" style="color:#3b82f6;font-size:17px;"></i>  <div style="flex:1;">  <div style="font-weight:600;color:#1e40af;font-size:13px;">Configuring for station:</div>  <div id="int_station_name" style="color:#1f2937;font-size:13px;margin-top:2px;"></div>  </div>  <span style="font-size:11px;color:#3b82f6;font-weight:600;">Settings below apply to this station</span>  </div>  </div>  <div id="int_no_station_warn" style="padding:12px 16px;background:#fef3c7;border-left:4px solid #f59e0b;border-radius:6px;margin-top:12px;">  <div style="display:flex;align-items:center;gap:10px;">  <i class="fas fa-exclamation-triangle" style="color:#f59e0b;font-size:17px;"></i>  <div style="flex:1;color:#92400e;font-size:13px;">  <strong>No station selected.</strong> Select a station above to scope these integration settings to a specific location, or leave empty to apply globally.  </div>  </div>  </div>  </div>
+</style>
+
+<div class="int-page">
+
+<!-- Page Header -->
+<div class="int-head">
+    <div>
+        <h1><i class="fas fa-plug"></i> Integration Settings</h1>
+        <div class="sub">Developer & System Connectivity Configuration</div>
+    </div>
+</div>
+
+
+<!-- Station Selector Card (same as Module Configuration) -->
+<div class="int-station-card" id="int_station_card">
+    <div class="int-card-header">
+        <h3><i class="fas fa-map-marker-alt"></i> Station-Dependent Configuration</h3>
+    </div>
+    <div class="int-card-body">
+        <div style="display:flex;align-items:center;gap:15px;position:relative;margin-bottom:15px;">
+            <label style="font-weight:600;color:#374151;font-size:13px;text-transform:uppercase;letter-spacing:.5px;flex-shrink:0;">
+                Search Station
+            </label>
+            <div class="am-combo" id="int_station_combo" style="width:450px;position:relative;z-index:100;">
+                <input type="text" class="am-combo-input" id="int_station_display"
+                       placeholder="Type to search stations..." autocomplete="off"
+                       style="padding-right:80px;cursor:text;">
+                <button type="button" class="am-combo-clear" id="int_station_clear" tabindex="-1" title="Clear">
+                    <i class="fas fa-times"></i>
+                </button>
+                <i class="fas fa-chevron-down am-combo-arrow"></i>
+                <input type="hidden" id="int_station_val">
+                <div class="am-combo-dropdown" id="int_station_dropdown">
+                    <div class="am-combo-list" id="int_station_list"></div>
+                </div>
+            </div>
+        </div>
+        <div id="int_station_banner" style="display:none;padding:12px 16px;background:#dbeafe;border-left:4px solid #3b82f6;border-radius:6px;margin-top:12px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-info-circle" style="color:#3b82f6;font-size:17px;"></i>
+                <div style="flex:1;">
+                    <div style="font-weight:600;color:#1e40af;font-size:13px;">Configuring for station:</div>
+                    <div id="int_station_name" style="color:#1f2937;font-size:13px;margin-top:2px;"></div>
+                </div>
+                <span style="font-size:11px;color:#3b82f6;font-weight:600;">Settings below apply to this station</span>
+            </div>
+        </div>
+        <div id="int_no_station_warn" style="padding:12px 16px;background:#fef3c7;border-left:4px solid #f59e0b;border-radius:6px;margin-top:12px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-exclamation-triangle" style="color:#f59e0b;font-size:17px;"></i>
+                <div style="flex:1;color:#92400e;font-size:13px;">
+                    <strong>No station selected.</strong> Select a station above to scope these integration settings to a specific location, or leave empty to apply globally.
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 <!-- Section: POS Import Configuration -->
 <?php if ($section === 'pos_import'): ?>
-<div class="int-card">  <div class="int-card-header">  <h3><i class="fas fa-file-csv"></i> POS Import Configuration</h3>  <button class="int-btn int-btn-primary int-btn-sm" onclick="openParserModal()">  <i class="fas fa-plus"></i> Add Parser  </button>  </div>  <div class="int-card-body">  <div class="int-info">  <i class="fas fa-info-circle"></i>  <div>  <strong>Step 1:</strong> Configure CSV/Excel parser rules to auto-import POS data into system tables.  SuperAdmin configures parser only; actual encoding handled by Admin/Staff.  </div>  </div>  <?php if (empty($parsers)): ?>  <p style="text-align:center;color:#999;padding:40px 20px">  <i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:12px;opacity:.3"></i>  No POS parsers configured yet. Click "Add Parser" to create one.  </p>  <?php else: ?>  <div class="int-table-wrap">  <table class="int-table">  <thead>  <tr>  <th>Parser Name</th>  <th>File Type</th>  <th>Delimiter</th>  <th>Has Header</th>  <th>Status</th>  <th>Created</th>  <th>Actions</th>  </tr>  </thead>  <tbody>  <?php foreach ($parsers as $p): ?>  <tr>  <td><strong><?php echo htmlspecialchars($p['name']); ?></strong></td>  <td><?php echo strtoupper($p['file_type']); ?></td>  <td><code><?php echo htmlspecialchars($p['delimiter']); ?></code></td>  <td><?php echo $p['has_header'] ? 'Yes' : 'No'; ?></td>  <td>  <span class="int-badge <?php echo $p['is_active'] ? 'int-badge-active' : 'int-badge-inactive'; ?>">  <?php echo $p['is_active'] ? 'Active' : 'Inactive'; ?>  </span>  </td>  <td><?php echo date('M d, Y', strtotime($p['created_at'])); ?></td>  <td>  <button class="int-btn int-btn-outline int-btn-sm" onclick="editParser(<?php echo $p['id']; ?>)">  <i class="fas fa-edit"></i> Edit  </button>  <button class="int-btn int-btn-danger int-btn-sm" onclick="deleteParser(<?php echo $p['id']; ?>)">  <i class="fas fa-trash"></i>  </button>  </td>  </tr>  <?php endforeach; ?>  </tbody>  </table>  </div>  <?php endif; ?>  </div>
+<div class="int-card">
+    <div class="int-card-header">
+        <h3><i class="fas fa-file-csv"></i> POS Import Configuration</h3>
+        <button class="int-btn int-btn-primary int-btn-sm" onclick="openParserModal()">
+            <i class="fas fa-plus"></i> Add Parser
+        </button>
+    </div>
+    <div class="int-card-body">
+        <div class="int-info">
+            <i class="fas fa-info-circle"></i>
+            <div>
+                <strong>Step 1:</strong> Configure CSV/Excel parser rules to auto-import POS data into system tables. 
+                SuperAdmin configures parser only; actual encoding handled by Admin/Staff.
+            </div>
+        </div>
+        
+        <?php if (empty($parsers)): ?>
+            <p style="text-align:center;color:#999;padding:40px 20px">
+                <i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:12px;opacity:.3"></i>
+                No POS parsers configured yet. Click "Add Parser" to create one.
+            </p>
+        <?php else: ?>
+            <div class="int-table-wrap">
+                <table class="int-table">
+                    <thead>
+                        <tr>
+                            <th>Parser Name</th>
+                            <th>File Type</th>
+                            <th>Delimiter</th>
+                            <th>Has Header</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($parsers as $p): ?>
+                        <tr>
+                            <td><strong><?php echo htmlspecialchars($p['name']); ?></strong></td>
+                            <td><?php echo strtoupper($p['file_type']); ?></td>
+                            <td><code><?php echo htmlspecialchars($p['delimiter']); ?></code></td>
+                            <td><?php echo $p['has_header'] ? 'Yes' : 'No'; ?></td>
+                            <td>
+                                <span class="int-badge <?php echo $p['is_active'] ? 'int-badge-active' : 'int-badge-inactive'; ?>">
+                                    <?php echo $p['is_active'] ? 'Active' : 'Inactive'; ?>
+                                </span>
+                            </td>
+                            <td><?php echo date('M d, Y', strtotime($p['created_at'])); ?></td>
+                            <td>
+                                <button class="int-btn int-btn-outline int-btn-sm" onclick="editParser(<?php echo $p['id']; ?>)">
+                                    <i class="fas fa-edit"></i> Edit
+                                </button>
+                                <button class="int-btn int-btn-danger int-btn-sm" onclick="deleteParser(<?php echo $p['id']; ?>)">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </div>
 </div>
-<?php endif; ?>  <!-- Section: API Connections -->
-<?php if ($section === 'api_connections'): ?>  <!-- Fleet Card API Configuration Form -->
-<div class="int-card">  <div class="int-card-header">  <h3><i class="fas fa-credit-card"></i> Fleet Card API Configuration</h3>  </div>  <div class="int-card-body">  <form id="fleetCardForm" method="POST" action="../backend/api/superadmin_integration_api.php">  <input type="hidden" name="csrf_token" value="<?php echo $csrf; ?>">  <input type="hidden" name="action" value="save_api_config">  <input type="hidden" name="id" value="<?php echo htmlspecialchars($fc_config['id'] ?? '0'); ?>">  <div class="int-form-row">  <div class="int-form-group">  <label>Fleet Card API Key <span style="color:red;">*</span></label>  <input type="password" name="api_key" placeholder="Enter Fleet Card API Key" value="<?php echo htmlspecialchars($fc_config['api_key'] ?? ''); ?>" required>  <span class="int-form-hint">Used to authenticate fleet card transactions</span>  </div>  <div class="int-form-group">  <label>Endpoint URL <span style="color:red;">*</span></label>  <input type="url" name="endpoint_url" placeholder="https://api.fleetcard.com/v1" value="<?php echo htmlspecialchars($fc_config['endpoint_url'] ?? ''); ?>" required>  <span class="int-form-hint">Fleet Card API endpoint</span>  </div>  </div>  <div class="int-form-row">  <div class="int-form-group">  <label>Authentication Type</label>  <select name="auth_type">  <?php $fc_auth = $fc_config['auth_type'] ?? 'api_key'; ?>  <option value="api_key" <?php echo $fc_auth === 'api_key' ? 'selected' : ''; ?>>API Key</option>  <option value="bearer" <?php echo $fc_auth === 'bearer' ? 'selected' : ''; ?>>Bearer Token</option>  <option value="basic" <?php echo $fc_auth === 'basic' ? 'selected' : ''; ?>>Basic Auth</option>  <option value="none" <?php echo $fc_auth === 'none' ? 'selected' : ''; ?>>None</option>  </select>  </div>  <div class="int-form-group">  <label>Configuration Name</label>  <input type="text" name="config_name" placeholder="e.g., Fleet Card Production" value="<?php echo htmlspecialchars($fc_config['config_name'] ?? 'Fleet Card API'); ?>" required>  </div>  </div>  <div class="int-form-row full">  <div class="int-form-group">  <label>Authentication Keys (JSON format)</label>  <textarea name="auth_keys" rows="3" placeholder='{"client_id": "your_client_id", "client_secret": "your_secret"}'><?php echo htmlspecialchars($fc_config['auth_keys'] ?? ''); ?></textarea>  <span class="int-form-hint">Store additional tokens/keys in JSON format</span>  </div>  </div>  <div style="display:flex;gap:10px;margin-top:20px;">  <?php if ($can_edit): ?>  <button type="submit" class="int-btn int-btn-primary">  <i class="fas fa-save"></i> Save Configuration  </button>  <?php endif; ?>  <button type="button" class="int-btn int-btn-success" onclick="testFleetCardConnection()">  <i class="fas fa-vial"></i> Test Connection  </button>  </div>  </form>  </div>
-</div>  <!-- ERP System Connection Form -->
-<div class="int-card" style="margin-top:20px;">  <div class="int-card-header">  <h3><i class="fas fa-database"></i> ERP System Connection</h3>  </div>  <div class="int-card-body">  <form id="erpConnectionForm" method="POST" action="../backend/api/superadmin_integration_api.php">  <input type="hidden" name="csrf_token" value="<?php echo $csrf; ?>">  <input type="hidden" name="action" value="save_erp_connection">  <input type="hidden" name="id" value="<?php echo htmlspecialchars($erp_config['id'] ?? '0'); ?>">  <div class="int-form-row">  <div class="int-form-group">  <label>ERP Endpoint URL <span style="color:red;">*</span></label>  <input type="url" name="endpoint_url" placeholder="https://erp.company.com/api" value="<?php echo htmlspecialchars($erp_config['endpoint_url'] ?? ''); ?>" required>  <span class="int-form-hint">Connect ERP system to database</span>  </div>  <div class="int-form-group">  <label>Connection Name <span style="color:red;">*</span></label>  <input type="text" name="connection_name" placeholder="e.g., SAP ERP Production" value="<?php echo htmlspecialchars($erp_config['connection_name'] ?? 'ERP System'); ?>" required>  </div>  </div>  <div class="int-form-row full">  <div class="int-form-group">  <label>Authentication Keys (JSON format) <span style="color:red;">*</span></label>  <textarea name="auth_keys" rows="4" placeholder='{"username": "erp_user", "password": "secure_password", "api_token": "token_here"}' required><?php echo htmlspecialchars($erp_config['auth_keys'] ?? ''); ?></textarea>  <span class="int-form-hint">Store authentication tokens and keys securely</span>  </div>  </div>  <div style="display:flex;gap:10px;margin-top:20px;">  <?php if ($can_edit): ?>  <button type="submit" class="int-btn int-btn-primary">  <i class="fas fa-save"></i> Save Connection  </button>  <?php endif; ?>  <button type="button" class="int-btn int-btn-success" onclick="testErpConnection()">  <i class="fas fa-vial"></i> Test Connection  </button>  </div>  </form>  </div>
-</div>  <!-- Saved Configurations Table -->
-<div class="int-card" style="margin-top:20px;">  <div class="int-card-header">  <h3><i class="fas fa-list"></i> Saved API Configurations</h3>  </div>  <div class="int-card-body">  <?php  $all_configs = array_merge(  array_map(function($c) { $c['type'] = 'Fleet Card'; return $c; }, $api_configs),  array_map(function($c) { $c['type'] = 'ERP System'; return $c; }, $erp_connections)  );  ?>  <?php if (empty($all_configs)): ?>  <p style="text-align:center;color:#999;padding:40px 20px">  <i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:12px;opacity:.3"></i>  No API configurations saved yet. Fill the forms above to create your first configuration.  </p>  <?php else: ?>  <div class="int-table-wrap">  <table class="int-table">  <thead>  <tr>  <th>Type</th>  <th>Name</th>  <th>Endpoint URL</th>  <th>Status</th>  <th>Last Test</th>  <th>Actions</th>  </tr>  </thead>  <tbody>  <?php foreach ($all_configs as $config): ?>  <tr>  <td><strong><?php echo $config['type']; ?></strong></td>  <td><?php echo htmlspecialchars($config['config_name'] ?? $config['connection_name'] ?? 'N/A'); ?></td>  <td><?php echo htmlspecialchars(substr($config['endpoint_url'], 0, 40)) . (strlen($config['endpoint_url']) > 40 ? '...' : ''); ?></td>  <td>  <span class="int-badge int-badge-<?php echo ($config['test_status'] ?? $config['connection_status'] ?? 'untested'); ?>">  <?php echo ucfirst($config['test_status'] ?? $config['connection_status'] ?? 'Untested'); ?>  </span>  </td>  <td><?php echo ($config['last_tested_at'] ?? $config['last_connected_at'] ?? null) ? date('M d, Y H:i', strtotime($config['last_tested_at'] ?? $config['last_connected_at'])) : 'Never'; ?></td>  <td>  <button class="int-btn int-btn-danger int-btn-sm" onclick="deleteConfig(<?php echo $config['id']; ?>, '<?php echo $config['type']; ?>')">  <i class="fas fa-trash"></i> Delete  </button>  </td>  </tr>  <?php endforeach; ?>  </tbody>  </table>  </div>  <?php endif; ?>  </div>
+<?php endif; ?>
+
+<!-- Section: API Connections -->
+<?php if ($section === 'api_connections'): ?>
+
+<!-- Fleet Card API Configuration Form -->
+<div class="int-card">
+    <div class="int-card-header">
+        <h3><i class="fas fa-credit-card"></i> Fleet Card API Configuration</h3>
+    </div>
+    <div class="int-card-body">
+        <form id="fleetCardForm" method="POST" action="../backend/api/superadmin_integration_api.php">
+            <input type="hidden" name="csrf_token" value="<?php echo $csrf; ?>">
+            <input type="hidden" name="action" value="save_api_config">
+            <input type="hidden" name="id" value="<?php echo htmlspecialchars($fc_config['id'] ?? '0'); ?>">
+            
+            <div class="int-form-row">
+                <div class="int-form-group">
+                    <label>Fleet Card API Key <span style="color:red;">*</span></label>
+                    <input type="password" name="api_key" placeholder="Enter Fleet Card API Key" value="<?php echo htmlspecialchars($fc_config['api_key'] ?? ''); ?>" required>
+                    <span class="int-form-hint">Used to authenticate fleet card transactions</span>
+                </div>
+                <div class="int-form-group">
+                    <label>Endpoint URL <span style="color:red;">*</span></label>
+                    <input type="url" name="endpoint_url" placeholder="https://api.fleetcard.com/v1" value="<?php echo htmlspecialchars($fc_config['endpoint_url'] ?? ''); ?>" required>
+                    <span class="int-form-hint">Fleet Card API endpoint</span>
+                </div>
+            </div>
+            
+            <div class="int-form-row">
+                <div class="int-form-group">
+                    <label>Authentication Type</label>
+                    <select name="auth_type">
+                        <?php $fc_auth = $fc_config['auth_type'] ?? 'api_key'; ?>
+                        <option value="api_key" <?php echo $fc_auth === 'api_key' ? 'selected' : ''; ?>>API Key</option>
+                        <option value="bearer" <?php echo $fc_auth === 'bearer' ? 'selected' : ''; ?>>Bearer Token</option>
+                        <option value="basic" <?php echo $fc_auth === 'basic' ? 'selected' : ''; ?>>Basic Auth</option>
+                        <option value="none" <?php echo $fc_auth === 'none' ? 'selected' : ''; ?>>None</option>
+                    </select>
+                </div>
+                <div class="int-form-group">
+                    <label>Configuration Name</label>
+                    <input type="text" name="config_name" placeholder="e.g., Fleet Card Production" value="<?php echo htmlspecialchars($fc_config['config_name'] ?? 'Fleet Card API'); ?>" required>
+                </div>
+            </div>
+            
+            <div class="int-form-row full">
+                <div class="int-form-group">
+                    <label>Authentication Keys (JSON format)</label>
+                    <textarea name="auth_keys" rows="3" placeholder='{"client_id": "your_client_id", "client_secret": "your_secret"}'><?php echo htmlspecialchars($fc_config['auth_keys'] ?? ''); ?></textarea>
+                    <span class="int-form-hint">Store additional tokens/keys in JSON format</span>
+                </div>
+            </div>
+            
+            <div style="display:flex;gap:10px;margin-top:20px;">
+                <?php if ($can_edit): ?>
+                <button type="submit" class="int-btn int-btn-primary">
+                    <i class="fas fa-save"></i> Save Configuration
+                </button>
+                <?php endif; ?>
+                <button type="button" class="int-btn int-btn-success" onclick="testFleetCardConnection()">
+                    <i class="fas fa-vial"></i> Test Connection
+                </button>
+            </div>
+        </form>
+    </div>
 </div>
-<?php endif; ?>  <!-- Section: Git Workflow -->
-<?php if ($section === 'git_workflow'): ?>  <!-- Git Repository Configuration Form -->
-<div class="int-card">  <div class="int-card-header">  <h3><i class="fas fa-code-branch"></i> Git Repository Configuration</h3>  </div>  <div class="int-card-body">  <form id="gitRepoForm" method="POST" action="../backend/api/superadmin_integration_api.php">  <input type="hidden" name="csrf_token" value="<?php echo $csrf; ?>">  <input type="hidden" name="action" value="save_git_repo">  <input type="hidden" name="id" value="<?php echo htmlspecialchars($git_config['id'] ?? '0'); ?>">  <div class="int-form-row">  <div class="int-form-group">  <label>Repository URL <span style="color:red;">*</span></label>  <input type="url" name="repo_url" placeholder="https://github.com/organization/repository.git" value="<?php echo htmlspecialchars($git_config['repo_url'] ?? ''); ?>" required>  <span class="int-form-hint">Link to your project repository</span>  </div>  <div class="int-form-group">  <label>Repository Name <span style="color:red;">*</span></label>  <input type="text" name="repo_name" placeholder="e.g., Petron System Main" value="<?php echo htmlspecialchars($git_config['repo_name'] ?? ''); ?>" required>  </div>  </div>  <div class="int-form-row">  <div class="int-form-group">  <label>Branch Selector <span style="color:red;">*</span></label>  <select name="current_branch" required>  <?php $git_branch = $git_config['current_branch'] ?? 'main'; ?>  <option value="main" <?php echo $git_branch === 'main' ? 'selected' : ''; ?>>main</option>  <option value="master" <?php echo $git_branch === 'master' ? 'selected' : ''; ?>>master</option>  <option value="dev" <?php echo $git_branch === 'dev' ? 'selected' : ''; ?>>dev</option>  <option value="development" <?php echo $git_branch === 'development' ? 'selected' : ''; ?>>development</option>  <option value="feature" <?php echo $git_branch === 'feature' ? 'selected' : ''; ?>>feature</option>  <option value="staging" <?php echo $git_branch === 'staging' ? 'selected' : ''; ?>>staging</option>  </select>  <span class="int-form-hint">Select active branch</span>  </div>  <div class="int-form-group">  <label>Merge Rules</label>  <select name="merge_rules">  <?php $git_rules = $git_config['merge_rules'] ?? 'require_pr'; ?>  <option value="require_pr" <?php echo $git_rules === 'require_pr' ? 'selected' : ''; ?>>Require Pull Request</option>  <option value="require_review" <?php echo $git_rules === 'require_review' ? 'selected' : ''; ?>>Require Code Review</option>  <option value="require_approval" <?php echo $git_rules === 'require_approval' ? 'selected' : ''; ?>>Require Approval</option>  <option value="auto_merge" <?php echo $git_rules === 'auto_merge' ? 'selected' : ''; ?>>Auto Merge</option>  <option value="manual_only" <?php echo $git_rules === 'manual_only' ? 'selected' : ''; ?>>Manual Only</option>  </select>  <span class="int-form-hint">Define merge restrictions</span>  </div>  </div>  <div style="display:flex;gap:10px;margin-top:20px;">  <?php if ($can_edit): ?>  <button type="submit" class="int-btn int-btn-primary">  <i class="fas fa-save"></i> Save Repository  </button>  <button type="button" class="int-btn int-btn-success" onclick="triggerGitPush()">  <i class="fas fa-arrow-up"></i> Push  </button>  <button type="button" class="int-btn int-btn-info" onclick="triggerGitPull()">  <i class="fas fa-arrow-down"></i> Pull  </button>  <?php endif; ?>  </div>  </form>  </div>
-</div>  <!-- Saved Git Repositories Table -->
-<div class="int-card" style="margin-top:20px;">  <div class="int-card-header">  <h3><i class="fas fa-list"></i> Saved Git Repositories</h3>  </div>  <div class="int-card-body">  <?php if (empty($git_repos)): ?>  <p style="text-align:center;color:#999;padding:40px 20px">  <i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:12px;opacity:.3"></i>  No Git repositories configured yet. Fill the form above to add a repository.  </p>  <?php else: ?>  <div class="int-table-wrap">  <table class="int-table">  <thead>  <tr>  <th>Repo Name</th>  <th>Repo URL</th>  <th>Branch</th>  <th>Merge Rules</th>  <th>Last Pull</th>  <th>Last Push</th>  <th>Actions</th>  </tr>  </thead>  <tbody>  <?php foreach ($git_repos as $repo): ?>  <tr>  <td><strong><?php echo htmlspecialchars($repo['repo_name']); ?></strong></td>  <td title="<?php echo htmlspecialchars($repo['repo_url']); ?>"><?php echo htmlspecialchars($repo['repo_url']); ?></td>  <td><span class="int-badge int-badge-ok"><?php echo htmlspecialchars($repo['current_branch']); ?></span></td>  <td><?php echo htmlspecialchars($repo['merge_rules'] ?: 'None'); ?></td>  <td><?php echo $repo['last_pull_at'] ? date('M d, Y H:i', strtotime($repo['last_pull_at'])) : 'Never'; ?></td>  <td><?php echo $repo['last_push_at'] ? date('M d, Y H:i', strtotime($repo['last_push_at'])) : 'Never'; ?></td>  <td>  <?php if ($can_edit): ?>  <button class="int-btn int-btn-danger int-btn-sm" onclick="deleteGitRepo(<?php echo $repo['id']; ?>)">  <i class="fas fa-trash"></i> Delete  </button>  <?php else: ?>  <span style="color:#aaa;">No Action</span>  <?php endif; ?>  </td>  </tr>  <?php endforeach; ?>  </tbody>  </table>  </div>  <?php endif; ?>  </div>
-</div>  <!-- Commit Log Table -->
-<div class="int-card" style="margin-top:20px;">  <div class="int-card-header">  <h3><i class="fas fa-history"></i> Commit Log</h3>  </div>  <div class="int-card-body">  <div class="int-info">  <i class="fas fa-info-circle"></i>  <div>Track commits, authors, and timestamps from your repositories</div>  </div>  <?php if (empty($git_commits)): ?>  <p style="text-align:center;color:#999;padding:40px 20px">  <i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:12px;opacity:.3"></i>  No commits logged yet. Commits will appear here after repository sync.  </p>  <?php else: ?>  <div class="int-table-wrap">  <table class="int-table">  <thead>  <tr>  <th>Repository</th>  <th>Branch</th>  <th>Commit Hash</th>  <th>Author</th>  <th>Message</th>  <th>Timestamp</th>  </tr>  </thead>  <tbody>  <?php foreach ($git_commits as $gc): ?>  <tr>  <td><?php echo htmlspecialchars($gc['repo_name'] ?? 'Unknown'); ?></td>  <td><span class="int-badge int-badge-ok"><?php echo htmlspecialchars($gc['branch_name']); ?></span></td>  <td><code><?php echo htmlspecialchars(substr($gc['commit_hash'], 0, 8)); ?></code></td>  <td><?php echo htmlspecialchars($gc['author']); ?></td>  <td title="<?php echo htmlspecialchars($gc['commit_message']); ?>">  <?php echo htmlspecialchars(substr($gc['commit_message'] ?? '', 0, 50)) . (strlen($gc['commit_message'] ?? '') > 50 ? '...' : ''); ?>  </td>  <td><?php echo date('M d, Y H:i', strtotime($gc['created_at'])); ?></td>  </tr>  <?php endforeach; ?>  </tbody>  </table>  </div>  <?php endif; ?>  </div>
-</div>  <!-- Deployment Pipeline -->
-<div class="int-card" style="margin-top:20px;">  <div class="int-card-header">  <h3><i class="fas fa-rocket"></i> Deployment Pipeline</h3>  </div>  <div class="int-card-body">  <form id="deploymentForm" method="POST" action="../backend/api/superadmin_integration_api.php">  <input type="hidden" name="csrf_token" value="<?php echo $csrf; ?>">  <input type="hidden" name="action" value="trigger_deployment">  <div class="int-form-row">  <div class="int-form-group">  <label>Select Repository <span style="color:red;">*</span></label>  <select name="repo_id" required>  <option value="">-- Select Repository --</option>  <?php foreach ($git_repos as $repo): ?>  <option value="<?php echo $repo['id']; ?>">  <?php echo htmlspecialchars($repo['repo_name']); ?> (<?php echo $repo['current_branch']; ?>)  </option>  <?php endforeach; ?>  </select>  </div>  <div class="int-form-group">  <label>Deployment Type</label>  <select name="deployment_type">  <option value="manual">Manual</option>  <option value="auto">Automatic</option>  <option value="scheduled">Scheduled</option>  </select>  </div>  </div>  <div class="int-form-row full">  <div class="int-form-group">  <label>Deployment Notes</label>  <textarea name="notes" rows="3" placeholder="Enter deployment notes, changes, or remarks"></textarea>  </div>  </div>  <button type="submit" class="int-btn int-btn-primary" style="margin-top:10px;">  <i class="fas fa-rocket"></i> Trigger Deployment  </button>  </form>  <!-- Deployment History -->  <h4 style="margin-top:30px;margin-bottom:15px;font-size:14px;font-weight:700;color:var(--petron-blue)">  <i class="fas fa-list"></i> Recent Deployments  </h4>  <?php if (empty($deployment_history)): ?>  <p style="text-align:center;color:#999;padding:20px">  No deployments logged yet.  </p>  <?php else: ?>  <div class="int-table-wrap">  <table class="int-table">  <thead>  <tr>  <th>Repository</th>  <th>Commit Hash</th>  <th>Type</th>  <th>Status</th>  <th>Deployed By</th>  <th>Deployed At</th>  <th>Notes</th>  </tr>  </thead>  <tbody>  <?php foreach ($deployment_history as $dh): ?>  <tr>  <td><?php echo htmlspecialchars($dh['repo_name'] ?? 'Unknown'); ?></td>  <td><code><?php echo htmlspecialchars(substr($dh['commit_hash'] ?? 'N/A', 0, 8)); ?></code></td>  <td><?php echo ucfirst($dh['deployment_type']); ?></td>  <td>  <span class="int-badge <?php  echo $dh['status'] === 'success' ? 'int-badge-ok' :  ($dh['status'] === 'failed' ? 'int-badge-fail' : 'int-badge-untested');  ?>">  <?php echo ucfirst($dh['status']); ?>  </span>  </td>  <td><?php echo htmlspecialchars($dh['deployed_by_name'] ?? 'Unknown'); ?></td>  <td><?php echo date('M d, Y H:i', strtotime($dh['deployed_at'])); ?></td>  <td title="<?php echo htmlspecialchars($dh['notes'] ?? ''); ?>">  <?php echo htmlspecialchars(substr($dh['notes'] ?? '-', 0, 30)) . (strlen($dh['notes'] ?? '') > 30 ? '...' : ''); ?>  </td>  </tr>  <?php endforeach; ?>  </tbody>  </table>  </div>  <?php endif; ?>  </div>
+
+<!-- ERP System Connection Form -->
+<div class="int-card" style="margin-top:20px;">
+    <div class="int-card-header">
+        <h3><i class="fas fa-database"></i> ERP System Connection</h3>
+    </div>
+    <div class="int-card-body">
+        <form id="erpConnectionForm" method="POST" action="../backend/api/superadmin_integration_api.php">
+            <input type="hidden" name="csrf_token" value="<?php echo $csrf; ?>">
+            <input type="hidden" name="action" value="save_erp_connection">
+            <input type="hidden" name="id" value="<?php echo htmlspecialchars($erp_config['id'] ?? '0'); ?>">
+            
+            <div class="int-form-row">
+                <div class="int-form-group">
+                    <label>ERP Endpoint URL <span style="color:red;">*</span></label>
+                    <input type="url" name="endpoint_url" placeholder="https://erp.company.com/api" value="<?php echo htmlspecialchars($erp_config['endpoint_url'] ?? ''); ?>" required>
+                    <span class="int-form-hint">Connect ERP system to database</span>
+                </div>
+                <div class="int-form-group">
+                    <label>Connection Name <span style="color:red;">*</span></label>
+                    <input type="text" name="connection_name" placeholder="e.g., SAP ERP Production" value="<?php echo htmlspecialchars($erp_config['connection_name'] ?? 'ERP System'); ?>" required>
+                </div>
+            </div>
+            
+            <div class="int-form-row full">
+                <div class="int-form-group">
+                    <label>Authentication Keys (JSON format) <span style="color:red;">*</span></label>
+                    <textarea name="auth_keys" rows="4" placeholder='{"username": "erp_user", "password": "secure_password", "api_token": "token_here"}' required><?php echo htmlspecialchars($erp_config['auth_keys'] ?? ''); ?></textarea>
+                    <span class="int-form-hint">Store authentication tokens and keys securely</span>
+                </div>
+            </div>
+            
+            <div style="display:flex;gap:10px;margin-top:20px;">
+                <?php if ($can_edit): ?>
+                <button type="submit" class="int-btn int-btn-primary">
+                    <i class="fas fa-save"></i> Save Connection
+                </button>
+                <?php endif; ?>
+                <button type="button" class="int-btn int-btn-success" onclick="testErpConnection()">
+                    <i class="fas fa-vial"></i> Test Connection
+                </button>
+            </div>
+        </form>
+    </div>
 </div>
-<?php endif; ?>  <!-- Section: External System Sync -->
-<?php if ($section === 'external_sync'): ?>  <!-- Sync Job Configuration Form -->
-<div class="int-card">  <div class="int-card-header">  <h3><i class="fas fa-sync"></i> External System Sync Configuration</h3>  </div>  <div class="int-card-body">  <form id="syncJobForm" method="POST" action="../backend/api/superadmin_integration_api.php">  <input type="hidden" name="csrf_token" value="<?php echo $csrf; ?>">  <input type="hidden" name="action" value="save_sync_job">  <input type="hidden" name="id" value="<?php echo htmlspecialchars($sync_config['id'] ?? '0'); ?>">  <div class="int-form-row">  <div class="int-form-group">  <label>Sync Job Name <span style="color:red;">*</span></label>  <input type="text" name="job_name" placeholder="e.g., Daily Inventory Sync" value="<?php echo htmlspecialchars($sync_config['job_name'] ?? ''); ?>" required>  <span class="int-form-hint">Identify this sync task</span>  </div>  <div class="int-form-group">  <label>Sync Frequency <span style="color:red;">*</span></label>  <select name="sync_frequency" required>  <?php $sync_freq = $sync_config['sync_frequency'] ?? 'daily'; ?>  <option value="realtime" <?php echo $sync_freq === 'realtime' ? 'selected' : ''; ?>>Real-time</option>  <option value="hourly" <?php echo $sync_freq === 'hourly' ? 'selected' : ''; ?>>Hourly</option>  <option value="daily" <?php echo $sync_freq === 'daily' ? 'selected' : ''; ?>>Daily</option>  <option value="weekly" <?php echo $sync_freq === 'weekly' ? 'selected' : ''; ?>>Weekly</option>  <option value="manual" <?php echo $sync_freq === 'manual' ? 'selected' : ''; ?>>Manual Only</option>  </select>  <span class="int-form-hint">Select sync schedule</span>  </div>  </div>  <div class="int-form-row full">  <div class="int-form-group">  <label>External Feed URL <span style="color:red;">*</span></label>  <input type="url" name="external_feed_url" placeholder="https://external-system.com/api/data" value="<?php echo htmlspecialchars($sync_config['external_feed_url'] ?? ''); ?>" required>  <span class="int-form-hint">Connect to external data source</span>  </div>  </div>  <div class="int-form-row">  <div class="int-form-group">  <label>Conflict Resolution <span style="color:red;">*</span></label>  <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">  <?php $sync_conflict = $sync_config['conflict_resolution'] ?? 'merge'; ?>  <label style="display:flex;align-items:center;gap:8px;font-weight:normal;cursor:pointer;">  <input type="radio" name="conflict_resolution" value="overwrite" <?php echo $sync_conflict === 'overwrite' ? 'checked' : ''; ?> required>  <span>Overwrite - External data overwrites local data</span>  </label>  <label style="display:flex;align-items:center;gap:8px;font-weight:normal;cursor:pointer;">  <input type="radio" name="conflict_resolution" value="merge" <?php echo $sync_conflict === 'merge' ? 'checked' : ''; ?> required>  <span>Merge - Combine external and local data</span>  </label>  <label style="display:flex;align-items:center;gap:8px;font-weight:normal;cursor:pointer;">  <input type="radio" name="conflict_resolution" value="skip" <?php echo $sync_conflict === 'skip' ? 'checked' : ''; ?> required>  <span>Skip - Keep local data, ignore external changes</span>  </label>  </div>  </div>  <div class="int-form-group">  <label>Enable Sync Job</label>  <label class="int-toggle" style="margin-top:8px;">  <input type="checkbox" name="is_active" value="1" <?php echo ($sync_config['is_active'] ?? 1) ? 'checked' : ''; ?>>  <span class="int-toggle-slider"></span>  </label>  <span class="int-form-hint">Active jobs run on schedule</span>  </div>  </div>  <div style="display:flex;gap:10px;margin-top:20px;">  <?php if ($can_edit): ?>  <button type="submit" class="int-btn int-btn-primary">  <i class="fas fa-save"></i> Save Sync Job  </button>  <button type="button" class="int-btn int-btn-success" onclick="triggerSyncNow()">  <i class="fas fa-sync"></i> Sync Now  </button>  <?php endif; ?>  </div>  </form>  </div>
-</div>  <!-- Saved Sync Jobs Table -->
-<div class="int-card" style="margin-top:20px;">  <div class="int-card-header">  <h3><i class="fas fa-tasks"></i> Configured Sync Jobs</h3>  </div>  <div class="int-card-body">  <?php if (empty($sync_jobs)): ?>  <p style="text-align:center;color:#999;padding:40px 20px">  <i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:12px;opacity:.3"></i>  No sync jobs configured yet. Fill the form above to create your first sync job.  </p>  <?php else: ?>  <div class="int-table-wrap">  <table class="int-table">  <thead>  <tr>  <th>Job Name</th>  <th>Frequency</th>  <th>External Feed URL</th>  <th>Conflict Resolution</th>  <th>Last Sync</th>  <th>Status</th>  <th>Actions</th>  </tr>  </thead>  <tbody>  <?php foreach ($sync_jobs as $sj): ?>  <tr>  <td><strong><?php echo htmlspecialchars($sj['job_name']); ?></strong></td>  <td><?php echo ucfirst($sj['sync_frequency']); ?></td>  <td title="<?php echo htmlspecialchars($sj['external_feed_url'] ?? ''); ?>">  <?php echo htmlspecialchars(substr($sj['external_feed_url'] ?? 'N/A', 0, 35)) . (strlen($sj['external_feed_url'] ?? '') > 35 ? '...' : ''); ?>  </td>  <td><?php echo ucfirst($sj['conflict_resolution']); ?></td>  <td><?php echo $sj['last_synced_at'] ? date('M d, Y H:i', strtotime($sj['last_synced_at'])) : 'Never'; ?></td>  <td>  <span class="int-badge <?php  echo $sj['sync_status'] === 'success' ? 'int-badge-ok' :  ($sj['sync_status'] === 'failed' ? 'int-badge-fail' : 'int-badge-untested');  ?>">  <?php echo ucfirst($sj['sync_status']); ?>  </span>  </td>  <td>  <button class="int-btn int-btn-success int-btn-sm" onclick="executeSyncJob(<?php echo $sj['id']; ?>)">  <i class="fas fa-sync"></i> Sync  </button>  <button class="int-btn int-btn-danger int-btn-sm" onclick="deleteSyncJob(<?php echo $sj['id']; ?>)">  <i class="fas fa-trash"></i>  </button>  </td>  </tr>  <?php endforeach; ?>  </tbody>  </table>  </div>  <?php endif; ?>  </div>
-</div>  <!-- Sync Logs Table View -->
-<div class="int-card" style="margin-top:20px;">  <div class="int-card-header">  <h3><i class="fas fa-list"></i> Sync Logs</h3>  </div>  <div class="int-card-body">  <div class="int-info">  <i class="fas fa-info-circle"></i>  <div>View sync execution history with status, records synced, and error messages</div>  </div>  <?php if (empty($sync_logs)): ?>  <p style="text-align:center;color:#999;padding:40px 20px">  <i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:12px;opacity:.3"></i>  No sync logs yet. Logs will appear here after sync jobs are executed.  </p>  <?php else: ?>  <div class="int-table-wrap">  <table class="int-table">  <thead>  <tr>  <th>Job Name</th>  <th>Status</th>  <th>Records Synced</th>  <th>Error Message</th>  <th>Synced At</th>  </tr>  </thead>  <tbody>  <?php foreach ($sync_logs as $sl): ?>  <tr>  <td><?php echo htmlspecialchars($sl['job_name'] ?? 'Unknown'); ?></td>  <td>  <span class="int-badge <?php  echo $sl['sync_status'] === 'success' ? 'int-badge-ok' :  ($sl['sync_status'] === 'failed' ? 'int-badge-fail' : 'int-badge-untested');  ?>">  <?php echo ucfirst($sl['sync_status']); ?>  </span>  </td>  <td><?php echo number_format($sl['records_synced']); ?></td>  <td title="<?php echo htmlspecialchars($sl['error_message'] ?? ''); ?>">  <?php echo htmlspecialchars(substr($sl['error_message'] ?? '-', 0, 40)) . (strlen($sl['error_message'] ?? '') > 40 ? '...' : ''); ?>  </td>  <td><?php echo date('M d, Y H:i:s', strtotime($sl['synced_at'])); ?></td>  </tr>  <?php endforeach; ?>  </tbody>  </table>  </div>  <?php endif; ?>  </div>
+
+<!-- Saved Configurations Table -->
+<div class="int-card" style="margin-top:20px;">
+    <div class="int-card-header">
+        <h3><i class="fas fa-list"></i> Saved API Configurations</h3>
+    </div>
+    <div class="int-card-body">
+        <?php 
+        $all_configs = array_merge(
+            array_map(function($c) { $c['type'] = 'Fleet Card'; return $c; }, $api_configs),
+            array_map(function($c) { $c['type'] = 'ERP System'; return $c; }, $erp_connections)
+        );
+        ?>
+        
+        <?php if (empty($all_configs)): ?>
+            <p style="text-align:center;color:#999;padding:40px 20px">
+                <i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:12px;opacity:.3"></i>
+                No API configurations saved yet. Fill the forms above to create your first configuration.
+            </p>
+        <?php else: ?>
+            <div class="int-table-wrap">
+                <table class="int-table">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Name</th>
+                            <th>Endpoint URL</th>
+                            <th>Status</th>
+                            <th>Last Test</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($all_configs as $config): ?>
+                        <tr>
+                            <td><strong><?php echo $config['type']; ?></strong></td>
+                            <td><?php echo htmlspecialchars($config['config_name'] ?? $config['connection_name'] ?? 'N/A'); ?></td>
+                            <td><?php echo htmlspecialchars(substr($config['endpoint_url'], 0, 40)) . (strlen($config['endpoint_url']) > 40 ? '...' : ''); ?></td>
+                            <td>
+                                <span class="int-badge int-badge-<?php echo ($config['test_status'] ?? $config['connection_status'] ?? 'untested'); ?>">
+                                    <?php echo ucfirst($config['test_status'] ?? $config['connection_status'] ?? 'Untested'); ?>
+                                </span>
+                            </td>
+                            <td><?php echo ($config['last_tested_at'] ?? $config['last_connected_at'] ?? null) ? date('M d, Y H:i', strtotime($config['last_tested_at'] ?? $config['last_connected_at'])) : 'Never'; ?></td>
+                            <td>
+                                <button class="int-btn int-btn-danger int-btn-sm" onclick="deleteConfig(<?php echo $config['id']; ?>, '<?php echo $config['type']; ?>')">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </div>
 </div>
-<?php endif; ?>  <!-- Section: Audit Trail Logging -->
+<?php endif; ?>
+
+<!-- Section: Git Workflow -->
+<?php if ($section === 'git_workflow'): ?>
+
+<!-- Git Repository Configuration Form -->
+<div class="int-card">
+    <div class="int-card-header">
+        <h3><i class="fas fa-code-branch"></i> Git Repository Configuration</h3>
+    </div>
+    <div class="int-card-body">
+        <form id="gitRepoForm" method="POST" action="../backend/api/superadmin_integration_api.php">
+            <input type="hidden" name="csrf_token" value="<?php echo $csrf; ?>">
+            <input type="hidden" name="action" value="save_git_repo">
+            <input type="hidden" name="id" value="<?php echo htmlspecialchars($git_config['id'] ?? '0'); ?>">
+            
+            <div class="int-form-row">
+                <div class="int-form-group">
+                    <label>Repository URL <span style="color:red;">*</span></label>
+                    <input type="url" name="repo_url" placeholder="https://github.com/organization/repository.git" value="<?php echo htmlspecialchars($git_config['repo_url'] ?? ''); ?>" required>
+                    <span class="int-form-hint">Link to your project repository</span>
+                </div>
+                <div class="int-form-group">
+                    <label>Repository Name <span style="color:red;">*</span></label>
+                    <input type="text" name="repo_name" placeholder="e.g., Petron System Main" value="<?php echo htmlspecialchars($git_config['repo_name'] ?? ''); ?>" required>
+                </div>
+            </div>
+            
+            <div class="int-form-row">
+                <div class="int-form-group">
+                    <label>Branch Selector <span style="color:red;">*</span></label>
+                    <select name="current_branch" required>
+                        <?php $git_branch = $git_config['current_branch'] ?? 'main'; ?>
+                        <option value="main" <?php echo $git_branch === 'main' ? 'selected' : ''; ?>>main</option>
+                        <option value="master" <?php echo $git_branch === 'master' ? 'selected' : ''; ?>>master</option>
+                        <option value="dev" <?php echo $git_branch === 'dev' ? 'selected' : ''; ?>>dev</option>
+                        <option value="development" <?php echo $git_branch === 'development' ? 'selected' : ''; ?>>development</option>
+                        <option value="feature" <?php echo $git_branch === 'feature' ? 'selected' : ''; ?>>feature</option>
+                        <option value="staging" <?php echo $git_branch === 'staging' ? 'selected' : ''; ?>>staging</option>
+                    </select>
+                    <span class="int-form-hint">Select active branch</span>
+                </div>
+                <div class="int-form-group">
+                    <label>Merge Rules</label>
+                    <select name="merge_rules">
+                        <?php $git_rules = $git_config['merge_rules'] ?? 'require_pr'; ?>
+                        <option value="require_pr" <?php echo $git_rules === 'require_pr' ? 'selected' : ''; ?>>Require Pull Request</option>
+                        <option value="require_review" <?php echo $git_rules === 'require_review' ? 'selected' : ''; ?>>Require Code Review</option>
+                        <option value="require_approval" <?php echo $git_rules === 'require_approval' ? 'selected' : ''; ?>>Require Approval</option>
+                        <option value="auto_merge" <?php echo $git_rules === 'auto_merge' ? 'selected' : ''; ?>>Auto Merge</option>
+                        <option value="manual_only" <?php echo $git_rules === 'manual_only' ? 'selected' : ''; ?>>Manual Only</option>
+                    </select>
+                    <span class="int-form-hint">Define merge restrictions</span>
+                </div>
+            </div>
+            
+            <div style="display:flex;gap:10px;margin-top:20px;">
+                <?php if ($can_edit): ?>
+                <button type="submit" class="int-btn int-btn-primary">
+                    <i class="fas fa-save"></i> Save Repository
+                </button>
+                <button type="button" class="int-btn int-btn-success" onclick="triggerGitPush()">
+                    <i class="fas fa-arrow-up"></i> Push
+                </button>
+                <button type="button" class="int-btn int-btn-info" onclick="triggerGitPull()">
+                    <i class="fas fa-arrow-down"></i> Pull
+                </button>
+                <?php endif; ?>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Saved Git Repositories Table -->
+<div class="int-card" style="margin-top:20px;">
+    <div class="int-card-header">
+        <h3><i class="fas fa-list"></i> Saved Git Repositories</h3>
+    </div>
+    <div class="int-card-body">
+        <?php if (empty($git_repos)): ?>
+            <p style="text-align:center;color:#999;padding:40px 20px">
+                <i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:12px;opacity:.3"></i>
+                No Git repositories configured yet. Fill the form above to add a repository.
+            </p>
+        <?php else: ?>
+            <div class="int-table-wrap">
+                <table class="int-table">
+                    <thead>
+                        <tr>
+                            <th>Repo Name</th>
+                            <th>Repo URL</th>
+                            <th>Branch</th>
+                            <th>Merge Rules</th>
+                            <th>Last Pull</th>
+                            <th>Last Push</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($git_repos as $repo): ?>
+                        <tr>
+                            <td><strong><?php echo htmlspecialchars($repo['repo_name']); ?></strong></td>
+                            <td title="<?php echo htmlspecialchars($repo['repo_url']); ?>"><?php echo htmlspecialchars($repo['repo_url']); ?></td>
+                            <td><span class="int-badge int-badge-ok"><?php echo htmlspecialchars($repo['current_branch']); ?></span></td>
+                            <td><?php echo htmlspecialchars($repo['merge_rules'] ?: 'None'); ?></td>
+                            <td><?php echo $repo['last_pull_at'] ? date('M d, Y H:i', strtotime($repo['last_pull_at'])) : 'Never'; ?></td>
+                            <td><?php echo $repo['last_push_at'] ? date('M d, Y H:i', strtotime($repo['last_push_at'])) : 'Never'; ?></td>
+                            <td>
+                                <?php if ($can_edit): ?>
+                                <button class="int-btn int-btn-danger int-btn-sm" onclick="deleteGitRepo(<?php echo $repo['id']; ?>)">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
+                                <?php else: ?>
+                                <span style="color:#aaa;">No Action</span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </div>
+</div>
+
+<!-- Commit Log Table -->
+<div class="int-card" style="margin-top:20px;">
+    <div class="int-card-header">
+        <h3><i class="fas fa-history"></i> Commit Log</h3>
+    </div>
+    <div class="int-card-body">
+        <div class="int-info">
+            <i class="fas fa-info-circle"></i>
+            <div>Track commits, authors, and timestamps from your repositories</div>
+        </div>
+        
+        <?php if (empty($git_commits)): ?>
+            <p style="text-align:center;color:#999;padding:40px 20px">
+                <i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:12px;opacity:.3"></i>
+                No commits logged yet. Commits will appear here after repository sync.
+            </p>
+        <?php else: ?>
+            <div class="int-table-wrap">
+                <table class="int-table">
+                    <thead>
+                        <tr>
+                            <th>Repository</th>
+                            <th>Branch</th>
+                            <th>Commit Hash</th>
+                            <th>Author</th>
+                            <th>Message</th>
+                            <th>Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($git_commits as $gc): ?>
+                        <tr>
+                            <td><?php echo htmlspecialchars($gc['repo_name'] ?? 'Unknown'); ?></td>
+                            <td><span class="int-badge int-badge-ok"><?php echo htmlspecialchars($gc['branch_name']); ?></span></td>
+                            <td><code><?php echo htmlspecialchars(substr($gc['commit_hash'], 0, 8)); ?></code></td>
+                            <td><?php echo htmlspecialchars($gc['author']); ?></td>
+                            <td title="<?php echo htmlspecialchars($gc['commit_message']); ?>">
+                                <?php echo htmlspecialchars(substr($gc['commit_message'] ?? '', 0, 50)) . (strlen($gc['commit_message'] ?? '') > 50 ? '...' : ''); ?>
+                            </td>
+                            <td><?php echo date('M d, Y H:i', strtotime($gc['created_at'])); ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </div>
+</div>
+
+<!-- Deployment Pipeline -->
+<div class="int-card" style="margin-top:20px;">
+    <div class="int-card-header">
+        <h3><i class="fas fa-rocket"></i> Deployment Pipeline</h3>
+    </div>
+    <div class="int-card-body">
+        <form id="deploymentForm" method="POST" action="../backend/api/superadmin_integration_api.php">
+            <input type="hidden" name="csrf_token" value="<?php echo $csrf; ?>">
+            <input type="hidden" name="action" value="trigger_deployment">
+            
+            <div class="int-form-row">
+                <div class="int-form-group">
+                    <label>Select Repository <span style="color:red;">*</span></label>
+                    <select name="repo_id" required>
+                        <option value="">-- Select Repository --</option>
+                        <?php foreach ($git_repos as $repo): ?>
+                            <option value="<?php echo $repo['id']; ?>">
+                                <?php echo htmlspecialchars($repo['repo_name']); ?> (<?php echo $repo['current_branch']; ?>)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="int-form-group">
+                    <label>Deployment Type</label>
+                    <select name="deployment_type">
+                        <option value="manual">Manual</option>
+                        <option value="auto">Automatic</option>
+                        <option value="scheduled">Scheduled</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="int-form-row full">
+                <div class="int-form-group">
+                    <label>Deployment Notes</label>
+                    <textarea name="notes" rows="3" placeholder="Enter deployment notes, changes, or remarks"></textarea>
+                </div>
+            </div>
+            
+            <button type="submit" class="int-btn int-btn-primary" style="margin-top:10px;">
+                <i class="fas fa-rocket"></i> Trigger Deployment
+            </button>
+        </form>
+        
+        <!-- Deployment History -->
+        <h4 style="margin-top:30px;margin-bottom:15px;font-size:14px;font-weight:700;color:var(--petron-blue)">
+            <i class="fas fa-list"></i> Recent Deployments
+        </h4>
+        
+        <?php if (empty($deployment_history)): ?>
+            <p style="text-align:center;color:#999;padding:20px">
+                No deployments logged yet.
+            </p>
+        <?php else: ?>
+            <div class="int-table-wrap">
+                <table class="int-table">
+                    <thead>
+                        <tr>
+                            <th>Repository</th>
+                            <th>Commit Hash</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Deployed By</th>
+                            <th>Deployed At</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($deployment_history as $dh): ?>
+                        <tr>
+                            <td><?php echo htmlspecialchars($dh['repo_name'] ?? 'Unknown'); ?></td>
+                            <td><code><?php echo htmlspecialchars(substr($dh['commit_hash'] ?? 'N/A', 0, 8)); ?></code></td>
+                            <td><?php echo ucfirst($dh['deployment_type']); ?></td>
+                            <td>
+                                <span class="int-badge <?php 
+                                    echo $dh['status'] === 'success' ? 'int-badge-ok' : 
+                                        ($dh['status'] === 'failed' ? 'int-badge-fail' : 'int-badge-untested'); 
+                                ?>">
+                                    <?php echo ucfirst($dh['status']); ?>
+                                </span>
+                            </td>
+                            <td><?php echo htmlspecialchars($dh['deployed_by_name'] ?? 'Unknown'); ?></td>
+                            <td><?php echo date('M d, Y H:i', strtotime($dh['deployed_at'])); ?></td>
+                            <td title="<?php echo htmlspecialchars($dh['notes'] ?? ''); ?>">
+                                <?php echo htmlspecialchars(substr($dh['notes'] ?? '-', 0, 30)) . (strlen($dh['notes'] ?? '') > 30 ? '...' : ''); ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- Section: External System Sync -->
+<?php if ($section === 'external_sync'): ?>
+
+<!-- Sync Job Configuration Form -->
+<div class="int-card">
+    <div class="int-card-header">
+        <h3><i class="fas fa-sync"></i> External System Sync Configuration</h3>
+    </div>
+    <div class="int-card-body">
+        <form id="syncJobForm" method="POST" action="../backend/api/superadmin_integration_api.php">
+            <input type="hidden" name="csrf_token" value="<?php echo $csrf; ?>">
+            <input type="hidden" name="action" value="save_sync_job">
+            <input type="hidden" name="id" value="<?php echo htmlspecialchars($sync_config['id'] ?? '0'); ?>">
+            
+            <div class="int-form-row">
+                <div class="int-form-group">
+                    <label>Sync Job Name <span style="color:red;">*</span></label>
+                    <input type="text" name="job_name" placeholder="e.g., Daily Inventory Sync" value="<?php echo htmlspecialchars($sync_config['job_name'] ?? ''); ?>" required>
+                    <span class="int-form-hint">Identify this sync task</span>
+                </div>
+                <div class="int-form-group">
+                    <label>Sync Frequency <span style="color:red;">*</span></label>
+                    <select name="sync_frequency" required>
+                        <?php $sync_freq = $sync_config['sync_frequency'] ?? 'daily'; ?>
+                        <option value="realtime" <?php echo $sync_freq === 'realtime' ? 'selected' : ''; ?>>Real-time</option>
+                        <option value="hourly" <?php echo $sync_freq === 'hourly' ? 'selected' : ''; ?>>Hourly</option>
+                        <option value="daily" <?php echo $sync_freq === 'daily' ? 'selected' : ''; ?>>Daily</option>
+                        <option value="weekly" <?php echo $sync_freq === 'weekly' ? 'selected' : ''; ?>>Weekly</option>
+                        <option value="manual" <?php echo $sync_freq === 'manual' ? 'selected' : ''; ?>>Manual Only</option>
+                    </select>
+                    <span class="int-form-hint">Select sync schedule</span>
+                </div>
+            </div>
+            
+            <div class="int-form-row full">
+                <div class="int-form-group">
+                    <label>External Feed URL <span style="color:red;">*</span></label>
+                    <input type="url" name="external_feed_url" placeholder="https://external-system.com/api/data" value="<?php echo htmlspecialchars($sync_config['external_feed_url'] ?? ''); ?>" required>
+                    <span class="int-form-hint">Connect to external data source</span>
+                </div>
+            </div>
+            
+            <div class="int-form-row">
+                <div class="int-form-group">
+                    <label>Conflict Resolution <span style="color:red;">*</span></label>
+                    <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+                        <?php $sync_conflict = $sync_config['conflict_resolution'] ?? 'merge'; ?>
+                        <label style="display:flex;align-items:center;gap:8px;font-weight:normal;cursor:pointer;">
+                            <input type="radio" name="conflict_resolution" value="overwrite" <?php echo $sync_conflict === 'overwrite' ? 'checked' : ''; ?> required>
+                            <span>Overwrite - External data overwrites local data</span>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;font-weight:normal;cursor:pointer;">
+                            <input type="radio" name="conflict_resolution" value="merge" <?php echo $sync_conflict === 'merge' ? 'checked' : ''; ?> required>
+                            <span>Merge - Combine external and local data</span>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;font-weight:normal;cursor:pointer;">
+                            <input type="radio" name="conflict_resolution" value="skip" <?php echo $sync_conflict === 'skip' ? 'checked' : ''; ?> required>
+                            <span>Skip - Keep local data, ignore external changes</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="int-form-group">
+                    <label>Enable Sync Job</label>
+                    <label class="int-toggle" style="margin-top:8px;">
+                        <input type="checkbox" name="is_active" value="1" <?php echo ($sync_config['is_active'] ?? 1) ? 'checked' : ''; ?>>
+                        <span class="int-toggle-slider"></span>
+                    </label>
+                    <span class="int-form-hint">Active jobs run on schedule</span>
+                </div>
+            </div>
+            
+            <div style="display:flex;gap:10px;margin-top:20px;">
+                <?php if ($can_edit): ?>
+                <button type="submit" class="int-btn int-btn-primary">
+                    <i class="fas fa-save"></i> Save Sync Job
+                </button>
+                <button type="button" class="int-btn int-btn-success" onclick="triggerSyncNow()">
+                    <i class="fas fa-sync"></i> Sync Now
+                </button>
+                <?php endif; ?>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Saved Sync Jobs Table -->
+<div class="int-card" style="margin-top:20px;">
+    <div class="int-card-header">
+        <h3><i class="fas fa-tasks"></i> Configured Sync Jobs</h3>
+    </div>
+    <div class="int-card-body">
+        <?php if (empty($sync_jobs)): ?>
+            <p style="text-align:center;color:#999;padding:40px 20px">
+                <i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:12px;opacity:.3"></i>
+                No sync jobs configured yet. Fill the form above to create your first sync job.
+            </p>
+        <?php else: ?>
+            <div class="int-table-wrap">
+                <table class="int-table">
+                    <thead>
+                        <tr>
+                            <th>Job Name</th>
+                            <th>Frequency</th>
+                            <th>External Feed URL</th>
+                            <th>Conflict Resolution</th>
+                            <th>Last Sync</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($sync_jobs as $sj): ?>
+                        <tr>
+                            <td><strong><?php echo htmlspecialchars($sj['job_name']); ?></strong></td>
+                            <td><?php echo ucfirst($sj['sync_frequency']); ?></td>
+                            <td title="<?php echo htmlspecialchars($sj['external_feed_url'] ?? ''); ?>">
+                                <?php echo htmlspecialchars(substr($sj['external_feed_url'] ?? 'N/A', 0, 35)) . (strlen($sj['external_feed_url'] ?? '') > 35 ? '...' : ''); ?>
+                            </td>
+                            <td><?php echo ucfirst($sj['conflict_resolution']); ?></td>
+                            <td><?php echo $sj['last_synced_at'] ? date('M d, Y H:i', strtotime($sj['last_synced_at'])) : 'Never'; ?></td>
+                            <td>
+                                <span class="int-badge <?php 
+                                    echo $sj['sync_status'] === 'success' ? 'int-badge-ok' : 
+                                        ($sj['sync_status'] === 'failed' ? 'int-badge-fail' : 'int-badge-untested'); 
+                                ?>">
+                                    <?php echo ucfirst($sj['sync_status']); ?>
+                                </span>
+                            </td>
+                            <td>
+                                <button class="int-btn int-btn-success int-btn-sm" onclick="executeSyncJob(<?php echo $sj['id']; ?>)">
+                                    <i class="fas fa-sync"></i> Sync
+                                </button>
+                                <button class="int-btn int-btn-danger int-btn-sm" onclick="deleteSyncJob(<?php echo $sj['id']; ?>)">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </div>
+</div>
+
+<!-- Sync Logs Table View -->
+<div class="int-card" style="margin-top:20px;">
+    <div class="int-card-header">
+        <h3><i class="fas fa-list"></i> Sync Logs</h3>
+    </div>
+    <div class="int-card-body">
+        <div class="int-info">
+            <i class="fas fa-info-circle"></i>
+            <div>View sync execution history with status, records synced, and error messages</div>
+        </div>
+        
+        <?php if (empty($sync_logs)): ?>
+            <p style="text-align:center;color:#999;padding:40px 20px">
+                <i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:12px;opacity:.3"></i>
+                No sync logs yet. Logs will appear here after sync jobs are executed.
+            </p>
+        <?php else: ?>
+            <div class="int-table-wrap">
+                <table class="int-table">
+                    <thead>
+                        <tr>
+                            <th>Job Name</th>
+                            <th>Status</th>
+                            <th>Records Synced</th>
+                            <th>Error Message</th>
+                            <th>Synced At</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($sync_logs as $sl): ?>
+                        <tr>
+                            <td><?php echo htmlspecialchars($sl['job_name'] ?? 'Unknown'); ?></td>
+                            <td>
+                                <span class="int-badge <?php 
+                                    echo $sl['sync_status'] === 'success' ? 'int-badge-ok' : 
+                                        ($sl['sync_status'] === 'failed' ? 'int-badge-fail' : 'int-badge-untested'); 
+                                ?>">
+                                    <?php echo ucfirst($sl['sync_status']); ?>
+                                </span>
+                            </td>
+                            <td><?php echo number_format($sl['records_synced']); ?></td>
+                            <td title="<?php echo htmlspecialchars($sl['error_message'] ?? ''); ?>">
+                                <?php echo htmlspecialchars(substr($sl['error_message'] ?? '-', 0, 40)) . (strlen($sl['error_message'] ?? '') > 40 ? '...' : ''); ?>
+                            </td>
+                            <td><?php echo date('M d, Y H:i:s', strtotime($sl['synced_at'])); ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- Section: Audit Trail Logging -->
 <?php if ($section === 'audit_trail'): ?>
-<div class="int-card">  <div class="int-card-header">  <h3><i class="fas fa-history"></i> Audit Trail Logging</h3>  </div>  <div class="int-card-body">  <div class="int-info">  <i class="fas fa-info-circle"></i>  <div>  <strong>Step 4:</strong> Every integration setup/change is logged for transparency, debugging, and compliance.  </div>  </div>  <?php if (empty($audit_rows)): ?>  <p style="text-align:center;color:#999;padding:40px 20px">  <i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:12px;opacity:.3"></i>  No audit logs yet.  </p>  <?php else: ?>  <div class="int-table-wrap">  <table class="int-table">  <thead>  <tr>  <th>Timestamp</th>  <th>User</th>  <th>Action</th>  <th>Target Type</th>  <th>Target Name</th>  <th>Details</th>  <th>IP Address</th>  </tr>  </thead>  <tbody>  <?php foreach ($audit_rows as $ar): ?>  <tr>  <td><?php echo date('M d, Y H:i:s', strtotime($ar['created_at'])); ?></td>  <td><?php echo htmlspecialchars($ar['user_name'] ?? 'Unknown'); ?></td>  <td><strong><?php echo htmlspecialchars($ar['action_type']); ?></strong></td>  <td><?php echo ucwords(str_replace('_', ' ', $ar['target_type'])); ?></td>  <td><?php echo htmlspecialchars($ar['target_name']); ?></td>  <td title="<?php echo htmlspecialchars($ar['details']); ?>">  <?php echo htmlspecialchars(substr($ar['details'], 0, 50)) . (strlen($ar['details']) > 50 ? '...' : ''); ?>  </td>  <td><?php echo htmlspecialchars($ar['ip_address']); ?></td>  </tr>  <?php endforeach; ?>  </tbody>  </table>  </div>  <?php endif; ?>  </div>
+<div class="int-card">
+    <div class="int-card-header">
+        <h3><i class="fas fa-history"></i> Audit Trail Logging</h3>
+    </div>
+    <div class="int-card-body">
+        <div class="int-info">
+            <i class="fas fa-info-circle"></i>
+            <div>
+                <strong>Step 4:</strong> Every integration setup/change is logged for transparency, debugging, and compliance.
+            </div>
+        </div>
+        
+        <?php if (empty($audit_rows)): ?>
+            <p style="text-align:center;color:#999;padding:40px 20px">
+                <i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:12px;opacity:.3"></i>
+                No audit logs yet.
+            </p>
+        <?php else: ?>
+            <div class="int-table-wrap">
+                <table class="int-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>User</th>
+                            <th>Action</th>
+                            <th>Target Type</th>
+                            <th>Target Name</th>
+                            <th>Details</th>
+                            <th>IP Address</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($audit_rows as $ar): ?>
+                        <tr>
+                            <td><?php echo date('M d, Y H:i:s', strtotime($ar['created_at'])); ?></td>
+                            <td><?php echo htmlspecialchars($ar['user_name'] ?? 'Unknown'); ?></td>
+                            <td><strong><?php echo htmlspecialchars($ar['action_type']); ?></strong></td>
+                    <td><?php echo ucwords(str_replace('_', ' ', $ar['target_type'])); ?></td>
+                            <td><?php echo htmlspecialchars($ar['target_name']); ?></td>
+                            <td title="<?php echo htmlspecialchars($ar['details']); ?>">
+                                <?php echo htmlspecialchars(substr($ar['details'], 0, 50)) . (strlen($ar['details']) > 50 ? '...' : ''); ?>
+                            </td>
+                            <td><?php echo htmlspecialchars($ar['ip_address']); ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </div>
 </div>
-<?php endif; ?>  </div>  <!-- POS Parser Modal -->
-<div id="parserModal" class="int-modal-overlay">  <div class="int-modal">  <div class="int-modal-header">  <h2 id="parserModalTitle">Add POS Parser</h2>  <button class="int-modal-close" onclick="closeParserModal()">&times;</button>  </div>  <form id="parserForm" method="POST" action="../backend/api/superadmin_integration_api.php">  <input type="hidden" name="csrf_token" value="<?php echo $csrf; ?>">  <input type="hidden" name="action" value="save_pos_parser">  <input type="hidden" name="id" id="parser_id" value="0">  <div class="int-modal-body">  <div class="int-form-group" style="margin-bottom:14px;">  <label>Parser Name <span style="color:red;">*</span></label>  <input type="text" name="name" id="parser_name" placeholder="e.g., POS CSV Import Standard" required>  </div>  <div class="int-form-row">  <div class="int-form-group">  <label>File Type</label>  <select name="file_type" id="parser_file_type">  <option value="csv">CSV</option>  <option value="excel">Excel</option>  </select>  </div>  <div class="int-form-group">  <label>Delimiter</label>  <input type="text" name="delimiter" id="parser_delimiter" value="," maxlength="5">  </div>  </div>  <div class="int-form-row">  <div class="int-form-group">  <label>Has Header Row</label>  <select name="has_header" id="parser_has_header">  <option value="1">Yes</option>  <option value="0">No</option>  </select>  </div>  <div class="int-form-group">  <label>Status</label>  <select name="is_active" id="parser_is_active">  <option value="1">Active</option>  <option value="0">Inactive</option>  </select>  </div>  </div>  <div class="int-form-group">  <label>Column Mapping (JSON string)</label>  <textarea name="column_map" id="parser_column_map" rows="4" placeholder='{"transaction_id": "transactions.amount"}' required>{}</textarea>  <span class="int-form-hint">Map source columns (left) to target database fields (right)</span>  </div>  </div>  <div class="int-modal-footer">  <button type="button" class="int-btn int-btn-outline" onclick="closeParserModal()">Cancel</button>  <button type="submit" class="int-btn int-btn-primary">Save Parser</button>  </div>  </form>  </div>
-</div>  <script>
+<?php endif; ?>
+
+</div>
+
+<!-- POS Parser Modal -->
+<div id="parserModal" class="int-modal-overlay">
+    <div class="int-modal">
+        <div class="int-modal-header">
+            <h2 id="parserModalTitle">Add POS Parser</h2>
+            <button class="int-modal-close" onclick="closeParserModal()">&times;</button>
+        </div>
+        <form id="parserForm" method="POST" action="../backend/api/superadmin_integration_api.php">
+            <input type="hidden" name="csrf_token" value="<?php echo $csrf; ?>">
+            <input type="hidden" name="action" value="save_pos_parser">
+            <input type="hidden" name="id" id="parser_id" value="0">
+            
+            <div class="int-modal-body">
+                <div class="int-form-group" style="margin-bottom:14px;">
+                    <label>Parser Name <span style="color:red;">*</span></label>
+                    <input type="text" name="name" id="parser_name" placeholder="e.g., POS CSV Import Standard" required>
+                </div>
+                
+                <div class="int-form-row">
+                    <div class="int-form-group">
+                        <label>File Type</label>
+                        <select name="file_type" id="parser_file_type">
+                            <option value="csv">CSV</option>
+                            <option value="excel">Excel</option>
+                        </select>
+                    </div>
+                    <div class="int-form-group">
+                        <label>Delimiter</label>
+                        <input type="text" name="delimiter" id="parser_delimiter" value="," maxlength="5">
+                    </div>
+                </div>
+                
+                <div class="int-form-row">
+                    <div class="int-form-group">
+                        <label>Has Header Row</label>
+                        <select name="has_header" id="parser_has_header">
+                            <option value="1">Yes</option>
+                            <option value="0">No</option>
+                        </select>
+                    </div>
+                    <div class="int-form-group">
+                        <label>Status</label>
+                        <select name="is_active" id="parser_is_active">
+                            <option value="1">Active</option>
+                            <option value="0">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="int-form-group">
+                    <label>Column Mapping (JSON string)</label>
+                    <textarea name="column_map" id="parser_column_map" rows="4" placeholder='{"transaction_id": "transactions.amount"}' required>{}</textarea>
+                    <span class="int-form-hint">Map source columns (left) to target database fields (right)</span>
+                </div>
+            </div>
+            
+            <div class="int-modal-footer">
+                <button type="button" class="int-btn int-btn-outline" onclick="closeParserModal()">Cancel</button>
+                <button type="submit" class="int-btn int-btn-primary">Save Parser</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
 // Modal management
-function openParserModal() {  document.getElementById('parserModalTitle').innerText = 'Add POS Parser';  document.getElementById('parser_id').value = '0';  document.getElementById('parser_name').value = '';  document.getElementById('parser_file_type').value = 'csv';  document.getElementById('parser_delimiter').value = ',';  document.getElementById('parser_has_header').value = '1';  document.getElementById('parser_is_active').value = '1';  document.getElementById('parser_column_map').value = '{}';  document.getElementById('parserModal').classList.add('open');
-}  function editParser(id) {  const parsers = <?php echo json_encode($parsers); ?>;  const p = parsers.find(x => x.id == id);  if (!p) return;  document.getElementById('parserModalTitle').innerText = 'Edit POS Parser';  document.getElementById('parser_id').value = p.id;  document.getElementById('parser_name').value = p.name;  document.getElementById('parser_file_type').value = p.file_type;  document.getElementById('parser_delimiter').value = p.delimiter;  document.getElementById('parser_has_header').value = p.has_header;  document.getElementById('parser_is_active').value = p.is_active;  document.getElementById('parser_column_map').value = JSON.stringify(JSON.parse(p.column_map), null, 2);  document.getElementById('parserModal').classList.add('open');
-}  function closeParserModal() {  document.getElementById('parserModal').classList.remove('open');
-}  function deleteParser(id) {  if (!confirm('Are you sure you want to delete this POS parser?')) return;  const fd = new FormData();  fd.append('csrf_token', '<?php echo $csrf; ?>');  fd.append('action', 'delete_pos_parser');  fd.append('id', id);  fetch('../backend/api/superadmin_integration_api.php', {  method: 'POST',  body: fd  })  .then(r => r.json())  .then(data => {  if (data.ok) {  alert(data.message);  location.reload();  } else {  alert('Error: ' + data.error);  }  })  .catch(e => alert('Delete parser failed.'));
-}  // API Configuration Functions
-function testFleetCardConnection() {  const form = document.getElementById('fleetCardForm');  const endpoint = form.querySelector('[name="endpoint_url"]').value;  const apiKey = form.querySelector('[name="api_key"]').value;  const authType = form.querySelector('[name="auth_type"]').value;  const configName = form.querySelector('[name="config_name"]').value;  const authKeys = form.querySelector('[name="auth_keys"]').value;  if (!endpoint) {  alert('Endpoint URL is required to test connection.');  return;  }  const testBtn = form.querySelector('button[onclick="testFleetCardConnection()"]');  testBtn.disabled = true;  testBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';  const fd = new FormData();  fd.append('csrf_token', '<?php echo $csrf; ?>');  fd.append('action', 'test_fleet_card');  fd.append('endpoint_url', endpoint);  fd.append('api_key', apiKey);  fd.append('auth_type', authType);  fd.append('config_name', configName);  fd.append('auth_keys', authKeys);  fetch('../backend/api/superadmin_integration_api.php', {  method: 'POST',  body: fd  })  .then(r => r.json())  .then(data => {  testBtn.disabled = false;  testBtn.innerHTML = '<i class="fas fa-vial"></i> Test Connection';  if (data.ok) {  alert('Result: ' + data.message);  location.reload();  } else {  alert('Error: ' + data.error);  }  })  .catch(e => {  testBtn.disabled = false;  testBtn.innerHTML = '<i class="fas fa-vial"></i> Test Connection';  alert('Failed to execute test.');  });
-}  // ERP Connection Functions
-function testErpConnection() {  const form = document.getElementById('erpConnectionForm');  const endpoint = form.querySelector('[name="endpoint_url"]').value;  const connectionName = form.querySelector('[name="connection_name"]').value;  const authKeys = form.querySelector('[name="auth_keys"]').value;  if (!endpoint) {  alert('ERP Endpoint URL is required.');  return;  }  const testBtn = form.querySelector('button[onclick="testErpConnection()"]');  testBtn.disabled = true;  testBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';  const fd = new FormData();  fd.append('csrf_token', '<?php echo $csrf; ?>');  fd.append('action', 'test_erp_connection');  fd.append('endpoint_url', endpoint);  fd.append('connection_name', connectionName);  fd.append('auth_keys', authKeys);  fetch('../backend/api/superadmin_integration_api.php', {  method: 'POST',  body: fd  })  .then(r => r.json())  .then(data => {  testBtn.disabled = false;  testBtn.innerHTML = '<i class="fas fa-vial"></i> Test Connection';  if (data.ok) {  alert('Result: ' + data.message);  location.reload();  } else {  alert('Error: ' + data.error);  }  })  .catch(e => {  testBtn.disabled = false;  testBtn.innerHTML = '<i class="fas fa-vial"></i> Test Connection';  alert('Failed to execute ERP test.');  });
-}  function deleteConfig(id, type) {  if (!confirm('Are you sure you want to delete this configuration?')) return;  const fd = new FormData();  fd.append('csrf_token', '<?php echo $csrf; ?>');  fd.append('action', 'delete_config');  fd.append('id', id);  fd.append('type', type);  fetch('../backend/api/superadmin_integration_api.php', {  method: 'POST',  body: fd  })  .then(r => r.json())  .then(data => {  if (data.ok) {  alert(data.message);  location.reload();  } else {  alert('Error: ' + data.error);  }  })  .catch(e => alert('Delete operation failed.'));
-}  // Git Repository Functions
-function triggerGitPush() {  const repoId = document.getElementById('gitRepoForm').querySelector('[name="id"]').value;  if (!repoId || repoId === '0') {  alert('Please save the repository configuration first.');  return;  }  if (!confirm('Push local commits to remote repository?')) return;  gitOp(repoId, 'push');
-}  function triggerGitPull() {  const repoId = document.getElementById('gitRepoForm').querySelector('[name="id"]').value;  if (!repoId || repoId === '0') {  alert('Please save the repository configuration first.');  return;  }  if (!confirm('Pull commits from remote repository?')) return;  gitOp(repoId, 'pull');
-}  function gitOp(repoId, op) {  const fd = new FormData();  fd.append('csrf_token', '<?php echo $csrf; ?>');  fd.append('action', 'git_op');  fd.append('repo_id', repoId);  fd.append('op', op);  fetch('../backend/api/superadmin_integration_api.php', {  method: 'POST',  body: fd  })  .then(r => r.json())  .then(data => {  if (data.ok) {  alert(data.message);  location.reload();  } else {  alert('Error: ' + data.error);  }  })  .catch(e => alert('Failed to run git operation.'));
-}  function deleteGitRepo(id) {  if (!confirm('Are you sure you want to delete this repository configuration?')) return;  const fd = new FormData();  fd.append('csrf_token', '<?php echo $csrf; ?>');  fd.append('action', 'delete_git_repo');  fd.append('id', id);  fetch('../backend/api/superadmin_integration_api.php', {  method: 'POST',  body: fd  })  .then(r => r.json())  .then(data => {  if (data.ok) {  alert(data.message);  location.reload();  } else {  alert('Error: ' + data.error);  }  })  .catch(e => alert('Delete repository failed.'));
-}  // Sync Job Functions
-function triggerSyncNow() {  const jobId = document.getElementById('syncJobForm').querySelector('[name="id"]').value;  if (!jobId || jobId === '0') {  alert('Please save the Sync Job configuration first.');  return;  }  executeSyncJob(jobId);
-}  function executeSyncJob(jobId) {  if (!confirm('Trigger immediate synchronization?')) return;  const fd = new FormData();  fd.append('csrf_token', '<?php echo $csrf; ?>');  fd.append('action', 'execute_sync_job');  fd.append('id', jobId);  fetch('../backend/api/superadmin_integration_api.php', {  method: 'POST',  body: fd  })  .then(r => r.json())  .then(data => {  if (data.ok) {  alert(data.message);  location.reload();  } else {  alert('Error: ' + data.error);  }  })  .catch(e => alert('Failed to execute sync job.'));
-}  function deleteSyncJob(id) {  if (!confirm('Are you sure you want to delete this Sync Job?')) return;  const fd = new FormData();  fd.append('csrf_token', '<?php echo $csrf; ?>');  fd.append('action', 'delete_sync_job');  fd.append('id', id);  fetch('../backend/api/superadmin_integration_api.php', {  method: 'POST',  body: fd  })  .then(r => r.json())  .then(data => {  if (data.ok) {  alert(data.message);  location.reload();  } else {  alert('Error: ' + data.error);  }  })  .catch(e => alert('Delete sync job failed.'));
-}  // Global AJAX Form Handler
-document.addEventListener('DOMContentLoaded', function() {  document.querySelectorAll('form').forEach(form => {  form.addEventListener('submit', function(e) {  if (!form.action.includes('superadmin_integration_api.php')) return;  e.preventDefault();  const formData = new FormData(form);  const actionBtn = form.querySelector('button[type="submit"]');  const originalHtml = actionBtn ? actionBtn.innerHTML : '';  if (actionBtn) {  actionBtn.disabled = true;  actionBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';  }  fetch(form.action, {  method: 'POST',  body: formData  })  .then(res => res.json())  .then(data => {  if (data.ok) {  alert(data.message || 'Saved successfully.');  location.reload();  } else {  alert('Error: ' + (data.error || 'Unknown error occurred.'));  if (actionBtn) {  actionBtn.disabled = false;  actionBtn.innerHTML = originalHtml;  }  }  })  .catch(err => {  console.error(err);  alert('An error occurred during submission.');  if (actionBtn) {  actionBtn.disabled = false;  actionBtn.innerHTML = originalHtml;  }  });  });  });  <?php if (!$can_edit): ?>  // Enforce view-only for admin/manager  document.querySelectorAll('.int-page input, .int-page select, .int-page textarea').forEach(el => {  if (el.id === 'int_station_display' || el.id === 'int_station_val') return; // always allow station picker  el.disabled = true;  });  document.querySelectorAll('.int-page button').forEach(btn => {  if (btn.id === 'int_station_clear' || btn.closest('#int_station_combo')) return;  if (!btn.closest('.int-head') && !btn.closest('.int-steps') && !btn.closest('.sidebar-menu')) {  if (btn.innerText.includes('Save') || btn.innerText.includes('Delete') || btn.innerText.includes('Push') || btn.innerText.includes('Pull') || btn.innerText.includes('Add')) {  btn.disabled = true;  btn.style.opacity = '0.5';  btn.style.cursor = 'not-allowed';  }  }  });  <?php endif; ?>
-});  // ── Station Combo for Integration Settings ─────────────────────
-(function initIntStationCombo() {  const STATION_DATA = <?php echo json_encode(  array_map(fn($s) => ['id' => (int)$s['id'], 'name' => $s['name']], $stations),  JSON_UNESCAPED_UNICODE | JSON_HEX_TAG  ); ?>;  const combo  = document.getElementById('int_station_combo');  const list  = document.getElementById('int_station_list');  const display = document.getElementById('int_station_display');  const hidden  = document.getElementById('int_station_val');  const clear  = document.getElementById('int_station_clear');  const banner  = document.getElementById('int_station_banner');  const warning = document.getElementById('int_no_station_warn');  const nameDiv = document.getElementById('int_station_name');  if (!combo || !display || !list || !hidden || !clear) return;  let currentVal  = '';  let currentLabel = 'All Stations';  function esc(s) {  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');  }  function render(q) {  const lq = (q || '').toLowerCase().trim();  list.innerHTML = '';  if (!lq) {  const all = document.createElement('div');  all.className  = 'am-combo-option' + (!currentVal ? ' selected' : '');  all.dataset.value = '';  all.dataset.label = 'All Stations';  all.style.cssText = 'font-style:italic;color:#888;';  all.textContent  = 'All Stations (Global)';  list.appendChild(all);  }  const filtered = lq  ? STATION_DATA.filter(s => s.name.toLowerCase().includes(lq))  : STATION_DATA;  filtered.slice(0, 100).forEach(s => {  const div = document.createElement('div');  div.className  = 'am-combo-option' + (currentVal === String(s.id) ? ' selected' : '');  div.dataset.value = String(s.id);  div.dataset.label = s.name;  div.innerHTML  = '<i class="fas fa-building opt-icon"></i> ' + esc(s.name);  list.appendChild(div);  });  if (filtered.length === 0) {  const empty = document.createElement('div');  empty.className  = 'am-combo-empty';  empty.textContent = 'No station matching "' + q + '"';  list.appendChild(empty);  }  }  function pick(value, label) {  currentVal  = value;  currentLabel  = value ? label : 'All Stations';  hidden.value  = value;  display.value = value ? label : 'All Stations';  display.classList.toggle('has-value', !!value);  clear.style.display = value ? 'block' : 'none';  combo.classList.remove('open');  // Update banner  if (value && label && label !== 'All Stations') {  banner.style.display  = 'block';  warning.style.display = 'none';  nameDiv.textContent  = label;  } else {  banner.style.display  = 'none';  warning.style.display = 'block';  }  }  function reanchor() {  const dd  = combo.querySelector('.am-combo-dropdown');  const rect = combo.getBoundingClientRect();  if (dd) {  dd.style.left  = rect.left + 'px';  dd.style.top  = (rect.bottom + 4) + 'px';  dd.style.width = rect.width + 'px';  }  }  function open() {  combo.classList.add('open');  display.value = '';  reanchor();  render('');  }  function close() {  combo.classList.remove('open');  display.value = currentVal ? currentLabel : 'All Stations';  }  display.addEventListener('click',  () => combo.classList.contains('open') ? close() : open());  display.addEventListener('focus',  () => { if (!combo.classList.contains('open')) open(); });  let dbt;  display.addEventListener('input', () => {  if (!combo.classList.contains('open')) combo.classList.add('open');  reanchor();  clearTimeout(dbt);  dbt = setTimeout(() => render(display.value), 130);  });  display.addEventListener('keydown', e => {  if (!combo.classList.contains('open') && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); open(); return; }  const opts = [...list.querySelectorAll('.am-combo-option[data-value]')];  const foc  = list.querySelector('.am-combo-option.focused');  let idx  = foc ? opts.indexOf(foc) : -1;  if  (e.key === 'ArrowDown') { e.preventDefault(); idx = Math.min(idx+1, opts.length-1); }  else if (e.key === 'ArrowUp')  { e.preventDefault(); idx = Math.max(idx-1, 0); }  else if (e.key === 'Enter' && foc) { e.preventDefault(); pick(foc.dataset.value, foc.dataset.label); return; }  else if (e.key === 'Escape')  { close(); return; }  else { return; }  opts.forEach(o => o.classList.remove('focused'));  if (opts[idx]) { opts[idx].classList.add('focused'); opts[idx].scrollIntoView({ block: 'nearest' }); }  });  list.addEventListener('click', e => {  const opt = e.target.closest('.am-combo-option');  if (opt) pick(opt.dataset.value, opt.dataset.label);  });  list.addEventListener('mouseover', e => {  const opt = e.target.closest('.am-combo-option');  if (opt) {  list.querySelectorAll('.am-combo-option').forEach(o => o.classList.remove('focused'));  opt.classList.add('focused');  }  });  clear.addEventListener('click', e => { e.stopPropagation(); pick('', ''); });  document.addEventListener('click', e => { if (!combo.contains(e.target)) close(); });  window.addEventListener('scroll', () => { if (combo.classList.contains('open')) reanchor(); }, true);  // Init  pick('', '');
+function openParserModal() {
+    document.getElementById('parserModalTitle').innerText = 'Add POS Parser';
+    document.getElementById('parser_id').value = '0';
+    document.getElementById('parser_name').value = '';
+    document.getElementById('parser_file_type').value = 'csv';
+    document.getElementById('parser_delimiter').value = ',';
+    document.getElementById('parser_has_header').value = '1';
+    document.getElementById('parser_is_active').value = '1';
+    document.getElementById('parser_column_map').value = '{}';
+    document.getElementById('parserModal').classList.add('open');
+}
+
+function editParser(id) {
+    const parsers = <?php echo json_encode($parsers); ?>;
+    const p = parsers.find(x => x.id == id);
+    if (!p) return;
+
+    document.getElementById('parserModalTitle').innerText = 'Edit POS Parser';
+    document.getElementById('parser_id').value = p.id;
+    document.getElementById('parser_name').value = p.name;
+    document.getElementById('parser_file_type').value = p.file_type;
+    document.getElementById('parser_delimiter').value = p.delimiter;
+    document.getElementById('parser_has_header').value = p.has_header;
+    document.getElementById('parser_is_active').value = p.is_active;
+    document.getElementById('parser_column_map').value = JSON.stringify(JSON.parse(p.column_map), null, 2);
+    document.getElementById('parserModal').classList.add('open');
+}
+
+function closeParserModal() {
+    document.getElementById('parserModal').classList.remove('open');
+}
+
+function deleteParser(id) {
+    if (!confirm('Are you sure you want to delete this POS parser?')) return;
+
+    const fd = new FormData();
+    fd.append('csrf_token', '<?php echo $csrf; ?>');
+    fd.append('action', 'delete_pos_parser');
+    fd.append('id', id);
+
+    fetch('../backend/api/superadmin_integration_api.php', {
+        method: 'POST',
+        body: fd
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(e => alert('Delete parser failed.'));
+}
+
+// API Configuration Functions
+function testFleetCardConnection() {
+    const form = document.getElementById('fleetCardForm');
+    const endpoint = form.querySelector('[name="endpoint_url"]').value;
+    const apiKey = form.querySelector('[name="api_key"]').value;
+    const authType = form.querySelector('[name="auth_type"]').value;
+    const configName = form.querySelector('[name="config_name"]').value;
+    const authKeys = form.querySelector('[name="auth_keys"]').value;
+
+    if (!endpoint) {
+        alert('Endpoint URL is required to test connection.');
+        return;
+    }
+
+    const testBtn = form.querySelector('button[onclick="testFleetCardConnection()"]');
+    testBtn.disabled = true;
+    testBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+
+    const fd = new FormData();
+    fd.append('csrf_token', '<?php echo $csrf; ?>');
+    fd.append('action', 'test_fleet_card');
+    fd.append('endpoint_url', endpoint);
+    fd.append('api_key', apiKey);
+    fd.append('auth_type', authType);
+    fd.append('config_name', configName);
+    fd.append('auth_keys', authKeys);
+
+    fetch('../backend/api/superadmin_integration_api.php', {
+        method: 'POST',
+        body: fd
+    })
+    .then(r => r.json())
+    .then(data => {
+        testBtn.disabled = false;
+        testBtn.innerHTML = '<i class="fas fa-vial"></i> Test Connection';
+        if (data.ok) {
+            alert('Result: ' + data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(e => {
+        testBtn.disabled = false;
+        testBtn.innerHTML = '<i class="fas fa-vial"></i> Test Connection';
+        alert('Failed to execute test.');
+    });
+}
+
+// ERP Connection Functions
+function testErpConnection() {
+    const form = document.getElementById('erpConnectionForm');
+    const endpoint = form.querySelector('[name="endpoint_url"]').value;
+    const connectionName = form.querySelector('[name="connection_name"]').value;
+    const authKeys = form.querySelector('[name="auth_keys"]').value;
+
+    if (!endpoint) {
+        alert('ERP Endpoint URL is required.');
+        return;
+    }
+
+    const testBtn = form.querySelector('button[onclick="testErpConnection()"]');
+    testBtn.disabled = true;
+    testBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+
+    const fd = new FormData();
+    fd.append('csrf_token', '<?php echo $csrf; ?>');
+    fd.append('action', 'test_erp_connection');
+    fd.append('endpoint_url', endpoint);
+    fd.append('connection_name', connectionName);
+    fd.append('auth_keys', authKeys);
+
+    fetch('../backend/api/superadmin_integration_api.php', {
+        method: 'POST',
+        body: fd
+    })
+    .then(r => r.json())
+    .then(data => {
+        testBtn.disabled = false;
+        testBtn.innerHTML = '<i class="fas fa-vial"></i> Test Connection';
+        if (data.ok) {
+            alert('Result: ' + data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(e => {
+        testBtn.disabled = false;
+        testBtn.innerHTML = '<i class="fas fa-vial"></i> Test Connection';
+        alert('Failed to execute ERP test.');
+    });
+}
+
+function deleteConfig(id, type) {
+    if (!confirm('Are you sure you want to delete this configuration?')) return;
+
+    const fd = new FormData();
+    fd.append('csrf_token', '<?php echo $csrf; ?>');
+    fd.append('action', 'delete_config');
+    fd.append('id', id);
+    fd.append('type', type);
+
+    fetch('../backend/api/superadmin_integration_api.php', {
+        method: 'POST',
+        body: fd
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(e => alert('Delete operation failed.'));
+}
+
+// Git Repository Functions
+function triggerGitPush() {
+    const repoId = document.getElementById('gitRepoForm').querySelector('[name="id"]').value;
+    if (!repoId || repoId === '0') {
+        alert('Please save the repository configuration first.');
+        return;
+    }
+    if (!confirm('Push local commits to remote repository?')) return;
+
+    gitOp(repoId, 'push');
+}
+
+function triggerGitPull() {
+    const repoId = document.getElementById('gitRepoForm').querySelector('[name="id"]').value;
+    if (!repoId || repoId === '0') {
+        alert('Please save the repository configuration first.');
+        return;
+    }
+    if (!confirm('Pull commits from remote repository?')) return;
+
+    gitOp(repoId, 'pull');
+}
+
+function gitOp(repoId, op) {
+    const fd = new FormData();
+    fd.append('csrf_token', '<?php echo $csrf; ?>');
+    fd.append('action', 'git_op');
+    fd.append('repo_id', repoId);
+    fd.append('op', op);
+
+    fetch('../backend/api/superadmin_integration_api.php', {
+        method: 'POST',
+        body: fd
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(e => alert('Failed to run git operation.'));
+}
+
+function deleteGitRepo(id) {
+    if (!confirm('Are you sure you want to delete this repository configuration?')) return;
+
+    const fd = new FormData();
+    fd.append('csrf_token', '<?php echo $csrf; ?>');
+    fd.append('action', 'delete_git_repo');
+    fd.append('id', id);
+
+    fetch('../backend/api/superadmin_integration_api.php', {
+        method: 'POST',
+        body: fd
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(e => alert('Delete repository failed.'));
+}
+
+// Sync Job Functions
+function triggerSyncNow() {
+    const jobId = document.getElementById('syncJobForm').querySelector('[name="id"]').value;
+    if (!jobId || jobId === '0') {
+        alert('Please save the Sync Job configuration first.');
+        return;
+    }
+    executeSyncJob(jobId);
+}
+
+function executeSyncJob(jobId) {
+    if (!confirm('Trigger immediate synchronization?')) return;
+
+    const fd = new FormData();
+    fd.append('csrf_token', '<?php echo $csrf; ?>');
+    fd.append('action', 'execute_sync_job');
+    fd.append('id', jobId);
+
+    fetch('../backend/api/superadmin_integration_api.php', {
+        method: 'POST',
+        body: fd
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(e => alert('Failed to execute sync job.'));
+}
+
+function deleteSyncJob(id) {
+    if (!confirm('Are you sure you want to delete this Sync Job?')) return;
+
+    const fd = new FormData();
+    fd.append('csrf_token', '<?php echo $csrf; ?>');
+    fd.append('action', 'delete_sync_job');
+    fd.append('id', id);
+
+    fetch('../backend/api/superadmin_integration_api.php', {
+        method: 'POST',
+        body: fd
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(e => alert('Delete sync job failed.'));
+}
+
+// Global AJAX Form Handler
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('form').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            if (!form.action.includes('superadmin_integration_api.php')) return;
+            
+            e.preventDefault();
+            
+            const formData = new FormData(form);
+            const actionBtn = form.querySelector('button[type="submit"]');
+            const originalHtml = actionBtn ? actionBtn.innerHTML : '';
+            if (actionBtn) {
+                actionBtn.disabled = true;
+                actionBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+            }
+            
+            fetch(form.action, {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.ok) {
+                    alert(data.message || 'Saved successfully.');
+                    location.reload();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error occurred.'));
+                    if (actionBtn) {
+                        actionBtn.disabled = false;
+                        actionBtn.innerHTML = originalHtml;
+                    }
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                alert('An error occurred during submission.');
+                if (actionBtn) {
+                    actionBtn.disabled = false;
+                    actionBtn.innerHTML = originalHtml;
+                }
+            });
+        });
+    });
+
+    <?php if (!$can_edit): ?>
+    // Enforce view-only for admin/manager
+    document.querySelectorAll('.int-page input, .int-page select, .int-page textarea').forEach(el => {
+        if (el.id === 'int_station_display' || el.id === 'int_station_val') return; // always allow station picker
+        el.disabled = true;
+    });
+    document.querySelectorAll('.int-page button').forEach(btn => {
+        if (btn.id === 'int_station_clear' || btn.closest('#int_station_combo')) return;
+        if (!btn.closest('.int-head') && !btn.closest('.int-steps') && !btn.closest('.sidebar-menu')) {
+            if (btn.innerText.includes('Save') || btn.innerText.includes('Delete') || btn.innerText.includes('Push') || btn.innerText.includes('Pull') || btn.innerText.includes('Add')) {
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
+                btn.style.cursor = 'not-allowed';
+            }
+        }
+    });
+    <?php endif; ?>
+});
+
+// ── Station Combo for Integration Settings ─────────────────────
+(function initIntStationCombo() {
+    const STATION_DATA = <?php echo json_encode(
+        array_map(fn($s) => ['id' => (int)$s['id'], 'name' => $s['name']], $stations),
+        JSON_UNESCAPED_UNICODE | JSON_HEX_TAG
+    ); ?>;
+
+    const combo   = document.getElementById('int_station_combo');
+    const list    = document.getElementById('int_station_list');
+    const display = document.getElementById('int_station_display');
+    const hidden  = document.getElementById('int_station_val');
+    const clear   = document.getElementById('int_station_clear');
+    const banner  = document.getElementById('int_station_banner');
+    const warning = document.getElementById('int_no_station_warn');
+    const nameDiv = document.getElementById('int_station_name');
+
+    if (!combo || !display || !list || !hidden || !clear) return;
+
+    let currentVal   = '';
+    let currentLabel = 'All Stations';
+
+    function esc(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function render(q) {
+        const lq = (q || '').toLowerCase().trim();
+        list.innerHTML = '';
+        if (!lq) {
+            const all = document.createElement('div');
+            all.className   = 'am-combo-option' + (!currentVal ? ' selected' : '');
+            all.dataset.value = '';
+            all.dataset.label = 'All Stations';
+            all.style.cssText = 'font-style:italic;color:#888;';
+            all.textContent   = 'All Stations (Global)';
+            list.appendChild(all);
+        }
+        const filtered = lq
+            ? STATION_DATA.filter(s => s.name.toLowerCase().includes(lq))
+            : STATION_DATA;
+        filtered.slice(0, 100).forEach(s => {
+            const div = document.createElement('div');
+            div.className     = 'am-combo-option' + (currentVal === String(s.id) ? ' selected' : '');
+            div.dataset.value = String(s.id);
+            div.dataset.label = s.name;
+            div.innerHTML     = '<i class="fas fa-building opt-icon"></i> ' + esc(s.name);
+            list.appendChild(div);
+        });
+        if (filtered.length === 0) {
+            const empty = document.createElement('div');
+            empty.className   = 'am-combo-empty';
+            empty.textContent = 'No station matching "' + q + '"';
+            list.appendChild(empty);
+        }
+    }
+
+    function pick(value, label) {
+        currentVal    = value;
+        currentLabel  = value ? label : 'All Stations';
+        hidden.value  = value;
+        display.value = value ? label : 'All Stations';
+        display.classList.toggle('has-value', !!value);
+        clear.style.display = value ? 'block' : 'none';
+        combo.classList.remove('open');
+        // Update banner
+        if (value && label && label !== 'All Stations') {
+            banner.style.display  = 'block';
+            warning.style.display = 'none';
+            nameDiv.textContent   = label;
+        } else {
+            banner.style.display  = 'none';
+            warning.style.display = 'block';
+        }
+    }
+
+    function reanchor() {
+        const dd   = combo.querySelector('.am-combo-dropdown');
+        const rect = combo.getBoundingClientRect();
+        if (dd) {
+            dd.style.left  = rect.left + 'px';
+            dd.style.top   = (rect.bottom + 4) + 'px';
+            dd.style.width = rect.width + 'px';
+        }
+    }
+
+    function open() {
+        combo.classList.add('open');
+        display.value = '';
+        reanchor();
+        render('');
+    }
+    function close() {
+        combo.classList.remove('open');
+        display.value = currentVal ? currentLabel : 'All Stations';
+    }
+
+    display.addEventListener('click',  () => combo.classList.contains('open') ? close() : open());
+    display.addEventListener('focus',  () => { if (!combo.classList.contains('open')) open(); });
+
+    let dbt;
+    display.addEventListener('input', () => {
+        if (!combo.classList.contains('open')) combo.classList.add('open');
+        reanchor();
+        clearTimeout(dbt);
+        dbt = setTimeout(() => render(display.value), 130);
+    });
+
+    display.addEventListener('keydown', e => {
+        if (!combo.classList.contains('open') && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); open(); return; }
+        const opts = [...list.querySelectorAll('.am-combo-option[data-value]')];
+        const foc  = list.querySelector('.am-combo-option.focused');
+        let idx    = foc ? opts.indexOf(foc) : -1;
+        if      (e.key === 'ArrowDown') { e.preventDefault(); idx = Math.min(idx+1, opts.length-1); }
+        else if (e.key === 'ArrowUp')   { e.preventDefault(); idx = Math.max(idx-1, 0); }
+        else if (e.key === 'Enter' && foc) { e.preventDefault(); pick(foc.dataset.value, foc.dataset.label); return; }
+        else if (e.key === 'Escape')    { close(); return; }
+        else { return; }
+        opts.forEach(o => o.classList.remove('focused'));
+        if (opts[idx]) { opts[idx].classList.add('focused'); opts[idx].scrollIntoView({ block: 'nearest' }); }
+    });
+
+    list.addEventListener('click', e => {
+        const opt = e.target.closest('.am-combo-option');
+        if (opt) pick(opt.dataset.value, opt.dataset.label);
+    });
+    list.addEventListener('mouseover', e => {
+        const opt = e.target.closest('.am-combo-option');
+        if (opt) {
+            list.querySelectorAll('.am-combo-option').forEach(o => o.classList.remove('focused'));
+            opt.classList.add('focused');
+        }
+    });
+    clear.addEventListener('click', e => { e.stopPropagation(); pick('', ''); });
+    document.addEventListener('click', e => { if (!combo.contains(e.target)) close(); });
+    window.addEventListener('scroll', () => { if (combo.classList.contains('open')) reanchor(); }, true);
+
+    // Init
+    pick('', '');
 })();
-</script>  <?php include __DIR__ . '/../partials/footer.php'; ?>
+</script>
+
+<?php include __DIR__ . '/../partials/footer.php'; ?>

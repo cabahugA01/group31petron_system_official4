@@ -3,17 +3,347 @@
  * Shared data builder for staff customer reports and exports.
  */
 
-if (!function_exists('staff_customer_report_table_exists')) {  function staff_customer_report_table_exists(PDO $pdo, string $table): bool {  try {  $stmt = $pdo->query("SHOW TABLES LIKE " . $pdo->quote($table));  return $stmt && $stmt->rowCount() > 0;  } catch (Exception $e) {  return false;  }  }
+if (!function_exists('staff_customer_report_table_exists')) {
+    function staff_customer_report_table_exists(PDO $pdo, string $table): bool {
+        try {
+            $stmt = $pdo->query("SHOW TABLES LIKE " . $pdo->quote($table));
+            return $stmt && $stmt->rowCount() > 0;
+        } catch (Exception $e) {
+            return false;
+        }
+    }
 }
 
-if (!function_exists('staff_customer_report_normalize_filters')) {  function staff_customer_report_normalize_filters(array $input): array {  $today = date('Y-m-d');  $month_start = date('Y-m-01');  $date_start = trim((string)($input['date_start'] ?? $input['date_from'] ?? $month_start));  $date_end = trim((string)($input['date_end'] ?? $input['date_to'] ?? $today));  if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_start)) $date_start = $month_start;  if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_end)) $date_end = $today;  if (strtotime($date_start) > strtotime($date_end)) {  [$date_start, $date_end] = [$date_end, $date_start];  }  $customer_type = strtolower(trim((string)($input['customer_type'] ?? 'all')));  $customer_type = str_replace(['-', ' '], '', $customer_type);  if (!in_array($customer_type, ['all', 'walkin', 'registered'], true)) {  $customer_type = 'all';  }  $transaction_type = strtolower(trim((string)($input['transaction_type'] ?? 'all')));  $transaction_type = str_replace(['-', ' '], '_', $transaction_type);  if (!in_array($transaction_type, ['all', 'merchandise', 'job_order', 'fuel'], true)) {  $transaction_type = 'all';  }  $staff_id = trim((string)($input['staff_id'] ?? 'all'));  $staff_id = ctype_digit($staff_id) && (int)$staff_id > 0 ? (int)$staff_id : 0;  return [  'date_start' => $date_start,  'date_end' => $date_end,  'customer_type' => $customer_type,  'transaction_type' => $transaction_type,  'staff_id' => $staff_id,  ];  }
+if (!function_exists('staff_customer_report_normalize_filters')) {
+    function staff_customer_report_normalize_filters(array $input): array {
+        $today = date('Y-m-d');
+        $month_start = date('Y-m-01');
+        $date_start = trim((string)($input['date_start'] ?? $input['date_from'] ?? $month_start));
+        $date_end = trim((string)($input['date_end'] ?? $input['date_to'] ?? $today));
+
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_start)) $date_start = $month_start;
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_end)) $date_end = $today;
+        if (strtotime($date_start) > strtotime($date_end)) {
+            [$date_start, $date_end] = [$date_end, $date_start];
+        }
+
+        $customer_type = strtolower(trim((string)($input['customer_type'] ?? 'all')));
+        $customer_type = str_replace(['-', ' '], '', $customer_type);
+        if (!in_array($customer_type, ['all', 'walkin', 'registered'], true)) {
+            $customer_type = 'all';
+        }
+
+        $transaction_type = strtolower(trim((string)($input['transaction_type'] ?? 'all')));
+        $transaction_type = str_replace(['-', ' '], '_', $transaction_type);
+        if (!in_array($transaction_type, ['all', 'merchandise', 'job_order', 'fuel'], true)) {
+            $transaction_type = 'all';
+        }
+
+        $staff_id = trim((string)($input['staff_id'] ?? 'all'));
+        $staff_id = ctype_digit($staff_id) && (int)$staff_id > 0 ? (int)$staff_id : 0;
+
+        return [
+            'date_start' => $date_start,
+            'date_end' => $date_end,
+            'customer_type' => $customer_type,
+            'transaction_type' => $transaction_type,
+            'staff_id' => $staff_id,
+        ];
+    }
 }
 
-if (!function_exists('staff_customer_report_person_name_sql')) {  function staff_customer_report_person_name_sql(string $alias): string {  return "COALESCE(NULLIF(TRIM(CONCAT(COALESCE({$alias}.first_name, ''), ' ', COALESCE({$alias}.last_name, ''))), ''), {$alias}.name, {$alias}.username, 'N/A')";  }
+if (!function_exists('staff_customer_report_person_name_sql')) {
+    function staff_customer_report_person_name_sql(string $alias): string {
+        return "COALESCE(NULLIF(TRIM(CONCAT(COALESCE({$alias}.first_name, ''), ' ', COALESCE({$alias}.last_name, ''))), ''), {$alias}.name, {$alias}.username, 'N/A')";
+    }
 }
 
-if (!function_exists('staff_customer_report_fetch_rows')) {  function staff_customer_report_fetch_rows(PDO $pdo, int $station_id, array $filters): array {  $rows = [];  $date_start = $filters['date_start'];  $date_end = $filters['date_end'];  $staff_filter = (int)($filters['staff_id'] ?? 0);  $staff_name_sql = staff_customer_report_person_name_sql('u');  $customer_name_lookup = "  SELECT station_id,  LOWER(TRIM(name)) AS lookup_name,  MIN(id) AS id,  MIN(name) AS name,  MIN(created_at) AS created_at  FROM customers  WHERE name IS NOT NULL AND TRIM(name) <> ''  GROUP BY station_id, LOWER(TRIM(name))  ";  if (staff_customer_report_table_exists($pdo, 'merchandise_transactions')) {  try {  $date_expr = "COALESCE(NULLIF(mt.created_at, '0000-00-00 00:00:00'), NULLIF(mt.transaction_date, '0000-00-00 00:00:00'))";  $name_expr = "COALESCE(NULLIF(TRIM(mt.customer_name), ''), NULLIF(TRIM(CONCAT(COALESCE(mt.customer_first_name, ''), ' ', COALESCE(mt.customer_last_name, ''))), ''))";  $vehicle_expr = "NULLIF(TRIM(CONCAT_WS(' ', NULLIF(mt.job_order_vehicle_type, ''), NULLIF(mt.job_order_vehicle_plate, ''))), '')";  $transaction_type_expr = "CASE WHEN LOWER(COALESCE(mt.transaction_type, '')) IN ('job_order', 'combined', 'service') OR mt.job_order_id IS NOT NULL OR mt.job_order_db_id IS NOT NULL THEN 'Job Order' ELSE 'Merchandise' END";  $sql = "SELECT  'merchandise_transactions' AS source_table,  mt.id AS source_id,  COALESCE(NULLIF(mt.transaction_id, ''), CONCAT('MT-', mt.id)) AS transaction_id,  COALESCE(c.id, cn.id) AS customer_db_id,  COALESCE(c.created_at, cn.created_at) AS customer_created_at,  COALESCE(NULLIF(c.name, ''), NULLIF(cn.name, ''), {$name_expr}, 'Walk-in Customer') AS customer_name,  CASE WHEN COALESCE(c.id, cn.id) IS NULL THEN 'Walk-in' ELSE 'Registered' END AS customer_type,  COALESCE({$vehicle_expr}, 'N/A') AS vehicle,  {$transaction_type_expr} AS transaction_type,  COALESCE(mt.total_amount, 0) AS total_amount,  {$date_expr} AS transaction_date,  mt.staff_id AS staff_id,  {$staff_name_sql} AS staff_name  FROM merchandise_transactions mt  LEFT JOIN customers c ON c.id = mt.credit_customer_id AND c.station_id = mt.station_id  LEFT JOIN ({$customer_name_lookup}) cn  ON cn.station_id = mt.station_id  AND cn.lookup_name = LOWER(TRIM({$name_expr}))  LEFT JOIN users u ON u.id = mt.staff_id  WHERE mt.station_id = ?  AND {$date_expr} IS NOT NULL  AND DATE({$date_expr}) BETWEEN ? AND ?  AND LOWER(COALESCE(mt.validation_status, '')) NOT IN ('voided', 'void', 'rejected', 'cancelled', 'canceled')  AND LOWER(COALESCE(mt.workflow_status, '')) NOT IN ('voided', 'void', 'rejected', 'cancelled', 'canceled')";  $params = [$station_id, $date_start, $date_end];  if ($staff_filter > 0) {  $sql .= " AND mt.staff_id = ?";  $params[] = $staff_filter;  }  $stmt = $pdo->prepare($sql);  $stmt->execute($params);  $rows = array_merge($rows, $stmt->fetchAll(PDO::FETCH_ASSOC));  } catch (Exception $e) {  error_log('Customer report merchandise fetch error: ' . $e->getMessage());  }  }  if (staff_customer_report_table_exists($pdo, 'job_orders')) {  try {  $date_expr = "COALESCE(NULLIF(jo.created_at, '0000-00-00 00:00:00'), NULLIF(jo.completed_at, '0000-00-00 00:00:00'))";  $staff_id_expr = "COALESCE(jo.created_by, jo.user_id)";  $amount_expr = "COALESCE(jo.total_cost, jo.estimated_cost, jo.actual_labor_cost + jo.actual_parts_cost, jo.estimated_labor_cost + jo.estimated_parts_cost, 0)";  $vehicle_expr = "NULLIF(TRIM(CONCAT_WS(' ', NULLIF(jo.vehicle_type, ''), NULLIF(jo.vehicle_plate, ''))), '')";  $sql = "SELECT  'job_orders' AS source_table,  jo.id AS source_id,  COALESCE(NULLIF(jo.job_order_id, ''), NULLIF(jo.job_order_number, ''), CONCAT('JO-', jo.id)) AS transaction_id,  COALESCE(c.id, cn.id) AS customer_db_id,  COALESCE(c.created_at, cn.created_at) AS customer_created_at,  COALESCE(NULLIF(c.name, ''), NULLIF(cn.name, ''), NULLIF(TRIM(jo.customer_name), ''), 'Walk-in Customer') AS customer_name,  CASE WHEN COALESCE(c.id, cn.id) IS NULL THEN 'Walk-in' ELSE 'Registered' END AS customer_type,  COALESCE({$vehicle_expr}, 'N/A') AS vehicle,  'Job Order' AS transaction_type,  {$amount_expr} AS total_amount,  {$date_expr} AS transaction_date,  {$staff_id_expr} AS staff_id,  {$staff_name_sql} AS staff_name  FROM job_orders jo  LEFT JOIN customers c ON c.id = jo.customer_id AND c.station_id = jo.station_id  LEFT JOIN ({$customer_name_lookup}) cn  ON cn.station_id = jo.station_id  AND cn.lookup_name = LOWER(TRIM(jo.customer_name))  LEFT JOIN users u ON u.id = {$staff_id_expr}  WHERE jo.station_id = ?  AND {$date_expr} IS NOT NULL  AND DATE({$date_expr}) BETWEEN ? AND ?  AND LOWER(COALESCE(jo.status, '')) NOT IN ('cancelled', 'canceled', 'rejected')  AND LOWER(COALESCE(jo.validation_status, '')) NOT IN ('voided', 'void', 'rejected', 'cancelled', 'canceled')  AND NOT EXISTS (  SELECT 1  FROM merchandise_transactions mt_dup  WHERE mt_dup.station_id = jo.station_id  AND mt_dup.job_order_db_id = jo.id  AND DATE(COALESCE(NULLIF(mt_dup.created_at, '0000-00-00 00:00:00'), NULLIF(mt_dup.transaction_date, '0000-00-00 00:00:00'))) BETWEEN ? AND ?  )";  $params = [$station_id, $date_start, $date_end, $date_start, $date_end];  if ($staff_filter > 0) {  $sql .= " AND {$staff_id_expr} = ?";  $params[] = $staff_filter;  }  $stmt = $pdo->prepare($sql);  $stmt->execute($params);  $rows = array_merge($rows, $stmt->fetchAll(PDO::FETCH_ASSOC));  } catch (Exception $e) {  error_log('Customer report job order fetch error: ' . $e->getMessage());  }  }  if (staff_customer_report_table_exists($pdo, 'fuel_transactions')) {  try {  $date_expr = "COALESCE(NULLIF(ft.transaction_date, '0000-00-00 00:00:00'), NULLIF(ft.created_at, '0000-00-00 00:00:00'))";  $sql = "SELECT  'fuel_transactions' AS source_table,  ft.id AS source_id,  COALESCE(NULLIF(ft.transaction_id, ''), CONCAT('FT-', ft.id)) AS transaction_id,  NULL AS customer_db_id,  NULL AS customer_created_at,  'Walk-in Customer' AS customer_name,  'Walk-in' AS customer_type,  'N/A' AS vehicle,  'Fuel' AS transaction_type,  COALESCE(ft.total_amount, 0) AS total_amount,  {$date_expr} AS transaction_date,  ft.staff_id AS staff_id,  {$staff_name_sql} AS staff_name  FROM fuel_transactions ft  LEFT JOIN users u ON u.id = ft.staff_id  WHERE ft.station_id = ?  AND {$date_expr} IS NOT NULL  AND DATE({$date_expr}) BETWEEN ? AND ?  AND LOWER(COALESCE(ft.status, '')) NOT IN ('voided', 'void', 'rejected', 'cancelled', 'canceled')";  $params = [$station_id, $date_start, $date_end];  if ($staff_filter > 0) {  $sql .= " AND ft.staff_id = ?";  $params[] = $staff_filter;  }  $stmt = $pdo->prepare($sql);  $stmt->execute($params);  $rows = array_merge($rows, $stmt->fetchAll(PDO::FETCH_ASSOC));  } catch (Exception $e) {  error_log('Customer report fuel fetch error: ' . $e->getMessage());  }  }  return $rows;  }
+if (!function_exists('staff_customer_report_fetch_rows')) {
+    function staff_customer_report_fetch_rows(PDO $pdo, int $station_id, array $filters): array {
+        $rows = [];
+        $date_start = $filters['date_start'];
+        $date_end = $filters['date_end'];
+        $staff_filter = (int)($filters['staff_id'] ?? 0);
+        $staff_name_sql = staff_customer_report_person_name_sql('u');
+
+        $customer_name_lookup = "
+            SELECT station_id,
+                   LOWER(TRIM(name)) AS lookup_name,
+                   MIN(id) AS id,
+                   MIN(name) AS name,
+                   MIN(created_at) AS created_at
+            FROM customers
+            WHERE name IS NOT NULL AND TRIM(name) <> ''
+            GROUP BY station_id, LOWER(TRIM(name))
+        ";
+
+        if (staff_customer_report_table_exists($pdo, 'merchandise_transactions')) {
+            try {
+                $date_expr = "COALESCE(NULLIF(mt.created_at, '0000-00-00 00:00:00'), NULLIF(mt.transaction_date, '0000-00-00 00:00:00'))";
+                $name_expr = "COALESCE(NULLIF(TRIM(mt.customer_name), ''), NULLIF(TRIM(CONCAT(COALESCE(mt.customer_first_name, ''), ' ', COALESCE(mt.customer_last_name, ''))), ''))";
+                $vehicle_expr = "NULLIF(TRIM(CONCAT_WS(' ', NULLIF(mt.job_order_vehicle_type, ''), NULLIF(mt.job_order_vehicle_plate, ''))), '')";
+                $transaction_type_expr = "CASE WHEN LOWER(COALESCE(mt.transaction_type, '')) IN ('job_order', 'combined', 'service') OR mt.job_order_id IS NOT NULL OR mt.job_order_db_id IS NOT NULL THEN 'Job Order' ELSE 'Merchandise' END";
+                $sql = "SELECT
+                            'merchandise_transactions' AS source_table,
+                            mt.id AS source_id,
+                            COALESCE(NULLIF(mt.transaction_id, ''), CONCAT('MT-', mt.id)) AS transaction_id,
+                            COALESCE(c.id, cn.id) AS customer_db_id,
+                            COALESCE(c.created_at, cn.created_at) AS customer_created_at,
+                            COALESCE(NULLIF(c.name, ''), NULLIF(cn.name, ''), {$name_expr}, 'Walk-in Customer') AS customer_name,
+                            CASE WHEN COALESCE(c.id, cn.id) IS NULL THEN 'Walk-in' ELSE 'Registered' END AS customer_type,
+                            COALESCE({$vehicle_expr}, 'N/A') AS vehicle,
+                            {$transaction_type_expr} AS transaction_type,
+                            COALESCE(mt.total_amount, 0) AS total_amount,
+                            {$date_expr} AS transaction_date,
+                            mt.staff_id AS staff_id,
+                            {$staff_name_sql} AS staff_name
+                        FROM merchandise_transactions mt
+                        LEFT JOIN customers c ON c.id = mt.credit_customer_id AND c.station_id = mt.station_id
+                        LEFT JOIN ({$customer_name_lookup}) cn
+                               ON cn.station_id = mt.station_id
+                              AND cn.lookup_name = LOWER(TRIM({$name_expr}))
+                        LEFT JOIN users u ON u.id = mt.staff_id
+                        WHERE mt.station_id = ?
+                          AND {$date_expr} IS NOT NULL
+                          AND DATE({$date_expr}) BETWEEN ? AND ?
+                          AND LOWER(COALESCE(mt.validation_status, '')) NOT IN ('voided', 'void', 'rejected', 'cancelled', 'canceled')
+                          AND LOWER(COALESCE(mt.workflow_status, '')) NOT IN ('voided', 'void', 'rejected', 'cancelled', 'canceled')";
+                $params = [$station_id, $date_start, $date_end];
+                if ($staff_filter > 0) {
+                    $sql .= " AND mt.staff_id = ?";
+                    $params[] = $staff_filter;
+                }
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                $rows = array_merge($rows, $stmt->fetchAll(PDO::FETCH_ASSOC));
+            } catch (Exception $e) {
+                error_log('Customer report merchandise fetch error: ' . $e->getMessage());
+            }
+        }
+
+        if (staff_customer_report_table_exists($pdo, 'job_orders')) {
+            try {
+                $date_expr = "COALESCE(NULLIF(jo.created_at, '0000-00-00 00:00:00'), NULLIF(jo.completed_at, '0000-00-00 00:00:00'))";
+                $staff_id_expr = "COALESCE(jo.created_by, jo.user_id)";
+                $amount_expr = "COALESCE(jo.total_cost, jo.estimated_cost, jo.actual_labor_cost + jo.actual_parts_cost, jo.estimated_labor_cost + jo.estimated_parts_cost, 0)";
+                $vehicle_expr = "NULLIF(TRIM(CONCAT_WS(' ', NULLIF(jo.vehicle_type, ''), NULLIF(jo.vehicle_plate, ''))), '')";
+                $sql = "SELECT
+                            'job_orders' AS source_table,
+                            jo.id AS source_id,
+                            COALESCE(NULLIF(jo.job_order_id, ''), NULLIF(jo.job_order_number, ''), CONCAT('JO-', jo.id)) AS transaction_id,
+                            COALESCE(c.id, cn.id) AS customer_db_id,
+                            COALESCE(c.created_at, cn.created_at) AS customer_created_at,
+                            COALESCE(NULLIF(c.name, ''), NULLIF(cn.name, ''), NULLIF(TRIM(jo.customer_name), ''), 'Walk-in Customer') AS customer_name,
+                            CASE WHEN COALESCE(c.id, cn.id) IS NULL THEN 'Walk-in' ELSE 'Registered' END AS customer_type,
+                            COALESCE({$vehicle_expr}, 'N/A') AS vehicle,
+                            'Job Order' AS transaction_type,
+                            {$amount_expr} AS total_amount,
+                            {$date_expr} AS transaction_date,
+                            {$staff_id_expr} AS staff_id,
+                            {$staff_name_sql} AS staff_name
+                        FROM job_orders jo
+                        LEFT JOIN customers c ON c.id = jo.customer_id AND c.station_id = jo.station_id
+                        LEFT JOIN ({$customer_name_lookup}) cn
+                               ON cn.station_id = jo.station_id
+                              AND cn.lookup_name = LOWER(TRIM(jo.customer_name))
+                        LEFT JOIN users u ON u.id = {$staff_id_expr}
+                        WHERE jo.station_id = ?
+                          AND {$date_expr} IS NOT NULL
+                          AND DATE({$date_expr}) BETWEEN ? AND ?
+                          AND LOWER(COALESCE(jo.status, '')) NOT IN ('cancelled', 'canceled', 'rejected')
+                          AND LOWER(COALESCE(jo.validation_status, '')) NOT IN ('voided', 'void', 'rejected', 'cancelled', 'canceled')
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM merchandise_transactions mt_dup
+                              WHERE mt_dup.station_id = jo.station_id
+                                AND mt_dup.job_order_db_id = jo.id
+                                AND DATE(COALESCE(NULLIF(mt_dup.created_at, '0000-00-00 00:00:00'), NULLIF(mt_dup.transaction_date, '0000-00-00 00:00:00'))) BETWEEN ? AND ?
+                          )";
+                $params = [$station_id, $date_start, $date_end, $date_start, $date_end];
+                if ($staff_filter > 0) {
+                    $sql .= " AND {$staff_id_expr} = ?";
+                    $params[] = $staff_filter;
+                }
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                $rows = array_merge($rows, $stmt->fetchAll(PDO::FETCH_ASSOC));
+            } catch (Exception $e) {
+                error_log('Customer report job order fetch error: ' . $e->getMessage());
+            }
+        }
+
+        if (staff_customer_report_table_exists($pdo, 'fuel_transactions')) {
+            try {
+                $date_expr = "COALESCE(NULLIF(ft.transaction_date, '0000-00-00 00:00:00'), NULLIF(ft.created_at, '0000-00-00 00:00:00'))";
+                $sql = "SELECT
+                            'fuel_transactions' AS source_table,
+                            ft.id AS source_id,
+                            COALESCE(NULLIF(ft.transaction_id, ''), CONCAT('FT-', ft.id)) AS transaction_id,
+                            NULL AS customer_db_id,
+                            NULL AS customer_created_at,
+                            'Walk-in Customer' AS customer_name,
+                            'Walk-in' AS customer_type,
+                            'N/A' AS vehicle,
+                            'Fuel' AS transaction_type,
+                            COALESCE(ft.total_amount, 0) AS total_amount,
+                            {$date_expr} AS transaction_date,
+                            ft.staff_id AS staff_id,
+                            {$staff_name_sql} AS staff_name
+                        FROM fuel_transactions ft
+                        LEFT JOIN users u ON u.id = ft.staff_id
+                        WHERE ft.station_id = ?
+                          AND {$date_expr} IS NOT NULL
+                          AND DATE({$date_expr}) BETWEEN ? AND ?
+                          AND LOWER(COALESCE(ft.status, '')) NOT IN ('voided', 'void', 'rejected', 'cancelled', 'canceled')";
+                $params = [$station_id, $date_start, $date_end];
+                if ($staff_filter > 0) {
+                    $sql .= " AND ft.staff_id = ?";
+                    $params[] = $staff_filter;
+                }
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                $rows = array_merge($rows, $stmt->fetchAll(PDO::FETCH_ASSOC));
+            } catch (Exception $e) {
+                error_log('Customer report fuel fetch error: ' . $e->getMessage());
+            }
+        }
+
+        return $rows;
+    }
 }
 
-if (!function_exists('staff_customer_report_build')) {  function staff_customer_report_build(PDO $pdo, int $station_id, array $filters): array {  $filters = staff_customer_report_normalize_filters($filters);  $rows = staff_customer_report_fetch_rows($pdo, $station_id, $filters);  $filtered = [];  foreach ($rows as $row) {  $customer_key = strtolower(str_replace('-', '', (string)$row['customer_type']));  $transaction_key = strtolower(str_replace(' ', '_', (string)$row['transaction_type']));  if ($filters['customer_type'] !== 'all' && $customer_key !== $filters['customer_type']) continue;  if ($filters['transaction_type'] !== 'all' && $transaction_key !== $filters['transaction_type']) continue;  $filtered[] = $row;  }  usort($filtered, function ($a, $b) {  $at = strtotime((string)($a['transaction_date'] ?? '')) ?: 0;  $bt = strtotime((string)($b['transaction_date'] ?? '')) ?: 0;  if ($at === $bt) return strcmp((string)($a['transaction_id'] ?? ''), (string)($b['transaction_id'] ?? ''));  return $at <=> $bt;  });  $walkin_seq = 1;  foreach ($filtered as &$row) {  $row['total_amount'] = (float)($row['total_amount'] ?? 0);  $row['customer_db_id'] = $row['customer_db_id'] !== null ? (int)$row['customer_db_id'] : null;  $row['customer_id_display'] = $row['customer_db_id']  ? 'CUS-' . str_pad((string)$row['customer_db_id'], 3, '0', STR_PAD_LEFT)  : 'WLK-' . str_pad((string)$walkin_seq++, 3, '0', STR_PAD_LEFT);  $row['customer_name'] = trim((string)($row['customer_name'] ?? '')) ?: 'Walk-in Customer';  $row['customer_type'] = $row['customer_type'] === 'Registered' ? 'Registered' : 'Walk-in';  $row['vehicle'] = trim((string)($row['vehicle'] ?? '')) ?: 'N/A';  $row['staff_name'] = trim((string)($row['staff_name'] ?? '')) ?: 'N/A';  }  unset($row);  $summary = [  'total_served' => count($filtered),  'walkin' => 0,  'registered' => 0,  'new_registered' => 0,  'returning' => 0,  ];  $transaction_type_summary = ['Merchandise' => 0, 'Job Order' => 0, 'Fuel' => 0];  $staff_summary = [];  $daily_summary = [];  $repeat_map = [];  foreach ($filtered as $row) {  $date_key = date('Y-m-d', strtotime((string)$row['transaction_date']));  if (!isset($daily_summary[$date_key])) {  $daily_summary[$date_key] = ['date' => $date_key, 'walkin' => 0, 'registered' => 0, 'total' => 0];  }  if ($row['customer_type'] === 'Registered') {  $summary['registered']++;  $daily_summary[$date_key]['registered']++;  $created_at = $row['customer_created_at'] ?? null;  if ($created_at && date('Y-m-d', strtotime((string)$created_at)) >= $filters['date_start'] && date('Y-m-d', strtotime((string)$created_at)) <= $filters['date_end']) {  $summary['new_registered']++;  }  $repeat_key = $row['customer_db_id'] ? 'id:' . $row['customer_db_id'] : 'name:' . strtolower($row['customer_name']);  if (!isset($repeat_map[$repeat_key])) {  $repeat_map[$repeat_key] = [  'customer' => $row['customer_name'],  'visits' => 0,  'last_visit' => $row['transaction_date'],  ];  }  $repeat_map[$repeat_key]['visits']++;  if (strtotime((string)$row['transaction_date']) > strtotime((string)$repeat_map[$repeat_key]['last_visit'])) {  $repeat_map[$repeat_key]['last_visit'] = $row['transaction_date'];  }  } else {  $summary['walkin']++;  $daily_summary[$date_key]['walkin']++;  }  $daily_summary[$date_key]['total']++;  if (isset($transaction_type_summary[$row['transaction_type']])) {  $transaction_type_summary[$row['transaction_type']]++;  }  if (!isset($staff_summary[$row['staff_name']])) {  $staff_summary[$row['staff_name']] = ['staff' => $row['staff_name'], 'customers_served' => 0];  }  $staff_summary[$row['staff_name']]['customers_served']++;  }  $summary['returning'] = max($summary['registered'] - $summary['new_registered'], 0);  $repeat_customers = array_values(array_filter($repeat_map, function ($row) {  return (int)$row['visits'] > 1;  }));  usort($repeat_customers, function ($a, $b) {  if ((int)$a['visits'] === (int)$b['visits']) {  return (strtotime((string)$b['last_visit']) ?: 0) <=> (strtotime((string)$a['last_visit']) ?: 0);  }  return (int)$b['visits'] <=> (int)$a['visits'];  });  ksort($daily_summary);  uasort($staff_summary, function ($a, $b) {  if ((int)$a['customers_served'] === (int)$b['customers_served']) {  return strcmp($a['staff'], $b['staff']);  }  return (int)$b['customers_served'] <=> (int)$a['customers_served'];  });  $staff_options = [];  if (staff_customer_report_table_exists($pdo, 'users')) {  try {  $stmt = $pdo->prepare("SELECT id, " . staff_customer_report_person_name_sql('u') . " AS staff_name FROM users u WHERE station_id = ? AND role = 'staff' ORDER BY first_name, last_name, username");  $stmt->execute([$station_id]);  $staff_options = $stmt->fetchAll(PDO::FETCH_ASSOC);  } catch (Exception $e) {  $staff_options = [];  }  }  return [  'filters' => $filters,  'rows' => $filtered,  'summary' => $summary,  'customer_type_summary' => [  'Walk-in' => $summary['walkin'],  'Registered' => $summary['registered'],  ],  'transaction_type_summary' => $transaction_type_summary,  'staff_summary' => array_values($staff_summary),  'daily_summary' => array_values($daily_summary),  'repeat_customers' => $repeat_customers,  'staff_options' => $staff_options,  ];  }
+if (!function_exists('staff_customer_report_build')) {
+    function staff_customer_report_build(PDO $pdo, int $station_id, array $filters): array {
+        $filters = staff_customer_report_normalize_filters($filters);
+        $rows = staff_customer_report_fetch_rows($pdo, $station_id, $filters);
+
+        $filtered = [];
+        foreach ($rows as $row) {
+            $customer_key = strtolower(str_replace('-', '', (string)$row['customer_type']));
+            $transaction_key = strtolower(str_replace(' ', '_', (string)$row['transaction_type']));
+            if ($filters['customer_type'] !== 'all' && $customer_key !== $filters['customer_type']) continue;
+            if ($filters['transaction_type'] !== 'all' && $transaction_key !== $filters['transaction_type']) continue;
+            $filtered[] = $row;
+        }
+
+        usort($filtered, function ($a, $b) {
+            $at = strtotime((string)($a['transaction_date'] ?? '')) ?: 0;
+            $bt = strtotime((string)($b['transaction_date'] ?? '')) ?: 0;
+            if ($at === $bt) return strcmp((string)($a['transaction_id'] ?? ''), (string)($b['transaction_id'] ?? ''));
+            return $at <=> $bt;
+        });
+
+        $walkin_seq = 1;
+        foreach ($filtered as &$row) {
+            $row['total_amount'] = (float)($row['total_amount'] ?? 0);
+            $row['customer_db_id'] = $row['customer_db_id'] !== null ? (int)$row['customer_db_id'] : null;
+            $row['customer_id_display'] = $row['customer_db_id']
+                ? 'CUS-' . str_pad((string)$row['customer_db_id'], 3, '0', STR_PAD_LEFT)
+                : 'WLK-' . str_pad((string)$walkin_seq++, 3, '0', STR_PAD_LEFT);
+            $row['customer_name'] = trim((string)($row['customer_name'] ?? '')) ?: 'Walk-in Customer';
+            $row['customer_type'] = $row['customer_type'] === 'Registered' ? 'Registered' : 'Walk-in';
+            $row['vehicle'] = trim((string)($row['vehicle'] ?? '')) ?: 'N/A';
+            $row['staff_name'] = trim((string)($row['staff_name'] ?? '')) ?: 'N/A';
+        }
+        unset($row);
+
+        $summary = [
+            'total_served' => count($filtered),
+            'walkin' => 0,
+            'registered' => 0,
+            'new_registered' => 0,
+            'returning' => 0,
+        ];
+        $transaction_type_summary = ['Merchandise' => 0, 'Job Order' => 0, 'Fuel' => 0];
+        $staff_summary = [];
+        $daily_summary = [];
+        $repeat_map = [];
+
+        foreach ($filtered as $row) {
+            $date_key = date('Y-m-d', strtotime((string)$row['transaction_date']));
+            if (!isset($daily_summary[$date_key])) {
+                $daily_summary[$date_key] = ['date' => $date_key, 'walkin' => 0, 'registered' => 0, 'total' => 0];
+            }
+
+            if ($row['customer_type'] === 'Registered') {
+                $summary['registered']++;
+                $daily_summary[$date_key]['registered']++;
+                $created_at = $row['customer_created_at'] ?? null;
+                if ($created_at && date('Y-m-d', strtotime((string)$created_at)) >= $filters['date_start'] && date('Y-m-d', strtotime((string)$created_at)) <= $filters['date_end']) {
+                    $summary['new_registered']++;
+                }
+
+                $repeat_key = $row['customer_db_id'] ? 'id:' . $row['customer_db_id'] : 'name:' . strtolower($row['customer_name']);
+                if (!isset($repeat_map[$repeat_key])) {
+                    $repeat_map[$repeat_key] = [
+                        'customer' => $row['customer_name'],
+                        'visits' => 0,
+                        'last_visit' => $row['transaction_date'],
+                    ];
+                }
+                $repeat_map[$repeat_key]['visits']++;
+                if (strtotime((string)$row['transaction_date']) > strtotime((string)$repeat_map[$repeat_key]['last_visit'])) {
+                    $repeat_map[$repeat_key]['last_visit'] = $row['transaction_date'];
+                }
+            } else {
+                $summary['walkin']++;
+                $daily_summary[$date_key]['walkin']++;
+            }
+
+            $daily_summary[$date_key]['total']++;
+            if (isset($transaction_type_summary[$row['transaction_type']])) {
+                $transaction_type_summary[$row['transaction_type']]++;
+            }
+            if (!isset($staff_summary[$row['staff_name']])) {
+                $staff_summary[$row['staff_name']] = ['staff' => $row['staff_name'], 'customers_served' => 0];
+            }
+            $staff_summary[$row['staff_name']]['customers_served']++;
+        }
+
+        $summary['returning'] = max($summary['registered'] - $summary['new_registered'], 0);
+
+        $repeat_customers = array_values(array_filter($repeat_map, function ($row) {
+            return (int)$row['visits'] > 1;
+        }));
+        usort($repeat_customers, function ($a, $b) {
+            if ((int)$a['visits'] === (int)$b['visits']) {
+                return (strtotime((string)$b['last_visit']) ?: 0) <=> (strtotime((string)$a['last_visit']) ?: 0);
+            }
+            return (int)$b['visits'] <=> (int)$a['visits'];
+        });
+
+        ksort($daily_summary);
+        uasort($staff_summary, function ($a, $b) {
+            if ((int)$a['customers_served'] === (int)$b['customers_served']) {
+                return strcmp($a['staff'], $b['staff']);
+            }
+            return (int)$b['customers_served'] <=> (int)$a['customers_served'];
+        });
+
+        $staff_options = [];
+        if (staff_customer_report_table_exists($pdo, 'users')) {
+            try {
+                $stmt = $pdo->prepare("SELECT id, " . staff_customer_report_person_name_sql('u') . " AS staff_name FROM users u WHERE station_id = ? AND role = 'staff' ORDER BY first_name, last_name, username");
+                $stmt->execute([$station_id]);
+                $staff_options = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Exception $e) {
+                $staff_options = [];
+            }
+        }
+
+        return [
+            'filters' => $filters,
+            'rows' => $filtered,
+            'summary' => $summary,
+            'customer_type_summary' => [
+                'Walk-in' => $summary['walkin'],
+                'Registered' => $summary['registered'],
+            ],
+            'transaction_type_summary' => $transaction_type_summary,
+            'staff_summary' => array_values($staff_summary),
+            'daily_summary' => array_values($daily_summary),
+            'repeat_customers' => $repeat_customers,
+            'staff_options' => $staff_options,
+        ];
+    }
 }

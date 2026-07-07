@@ -1,6 +1,92 @@
 <?php
-/**  * Apply Employee ID Migration  * Adds employee_id field and generates IDs for existing users  */  require_once __DIR__ . '/../public/db_connect.php';  header('Content-Type: text/plain');  echo "==============================================\n";
+/**
+ * Apply Employee ID Migration
+ * Adds employee_id field and generates IDs for existing users
+ */
+
+require_once __DIR__ . '/../public/db_connect.php';
+
+header('Content-Type: text/plain');
+
+echo "==============================================\n";
 echo "EMPLOYEE ID MIGRATION\n";
-echo "==============================================\n\n";  try {  echo "[1/6] Checking if migration is needed...\n";  // Check if employee_id column exists  $stmt = $pdo->query("SHOW COLUMNS FROM users LIKE 'employee_id'");  if ($stmt->rowCount() > 0) {  echo "  Migration already applied. Column exists.\n";  exit(0);  }  echo "[2/6] Adding employee_id column...\n";  $pdo->exec("  ALTER TABLE `users`  ADD COLUMN `employee_id` varchar(20) DEFAULT NULL COMMENT 'Employee ID with role prefix (ADM-001, MGR-001, STF-001)' AFTER `id`,  ADD UNIQUE KEY `uk_employee_id` (`employee_id`)  ");  echo "  Column added successfully.\n";  echo "[3/6] Generating Employee IDs for Admin accounts...\n";  $pdo->exec("SET @adm_counter = 0");  $result = $pdo->exec("  UPDATE `users`  SET `employee_id` = CONCAT('ADM-', LPAD((@adm_counter := @adm_counter + 1), 3, '0'))  WHERE `role` = 'admin'  ORDER BY `id`  ");  echo "  Generated $result admin employee ID(s).\n";  echo "[4/6] Generating Employee IDs for Manager accounts...\n";  $pdo->exec("SET @mgr_counter = 0");  $result = $pdo->exec("  UPDATE `users`  SET `employee_id` = CONCAT('MGR-', LPAD((@mgr_counter := @mgr_counter + 1), 3, '0'))  WHERE `role` = 'manager'  ORDER BY `id`  ");  echo "  Generated $result manager employee ID(s).\n";  echo "[5/6] Generating Employee IDs for Staff accounts...\n";  $pdo->exec("SET @stf_counter = 0");  $result = $pdo->exec("  UPDATE `users`  SET `employee_id` = CONCAT('STF-', LPAD((@stf_counter := @stf_counter + 1), 3, '0'))  WHERE `role` = 'staff'  ORDER BY `id`  ");  echo "  Generated $result staff employee ID(s).\n";  echo "[6/6] Generating Employee IDs for SuperAdmin accounts...\n";  $pdo->exec("SET @sa_counter = 0");  $result = $pdo->exec("  UPDATE `users`  SET `employee_id` = CONCAT('SA-', LPAD((@sa_counter := @sa_counter + 1), 3, '0'))  WHERE `role` = 'superadmin'  ORDER BY `id`  ");  echo "  Generated $result superadmin employee ID(s).\n";  echo "\n==============================================\n";  echo " MIGRATION COMPLETED SUCCESSFULLY!\n";  echo "==============================================\n\n";  // Show results  echo "Generated Employee IDs:\n";  $stmt = $pdo->query("SELECT employee_id, name, role FROM users ORDER BY role, employee_id");  $results = $stmt->fetchAll(PDO::FETCH_ASSOC);  foreach ($results as $row) {  echo "  {$row['employee_id']} - {$row['name']} ({$row['role']})\n";  }  } catch (PDOException $e) {  echo "\n==============================================\n";  echo "MIGRATION FAILED\n";  echo "==============================================\n\n";  echo "Error: " . $e->getMessage() . "\n";  exit(1);
+echo "==============================================\n\n";
+
+try {
+    echo "[1/6] Checking if migration is needed...\n";
+    
+    // Check if employee_id column exists
+    $stmt = $pdo->query("SHOW COLUMNS FROM users LIKE 'employee_id'");
+    if ($stmt->rowCount() > 0) {
+        echo "   ⚠ Migration already applied. Column exists.\n";
+        exit(0);
+    }
+    
+    echo "[2/6] Adding employee_id column...\n";
+    $pdo->exec("
+        ALTER TABLE `users`
+        ADD COLUMN `employee_id` varchar(20) DEFAULT NULL COMMENT 'Employee ID with role prefix (ADM-001, MGR-001, STF-001)' AFTER `id`,
+        ADD UNIQUE KEY `uk_employee_id` (`employee_id`)
+    ");
+    echo "   ✓ Column added successfully.\n";
+    
+    echo "[3/6] Generating Employee IDs for Admin accounts...\n";
+    $pdo->exec("SET @adm_counter = 0");
+    $result = $pdo->exec("
+        UPDATE `users` 
+        SET `employee_id` = CONCAT('ADM-', LPAD((@adm_counter := @adm_counter + 1), 3, '0'))
+        WHERE `role` = 'admin'
+        ORDER BY `id`
+    ");
+    echo "   ✓ Generated $result admin employee ID(s).\n";
+    
+    echo "[4/6] Generating Employee IDs for Manager accounts...\n";
+    $pdo->exec("SET @mgr_counter = 0");
+    $result = $pdo->exec("
+        UPDATE `users` 
+        SET `employee_id` = CONCAT('MGR-', LPAD((@mgr_counter := @mgr_counter + 1), 3, '0'))
+        WHERE `role` = 'manager'
+        ORDER BY `id`
+    ");
+    echo "   ✓ Generated $result manager employee ID(s).\n";
+    
+    echo "[5/6] Generating Employee IDs for Staff accounts...\n";
+    $pdo->exec("SET @stf_counter = 0");
+    $result = $pdo->exec("
+        UPDATE `users` 
+        SET `employee_id` = CONCAT('STF-', LPAD((@stf_counter := @stf_counter + 1), 3, '0'))
+        WHERE `role` = 'staff'
+        ORDER BY `id`
+    ");
+    echo "   ✓ Generated $result staff employee ID(s).\n";
+    
+    echo "[6/6] Generating Employee IDs for SuperAdmin accounts...\n";
+    $pdo->exec("SET @sa_counter = 0");
+    $result = $pdo->exec("
+        UPDATE `users` 
+        SET `employee_id` = CONCAT('SA-', LPAD((@sa_counter := @sa_counter + 1), 3, '0'))
+        WHERE `role` = 'superadmin'
+        ORDER BY `id`
+    ");
+    echo "   ✓ Generated $result superadmin employee ID(s).\n";
+    
+    echo "\n==============================================\n";
+    echo "✓ MIGRATION COMPLETED SUCCESSFULLY!\n";
+    echo "==============================================\n\n";
+    
+    // Show results
+    echo "Generated Employee IDs:\n";
+    $stmt = $pdo->query("SELECT employee_id, name, role FROM users ORDER BY role, employee_id");
+    $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($results as $row) {
+        echo "  {$row['employee_id']} - {$row['name']} ({$row['role']})\n";
+    }
+    
+} catch (PDOException $e) {
+    echo "\n==============================================\n";
+    echo "❌ MIGRATION FAILED\n";
+    echo "==============================================\n\n";
+    echo "Error: " . $e->getMessage() . "\n";
+    exit(1);
 }
 ?>

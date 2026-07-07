@@ -1,3 +1,124 @@
 <?php
-/**  * Staff Transactions Restructure - Database Schema Updates  *  * Adds transaction_type support and cross-table linking for:  * - Job Order Only transactions  * - Merchandise Only transactions  * - Combined transactions  */  require_once __DIR__ . '/../../public/db_connect.php';  try {  echo "Starting Staff Transactions Schema Migration...\n\n";  // ── job_orders table updates ──────────────────────────────────────────────  echo "1. Updating job_orders table...\n";  $job_order_updates = [  "ALTER TABLE `job_orders` ADD COLUMN IF NOT EXISTS `transaction_type` VARCHAR(20) NOT NULL DEFAULT 'job_order' COMMENT 'job_order|combined'",  "ALTER TABLE `job_orders` ADD COLUMN IF NOT EXISTS `merchandise_transaction_id` INT(11) NULL DEFAULT NULL COMMENT 'FK to merchandise_transactions for combined transactions'",  "ALTER TABLE `job_orders` ADD INDEX IF NOT EXISTS `idx_transaction_type` (`transaction_type`)",  "ALTER TABLE `job_orders` ADD INDEX IF NOT EXISTS `idx_merch_txn_id` (`merchandise_transaction_id`)",  ];  foreach ($job_order_updates as $sql) {  try {  // MySQL doesn't support IF NOT EXISTS for ALTER TABLE ADD COLUMN in older versions  // So we'll check first  $sql_clean = str_replace('IF NOT EXISTS', '', $sql);  $pdo->exec($sql_clean);  echo "  " . substr($sql, 0, 80) . "...\n";  } catch (PDOException $e) {  if ($e->getCode() == '42S21' || strpos($e->getMessage(), 'Duplicate column') !== false) {  echo "  - Already exists: " . substr($sql, 0, 50) . "...\n";  } elseif ($e->getCode() == '42000' && strpos($e->getMessage(), 'Duplicate key') !== false) {  echo "  - Index already exists\n";  } else {  echo "  Error: " . $e->getMessage() . "\n";  }  }  }  // ── merchandise_transactions table updates ────────────────────────────────  echo "\n2. Updating merchandise_transactions table...\n";  $merch_updates = [  "ALTER TABLE `merchandise_transactions` ADD COLUMN IF NOT EXISTS `transaction_type` VARCHAR(20) NOT NULL DEFAULT 'merchandise' COMMENT 'merchandise|combined'",  "ALTER TABLE `merchandise_transactions` ADD COLUMN IF NOT EXISTS `job_order_id` INT(11) NULL DEFAULT NULL COMMENT 'FK to job_orders for combined transactions'",  "ALTER TABLE `merchandise_transactions` ADD INDEX IF NOT EXISTS `idx_transaction_type` (`transaction_type`)",  "ALTER TABLE `merchandise_transactions` ADD INDEX IF NOT EXISTS `idx_job_order_id` (`job_order_id`)",  ];  foreach ($merch_updates as $sql) {  try {  $sql_clean = str_replace('IF NOT EXISTS', '', $sql);  $pdo->exec($sql_clean);  echo "  " . substr($sql, 0, 80) . "...\n";  } catch (PDOException $e) {  if ($e->getCode() == '42S21' || strpos($e->getMessage(), 'Duplicate column') !== false) {  echo "  - Already exists: " . substr($sql, 0, 50) . "...\n";  } elseif ($e->getCode() == '42000' && strpos($e->getMessage(), 'Duplicate key') !== false) {  echo "  - Index already exists\n";  } else {  echo "  Error: " . $e->getMessage() . "\n";  }  }  }  // ── Backfill existing records ─────────────────────────────────────────────  echo "\n3. Backfilling transaction_type for existing records...\n";  // Job orders: Default all to 'job_order' if NULL/empty  $pdo->exec("  UPDATE job_orders  SET transaction_type = 'job_order'  WHERE transaction_type IS NULL OR transaction_type = ''  ");  $jo_updated = $pdo->exec("  UPDATE job_orders  SET transaction_type = 'job_order'  WHERE transaction_type IS NULL OR transaction_type = ''  ");  echo "  Updated $jo_updated job_orders records to 'job_order'\n";  // Merchandise transactions: Check if has job_order_service to determine type  $merch_updated = $pdo->exec("  UPDATE merchandise_transactions  SET transaction_type = IF(  job_order_service IS NOT NULL AND TRIM(job_order_service) != '',  'combined',  'merchandise'  )  WHERE transaction_type IS NULL OR transaction_type = ''  ");  echo "  Updated $merch_updated merchandise_transactions records\n";  echo "\nStaff Transactions Schema Migration Complete!\n\n";  // ── Verification ──────────────────────────────────────────────────────────  echo "4. Verification:\n";  $jo_cols = $pdo->query("SHOW COLUMNS FROM job_orders WHERE Field IN ('transaction_type', 'merchandise_transaction_id')")->fetchAll(PDO::FETCH_ASSOC);  echo "  job_orders columns: " . count($jo_cols) . "/2\n";  foreach ($jo_cols as $col) {  echo "  - {$col['Field']} ({$col['Type']}) Default: {$col['Default']}\n";  }  $mt_cols = $pdo->query("SHOW COLUMNS FROM merchandise_transactions WHERE Field IN ('transaction_type', 'job_order_id')")->fetchAll(PDO::FETCH_ASSOC);  echo "  merchandise_transactions columns: " . count($mt_cols) . "/2\n";  foreach ($mt_cols as $col) {  echo "  - {$col['Field']} ({$col['Type']}) Default: {$col['Default']}\n";  }  $jo_count = $pdo->query("SELECT COUNT(*) FROM job_orders")->fetchColumn();  $mt_count = $pdo->query("SELECT COUNT(*) FROM merchandise_transactions")->fetchColumn();  echo "\n  Total job_orders: $jo_count\n";  echo "  Total merchandise_transactions: $mt_count\n";  } catch (Exception $e) {  echo "\nMigration Error: " . $e->getMessage() . "\n";  echo "Stack trace:\n" . $e->getTraceAsString() . "\n";  exit(1);
+/**
+ * Staff Transactions Restructure - Database Schema Updates
+ * 
+ * Adds transaction_type support and cross-table linking for:
+ * - Job Order Only transactions
+ * - Merchandise Only transactions  
+ * - Combined transactions
+ */
+
+require_once __DIR__ . '/../../public/db_connect.php';
+
+try {
+    echo "Starting Staff Transactions Schema Migration...\n\n";
+    
+    // ── job_orders table updates ──────────────────────────────────────────────
+    echo "1. Updating job_orders table...\n";
+    
+    $job_order_updates = [
+        "ALTER TABLE `job_orders` ADD COLUMN IF NOT EXISTS `transaction_type` VARCHAR(20) NOT NULL DEFAULT 'job_order' COMMENT 'job_order|combined'",
+        "ALTER TABLE `job_orders` ADD COLUMN IF NOT EXISTS `merchandise_transaction_id` INT(11) NULL DEFAULT NULL COMMENT 'FK to merchandise_transactions for combined transactions'",
+        "ALTER TABLE `job_orders` ADD INDEX IF NOT EXISTS `idx_transaction_type` (`transaction_type`)",
+        "ALTER TABLE `job_orders` ADD INDEX IF NOT EXISTS `idx_merch_txn_id` (`merchandise_transaction_id`)",
+    ];
+    
+    foreach ($job_order_updates as $sql) {
+        try {
+            // MySQL doesn't support IF NOT EXISTS for ALTER TABLE ADD COLUMN in older versions
+            // So we'll check first
+            $sql_clean = str_replace('IF NOT EXISTS', '', $sql);
+            $pdo->exec($sql_clean);
+            echo "   ✓ " . substr($sql, 0, 80) . "...\n";
+        } catch (PDOException $e) {
+            if ($e->getCode() == '42S21' || strpos($e->getMessage(), 'Duplicate column') !== false) {
+                echo "   - Already exists: " . substr($sql, 0, 50) . "...\n";
+            } elseif ($e->getCode() == '42000' && strpos($e->getMessage(), 'Duplicate key') !== false) {
+                echo "   - Index already exists\n";
+            } else {
+                echo "   ✗ Error: " . $e->getMessage() . "\n";
+            }
+        }
+    }
+    
+    // ── merchandise_transactions table updates ────────────────────────────────
+    echo "\n2. Updating merchandise_transactions table...\n";
+    
+    $merch_updates = [
+        "ALTER TABLE `merchandise_transactions` ADD COLUMN IF NOT EXISTS `transaction_type` VARCHAR(20) NOT NULL DEFAULT 'merchandise' COMMENT 'merchandise|combined'",
+        "ALTER TABLE `merchandise_transactions` ADD COLUMN IF NOT EXISTS `job_order_id` INT(11) NULL DEFAULT NULL COMMENT 'FK to job_orders for combined transactions'",
+        "ALTER TABLE `merchandise_transactions` ADD INDEX IF NOT EXISTS `idx_transaction_type` (`transaction_type`)",
+        "ALTER TABLE `merchandise_transactions` ADD INDEX IF NOT EXISTS `idx_job_order_id` (`job_order_id`)",
+    ];
+    
+    foreach ($merch_updates as $sql) {
+        try {
+            $sql_clean = str_replace('IF NOT EXISTS', '', $sql);
+            $pdo->exec($sql_clean);
+            echo "   ✓ " . substr($sql, 0, 80) . "...\n";
+        } catch (PDOException $e) {
+            if ($e->getCode() == '42S21' || strpos($e->getMessage(), 'Duplicate column') !== false) {
+                echo "   - Already exists: " . substr($sql, 0, 50) . "...\n";
+            } elseif ($e->getCode() == '42000' && strpos($e->getMessage(), 'Duplicate key') !== false) {
+                echo "   - Index already exists\n";
+            } else {
+                echo "   ✗ Error: " . $e->getMessage() . "\n";
+            }
+        }
+    }
+    
+    // ── Backfill existing records ─────────────────────────────────────────────
+    echo "\n3. Backfilling transaction_type for existing records...\n";
+    
+    // Job orders: Default all to 'job_order' if NULL/empty
+    $pdo->exec("
+        UPDATE job_orders 
+        SET transaction_type = 'job_order' 
+        WHERE transaction_type IS NULL OR transaction_type = ''
+    ");
+    $jo_updated = $pdo->exec("
+        UPDATE job_orders 
+        SET transaction_type = 'job_order' 
+        WHERE transaction_type IS NULL OR transaction_type = ''
+    ");
+    echo "   ✓ Updated $jo_updated job_orders records to 'job_order'\n";
+    
+    // Merchandise transactions: Check if has job_order_service to determine type
+    $merch_updated = $pdo->exec("
+        UPDATE merchandise_transactions 
+        SET transaction_type = IF(
+            job_order_service IS NOT NULL AND TRIM(job_order_service) != '',
+            'combined',
+            'merchandise'
+        )
+        WHERE transaction_type IS NULL OR transaction_type = ''
+    ");
+    echo "   ✓ Updated $merch_updated merchandise_transactions records\n";
+    
+    echo "\n✅ Staff Transactions Schema Migration Complete!\n\n";
+    
+    // ── Verification ──────────────────────────────────────────────────────────
+    echo "4. Verification:\n";
+    
+    $jo_cols = $pdo->query("SHOW COLUMNS FROM job_orders WHERE Field IN ('transaction_type', 'merchandise_transaction_id')")->fetchAll(PDO::FETCH_ASSOC);
+    echo "   job_orders columns: " . count($jo_cols) . "/2\n";
+    foreach ($jo_cols as $col) {
+        echo "     - {$col['Field']} ({$col['Type']}) Default: {$col['Default']}\n";
+    }
+    
+    $mt_cols = $pdo->query("SHOW COLUMNS FROM merchandise_transactions WHERE Field IN ('transaction_type', 'job_order_id')")->fetchAll(PDO::FETCH_ASSOC);
+    echo "   merchandise_transactions columns: " . count($mt_cols) . "/2\n";
+    foreach ($mt_cols as $col) {
+        echo "     - {$col['Field']} ({$col['Type']}) Default: {$col['Default']}\n";
+    }
+    
+    $jo_count = $pdo->query("SELECT COUNT(*) FROM job_orders")->fetchColumn();
+    $mt_count = $pdo->query("SELECT COUNT(*) FROM merchandise_transactions")->fetchColumn();
+    echo "\n   Total job_orders: $jo_count\n";
+    echo "   Total merchandise_transactions: $mt_count\n";
+    
+} catch (Exception $e) {
+    echo "\n❌ Migration Error: " . $e->getMessage() . "\n";
+    echo "Stack trace:\n" . $e->getTraceAsString() . "\n";
+    exit(1);
 }

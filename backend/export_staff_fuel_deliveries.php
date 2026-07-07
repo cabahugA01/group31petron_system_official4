@@ -1,25 +1,272 @@
 <?php
-/**  * Export Staff Fuel Deliveries  * Formats: Excel (CSV), CSV, PDF  */  require_once __DIR__ . '/lib.php';
+/**
+ * Export Staff Fuel Deliveries
+ * Formats: Excel (CSV), CSV, PDF
+ */
+
+require_once __DIR__ . '/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
-require_login();  $me = current_user();
+require_login();
+
+$me = current_user();
 $station_id = user_station_id();
-$role = role_key($me['role'] ?? '');  // Get export format
+$role = role_key($me['role'] ?? '');
+
+// Get export format
 $format = $_GET['format'] ?? 'csv';
-if (!in_array($format, ['excel', 'csv', 'pdf'])) {  die('Invalid export format');
-}  // ── Filter parameters (same as main page) ────────────────────
-$filter_period  = $_GET['period']  ?? 'monthly';
+if (!in_array($format, ['excel', 'csv', 'pdf'])) {
+    die('Invalid export format');
+}
+
+// ── Filter parameters (same as main page) ────────────────────
+$filter_period    = $_GET['period']     ?? 'monthly';
 $filter_date_from = $_GET['date_from']  ?? '';
-$filter_date_to  = $_GET['date_to']  ?? '';
+$filter_date_to   = $_GET['date_to']    ?? '';
 $filter_fuel_type = trim($_GET['fuel_type_filter'] ?? '');
 $filter_supplier  = trim($_GET['supplier_filter']  ?? '');
-$filter_keyword  = trim($_GET['keyword']  ?? '');  // Resolve date range from period preset
+$filter_keyword   = trim($_GET['keyword']           ?? '');
+
+// Resolve date range from period preset
 $today = date('Y-m-d');
 $week_start = date('Y-m-d', strtotime('monday this week'));
-$week_end = date('Y-m-d', strtotime('sunday this week'));  switch ($filter_period) {  case 'ytd':  $resolved_from = date('Y-01-01');  $resolved_to  = $today;  break;  case 'weekly':  $resolved_from = $week_start;  $resolved_to  = $week_end;  break;  case 'custom':  $resolved_from = $filter_date_from ?: date('Y-m-01');  $resolved_to  = $filter_date_to  ?: $today;  break;  case 'monthly':  default:  $resolved_from = date('Y-m-01');  $resolved_to  = $today;  break;
-}  // Sanitize dates
+$week_end = date('Y-m-d', strtotime('sunday this week'));
+
+switch ($filter_period) {
+    case 'ytd':
+        $resolved_from = date('Y-01-01');
+        $resolved_to   = $today;
+        break;
+    case 'weekly':
+        $resolved_from = $week_start;
+        $resolved_to   = $week_end;
+        break;
+    case 'custom':
+        $resolved_from = $filter_date_from ?: date('Y-m-01');
+        $resolved_to   = $filter_date_to   ?: $today;
+        break;
+    case 'monthly':
+    default:
+        $resolved_from = date('Y-m-01');
+        $resolved_to   = $today;
+        break;
+}
+
+// Sanitize dates
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $resolved_from)) $resolved_from = date('Y-m-01');
-if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $resolved_to))  $resolved_to  = $today;  // ── Fetch deliveries ──────────────────────────────────────────
-try {  $sql = "  SELECT  fd.id,  fd.delivery_date,  fd.fuel_type,  fd.supplier,  fd.invoice_no,  fd.delivery_liters,  fd.tanker_number,  fd.notes,  fd.status,  fd.created_at,  u_rec.name AS recorded_by_name,  u_ver.name AS verified_by_name  FROM fuel_deliveries fd  LEFT JOIN users u_rec ON fd.received_by = u_rec.id  LEFT JOIN users u_ver ON fd.verified_by = u_ver.id  WHERE fd.station_id = ?  AND DATE(fd.delivery_date) BETWEEN ? AND ?  ";  $params = [$station_id, $resolved_from, $resolved_to];  if ($filter_fuel_type !== '') {  $sql .= " AND LOWER(TRIM(fd.fuel_type)) = LOWER(TRIM(?))";  $params[] = $filter_fuel_type;  }  if ($filter_supplier !== '') {  $sql .= " AND LOWER(TRIM(fd.supplier)) = LOWER(TRIM(?))";  $params[] = $filter_supplier;  }  if ($filter_keyword !== '') {  $sql .= " AND (fd.invoice_no LIKE ? OR fd.tanker_number LIKE ? OR fd.notes LIKE ?)";  $kw = '%' . $filter_keyword . '%';  $params = array_merge($params, [$kw, $kw, $kw]);  }  $sql .= " ORDER BY fd.delivery_date DESC, fd.created_at DESC";  $stmt = $pdo->prepare($sql);  $stmt->execute($params);  $deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);  } catch (Exception $e) {  die('Error fetching deliveries: ' . $e->getMessage());
-}  // ── Export logic ──────────────────────────────────────────────  if ($format === 'csv' || $format === 'excel') {  // CSV/Excel export  header('Content-Type: text/csv; charset=utf-8');  header('Content-Disposition: attachment; filename="fuel_deliveries_' . date('Y-m-d_His') . '.csv"');  $output = fopen('php://output', 'w');  // UTF-8 BOM for Excel compatibility  fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));  // Header row  fputcsv($output, [  'Delivery ID',  'Date',  'Fuel Type',  'Supplier',  'Invoice No.',  'Liters',  'Tanker No.',  'Status',  'Recorded By',  'Verified By',  'Notes'  ]);  // Data rows  foreach ($deliveries as $d) {  fputcsv($output, [  'DEL-' . $d['id'],  date('M d, Y', strtotime($d['delivery_date'])),  $d['fuel_type'],  $d['supplier'],  $d['invoice_no'],  number_format($d['delivery_liters'], 2) . ' L',  $d['tanker_number'] ?? 'N/A',  ucfirst($d['status']),  $d['recorded_by_name'] ?? 'N/A',  $d['verified_by_name'] ?? 'Pending',  $d['notes'] ?? ''  ]);  }  fclose($output);  exit;
-}  if ($format === 'pdf') {  // PDF export (HTML for print/save as PDF)  header('Content-Type: text/html; charset=utf-8');  ?>  <!DOCTYPE html>  <html>  <head>  <meta charset="utf-8">  <title>Fuel Deliveries Report</title>  <style>  body {  font-family: Arial, sans-serif;  margin: 20px;  font-size: 12px;  }  h1 {  color: #002F70;  font-size: 20px;  margin-bottom: 10px;  }  .header-info {  margin: 15px 0;  font-size: 13px;  color: #555;  }  table {  border-collapse: collapse;  width: 100%;  margin-top: 20px;  }  th, td {  border: 1px solid #ddd;  padding: 8px;  text-align: left;  font-size: 11px;  }  th {  background: #002F70;  color: #fff;  font-weight: 700;  }  tr:nth-child(even) {  background: #f9f9f9;  }  .status-pending {  color: #d97706;  font-weight: 700;  }  .status-verified {  color: #16a34a;  font-weight: 700;  }  @media print {  body { margin: 10px; }  button { display: none; }  }  </style>  </head>  <body>  <button onclick="window.print()" style="padding:10px 20px;background:#002F70;color:#fff;border:none;border-radius:6px;cursor:pointer;margin-bottom:15px;">  <i class="fas fa-print"></i> Print / Save as PDF  </button>  <h1>Fuel Deliveries Report</h1>  <div class="header-info">  <strong>Station ID:</strong> <?= $station_id ?> |  <strong>Period:</strong> <?= date('M d, Y', strtotime($resolved_from)) ?> to <?= date('M d, Y', strtotime($resolved_to)) ?> |  <strong>Generated:</strong> <?= date('M d, Y g:i A') ?> |  <strong>By:</strong> <?= htmlspecialchars($me['name']) ?>  </div>  <?php if (empty($deliveries)): ?>  <p style="text-align:center;padding:40px;color:#94a3b8;">No deliveries found for the selected period.</p>  <?php else: ?>  <table>  <thead>  <tr>  <th>ID</th>  <th>Date</th>  <th>Fuel Type</th>  <th>Supplier</th>  <th>Invoice No.</th>  <th>Liters</th>  <th>Tanker No.</th>  <th>Status</th>  <th>Recorded By</th>  <th>Verified By</th>  </tr>  </thead>  <tbody>  <?php foreach ($deliveries as $d):  $status_class = in_array(strtolower($d['status']), ['pending', 'pending review']) ? 'status-pending' : 'status-verified';  ?>  <tr>  <td>DEL-<?= htmlspecialchars($d['id']) ?></td>  <td><?= date('M d, Y', strtotime($d['delivery_date'])) ?></td>  <td><?= htmlspecialchars($d['fuel_type']) ?></td>  <td><?= htmlspecialchars($d['supplier']) ?></td>  <td><?= htmlspecialchars($d['invoice_no']) ?></td>  <td><?= number_format($d['delivery_liters'], 2) ?> L</td>  <td><?= htmlspecialchars($d['tanker_number'] ?? 'N/A') ?></td>  <td class="<?= $status_class ?>"><?= strtoupper($d['status']) ?></td>  <td><?= htmlspecialchars($d['recorded_by_name'] ?? 'N/A') ?></td>  <td><?= htmlspecialchars($d['verified_by_name'] ?? 'Pending') ?></td>  </tr>  <?php endforeach; ?>  </tbody>  </table>  <div style="margin-top:20px;font-size:12px;color:#666;">  <strong>Total Deliveries:</strong> <?= count($deliveries) ?> |  <strong>Total Liters:</strong> <?= number_format(array_sum(array_column($deliveries, 'delivery_liters')), 2) ?> L  </div>  <?php endif; ?>  </body>  </html>  <?php  exit;
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $resolved_to))   $resolved_to   = $today;
+
+// ── Fetch deliveries ──────────────────────────────────────────
+try {
+    $sql = "
+        SELECT
+            fd.id,
+            fd.delivery_date,
+            fd.fuel_type,
+            fd.supplier,
+            fd.invoice_no,
+            fd.delivery_liters,
+            fd.tanker_number,
+            fd.notes,
+            fd.status,
+            fd.created_at,
+            u_rec.name AS recorded_by_name,
+            u_ver.name AS verified_by_name
+        FROM fuel_deliveries fd
+        LEFT JOIN users u_rec ON fd.received_by = u_rec.id
+        LEFT JOIN users u_ver ON fd.verified_by = u_ver.id
+        WHERE fd.station_id = ?
+          AND DATE(fd.delivery_date) BETWEEN ? AND ?
+    ";
+    $params = [$station_id, $resolved_from, $resolved_to];
+
+    if ($filter_fuel_type !== '') {
+        $sql .= " AND LOWER(TRIM(fd.fuel_type)) = LOWER(TRIM(?))";
+        $params[] = $filter_fuel_type;
+    }
+    if ($filter_supplier !== '') {
+        $sql .= " AND LOWER(TRIM(fd.supplier)) = LOWER(TRIM(?))";
+        $params[] = $filter_supplier;
+    }
+    if ($filter_keyword !== '') {
+        $sql .= " AND (fd.invoice_no LIKE ? OR fd.tanker_number LIKE ? OR fd.notes LIKE ?)";
+        $kw = '%' . $filter_keyword . '%';
+        $params = array_merge($params, [$kw, $kw, $kw]);
+    }
+
+    $sql .= " ORDER BY fd.delivery_date DESC, fd.created_at DESC";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+} catch (Exception $e) {
+    die('Error fetching deliveries: ' . $e->getMessage());
+}
+
+// ── Export logic ──────────────────────────────────────────────
+
+if ($format === 'csv' || $format === 'excel') {
+    // CSV/Excel export
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="fuel_deliveries_' . date('Y-m-d_His') . '.csv"');
+    
+    $output = fopen('php://output', 'w');
+    
+    // UTF-8 BOM for Excel compatibility
+    fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+    
+    // Header row
+    fputcsv($output, [
+        'Delivery ID',
+        'Date',
+        'Fuel Type',
+        'Supplier',
+        'Invoice No.',
+        'Liters',
+        'Tanker No.',
+        'Status',
+        'Recorded By',
+        'Verified By',
+        'Notes'
+    ]);
+    
+    // Data rows
+    foreach ($deliveries as $d) {
+        fputcsv($output, [
+            'DEL-' . $d['id'],
+            date('M d, Y', strtotime($d['delivery_date'])),
+            $d['fuel_type'],
+            $d['supplier'],
+            $d['invoice_no'],
+            number_format($d['delivery_liters'], 2) . ' L',
+            $d['tanker_number'] ?? 'N/A',
+            ucfirst($d['status']),
+            $d['recorded_by_name'] ?? 'N/A',
+            $d['verified_by_name'] ?? 'Pending',
+            $d['notes'] ?? ''
+        ]);
+    }
+    
+    fclose($output);
+    exit;
+}
+
+if ($format === 'pdf') {
+    // PDF export (HTML for print/save as PDF)
+    header('Content-Type: text/html; charset=utf-8');
+    ?>
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Fuel Deliveries Report</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 20px;
+                font-size: 12px;
+            }
+            h1 {
+                color: #002F70;
+                font-size: 20px;
+                margin-bottom: 10px;
+            }
+            .header-info {
+                margin: 15px 0;
+                font-size: 13px;
+                color: #555;
+            }
+            table {
+                border-collapse: collapse;
+                width: 100%;
+                margin-top: 20px;
+            }
+            th, td {
+                border: 1px solid #ddd;
+                padding: 8px;
+                text-align: left;
+                font-size: 11px;
+            }
+            th {
+                background: #002F70;
+                color: #fff;
+                font-weight: 700;
+            }
+            tr:nth-child(even) {
+                background: #f9f9f9;
+            }
+            .status-pending {
+                color: #d97706;
+                font-weight: 700;
+            }
+            .status-verified {
+                color: #16a34a;
+                font-weight: 700;
+            }
+            @media print {
+                body { margin: 10px; }
+                button { display: none; }
+            }
+        </style>
+    </head>
+    <body>
+        <button onclick="window.print()" style="padding:10px 20px;background:#002F70;color:#fff;border:none;border-radius:6px;cursor:pointer;margin-bottom:15px;">
+            <i class="fas fa-print"></i> Print / Save as PDF
+        </button>
+        
+        <h1>Fuel Deliveries Report</h1>
+        <div class="header-info">
+            <strong>Station ID:</strong> <?= $station_id ?> | 
+            <strong>Period:</strong> <?= date('M d, Y', strtotime($resolved_from)) ?> to <?= date('M d, Y', strtotime($resolved_to)) ?> | 
+            <strong>Generated:</strong> <?= date('M d, Y g:i A') ?> | 
+            <strong>By:</strong> <?= htmlspecialchars($me['name']) ?>
+        </div>
+        
+        <?php if (empty($deliveries)): ?>
+            <p style="text-align:center;padding:40px;color:#94a3b8;">No deliveries found for the selected period.</p>
+        <?php else: ?>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Date</th>
+                        <th>Fuel Type</th>
+                        <th>Supplier</th>
+                        <th>Invoice No.</th>
+                        <th>Liters</th>
+                        <th>Tanker No.</th>
+                        <th>Status</th>
+                        <th>Recorded By</th>
+                        <th>Verified By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($deliveries as $d): 
+                        $status_class = in_array(strtolower($d['status']), ['pending', 'pending review']) ? 'status-pending' : 'status-verified';
+                    ?>
+                    <tr>
+                        <td>DEL-<?= htmlspecialchars($d['id']) ?></td>
+                        <td><?= date('M d, Y', strtotime($d['delivery_date'])) ?></td>
+                        <td><?= htmlspecialchars($d['fuel_type']) ?></td>
+                        <td><?= htmlspecialchars($d['supplier']) ?></td>
+                        <td><?= htmlspecialchars($d['invoice_no']) ?></td>
+                        <td><?= number_format($d['delivery_liters'], 2) ?> L</td>
+                        <td><?= htmlspecialchars($d['tanker_number'] ?? 'N/A') ?></td>
+                        <td class="<?= $status_class ?>"><?= strtoupper($d['status']) ?></td>
+                        <td><?= htmlspecialchars($d['recorded_by_name'] ?? 'N/A') ?></td>
+                        <td><?= htmlspecialchars($d['verified_by_name'] ?? 'Pending') ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            
+            <div style="margin-top:20px;font-size:12px;color:#666;">
+                <strong>Total Deliveries:</strong> <?= count($deliveries) ?> | 
+                <strong>Total Liters:</strong> <?= number_format(array_sum(array_column($deliveries, 'delivery_liters')), 2) ?> L
+            </div>
+        <?php endif; ?>
+    </body>
+    </html>
+    <?php
+    exit;
 }

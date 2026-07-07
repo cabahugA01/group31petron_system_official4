@@ -1,5 +1,12 @@
 <?php
-/**  * Populate 17 Fuel Pumps for Tank Monitoring  * Creates 17 individual pump/nozzle records matching the 17 underground tanks  */  require_once __DIR__ . '/public/db_connect.php';  echo "<!DOCTYPE html><html><head><title>Populate 17 Pumps</title>";
+/**
+ * Populate 17 Fuel Pumps for Tank Monitoring
+ * Creates 17 individual pump/nozzle records matching the 17 underground tanks
+ */
+
+require_once __DIR__ . '/public/db_connect.php';
+
+echo "<!DOCTYPE html><html><head><title>Populate 17 Pumps</title>";
 echo "<style>body{font-family:Arial;padding:20px;background:#f5f5f5;}";
 echo ".success{color:green;padding:10px;background:#d4edda;margin:10px 0;border-radius:5px;}";
 echo ".error{color:red;padding:10px;background:#f8d7da;margin:10px 0;border-radius:5px;}";
@@ -8,7 +15,164 @@ echo "table{border-collapse:collapse;width:100%;background:white;margin:20px 0;}
 echo "th,td{border:1px solid #ddd;padding:12px;text-align:left;}";
 echo "th{background:#002F70;color:white;}";
 echo "</style></head><body>";
-echo "<h1>Populate 17 Fuel Pumps for Tank Monitoring</h1>";  // The 17 pump configuration matching staff_fuel_deliveries.php
-$PUMP_CONFIG = [  ['fuel_type'=>'Diesel',  'pump_name'=>'DIESEL 1 - 1',  'pump_num'=>1, 'nozzle'=>1, 'tank'=>'Underground Tank #1'],  ['fuel_type'=>'Diesel',  'pump_name'=>'DIESEL 1 - 2',  'pump_num'=>1, 'nozzle'=>2, 'tank'=>'Underground Tank #2'],  ['fuel_type'=>'Diesel',  'pump_name'=>'DIESEL 1 - 3',  'pump_num'=>1, 'nozzle'=>3, 'tank'=>'Underground Tank #3'],  ['fuel_type'=>'Diesel',  'pump_name'=>'DIESEL 1 - 4',  'pump_num'=>1, 'nozzle'=>4, 'tank'=>'Underground Tank #4'],  ['fuel_type'=>'Diesel',  'pump_name'=>'DIESEL 2 - 5',  'pump_num'=>2, 'nozzle'=>5, 'tank'=>'Underground Tank #5'],  ['fuel_type'=>'Diesel',  'pump_name'=>'DIESEL 2 - 6',  'pump_num'=>2, 'nozzle'=>6, 'tank'=>'Underground Tank #6'],  ['fuel_type'=>'Kerosene',  'pump_name'=>'KEROSENE - 1',  'pump_num'=>1, 'nozzle'=>1, 'tank'=>'Underground Tank #7'],  ['fuel_type'=>'Turbo Diesel', 'pump_name'=>'TURBO DIESEL - 1', 'pump_num'=>1, 'nozzle'=>1, 'tank'=>'Underground Tank #8'],  ['fuel_type'=>'Turbo Diesel', 'pump_name'=>'TURBO DIESEL - 2', 'pump_num'=>1, 'nozzle'=>2, 'tank'=>'Underground Tank #9'],  ['fuel_type'=>'XCS Plus',  'pump_name'=>'XCS PLUS - 1',  'pump_num'=>1, 'nozzle'=>1, 'tank'=>'Underground Tank #10'],  ['fuel_type'=>'XCS Plus',  'pump_name'=>'XCS PLUS - 2',  'pump_num'=>1, 'nozzle'=>2, 'tank'=>'Underground Tank #11'],  ['fuel_type'=>'XCS Plus',  'pump_name'=>'XCS PLUS - 3',  'pump_num'=>1, 'nozzle'=>3, 'tank'=>'Underground Tank #12'],  ['fuel_type'=>'XCS Plus',  'pump_name'=>'XCS PLUS - 4',  'pump_num'=>1, 'nozzle'=>4, 'tank'=>'Underground Tank #13'],  ['fuel_type'=>'Xtra UNL',  'pump_name'=>'XTRA UNL 1 - 1',  'pump_num'=>1, 'nozzle'=>1, 'tank'=>'Underground Tank #14'],  ['fuel_type'=>'Xtra UNL',  'pump_name'=>'XTRA UNL 1 - 2',  'pump_num'=>1, 'nozzle'=>2, 'tank'=>'Underground Tank #15'],  ['fuel_type'=>'Xtra UNL',  'pump_name'=>'XTRA UNL 2 - 3',  'pump_num'=>2, 'nozzle'=>3, 'tank'=>'Underground Tank #16'],  ['fuel_type'=>'Xtra UNL',  'pump_name'=>'XTRA UNL 2 - 4',  'pump_num'=>2, 'nozzle'=>4, 'tank'=>'Underground Tank #17'],
-];  try {  // Get the station_id (assuming station 1 for now, adjust as needed)  $station_id = 1;  echo "<div class='info'>ℹ Working with Station ID: <strong>{$station_id}</strong></div>";  // Check existing pumps  $stmt = $pdo->prepare("SELECT COUNT(*) FROM fuel_pumps WHERE station_id = ?");  $stmt->execute([$station_id]);  $existing_count = $stmt->fetchColumn();  echo "<div class='info'>Current pump count in database: <strong>{$existing_count}</strong></div>";  // Get fuel_type_id mapping  $fuel_type_map = [];  $stmt = $pdo->query("SELECT id, name FROM fuel_types");  while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {  $fuel_type_map[$row['name']] = $row['id'];  }  echo "<h3>Fuel Type Mapping:</h3>";  echo "<table><tr><th>Fuel Type</th><th>ID</th></tr>";  foreach ($fuel_type_map as $name => $id) {  echo "<tr><td>{$name}</td><td>{$id}</td></tr>";  }  echo "</table>";  // Clear existing pumps for this station  if (isset($_POST['action']) && $_POST['action'] === 'populate') {  echo "<h3>Clearing Existing Pumps...</h3>";  $stmt = $pdo->prepare("DELETE FROM fuel_pumps WHERE station_id = ?");  $stmt->execute([$station_id]);  echo "<div class='info'> Deleted {$existing_count} existing pump records</div>";  echo "<h3>Creating 17 Pump Records...</h3>";  $pdo->beginTransaction();  $created = 0;  $skipped = 0;  echo "<table>";  echo "<tr><th>#</th><th>Pump Name</th><th>Fuel Type</th><th>Type ID</th><th>Pump #</th><th>Nozzle</th><th>Tank</th><th>Status</th></tr>";  foreach ($PUMP_CONFIG as $idx => $pump) {  $fuel_type_id = $fuel_type_map[$pump['fuel_type']] ?? null;  if (!$fuel_type_id) {  echo "<tr style='background:#fff3cd;'>";  echo "<td>" . ($idx + 1) . "</td>";  echo "<td>{$pump['pump_name']}</td>";  echo "<td>{$pump['fuel_type']}</td>";  echo "<td colspan='4' style='color:red;'>Fuel type not found in database!</td>";  echo "<td style='color:red;'>SKIPPED</td>";  echo "</tr>";  $skipped++;  continue;  }  // Insert pump record  $stmt = $pdo->prepare("  INSERT INTO fuel_pumps  (station_id, fuel_type_id, pump_name, pump_number, nozzle_number, status, calibration_value, created_at)  VALUES (?, ?, ?, ?, ?, 'active', 0.00, NOW())  ");  $stmt->execute([  $station_id,  $fuel_type_id,  $pump['pump_name'],  $pump['pump_num'],  $pump['nozzle'],  ]);  echo "<tr style='background:#d4edda;'>";  echo "<td>" . ($idx + 1) . "</td>";  echo "<td><strong>{$pump['pump_name']}</strong></td>";  echo "<td>{$pump['fuel_type']}</td>";  echo "<td>{$fuel_type_id}</td>";  echo "<td>{$pump['pump_num']}</td>";  echo "<td>{$pump['nozzle']}</td>";  echo "<td>{$pump['tank']}</td>";  echo "<td style='color:green;'> CREATED</td>";  echo "</tr>";  $created++;  }  echo "</table>";  $pdo->commit();  echo "<div class='success'>";  echo "<h3> Success!</h3>";  echo "<p>Created <strong>{$created}</strong> pump records</p>";  if ($skipped > 0) {  echo "<p style='color:orange;'>Skipped <strong>{$skipped}</strong> pumps (fuel type not found)</p>";  }  echo "</div>";  echo "<p><a href='public/manager_fuel_management_complete.php' style='padding:10px 20px;background:#002F70;color:white;text-decoration:none;border-radius:5px;display:inline-block;margin-top:20px;'>→ Go to Fuel Management (Tank Monitoring)</a></p>";  } else {  // Show preview  echo "<h3>Preview: 17 Pumps to be Created</h3>";  echo "<table>";  echo "<tr><th>#</th><th>Pump Name</th><th>Fuel Type</th><th>Pump #</th><th>Nozzle</th><th>Tank Assignment</th></tr>";  foreach ($PUMP_CONFIG as $idx => $pump) {  $fuel_type_id = $fuel_type_map[$pump['fuel_type']] ?? null;  $status_color = $fuel_type_id ? 'green' : 'red';  $status_text = $fuel_type_id ? ' Ready' : ' Type Missing';  echo "<tr>";  echo "<td>" . ($idx + 1) . "</td>";  echo "<td><strong>{$pump['pump_name']}</strong></td>";  echo "<td>{$pump['fuel_type']}" . (!$fuel_type_id ? " <span style='color:red;'>(NOT FOUND)</span>" : "") . "</td>";  echo "<td>{$pump['pump_num']}</td>";  echo "<td>{$pump['nozzle']}</td>";  echo "<td>{$pump['tank']}</td>";  echo "</tr>";  }  echo "</table>";  echo "<form method='post'>";  echo "<input type='hidden' name='action' value='populate'>";  echo "<button type='submit' style='padding:15px 30px;background:#28a745;color:white;border:none;border-radius:5px;font-size:16px;font-weight:bold;cursor:pointer;margin-top:20px;' onclick='return confirm(\"This will delete all existing pumps for this station and create 17 new pump records. Continue?\")'> Populate 17 Pumps</button>";  echo "</form>";  }  } catch (Exception $e) {  if ($pdo->inTransaction()) {  $pdo->rollBack();  }  echo "<div class='error'>Error: " . htmlspecialchars($e->getMessage()) . "</div>";  echo "<pre>" . htmlspecialchars($e->getTraceAsString()) . "</pre>";
-}  echo "</body></html>";
+echo "<h1>Populate 17 Fuel Pumps for Tank Monitoring</h1>";
+
+// The 17 pump configuration matching staff_fuel_deliveries.php
+$PUMP_CONFIG = [
+    ['fuel_type'=>'Diesel',       'pump_name'=>'DIESEL 1 - 1',     'pump_num'=>1, 'nozzle'=>1, 'tank'=>'Underground Tank #1'],
+    ['fuel_type'=>'Diesel',       'pump_name'=>'DIESEL 1 - 2',     'pump_num'=>1, 'nozzle'=>2, 'tank'=>'Underground Tank #2'],
+    ['fuel_type'=>'Diesel',       'pump_name'=>'DIESEL 1 - 3',     'pump_num'=>1, 'nozzle'=>3, 'tank'=>'Underground Tank #3'],
+    ['fuel_type'=>'Diesel',       'pump_name'=>'DIESEL 1 - 4',     'pump_num'=>1, 'nozzle'=>4, 'tank'=>'Underground Tank #4'],
+    ['fuel_type'=>'Diesel',       'pump_name'=>'DIESEL 2 - 5',     'pump_num'=>2, 'nozzle'=>5, 'tank'=>'Underground Tank #5'],
+    ['fuel_type'=>'Diesel',       'pump_name'=>'DIESEL 2 - 6',     'pump_num'=>2, 'nozzle'=>6, 'tank'=>'Underground Tank #6'],
+    ['fuel_type'=>'Kerosene',     'pump_name'=>'KEROSENE - 1',     'pump_num'=>1, 'nozzle'=>1, 'tank'=>'Underground Tank #7'],
+    ['fuel_type'=>'Turbo Diesel', 'pump_name'=>'TURBO DIESEL - 1', 'pump_num'=>1, 'nozzle'=>1, 'tank'=>'Underground Tank #8'],
+    ['fuel_type'=>'Turbo Diesel', 'pump_name'=>'TURBO DIESEL - 2', 'pump_num'=>1, 'nozzle'=>2, 'tank'=>'Underground Tank #9'],
+    ['fuel_type'=>'XCS Plus',     'pump_name'=>'XCS PLUS - 1',     'pump_num'=>1, 'nozzle'=>1, 'tank'=>'Underground Tank #10'],
+    ['fuel_type'=>'XCS Plus',     'pump_name'=>'XCS PLUS - 2',     'pump_num'=>1, 'nozzle'=>2, 'tank'=>'Underground Tank #11'],
+    ['fuel_type'=>'XCS Plus',     'pump_name'=>'XCS PLUS - 3',     'pump_num'=>1, 'nozzle'=>3, 'tank'=>'Underground Tank #12'],
+    ['fuel_type'=>'XCS Plus',     'pump_name'=>'XCS PLUS - 4',     'pump_num'=>1, 'nozzle'=>4, 'tank'=>'Underground Tank #13'],
+    ['fuel_type'=>'Xtra UNL',     'pump_name'=>'XTRA UNL 1 - 1',   'pump_num'=>1, 'nozzle'=>1, 'tank'=>'Underground Tank #14'],
+    ['fuel_type'=>'Xtra UNL',     'pump_name'=>'XTRA UNL 1 - 2',   'pump_num'=>1, 'nozzle'=>2, 'tank'=>'Underground Tank #15'],
+    ['fuel_type'=>'Xtra UNL',     'pump_name'=>'XTRA UNL 2 - 3',   'pump_num'=>2, 'nozzle'=>3, 'tank'=>'Underground Tank #16'],
+    ['fuel_type'=>'Xtra UNL',     'pump_name'=>'XTRA UNL 2 - 4',   'pump_num'=>2, 'nozzle'=>4, 'tank'=>'Underground Tank #17'],
+];
+
+try {
+    // Get the station_id (assuming station 1 for now, adjust as needed)
+    $station_id = 1;
+    
+    echo "<div class='info'>ℹ Working with Station ID: <strong>{$station_id}</strong></div>";
+    
+    // Check existing pumps
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM fuel_pumps WHERE station_id = ?");
+    $stmt->execute([$station_id]);
+    $existing_count = $stmt->fetchColumn();
+    echo "<div class='info'>Current pump count in database: <strong>{$existing_count}</strong></div>";
+    
+    // Get fuel_type_id mapping
+    $fuel_type_map = [];
+    $stmt = $pdo->query("SELECT id, name FROM fuel_types");
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $fuel_type_map[$row['name']] = $row['id'];
+    }
+    
+    echo "<h3>Fuel Type Mapping:</h3>";
+    echo "<table><tr><th>Fuel Type</th><th>ID</th></tr>";
+    foreach ($fuel_type_map as $name => $id) {
+        echo "<tr><td>{$name}</td><td>{$id}</td></tr>";
+    }
+    echo "</table>";
+    
+    // Clear existing pumps for this station
+    if (isset($_POST['action']) && $_POST['action'] === 'populate') {
+        echo "<h3>Clearing Existing Pumps...</h3>";
+        $stmt = $pdo->prepare("DELETE FROM fuel_pumps WHERE station_id = ?");
+        $stmt->execute([$station_id]);
+        echo "<div class='info'>✓ Deleted {$existing_count} existing pump records</div>";
+        
+        echo "<h3>Creating 17 Pump Records...</h3>";
+        $pdo->beginTransaction();
+        
+        $created = 0;
+        $skipped = 0;
+        
+        echo "<table>";
+        echo "<tr><th>#</th><th>Pump Name</th><th>Fuel Type</th><th>Type ID</th><th>Pump #</th><th>Nozzle</th><th>Tank</th><th>Status</th></tr>";
+        
+        foreach ($PUMP_CONFIG as $idx => $pump) {
+            $fuel_type_id = $fuel_type_map[$pump['fuel_type']] ?? null;
+            
+            if (!$fuel_type_id) {
+                echo "<tr style='background:#fff3cd;'>";
+                echo "<td>" . ($idx + 1) . "</td>";
+                echo "<td>{$pump['pump_name']}</td>";
+                echo "<td>{$pump['fuel_type']}</td>";
+                echo "<td colspan='4' style='color:red;'>⚠️ Fuel type not found in database!</td>";
+                echo "<td style='color:red;'>SKIPPED</td>";
+                echo "</tr>";
+                $skipped++;
+                continue;
+            }
+            
+            // Insert pump record
+            $stmt = $pdo->prepare("
+                INSERT INTO fuel_pumps 
+                (station_id, fuel_type_id, pump_name, pump_number, nozzle_number, status, calibration_value, created_at) 
+                VALUES (?, ?, ?, ?, ?, 'active', 0.00, NOW())
+            ");
+            
+            $stmt->execute([
+                $station_id,
+                $fuel_type_id,
+                $pump['pump_name'],
+                $pump['pump_num'],
+                $pump['nozzle'],
+            ]);
+            
+            echo "<tr style='background:#d4edda;'>";
+            echo "<td>" . ($idx + 1) . "</td>";
+            echo "<td><strong>{$pump['pump_name']}</strong></td>";
+            echo "<td>{$pump['fuel_type']}</td>";
+            echo "<td>{$fuel_type_id}</td>";
+            echo "<td>{$pump['pump_num']}</td>";
+            echo "<td>{$pump['nozzle']}</td>";
+            echo "<td>{$pump['tank']}</td>";
+            echo "<td style='color:green;'>✓ CREATED</td>";
+            echo "</tr>";
+            
+            $created++;
+        }
+        
+        echo "</table>";
+        
+        $pdo->commit();
+        
+        echo "<div class='success'>";
+        echo "<h3>✓ Success!</h3>";
+        echo "<p>Created <strong>{$created}</strong> pump records</p>";
+        if ($skipped > 0) {
+            echo "<p style='color:orange;'>Skipped <strong>{$skipped}</strong> pumps (fuel type not found)</p>";
+        }
+        echo "</div>";
+        
+        echo "<p><a href='public/manager_fuel_management_complete.php' style='padding:10px 20px;background:#002F70;color:white;text-decoration:none;border-radius:5px;display:inline-block;margin-top:20px;'>→ Go to Fuel Management (Tank Monitoring)</a></p>";
+        
+    } else {
+        // Show preview
+        echo "<h3>Preview: 17 Pumps to be Created</h3>";
+        echo "<table>";
+        echo "<tr><th>#</th><th>Pump Name</th><th>Fuel Type</th><th>Pump #</th><th>Nozzle</th><th>Tank Assignment</th></tr>";
+        
+        foreach ($PUMP_CONFIG as $idx => $pump) {
+            $fuel_type_id = $fuel_type_map[$pump['fuel_type']] ?? null;
+            $status_color = $fuel_type_id ? 'green' : 'red';
+            $status_text = $fuel_type_id ? '✓ Ready' : '✗ Type Missing';
+            
+            echo "<tr>";
+            echo "<td>" . ($idx + 1) . "</td>";
+            echo "<td><strong>{$pump['pump_name']}</strong></td>";
+            echo "<td>{$pump['fuel_type']}" . (!$fuel_type_id ? " <span style='color:red;'>(NOT FOUND)</span>" : "") . "</td>";
+            echo "<td>{$pump['pump_num']}</td>";
+            echo "<td>{$pump['nozzle']}</td>";
+            echo "<td>{$pump['tank']}</td>";
+            echo "</tr>";
+        }
+        
+        echo "</table>";
+        
+        echo "<form method='post'>";
+        echo "<input type='hidden' name='action' value='populate'>";
+        echo "<button type='submit' style='padding:15px 30px;background:#28a745;color:white;border:none;border-radius:5px;font-size:16px;font-weight:bold;cursor:pointer;margin-top:20px;' onclick='return confirm(\"This will delete all existing pumps for this station and create 17 new pump records. Continue?\")'>✨ Populate 17 Pumps</button>";
+        echo "</form>";
+    }
+    
+} catch (Exception $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    echo "<div class='error'>❌ Error: " . htmlspecialchars($e->getMessage()) . "</div>";
+    echo "<pre>" . htmlspecialchars($e->getTraceAsString()) . "</pre>";
+}
+
+echo "</body></html>";

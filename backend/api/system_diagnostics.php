@@ -1,10 +1,273 @@
 <?php
 require_once __DIR__ . '/../lib.php';
-require_once __DIR__ . '/../../public/db_connect.php';  header('Content-Type: application/json');  // Check if user is authorized
+require_once __DIR__ . '/../../public/db_connect.php';
+
+header('Content-Type: application/json');
+
+// Check if user is authorized
 $u = current_user();
 $role = $u['role'] ?? 'staff';
-$roleKey = function_exists('role_key') ? role_key($role) : strtolower(trim((string)$role));  if (!in_array($roleKey, ['superadmin', 'admin', 'developer'])) {  echo json_encode(['success' => false, 'error' => 'Unauthorized access']);  exit;
-}  $diagnostics = [  'timestamp' => date('Y-m-d H:i:s'),  'checks' => [],  'overall_status' => 'good',  'recommendations' => []
-];  try {  global $pdo;  // 1. Database Connection Test  $db_check = [  'name' => 'Database Connection',  'status' => 'good',  'message' => 'Database connection successful',  'details' => []  ];  try {  $stmt = $pdo->query("SELECT 1");  $db_check['details']['connection_time'] = 'Fast';  $db_check['details']['mysql_version'] = $pdo->query("SELECT VERSION()")->fetchColumn();  } catch(Exception $e) {  $db_check['status'] = 'critical';  $db_check['message'] = 'Database connection failed: ' . $e->getMessage();  $diagnostics['overall_status'] = 'critical';  }  $diagnostics['checks'][] = $db_check;  // 2. Required Tables Check  $tables_check = [  'name' => 'Required Tables',  'status' => 'good',  'message' => 'All required tables present',  'details' => []  ];  $required_tables = [  'users', 'stations', 'system_configuration', 'system_versions',  'system_health_metrics', 'system_backups', 'system_alerts',  'system_maintenance_log', 'audit_log'  ];  $missing_tables = [];  foreach ($required_tables as $table) {  try {  $stmt = $pdo->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?");  $stmt->execute([$table]);  if ($stmt->fetchColumn() == 0) {  $missing_tables[] = $table;  }  } catch(Exception $e) {  $missing_tables[] = $table;  }  }  if (!empty($missing_tables)) {  $tables_check['status'] = 'warning';  $tables_check['message'] = 'Missing tables: ' . implode(', ', $missing_tables);  $tables_check['details']['missing_tables'] = $missing_tables;  $diagnostics['recommendations'][] = 'Run database setup script to create missing tables';  if ($diagnostics['overall_status'] === 'good') {  $diagnostics['overall_status'] = 'warning';  }  } else {  $tables_check['details']['table_count'] = count($required_tables);  }  $diagnostics['checks'][] = $tables_check;  // 3. System Configuration Check  $config_check = [  'name' => 'System Configuration',  'status' => 'good',  'message' => 'System configuration complete',  'details' => []  ];  try {  $stmt = $pdo->query("SELECT COUNT(*) as config_count FROM system_configuration");  $config_count = $stmt->fetchColumn();  $config_check['details']['configuration_items'] = $config_count;  if ($config_count < 10) {  $config_check['status'] = 'warning';  $config_check['message'] = 'Limited configuration items found';  $diagnostics['recommendations'][] = 'Review and update system configuration';  if ($diagnostics['overall_status'] === 'good') {  $diagnostics['overall_status'] = 'warning';  }  }  } catch(Exception $e) {  $config_check['status'] = 'warning';  $config_check['message'] = 'Unable to check configuration: ' . $e->getMessage();  $diagnostics['recommendations'][] = 'Ensure system_configuration table exists';  }  $diagnostics['checks'][] = $config_check;  // 4. Recent Error Analysis  $error_check = [  'name' => 'Error Analysis',  'status' => 'good',  'message' => 'System operating normally',  'details' => []  ];  try {  $stmt = $pdo->prepare("  SELECT COUNT(*) as error_count,  COUNT(DISTINCT DATE(created_at)) as error_days  FROM audit_log  WHERE status = 'Failed' AND created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)  ");  $stmt->execute();  $error_data = $stmt->fetch(PDO::FETCH_ASSOC);  $error_check['details']['errors_24h'] = $error_data['error_count'];  $error_check['details']['error_days'] = $error_data['error_days'];  if ($error_data['error_count'] > 50) {  $error_check['status'] = 'warning';  $error_check['message'] = 'High error rate detected';  $diagnostics['recommendations'][] = 'Review recent error logs for patterns';  if ($diagnostics['overall_status'] === 'good') {  $diagnostics['overall_status'] = 'warning';  }  } elseif ($error_data['error_count'] > 100) {  $error_check['status'] = 'critical';  $error_check['message'] = 'Critical error rate detected';  $diagnostics['recommendations'][] = 'Immediate investigation required';  $diagnostics['overall_status'] = 'critical';  }  } catch(Exception $e) {  $error_check['status'] = 'warning';  $error_check['message'] = 'Unable to analyze errors: ' . $e->getMessage();  }  $diagnostics['checks'][] = $error_check;  // 5. Backup Status Check  $backup_check = [  'name' => 'Backup Status',  'status' => 'good',  'message' => 'Backup system operational',  'details' => []  ];  try {  $stmt = $pdo->prepare("  SELECT COUNT(*) as backup_count,  MAX(completed_at) as last_backup,  COUNT(CASE WHEN completed_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR) THEN 1 END) as recent_backups  FROM system_backups  WHERE status = 'completed'  ");  $stmt->execute();  $backup_data = $stmt->fetch(PDO::FETCH_ASSOC);  $backup_check['details']['total_backups'] = $backup_data['backup_count'];  $backup_check['details']['last_backup'] = $backup_data['last_backup'];  $backup_check['details']['recent_backups'] = $backup_data['recent_backups'];  if ($backup_data['backup_count'] == 0) {  $backup_check['status'] = 'warning';  $backup_check['message'] = 'No backups found';  $diagnostics['recommendations'][] = 'Configure backup system';  if ($diagnostics['overall_status'] === 'good') {  $diagnostics['overall_status'] = 'warning';  }  } elseif ($backup_data['recent_backups'] == 0) {  $backup_check['status'] = 'warning';  $backup_check['message'] = 'No recent backups';  $diagnostics['recommendations'][] = 'Run manual backup or check backup schedule';  if ($diagnostics['overall_status'] === 'good') {  $diagnostics['overall_status'] = 'warning';  }  }  } catch(Exception $e) {  $backup_check['status'] = 'warning';  $backup_check['message'] = 'Unable to check backup status: ' . $e->getMessage();  $diagnostics['recommendations'][] = 'Ensure system_backups table exists';  }  $diagnostics['checks'][] = $backup_check;  // 6. Performance Metrics  $performance_check = [  'name' => 'Performance Metrics',  'status' => 'good',  'message' => 'System performance acceptable',  'details' => []  ];  try {  // Memory usage  $memory_usage = memory_get_usage(true);  $memory_limit = ini_get('memory_limit');  $memory_usage_mb = round($memory_usage / 1024 / 1024, 2);  $performance_check['details']['memory_usage_mb'] = $memory_usage_mb;  $performance_check['details']['memory_limit'] = $memory_limit;  // Database performance  $stmt = $pdo->query("SHOW STATUS LIKE 'Threads_connected'");  $connections = $stmt->fetch(PDO::FETCH_ASSOC);  $performance_check['details']['db_connections'] = $connections['Value'] ?? 0;  // Active sessions  $stmt = $pdo->query("SELECT COUNT(*) as active_sessions FROM users WHERE last_login >= DATE_SUB(NOW(), INTERVAL 1 HOUR)");  $sessions = $stmt->fetch(PDO::FETCH_ASSOC);  $performance_check['details']['active_sessions'] = $sessions['active_sessions'] ?? 0;  // Check for performance issues  if ($memory_usage_mb > 500) {  $performance_check['status'] = 'warning';  $performance_check['message'] = 'High memory usage detected';  $diagnostics['recommendations'][] = 'Consider increasing memory limit or optimizing code';  if ($diagnostics['overall_status'] === 'good') {  $diagnostics['overall_status'] = 'warning';  }  }  } catch(Exception $e) {  $performance_check['status'] = 'warning';  $performance_check['message'] = 'Unable to check performance: ' . $e->getMessage();  }  $diagnostics['checks'][] = $performance_check;  // Log diagnostics completion  try {  $stmt = $pdo->prepare("  INSERT INTO system_maintenance_log (maintenance_type, description, status, performed_by, details)  VALUES (?, ?, ?, ?, ?)  ");  $stmt->execute([  'diagnostics',  'System health diagnostics completed',  'completed',  $u['id'],  json_encode([  'overall_status' => $diagnostics['overall_status'],  'checks_performed' => count($diagnostics['checks']),  'recommendations' => count($diagnostics['recommendations'])  ])  ]);  } catch(Exception $e) {  // Ignore logging errors  }  echo json_encode([  'success' => true,  'data' => $diagnostics  ]);  } catch(Exception $e) {  echo json_encode([  'success' => false,  'error' => 'Diagnostics failed: ' . $e->getMessage()  ]);
+$roleKey = function_exists('role_key') ? role_key($role) : strtolower(trim((string)$role));
+
+if (!in_array($roleKey, ['superadmin', 'admin', 'developer'])) {
+    echo json_encode(['success' => false, 'error' => 'Unauthorized access']);
+    exit;
+}
+
+$diagnostics = [
+    'timestamp' => date('Y-m-d H:i:s'),
+    'checks' => [],
+    'overall_status' => 'good',
+    'recommendations' => []
+];
+
+try {
+    global $pdo;
+    
+    // 1. Database Connection Test
+    $db_check = [
+        'name' => 'Database Connection',
+        'status' => 'good',
+        'message' => 'Database connection successful',
+        'details' => []
+    ];
+    
+    try {
+        $stmt = $pdo->query("SELECT 1");
+        $db_check['details']['connection_time'] = 'Fast';
+        $db_check['details']['mysql_version'] = $pdo->query("SELECT VERSION()")->fetchColumn();
+    } catch(Exception $e) {
+        $db_check['status'] = 'critical';
+        $db_check['message'] = 'Database connection failed: ' . $e->getMessage();
+        $diagnostics['overall_status'] = 'critical';
+    }
+    $diagnostics['checks'][] = $db_check;
+    
+    // 2. Required Tables Check
+    $tables_check = [
+        'name' => 'Required Tables',
+        'status' => 'good',
+        'message' => 'All required tables present',
+        'details' => []
+    ];
+    
+    $required_tables = [
+        'users', 'stations', 'system_configuration', 'system_versions',
+        'system_health_metrics', 'system_backups', 'system_alerts',
+        'system_maintenance_log', 'audit_log'
+    ];
+    
+    $missing_tables = [];
+    foreach ($required_tables as $table) {
+        try {
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?");
+            $stmt->execute([$table]);
+            if ($stmt->fetchColumn() == 0) {
+                $missing_tables[] = $table;
+            }
+        } catch(Exception $e) {
+            $missing_tables[] = $table;
+        }
+    }
+    
+    if (!empty($missing_tables)) {
+        $tables_check['status'] = 'warning';
+        $tables_check['message'] = 'Missing tables: ' . implode(', ', $missing_tables);
+        $tables_check['details']['missing_tables'] = $missing_tables;
+        $diagnostics['recommendations'][] = 'Run database setup script to create missing tables';
+        if ($diagnostics['overall_status'] === 'good') {
+            $diagnostics['overall_status'] = 'warning';
+        }
+    } else {
+        $tables_check['details']['table_count'] = count($required_tables);
+    }
+    $diagnostics['checks'][] = $tables_check;
+    
+    // 3. System Configuration Check
+    $config_check = [
+        'name' => 'System Configuration',
+        'status' => 'good',
+        'message' => 'System configuration complete',
+        'details' => []
+    ];
+    
+    try {
+        $stmt = $pdo->query("SELECT COUNT(*) as config_count FROM system_configuration");
+        $config_count = $stmt->fetchColumn();
+        $config_check['details']['configuration_items'] = $config_count;
+        
+        if ($config_count < 10) {
+            $config_check['status'] = 'warning';
+            $config_check['message'] = 'Limited configuration items found';
+            $diagnostics['recommendations'][] = 'Review and update system configuration';
+            if ($diagnostics['overall_status'] === 'good') {
+                $diagnostics['overall_status'] = 'warning';
+            }
+        }
+    } catch(Exception $e) {
+        $config_check['status'] = 'warning';
+        $config_check['message'] = 'Unable to check configuration: ' . $e->getMessage();
+        $diagnostics['recommendations'][] = 'Ensure system_configuration table exists';
+    }
+    $diagnostics['checks'][] = $config_check;
+    
+    // 4. Recent Error Analysis
+    $error_check = [
+        'name' => 'Error Analysis',
+        'status' => 'good',
+        'message' => 'System operating normally',
+        'details' => []
+    ];
+    
+    try {
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) as error_count, 
+                   COUNT(DISTINCT DATE(created_at)) as error_days
+            FROM audit_log 
+            WHERE status = 'Failed' AND created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+        ");
+        $stmt->execute();
+        $error_data = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $error_check['details']['errors_24h'] = $error_data['error_count'];
+        $error_check['details']['error_days'] = $error_data['error_days'];
+        
+        if ($error_data['error_count'] > 50) {
+            $error_check['status'] = 'warning';
+            $error_check['message'] = 'High error rate detected';
+            $diagnostics['recommendations'][] = 'Review recent error logs for patterns';
+            if ($diagnostics['overall_status'] === 'good') {
+                $diagnostics['overall_status'] = 'warning';
+            }
+        } elseif ($error_data['error_count'] > 100) {
+            $error_check['status'] = 'critical';
+            $error_check['message'] = 'Critical error rate detected';
+            $diagnostics['recommendations'][] = 'Immediate investigation required';
+            $diagnostics['overall_status'] = 'critical';
+        }
+    } catch(Exception $e) {
+        $error_check['status'] = 'warning';
+        $error_check['message'] = 'Unable to analyze errors: ' . $e->getMessage();
+    }
+    $diagnostics['checks'][] = $error_check;
+    
+    // 5. Backup Status Check
+    $backup_check = [
+        'name' => 'Backup Status',
+        'status' => 'good',
+        'message' => 'Backup system operational',
+        'details' => []
+    ];
+    
+    try {
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) as backup_count,
+                   MAX(completed_at) as last_backup,
+                   COUNT(CASE WHEN completed_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR) THEN 1 END) as recent_backups
+            FROM system_backups 
+            WHERE status = 'completed'
+        ");
+        $stmt->execute();
+        $backup_data = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $backup_check['details']['total_backups'] = $backup_data['backup_count'];
+        $backup_check['details']['last_backup'] = $backup_data['last_backup'];
+        $backup_check['details']['recent_backups'] = $backup_data['recent_backups'];
+        
+        if ($backup_data['backup_count'] == 0) {
+            $backup_check['status'] = 'warning';
+            $backup_check['message'] = 'No backups found';
+            $diagnostics['recommendations'][] = 'Configure backup system';
+            if ($diagnostics['overall_status'] === 'good') {
+                $diagnostics['overall_status'] = 'warning';
+            }
+        } elseif ($backup_data['recent_backups'] == 0) {
+            $backup_check['status'] = 'warning';
+            $backup_check['message'] = 'No recent backups';
+            $diagnostics['recommendations'][] = 'Run manual backup or check backup schedule';
+            if ($diagnostics['overall_status'] === 'good') {
+                $diagnostics['overall_status'] = 'warning';
+            }
+        }
+    } catch(Exception $e) {
+        $backup_check['status'] = 'warning';
+        $backup_check['message'] = 'Unable to check backup status: ' . $e->getMessage();
+        $diagnostics['recommendations'][] = 'Ensure system_backups table exists';
+    }
+    $diagnostics['checks'][] = $backup_check;
+    
+    // 6. Performance Metrics
+    $performance_check = [
+        'name' => 'Performance Metrics',
+        'status' => 'good',
+        'message' => 'System performance acceptable',
+        'details' => []
+    ];
+    
+    try {
+        // Memory usage
+        $memory_usage = memory_get_usage(true);
+        $memory_limit = ini_get('memory_limit');
+        $memory_usage_mb = round($memory_usage / 1024 / 1024, 2);
+        
+        $performance_check['details']['memory_usage_mb'] = $memory_usage_mb;
+        $performance_check['details']['memory_limit'] = $memory_limit;
+        
+        // Database performance
+        $stmt = $pdo->query("SHOW STATUS LIKE 'Threads_connected'");
+        $connections = $stmt->fetch(PDO::FETCH_ASSOC);
+        $performance_check['details']['db_connections'] = $connections['Value'] ?? 0;
+        
+        // Active sessions
+        $stmt = $pdo->query("SELECT COUNT(*) as active_sessions FROM users WHERE last_login >= DATE_SUB(NOW(), INTERVAL 1 HOUR)");
+        $sessions = $stmt->fetch(PDO::FETCH_ASSOC);
+        $performance_check['details']['active_sessions'] = $sessions['active_sessions'] ?? 0;
+        
+        // Check for performance issues
+        if ($memory_usage_mb > 500) {
+            $performance_check['status'] = 'warning';
+            $performance_check['message'] = 'High memory usage detected';
+            $diagnostics['recommendations'][] = 'Consider increasing memory limit or optimizing code';
+            if ($diagnostics['overall_status'] === 'good') {
+                $diagnostics['overall_status'] = 'warning';
+            }
+        }
+    } catch(Exception $e) {
+        $performance_check['status'] = 'warning';
+        $performance_check['message'] = 'Unable to check performance: ' . $e->getMessage();
+    }
+    $diagnostics['checks'][] = $performance_check;
+    
+    // Log diagnostics completion
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO system_maintenance_log (maintenance_type, description, status, performed_by, details)
+            VALUES (?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([
+            'diagnostics',
+            'System health diagnostics completed',
+            'completed',
+            $u['id'],
+            json_encode([
+                'overall_status' => $diagnostics['overall_status'],
+                'checks_performed' => count($diagnostics['checks']),
+                'recommendations' => count($diagnostics['recommendations'])
+            ])
+        ]);
+    } catch(Exception $e) {
+        // Ignore logging errors
+    }
+    
+    echo json_encode([
+        'success' => true,
+        'data' => $diagnostics
+    ]);
+    
+} catch(Exception $e) {
+    echo json_encode([
+        'success' => false,
+        'error' => 'Diagnostics failed: ' . $e->getMessage()
+    ]);
 }
 ?>

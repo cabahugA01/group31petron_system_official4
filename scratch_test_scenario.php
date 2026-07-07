@@ -10,7 +10,318 @@ $dbname = "petron_pos_db_secure";
 $user = "root";
 $pass = "";
 
-try {  $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $user, $pass, [  PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,  PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC  ]);  echo "============================================================\n";  echo "STARTING PETRON SYSTEM INTEGRATION TEST SCENARIO\n";  echo "============================================================\n\n";  // -------------------------------------------------------------------------  // STEP 0: ENVIRONMENT PREPARATION & CLEANUP  // -------------------------------------------------------------------------  echo "STEP 0: Preparing environment...\n";  // Clear previous tests  $pdo->exec("DELETE FROM transaction_adjustments WHERE customer_name = 'Juan Dela Cruz'");  $pdo->exec("DELETE FROM voided_transactions WHERE customer_name = 'Juan Dela Cruz'");  $pdo->exec("DELETE FROM job_orders WHERE customer_name = 'Juan Dela Cruz'");  // Find previous combined transaction IDs to delete items  $prev_ids_stmt = $pdo->prepare("SELECT id FROM merchandise_transactions WHERE customer_name = 'Juan Dela Cruz'");  $prev_ids_stmt->execute();  $prev_ids = $prev_ids_stmt->fetchAll(PDO::FETCH_COLUMN);  if (!empty($prev_ids)) {  $in_clause = implode(',', array_fill(0, count($prev_ids), '?'));  $pdo->prepare("DELETE FROM merchandise_transaction_items WHERE transaction_id IN ($in_clause)")->execute($prev_ids);  $pdo->prepare("DELETE FROM merchandise_transactions WHERE id IN ($in_clause)")->execute($prev_ids);  }  echo "  - Cleaned up previous test records for 'Juan Dela Cruz'\n";  // Ensure Judy (Staff), Edgar (Manager), Kathrine (Admin) passwords are password123  $users_to_update = ['Judy' => 'staff', 'Edgar' => 'manager', 'Kathrine' => 'admin'];  foreach ($users_to_update as $username => $role) {  $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ?");  $stmt->execute([$username]);  $uid = $stmt->fetchColumn();  if ($uid) {  $hashed = password_hash('password123', PASSWORD_BCRYPT);  $pdo->prepare("UPDATE users SET password_hash = ?, role = ? WHERE id = ?")->execute([$hashed, $role, $uid]);  echo "  - Updated password_hash & role for $username ($role)\n";  } else {  // Create user if not exists  $hashed = password_hash('password123', PASSWORD_BCRYPT);  $pdo->prepare("INSERT INTO users (username, password_hash, first_name, last_name, role, station_id, status, created_at) VALUES (?, ?, ?, ?, ?, 1, 'Active', NOW())")  ->execute([$username, $hashed, $username, 'User', $role]);  echo "  - Created user $username ($role)\n";  }  }  // Get user IDs  $judy_id = (int)$pdo->query("SELECT id FROM users WHERE username = 'Judy'")->fetchColumn();  $edgar_id = (int)$pdo->query("SELECT id FROM users WHERE username = 'Edgar'")->fetchColumn();  // Ensure active shift exists for Judy  $pdo->prepare("DELETE FROM labor_sessions WHERE user_id = ? AND end_time IS NULL")->execute([$judy_id]);  $pdo->prepare("INSERT INTO labor_sessions (user_id, station_id, start_time, shift_name, shift_period) VALUES (?, 1, NOW(), 'Shift 1', 'first')")  ->execute([$judy_id]);  echo "  - Created active Shift 1 labor session for Judy\n";  // Ensure Products exist in database  $products = [  ['name' => 'Petron Engine Oil', 'category' => 'Lubricants', 'price' => 450.00],  ['name' => 'Coolant', 'category' => 'Fluids', 'price' => 300.00]  ];  $product_ids = [];  foreach ($products as $p) {  $stmt = $pdo->prepare("SELECT id FROM inventory_products WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(?)) AND station_id = 1");  $stmt->execute([$p['name']]);  $pid = $stmt->fetchColumn();  if (!$pid) {  $pdo->prepare("INSERT INTO inventory_products (product_name, category, unit_price, status, station_id, created_at) VALUES (?, ?, ?, 'active', 1, NOW())")  ->execute([$p['name'], $p['category'], $p['price']]);  $pid = $pdo->lastInsertId();  echo "  - Inserted product: {$p['name']}\n";  } else {  $pdo->prepare("UPDATE inventory_products SET unit_price = ? WHERE id = ? AND station_id = 1")->execute([$p['price'], $pid]);  }  $product_ids[$p['name']] = (int)$pid;  // Ensure stock exists in station 1  $stock_stmt = $pdo->prepare("SELECT stock_level FROM station_inventory WHERE station_id = 1 AND product_id = ?");  $stock_stmt->execute([$pid]);  if ($stock_stmt->fetchColumn() === false) {  $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, last_updated) VALUES (1, ?, 100.00, NOW())")  ->execute([$pid]);  } else {  $pdo->prepare("UPDATE station_inventory SET stock_level = 100.00, last_updated = NOW() WHERE station_id = 1 AND product_id = ?")  ->execute([$pid]);  }  }  echo "  - Ensured 'Petron Engine Oil' and 'Coolant' exist with 100 units of stock.\n\n";  // -------------------------------------------------------------------------  // STEP 1: STAFF CREATES COMBINED TRANSACTION  // -------------------------------------------------------------------------  echo "STEP 1: Staff Judy encodes the Combined Transaction...\n";  $txn_id = "TXN-" . str_pad(mt_rand(1, 99999), 5, '0', STR_PAD_LEFT);  $customer_name = "Juan Dela Cruz";  $subtotal = 2600.00;  $vat = 312.00;  $total = 2912.00;  $cash = 3000.00;  $change = 88.00;  // Insert transaction  $stmt = $pdo->prepare("  INSERT INTO merchandise_transactions (  transaction_id, station_id, staff_id, customer_name, customer_first_name, customer_last_name,  subtotal_amount, vat_amount, total_amount, amount_tendered, change_amount, payment_method,  payment_status, transaction_type, validation_status, workflow_status, shift_period, shift_name, created_at  ) VALUES (?, 1, ?, ?, 'Juan', 'Dela Cruz', ?, ?, ?, ?, ?, 'Cash', 'Paid', 'combined', 'Official', 'Pending', 'first', 'Shift 1', NOW())  ");  $stmt->execute([$txn_id, $judy_id, $customer_name, $subtotal, $vat, $total, $cash, $change]);  $merch_txn_db_id = $pdo->lastInsertId();  echo "  - Inserted transaction $txn_id (DB ID: $merch_txn_db_id) with amount ₱$total\n";  // Insert items  $items = [  ['name' => 'Oil Change', 'qty' => 1, 'price' => 800.00, 'type' => 'service', 'pid' => null],  ['name' => 'Wheel Alignment', 'qty' => 1, 'price' => 600.00, 'type' => 'service', 'pid' => null],  ['name' => 'Petron Engine Oil', 'qty' => 2, 'price' => 450.00, 'type' => 'merchandise', 'pid' => $product_ids['Petron Engine Oil']],  ['name' => 'Coolant', 'qty' => 1, 'price' => 300.00, 'type' => 'merchandise', 'pid' => $product_ids['Coolant']]  ];  foreach ($items as $item) {  $stmt = $pdo->prepare("  INSERT INTO merchandise_transaction_items (  transaction_id, product_id, product_name, quantity, unit_price, subtotal, item_type  ) VALUES (?, ?, ?, ?, ?, ?, ?)  ");  $stmt->execute([  $merch_txn_db_id,  $item['pid'],  $item['name'],  $item['qty'],  $item['price'],  $item['qty'] * $item['price'],  $item['type']  ]);  // Deduct inventory if merchandise  if ($item['type'] === 'merchandise') {  $pdo->prepare("UPDATE station_inventory SET stock_level = stock_level - ? WHERE station_id = 1 AND product_id = ?")  ->execute([$item['qty'], $item['pid']]);  }  }  echo "  - Inserted 4 transaction items and deducted inventory.\n";  // Verify stock levels after save  $oil_stock = $pdo->query("SELECT stock_level FROM station_inventory WHERE station_id = 1 AND product_id = " . $product_ids['Petron Engine Oil'])->fetchColumn();  $coolant_stock = $pdo->query("SELECT stock_level FROM station_inventory WHERE station_id = 1 AND product_id = " . $product_ids['Coolant'])->fetchColumn();  echo "  - Stock level verification:\n";  echo "  * Petron Engine Oil: $oil_stock units (Expected: 98)\n";  echo "  * Coolant: $coolant_stock units (Expected: 99)\n\n";  // -------------------------------------------------------------------------  // STEP 2: MANAGER EDGAR ADJUSTS THE TRANSACTION  // -------------------------------------------------------------------------  echo "STEP 2: Manager Edgar adjusts quantity of Petron Engine Oil from 2 to 1...\n";  // Simulate POST adjustment form submission to manager_transaction_monitoring.php  $_POST['action'] = 'save_adjustment';  $_POST['transaction_id'] = $txn_id;  $_POST['transaction_type'] = 'combined';  $_POST['customer_name'] = $customer_name;  $_POST['original_amount'] = $total;  // Adjustments values: Qty changed to 1, Unit Price 450, Service Fee 1958 (total updated 2408)  $_POST['quantity'] = 1;  $_POST['unit_price'] = 450;  $_POST['service_fee'] = 1958;  $_POST['adjustment_reason'] = 'Quantity Mismatch';  $_POST['manager_remarks'] = 'Correcting Petron Engine Oil quantity to 1';  // Run the actual POST logic in memory  $me = ['id' => $edgar_id, 'name' => 'Edgar'];  $station_id = 1;  // Trigger adjustments directly using the logic we wrote in manager_transaction_monitoring.php  $reason = $_POST['adjustment_reason'];  $remarks = $_POST['manager_remarks'];  $quantity = (float)$_POST['quantity'];  $unit_price = (float)$_POST['unit_price'];  $service_fee = (float)$_POST['service_fee'];  $new_amt = ($quantity * $unit_price) + $service_fee; // 2408  $diff = $new_amt - $total; // -504  // 1. Insert into history  $stmt = $pdo->prepare("  INSERT INTO transaction_adjustments (  transaction_id, transaction_type, customer_name,  original_amount, updated_amount, amount_difference,  adjustment_reason, manager_remarks, adjusted_by,  adjustment_date, station_id, fields_changed  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?)  ");  $fields_changed = json_encode([  'quantity' => $quantity,  'unit_price' => $unit_price,  'service_fee' => $service_fee  ]);  $stmt->execute([  $txn_id, 'combined', $customer_name,  $total, $new_amt, $diff,  $reason, $remarks, $edgar_id, 1, $fields_changed  ]);  $adj_db_id = $pdo->lastInsertId();  echo "  - Logged adjustment history ADJ-" . str_pad($adj_db_id, 4, '0', STR_PAD_LEFT) . " with diff ₱$diff\n";  // 2. Perform transaction adjustment & stock reconciliation  $adjustment_note = "Adjusted by Edgar: " . $reason . " | " . $remarks;  // Select Petron Engine Oil item details  $item_stmt = $pdo->prepare("SELECT id, product_id, quantity, unit_price FROM merchandise_transaction_items WHERE transaction_id = ? AND product_name LIKE '%Engine Oil%'");  $item_stmt->execute([$merch_txn_db_id]);  $item = $item_stmt->fetch();  if ($item && $item['quantity'] == 2) {  // Update item quantity to 1  $pdo->prepare("UPDATE merchandise_transaction_items SET quantity = 1, subtotal = unit_price WHERE id = ?")->execute([$item['id']]);  // Restore 1 unit of stock  if ($item['product_id']) {  $pdo->prepare("UPDATE station_inventory SET stock_level = stock_level + 1, last_updated = NOW() WHERE station_id = 1 AND product_id = ?")->execute([$item['product_id']]);  echo "  - Reconciled stock: Restored 1 unit of Petron Engine Oil\n";  }  }  // Recalculate subtotal, VAT, and total  $all_items = $pdo->query("SELECT quantity, unit_price FROM merchandise_transaction_items WHERE transaction_id = $merch_txn_db_id")->fetchAll();  $new_subtotal = 0;  foreach ($all_items as $ai) {  $new_subtotal += $ai['quantity'] * $ai['unit_price'];  }  $new_vat = $new_subtotal * 0.12;  $recalculated_total = $new_subtotal + $new_vat;  // Update parent transaction  $pdo->prepare("  UPDATE merchandise_transactions  SET subtotal_amount = ?,  vat_amount = ?,  total_amount = ?,  validation_status = 'Adjusted',  validated_by = ?,  validated_at = NOW(),  manager_notes = ?  WHERE id = ? AND station_id = 1  ")->execute([$new_subtotal, $new_vat, $recalculated_total, $edgar_id, $adjustment_note, $merch_txn_db_id]);  echo "  - Updated transaction $txn_id amount to ₱$recalculated_total (VAT: ₱$new_vat, Subtotal: ₱$new_subtotal)\n";  // Verify stock levels after adjustment  $oil_stock = $pdo->query("SELECT stock_level FROM station_inventory WHERE station_id = 1 AND product_id = " . $product_ids['Petron Engine Oil'])->fetchColumn();  echo "  - Adjusted stock level verification:\n";  echo "  * Petron Engine Oil: $oil_stock units (Expected: 99)\n\n";  // -------------------------------------------------------------------------  // STEP 3: MANAGER EDGAR VOIDS THE TRANSACTION  // -------------------------------------------------------------------------  echo "STEP 3: Manager Edgar voids the transaction...\n";  $void_reason = "Duplicate Transaction";  $void_remarks = "Voiding adjusted transaction as per scenario";  // 1. Insert into voided_transactions table  $stmt = $pdo->prepare("  INSERT INTO voided_transactions (  transaction_id, transaction_type, customer_name,  amount, void_reason, manager_remarks,  voided_by, void_date, station_id  ) VALUES (?, 'combined', ?, ?, ?, ?, ?, NOW(), 1)  ");  $stmt->execute([$txn_id, $customer_name, $recalculated_total, $void_reason, $void_remarks, $edgar_id]);  $void_db_id = $pdo->lastInsertId();  echo "  - Logged voided transaction with ID: VOID-" . str_pad($void_db_id, 4, '0', STR_PAD_LEFT) . "\n";  // 2. Update parent transaction and restore remaining inventory  $void_note = "Voided by Edgar: " . $void_reason . " | " . $void_remarks;  $pdo->prepare("  UPDATE merchandise_transactions  SET validation_status = 'Voided',  validated_by = ?,  validated_at = NOW(),  manager_notes = CONCAT(COALESCE(manager_notes, ''), '\n', ?),  inventory_deducted = 0  WHERE id = ? AND station_id = 1  ")->execute([$edgar_id, $void_note, $merch_txn_db_id]);  // Restore inventory from the items  $items_stmt = $pdo->prepare("SELECT product_id, quantity FROM merchandise_transaction_items WHERE transaction_id = ? AND product_id IS NOT NULL");  $items_stmt->execute([$merch_txn_db_id]);  while ($item = $items_stmt->fetch()) {  $pdo->prepare("UPDATE station_inventory SET stock_level = stock_level + ?, last_updated = NOW() WHERE station_id = 1 AND product_id = ?")  ->execute([$item['quantity'], $item['product_id']]);  }  echo "  - Restored all remaining items back to stock.\n";  // Verify stock levels after void  $oil_stock = $pdo->query("SELECT stock_level FROM station_inventory WHERE station_id = 1 AND product_id = " . $product_ids['Petron Engine Oil'])->fetchColumn();  $coolant_stock = $pdo->query("SELECT stock_level FROM station_inventory WHERE station_id = 1 AND product_id = " . $product_ids['Coolant'])->fetchColumn();  echo "  - Final stock level verification:\n";  echo "  * Petron Engine Oil: $oil_stock units (Expected: 100)\n";  echo "  * Coolant: $coolant_stock units (Expected: 100)\n\n";  echo "============================================================\n";  echo "INTEGRATION TEST SCENARIO COMPLETED SUCCESSFULLY!\n";  echo "============================================================\n";
+try {
+    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $user, $pass, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+    ]);
 
-} catch (Exception $e) {  echo "ERROR RUNNING SCENARIO: " . $e->getMessage() . "\n";
+    echo "============================================================\n";
+    echo "STARTING PETRON SYSTEM INTEGRATION TEST SCENARIO\n";
+    echo "============================================================\n\n";
+
+    // -------------------------------------------------------------------------
+    // STEP 0: ENVIRONMENT PREPARATION & CLEANUP
+    // -------------------------------------------------------------------------
+    echo "STEP 0: Preparing environment...\n";
+
+    // Clear previous tests
+    $pdo->exec("DELETE FROM transaction_adjustments WHERE customer_name = 'Juan Dela Cruz'");
+    $pdo->exec("DELETE FROM voided_transactions WHERE customer_name = 'Juan Dela Cruz'");
+    $pdo->exec("DELETE FROM job_orders WHERE customer_name = 'Juan Dela Cruz'");
+    
+    // Find previous combined transaction IDs to delete items
+    $prev_ids_stmt = $pdo->prepare("SELECT id FROM merchandise_transactions WHERE customer_name = 'Juan Dela Cruz'");
+    $prev_ids_stmt->execute();
+    $prev_ids = $prev_ids_stmt->fetchAll(PDO::FETCH_COLUMN);
+    if (!empty($prev_ids)) {
+        $in_clause = implode(',', array_fill(0, count($prev_ids), '?'));
+        $pdo->prepare("DELETE FROM merchandise_transaction_items WHERE transaction_id IN ($in_clause)")->execute($prev_ids);
+        $pdo->prepare("DELETE FROM merchandise_transactions WHERE id IN ($in_clause)")->execute($prev_ids);
+    }
+    echo "  - Cleaned up previous test records for 'Juan Dela Cruz'\n";
+
+    // Ensure Judy (Staff), Edgar (Manager), Kathrine (Admin) passwords are password123
+    $users_to_update = ['Judy' => 'staff', 'Edgar' => 'manager', 'Kathrine' => 'admin'];
+    foreach ($users_to_update as $username => $role) {
+        $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ?");
+        $stmt->execute([$username]);
+        $uid = $stmt->fetchColumn();
+        if ($uid) {
+            $hashed = password_hash('password123', PASSWORD_BCRYPT);
+            $pdo->prepare("UPDATE users SET password_hash = ?, role = ? WHERE id = ?")->execute([$hashed, $role, $uid]);
+            echo "  - Updated password_hash & role for $username ($role)\n";
+        } else {
+            // Create user if not exists
+            $hashed = password_hash('password123', PASSWORD_BCRYPT);
+            $pdo->prepare("INSERT INTO users (username, password_hash, first_name, last_name, role, station_id, status, created_at) VALUES (?, ?, ?, ?, ?, 1, 'Active', NOW())")
+                ->execute([$username, $hashed, $username, 'User', $role]);
+            echo "  - Created user $username ($role)\n";
+        }
+    }
+
+    // Get user IDs
+    $judy_id = (int)$pdo->query("SELECT id FROM users WHERE username = 'Judy'")->fetchColumn();
+    $edgar_id = (int)$pdo->query("SELECT id FROM users WHERE username = 'Edgar'")->fetchColumn();
+    
+    // Ensure active shift exists for Judy
+    $pdo->prepare("DELETE FROM labor_sessions WHERE user_id = ? AND end_time IS NULL")->execute([$judy_id]);
+    $pdo->prepare("INSERT INTO labor_sessions (user_id, station_id, start_time, shift_name, shift_period) VALUES (?, 1, NOW(), 'Shift 1', 'first')")
+        ->execute([$judy_id]);
+    echo "  - Created active Shift 1 labor session for Judy\n";
+
+    // Ensure Products exist in database
+    $products = [
+        ['name' => 'Petron Engine Oil', 'category' => 'Lubricants', 'price' => 450.00],
+        ['name' => 'Coolant', 'category' => 'Fluids', 'price' => 300.00]
+    ];
+    $product_ids = [];
+    foreach ($products as $p) {
+        $stmt = $pdo->prepare("SELECT id FROM inventory_products WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(?)) AND station_id = 1");
+        $stmt->execute([$p['name']]);
+        $pid = $stmt->fetchColumn();
+        if (!$pid) {
+            $pdo->prepare("INSERT INTO inventory_products (product_name, category, unit_price, status, station_id, created_at) VALUES (?, ?, ?, 'active', 1, NOW())")
+                ->execute([$p['name'], $p['category'], $p['price']]);
+            $pid = $pdo->lastInsertId();
+            echo "  - Inserted product: {$p['name']}\n";
+        } else {
+            $pdo->prepare("UPDATE inventory_products SET unit_price = ? WHERE id = ? AND station_id = 1")->execute([$p['price'], $pid]);
+        }
+        $product_ids[$p['name']] = (int)$pid;
+
+        // Ensure stock exists in station 1
+        $stock_stmt = $pdo->prepare("SELECT stock_level FROM station_inventory WHERE station_id = 1 AND product_id = ?");
+        $stock_stmt->execute([$pid]);
+        if ($stock_stmt->fetchColumn() === false) {
+            $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, last_updated) VALUES (1, ?, 100.00, NOW())")
+                ->execute([$pid]);
+        } else {
+            $pdo->prepare("UPDATE station_inventory SET stock_level = 100.00, last_updated = NOW() WHERE station_id = 1 AND product_id = ?")
+                ->execute([$pid]);
+        }
+    }
+    echo "  - Ensured 'Petron Engine Oil' and 'Coolant' exist with 100 units of stock.\n\n";
+
+
+    // -------------------------------------------------------------------------
+    // STEP 1: STAFF CREATES COMBINED TRANSACTION
+    // -------------------------------------------------------------------------
+    echo "STEP 1: Staff Judy encodes the Combined Transaction...\n";
+    
+    $txn_id = "TXN-" . str_pad(mt_rand(1, 99999), 5, '0', STR_PAD_LEFT);
+    $customer_name = "Juan Dela Cruz";
+    $subtotal = 2600.00;
+    $vat = 312.00;
+    $total = 2912.00;
+    $cash = 3000.00;
+    $change = 88.00;
+
+    // Insert transaction
+    $stmt = $pdo->prepare("
+        INSERT INTO merchandise_transactions (
+            transaction_id, station_id, staff_id, customer_name, customer_first_name, customer_last_name,
+            subtotal_amount, vat_amount, total_amount, amount_tendered, change_amount, payment_method,
+            payment_status, transaction_type, validation_status, workflow_status, shift_period, shift_name, created_at
+        ) VALUES (?, 1, ?, ?, 'Juan', 'Dela Cruz', ?, ?, ?, ?, ?, 'Cash', 'Paid', 'combined', 'Official', 'Pending', 'first', 'Shift 1', NOW())
+    ");
+    $stmt->execute([$txn_id, $judy_id, $customer_name, $subtotal, $vat, $total, $cash, $change]);
+    $merch_txn_db_id = $pdo->lastInsertId();
+    echo "  - Inserted transaction $txn_id (DB ID: $merch_txn_db_id) with amount ₱$total\n";
+
+    // Insert items
+    $items = [
+        ['name' => 'Oil Change', 'qty' => 1, 'price' => 800.00, 'type' => 'service', 'pid' => null],
+        ['name' => 'Wheel Alignment', 'qty' => 1, 'price' => 600.00, 'type' => 'service', 'pid' => null],
+        ['name' => 'Petron Engine Oil', 'qty' => 2, 'price' => 450.00, 'type' => 'merchandise', 'pid' => $product_ids['Petron Engine Oil']],
+        ['name' => 'Coolant', 'qty' => 1, 'price' => 300.00, 'type' => 'merchandise', 'pid' => $product_ids['Coolant']]
+    ];
+
+    foreach ($items as $item) {
+        $stmt = $pdo->prepare("
+            INSERT INTO merchandise_transaction_items (
+                transaction_id, product_id, product_name, quantity, unit_price, subtotal, item_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([
+            $merch_txn_db_id,
+            $item['pid'],
+            $item['name'],
+            $item['qty'],
+            $item['price'],
+            $item['qty'] * $item['price'],
+            $item['type']
+        ]);
+        
+        // Deduct inventory if merchandise
+        if ($item['type'] === 'merchandise') {
+            $pdo->prepare("UPDATE station_inventory SET stock_level = stock_level - ? WHERE station_id = 1 AND product_id = ?")
+                ->execute([$item['qty'], $item['pid']]);
+        }
+    }
+    echo "  - Inserted 4 transaction items and deducted inventory.\n";
+
+    // Verify stock levels after save
+    $oil_stock = $pdo->query("SELECT stock_level FROM station_inventory WHERE station_id = 1 AND product_id = " . $product_ids['Petron Engine Oil'])->fetchColumn();
+    $coolant_stock = $pdo->query("SELECT stock_level FROM station_inventory WHERE station_id = 1 AND product_id = " . $product_ids['Coolant'])->fetchColumn();
+    echo "  - Stock level verification:\n";
+    echo "    * Petron Engine Oil: $oil_stock units (Expected: 98)\n";
+    echo "    * Coolant: $coolant_stock units (Expected: 99)\n\n";
+
+
+    // -------------------------------------------------------------------------
+    // STEP 2: MANAGER EDGAR ADJUSTS THE TRANSACTION
+    // -------------------------------------------------------------------------
+    echo "STEP 2: Manager Edgar adjusts quantity of Petron Engine Oil from 2 to 1...\n";
+    
+    // Simulate POST adjustment form submission to manager_transaction_monitoring.php
+    $_POST['action'] = 'save_adjustment';
+    $_POST['transaction_id'] = $txn_id;
+    $_POST['transaction_type'] = 'combined';
+    $_POST['customer_name'] = $customer_name;
+    $_POST['original_amount'] = $total;
+    
+    // Adjustments values: Qty changed to 1, Unit Price 450, Service Fee 1958 (total updated 2408)
+    $_POST['quantity'] = 1;
+    $_POST['unit_price'] = 450;
+    $_POST['service_fee'] = 1958;
+    $_POST['adjustment_reason'] = 'Quantity Mismatch';
+    $_POST['manager_remarks'] = 'Correcting Petron Engine Oil quantity to 1';
+    
+    // Run the actual POST logic in memory
+    $me = ['id' => $edgar_id, 'name' => 'Edgar'];
+    $station_id = 1;
+    
+    // Trigger adjustments directly using the logic we wrote in manager_transaction_monitoring.php
+    $reason = $_POST['adjustment_reason'];
+    $remarks = $_POST['manager_remarks'];
+    $quantity = (float)$_POST['quantity'];
+    $unit_price = (float)$_POST['unit_price'];
+    $service_fee = (float)$_POST['service_fee'];
+    $new_amt = ($quantity * $unit_price) + $service_fee; // 2408
+    $diff = $new_amt - $total; // -504
+
+    // 1. Insert into history
+    $stmt = $pdo->prepare("
+        INSERT INTO transaction_adjustments (
+            transaction_id, transaction_type, customer_name,
+            original_amount, updated_amount, amount_difference,
+            adjustment_reason, manager_remarks, adjusted_by,
+            adjustment_date, station_id, fields_changed
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?)
+    ");
+    $fields_changed = json_encode([
+        'quantity' => $quantity,
+        'unit_price' => $unit_price,
+        'service_fee' => $service_fee
+    ]);
+    $stmt->execute([
+        $txn_id, 'combined', $customer_name,
+        $total, $new_amt, $diff,
+        $reason, $remarks, $edgar_id, 1, $fields_changed
+    ]);
+    $adj_db_id = $pdo->lastInsertId();
+    echo "  - Logged adjustment history ADJ-" . str_pad($adj_db_id, 4, '0', STR_PAD_LEFT) . " with diff ₱$diff\n";
+
+    // 2. Perform transaction adjustment & stock reconciliation
+    $adjustment_note = "Adjusted by Edgar: " . $reason . " | " . $remarks;
+    
+    // Select Petron Engine Oil item details
+    $item_stmt = $pdo->prepare("SELECT id, product_id, quantity, unit_price FROM merchandise_transaction_items WHERE transaction_id = ? AND product_name LIKE '%Engine Oil%'");
+    $item_stmt->execute([$merch_txn_db_id]);
+    $item = $item_stmt->fetch();
+    if ($item && $item['quantity'] == 2) {
+        // Update item quantity to 1
+        $pdo->prepare("UPDATE merchandise_transaction_items SET quantity = 1, subtotal = unit_price WHERE id = ?")->execute([$item['id']]);
+        
+        // Restore 1 unit of stock
+        if ($item['product_id']) {
+            $pdo->prepare("UPDATE station_inventory SET stock_level = stock_level + 1, last_updated = NOW() WHERE station_id = 1 AND product_id = ?")->execute([$item['product_id']]);
+            echo "  - Reconciled stock: Restored 1 unit of Petron Engine Oil\n";
+        }
+    }
+    
+    // Recalculate subtotal, VAT, and total
+    $all_items = $pdo->query("SELECT quantity, unit_price FROM merchandise_transaction_items WHERE transaction_id = $merch_txn_db_id")->fetchAll();
+    $new_subtotal = 0;
+    foreach ($all_items as $ai) {
+        $new_subtotal += $ai['quantity'] * $ai['unit_price'];
+    }
+    $new_vat = $new_subtotal * 0.12;
+    $recalculated_total = $new_subtotal + $new_vat;
+
+    // Update parent transaction
+    $pdo->prepare("
+        UPDATE merchandise_transactions 
+        SET subtotal_amount = ?,
+            vat_amount = ?,
+            total_amount = ?,
+            validation_status = 'Adjusted',
+            validated_by = ?,
+            validated_at = NOW(),
+            manager_notes = ?
+        WHERE id = ? AND station_id = 1
+    ")->execute([$new_subtotal, $new_vat, $recalculated_total, $edgar_id, $adjustment_note, $merch_txn_db_id]);
+    echo "  - Updated transaction $txn_id amount to ₱$recalculated_total (VAT: ₱$new_vat, Subtotal: ₱$new_subtotal)\n";
+
+    // Verify stock levels after adjustment
+    $oil_stock = $pdo->query("SELECT stock_level FROM station_inventory WHERE station_id = 1 AND product_id = " . $product_ids['Petron Engine Oil'])->fetchColumn();
+    echo "  - Adjusted stock level verification:\n";
+    echo "    * Petron Engine Oil: $oil_stock units (Expected: 99)\n\n";
+
+
+    // -------------------------------------------------------------------------
+    // STEP 3: MANAGER EDGAR VOIDS THE TRANSACTION
+    // -------------------------------------------------------------------------
+    echo "STEP 3: Manager Edgar voids the transaction...\n";
+
+    $void_reason = "Duplicate Transaction";
+    $void_remarks = "Voiding adjusted transaction as per scenario";
+
+    // 1. Insert into voided_transactions table
+    $stmt = $pdo->prepare("
+        INSERT INTO voided_transactions (
+            transaction_id, transaction_type, customer_name,
+            amount, void_reason, manager_remarks,
+            voided_by, void_date, station_id
+        ) VALUES (?, 'combined', ?, ?, ?, ?, ?, NOW(), 1)
+    ");
+    $stmt->execute([$txn_id, $customer_name, $recalculated_total, $void_reason, $void_remarks, $edgar_id]);
+    $void_db_id = $pdo->lastInsertId();
+    echo "  - Logged voided transaction with ID: VOID-" . str_pad($void_db_id, 4, '0', STR_PAD_LEFT) . "\n";
+
+    // 2. Update parent transaction and restore remaining inventory
+    $void_note = "Voided by Edgar: " . $void_reason . " | " . $void_remarks;
+    $pdo->prepare("
+        UPDATE merchandise_transactions 
+        SET validation_status = 'Voided',
+            validated_by = ?,
+            validated_at = NOW(),
+            manager_notes = CONCAT(COALESCE(manager_notes, ''), '\n', ?),
+            inventory_deducted = 0
+        WHERE id = ? AND station_id = 1
+    ")->execute([$edgar_id, $void_note, $merch_txn_db_id]);
+
+    // Restore inventory from the items
+    $items_stmt = $pdo->prepare("SELECT product_id, quantity FROM merchandise_transaction_items WHERE transaction_id = ? AND product_id IS NOT NULL");
+    $items_stmt->execute([$merch_txn_db_id]);
+    while ($item = $items_stmt->fetch()) {
+        $pdo->prepare("UPDATE station_inventory SET stock_level = stock_level + ?, last_updated = NOW() WHERE station_id = 1 AND product_id = ?")
+            ->execute([$item['quantity'], $item['product_id']]);
+    }
+    echo "  - Restored all remaining items back to stock.\n";
+
+    // Verify stock levels after void
+    $oil_stock = $pdo->query("SELECT stock_level FROM station_inventory WHERE station_id = 1 AND product_id = " . $product_ids['Petron Engine Oil'])->fetchColumn();
+    $coolant_stock = $pdo->query("SELECT stock_level FROM station_inventory WHERE station_id = 1 AND product_id = " . $product_ids['Coolant'])->fetchColumn();
+    echo "  - Final stock level verification:\n";
+    echo "    * Petron Engine Oil: $oil_stock units (Expected: 100)\n";
+    echo "    * Coolant: $coolant_stock units (Expected: 100)\n\n";
+
+    echo "============================================================\n";
+    echo "INTEGRATION TEST SCENARIO COMPLETED SUCCESSFULLY!\n";
+    echo "============================================================\n";
+
+} catch (Exception $e) {
+    echo "ERROR RUNNING SCENARIO: " . $e->getMessage() . "\n";
 }

@@ -1,11 +1,130 @@
 <?php
-/**  * Export Merchandise History for Staff  * Formats: Excel, CSV, PDF  */
-if (session_status() === PHP_SESSION_NONE) session_start();  require_once __DIR__ . '/../lib.php';
+/**
+ * Export Merchandise History for Staff
+ * Formats: Excel, CSV, PDF
+ */
+if (session_status() === PHP_SESSION_NONE) session_start();
+
+require_once __DIR__ . '/../lib.php';
 require_once __DIR__ . '/../../public/db_connect.php';
-require_login();  $me = current_user();
+require_login();
+
+$me = current_user();
 $role = role_key($me['role'] ?? '');
 $staff_id = (int)$me['id'];
-$format = strtolower(trim($_GET['format'] ?? 'excel'));  // Only staff roles can access
-if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {  die('Access denied');
-}  try {  // Fetch merchandise transactions created by this staff member  $stmt = $pdo->prepare("  SELECT  mt.transaction_id,  COALESCE(mt.customer_name, 'Walk-in') AS customer,  COALESCE(mt.item_sku, 'N/A') AS items,  COALESCE(mt.quantity, 0) AS quantity,  mt.total_amount AS amount,  COALESCE(mt.payment_method, 'Cash') AS payment_method,  COALESCE(mt.validation_status, 'Pending') AS status,  DATE_FORMAT(COALESCE(mt.transaction_date, mt.created_at), '%Y-%m-%d %H:%i') AS date_created  FROM merchandise_transactions mt  WHERE mt.staff_id = ?  ORDER BY COALESCE(mt.transaction_date, mt.created_at) DESC  LIMIT 1000  ");  $stmt->execute([$staff_id]);  $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);  if ($format === 'csv') {  // ── CSV Export ──  header('Content-Type: text/csv; charset=utf-8');  header('Content-Disposition: attachment; filename="merchandise_history_' . date('Y-m-d') . '.csv"');  $output = fopen('php://output', 'w');  fputcsv($output, ['Transaction ID', 'Customer', 'Items', 'Quantity', 'Amount', 'Payment Method', 'Status', 'Date']);  foreach ($rows as $row) {  fputcsv($output, [  $row['transaction_id'],  $row['customer'],  $row['items'],  $row['quantity'],  '₱' . number_format((float)$row['amount'], 2),  $row['payment_method'],  $row['status'],  $row['date_created']  ]);  }  fclose($output);  exit;  } elseif ($format === 'pdf') {  // ── PDF Export ──  header('Content-Type: application/pdf');  header('Content-Disposition: attachment; filename="merchandise_history_' . date('Y-m-d') . '.pdf"');  echo '<html><head><style>  body { font-family: Arial, sans-serif; font-size: 11px; }  table { width: 100%; border-collapse: collapse; margin-top: 20px; }  th { background: #002F70; color: white; padding: 8px; text-align: left; font-size: 10px; }  td { border: 1px solid #ddd; padding: 6px; font-size: 10px; }  h1 { color: #002F70; font-size: 18px; }  </style></head><body>';  echo '<h1>Merchandise History Export</h1>';  echo '<p>Generated: ' . date('F d, Y H:i A') . '</p>';  echo '<table><thead><tr>';  echo '<th>Transaction ID</th><th>Customer</th><th>Items</th><th>Qty</th><th>Amount</th><th>Payment</th><th>Status</th><th>Date</th>';  echo '</tr></thead><tbody>';  foreach ($rows as $row) {  echo '<tr>';  echo '<td>' . htmlspecialchars($row['transaction_id']) . '</td>';  echo '<td>' . htmlspecialchars($row['customer']) . '</td>';  echo '<td>' . htmlspecialchars($row['items']) . '</td>';  echo '<td>' . (int)$row['quantity'] . '</td>';  echo '<td>₱' . number_format((float)$row['amount'], 2) . '</td>';  echo '<td>' . htmlspecialchars($row['payment_method']) . '</td>';  echo '<td>' . htmlspecialchars($row['status']) . '</td>';  echo '<td>' . htmlspecialchars($row['date_created']) . '</td>';  echo '</tr>';  }  echo '</tbody></table>';  echo '<script>window.print();</script>';  echo '</body></html>';  exit;  } else {  // ── Excel Export (HTML table with Excel headers) ──  header('Content-Type: application/vnd.ms-excel');  header('Content-Disposition: attachment; filename="merchandise_history_' . date('Y-m-d') . '.xls"');  echo '<table border="1"><thead><tr>';  echo '<th>Transaction ID</th><th>Customer</th><th>Items</th><th>Quantity</th><th>Amount</th><th>Payment Method</th><th>Status</th><th>Date</th>';  echo '</tr></thead><tbody>';  foreach ($rows as $row) {  echo '<tr>';  echo '<td>' . htmlspecialchars($row['transaction_id']) . '</td>';  echo '<td>' . htmlspecialchars($row['customer']) . '</td>';  echo '<td>' . htmlspecialchars($row['items']) . '</td>';  echo '<td>' . (int)$row['quantity'] . '</td>';  echo '<td>₱' . number_format((float)$row['amount'], 2) . '</td>';  echo '<td>' . htmlspecialchars($row['payment_method']) . '</td>';  echo '<td>' . htmlspecialchars($row['status']) . '</td>';  echo '<td>' . htmlspecialchars($row['date_created']) . '</td>';  echo '</tr>';  }  echo '</tbody></table>';  exit;  }  } catch (Exception $e) {  die('Export failed: ' . $e->getMessage());
+$format = strtolower(trim($_GET['format'] ?? 'excel'));
+
+// Only staff roles can access
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+    die('Access denied');
+}
+
+try {
+    // Fetch merchandise transactions created by this staff member
+    $stmt = $pdo->prepare("
+        SELECT 
+            mt.transaction_id,
+            COALESCE(mt.customer_name, 'Walk-in') AS customer,
+            COALESCE(mt.item_sku, 'N/A') AS items,
+            COALESCE(mt.quantity, 0) AS quantity,
+            mt.total_amount AS amount,
+            COALESCE(mt.payment_method, 'Cash') AS payment_method,
+            COALESCE(mt.validation_status, 'Pending') AS status,
+            DATE_FORMAT(COALESCE(mt.transaction_date, mt.created_at), '%Y-%m-%d %H:%i') AS date_created
+        FROM merchandise_transactions mt
+        WHERE mt.staff_id = ?
+        ORDER BY COALESCE(mt.transaction_date, mt.created_at) DESC
+        LIMIT 1000
+    ");
+    $stmt->execute([$staff_id]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if ($format === 'csv') {
+        // ── CSV Export ──
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="merchandise_history_' . date('Y-m-d') . '.csv"');
+        
+        $output = fopen('php://output', 'w');
+        fputcsv($output, ['Transaction ID', 'Customer', 'Items', 'Quantity', 'Amount', 'Payment Method', 'Status', 'Date']);
+        
+        foreach ($rows as $row) {
+            fputcsv($output, [
+                $row['transaction_id'],
+                $row['customer'],
+                $row['items'],
+                $row['quantity'],
+                '₱' . number_format((float)$row['amount'], 2),
+                $row['payment_method'],
+                $row['status'],
+                $row['date_created']
+            ]);
+        }
+        
+        fclose($output);
+        exit;
+        
+    } elseif ($format === 'pdf') {
+        // ── PDF Export ──
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="merchandise_history_' . date('Y-m-d') . '.pdf"');
+        
+        echo '<html><head><style>
+            body { font-family: Arial, sans-serif; font-size: 11px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th { background: #002F70; color: white; padding: 8px; text-align: left; font-size: 10px; }
+            td { border: 1px solid #ddd; padding: 6px; font-size: 10px; }
+            h1 { color: #002F70; font-size: 18px; }
+        </style></head><body>';
+        echo '<h1>Merchandise History Export</h1>';
+        echo '<p>Generated: ' . date('F d, Y H:i A') . '</p>';
+        echo '<table><thead><tr>';
+        echo '<th>Transaction ID</th><th>Customer</th><th>Items</th><th>Qty</th><th>Amount</th><th>Payment</th><th>Status</th><th>Date</th>';
+        echo '</tr></thead><tbody>';
+        
+        foreach ($rows as $row) {
+            echo '<tr>';
+            echo '<td>' . htmlspecialchars($row['transaction_id']) . '</td>';
+            echo '<td>' . htmlspecialchars($row['customer']) . '</td>';
+            echo '<td>' . htmlspecialchars($row['items']) . '</td>';
+            echo '<td>' . (int)$row['quantity'] . '</td>';
+            echo '<td>₱' . number_format((float)$row['amount'], 2) . '</td>';
+            echo '<td>' . htmlspecialchars($row['payment_method']) . '</td>';
+            echo '<td>' . htmlspecialchars($row['status']) . '</td>';
+            echo '<td>' . htmlspecialchars($row['date_created']) . '</td>';
+            echo '</tr>';
+        }
+        
+        echo '</tbody></table>';
+        echo '<script>window.print();</script>';
+        echo '</body></html>';
+        exit;
+        
+    } else {
+        // ── Excel Export (HTML table with Excel headers) ──
+        header('Content-Type: application/vnd.ms-excel');
+        header('Content-Disposition: attachment; filename="merchandise_history_' . date('Y-m-d') . '.xls"');
+        
+        echo '<table border="1"><thead><tr>';
+        echo '<th>Transaction ID</th><th>Customer</th><th>Items</th><th>Quantity</th><th>Amount</th><th>Payment Method</th><th>Status</th><th>Date</th>';
+        echo '</tr></thead><tbody>';
+        
+        foreach ($rows as $row) {
+            echo '<tr>';
+            echo '<td>' . htmlspecialchars($row['transaction_id']) . '</td>';
+            echo '<td>' . htmlspecialchars($row['customer']) . '</td>';
+            echo '<td>' . htmlspecialchars($row['items']) . '</td>';
+            echo '<td>' . (int)$row['quantity'] . '</td>';
+            echo '<td>₱' . number_format((float)$row['amount'], 2) . '</td>';
+            echo '<td>' . htmlspecialchars($row['payment_method']) . '</td>';
+            echo '<td>' . htmlspecialchars($row['status']) . '</td>';
+            echo '<td>' . htmlspecialchars($row['date_created']) . '</td>';
+            echo '</tr>';
+        }
+        
+        echo '</tbody></table>';
+        exit;
+    }
+
+} catch (Exception $e) {
+    die('Export failed: ' . $e->getMessage());
 }

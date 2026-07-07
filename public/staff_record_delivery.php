@@ -2,59 +2,395 @@
 $page_id = 'staff_record_delivery';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
-require_login();  $me  = current_user();
-$role  = role_key($me['role'] ?? '');
-$station_id = user_station_id();  if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {  header('Location: dashboard.php');  exit;
-}  $msg  = '';
-$msg_type = 'success';  /* ══════════════════════════════════════════════════════════  AJAX — fetch products by category
+require_login();
+
+$me         = current_user();
+$role       = role_key($me['role'] ?? '');
+$station_id = user_station_id();
+
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+    header('Location: dashboard.php');
+    exit;
+}
+
+$msg      = '';
+$msg_type = 'success';
+
+/* ══════════════════════════════════════════════════════════
+   AJAX — fetch products by category
 ══════════════════════════════════════════════════════════ */
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'products_by_category') {  header('Content-Type: application/json');  $cat = trim($_GET['category'] ?? '');  $products = [];  if ($cat !== '' && $cat !== 'Fuel') {  try {  $stmt = $pdo->prepare("  SELECT DISTINCT product_name  FROM inventory_products  WHERE category = ? AND category NOT IN ('Fuel')  ORDER BY product_name  ");  $stmt->execute([$cat]);  $products = $stmt->fetchAll(PDO::FETCH_COLUMN);  } catch (Exception $e) {}  }  echo json_encode(['products' => $products]);  exit;
-}  /* ══════════════════════════════════════════════════════════  AJAX — fetch category by product name (AUTO-FETCH)
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'products_by_category') {
+    header('Content-Type: application/json');
+    $cat = trim($_GET['category'] ?? '');
+    $products = [];
+    if ($cat !== '' && $cat !== 'Fuel') {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT DISTINCT product_name
+                FROM inventory_products
+                WHERE category = ? AND category NOT IN ('Fuel')
+                ORDER BY product_name
+            ");
+            $stmt->execute([$cat]);
+            $products = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        } catch (Exception $e) {}
+    }
+    echo json_encode(['products' => $products]);
+    exit;
+}
+
+/* ══════════════════════════════════════════════════════════
+   AJAX — fetch category by product name (AUTO-FETCH)
 ══════════════════════════════════════════════════════════ */
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_product_category') {  header('Content-Type: application/json');  $product_name = trim($_GET['product_name'] ?? '');  $category = '';  if ($product_name !== '') {  try {  $stmt = $pdo->prepare("  SELECT category  FROM inventory_products  WHERE product_name = ? AND category NOT IN ('Fuel')  LIMIT 1  ");  $stmt->execute([$product_name]);  $result = $stmt->fetch(PDO::FETCH_ASSOC);  if ($result) {  $category = $result['category'];  }  } catch (Exception $e) {}  }  echo json_encode(['category' => $category]);  exit;
-}  /* Bootstrap deliveries_oversight table once */
-try {  $pdo->exec("  CREATE TABLE IF NOT EXISTS deliveries_oversight (  id  INT AUTO_INCREMENT PRIMARY KEY,  delivery_type  ENUM('fuel','merchandise') NOT NULL DEFAULT 'merchandise',  delivery_ref  VARCHAR(100) NOT NULL DEFAULT '',  batch_id  VARCHAR(100) DEFAULT NULL,  supplier  VARCHAR(200) NOT NULL DEFAULT '',  product  VARCHAR(200) NOT NULL DEFAULT '',  quantity  DECIMAL(12,3) NOT NULL DEFAULT 0,  unit  VARCHAR(30)  NOT NULL DEFAULT 'pcs',  delivery_date  DATE  NOT NULL,  dr_number  VARCHAR(100) DEFAULT NULL,  encoded_by  INT  DEFAULT NULL,  station_id  INT  NOT NULL,  status  VARCHAR(60)  NOT NULL DEFAULT 'Pending Manager Approval',  source_ref  VARCHAR(100) DEFAULT NULL,  admin_id  INT  DEFAULT NULL,  admin_action_at DATETIME  DEFAULT NULL,  admin_notes  TEXT  DEFAULT NULL,  remarks  TEXT  DEFAULT NULL,  created_at  DATETIME  NOT NULL DEFAULT CURRENT_TIMESTAMP,  updated_at  DATETIME  NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,  INDEX idx_station (station_id),  INDEX idx_status  (status),  INDEX idx_date  (delivery_date)  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4  ");
-} catch (Exception $e) {}  foreach ([  'remarks TEXT DEFAULT NULL',  'dr_number VARCHAR(100) DEFAULT NULL',  'batch_id VARCHAR(100) DEFAULT NULL',  'source_ref VARCHAR(100) DEFAULT NULL',  'unit_cost DECIMAL(12,2) DEFAULT NULL',  'expiry_date DATE DEFAULT NULL',  'received_by_name VARCHAR(200) DEFAULT NULL',  'category VARCHAR(100) DEFAULT NULL'
-] as $col_def) {  try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN {$col_def}"); } catch (Exception $e) {}
-}  /* ══════════════════════════════════════════════════════════  POST — Receive Expected Delivery (Finalized PO)
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_product_category') {
+    header('Content-Type: application/json');
+    $product_name = trim($_GET['product_name'] ?? '');
+    $category = '';
+    if ($product_name !== '') {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT category
+                FROM inventory_products
+                WHERE product_name = ? AND category NOT IN ('Fuel')
+                LIMIT 1
+            ");
+            $stmt->execute([$product_name]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($result) {
+                $category = $result['category'];
+            }
+        } catch (Exception $e) {}
+    }
+    echo json_encode(['category' => $category]);
+    exit;
+}
+
+/* Bootstrap deliveries_oversight table once */
+try {
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS deliveries_oversight (
+            id              INT AUTO_INCREMENT PRIMARY KEY,
+            delivery_type   ENUM('fuel','merchandise') NOT NULL DEFAULT 'merchandise',
+            delivery_ref    VARCHAR(100) NOT NULL DEFAULT '',
+            batch_id        VARCHAR(100) DEFAULT NULL,
+            supplier        VARCHAR(200) NOT NULL DEFAULT '',
+            product         VARCHAR(200) NOT NULL DEFAULT '',
+            quantity        DECIMAL(12,3) NOT NULL DEFAULT 0,
+            unit            VARCHAR(30)  NOT NULL DEFAULT 'pcs',
+            delivery_date   DATE         NOT NULL,
+            dr_number       VARCHAR(100) DEFAULT NULL,
+            encoded_by      INT          DEFAULT NULL,
+            station_id      INT          NOT NULL,
+            status          VARCHAR(60)  NOT NULL DEFAULT 'Pending Manager Approval',
+            source_ref      VARCHAR(100) DEFAULT NULL,
+            admin_id        INT          DEFAULT NULL,
+            admin_action_at DATETIME     DEFAULT NULL,
+            admin_notes     TEXT         DEFAULT NULL,
+            remarks         TEXT         DEFAULT NULL,
+            created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_station (station_id),
+            INDEX idx_status  (status),
+            INDEX idx_date    (delivery_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
+} catch (Exception $e) {}
+
+foreach ([
+    'remarks TEXT DEFAULT NULL',
+    'dr_number VARCHAR(100) DEFAULT NULL',
+    'batch_id VARCHAR(100) DEFAULT NULL',
+    'source_ref VARCHAR(100) DEFAULT NULL',
+    'unit_cost DECIMAL(12,2) DEFAULT NULL',
+    'expiry_date DATE DEFAULT NULL',
+    'received_by_name VARCHAR(200) DEFAULT NULL',
+    'category VARCHAR(100) DEFAULT NULL'
+] as $col_def) {
+    try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN {$col_def}"); } catch (Exception $e) {}
+}
+
+/* ══════════════════════════════════════════════════════════
+   POST — Receive Expected Delivery (Finalized PO)
 ══════════════════════════════════════════════════════════ */
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'receive_expected') {  $delivery_id = (int)($_POST['delivery_id'] ?? 0);  $actual_qty  = (float)($_POST['actual_qty'] ?? 0);  $dr_number  = trim($_POST['dr_number'] ?? '');  $remarks  = trim($_POST['remarks'] ?? '');  if ($delivery_id > 0 && $actual_qty > 0) {  try {  $pdo->beginTransaction();  $stmt = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE id = ? AND station_id = ? AND status = 'Expected Delivery'");  $stmt->execute([$delivery_id, $station_id]);  $del = $stmt->fetch(PDO::FETCH_ASSOC);  if ($del) {  $expected_qty = (float)$del['quantity'];  // Variance check  $status = 'Pending Manager Approval';  $admin_notes = null;  $diff = abs($actual_qty - $expected_qty);  if ($diff > 0.001) {  $status = 'Discrepancy';  $admin_notes = "System Flag: Expected " . number_format($expected_qty, 2) . " {$del['unit']}, but received " . number_format($actual_qty, 2) . " {$del['unit']}. Variance: " . number_format($actual_qty - $expected_qty, 2) . " {$del['unit']}.";  }  $pdo->prepare("  UPDATE deliveries_oversight  SET quantity = ?, dr_number = ?, remarks = ?, encoded_by = ?, status = ?, admin_notes = ?, delivery_date = CURDATE(), updated_at = NOW()  WHERE id = ?  ")->execute([$actual_qty, $dr_number, $remarks, $me['id'], $status, $admin_notes, $delivery_id]);  log_activity($pdo, $me['id'], 'Staff Received PO Delivery', "PO: {$del['source_ref']} | Product: {$del['product']} | Expected: {$expected_qty} | Actual: {$actual_qty}");  $pdo->commit();  if ($status === 'Discrepancy') {  header('Location: staff_delivery_history.php?msg=discrepancy&type=warning');  } else {  header('Location: staff_delivery_history.php?msg=received&type=success');  }  exit;  } else {  throw new Exception("Delivery not found or already processed.");  }  } catch (Exception $e) {  if ($pdo->inTransaction()) $pdo->rollBack();  $msg = 'Error receiving delivery: ' . $e->getMessage();  $msg_type = 'error';  }  } else {  $msg = 'Please enter a valid actual quantity received.';  $msg_type = 'error';  }
-}  /* ══════════════════════════════════════════════════════════  POST — Record Delivery (Manual / Old Flow)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'receive_expected') {
+    $delivery_id = (int)($_POST['delivery_id'] ?? 0);
+    $actual_qty  = (float)($_POST['actual_qty'] ?? 0);
+    $dr_number   = trim($_POST['dr_number'] ?? '');
+    $remarks     = trim($_POST['remarks'] ?? '');
+
+    if ($delivery_id > 0 && $actual_qty > 0) {
+        try {
+            $pdo->beginTransaction();
+
+            $stmt = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE id = ? AND station_id = ? AND status = 'Expected Delivery'");
+            $stmt->execute([$delivery_id, $station_id]);
+            $del = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($del) {
+                $expected_qty = (float)$del['quantity'];
+                
+                // Variance check
+                $status = 'Pending Manager Approval';
+                $admin_notes = null;
+                $diff = abs($actual_qty - $expected_qty);
+                
+                if ($diff > 0.001) {
+                    $status = 'Discrepancy';
+                    $admin_notes = "System Flag: Expected " . number_format($expected_qty, 2) . " {$del['unit']}, but received " . number_format($actual_qty, 2) . " {$del['unit']}. Variance: " . number_format($actual_qty - $expected_qty, 2) . " {$del['unit']}.";
+                }
+
+                $pdo->prepare("
+                    UPDATE deliveries_oversight 
+                    SET quantity = ?, dr_number = ?, remarks = ?, encoded_by = ?, status = ?, admin_notes = ?, delivery_date = CURDATE(), updated_at = NOW()
+                    WHERE id = ?
+                ")->execute([$actual_qty, $dr_number, $remarks, $me['id'], $status, $admin_notes, $delivery_id]);
+
+                log_activity($pdo, $me['id'], 'Staff Received PO Delivery', "PO: {$del['source_ref']} | Product: {$del['product']} | Expected: {$expected_qty} | Actual: {$actual_qty}");
+                
+                $pdo->commit();
+
+                if ($status === 'Discrepancy') {
+                    header('Location: staff_delivery_history.php?msg=discrepancy&type=warning');
+                } else {
+                    header('Location: staff_delivery_history.php?msg=received&type=success');
+                }
+                exit;
+            } else {
+                throw new Exception("Delivery not found or already processed.");
+            }
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $msg = 'Error receiving delivery: ' . $e->getMessage();
+            $msg_type = 'error';
+        }
+    } else {
+        $msg = 'Please enter a valid actual quantity received.';
+        $msg_type = 'error';
+    }
+}
+
+/* ══════════════════════════════════════════════════════════
+   POST — Record Delivery (Manual / Old Flow)
 ══════════════════════════════════════════════════════════ */
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'record_delivery') {  $supplier_name  = trim($_POST['supplier_name']  ?? '');  $delivery_date  = trim($_POST['delivery_date']  ?? date('Y-m-d'));  $dr_number  = trim($_POST['dr_number']  ?? '') ?: null;  $remarks  = trim($_POST['remarks']  ?? '') ?: null;  $received_by_name = $me['full_name'] ?? $me['name'] ?? $me['username'] ?? 'Staff';  $categories  = $_POST['category']  ?? [];  $item_names  = $_POST['item_name']  ?? [];  $quantities  = $_POST['quantity']  ?? [];  $units  = $_POST['unit']  ?? [];  $unit_costs  = $_POST['unit_cost']  ?? [];  $expiry_dates = $_POST['expiry_date']  ?? [];  if ($supplier_name === '') {  $msg = 'Supplier Name is required.'; $msg_type = 'error';  } elseif ($delivery_date === '') {  $msg = 'Date Received is required.'; $msg_type = 'error';  } elseif (empty($item_names)) {  $msg = 'At least one item must be added.'; $msg_type = 'error';  } else {  try {  $batch_prefix = 'MBATCH-' . date('Ymd', strtotime($delivery_date)) . '-';  $stmt = $pdo->prepare("  SELECT batch_id FROM deliveries_oversight  WHERE batch_id LIKE ? AND station_id = ? AND DATE(delivery_date) = ? AND delivery_type = 'merchandise'  LIMIT 1  ");  $stmt->execute([$batch_prefix . '%', $station_id, $delivery_date]);  $existing_batch = $stmt->fetchColumn();  if ($existing_batch) {  $batch_id = $existing_batch;  } else {  $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(batch_id,'-',-1) AS UNSIGNED)) FROM deliveries_oversight WHERE batch_id LIKE ?");  $stmt->execute([$batch_prefix . '%']);  $batch_id = $batch_prefix . str_pad((int)$stmt->fetchColumn() + 1, 3, '0', STR_PAD_LEFT);  }  $date_prefix = 'MDR-' . date('Ymd', strtotime($delivery_date)) . '-';  $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(delivery_ref,'-',-1) AS UNSIGNED)) FROM deliveries_oversight WHERE delivery_ref LIKE ?");  $stmt->execute([$date_prefix . '%']);  $max_num = (int)$stmt->fetchColumn();  $pdo->beginTransaction();  $success_count = 0;  for ($i = 0; $i < count($item_names); $i++) {  $category  = trim($categories[$i]  ?? '');  $item_name  = trim($item_names[$i]  ?? '');  $quantity  = (float)($quantities[$i]  ?? 0);  $unit  = trim($units[$i]  ?? 'pcs');  $unit_cost  = ($unit_costs[$i] ?? '') !== '' ? (float)$unit_costs[$i] : null;  $expiry_date = trim($expiry_dates[$i] ?? '') ?: null;  if ($category === 'Fuel' || $item_name === '' || $category === '' || $quantity <= 0) continue;  $max_num++;  $delivery_ref = $date_prefix . str_pad($max_num, 4, '0', STR_PAD_LEFT);  $pdo->prepare("  INSERT INTO deliveries_oversight  (delivery_type, delivery_ref, batch_id, supplier, product, quantity, unit,  delivery_date, dr_number, encoded_by, station_id, status, remarks,  unit_cost, expiry_date, received_by_name, category, created_at, updated_at)  VALUES ('merchandise', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Verification', ?, ?, ?, ?, ?, NOW(), NOW())  ")->execute([  $delivery_ref, $batch_id, $supplier_name, $item_name,  $quantity, $unit, $delivery_date, $dr_number,  $me['id'], $station_id, $remarks,  $unit_cost, $expiry_date, $received_by_name, $category  ]);  $success_count++;  }  $pdo->commit();  if ($success_count > 0) {  log_activity($pdo, $me['id'], 'Staff Manual Delivery', "Batch: {$batch_id} | Items: {$success_count}");  header('Location: staff_delivery_history.php?msg=manual_saved&type=success');  exit;  } else {  $msg = 'No valid items provided.'; $msg_type = 'error';  }  } catch (Exception $e) {  if ($pdo->inTransaction()) $pdo->rollBack();  $msg = 'Error recording delivery: ' . $e->getMessage(); $msg_type = 'error';  }  }
-}  /* ══════════════════════════════════════════════════════════  POST — Edit / Resubmit Rejected Delivery
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'record_delivery') {
+    $supplier_name   = trim($_POST['supplier_name']   ?? '');
+    $delivery_date   = trim($_POST['delivery_date']   ?? date('Y-m-d'));
+    $dr_number       = trim($_POST['dr_number']       ?? '') ?: null;
+    $remarks         = trim($_POST['remarks']         ?? '') ?: null;
+    $received_by_name = $me['full_name'] ?? $me['name'] ?? $me['username'] ?? 'Staff';
+
+    $categories   = $_POST['category']     ?? [];
+    $item_names   = $_POST['item_name']    ?? [];
+    $quantities   = $_POST['quantity']     ?? [];
+    $units        = $_POST['unit']         ?? [];
+    $unit_costs   = $_POST['unit_cost']    ?? [];
+    $expiry_dates = $_POST['expiry_date']  ?? [];
+
+    if ($supplier_name === '') {
+        $msg = 'Supplier Name is required.'; $msg_type = 'error';
+    } elseif ($delivery_date === '') {
+        $msg = 'Date Received is required.'; $msg_type = 'error';
+    } elseif (empty($item_names)) {
+        $msg = 'At least one item must be added.'; $msg_type = 'error';
+    } else {
+        try {
+            $batch_prefix = 'MBATCH-' . date('Ymd', strtotime($delivery_date)) . '-';
+            $stmt = $pdo->prepare("
+                SELECT batch_id FROM deliveries_oversight
+                WHERE batch_id LIKE ? AND station_id = ? AND DATE(delivery_date) = ? AND delivery_type = 'merchandise'
+                LIMIT 1
+            ");
+            $stmt->execute([$batch_prefix . '%', $station_id, $delivery_date]);
+            $existing_batch = $stmt->fetchColumn();
+
+            if ($existing_batch) {
+                $batch_id = $existing_batch;
+            } else {
+                $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(batch_id,'-',-1) AS UNSIGNED)) FROM deliveries_oversight WHERE batch_id LIKE ?");
+                $stmt->execute([$batch_prefix . '%']);
+                $batch_id = $batch_prefix . str_pad((int)$stmt->fetchColumn() + 1, 3, '0', STR_PAD_LEFT);
+            }
+
+            $date_prefix = 'MDR-' . date('Ymd', strtotime($delivery_date)) . '-';
+            $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(delivery_ref,'-',-1) AS UNSIGNED)) FROM deliveries_oversight WHERE delivery_ref LIKE ?");
+            $stmt->execute([$date_prefix . '%']);
+            $max_num = (int)$stmt->fetchColumn();
+
+            $pdo->beginTransaction();
+            $success_count = 0;
+
+            for ($i = 0; $i < count($item_names); $i++) {
+                $category    = trim($categories[$i]   ?? '');
+                $item_name   = trim($item_names[$i]   ?? '');
+                $quantity    = (float)($quantities[$i]  ?? 0);
+                $unit        = trim($units[$i]         ?? 'pcs');
+                $unit_cost   = ($unit_costs[$i] ?? '') !== '' ? (float)$unit_costs[$i] : null;
+                $expiry_date = trim($expiry_dates[$i] ?? '') ?: null;
+
+                if ($category === 'Fuel' || $item_name === '' || $category === '' || $quantity <= 0) continue;
+
+                $max_num++;
+                $delivery_ref = $date_prefix . str_pad($max_num, 4, '0', STR_PAD_LEFT);
+
+                $pdo->prepare("
+                    INSERT INTO deliveries_oversight
+                        (delivery_type, delivery_ref, batch_id, supplier, product, quantity, unit,
+                         delivery_date, dr_number, encoded_by, station_id, status, remarks,
+                         unit_cost, expiry_date, received_by_name, category, created_at, updated_at)
+                    VALUES ('merchandise', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Verification', ?, ?, ?, ?, ?, NOW(), NOW())
+                ")->execute([
+                    $delivery_ref, $batch_id, $supplier_name, $item_name,
+                    $quantity, $unit, $delivery_date, $dr_number,
+                    $me['id'], $station_id, $remarks,
+                    $unit_cost, $expiry_date, $received_by_name, $category
+                ]);
+                $success_count++;
+            }
+
+            $pdo->commit();
+            if ($success_count > 0) {
+                log_activity($pdo, $me['id'], 'Staff Manual Delivery', "Batch: {$batch_id} | Items: {$success_count}");
+                header('Location: staff_delivery_history.php?msg=manual_saved&type=success');
+                exit;
+            } else {
+                $msg = 'No valid items provided.'; $msg_type = 'error';
+            }
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $msg = 'Error recording delivery: ' . $e->getMessage(); $msg_type = 'error';
+        }
+    }
+}
+
+/* ══════════════════════════════════════════════════════════
+   POST — Edit / Resubmit Rejected Delivery
 ══════════════════════════════════════════════════════════ */
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_delivery') {  $delivery_id = (int)($_POST['delivery_id'] ?? 0);  $quantity  = (float)($_POST['quantity'] ?? 0);  $dr_number  = trim($_POST['dr_number'] ?? '');  $remarks  = trim($_POST['remarks'] ?? '');  if ($delivery_id > 0 && $quantity > 0) {  try {  $pdo->prepare("  UPDATE deliveries_oversight  SET quantity = ?, dr_number = ?, remarks = ?, status = 'Pending Manager Approval', admin_notes = NULL, updated_at = NOW()  WHERE id = ? AND station_id = ? AND status IN ('Discrepancy', 'Pending Resolution')  ")->execute([$quantity, $dr_number, $remarks, $delivery_id, $station_id]);  $msg = "&#10003; Delivery record successfully updated and resubmitted for manager approval.";  $msg_type = 'success';  log_activity($pdo, $me['id'], 'Staff Resubmitted Delivery', "Resubmitted delivery ID: {$delivery_id} with qty: {$quantity}");  header('Location: staff_delivery_history.php?msg=resubmitted&type=success');  exit;  } catch (Exception $e) {  $msg = 'Error updating delivery: ' . $e->getMessage(); $msg_type = 'error';  }  } else {  $msg = 'Please provide valid quantity details.'; $msg_type = 'error';  }
-}  /* ── Fetch Expected Deliveries (from Admin Finalized POs) ── */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_delivery') {
+    $delivery_id = (int)($_POST['delivery_id'] ?? 0);
+    $quantity    = (float)($_POST['quantity'] ?? 0);
+    $dr_number   = trim($_POST['dr_number'] ?? '');
+    $remarks     = trim($_POST['remarks'] ?? '');
+
+    if ($delivery_id > 0 && $quantity > 0) {
+        try {
+            $pdo->prepare("
+                UPDATE deliveries_oversight
+                SET quantity = ?, dr_number = ?, remarks = ?, status = 'Pending Manager Approval', admin_notes = NULL, updated_at = NOW()
+                WHERE id = ? AND station_id = ? AND status IN ('Discrepancy', 'Pending Resolution')
+            ")->execute([$quantity, $dr_number, $remarks, $delivery_id, $station_id]);
+            
+            $msg = "&#10003; Delivery record successfully updated and resubmitted for manager approval.";
+            $msg_type = 'success';
+            log_activity($pdo, $me['id'], 'Staff Resubmitted Delivery', "Resubmitted delivery ID: {$delivery_id} with qty: {$quantity}");
+            header('Location: staff_delivery_history.php?msg=resubmitted&type=success');
+            exit;
+        } catch (Exception $e) {
+            $msg = 'Error updating delivery: ' . $e->getMessage(); $msg_type = 'error';
+        }
+    } else {
+        $msg = 'Please provide valid quantity details.'; $msg_type = 'error';
+    }
+}
+
+/* ── Fetch Expected Deliveries (from Admin Finalized POs) ── */
 $expected_deliveries = [];
-try {  $stmt = $pdo->prepare("  SELECT * FROM deliveries_oversight  WHERE station_id = ? AND status = 'Expected Delivery' AND delivery_type = 'merchandise'  ORDER BY created_at ASC  ");  $stmt->execute([$station_id]);  $expected_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}  /* ── Fetch Merchandise Purchase Orders for staff reference ── */
+try {
+    $stmt = $pdo->prepare("
+        SELECT * FROM deliveries_oversight 
+        WHERE station_id = ? AND status = 'Expected Delivery' AND delivery_type = 'merchandise'
+        ORDER BY created_at ASC
+    ");
+    $stmt->execute([$station_id]);
+    $expected_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+/* ── Fetch Merchandise Purchase Orders for staff reference ── */
 $merchandise_purchase_orders = [];
-try {  $stmt = $pdo->prepare("  SELECT po.*, s.name as supplier_name  FROM purchase_orders po  LEFT JOIN suppliers s ON po.supplier_id = s.id  WHERE po.station_id = ?  ORDER BY po.created_at DESC  ");  $stmt->execute([$station_id]);  $merchandise_purchase_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {  error_log("Error fetching merchandise POs: " . $e->getMessage());
-}  /* ── Fetch dependencies for manual form ── */
+try {
+    $stmt = $pdo->prepare("
+        SELECT po.*, s.name as supplier_name
+        FROM purchase_orders po
+        LEFT JOIN suppliers s ON po.supplier_id = s.id
+        WHERE po.station_id = ?
+        ORDER BY po.created_at DESC
+    ");
+    $stmt->execute([$station_id]);
+    $merchandise_purchase_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    error_log("Error fetching merchandise POs: " . $e->getMessage());
+}
+
+/* ── Fetch dependencies for manual form ── */
 $merch_cats = ['Accessories', 'Car Care', 'Oil & Lubricants', 'Other'];
 $merch_products = [];
 $merch_products_map = [];
-$suppliers = ['Petron Corporation', '3rd Party Supplier'];  try {  $mc = $pdo->query("SELECT DISTINCT category FROM inventory_products WHERE category NOT IN ('Fuel') AND category IS NOT NULL ORDER BY category");  if ($mc) $merch_cats = $mc->fetchAll(PDO::FETCH_COLUMN) ?: $merch_cats;  $mp = $pdo->query("SELECT DISTINCT product_name, category FROM inventory_products WHERE category NOT IN ('Fuel') AND product_name IS NOT NULL ORDER BY product_name");  if ($mp) {  foreach ($mp->fetchAll(PDO::FETCH_ASSOC) as $row) {  $merch_products[] = $row['product_name'];  $merch_products_map[$row['product_name']] = $row['category'];  }  }  $sp2 = $pdo->query("SELECT DISTINCT name FROM suppliers WHERE name IS NOT NULL ORDER BY name");  if ($sp2) $suppliers = array_unique(array_merge($suppliers, $sp2->fetchAll(PDO::FETCH_COLUMN)));  sort($suppliers);
-} catch (Exception $e) {}  /* ── Check if editing a rejected delivery ── */
+$suppliers = ['Petron Corporation', '3rd Party Supplier'];
+
+try {
+    $mc = $pdo->query("SELECT DISTINCT category FROM inventory_products WHERE category NOT IN ('Fuel') AND category IS NOT NULL ORDER BY category");
+    if ($mc) $merch_cats = $mc->fetchAll(PDO::FETCH_COLUMN) ?: $merch_cats;
+    
+    $mp = $pdo->query("SELECT DISTINCT product_name, category FROM inventory_products WHERE category NOT IN ('Fuel') AND product_name IS NOT NULL ORDER BY product_name");
+    if ($mp) {
+        foreach ($mp->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $merch_products[] = $row['product_name'];
+            $merch_products_map[$row['product_name']] = $row['category'];
+        }
+    }
+    
+    $sp2 = $pdo->query("SELECT DISTINCT name FROM suppliers WHERE name IS NOT NULL ORDER BY name");
+    if ($sp2) $suppliers = array_unique(array_merge($suppliers, $sp2->fetchAll(PDO::FETCH_COLUMN)));
+    sort($suppliers);
+} catch (Exception $e) {}
+
+/* ── Check if editing a rejected delivery ── */
 $edit_data = null;
-if (isset($_GET['edit'])) {  $edit_id = (int)$_GET['edit'];  try {  $stmt = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE id = ? AND station_id = ? AND status IN ('Discrepancy', 'Pending Resolution')");  $stmt->execute([$edit_id, $station_id]);  $edit_data = $stmt->fetch(PDO::FETCH_ASSOC);  if (!$edit_data) {  $msg = "Error: Delivery record not found or cannot be edited.";  $msg_type = "error";  }  } catch (Exception $e) {}
-}  /* ── Check if coming from Expected Deliveries (PO selected) ── */
+if (isset($_GET['edit'])) {
+    $edit_id = (int)$_GET['edit'];
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE id = ? AND station_id = ? AND status IN ('Discrepancy', 'Pending Resolution')");
+        $stmt->execute([$edit_id, $station_id]);
+        $edit_data = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$edit_data) {
+            $msg = "Error: Delivery record not found or cannot be edited.";
+            $msg_type = "error";
+        }
+    } catch (Exception $e) {}
+}
+
+/* ── Check if coming from Expected Deliveries (PO selected) ── */
 $selected_po = null;
-if (isset($_GET['po_id'])) {  $po_id = (int)$_GET['po_id'];  try {  $stmt = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE id = ? AND station_id = ? AND status = 'Expected Delivery' AND delivery_type = 'merchandise'");  $stmt->execute([$po_id, $station_id]);  $selected_po = $stmt->fetch(PDO::FETCH_ASSOC);  if (!$selected_po) {  $msg = "Error: Expected delivery not found or already processed.";  $msg_type = "error";  }  } catch (Exception $e) {}
-}  include __DIR__ . '/../partials/header.php';
+if (isset($_GET['po_id'])) {
+    $po_id = (int)$_GET['po_id'];
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM deliveries_oversight WHERE id = ? AND station_id = ? AND status = 'Expected Delivery' AND delivery_type = 'merchandise'");
+        $stmt->execute([$po_id, $station_id]);
+        $selected_po = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$selected_po) {
+            $msg = "Error: Expected delivery not found or already processed.";
+            $msg_type = "error";
+        }
+    } catch (Exception $e) {}
+}
+
+include __DIR__ . '/../partials/header.php';
 ?>
 <style>
 /* ── Layout & Cards ── */
 .layout-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; align-items: start; max-width: 100%; overflow: hidden; }
-@media (max-width: 1100px) { .layout-grid { grid-template-columns: 1fr; } }  .del-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06); border: 1px solid #e9ecef; height: 100%; display: flex; flex-direction: column; }
+@media (max-width: 1100px) { .layout-grid { grid-template-columns: 1fr; } }
+
+.del-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06); border: 1px solid #e9ecef; height: 100%; display: flex; flex-direction: column; }
 .del-card-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #e9ecef; }
 .del-card-title { font-size: 1rem; font-weight: 700; color: #002F70; display: flex; align-items: center; gap: 8px; }
-.del-card-body { padding: 24px; flex-grow: 1; overflow-y: auto; }  /* ── Alert ── */
+.del-card-body { padding: 24px; flex-grow: 1; overflow-y: auto; }
+
+/* ── Alert ── */
 .alert-box { padding: 13px 16px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: flex-start; gap: 10px; font-size: 14px; }
 .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-.alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }  /* ── Expected Deliveries List ── */
+.alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+
+/* ── Expected Deliveries List ── */
 .expected-item { background: #f8f9fa; border: 1px solid #e9ecef; border-left: 4px solid #002F70; border-radius: 8px; padding: 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; transition: transform .1s, box-shadow .1s; }
 .expected-item:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,.05); }
 .expected-info h4 { margin: 0 0 4px 0; font-size: 14px; color: #002F70; }
@@ -62,69 +398,675 @@ if (isset($_GET['po_id'])) {  $po_id = (int)$_GET['po_id'];  try {  $stmt = $pdo
 .expected-meta span { display: inline-flex; align-items: center; gap: 4px; }
 .po-badge { background: #e8f4fd; color: #002F70; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 11px; font-weight: bold; border: 1px solid #b8d4f0; }
 .btn-receive { background: #28a745; color: #fff; border: none; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
-.btn-receive:hover { background: #218838; }  /* ── Forms ── */
+.btn-receive:hover { background: #218838; }
+
+/* ── Forms ── */
 .form-group { margin-bottom: 15px; }
 .form-label { display: block; font-size: 12px; font-weight: 700; color: #495057; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 5px; }
 .form-control, .form-select { width: 100%; padding: 9px 12px; border: 1px solid #ced4da; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
 .form-control:focus, .form-select:focus { border-color: #002F70; outline: 0; box-shadow: 0 0 0 3px rgba(0,47,112,.15); }
 .form-control[readonly] { background: #e9ecef; cursor: not-allowed; font-weight: 600; color: #495057; }
-textarea.form-control { resize: vertical; font-family: inherit; }  /* ── Variance Warning ── */
+textarea.form-control { resize: vertical; font-family: inherit; }
+
+/* ── Variance Warning ── */
 .variance-warning { display: none; background: #fff3cd; color: #856404; padding: 12px; border-radius: 6px; font-size: 13px; margin-top: 10px; border: 1px solid #ffeeba; align-items: flex-start; gap: 8px; }
-.variance-warning i { margin-top: 2px; flex-shrink: 0; }  /* ── Modal ── */
+.variance-warning i { margin-top: 2px; flex-shrink: 0; }
+
+/* ── Modal ── */
 .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.6); z-index: 9999; align-items: center; justify-content: center; }
 .modal-overlay.open { display: flex; }
 .modal-box { background: #fff; border-radius: 14px; width: 500px; max-width: 90%; padding: 25px; box-shadow: 0 24px 80px rgba(0,0,0,.3); animation: modalIn .2s ease; }
 @keyframes modalIn { from{opacity:0;transform:scale(.95)} to{opacity:1;transform:scale(1)} }
 .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #e9ecef; padding-bottom: 12px; }
-.variance-warning { display: none; background: #fff3cd; color: #856404; padding: 10px; border-radius: 6px; font-size: 12px; margin-top: 10px; border: 1px solid #ffeeba; }  /* Protect txn-btn from global header button color override */
-.txn-btn {  display: inline-flex !important;  align-items: center !important;  justify-content: center !important;  gap: 6px !important;  padding: 7px 14px !important;  border-radius: 4px !important;  font-size: 11px !important;  font-weight: 600 !important;  cursor: pointer !important;  border: 1px solid transparent !important;  transition: all .2s ease-in-out !important;  text-decoration: none !important;  white-space: nowrap !important;  box-sizing: border-box !important;  background-color: #ffffff !important;  background: #ffffff !important;
+.variance-warning { display: none; background: #fff3cd; color: #856404; padding: 10px; border-radius: 6px; font-size: 12px; margin-top: 10px; border: 1px solid #ffeeba; }
+
+/* Protect txn-btn from global header button color override */
+.txn-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    padding: 7px 14px !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    border: 1px solid transparent !important;
+    transition: all .2s ease-in-out !important;
+    text-decoration: none !important;
+    white-space: nowrap !important;
+    box-sizing: border-box !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
 }
-.txn-btn.primary {  color: #00264D !important;  background-color: #ffffff !important;  background: #ffffff !important;  border: 1px solid #00264D !important;
+.txn-btn.primary {
+    color: #00264D !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    border: 1px solid #00264D !important;
 }
-.txn-btn.primary:hover {  background-color: #00264D !important;  background: #00264D !important;  color: #ffffff !important;
+.txn-btn.primary:hover {
+    background-color: #00264D !important;
+    background: #00264D !important;
+    color: #ffffff !important;
 }
-.txn-btn.secondary {  color: #475569 !important;  background-color: #ffffff !important;  background: #ffffff !important;  border: 1px solid #475569 !important;
+.txn-btn.secondary {
+    color: #475569 !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    border: 1px solid #475569 !important;
 }
-.txn-btn.secondary:hover {  background-color: #475569 !important;  background: #475569 !important;  color: #ffffff !important;
+.txn-btn.secondary:hover {
+    background-color: #475569 !important;
+    background: #475569 !important;
+    color: #ffffff !important;
 }
-.txn-btn.success {  color: #16a34a !important;  background-color: #ffffff !important;  background: #ffffff !important;  border: 1px solid #16a34a !important;
+.txn-btn.success {
+    color: #16a34a !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    border: 1px solid #16a34a !important;
 }
-.txn-btn.success:hover {  background-color: #16a34a !important;  background: #16a34a !important;  color: #ffffff !important;
+.txn-btn.success:hover {
+    background-color: #16a34a !important;
+    background: #16a34a !important;
+    color: #ffffff !important;
 }
-.txn-btn.warning {  color: #b45309 !important;  background-color: #ffffff !important;  background: #ffffff !important;  border: 1px solid #b45309 !important;
+.txn-btn.warning {
+    color: #b45309 !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    border: 1px solid #b45309 !important;
 }
-.txn-btn.warning:hover {  background-color: #b45309 !important;  background: #b45309 !important;  color: #ffffff !important;
+.txn-btn.warning:hover {
+    background-color: #b45309 !important;
+    background: #b45309 !important;
+    color: #ffffff !important;
 }
-.txn-btn.danger {  color: #dc2626 !important;  background-color: #ffffff !important;  background: #ffffff !important;  border: 1px solid #dc2626 !important;
+.txn-btn.danger {
+    color: #dc2626 !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    border: 1px solid #dc2626 !important;
 }
-.txn-btn.danger:hover {  background-color: #dc2626 !important;  background: #dc2626 !important;  color: #ffffff !important;
+.txn-btn.danger:hover {
+    background-color: #dc2626 !important;
+    background: #dc2626 !important;
+    color: #ffffff !important;
 }
 /* Header standardization */
 .int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:0px !important; }
 .int-head h1 { font-size:22px !important; font-weight:700 !important; color:#002F70 !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
 .int-head .sub { font-size:13px; color:#64748b; margin-top:4px; }
-</style>  <div class="int-head">  <div>  <h1><i class="fas fa-boxes"></i> Record Delivery Receipt</h1>  <div class="sub">Encode actual delivery details: DR number, Batch ID, received items, quantity, and date received.</div>  </div>  <div style="display:flex;gap:8px;align-items:center;">  <a href="staff_dashboard.php" class="txn-btn secondary">  <i class="fas fa-arrow-left"></i> Back to Dashboard  </a>  </div>
-</div>  <?php if ($msg): ?>
-<div class="alert-box alert-<?php echo $msg_type === 'success' ? 'success' : 'error'; ?>">  <i class="fas fa-<?php echo $msg_type === 'success' ? 'check-circle' : 'exclamation-triangle'; ?>" style="margin-top:2px;"></i>  <div><?php echo $msg; ?></div>
+</style>
+
+<div class="int-head">
+    <div>
+        <h1><i class="fas fa-boxes"></i> Record Delivery Receipt</h1>
+        <div class="sub">Encode actual delivery details: DR number, Batch ID, received items, quantity, and date received.</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+        <a href="staff_dashboard.php" class="txn-btn secondary">
+            <i class="fas fa-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
 </div>
-<?php endif; ?>  <div class="layout-grid">  <!-- LEFT: Manual Encode Delivery (Staff encodes actual receipt details) -->  <div class="del-card">  <div class="del-card-head">  <div class="del-card-title">  <i class="fas fa-keyboard"></i> Manual Encode Delivery  </div>  </div>  <div class="del-card-body">  <form method="POST" id="manualForm">  <input type="hidden" name="action" value="record_delivery">  <!-- ── Supplier ── -->  <div class="form-group">  <label class="form-label">Supplier Name <span style="color:red;">*</span></label>  <input type="text" name="supplier_name" class="form-control"  value="<?php echo $selected_po ? htmlspecialchars($selected_po['supplier']) : 'Petron Corporation'; ?>"  readonly style="background:#e9ecef;cursor:not-allowed;font-weight:600;">  </div>  <!-- ══ SECTION: Delivery Information ══ -->  <div style="background:#f0f4ff;border:1px solid #d0d9f7;border-radius:8px;padding:16px 18px;margin-bottom:16px;">  <div style="font-size:11px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.6px;margin-bottom:14px;display:flex;align-items:center;gap:7px;">  <i class="fas fa-truck"></i> Delivery Information  </div>  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">  <div class="form-group" style="margin-bottom:0;">  <label class="form-label">Delivery Date <span style="color:red;">*</span></label>  <input type="date" name="delivery_date" class="form-control"  value="<?php echo date('Y-m-d'); ?>" required id="deliveryDateInput">  </div>  <div class="form-group" style="margin-bottom:0;">  <label class="form-label">DR Number / Invoice Number</label>  <input type="text" name="dr_number" class="form-control"  placeholder="e.g. DR-0610-001">  </div>  </div>  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;">  <div class="form-group" style="margin-bottom:0;">  <label class="form-label">Batch ID</label>  <div style="background:#002F70;color:#fff;padding:10px 12px;border-radius:6px;font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;">  <i class="fas fa-barcode"></i> Auto-Generated  </div>  <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">  <i class="fas fa-info-circle"></i> Assigned by system upon saving  </small>  </div>  <div class="form-group" style="margin-bottom:0;">  <label class="form-label">Received By</label>  <input type="text" class="form-control" readonly  value="<?php echo htmlspecialchars($me['full_name'] ?? $me['name'] ?? $me['username'] ?? 'Staff'); ?>"  style="background:#e9ecef;cursor:not-allowed;font-weight:600;">  <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">  <i class="fas fa-user-check"></i> Auto-filled from logged-in staff  </small>  </div>  </div>  <div class="form-group" style="margin-top:14px;margin-bottom:0;">  <label class="form-label">Remarks / Notes</label>  <textarea name="remarks" class="form-control" rows="2"  placeholder="Optional — Any notes about this delivery"><?php echo $selected_po ? 'Based on PO: ' . htmlspecialchars($selected_po['source_ref'] ?? '') : ''; ?></textarea>  </div>  </div>  <!-- ══ SECTION: Item Information ══ -->  <div style="background:#f6fff8;border:1px solid #c3e6cb;border-radius:8px;padding:16px 18px;margin-bottom:16px;">  <div style="font-size:11px;font-weight:800;color:#155724;text-transform:uppercase;letter-spacing:.6px;margin-bottom:14px;display:flex;align-items:center;gap:7px;">  <i class="fas fa-box-open"></i> Item Information  </div>  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">  <div class="form-group" style="margin-bottom:0;">  <label class="form-label">Item Name <span style="color:red;">*</span></label>  <input type="text" name="item_name[]" class="form-control item-name-input"  list="productList"  value="<?php echo $selected_po ? htmlspecialchars($selected_po['product']) : ''; ?>"  placeholder="Type or select item" required>  <datalist id="productList">  <?php foreach ($merch_products as $p): ?><option value="<?php echo htmlspecialchars($p); ?>"><?php endforeach; ?>  </datalist>  </div>  <div class="form-group" style="margin-bottom:0;">  <label class="form-label">Category <span style="color:red;">*</span></label>  <input type="text" class="form-control category-display" readonly  value="<?php echo $selected_po && !empty($selected_po['category']) ? htmlspecialchars($selected_po['category']) : ''; ?>"  placeholder="Auto-filled from product"  style="background:<?php echo $selected_po && !empty($selected_po['category']) ? '#e8f4fd' : '#f8f9fa'; ?>;cursor:not-allowed;<?php echo $selected_po && !empty($selected_po['category']) ? 'color:#002F70;font-weight:600;' : ''; ?>">  <input type="hidden" name="category[]" class="category-hidden"  value="<?php echo $selected_po && !empty($selected_po['category']) ? htmlspecialchars($selected_po['category']) : ''; ?>" required>  <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">  <i class="fas fa-info-circle"></i> Auto-fills when product is selected  </small>  </div>  </div>  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;">  <div class="form-group" style="margin-bottom:0;">  <label class="form-label">Unit <span style="color:red;">*</span></label>  <select name="unit[]" class="form-select">  <option value="pcs"  <?php echo ($selected_po && $selected_po['unit']==='pcs')  ? 'selected':''; ?>>pcs</option>  <option value="kg"  <?php echo ($selected_po && $selected_po['unit']==='kg')  ? 'selected':''; ?>>kg</option>  <option value="box"  <?php echo ($selected_po && $selected_po['unit']==='box')  ? 'selected':''; ?>>box</option>  <option value="L"  <?php echo ($selected_po && $selected_po['unit']==='L')  ? 'selected':''; ?>>L</option>  <option value="bottle">bottle</option>  <option value="can">can</option>  <option value="set">set</option>  </select>  </div>  <div class="form-group" style="margin-bottom:0;">  <label class="form-label">Quantity Delivered <span style="color:red;">*</span></label>  <input type="number" step="0.01" min="0.01" name="quantity[]" class="form-control"  value="<?php echo $selected_po ? $selected_po['quantity'] : ''; ?>"  placeholder="Enter quantity" required>  <?php if ($selected_po): ?>  <small style="color:#6c757d;font-size:11px;display:block;margin-top:4px;">  Expected: <?php echo number_format($selected_po['quantity'], 2) . ' ' . $selected_po['unit']; ?>  </small>  <?php endif; ?>  </div>  </div>  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;">  <div class="form-group" style="margin-bottom:0;">  <label class="form-label">Unit Cost <span style="color:#6c757d;font-weight:400;font-size:10px;">(Optional)</span></label>  <div style="position:relative;">  <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#6c757d;font-size:13px;font-weight:600;">₱</span>  <input type="number" step="0.01" min="0" name="unit_cost[]" class="form-control"  placeholder="0.00" style="padding-left:26px;">  </div>  <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">  <i class="fas fa-info-circle"></i> Optional — from PO if applicable  </small>  </div>  <div class="form-group" style="margin-bottom:0;">  <label class="form-label">Expiry Date <span style="color:#6c757d;font-weight:400;font-size:10px;">(If Applicable)</span></label>  <input type="date" name="expiry_date[]" class="form-control">  <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">  <i class="fas fa-calendar-times"></i> Leave blank if not applicable  </small>  </div>  </div>  </div>  <!-- Save Flow Note -->  <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:11px 14px;margin-bottom:16px;font-size:12px;color:#856404;display:flex;align-items:flex-start;gap:8px;">  <i class="fas fa-info-circle" style="margin-top:1px;flex-shrink:0;"></i>  <div><strong>Save Flow:</strong> Staff saves → Status = <strong>Pending Verification</strong> → Manager Verifies → Inventory Stock-In</div>  </div>  <div style="display:flex;justify-content:flex-end;gap:10px;">  <button type="button" onclick="resetDeliveryForm()" class="txn-btn secondary">  <i class="fas fa-redo"></i> Reset  </button>  <button type="submit" class="txn-btn success">  <i class="fas fa-save"></i> Save Delivery Record  </button>  </div>  </form>  </div>  </div>  <!-- RIGHT: Expected Delivery Details (VIEW-ONLY - Reference for Staff) -->  <div class="del-card">  <div class="del-card-head">  <div class="del-card-title">  <i class="fas fa-clipboard-check"></i> <?php echo $selected_po ? 'Expected Delivery Details' : 'Expected Deliveries'; ?>  </div>  <?php if ($selected_po): ?>  <span style="font-size:12px;color:#6c757d;">Reference Only - Use Manual Encode ←</span>  <?php else: ?>  <span style="font-size:12px;color:#6c757d;">Based on Finalized POs</span>  <?php endif; ?>  </div>  <div class="del-card-body">  <?php if ($selected_po): ?>  <!-- VIEW-ONLY: PO Order Details for Reference -->  <div style="background:#e8f4fd;border:1px solid #b8d4f0;border-radius:8px;padding:20px;">  <h4 style="margin:0 0 16px 0;color:#002F70;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;">  <i class="fas fa-file-invoice"></i> Purchase Order Details  </h4>  <div style="display:grid;gap:12px;font-size:14px;">  <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">  <span style="color:#6c757d;font-weight:500;">PO Number:</span>  <strong style="color:#002F70;font-family:monospace;font-size:15px;"><?php echo htmlspecialchars($selected_po['source_ref'] ?? 'N/A'); ?></strong>  </div>  <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">  <span style="color:#6c757d;font-weight:500;">Product:</span>  <strong style="color:#212529;"><?php echo htmlspecialchars($selected_po['product']); ?></strong>  </div>  <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">  <span style="color:#6c757d;font-weight:500;">Supplier:</span>  <strong style="color:#212529;"><?php echo htmlspecialchars($selected_po['supplier']); ?></strong>  </div>  <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">  <span style="color:#6c757d;font-weight:500;">Expected Quantity:</span>  <strong style="color:#002F70;font-size:16px;"><?php echo number_format($selected_po['quantity'], 2); ?> <span style="font-size:14px;color:#6c757d;"><?php echo htmlspecialchars($selected_po['unit']); ?></span></strong>  </div>  <?php if (!empty($selected_po['remarks'])): ?>  <div style="padding:10px 0;">  <span style="color:#6c757d;font-weight:500;display:block;margin-bottom:6px;">Notes:</span>  <p style="margin:0;padding:10px;background:#fff;border-radius:6px;font-size:13px;color:#495057;"><?php echo htmlspecialchars($selected_po['remarks']); ?></p>  </div>  <?php endif; ?>  </div>  </div>  <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:14px;margin-top:20px;display:flex;align-items:flex-start;gap:10px;">  <i class="fas fa-info-circle" style="color:#856404;margin-top:2px;font-size:18px;flex-shrink:0;"></i>  <div style="font-size:13px;color:#856404;line-height:1.5;">  <strong>Instructions:</strong> Use the <strong>"Manual Encode Delivery"</strong> form on the left to record the actual delivery receipt. Fill in the actual quantity received, DR number, and any remarks.  </div>  </div>  <div style="margin-top:20px;text-align:center;">  <a href="staff_record_delivery.php" style="background:#6c757d;color:#fff;border:none;padding:10px 20px;border-radius:6px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:background .2s;">  <i class="fas fa-arrow-left"></i> Back to Expected Deliveries  </a>  </div>  <?php elseif (empty($expected_deliveries)): ?>  <div style="text-align:center;padding:40px;color:#adb5bd;">  <i class="fas fa-box-open" style="font-size:3em;margin-bottom:15px;display:block;"></i>  <p style="margin-bottom:16px;">No expected merchandise deliveries at the moment.</p>  <a href="staff_delivery_history.php" style="color:#002F70;text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:6px;">  <i class="fas fa-history"></i> View Delivery History  </a>  </div>  <?php else: ?>  <?php foreach ($expected_deliveries as $ed): ?>  <div class="expected-item">  <div class="expected-info">  <h4><?php echo htmlspecialchars($ed['product']); ?></h4>  <div class="expected-meta">  <span><i class="fas fa-hashtag"></i> PO: <span class="po-badge"><?php echo htmlspecialchars($ed['source_ref'] ?? 'N/A'); ?></span></span>  <span><i class="fas fa-box"></i> Exp: <strong><?php echo number_format($ed['quantity'], 2) . ' ' . $ed['unit']; ?></strong></span>  <span><i class="fas fa-building"></i> <?php echo htmlspecialchars($ed['supplier']); ?></span>  </div>  </div>  <button class="btn-receive" onclick="window.location.href='staff_record_delivery.php?po_id=<?php echo $ed['id']; ?>'">  <i class="fas fa-eye"></i> View Details  </button>  </div>  <?php endforeach; ?>  <?php endif; ?>  </div>  </div>
-</div>  <!-- ══════════════════════════════════════════════════════════  RECEIVE MODAL (Auto-filled from PO)  ══════════════════════════════════════════════════════════ -->
-<div class="modal-overlay" id="receiveModal">  <div class="modal-box">  <div class="modal-head">  <h3 style="margin:0;color:#002F70;font-size:16px;"><i class="fas fa-box-open"></i> Receive PO Delivery</h3>  <button type="button" onclick="closeReceiveModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#adb5bd;">&times;</button>  </div>  <form method="POST" id="receiveForm">  <input type="hidden" name="action" value="receive_expected">  <input type="hidden" name="delivery_id" id="rec_id">  <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">  <div class="form-group">  <label class="form-label">PO Number</label>  <input type="text" id="rec_po" class="form-control" readonly>  </div>  <div class="form-group">  <label class="form-label">Supplier</label>  <input type="text" id="rec_supplier" class="form-control" readonly>  </div>  </div>  <div class="form-group">  <label class="form-label">Product</label>  <input type="text" id="rec_product" class="form-control" readonly>  </div>  <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;background:#f8f9fa;padding:15px;border-radius:8px;border:1px solid #e9ecef;margin-bottom:15px;">  <div class="form-group" style="margin:0;">  <label class="form-label" style="color:#002F70;">Expected Quantity</label>  <div style="display:flex;align-items:center;gap:5px;">  <input type="text" id="rec_expected" class="form-control" readonly style="background:#e8f4fd;color:#002F70;border-color:#b8d4f0;">  <span id="rec_unit1" style="font-weight:bold;color:#6c757d;"></span>  </div>  </div>  <div class="form-group" style="margin:0;">  <label class="form-label" style="color:#28a745;">Actual Delivered Qty <span style="color:red;">*</span></label>  <div style="display:flex;align-items:center;gap:5px;">  <input type="number" step="0.01" name="actual_qty" id="rec_actual" class="form-control" required style="border-color:#28a745;background:#f8fff9;">  <span id="rec_unit2" style="font-weight:bold;color:#6c757d;"></span>  </div>  </div>  </div>  <div class="variance-warning" id="varianceWarning">  <i class="fas fa-exclamation-triangle"></i> <strong>Variance Detected!</strong><br>  The actual quantity received does not match the PO expected quantity. This will be flagged for Manager review as a discrepancy.  </div>  <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:15px;">  <div class="form-group">  <label class="form-label">DR Number (Optional)</label>  <input type="text" name="dr_number" class="form-control" placeholder="e.g. DR-10293">  </div>  <div class="form-group">  <label class="form-label">Remarks (Optional)</label>  <input type="text" name="remarks" class="form-control" placeholder="Any issues?">  </div>  </div>  <div style="text-align:right;margin-top:20px;border-top:1px solid #e9ecef;padding-top:15px;display:flex;gap:10px;justify-content:flex-end;">  <button type="button" onclick="closeReceiveModal()" class="txn-btn secondary">Cancel</button>  <button type="submit" class="txn-btn success">  <i class="fas fa-check"></i> Submit Delivery  </button>  </div>  </form>  </div>
-</div>  <script>
-const productCategoryMap = <?php echo json_encode($merch_products_map); ?>;  document.addEventListener('input', function(e) {  if (e.target && e.target.name === 'item_name[]') {  const selectedItem = e.target.value;  if (productCategoryMap[selectedItem]) {  const row = e.target.closest('div[style*="grid-template-columns"]');  if (row) {  const catSelect = row.querySelector('select[name="category[]"]');  if (catSelect) {  catSelect.value = productCategoryMap[selectedItem];  }  }  }  }
-});  let currentExpected = 0;  function openReceiveModal(id, po, product, supplier, expected, unit) {  document.getElementById('rec_id').value = id;  document.getElementById('rec_po').value = po || 'N/A';  document.getElementById('rec_product').value = product;  document.getElementById('rec_supplier').value = supplier;  currentExpected = expected;  document.getElementById('rec_expected').value = expected;  document.getElementById('rec_actual').value = expected; // Pre-fill with expected  document.getElementById('rec_unit1').textContent = unit;  document.getElementById('rec_unit2').textContent = unit;  checkVariance(); // Initialize variance check  document.getElementById('receiveModal').classList.add('open');
-}  function closeReceiveModal() {  document.getElementById('receiveModal').classList.remove('open');  document.getElementById('receiveForm').reset();  document.getElementById('varianceWarning').style.display = 'none';
-}  function checkVariance() {  const actual = parseFloat(document.getElementById('rec_actual').value) || 0;  const warn = document.getElementById('varianceWarning');  // If difference is greater than a tiny floating point margin  if (Math.abs(actual - currentExpected) > 0.001) {  warn.style.display = 'block';  } else {  warn.style.display = 'none';  }
-}  document.getElementById('rec_actual').addEventListener('input', checkVariance);  document.addEventListener('DOMContentLoaded', function() {  var m = document.getElementById('receiveModal');  if (m && m.parentNode !== document.body) document.body.appendChild(m);  var em = document.getElementById('editModal');  if (em && em.parentNode !== document.body) document.body.appendChild(em);
+
+<?php if ($msg): ?>
+<div class="alert-box alert-<?php echo $msg_type === 'success' ? 'success' : 'error'; ?>">
+    <i class="fas fa-<?php echo $msg_type === 'success' ? 'check-circle' : 'exclamation-triangle'; ?>" style="margin-top:2px;"></i>
+    <div><?php echo $msg; ?></div>
+</div>
+<?php endif; ?>
+
+<div class="layout-grid">
+    <!-- LEFT: Manual Encode Delivery (Staff encodes actual receipt details) -->
+    <div class="del-card">
+        <div class="del-card-head">
+            <div class="del-card-title">
+                <i class="fas fa-keyboard"></i> Manual Encode Delivery
+            </div>
+        </div>
+        <div class="del-card-body">
+            <form method="POST" id="manualForm">
+                <input type="hidden" name="action" value="record_delivery">
+
+                <!-- ── Supplier ── -->
+                <div class="form-group">
+                    <label class="form-label">Supplier Name <span style="color:red;">*</span></label>
+                    <input type="text" name="supplier_name" class="form-control"
+                           value="<?php echo $selected_po ? htmlspecialchars($selected_po['supplier']) : 'Petron Corporation'; ?>"
+                           readonly style="background:#e9ecef;cursor:not-allowed;font-weight:600;">
+                </div>
+
+                <!-- ══ SECTION: Delivery Information ══ -->
+                <div style="background:#f0f4ff;border:1px solid #d0d9f7;border-radius:8px;padding:16px 18px;margin-bottom:16px;">
+                    <div style="font-size:11px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.6px;margin-bottom:14px;display:flex;align-items:center;gap:7px;">
+                        <i class="fas fa-truck"></i> Delivery Information
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Delivery Date <span style="color:red;">*</span></label>
+                            <input type="date" name="delivery_date" class="form-control"
+                                   value="<?php echo date('Y-m-d'); ?>" required id="deliveryDateInput">
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">DR Number / Invoice Number</label>
+                            <input type="text" name="dr_number" class="form-control"
+                                   placeholder="e.g. DR-0610-001">
+                        </div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Batch ID</label>
+                            <div style="background:#002F70;color:#fff;padding:10px 12px;border-radius:6px;font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;">
+                                <i class="fas fa-barcode"></i> Auto-Generated
+                            </div>
+                            <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">
+                                <i class="fas fa-info-circle"></i> Assigned by system upon saving
+                            </small>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Received By</label>
+                            <input type="text" class="form-control" readonly
+                                   value="<?php echo htmlspecialchars($me['full_name'] ?? $me['name'] ?? $me['username'] ?? 'Staff'); ?>"
+                                   style="background:#e9ecef;cursor:not-allowed;font-weight:600;">
+                            <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">
+                                <i class="fas fa-user-check"></i> Auto-filled from logged-in staff
+                            </small>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-top:14px;margin-bottom:0;">
+                        <label class="form-label">Remarks / Notes</label>
+                        <textarea name="remarks" class="form-control" rows="2"
+                                  placeholder="Optional — Any notes about this delivery"><?php echo $selected_po ? 'Based on PO: ' . htmlspecialchars($selected_po['source_ref'] ?? '') : ''; ?></textarea>
+                    </div>
+                </div>
+
+                <!-- ══ SECTION: Item Information ══ -->
+                <div style="background:#f6fff8;border:1px solid #c3e6cb;border-radius:8px;padding:16px 18px;margin-bottom:16px;">
+                    <div style="font-size:11px;font-weight:800;color:#155724;text-transform:uppercase;letter-spacing:.6px;margin-bottom:14px;display:flex;align-items:center;gap:7px;">
+                        <i class="fas fa-box-open"></i> Item Information
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Item Name <span style="color:red;">*</span></label>
+                            <input type="text" name="item_name[]" class="form-control item-name-input"
+                                   list="productList"
+                                   value="<?php echo $selected_po ? htmlspecialchars($selected_po['product']) : ''; ?>"
+                                   placeholder="Type or select item" required>
+                            <datalist id="productList">
+                                <?php foreach ($merch_products as $p): ?><option value="<?php echo htmlspecialchars($p); ?>"><?php endforeach; ?>
+                            </datalist>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Category <span style="color:red;">*</span></label>
+                            <input type="text" class="form-control category-display" readonly
+                                   value="<?php echo $selected_po && !empty($selected_po['category']) ? htmlspecialchars($selected_po['category']) : ''; ?>"
+                                   placeholder="Auto-filled from product"
+                                   style="background:<?php echo $selected_po && !empty($selected_po['category']) ? '#e8f4fd' : '#f8f9fa'; ?>;cursor:not-allowed;<?php echo $selected_po && !empty($selected_po['category']) ? 'color:#002F70;font-weight:600;' : ''; ?>">
+                            <input type="hidden" name="category[]" class="category-hidden" 
+                                   value="<?php echo $selected_po && !empty($selected_po['category']) ? htmlspecialchars($selected_po['category']) : ''; ?>" required>
+                            <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">
+                                <i class="fas fa-info-circle"></i> Auto-fills when product is selected
+                            </small>
+                        </div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Unit <span style="color:red;">*</span></label>
+                            <select name="unit[]" class="form-select">
+                                <option value="pcs"    <?php echo ($selected_po && $selected_po['unit']==='pcs')    ? 'selected':''; ?>>pcs</option>
+                                <option value="kg"     <?php echo ($selected_po && $selected_po['unit']==='kg')     ? 'selected':''; ?>>kg</option>
+                                <option value="box"    <?php echo ($selected_po && $selected_po['unit']==='box')    ? 'selected':''; ?>>box</option>
+                                <option value="L"      <?php echo ($selected_po && $selected_po['unit']==='L')      ? 'selected':''; ?>>L</option>
+                                <option value="bottle">bottle</option>
+                                <option value="can">can</option>
+                                <option value="set">set</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Quantity Delivered <span style="color:red;">*</span></label>
+                            <input type="number" step="0.01" min="0.01" name="quantity[]" class="form-control"
+                                   value="<?php echo $selected_po ? $selected_po['quantity'] : ''; ?>"
+                                   placeholder="Enter quantity" required>
+                            <?php if ($selected_po): ?>
+                            <small style="color:#6c757d;font-size:11px;display:block;margin-top:4px;">
+                                Expected: <?php echo number_format($selected_po['quantity'], 2) . ' ' . $selected_po['unit']; ?>
+                            </small>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Unit Cost <span style="color:#6c757d;font-weight:400;font-size:10px;">(Optional)</span></label>
+                            <div style="position:relative;">
+                                <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#6c757d;font-size:13px;font-weight:600;">₱</span>
+                                <input type="number" step="0.01" min="0" name="unit_cost[]" class="form-control"
+                                       placeholder="0.00" style="padding-left:26px;">
+                            </div>
+                            <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">
+                                <i class="fas fa-info-circle"></i> Optional — from PO if applicable
+                            </small>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">Expiry Date <span style="color:#6c757d;font-weight:400;font-size:10px;">(If Applicable)</span></label>
+                            <input type="date" name="expiry_date[]" class="form-control">
+                            <small style="font-size:11px;color:#6c757d;display:block;margin-top:4px;">
+                                <i class="fas fa-calendar-times"></i> Leave blank if not applicable
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Save Flow Note -->
+                <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:11px 14px;margin-bottom:16px;font-size:12px;color:#856404;display:flex;align-items:flex-start;gap:8px;">
+                    <i class="fas fa-info-circle" style="margin-top:1px;flex-shrink:0;"></i>
+                    <div><strong>Save Flow:</strong> Staff saves → Status = <strong>Pending Verification</strong> → Manager Verifies → Inventory Stock-In</div>
+                </div>
+
+                <div style="display:flex;justify-content:flex-end;gap:10px;">
+                    <button type="button" onclick="resetDeliveryForm()" class="txn-btn secondary">
+                        <i class="fas fa-redo"></i> Reset
+                    </button>
+                    <button type="submit" class="txn-btn success">
+                        <i class="fas fa-save"></i> Save Delivery Record
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- RIGHT: Expected Delivery Details (VIEW-ONLY - Reference for Staff) -->
+    <div class="del-card">
+        <div class="del-card-head">
+            <div class="del-card-title">
+                <i class="fas fa-clipboard-check"></i> <?php echo $selected_po ? 'Expected Delivery Details' : 'Expected Deliveries'; ?>
+            </div>
+            <?php if ($selected_po): ?>
+                <span style="font-size:12px;color:#6c757d;">Reference Only - Use Manual Encode ←</span>
+            <?php else: ?>
+                <span style="font-size:12px;color:#6c757d;">Based on Finalized POs</span>
+            <?php endif; ?>
+        </div>
+        <div class="del-card-body">
+            <?php if ($selected_po): ?>
+                <!-- VIEW-ONLY: PO Order Details for Reference -->
+                <div style="background:#e8f4fd;border:1px solid #b8d4f0;border-radius:8px;padding:20px;">
+                    <h4 style="margin:0 0 16px 0;color:#002F70;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;">
+                        <i class="fas fa-file-invoice"></i> Purchase Order Details
+                    </h4>
+                    
+                    <div style="display:grid;gap:12px;font-size:14px;">
+                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
+                            <span style="color:#6c757d;font-weight:500;">PO Number:</span>
+                            <strong style="color:#002F70;font-family:monospace;font-size:15px;"><?php echo htmlspecialchars($selected_po['source_ref'] ?? 'N/A'); ?></strong>
+                        </div>
+                        
+                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
+                            <span style="color:#6c757d;font-weight:500;">Product:</span>
+                            <strong style="color:#212529;"><?php echo htmlspecialchars($selected_po['product']); ?></strong>
+                        </div>
+                        
+                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
+                            <span style="color:#6c757d;font-weight:500;">Supplier:</span>
+                            <strong style="color:#212529;"><?php echo htmlspecialchars($selected_po['supplier']); ?></strong>
+                        </div>
+                        
+                        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #d0e7f9;">
+                            <span style="color:#6c757d;font-weight:500;">Expected Quantity:</span>
+                            <strong style="color:#002F70;font-size:16px;"><?php echo number_format($selected_po['quantity'], 2); ?> <span style="font-size:14px;color:#6c757d;"><?php echo htmlspecialchars($selected_po['unit']); ?></span></strong>
+                        </div>
+                        
+                        <?php if (!empty($selected_po['remarks'])): ?>
+                        <div style="padding:10px 0;">
+                            <span style="color:#6c757d;font-weight:500;display:block;margin-bottom:6px;">Notes:</span>
+                            <p style="margin:0;padding:10px;background:#fff;border-radius:6px;font-size:13px;color:#495057;"><?php echo htmlspecialchars($selected_po['remarks']); ?></p>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:14px;margin-top:20px;display:flex;align-items:flex-start;gap:10px;">
+                    <i class="fas fa-info-circle" style="color:#856404;margin-top:2px;font-size:18px;flex-shrink:0;"></i>
+                    <div style="font-size:13px;color:#856404;line-height:1.5;">
+                        <strong>Instructions:</strong> Use the <strong>"Manual Encode Delivery"</strong> form on the left to record the actual delivery receipt. Fill in the actual quantity received, DR number, and any remarks.
+                    </div>
+                </div>
+
+                <div style="margin-top:20px;text-align:center;">
+                    <a href="staff_record_delivery.php" style="background:#6c757d;color:#fff;border:none;padding:10px 20px;border-radius:6px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:background .2s;">
+                        <i class="fas fa-arrow-left"></i> Back to Expected Deliveries
+                    </a>
+                </div>
+
+            <?php elseif (empty($expected_deliveries)): ?>
+                <div style="text-align:center;padding:40px;color:#adb5bd;">
+                    <i class="fas fa-box-open" style="font-size:3em;margin-bottom:15px;display:block;"></i>
+                    <p style="margin-bottom:16px;">No expected merchandise deliveries at the moment.</p>
+                    <a href="staff_delivery_history.php" style="color:#002F70;text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:6px;">
+                        <i class="fas fa-history"></i> View Delivery History
+                    </a>
+                </div>
+            <?php else: ?>
+                <?php foreach ($expected_deliveries as $ed): ?>
+                <div class="expected-item">
+                     <div class="expected-info">
+                        <h4><?php echo htmlspecialchars($ed['product']); ?></h4>
+                        <div class="expected-meta">
+                            <span><i class="fas fa-hashtag"></i> PO: <span class="po-badge"><?php echo htmlspecialchars($ed['source_ref'] ?? 'N/A'); ?></span></span>
+                            <span><i class="fas fa-box"></i> Exp: <strong><?php echo number_format($ed['quantity'], 2) . ' ' . $ed['unit']; ?></strong></span>
+                            <span><i class="fas fa-building"></i> <?php echo htmlspecialchars($ed['supplier']); ?></span>
+                        </div>
+                     </div>
+                     <button class="btn-receive" onclick="window.location.href='staff_record_delivery.php?po_id=<?php echo $ed['id']; ?>'">
+                        <i class="fas fa-eye"></i> View Details
+                     </button>
+                </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     RECEIVE MODAL (Auto-filled from PO)
+     ══════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="receiveModal">
+    <div class="modal-box">
+        <div class="modal-head">
+            <h3 style="margin:0;color:#002F70;font-size:16px;"><i class="fas fa-box-open"></i> Receive PO Delivery</h3>
+            <button type="button" onclick="closeReceiveModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#adb5bd;">&times;</button>
+        </div>
+        
+        <form method="POST" id="receiveForm">
+            <input type="hidden" name="action" value="receive_expected">
+            <input type="hidden" name="delivery_id" id="rec_id">
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
+                <div class="form-group">
+                    <label class="form-label">PO Number</label>
+                    <input type="text" id="rec_po" class="form-control" readonly>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Supplier</label>
+                    <input type="text" id="rec_supplier" class="form-control" readonly>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Product</label>
+                <input type="text" id="rec_product" class="form-control" readonly>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;background:#f8f9fa;padding:15px;border-radius:8px;border:1px solid #e9ecef;margin-bottom:15px;">
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" style="color:#002F70;">Expected Quantity</label>
+                    <div style="display:flex;align-items:center;gap:5px;">
+                        <input type="text" id="rec_expected" class="form-control" readonly style="background:#e8f4fd;color:#002F70;border-color:#b8d4f0;">
+                        <span id="rec_unit1" style="font-weight:bold;color:#6c757d;"></span>
+                    </div>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" style="color:#28a745;">Actual Delivered Qty <span style="color:red;">*</span></label>
+                    <div style="display:flex;align-items:center;gap:5px;">
+                        <input type="number" step="0.01" name="actual_qty" id="rec_actual" class="form-control" required style="border-color:#28a745;background:#f8fff9;">
+                        <span id="rec_unit2" style="font-weight:bold;color:#6c757d;"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="variance-warning" id="varianceWarning">
+                <i class="fas fa-exclamation-triangle"></i> <strong>Variance Detected!</strong><br>
+                The actual quantity received does not match the PO expected quantity. This will be flagged for Manager review as a discrepancy.
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:15px;">
+                <div class="form-group">
+                    <label class="form-label">DR Number (Optional)</label>
+                    <input type="text" name="dr_number" class="form-control" placeholder="e.g. DR-10293">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Remarks (Optional)</label>
+                    <input type="text" name="remarks" class="form-control" placeholder="Any issues?">
+                </div>
+            </div>
+
+            <div style="text-align:right;margin-top:20px;border-top:1px solid #e9ecef;padding-top:15px;display:flex;gap:10px;justify-content:flex-end;">
+                <button type="button" onclick="closeReceiveModal()" class="txn-btn secondary">Cancel</button>
+                <button type="submit" class="txn-btn success">
+                    <i class="fas fa-check"></i> Submit Delivery
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+const productCategoryMap = <?php echo json_encode($merch_products_map); ?>;
+
+document.addEventListener('input', function(e) {
+    if (e.target && e.target.name === 'item_name[]') {
+        const selectedItem = e.target.value;
+        if (productCategoryMap[selectedItem]) {
+            const row = e.target.closest('div[style*="grid-template-columns"]');
+            if (row) {
+                const catSelect = row.querySelector('select[name="category[]"]');
+                if (catSelect) {
+                    catSelect.value = productCategoryMap[selectedItem];
+                }
+            }
+        }
+    }
 });
-</script>  <script>
-// Auto-fetch category when product name is selected/changed
-document.addEventListener('DOMContentLoaded', function() {  const itemNameInput = document.querySelector('.item-name-input');  const categoryDisplay = document.querySelector('.category-display');  const categoryHidden = document.querySelector('.category-hidden');  if (!itemNameInput || !categoryDisplay || !categoryHidden) {  console.error('Auto-category elements not found');  return;  }  // Function to fetch and update category  function updateCategory() {  const productName = itemNameInput.value.trim();  if (productName) {  // Fetch category from database  fetch('?ajax=get_product_category&product_name=' + encodeURIComponent(productName))  .then(response => response.json())  .then(data => {  console.log('Category fetch response:', data);  if (data.category) {  // Auto-fill the category  categoryDisplay.value = data.category;  categoryHidden.value = data.category;  categoryDisplay.style.background = '#e8f4fd';  categoryDisplay.style.color = '#002F70';  categoryDisplay.style.fontWeight = '600';  } else {  // Product not found in database  categoryDisplay.value = '';  categoryHidden.value = '';  categoryDisplay.placeholder = 'Product not found in database';  categoryDisplay.style.background = '#fff3cd';  categoryDisplay.style.color = '#856404';  }  })  .catch(error => {  console.error('Error fetching category:', error);  categoryDisplay.value = '';  categoryHidden.value = '';  });  } else {  // Clear if no product name  categoryDisplay.value = '';  categoryHidden.value = '';  categoryDisplay.placeholder = 'Auto-filled from product';  categoryDisplay.style.background = '#f8f9fa';  categoryDisplay.style.color = '';  }  }  // Trigger on change (when user selects from datalist)  itemNameInput.addEventListener('change', updateCategory);  // Trigger on blur (when user finishes typing)  itemNameInput.addEventListener('blur', updateCategory);  // If there's already a value (from PO), fetch immediately  if (itemNameInput.value.trim()) {  console.log('Pre-filled value detected, fetching category...');  updateCategory();  }
-});  // Reset delivery form function
-function resetDeliveryForm() {  // Reset the form  document.getElementById('manualForm').reset();  // Clear category display fields  const categoryDisplay = document.querySelector('.category-display');  const categoryHidden = document.querySelector('.category-hidden');  if (categoryDisplay) {  categoryDisplay.value = '';  categoryDisplay.placeholder = 'Auto-filled from product';  categoryDisplay.style.background = '#f8f9fa';  categoryDisplay.style.color = '';  }  if (categoryHidden) {  categoryHidden.value = '';  }  console.log('Form reset');
+
+let currentExpected = 0;
+
+function openReceiveModal(id, po, product, supplier, expected, unit) {
+    document.getElementById('rec_id').value = id;
+    document.getElementById('rec_po').value = po || 'N/A';
+    document.getElementById('rec_product').value = product;
+    document.getElementById('rec_supplier').value = supplier;
+    
+    currentExpected = expected;
+    document.getElementById('rec_expected').value = expected;
+    document.getElementById('rec_actual').value = expected; // Pre-fill with expected
+    
+    document.getElementById('rec_unit1').textContent = unit;
+    document.getElementById('rec_unit2').textContent = unit;
+    
+    checkVariance(); // Initialize variance check
+
+    document.getElementById('receiveModal').classList.add('open');
 }
-</script>  <?php if ($edit_data): ?>
+
+function closeReceiveModal() {
+    document.getElementById('receiveModal').classList.remove('open');
+    document.getElementById('receiveForm').reset();
+    document.getElementById('varianceWarning').style.display = 'none';
+}
+
+function checkVariance() {
+    const actual = parseFloat(document.getElementById('rec_actual').value) || 0;
+    const warn = document.getElementById('varianceWarning');
+    
+    // If difference is greater than a tiny floating point margin
+    if (Math.abs(actual - currentExpected) > 0.001) {
+        warn.style.display = 'block';
+    } else {
+        warn.style.display = 'none';
+    }
+}
+
+document.getElementById('rec_actual').addEventListener('input', checkVariance);
+
+document.addEventListener('DOMContentLoaded', function() {
+    var m = document.getElementById('receiveModal');
+    if (m && m.parentNode !== document.body) document.body.appendChild(m);
+
+    var em = document.getElementById('editModal');
+    if (em && em.parentNode !== document.body) document.body.appendChild(em);
+});
+</script>
+
+<script>
+// Auto-fetch category when product name is selected/changed
+document.addEventListener('DOMContentLoaded', function() {
+    const itemNameInput = document.querySelector('.item-name-input');
+    const categoryDisplay = document.querySelector('.category-display');
+    const categoryHidden = document.querySelector('.category-hidden');
+    
+    if (!itemNameInput || !categoryDisplay || !categoryHidden) {
+        console.error('Auto-category elements not found');
+        return;
+    }
+    
+    // Function to fetch and update category
+    function updateCategory() {
+        const productName = itemNameInput.value.trim();
+        
+        if (productName) {
+            // Fetch category from database
+            fetch('?ajax=get_product_category&product_name=' + encodeURIComponent(productName))
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Category fetch response:', data);
+                    if (data.category) {
+                        // Auto-fill the category
+                        categoryDisplay.value = data.category;
+                        categoryHidden.value = data.category;
+                        categoryDisplay.style.background = '#e8f4fd';
+                        categoryDisplay.style.color = '#002F70';
+                        categoryDisplay.style.fontWeight = '600';
+                    } else {
+                        // Product not found in database
+                        categoryDisplay.value = '';
+                        categoryHidden.value = '';
+                        categoryDisplay.placeholder = 'Product not found in database';
+                        categoryDisplay.style.background = '#fff3cd';
+                        categoryDisplay.style.color = '#856404';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching category:', error);
+                    categoryDisplay.value = '';
+                    categoryHidden.value = '';
+                });
+        } else {
+            // Clear if no product name
+            categoryDisplay.value = '';
+            categoryHidden.value = '';
+            categoryDisplay.placeholder = 'Auto-filled from product';
+            categoryDisplay.style.background = '#f8f9fa';
+            categoryDisplay.style.color = '';
+        }
+    }
+    
+    // Trigger on change (when user selects from datalist)
+    itemNameInput.addEventListener('change', updateCategory);
+    
+    // Trigger on blur (when user finishes typing)
+    itemNameInput.addEventListener('blur', updateCategory);
+    
+    // If there's already a value (from PO), fetch immediately
+    if (itemNameInput.value.trim()) {
+        console.log('Pre-filled value detected, fetching category...');
+        updateCategory();
+    }
+});
+
+// Reset delivery form function
+function resetDeliveryForm() {
+    // Reset the form
+    document.getElementById('manualForm').reset();
+    
+    // Clear category display fields
+    const categoryDisplay = document.querySelector('.category-display');
+    const categoryHidden = document.querySelector('.category-hidden');
+    if (categoryDisplay) {
+        categoryDisplay.value = '';
+        categoryDisplay.placeholder = 'Auto-filled from product';
+        categoryDisplay.style.background = '#f8f9fa';
+        categoryDisplay.style.color = '';
+    }
+    if (categoryHidden) {
+        categoryHidden.value = '';
+    }
+    
+    console.log('Form reset');
+}
+</script>
+
+<?php if ($edit_data): ?>
 <!-- EDIT / RESUBMIT MODAL -->
-<div class="modal-overlay open" id="editModal">  <div class="modal-box">  <div class="modal-head">  <h3 style="margin:0;color:#002F70;font-size:16px;"><i class="fas fa-edit"></i> Edit &amp; Resubmit Delivery</h3>  <a href="staff_record_delivery.php" style="background:none;border:none;font-size:20px;cursor:pointer;color:#adb5bd;text-decoration:none;">&times;</a>  </div>  <div style="background:#fff3cd;color:#856404;padding:12px;border-radius:6px;font-size:12px;margin-bottom:15px;border:1px solid #ffeeba;">  <strong><i class="fas fa-exclamation-triangle"></i> Manager Note:</strong>  <?php echo htmlspecialchars($edit_data['admin_notes'] ?? 'Delivery was flagged for discrepancy. Please review and resubmit.'); ?>  </div>  <form method="POST">  <input type="hidden" name="action" value="edit_delivery">  <input type="hidden" name="delivery_id" value="<?php echo $edit_data['id']; ?>">  <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px;">  <div class="form-group" style="margin:0;">  <label class="form-label">Delivery Ref</label>  <input type="text" class="form-control" value="<?php echo htmlspecialchars($edit_data['delivery_ref'] ?: ($edit_data['source_ref'] ?? 'N/A')); ?>" readonly>  </div>  <div class="form-group" style="margin:0;">  <label class="form-label">Product</label>  <input type="text" class="form-control" value="<?php echo htmlspecialchars($edit_data['product']); ?>" readonly>  </div>  </div>  <div class="form-group">  <label class="form-label" style="color:#28a745;">Corrected Quantity <span style="color:red;">*</span></label>  <div style="display:flex;align-items:center;gap:8px;">  <input type="number" step="0.01" name="quantity" class="form-control"  value="<?php echo (float)$edit_data['quantity']; ?>" required  style="border-color:#28a745;background:#f8fff9;">  <span style="font-weight:bold;color:#6c757d;"><?php echo htmlspecialchars($edit_data['unit']); ?></span>  </div>  </div>  <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:10px;">  <div class="form-group" style="margin:0;">  <label class="form-label">DR Number</label>  <input type="text" name="dr_number" class="form-control"  value="<?php echo htmlspecialchars($edit_data['dr_number'] ?? ''); ?>" placeholder="e.g. DR-10293">  </div>  <div class="form-group" style="margin:0;">  <label class="form-label">Remarks</label>  <input type="text" name="remarks" class="form-control"  value="<?php echo htmlspecialchars($edit_data['remarks'] ?? ''); ?>" placeholder="Any notes...">  </div>  </div>  <div style="text-align:right;margin-top:20px;border-top:1px solid #e9ecef;padding-top:15px;">  <a href="staff_record_delivery.php"  style="display:inline-block;background:#e9ecef;color:#495057;text-decoration:none;padding:9px 15px;border-radius:6px;font-weight:600;margin-right:10px;">  Cancel  </a>  <button type="submit" style="background:#fd7e14;color:#fff;border:none;padding:9px 20px;border-radius:6px;font-weight:600;cursor:pointer;">  <i class="fas fa-paper-plane"></i> Resubmit for Approval  </button>  </div>  </form>  </div>
+<div class="modal-overlay open" id="editModal">
+    <div class="modal-box">
+        <div class="modal-head">
+            <h3 style="margin:0;color:#002F70;font-size:16px;"><i class="fas fa-edit"></i> Edit &amp; Resubmit Delivery</h3>
+            <a href="staff_record_delivery.php" style="background:none;border:none;font-size:20px;cursor:pointer;color:#adb5bd;text-decoration:none;">&times;</a>
+        </div>
+
+        <div style="background:#fff3cd;color:#856404;padding:12px;border-radius:6px;font-size:12px;margin-bottom:15px;border:1px solid #ffeeba;">
+            <strong><i class="fas fa-exclamation-triangle"></i> Manager Note:</strong>
+            <?php echo htmlspecialchars($edit_data['admin_notes'] ?? 'Delivery was flagged for discrepancy. Please review and resubmit.'); ?>
+        </div>
+
+        <form method="POST">
+            <input type="hidden" name="action" value="edit_delivery">
+            <input type="hidden" name="delivery_id" value="<?php echo $edit_data['id']; ?>">
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px;">
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Delivery Ref</label>
+                    <input type="text" class="form-control" value="<?php echo htmlspecialchars($edit_data['delivery_ref'] ?: ($edit_data['source_ref'] ?? 'N/A')); ?>" readonly>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Product</label>
+                    <input type="text" class="form-control" value="<?php echo htmlspecialchars($edit_data['product']); ?>" readonly>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" style="color:#28a745;">Corrected Quantity <span style="color:red;">*</span></label>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <input type="number" step="0.01" name="quantity" class="form-control"
+                           value="<?php echo (float)$edit_data['quantity']; ?>" required
+                           style="border-color:#28a745;background:#f8fff9;">
+                    <span style="font-weight:bold;color:#6c757d;"><?php echo htmlspecialchars($edit_data['unit']); ?></span>
+                </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:10px;">
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">DR Number</label>
+                    <input type="text" name="dr_number" class="form-control"
+                           value="<?php echo htmlspecialchars($edit_data['dr_number'] ?? ''); ?>" placeholder="e.g. DR-10293">
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Remarks</label>
+                    <input type="text" name="remarks" class="form-control"
+                           value="<?php echo htmlspecialchars($edit_data['remarks'] ?? ''); ?>" placeholder="Any notes...">
+                </div>
+            </div>
+
+            <div style="text-align:right;margin-top:20px;border-top:1px solid #e9ecef;padding-top:15px;">
+                <a href="staff_record_delivery.php"
+                   style="display:inline-block;background:#e9ecef;color:#495057;text-decoration:none;padding:9px 15px;border-radius:6px;font-weight:600;margin-right:10px;">
+                    Cancel
+                </a>
+                <button type="submit" style="background:#fd7e14;color:#fff;border:none;padding:9px 20px;border-radius:6px;font-weight:600;cursor:pointer;">
+                    <i class="fas fa-paper-plane"></i> Resubmit for Approval
+                </button>
+            </div>
+        </form>
+    </div>
 </div>
-<?php endif; ?>  <?php include __DIR__ . '/../partials/footer.php'; ?>
+<?php endif; ?>
+
+<?php include __DIR__ . '/../partials/footer.php'; ?>
