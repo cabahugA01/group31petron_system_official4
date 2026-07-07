@@ -380,6 +380,11 @@ if ($type === 'job_order') {
                 'items'                 => $items,
                 'job_order'             => $job_order_data,
                 'transaction_type'      => $txn_type,
+                // Loyalty fields
+                'loyalty_type'            => $txn['loyalty_type']            ?? '',
+                'loyalty_card_no'         => $txn['loyalty_card_no']         ?? '',
+                'loyalty_points_earned'   => $txn['loyalty_points_earned']   ?? null,
+                'loyalty_points_redeemed' => $txn['loyalty_points_redeemed'] ?? null,
             ];
             
             // Log build success
@@ -1002,6 +1007,30 @@ $qr_url = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&ecc=M&data='
   <?php endif; ?>
 
   <div class="jo-r-div"></div>
+
+  <?php if (!empty($sale['loyalty_type']) && $sale['loyalty_type'] === 'Petron Rewards Card'): ?>
+  <!-- ══ LOYALTY ══════════════════════════════════════════════════════════════ -->
+  <div class="jo-r-lbl" style="color:#003d7a;">Petron Rewards Card</div>
+  <?php if (!empty($sale['loyalty_card_no'])): ?>
+  <div class="jo-r-row">
+    <span class="jo-r-key">Card No.</span>
+    <span class="jo-r-val jo-r-bold"><?php echo htmlspecialchars($sale['loyalty_card_no']); ?></span>
+  </div>
+  <?php endif; ?>
+  <?php if ($sale['loyalty_points_earned'] !== null): ?>
+  <div class="jo-r-row">
+    <span class="jo-r-key">Points Earned</span>
+    <span class="jo-r-val" style="color:#16a34a;font-weight:700;">+<?php echo number_format((int)$sale['loyalty_points_earned']); ?> pts</span>
+  </div>
+  <?php endif; ?>
+  <?php if (!empty($sale['loyalty_points_redeemed']) && (int)$sale['loyalty_points_redeemed'] > 0): ?>
+  <div class="jo-r-row">
+    <span class="jo-r-key">Points Redeemed</span>
+    <span class="jo-r-val" style="color:#dc2626;font-weight:700;">-<?php echo number_format((int)$sale['loyalty_points_redeemed']); ?> pts</span>
+  </div>
+  <?php endif; ?>
+  <div class="jo-r-div"></div>
+  <?php endif; ?>
 
   <!-- ══ QR CODE ═══════════════════════════════════════════════════════════════ -->
   <div class="jo-r-qr">

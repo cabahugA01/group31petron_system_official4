@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * MANAGER FUEL DELIVERY INTERFACE
  * 
@@ -256,18 +256,35 @@ $stmt = $pdo->prepare("
         si.*, 
         p.name as product_name,
         p.sku as product_sku,
-        CASE 
-            WHEN si.stock_level <= si.reorder_level THEN 'low'
-            WHEN si.stock_level <= (si.reorder_level * 1.5) THEN 'medium'
-            ELSE 'good'
-        END as stock_status
+        COALESCE(fi.capacity, 0) as capacity
     FROM station_inventory si
     JOIN products p ON si.product_id = p.id
+    LEFT JOIN fuel_inventory fi ON fi.fuel_type = p.name AND fi.station_id = si.station_id
     WHERE si.station_id = ? AND p.type_id = 1 AND si.status = 'Active'
     ORDER BY p.name
 ");
 $stmt->execute([$station_id]);
-$current_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$current_inventory_raw = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$current_inventory = [];
+foreach ($current_inventory_raw as $item) {
+    $capacity = (float)($item['capacity'] ?? 0);
+    $level = (float)$item['stock_level'];
+    if ($capacity <= 0) {
+        $status = 'good';
+    } else {
+        if ($capacity == 14000)    { $crit = 5000; $low = 7000; }
+        elseif ($capacity == 7000) { $crit = 1000; $low = 2000; }
+        else                       { $crit = $capacity * 0.10; $low = $capacity * 0.20; }
+
+        if ($level <= 0)           { $status = 'low'; } // Red
+        elseif ($level <= $crit)   { $status = 'low'; } // Red
+        elseif ($level <= $low)    { $status = 'medium'; } // Yellow/Orange
+        else                       { $status = 'good'; } // Green
+    }
+    $item['stock_status'] = $status;
+    $current_inventory[] = $item;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">

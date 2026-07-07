@@ -99,6 +99,22 @@ try {
     error_log("Fuel history error: " . $e->getMessage());
 }
 
+// ── Build UGT lookup: fuel_type → UGT No (from canonical config) ──────────
+$ugt_lookup = []; // key: lowercase fuel_type, value: 'UGT #X'
+foreach (TANK_CONFIG_17 as $tc) {
+    $key = strtolower(trim($tc['fuel_type']));
+    // First entry per fuel type wins (maps to first UGT)
+    if (!isset($ugt_lookup[$key])) {
+        $ugt_lookup[$key] = $tc['tank']; // e.g. 'UGT #1'
+    }
+}
+// Build array of all UGTs per fuel type (for display)
+$ugt_all_lookup = [];
+foreach (TANK_CONFIG_17 as $tc) {
+    $key = strtolower(trim($tc['fuel_type']));
+    $ugt_all_lookup[$key][] = $tc['tank'];
+}
+
 include __DIR__ . '/../partials/header.php';
 ?>
 
@@ -364,7 +380,7 @@ include __DIR__ . '/../partials/header.php';
                     <tr>
                         <th>Date</th>
                         <th>Shift</th>
-                        <th>Tank</th>
+                        <th>UGT No / Fuel Type</th>
                         <th>Beginning</th>
                         <th>Ending</th>
                         <th>Calibration</th>
@@ -393,7 +409,18 @@ include __DIR__ . '/../partials/header.php';
                                 <?php echo htmlspecialchars($f['shift']); ?>
                             </span>
                         </td>
-                        <td><strong><?php echo htmlspecialchars($f['tank']); ?></strong></td>
+                        <td>
+                            <?php
+                                $ft_raw = $f['tank'];
+                                $ft_key = strtolower(trim($ft_raw));
+                                $ugts   = $ugt_all_lookup[$ft_key] ?? [];
+                                $ugt_str = !empty($ugts) ? implode(', ', $ugts) : '';
+                            ?>
+                            <?php if ($ugt_str): ?>
+                                <span style="font-size:11px;font-weight:700;color:#002F70;background:#e8f0fe;padding:2px 7px;border-radius:5px;display:inline-block;margin-bottom:2px;"><?php echo htmlspecialchars($ugt_str); ?></span><br>
+                            <?php endif; ?>
+                            <strong style="font-size:12px;"><?php echo htmlspecialchars($ft_raw); ?></strong>
+                        </td>
                         <td><?php echo number_format((float)$f['beginning'], 2); ?></td>
                         <td><?php echo number_format((float)$f['ending'], 2); ?></td>
                         <td><?php echo number_format((float)$f['calibration'], 2); ?></td>

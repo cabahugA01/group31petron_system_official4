@@ -45,26 +45,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
     exit;
 }
 
-// ── 17-Tanker Configuration ──────────────────────────────────────────
-$TANK_CONFIG_17 = [
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 1',     'tank'=>'Underground Tank #1',  'tanker_num'=>1,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 2',     'tank'=>'Underground Tank #2',  'tanker_num'=>2,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 3',     'tank'=>'Underground Tank #3',  'tanker_num'=>3,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 4',     'tank'=>'Underground Tank #4',  'tanker_num'=>4,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 5',     'tank'=>'Underground Tank #5',  'tanker_num'=>5,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 6',     'tank'=>'Underground Tank #6',  'tanker_num'=>6,  'capacity'=>50000],
-    ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'Underground Tank #7',  'tanker_num'=>7,  'capacity'=>20000],
-    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'Underground Tank #8',  'tanker_num'=>8,  'capacity'=>45000],
-    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 2', 'tank'=>'Underground Tank #9',  'tanker_num'=>9,  'capacity'=>45000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'Underground Tank #10', 'tanker_num'=>10, 'capacity'=>20000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 2',     'tank'=>'Underground Tank #11', 'tanker_num'=>11, 'capacity'=>20000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 3',     'tank'=>'Underground Tank #12', 'tanker_num'=>12, 'capacity'=>20000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 4',     'tank'=>'Underground Tank #13', 'tanker_num'=>13, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 1',  'tank'=>'Underground Tank #14', 'tanker_num'=>14, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 2',  'tank'=>'Underground Tank #15', 'tanker_num'=>15, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 3',  'tank'=>'Underground Tank #16', 'tanker_num'=>16, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 4',  'tank'=>'Underground Tank #17', 'tanker_num'=>17, 'capacity'=>20000],
-];
+$TANK_CONFIG_17 = get_tank_config();
 
 // ── Fetch fuel_inventory (one row per fuel_type for this station) ─────
 $fi_lookup = [];
@@ -179,29 +160,43 @@ $msg = '';
 try {
     foreach ($TANK_CONFIG_17 as $tc) {
         $ft_key   = strtolower(trim($tc['fuel_type']));
-        // ── XTRA UNL split: distinguish sub-groups by label ──
-        if ($ft_key === 'xtra unl') {
-            if (strpos(strtolower($tc['label']), 'xtra unl 1') !== false) {
-                $ft_key = 'xtra unl 1';
-            } elseif (strpos(strtolower($tc['label']), 'xtra unl 2') !== false) {
-                $ft_key = 'xtra unl 2';
-            }
+        if ($ft_key === 'xtra unl' || $ft_key === 'xtr advance') {
+            $cand = '';
+            if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'xtra unl 1'; }
+            elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'xtra unl 2'; }
+            if ($cand && isset($fi_lookup[$cand])) { $ft_key = $cand; }
+            else { $ft_key = 'xtra unl'; }
+        } elseif ($ft_key === 'diesel') {
+            $cand = '';
+            if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'diesel 1'; }
+            elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'diesel 2'; }
+            if ($cand && isset($fi_lookup[$cand])) { $ft_key = $cand; }
+            else { $ft_key = 'diesel'; }
         }
         $tank_key = strtolower(trim($tc['tank']));
         $inv      = $fi_lookup[$ft_key] ?? null;
 
         $capacity  = (float)$tc['capacity'];
-        $cur_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
+        $cur_level = min(
+            $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0,
+            $capacity
+        );
 
-        // Number of tanks for this fuel sub-group (respecting XTRA UNL split)
-        $same_type_count = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key) {
+        // Number of tanks for this fuel sub-group
+        $same_type_count = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key, $fi_lookup) {
             $k = strtolower(trim($t['fuel_type']));
-            if ($k === 'xtra unl') {
-                if (strpos(strtolower($t['label']), 'xtra unl 1') !== false) {
-                    $k = 'xtra unl 1';
-                } elseif (strpos(strtolower($t['label']), 'xtra unl 2') !== false) {
-                    $k = 'xtra unl 2';
-                }
+            if ($k === 'xtra unl' || $k === 'xtr advance') {
+                $cand = '';
+                if (strpos(strtolower($t['label']), '1') !== false) { $cand = 'xtra unl 1'; }
+                elseif (strpos(strtolower($t['label']), '2') !== false) { $cand = 'xtra unl 2'; }
+                if ($cand && isset($fi_lookup[$cand])) { $k = $cand; }
+                else { $k = 'xtra unl'; }
+            } elseif ($k === 'diesel') {
+                $cand = '';
+                if (strpos(strtolower($t['label']), '1') !== false) { $cand = 'diesel 1'; }
+                elseif (strpos(strtolower($t['label']), '2') !== false) { $cand = 'diesel 2'; }
+                if ($cand && isset($fi_lookup[$cand])) { $k = $cand; }
+                else { $k = 'diesel'; }
             }
             return $k === $ft_key;
         }));
@@ -219,7 +214,7 @@ try {
         $beginning = $same_type_count > 0 ? round($cur_level / $same_type_count, 2) : 0;
 
         $total_available = $beginning + $purchases;
-        $ending_system   = max(0, $total_available - $sales - $calibration_adj);
+        $ending_system   = min(max(0, $total_available - $sales - $calibration_adj), $capacity);
 
         // Actual Dip = use ending_system as proxy
         $actual_dip = $ending_system;
@@ -227,12 +222,22 @@ try {
 
         $current_level_tank = $ending_system;
 
-        // Status
-        $fill_pct = $capacity > 0 ? ($current_level_tank / $capacity) * 100 : 0;
-        if      ($current_level_tank <= 0)  { $status = 'Out of Stock'; $sc = '#dc3545'; }
-        elseif  ($fill_pct <= 10)           { $status = 'Critical';     $sc = '#dc3545'; }
-        elseif  ($fill_pct <= 25)           { $status = 'Low';          $sc = '#fd7e14'; }
-        else                                { $status = 'Available';    $sc = '#28a745'; }
+        // Capacity-based thresholds aligned with TANK_CONFIG_17
+        if ($capacity == 14000) {
+            $critical_lvl = 2500;
+            $low_lvl = 5000;
+        } elseif ($capacity == 7000) {
+            $critical_lvl = 1000;
+            $low_lvl = 2000;
+        } else {
+            $critical_lvl = $capacity * 0.10;
+            $low_lvl = $capacity * 0.20;
+        }
+        $fill_pct = $capacity > 0 ? round(($current_level_tank / $capacity) * 100, 2) : 0;
+        if      ($current_level_tank <= 0)             { $status = 'Out of Stock'; $sc = '#dc3545'; }
+        elseif  ($current_level_tank <= $critical_lvl) { $status = 'Critical';     $sc = '#dc3545'; }
+        elseif  ($current_level_tank <= $low_lvl)      { $status = 'Low';          $sc = '#fd7e14'; }
+        else                                           { $status = 'Normal';       $sc = '#28a745'; }
 
         // Price
         $price = $price_lookup[$ft_key] ?? ($inv ? (float)($inv['price_per_liter'] ?? 0) : 0);
@@ -256,6 +261,7 @@ try {
             'tank'            => $tc['tank'],
             'tanker_num'      => $tc['tanker_num'],
             'capacity'        => $capacity,
+            'reorder_level'   => $tc['reorder_level'],
             'beginning'       => $beginning,
             'purchases'       => $purchases,
             'total_available' => $total_available,
@@ -295,10 +301,15 @@ foreach ($rows as $r) {
     $cap = (float)$r['capacity'];
     $pct = $cap > 0 ? ($fl / $cap) * 100 : 0;
     
-    if      ($fl  <= 0)   { $st = 'OUT OF STOCK'; $sc = '#dc3545'; $st_cls = 'status-critical'; }
-    elseif  ($pct <= 10)  { $st = 'CRITICAL';     $sc = '#dc3545'; $st_cls = 'status-critical'; }
-    elseif  ($pct <= 25)  { $st = 'LOW';          $sc = '#fd7e14'; $st_cls = 'status-low'; }
-    else                  { $st = 'AVAILABLE';    $sc = '#28a745'; $st_cls = 'status-ok'; }
+    $st = strtoupper($r['status']);
+    $sc = $r['status_color'];
+    if ($st === 'NORMAL' || $st === 'AVAILABLE') {
+        $st_cls = 'status-ok';
+    } elseif ($st === 'LOW') {
+        $st_cls = 'status-low';
+    } else {
+        $st_cls = 'status-critical';
+    }
     
     $js_fuel[] = [
         'name'         => $r['fuel_type'],
@@ -656,25 +667,21 @@ body, html { overflow-x: hidden !important; }
             <table class="fuel-table" id="fuelTable">
                 <colgroup>
                     <col style="width:5%">
+                    <col style="width:10%">
                     <col style="width:9%">
                     <col style="width:10%">
-                    <col style="width:7%">
+                    <col style="width:11%">
                     <col style="width:9%">
-                    <col style="width:9%">
-                    <col style="width:9%">
-                    <col style="width:7%">
                     <col style="width:8%">
-                    <col style="width:10%">
-                    <col style="width:17%">
+                    <col style="width:18%">
+                    <col style="width:20%">
                 </colgroup>
                 <thead>
                     <tr>
-                        <th>Tank No.</th>
+                        <th>UGT No.</th>
                         <th>Fuel Type</th>
-                        <th>Tank Reference</th>
                         <th>Capacity (L)</th>
-                        <th>Beginning Reading</th>
-                        <th>Ending Reading</th>
+                        <th>Reorder Level (L)</th>
                         <th>Current Level (L)</th>
                         <th>Available %</th>
                         <th>Status</th>
@@ -685,16 +692,16 @@ body, html { overflow-x: hidden !important; }
                 <tbody>
                 <?php if (empty($rows)): ?>
                     <tr>
-                        <td colspan="11" style="text-align:center;padding:32px;color:#6c757d;font-size:14px;">
+                        <td colspan="9" style="text-align:center;padding:32px;color:#6c757d;font-size:14px;">
                             No fuel inventory data available.
                         </td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($rows as $r):
-                        $ts_str  = $r['timestamp'] ? date('M d, Y h:i A', strtotime($r['timestamp'])) : '—';
-                        $fill    = min(100, round($r['fill_pct'], 0));
-                        $fl      = $r['current_level'];
-                        $row_date = $r['timestamp'] ? date('Y-m-d', strtotime($r['timestamp'])) : '';
+                         $ts_str  = $r['timestamp'] ? date('M d, Y h:i A', strtotime($r['timestamp'])) : '—';
+                         $fill    = min(100, round($r['fill_pct'], 0));
+                         $fl      = $r['current_level'];
+                         $row_date = $r['timestamp'] ? date('Y-m-d', strtotime($r['timestamp'])) : '';
                     ?>
                     <tr class="fuel-row"
                         data-tank-num="<?= htmlspecialchars(strtolower($r['tanker_num'])) ?>"
@@ -704,10 +711,8 @@ body, html { overflow-x: hidden !important; }
                         data-date="<?= $row_date ?>">
                         <td style="font-weight:700;color:#002F70;"><?= $r['tanker_num'] ?></td>
                         <td style="font-weight:700;"><?= htmlspecialchars($r['fuel_type']) ?></td>
-                        <td style="font-weight:600;color:#002F70;"><?= htmlspecialchars($r['label']) ?></td>
                         <td><?= number_format($r['capacity'], 0) ?></td>
-                        <td><?= number_format($r['beginning_reading'], 2) ?></td>
-                        <td><?= number_format($r['ending_reading'], 2) ?></td>
+                        <td style="font-weight:600;color:#64748b;"><?= number_format($r['reorder_level'], 0) ?> L</td>
                         <td style="font-weight:700;color:#002F70;"><?= number_format($fl, 2) ?> L</td>
                         <td><?= $fill ?>%</td>
                         <td>
@@ -742,13 +747,11 @@ body, html { overflow-x: hidden !important; }
         </div>
         <div class="modal-body">
             <table style="width:100%; font-size:13px; border-collapse:collapse;">
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0; color:#64748b; font-weight:600; width:180px;">Tank No:</td><td id="detTankId" style="font-weight:700; color:#0f172a;"></td></tr>
+                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0; color:#64748b; font-weight:600; width:180px;">UGT No:</td><td id="detTankId" style="font-weight:700; color:#0f172a;"></td></tr>
                 <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0; color:#64748b; font-weight:600;">Tank Reference:</td><td id="detTankName" style="font-weight:700; color:#0f172a;"></td></tr>
                 <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0; color:#64748b; font-weight:600;">Fuel Type:</td><td id="detFuelType" style="font-weight:700; color:#0f172a;"></td></tr>
                 <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0; color:#64748b; font-weight:600;">Capacity:</td><td id="detCapacity" style="font-weight:600; color:#475569;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0; color:#64748b; font-weight:600;">Latest Reading:</td><td id="detLatestReading" style="font-weight:600; color:#475569;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0; color:#64748b; font-weight:600;">Beginning Reading:</td><td id="detBeginningReading" style="font-weight:600; color:#475569;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0; color:#64748b; font-weight:600;">Ending Reading:</td><td id="detEndingReading" style="font-weight:600; color:#475569;"></td></tr>
+                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0; color:#64748b; font-weight:600;">Reorder Level:</td><td id="detReorderLevel" style="font-weight:600; color:#475569;"></td></tr>
                 <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0; color:#64748b; font-weight:600;">Calibration:</td><td id="detCalibration" style="font-weight:600; color:#475569;"></td></tr>
                 <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0; color:#64748b; font-weight:600;">Total Dispensed:</td><td id="detTotalDispensed" style="font-weight:600; color:#475569;"></td></tr>
                 <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0; color:#64748b; font-weight:600;">Remaining Fuel:</td><td id="detVolume" style="font-weight:700; color:#002F70; font-size:14px;"></td></tr>
@@ -1080,9 +1083,7 @@ function viewTankDetails(r) {
     document.getElementById('detTankName').textContent = r.label;
     document.getElementById('detFuelType').textContent = r.fuel_type;
     document.getElementById('detCapacity').textContent = Number(r.capacity).toLocaleString() + ' L';
-    document.getElementById('detLatestReading').textContent = Number(r.ending_reading).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
-    document.getElementById('detBeginningReading').textContent = Number(r.beginning_reading).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
-    document.getElementById('detEndingReading').textContent = Number(r.ending_reading).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
+    document.getElementById('detReorderLevel').textContent = Number(r.reorder_level).toLocaleString() + ' L';
     document.getElementById('detCalibration').textContent = Number(r.calibration).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
     document.getElementById('detTotalDispensed').textContent = Number(r.total_dispensed).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
     document.getElementById('detVolume').textContent = Number(r.current_level).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';

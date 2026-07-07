@@ -444,8 +444,7 @@ function updateCustomer() {
         "gov_id_type = ?",
         "company_name = ?", "company_address = ?",
         "company_contact_person = ?", "company_contact_number = ?",
-        "credit_limit = ?",
-        "updated_by = ?", "updated_at = NOW()"
+        "credit_limit = ?"
     ];
     $params = [
         $fullName, $firstName, $middleName, $lastName,
@@ -453,8 +452,7 @@ function updateCustomer() {
         $govIdType,
         $companyName, $companyAddress,
         $companyContactPerson, $companyContactNumber,
-        $creditLimit,
-        $me['id']
+        $creditLimit
     ];
 
     if (!empty($_FILES['gov_id_image']['name'])) {

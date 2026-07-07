@@ -441,6 +441,11 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         // 'merchandise' = merchandise only (no service items)
         // 'combined' = JO + merchandise together
         'transaction_type'           => "VARCHAR(20) NOT NULL DEFAULT 'merchandise'",
+        // ── Loyalty fields ────────────────────────────────────────────────────
+        'loyalty_type'               => 'VARCHAR(64) NULL',
+        'loyalty_card_no'            => 'VARCHAR(64) NULL',
+        'loyalty_points_earned'      => 'INT NULL',
+        'loyalty_points_redeemed'    => 'INT NULL',
     ];
 
     try {
@@ -818,6 +823,11 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             // ── Transaction type: classify based on cart contents ──────────────
             // Determined by whether items contain service-type and/or merchandise-type entries
             'transaction_type'           => $resolved_transaction_type,
+            // ── Loyalty fields ────────────────────────────────────────────────────
+            'loyalty_type'               => $data['loyalty_type'] ?? null,
+            'loyalty_card_no'            => $data['loyalty_card_no'] ?? null,
+            'loyalty_points_earned'      => isset($data['loyalty_points_earned']) ? (int)$data['loyalty_points_earned'] : null,
+            'loyalty_points_redeemed'    => isset($data['loyalty_points_redeemed']) ? (int)$data['loyalty_points_redeemed'] : null,
         ];
 
         foreach ($optional as $col => $val) {

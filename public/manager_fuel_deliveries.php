@@ -722,13 +722,26 @@ try {
     // Tank levels
     $stmt = $pdo->prepare("
         SELECT fi.*, ft.name as fuel_type_name,
-               CASE WHEN fi.current_stock<=0 THEN 'Out of Stock' WHEN fi.current_stock<=fi.critical_level THEN 'Low Stock' ELSE 'Available' END as stock_status,
                (SELECT COUNT(*) FROM fuel_pumps fp WHERE fp.fuel_type_id=fi.fuel_type_id AND fp.station_id=fi.station_id) as pump_count
         FROM fuel_inventory fi JOIN fuel_types ft ON fi.fuel_type_id=ft.id
         WHERE fi.station_id=? ORDER BY ft.name
     ");
     $stmt->execute([$station_id]);
     $tank_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Normalize: cap levels at capacity and compute status dynamically
+    foreach ($tank_data as &$td) {
+        $cap = (float)($td['capacity'] ?? 0);
+        $td['current_stock'] = min(max(0, (float)($td['current_stock'] ?? 0)), $cap);
+        $td['current_level'] = min(max(0, (float)($td['current_level'] ?? 0)), $cap);
+        if ($cap == 14000)    { $crit = 5000; $low = 7000; }
+        elseif ($cap == 7000) { $crit = 1000; $low = 2000; }
+        else                  { $crit = $cap * 0.10; $low = $cap * 0.20; }
+        if ($td['current_stock'] <= 0)          { $td['stock_status'] = 'Out of Stock'; }
+        elseif ($td['current_stock'] <= $crit)  { $td['stock_status'] = 'Critical'; }
+        elseif ($td['current_stock'] <= $low)   { $td['stock_status'] = 'Low'; }
+        else                                    { $td['stock_status'] = 'Normal'; }
+    }
+    unset($td);
 } catch (Exception $e) { error_log("tank_data: ".$e->getMessage()); }
 
 // -- Build calibration lookup from fuel_inventory (used in Fuel Transactions section) --
@@ -878,8 +891,8 @@ try {
 
 // Counts for stats
 $total_tanks    = count($tank_data);
-$available_cnt  = count(array_filter($tank_data, fn($t) => $t['stock_status'] === 'Available'));
-$low_stock_cnt  = count(array_filter($tank_data, fn($t) => $t['stock_status'] === 'Low Stock'));
+$available_cnt  = count(array_filter($tank_data, fn($t) => $t['stock_status'] === 'Normal'));
+$low_stock_cnt  = count(array_filter($tank_data, fn($t) => in_array($t['stock_status'], ['Critical', 'Low'])));
 $pending_cnt    = count($pending_readings);
 $open_variances = count(array_filter($variance_reports, fn($v) => strtolower($v['status']) === 'open'));
 $high_variances = count(array_filter($variance_reports, fn($v) => abs($v['variance_percent'] ?? 0) > 5));
@@ -943,7 +956,7 @@ function adjustColor($hex,$pct) {
 .tank-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
 .tank-name { font-size:1rem; font-weight:700; color:#333; }
 .tank-status { padding:3px 10px; border-radius:16px; font-size:.7rem; font-weight:700; text-transform:uppercase; }
-.status-available { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
+.status-available, .status-normal { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
 .status-low-stock, .status-low { background:#fff3cd; color:#CC8800; border:1px solid #ffeaa7; }
 .status-out-of-stock, .status-out { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
 .tank-level { font-size:1.6rem; font-weight:700; color:<?php echo $colors['primary']; ?>; }

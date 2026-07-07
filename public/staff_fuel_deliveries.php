@@ -17,32 +17,14 @@ $msg_type = 'success';
 if (isset($_SESSION['success'])) { $msg = $_SESSION['success']; $msg_type = 'success'; unset($_SESSION['success']); }
 if (isset($_SESSION['error']))   { $msg = $_SESSION['error'];   $msg_type = 'error';   unset($_SESSION['error']); }
 
-// ── All 17 tank entries (matches image exactly) ────────
-$TANK_CONFIG = [
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 1',     'tank'=>'Underground Tank #1',  'tanker_num'=>1,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 2',     'tank'=>'Underground Tank #2',  'tanker_num'=>2,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 3',     'tank'=>'Underground Tank #3',  'tanker_num'=>3,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 4',     'tank'=>'Underground Tank #4',  'tanker_num'=>4,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 5',     'tank'=>'Underground Tank #5',  'tanker_num'=>5,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 6',     'tank'=>'Underground Tank #6',  'tanker_num'=>6,  'capacity'=>50000],
-    ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'Underground Tank #7',  'tanker_num'=>7,  'capacity'=>20000],
-    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'Underground Tank #8',  'tanker_num'=>8,  'capacity'=>45000],
-    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 2', 'tank'=>'Underground Tank #9',  'tanker_num'=>9,  'capacity'=>45000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'Underground Tank #10', 'tanker_num'=>10, 'capacity'=>20000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 2',     'tank'=>'Underground Tank #11', 'tanker_num'=>11, 'capacity'=>20000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 3',     'tank'=>'Underground Tank #12', 'tanker_num'=>12, 'capacity'=>20000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 4',     'tank'=>'Underground Tank #13', 'tanker_num'=>13, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 1',  'tank'=>'Underground Tank #14', 'tanker_num'=>14, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 2',  'tank'=>'Underground Tank #15', 'tanker_num'=>15, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 3',  'tank'=>'Underground Tank #16', 'tanker_num'=>16, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 4',  'tank'=>'Underground Tank #17', 'tanker_num'=>17, 'capacity'=>20000],
-];
+// ── 7-Tank Configuration (canonical) ────────
+$TANK_CONFIG = get_tank_config();
 
 $FT_STYLE = [
     'Diesel'       => ['color'=>'#003d7a', 'icon'=>'fas fa-gas-pump'],
     'Turbo Diesel' => ['color'=>'#7c3aed', 'icon'=>'fas fa-gas-pump'],
     'XCS Plus'     => ['color'=>'#0369a1', 'icon'=>'fas fa-gas-pump'],
-    'XTRA UNL'     => ['color'=>'#15803d', 'icon'=>'fas fa-gas-pump'],
+    'Xtra UNL'     => ['color'=>'#15803d', 'icon'=>'fas fa-gas-pump'],
     'Kerosene'     => ['color'=>'#b45309', 'icon'=>'fas fa-fire'],
 ];
 
@@ -242,16 +224,25 @@ foreach ($TANK_CONFIG as $tc) {
     $beginning = $same_type_count > 0 ? round($cur_level / $same_type_count, 2) : 0;
 
     $total_available = $beginning + $purchases;
-    $ending_system   = max(0, $total_available - $sales - $calibration_adj);
+    $ending_system   = min(max(0, $total_available - $sales - $calibration_adj), $capacity);
 
     $current_level_tank = $ending_system;
 
     // Status
-    $fill_pct = $capacity > 0 ? ($current_level_tank / $capacity) * 100 : 0;
-    if      ($current_level_tank <= 0)  { $status = 'Out of Stock'; $sc = '#dc2626'; }
-    elseif  ($fill_pct <= 10)           { $status = 'Critical';     $sc = '#dc2626'; }
-    elseif  ($fill_pct <= 25)           { $status = 'Low Stock';    $sc = '#d97706'; }
-    else                                { $status = 'Available';    $sc = '#16a34a'; }
+    // Thresholds aligned with TANK_CONFIG_17
+    if ($capacity == 14000) {
+        $critical_lvl = 2500; $low_lvl = 5000;
+    } elseif ($capacity == 7000) {
+        $critical_lvl = 1000; $low_lvl = 2000;
+    } else {
+        $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20;
+    }
+
+    $fill_pct = $capacity > 0 ? round(($current_level_tank / $capacity) * 100, 2) : 0;
+    if      ($current_level_tank <= 0)             { $status = 'Out of Stock'; $sc = '#dc3545'; }
+    elseif  ($current_level_tank <= $critical_lvl) { $status = 'Critical';     $sc = '#dc3545'; }
+    elseif  ($current_level_tank <= $low_lvl)      { $status = 'Low';          $sc = '#fd7e14'; }
+    else                                           { $status = 'Normal';       $sc = '#28a745'; }
 
     $computed_tanks[] = [
         'level'        => $current_level_tank,
@@ -571,8 +562,8 @@ body{overflow-x:hidden;max-width:100vw}
         $total_tanks  = count($TANK_CONFIG);
         $critical_cnt = 0; $low_cnt = 0; $ok_cnt = 0;
         foreach ($computed_tanks as $ct) {
-            if ($ct['status'] === 'Available') $ok_cnt++;
-            elseif ($ct['status'] === 'Low Stock') $low_cnt++;
+            if ($ct['status'] === 'Normal') $ok_cnt++;
+            elseif ($ct['status'] === 'Low') $low_cnt++;
             else $critical_cnt++;
         }
     ?>

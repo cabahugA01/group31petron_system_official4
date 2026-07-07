@@ -323,9 +323,9 @@ function updateCustomer() {
 
     $fullName = trim("$firstName $middleName $lastName");
     $stmt = $pdo->prepare("UPDATE customers SET name=?,first_name=?,middle_name=?,last_name=?,
-        contact_number=?,address=?,customer_type=?,updated_by=?,updated_at=NOW()
+        contact_number=?,address=?,customer_type=?
         WHERE id=? AND station_id=?");
-    $stmt->execute([$fullName,$firstName,$middleName,$lastName,$contact,$address,$type,$me['id'],$id,$station_id]);
+    $stmt->execute([$fullName,$firstName,$middleName,$lastName,$contact,$address,$type,$id,$station_id]);
 
     write_audit_log($pdo,'Update',"Updated customer: $firstName $lastName",'customers',$id,'customer');
     echo json_encode(['success'=>true,'message'=>'Customer updated successfully!']);

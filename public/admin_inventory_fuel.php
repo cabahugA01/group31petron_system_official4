@@ -71,35 +71,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_
     header('Location: admin_inventory_fuel.php'); exit;
 }
 
-// ── 17-Tanker Configuration ──────────────────────────────────────────
-$TANK_CONFIG_17 = [
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 1',     'tank'=>'Underground Tank #1',  'tanker_num'=>1,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 2',     'tank'=>'Underground Tank #2',  'tanker_num'=>2,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 3',     'tank'=>'Underground Tank #3',  'tanker_num'=>3,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 4',     'tank'=>'Underground Tank #4',  'tanker_num'=>4,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 5',     'tank'=>'Underground Tank #5',  'tanker_num'=>5,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 6',     'tank'=>'Underground Tank #6',  'tanker_num'=>6,  'capacity'=>50000],
-    ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'Underground Tank #7',  'tanker_num'=>7,  'capacity'=>20000],
-    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'Underground Tank #8',  'tanker_num'=>8,  'capacity'=>45000],
-    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 2', 'tank'=>'Underground Tank #9',  'tanker_num'=>9,  'capacity'=>45000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'Underground Tank #10', 'tanker_num'=>10, 'capacity'=>20000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 2',     'tank'=>'Underground Tank #11', 'tanker_num'=>11, 'capacity'=>20000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 3',     'tank'=>'Underground Tank #12', 'tanker_num'=>12, 'capacity'=>20000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 4',     'tank'=>'Underground Tank #13', 'tanker_num'=>13, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 1',  'tank'=>'Underground Tank #14', 'tanker_num'=>14, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 2',  'tank'=>'Underground Tank #15', 'tanker_num'=>15, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 3',  'tank'=>'Underground Tank #16', 'tanker_num'=>16, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 4',  'tank'=>'Underground Tank #17', 'tanker_num'=>17, 'capacity'=>20000],
-];
+$TANK_CONFIG_17 = get_tank_config();
 
 // ── DB lookups ──────────────────────────────────────────────────────
+// FIXED: Fetch fuel inventory with tank information to properly map each tank
 $fi_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated FROM fuel_inventory WHERE station_id=?");
+    $s = $pdo->prepare("SELECT id, fuel_type, tank_number, tank_name, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated FROM fuel_inventory WHERE station_id=?");
     $s->execute([$station_id]);
-    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row)
-        $fi_lookup[strtolower(trim($row['fuel_type']))] = $row;
-} catch (Exception $e) {}
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        // Create composite key: fuel_type + tank_number or tank_name
+        $fuel_key = strtolower(trim($row['fuel_type']));
+        $tank_num = $row['tank_number'] ?? '';
+        $tank_name = strtolower(trim($row['tank_name'] ?? ''));
+        
+        // Store by fuel_type only (for backward compatibility)
+        if (!isset($fi_lookup[$fuel_key])) {
+            $fi_lookup[$fuel_key] = $row;
+        }
+        
+        // Also store by composite key if tank info exists
+        if ($tank_num) {
+            $fi_lookup[$fuel_key . '_tank_' . $tank_num] = $row;
+        }
+        if ($tank_name) {
+            $fi_lookup[$fuel_key . '_' . $tank_name] = $row;
+        }
+    }
+} catch (Exception $e) {
+    // Table might not have tank_number/tank_name columns yet
+    // Fall back to original query
+    try {
+        $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated FROM fuel_inventory WHERE station_id=?");
+        $s->execute([$station_id]);
+        foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row)
+            $fi_lookup[strtolower(trim($row['fuel_type']))] = $row;
+    } catch (Exception $e2) {}
+}
 
 $del_lookup = [];
 try {
@@ -147,65 +155,137 @@ if (!function_exists('get_canonical_fuel_name')) {
             return 'Kerosene';
         } elseif (strpos($name_lower, 'xcs') !== false) {
             return 'XCS Plus';
-        } elseif (strpos($name_lower, 'xtra') !== false || strpos($name_lower, 'unl') !== false) {
-            return 'Xtra UNL';
+        } elseif (strpos($name_lower, 'xtra') !== false || strpos($name_lower, 'unl') !== false || strpos($name_lower, 'advance') !== false) {
+            return 'XTR ADVANCE';
         }
         return $name;
     }
 }
 
-// ── Build 17 rows ──────────────────────────────────────────────────
+// ── Build 7 rows ──────────────────────────────────────────────────
 $rows = [];
 foreach ($TANK_CONFIG_17 as $tc) {
     $ft_key = strtolower(trim($tc['fuel_type']));
-    if ($ft_key === 'xcs plus') {
-        $ft_key = 'xcs plus';
-    } elseif ($ft_key === 'xtra unl') {
-        if (strpos(strtolower($tc['label']), 'xtra unl 1') !== false) {
-            $ft_key = 'xtra unl 1';
-        } elseif (strpos(strtolower($tc['label']), 'xtra unl 2') !== false) {
-            $ft_key = 'xtra unl 2';
+    $tank_num = $tc['tanker_num'];
+    
+    // Try to find tank-specific inventory record first
+    $inv = null;
+    
+    // Try 1: fuel_type + tank_number
+    if (isset($fi_lookup[$ft_key . '_tank_' . $tank_num])) {
+        $inv = $fi_lookup[$ft_key . '_tank_' . $tank_num];
+    }
+    // Try 2: fuel_type + tank name from config
+    elseif (isset($fi_lookup[$ft_key . '_' . strtolower(trim($tc['tank']))])) {
+        $inv = $fi_lookup[$ft_key . '_' . strtolower(trim($tc['tank']))];
+    }
+    // Try 3: For Xtra UNL, try numbered variants
+    elseif ($ft_key === 'xtra unl' || $ft_key === 'xtr advance') {
+        $cand = '';
+        if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'xtra unl 1'; }
+        elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'xtra unl 2'; }
+        if ($cand && isset($fi_lookup[$cand])) { 
+            $ft_key = $cand;
+            $inv = $fi_lookup[$cand];
+        } else {
+            $inv = $fi_lookup['xtra unl'] ?? null;
         }
     }
+    // Try 4: For Diesel, try numbered variants
+    elseif ($ft_key === 'diesel') {
+        $cand = '';
+        if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'diesel 1'; }
+        elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'diesel 2'; }
+        if ($cand && isset($fi_lookup[$cand])) { 
+            $ft_key = $cand;
+            $inv = $fi_lookup[$cand];
+        } else {
+            $inv = $fi_lookup['diesel'] ?? null;
+        }
+    }
+    // Try 5: Fall back to fuel_type only
+    else {
+        $inv = $fi_lookup[$ft_key] ?? null;
+    }
+    
     $tank_key = strtolower(trim($tc['tank']));
-    $inv      = $fi_lookup[$ft_key] ?? null;
     $capacity = (float)$tc['capacity'];
+    
+    // Get current level from database - this should be the individual tank's level
     $cur_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
     
-    $same_n = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key) {
+    $same_n = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key, $fi_lookup) {
         $k = strtolower(trim($t['fuel_type']));
-        if ($k === 'xtra unl') {
-            if (strpos(strtolower($t['label']), 'xtra unl 1') !== false) {
-                $k = 'xtra unl 1';
-            } elseif (strpos(strtolower($t['label']), 'xtra unl 2') !== false) {
-                $k = 'xtra unl 2';
-            }
+        if ($k === 'xtra unl' || $k === 'xtr advance') {
+            $cand = '';
+            if (strpos(strtolower($t['label']), '1') !== false) { $cand = 'xtra unl 1'; }
+            elseif (strpos(strtolower($t['label']), '2') !== false) { $cand = 'xtra unl 2'; }
+            if ($cand && isset($fi_lookup[$cand])) { $k = $cand; }
+            else { $k = 'xtra unl'; }
+        } elseif ($k === 'diesel') {
+            $cand = '';
+            if (strpos(strtolower($t['label']), '1') !== false) { $cand = 'diesel 1'; }
+            elseif (strpos(strtolower($t['label']), '2') !== false) { $cand = 'diesel 2'; }
+            if ($cand && isset($fi_lookup[$cand])) { $k = $cand; }
+            else { $k = 'diesel'; }
         }
         return $k === $ft_key;
     }));
     
     $purchases   = $del_lookup[$tank_key] ?? 0;
+    
+    // Count how many tanks share the same fuel type
+    $same_n = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key, $fi_lookup) {
+        $k = strtolower(trim($t['fuel_type']));
+        if ($k === 'xtra unl' || $k === 'xtr advance') {
+            $cand = '';
+            if (strpos(strtolower($t['label']), '1') !== false) { $cand = 'xtra unl 1'; }
+            elseif (strpos(strtolower($t['label']), '2') !== false) { $cand = 'xtra unl 2'; }
+            if ($cand && isset($fi_lookup[$cand])) { $k = $cand; }
+            else { $k = 'xtra unl'; }
+        } elseif ($k === 'diesel') {
+            $cand = '';
+            if (strpos(strtolower($t['label']), '1') !== false) { $cand = 'diesel 1'; }
+            elseif (strpos(strtolower($t['label']), '2') !== false) { $cand = 'diesel 2'; }
+            if ($cand && isset($fi_lookup[$cand])) { $k = $cand; }
+            else { $k = 'diesel'; }
+        }
+        return $k === $ft_key;
+    }));
+    
+    // FIXED: Use current level directly from database for THIS tank only
+    // Don't divide - each tank should have its own individual current_level
+    $beginning   = $cur_level;
     $sales       = $same_n > 0 ? round(($sales_lookup[$ft_key] ?? 0) / $same_n, 2) : 0;
     $calibration = $same_n > 0 ? round(($adj_lookup[$ft_key]  ?? 0) / $same_n, 2) : 0;
-    $beginning   = $same_n > 0 ? round($cur_level / $same_n, 2) : 0;
     $total_avail = $beginning + $purchases;
+    
+    // FIXED: Don't cap ending at capacity with min() - let it be what it is
+    // Calculate ending level: beginning + purchases - sales - calibration
     $ending      = max(0, $total_avail - $sales - $calibration);
     $actual_dip  = $ending;
-    $variance    = 0; // computed locally or pulled from reconciliation if needed
+    $variance    = 0;
     
-    $fill_pct = $capacity > 0 ? ($ending / $capacity) * 100 : 0;
-    if ($ending <= 0) {
-        $status = 'Out of Stock';
-        $sc = '#dc3545';
-    } elseif ($fill_pct <= 10) {
-        $status = 'Critical';
-        $sc = '#dc3545';
-    } elseif ($fill_pct <= 25) {
-        $status = 'Low';
-        $sc = '#fd7e14';
+    // Capacity-based thresholds aligned with TANK_CONFIG_17
+    if ($capacity == 14000) {
+        $critical_lvl = 2500;
+        $low_lvl = 5000;
+    } elseif ($capacity == 7000) {
+        $critical_lvl = 1000;
+        $low_lvl = 2000;
     } else {
-        $status = 'Normal';
-        $sc = '#28a745';
+        $critical_lvl = $capacity * 0.10;
+        $low_lvl = $capacity * 0.20;
+    }
+    $fill_pct = $capacity > 0 ? round(($ending / $capacity) * 100, 2) : 0;
+    if ($ending <= 0) {
+        $status = 'Out of Stock'; $sc = '#dc3545';
+    } elseif ($ending <= $critical_lvl) {
+        $status = 'Critical';     $sc = '#dc3545';
+    } elseif ($ending <= $low_lvl) {
+        $status = 'Low';          $sc = '#fd7e14';
+    } else {
+        $status = 'Normal';       $sc = '#28a745';
     }
     
     $price   = $price_lookup[$ft_key] ?? ($inv ? (float)($inv['price_per_liter'] ?? 0) : 0);
@@ -452,6 +532,133 @@ body, html { overflow-x:hidden !important; }
   </div>
 </div>
 
+<script>
+// Ensure export functions are available immediately (backup definitions if footer hasn't loaded yet)
+if (typeof exportTableToCSV === 'undefined') {
+    window.exportTableToCSV = function(tableId, filename) {
+        console.log('Using inline exportTableToCSV');
+        var table = document.getElementById(tableId);
+        if (!table) { console.error('Table not found:', tableId); return; }
+        var csv = [];
+        var headers = [];
+        var ths = table.querySelectorAll('thead th');
+        ths.forEach(function(th) {
+            if (th.textContent.trim().toLowerCase() === 'action' || th.textContent.trim().toLowerCase() === 'actions') return;
+            headers.push('"' + th.textContent.trim().replace(/"/g, '""') + '"');
+        });
+        csv.push(headers.join(','));
+        
+        var rows = table.querySelectorAll('tbody tr');
+        rows.forEach(function(row) {
+            if (row.style.display === 'none') return;
+            var cols = row.querySelectorAll('td');
+            if (cols.length === 0) return;
+            var rowData = [];
+            cols.forEach(function(col, idx) {
+                if (idx === cols.length - 1 && ths[idx] && ths[idx].textContent.trim().toLowerCase() === 'action') return;
+                var text = col.innerText || col.textContent;
+                text = text.trim().replace(/\s+/g, ' ');
+                rowData.push('"' + text.replace(/"/g, '""') + '"');
+            });
+            if (rowData.length > 0) csv.push(rowData.join(','));
+        });
+        
+        var blob = new Blob([csv.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        var link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute("download", filename || 'export.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+}
+
+if (typeof exportTableToExcel === 'undefined') {
+    window.exportTableToExcel = function(tableId, filename) {
+        console.log('Using inline exportTableToExcel');
+        var table = document.getElementById(tableId);
+        if (!table) { console.error('Table not found:', tableId); return; }
+        
+        var clone = table.cloneNode(true);
+        var headers = clone.querySelectorAll('thead th');
+        var skipIdx = -1;
+        headers.forEach(function(th, idx) {
+            if (th.textContent.trim().toLowerCase() === 'action' || th.textContent.trim().toLowerCase() === 'actions') {
+                skipIdx = idx;
+                th.remove();
+            }
+        });
+        if (skipIdx !== -1) {
+            clone.querySelectorAll('tbody tr').forEach(function(tr) {
+                var tds = tr.querySelectorAll('td');
+                if (tds[skipIdx]) tds[skipIdx].remove();
+            });
+        }
+        
+        var html = clone.outerHTML;
+        var blob = new Blob(['\ufeff' + html], {
+            type: 'application/vnd.ms-excel'
+        });
+        var link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute("download", filename || 'export.xls');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+}
+
+if (typeof exportTableToPDF === 'undefined') {
+    window.exportTableToPDF = function(tableId, title) {
+        console.log('Using inline exportTableToPDF');
+        var table = document.getElementById(tableId);
+        if (!table) { console.error('Table not found:', tableId); return; }
+        
+        var win = window.open('', '', 'height=700,width=900');
+        if (!win) { alert('Please allow popups for PDF export'); return; }
+        
+        win.document.write('<html><head><title>' + (title || 'Export') + '</title>');
+        win.document.write('<style>');
+        win.document.write('body { font-family: sans-serif; padding: 20px; color: #333; }');
+        win.document.write('h1 { color: #002F6C; font-size: 20px; margin-bottom: 20px; text-align: center; }');
+        win.document.write('table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }');
+        win.document.write('th { background-color: #002F6C; color: #fff; text-align: left; padding: 8px; font-weight: bold; }');
+        win.document.write('td { border-bottom: 1px solid #ddd; padding: 8px; }');
+        win.document.write('tr:nth-child(even) { background-color: #f9f9f9; }');
+        win.document.write('.no-print { display: none !important; }');
+        win.document.write('</style></head><body>');
+        win.document.write('<h1>' + (title || 'Petron Report') + '</h1>');
+        win.document.write('<p style="text-align:center;font-size:11px;color:#666;">Generated: ' + new Date().toLocaleString() + '</p>');
+        
+        var clone = table.cloneNode(true);
+        var headers = clone.querySelectorAll('thead th');
+        var skipIdx = -1;
+        headers.forEach(function(th, idx) {
+            if (th.textContent.trim().toLowerCase() === 'action' || th.textContent.trim().toLowerCase() === 'actions') {
+                skipIdx = idx;
+                th.classList.add('no-print');
+            }
+        });
+        if (skipIdx !== -1) {
+            clone.querySelectorAll('tbody tr').forEach(function(tr) {
+                var tds = tr.querySelectorAll('td');
+                if (tds[skipIdx]) tds[skipIdx].classList.add('no-print');
+            });
+        }
+        
+        win.document.write(clone.outerHTML);
+        win.document.write('</body></html>');
+        win.document.close();
+        
+        setTimeout(function() {
+            win.print();
+        }, 300);
+    };
+}
+
+console.log('Export functions initialized');
+</script>
+
 <?php if ($flash_ok): ?><div class="flash-ok"><?= htmlspecialchars($flash_ok) ?></div><?php endif; ?>
 <?php if ($flash_err): ?><div class="flash-err"><?= htmlspecialchars($flash_err) ?></div><?php endif; ?>
 
@@ -531,9 +738,8 @@ body, html { overflow-x:hidden !important; }
     <table class="aif-tbl" id="adminFuelInvTable">
       <thead>
         <tr>
-          <th style="width:70px; text-align:center;">Tank No.</th>
+          <th style="width:70px; text-align:center;">UGT No.</th>
           <th>Fuel Type</th>
-          <th>Tank Reference</th>
           <th style="text-align:right;">Capacity (L)</th>
           <th style="text-align:right;">Current Level (L)</th>
           <th style="text-align:center;">Available %</th>
@@ -545,7 +751,7 @@ body, html { overflow-x:hidden !important; }
       </thead>
       <tbody>
       <?php if (empty($rows)): ?>
-        <tr><td colspan="10" style="text-align:center; padding:32px; color:#6c757d;">No fuel inventory data available.</td></tr>
+        <tr><td colspan="9" style="text-align:center; padding:32px; color:#6c757d;">No fuel inventory data available.</td></tr>
       <?php else: ?>
         <?php foreach ($rows as $r):
             $var     = $r['variance'];
@@ -557,11 +763,9 @@ body, html { overflow-x:hidden !important; }
         <tr class="fuel-row"
             data-tank-num="<?= htmlspecialchars(strtolower($r['tanker_num'])) ?>"
             data-fuel-type="<?= htmlspecialchars(strtolower($r['fuel_type'])) ?>"
-            data-tank-ref="<?= htmlspecialchars(strtolower($r['label'])) ?>"
             data-status="<?= htmlspecialchars(strtolower($r['status'])) ?>">
           <td style="text-align:center;" class="bold"><?= $r['tanker_num'] ?></td>
           <td style="font-weight:700;"><?= htmlspecialchars($r['fuel_type']) ?></td>
-          <td style="font-weight:600; color:#002F70;"><?= htmlspecialchars($r['label']) ?></td>
           <td style="text-align:right; font-weight:600; color:#475569;"><?= number_format($r['capacity'], 0) ?> L</td>
           <td style="text-align:right; font-weight:700; color:#002F70;"><?= number_format($r['current_level'], 2) ?> L</td>
           <td style="text-align:center; font-weight:600;"><?= $fill ?>%</td>
@@ -591,7 +795,7 @@ body, html { overflow-x:hidden !important; }
         </div>
         <div class="modal-body">
             <table style="width:100%; font-size:13px; border-collapse:collapse;">
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0; color:#64748b; font-weight:600; width:180px;">Tank No:</td><td id="detTankId" style="font-weight:700; color:#0f172a;"></td></tr>
+                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0; color:#64748b; font-weight:600; width:180px;">UGT No:</td><td id="detTankId" style="font-weight:700; color:#0f172a;"></td></tr>
                 <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0; color:#64748b; font-weight:600;">Tank Reference:</td><td id="detTankName" style="font-weight:700; color:#0f172a;"></td></tr>
                 <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0; color:#64748b; font-weight:600;">Tank Source:</td><td id="detTankDesc" style="color:#334155;"></td></tr>
                 <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0; color:#64748b; font-weight:600;">Fuel Type:</td><td id="detFuelType" style="font-weight:700; color:#0f172a;"></td></tr>
@@ -892,7 +1096,7 @@ function printTankRecord(r) {
     pw.document.write('<div class="header"><h2>Fuel Tank Inventory Record</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
     pw.document.write('<div class="section"><h4>Tank Details</h4>');
     pw.document.write('<table class="info">');
-    pw.document.write('<tr><td>Tank No:</td><td><strong>' + r.tanker_num + '</strong></td></tr>');
+    pw.document.write('<tr><td>UGT No:</td><td><strong>' + r.tanker_num + '</strong></td></tr>');
     pw.document.write('<tr><td>Tank Reference:</td><td><strong>' + esc(r.label) + '</strong></td></tr>');
     pw.document.write('<tr><td>Tank Source:</td><td>' + esc(r.tank) + '</td></tr>');
     pw.document.write('<tr><td>Fuel Type:</td><td><strong>' + esc(r.fuel_type) + '</strong></td></tr>');
@@ -915,8 +1119,25 @@ function printTankRecord(r) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    if (typeof setupTablePagination === 'function')
+    // Initialize table pagination
+    if (typeof setupTablePagination === 'function') {
         setupTablePagination('adminFuelInvTable','adminFuelRowsLimit','adminFuelInvPagination',20);
+    } else {
+        console.warn('setupTablePagination function not found - pagination will not work');
+    }
+    
+    // Verify export functions are available
+    if (typeof exportTableToExcel !== 'function') {
+        console.error('exportTableToExcel function not found');
+    }
+    if (typeof exportTableToCSV !== 'function') {
+        console.error('exportTableToCSV function not found');
+    }
+    if (typeof exportTableToPDF !== 'function') {
+        console.error('exportTableToPDF function not found');
+    }
+    
+    console.log('Admin Fuel Inventory page initialized');
 });
 </script>
 

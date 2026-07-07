@@ -70,6 +70,17 @@ foreach ([
 }
 unset($_col_fix, $_ce);
 
+// Fetch Loyalty Points per Peso configuration setting
+$points_per_peso = 0.01;
+try {
+    $stmt = $pdo->prepare("SELECT config_value FROM module_configs WHERE config_key = 'points_per_peso' LIMIT 1");
+    $stmt->execute();
+    $val = $stmt->fetchColumn();
+    if ($val !== false && is_numeric($val)) {
+        $points_per_peso = (float)$val;
+    }
+} catch (Exception $e) {}
+
 // Active sub-section: merchandise | history | fuel | fuel_history
 $section = $_GET['section'] ?? 'merchandise';
 if (!in_array($section, ['merchandise', 'history', 'fuel', 'fuel_history'])) {
@@ -172,17 +183,22 @@ try {
     $stmt = $pdo->prepare("
         SELECT 
             c.id, 
-            c.name, 
+            c.name,
+            c.first_name,
+            c.last_name,
             c.contact_number, 
             c.credit_limit, 
             c.balance,
+            c.points,
+            c.customer_id,
+            c.id_number,
             NULL AS vehicle_type,
             NULL AS vehicle_brand,
             NULL AS vehicle_model,
             NULL AS plate_number
         FROM customers c
         WHERE c.station_id = ? AND c.status = 'active' 
-        ORDER BY c.name
+        ORDER BY c.first_name, c.last_name
     ");
     $stmt->execute([$station_id]);
     $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -475,7 +491,7 @@ $hist_offset        = ($hist_page - 1) * $hist_per_page;
 $hist_filter_date_from = $_GET['date_from']  ?? date('Y-m-01');
 $hist_filter_date_to   = $_GET['date_to']    ?? date('Y-m-d');
 $hist_filter_type      = $_GET['txn_type']   ?? '';   // job_order|merchandise|combined
-$hist_filter_ctype     = $_GET['cust_type']  ?? '';   // walkin|registered
+$hist_filter_ctype     = $_GET['cust_type']  ?? '';   // registered only (walk-in removed)
 $hist_filter_pay       = $_GET['payment']    ?? '';
 $hist_filter_pstatus   = $_GET['pstatus']    ?? '';
 $hist_search           = trim($_GET['hsearch'] ?? '');
@@ -825,9 +841,12 @@ if ($section === 'history' || $section === 'fuel_history') {
             $merch_params2[] = $hist_filter_type;
         }
         if ($mt_cid_col !== 'NULL') {
+            // Only show registered customer transactions (walk-in option removed)
             if ($hist_filter_ctype === 'registered') {
                 $merch_where2 .= " AND $mt_cid_col IS NOT NULL AND $mt_cid_col > 0";
-            } elseif ($hist_filter_ctype === 'walkin') {
+            }
+            // Legacy filter kept for backward compatibility (no longer accessible in UI)
+            elseif ($hist_filter_ctype === 'walkin') {
                 $merch_where2 .= " AND ($mt_cid_col IS NULL OR $mt_cid_col = 0)";
             }
         }
@@ -909,7 +928,7 @@ if ($section === 'history' || $section === 'fuel_history') {
         foreach ($recent_merch as $r) {
             fputcsv($out, [
                 $r['transaction_id'],
-                $r['customer_name'] ?: 'Walk-in Customer',
+                $r['customer_name'] ?: 'No Customer',
                 ucwords(str_replace('_', ' ', $r['transaction_type'])),
                 $r['vehicle_plate'] ?: '—',
                 number_format((float)$r['total_amount'], 2),
@@ -940,7 +959,7 @@ if ($section === 'history' || $section === 'fuel_history') {
             $total_amount += (float)$r['total_amount'];
             echo '<tr>';
             echo '<td>' . htmlspecialchars($r['transaction_id']) . '</td>';
-            echo '<td>' . htmlspecialchars($r['customer_name'] ?: 'Walk-in Customer') . '</td>';
+            echo '<td>' . htmlspecialchars($r['customer_name'] ?: 'No Customer') . '</td>';
             echo '<td>' . htmlspecialchars(ucwords(str_replace('_', ' ', $r['transaction_type']))) . '</td>';
             echo '<td>' . htmlspecialchars($r['vehicle_plate'] ?: '—') . '</td>';
             echo '<td style="text-align:right">&#8369;' . number_format((float)$r['total_amount'], 2) . '</td>';
@@ -1005,7 +1024,7 @@ if ($section === 'history' || $section === 'fuel_history') {
         foreach ($recent_merch as $r) {
             echo '<tr>';
             echo '<td>' . htmlspecialchars($r['transaction_id']) . '</td>';
-            echo '<td>' . htmlspecialchars($r['customer_name'] ?: 'Walk-in Customer') . '</td>';
+            echo '<td>' . htmlspecialchars($r['customer_name'] ?: 'No Customer') . '</td>';
             echo '<td>' . htmlspecialchars(ucwords(str_replace('_', ' ', $r['transaction_type']))) . '</td>';
             echo '<td>' . htmlspecialchars($r['vehicle_plate'] ?: '—') . '</td>';
             echo '<td class="amount">&#8369;' . number_format((float)$r['total_amount'], 2) . '</td>';
@@ -4422,65 +4441,27 @@ input[list] {
                             <i class="fas fa-user" style="margin-right:5px;"></i>Customer Details
                         </div>
                         
-                        <!-- Customer Type Selection -->
-                        <div style="margin-bottom:16px;">
-                            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;">
-                                Customer Type <span style="color:#dc2626;">*</span>
-                            </label>
-                            <div style="display:flex;gap:24px;align-items:center;">
-                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500;color:#475569;">
-                                    <input type="radio" name="joCustomerType" value="walk-in" 
-                                           id="joCustomerTypeWalkin" 
-                                           checked
-                                           onchange="toggleCustomerType('jo')"
-                                           style="width:16px;height:16px;cursor:pointer;">
-                                    <span>Walk-in Customer</span>
-                                </label>
-                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500;color:#475569;">
-                                    <input type="radio" name="joCustomerType" value="registered" 
-                                           id="joCustomerTypeRegistered"
-                                           onchange="toggleCustomerType('jo')"
-                                           style="width:16px;height:16px;cursor:pointer;">
-                                    <span>Registered Customer</span>
-                                </label>
-                            </div>
-                        </div>
+                        <!-- Customer Type Selection - REMOVED: Now only Registered Customers -->
+                        <input type="hidden" name="joCustomerType" value="registered" id="joCustomerTypeRegistered">
 
-                        <!-- Search Customer (for Registered Customer) -->
-                        <div id="joSearchCustomerSection" style="display:none;margin-bottom:16px;">
-                            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;">
-                                Search Customer <span style="color:#dc2626;">*</span>
-                            </label>
-                            <div style="position:relative;">
+                        <!-- Customer Input Fields -->
+                        <div class="txn-form-grid" style="margin-bottom:14px;">
+                            <div class="txn-field" style="position:relative;">
+                                <label>First Name <span style="color:#dc2626;">*</span></label>
                                 <input type="text" 
-                                       id="joSearchCustomer" 
+                                       id="joFirstName" 
                                        class="txn-input"
-                                       placeholder="Search by name, contact number, or plate number..."
+                                       placeholder="Type to search customer..."
                                        autocomplete="off"
-                                       oninput="searchCustomer('jo')"
-                                       onfocus="showCustomerResults('jo')"
-                                       style="padding-right:40px;">
-                                <i class="fas fa-search" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);color:#94a3b8;pointer-events:none;"></i>
-                                
-                                <!-- Search Results Dropdown -->
-                                <div id="joCustomerResults" 
+                                       oninput="searchCustomerByName('jo')"
+                                       onfocus="searchCustomerByName('jo')">
+                                <!-- First Name Dropdown -->
+                                <div id="joFirstNameResults" 
                                      style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;
                                             background:#fff;border:1px solid #cbd5e1;border-radius:8px;
                                             max-height:280px;overflow-y:auto;z-index:100;
                                             box-shadow:0 8px 24px rgba(0,0,0,.12);">
                                 </div>
-                            </div>
-                        </div>
-
-                        <!-- Customer Input Fields -->
-                        <div class="txn-form-grid" style="margin-bottom:14px;">
-                            <div class="txn-field">
-                                <label>First Name <span style="color:#dc2626;">*</span></label>
-                                <input type="text" 
-                                       id="joFirstName" 
-                                       class="txn-input"
-                                       placeholder="Customer first name"
-                                       autocomplete="off">
                             </div>
                             <div class="txn-field">
                                 <label>Last Name</label>
@@ -4488,7 +4469,8 @@ input[list] {
                                        id="joLastName" 
                                        class="txn-input"
                                        placeholder="Customer last name"
-                                       autocomplete="off">
+                                       autocomplete="off"
+                                       readonly>
                             </div>
                         </div>
                         <div class="txn-form-grid" style="margin-bottom:14px;">
@@ -4820,66 +4802,27 @@ input[list] {
                             <i class="fas fa-user" style="margin-right:5px;"></i>Customer Details
                         </div>
                         
-                        <!-- Customer Type Selection -->
-                        <div style="margin-bottom:16px;">
-                            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;">
-                                Customer Type <span style="color:#dc2626;">*</span>
-                            </label>
-                            <div style="display:flex;gap:24px;align-items:center;">
-                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500;color:#475569;">
-                                    <input type="radio" name="merchCustomerType" value="walk-in" 
-                                           id="merchCustomerTypeWalkin" 
-                                           checked
-                                           onchange="toggleCustomerType('merch')"
-                                           style="width:16px;height:16px;cursor:pointer;">
-                                    <span>Walk-in Customer</span>
-                                </label>
-                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500;color:#475569;">
-                                    <input type="radio" name="merchCustomerType" value="registered" 
-                                           id="merchCustomerTypeRegistered"
-                                           onchange="toggleCustomerType('merch')"
-                                           style="width:16px;height:16px;cursor:pointer;">
-                                    <span>Registered Customer</span>
-                                </label>
-                            </div>
-                        </div>
+                        <!-- Customer Type Selection - REMOVED: Now only Registered Customers -->
+                        <input type="hidden" name="merchCustomerType" value="registered" id="merchCustomerTypeRegistered">
 
-                        <!-- Search Customer (for Registered Customer) -->
-                        <div id="merchSearchCustomerSection" style="display:none;margin-bottom:16px;">
-                            <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;">
-                                Search Customer <span style="color:#dc2626;">*</span>
-                            </label>
-                            <div style="position:relative;">
-                                <input type="text" 
-                                       id="merchSearchCustomer" 
+                        <!-- Customer Input Fields (Merchandise) -->
+                        <div class="txn-form-grid" style="margin-bottom:14px;">
+                            <div class="txn-field" style="position:relative;">
+                                <label>First Name <span style="color:#dc2626;">*</span></label>
+                                <input type="text"
+                                       id="merchFirstName"
                                        class="txn-input"
-                                       placeholder="Search by name, contact number, or plate number..."
+                                       placeholder="Type to search customer..."
                                        autocomplete="off"
-                                       oninput="searchCustomer('merch')"
-                                       onfocus="showCustomerResults('merch')"
-                                       style="padding-right:40px;">
-                                <i class="fas fa-search" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);color:#94a3b8;pointer-events:none;"></i>
-                                
-                                <!-- Search Results Dropdown -->
-                                <div id="merchCustomerResults" 
+                                       oninput="searchCustomerByName('merch')"
+                                       onfocus="searchCustomerByName('merch')">
+                                <!-- First Name Dropdown -->
+                                <div id="merchFirstNameResults" 
                                      style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;
                                             background:#fff;border:1px solid #cbd5e1;border-radius:8px;
                                             max-height:280px;overflow-y:auto;z-index:100;
                                             box-shadow:0 8px 24px rgba(0,0,0,.12);">
                                 </div>
-                            </div>
-                        </div>
-
-
-                        <!-- Customer Input Fields (Merchandise) -->
-                        <div class="txn-form-grid" style="margin-bottom:14px;">
-                            <div class="txn-field">
-                                <label>First Name <span style="color:#dc2626;">*</span></label>
-                                <input type="text"
-                                       id="merchFirstName"
-                                       class="txn-input"
-                                       placeholder="Customer first name"
-                                       autocomplete="off">
                             </div>
                             <div class="txn-field">
                                 <label>Last Name</label>
@@ -4887,7 +4830,8 @@ input[list] {
                                        id="merchLastName"
                                        class="txn-input"
                                        placeholder="Customer last name"
-                                       autocomplete="off">
+                                       autocomplete="off"
+                                       readonly>
                             </div>
                         </div>
                         <div class="txn-form-grid" style="margin-bottom:14px;">
@@ -5233,7 +5177,7 @@ input[list] {
                                     </td>
                                     <td style="font-size:12px;padding:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
                                         title="<?= htmlspecialchars($txn['customer_name'] ?? '') ?>">
-                                        <?= htmlspecialchars($txn['customer_name'] ?? 'Walk-in Customer') ?>
+                                        <?= htmlspecialchars($txn['customer_name'] ?? 'No Customer') ?>
                                     </td>
                                     <td style="font-size:12px;padding:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
                                         title="<?= htmlspecialchars($txn['product_name'] ?? '') ?>">
@@ -5598,7 +5542,6 @@ input[list] {
                                         data-limit="<?= (float)$c['credit_limit'] ?>"
                                         data-balance="<?= (float)$c['balance'] ?>">
                                     <?= htmlspecialchars($c['name']) ?>
-                                    (Avail: ₱<?= number_format($c['credit_limit'] - $c['balance'], 2) ?>)
                                 </option>
                                 <?php endforeach; ?>
                             </select>
@@ -5639,6 +5582,39 @@ input[list] {
                         <div>
                             <div id="payStatusLabel" style="font-size:12px;font-weight:700;"></div>
                             <div id="payStatusSub" style="font-size:10px;margin-top:1px;color:#64748b;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Loyalty -->
+                    <div class="txn-field" style="margin-top:10px; margin-bottom:8px; border-top:1.5px solid #e2e8f0; padding-top:10px;">
+                        <label style="font-size:10px;font-weight:600;color:#475569;">Loyalty Program</label>
+                        <select id="loyaltyProgram" class="txn-select" style="font-size:12px;padding:7px 10px;" onchange="onLoyaltyChange()">
+                            <option value="No Loyalty">No Loyalty</option>
+                            <option value="Petron Rewards Card">Petron Rewards Card</option>
+                        </select>
+                    </div>
+
+                    <!-- Loyalty Fields -->
+                    <div id="loyaltyFields" style="display:none;margin-bottom:8px;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Loyalty Card No. <span style="color:#dc2626;">*</span></label>
+                                <input type="text" id="loyaltyCardNo" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="Card #">
+                            </div>
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Points Balance</label>
+                                <input type="text" id="loyaltyPointsBalance" class="txn-input" style="font-size:12px;padding:7px 10px;background:#f8fafc;" readonly placeholder="0">
+                            </div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Points Earned</label>
+                                <input type="number" id="loyaltyPointsEarned" class="txn-input" style="font-size:12px;padding:7px 10px;" min="0" value="0">
+                            </div>
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Redeem Points (Opt)</label>
+                                <input type="number" id="loyaltyPointsRedeemed" class="txn-input" style="font-size:12px;padding:7px 10px;" min="0" value="0">
+                            </div>
                         </div>
                     </div>
 
@@ -6114,6 +6090,63 @@ input[list] {
         // ── State ────────────────────────────────────────────────────────────
         let cart = [];
         let selectedProduct = null;
+        const pointsPerPeso = <?= (float)$points_per_peso ?>;
+
+        function onLoyaltyChange() {
+            const program = document.getElementById('loyaltyProgram')?.value || 'No Loyalty';
+            const fieldsWrap = document.getElementById('loyaltyFields');
+            const cardNoInput = document.getElementById('loyaltyCardNo');
+            if (fieldsWrap) {
+                if (program === 'Petron Rewards Card') {
+                    fieldsWrap.style.display = 'block';
+                    if (cardNoInput) cardNoInput.required = true;
+                    updateLoyaltyPointsEarned(getGrandTotal());
+                } else {
+                    fieldsWrap.style.display = 'none';
+                    if (cardNoInput) {
+                        cardNoInput.required = false;
+                        cardNoInput.value = '';
+                    }
+                    const pointsBalance = document.getElementById('loyaltyPointsBalance');
+                    const pointsEarned = document.getElementById('loyaltyPointsEarned');
+                    const pointsRedeemed = document.getElementById('loyaltyPointsRedeemed');
+                    if (pointsBalance) pointsBalance.value = '0';
+                    if (pointsEarned) pointsEarned.value = '0';
+                    if (pointsRedeemed) pointsRedeemed.value = '0';
+                }
+            }
+        }
+
+        function updateLoyaltyPointsEarned(grand) {
+            const program = document.getElementById('loyaltyProgram')?.value || 'No Loyalty';
+            if (program === 'Petron Rewards Card') {
+                const pointsEarnedInput = document.getElementById('loyaltyPointsEarned');
+                if (pointsEarnedInput) {
+                    pointsEarnedInput.value = Math.floor(grand * pointsPerPeso);
+                }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('loyaltyCardNo')?.addEventListener('input', function() {
+                const cardNo = this.value.trim().toLowerCase();
+                const balanceInput = document.getElementById('loyaltyPointsBalance');
+                if (!balanceInput) return;
+                if (!cardNo) {
+                    balanceInput.value = '0';
+                    return;
+                }
+                const found = customerData.find(c => 
+                    (c.customer_id && c.customer_id.toLowerCase() === cardNo) || 
+                    (c.id_number && c.id_number.toLowerCase() === cardNo)
+                );
+                if (found) {
+                    balanceInput.value = found.points || 0;
+                } else {
+                    balanceInput.value = '0';
+                }
+            });
+        });
 
         // ── Product dropdown ──────────────────────────────────────────────────
         function openProductDropdown() {
@@ -6754,26 +6787,33 @@ input[list] {
         // ── Customer data for search and autocomplete ─────────────────────────────
         // Store complete customer data including vehicle info
         const customerData = <?= json_encode(array_map(function($customer) {
-            $parts = explode(' ', trim($customer['name'] ?? ''), 2);
             return [
                 'id' => $customer['id'],
                 'full_name' => trim($customer['name'] ?? ''),
-                'first_name' => $parts[0] ?? '',
-                'last_name' => $parts[1] ?? '',
+                'first_name' => trim($customer['first_name'] ?? ''),
+                'last_name' => trim($customer['last_name'] ?? ''),
                 'contact_number' => $customer['contact_number'] ?? '',
                 'vehicle_type' => $customer['vehicle_type'] ?? '',
                 'vehicle_brand' => $customer['vehicle_brand'] ?? '',
                 'vehicle_model' => $customer['vehicle_model'] ?? '',
-                'plate_number' => $customer['plate_number'] ?? ''
+                'plate_number' => $customer['plate_number'] ?? '',
+                'points' => (int)($customer['points'] ?? 0),
+                'customer_id' => $customer['customer_id'] ?? '',
+                'id_number' => $customer['id_number'] ?? ''
             ];
         }, $customers)) ?>;
+
+        console.log('Customer data loaded:', customerData.length, 'customers');
+        if (customerData.length > 0) {
+            console.log('Sample customer:', customerData[0]);
+        }
 
         // ═══════════════════════════════════════════════════════════════════════
         // Customer Type Toggle & Search Functions
         // ═══════════════════════════════════════════════════════════════════════
         
         function toggleCustomerType(prefix) {
-            const walkinRadio = document.getElementById(prefix + 'CustomerTypeWalkin');
+            // UPDATED: First Name is typeable for search, other fields auto-fill from selection
             const searchSection = document.getElementById(prefix + 'SearchCustomerSection');
             const firstNameInput = document.getElementById(prefix + 'FirstName');
             const lastNameInput = document.getElementById(prefix + 'LastName');
@@ -6783,86 +6823,46 @@ input[list] {
             const vehicleModel = document.getElementById(prefix + 'VehicleModel');
             const vehiclePlate = document.getElementById(prefix + 'VehiclePlate');
             
-            if (walkinRadio && walkinRadio.checked) {
-                // Walk-in Customer: Show search section, enable manual input
-                if (searchSection) searchSection.style.display = 'none';
-                
-                // Clear and enable all fields for manual input
-                if (firstNameInput) {
-                    firstNameInput.value = '';
-                    firstNameInput.readOnly = false;
-                    firstNameInput.style.background = '#fff';
-                }
-                if (lastNameInput) {
-                    lastNameInput.value = '';
-                    lastNameInput.readOnly = false;
-                    lastNameInput.style.background = '#fff';
-                }
-                if (contactInput) {
-                    contactInput.value = '';
-                    contactInput.readOnly = false;
-                    contactInput.style.background = '#fff';
-                }
-                if (vehicleType) {
-                    vehicleType.value = '';
-                    vehicleType.readOnly = false;
-                    vehicleType.style.background = '#fff';
-                }
-                if (vehicleBrand) {
-                    vehicleBrand.value = '';
-                    vehicleBrand.readOnly = false;
-                    vehicleBrand.style.background = '#fff';
-                }
-                if (vehicleModel) {
-                    vehicleModel.value = '';
-                    vehicleModel.readOnly = false;
-                    vehicleModel.style.background = '#fff';
-                }
-                if (vehiclePlate) {
-                    vehiclePlate.value = '';
-                    vehiclePlate.readOnly = false;
-                    vehiclePlate.style.background = '#fff';
-                }
-            } else {
-                // Registered Customer: Show search section, make fields readonly
-                if (searchSection) searchSection.style.display = 'block';
-                
-                // Clear fields and make readonly (will be filled by search)
-                if (firstNameInput) {
-                    firstNameInput.value = '';
-                    firstNameInput.readOnly = true;
-                    firstNameInput.style.background = '#f8f9fa';
-                }
-                if (lastNameInput) {
-                    lastNameInput.value = '';
-                    lastNameInput.readOnly = true;
-                    lastNameInput.style.background = '#f8f9fa';
-                }
-                if (contactInput) {
-                    contactInput.value = '';
-                    contactInput.readOnly = true;
-                    contactInput.style.background = '#f8f9fa';
-                }
-                if (vehicleType) {
-                    vehicleType.value = '';
-                    vehicleType.readOnly = true;
-                    vehicleType.style.background = '#f8f9fa';
-                }
-                if (vehicleBrand) {
-                    vehicleBrand.value = '';
-                    vehicleBrand.readOnly = true;
-                    vehicleBrand.style.background = '#f8f9fa';
-                }
-                if (vehicleModel) {
-                    vehicleModel.value = '';
-                    vehicleModel.readOnly = true;
-                    vehicleModel.style.background = '#f8f9fa';
-                }
-                if (vehiclePlate) {
-                    vehiclePlate.value = '';
-                    vehiclePlate.readOnly = true;
-                    vehiclePlate.style.background = '#f8f9fa';
-                }
+            // Hide search section if it still exists (we removed it)
+            if (searchSection) searchSection.style.display = 'none';
+            
+            // First Name is editable for search/filter
+            if (firstNameInput) {
+                firstNameInput.value = '';
+                firstNameInput.readOnly = false;  // ✅ Can type freely
+                firstNameInput.style.background = '#fff';  // White background
+            }
+            
+            // Other fields are readonly - auto-filled from selection
+            if (lastNameInput) {
+                lastNameInput.value = '';
+                lastNameInput.readOnly = true;
+                lastNameInput.style.background = '#f8f9fa';
+            }
+            if (contactInput) {
+                contactInput.value = '';
+                contactInput.readOnly = true;
+                contactInput.style.background = '#f8f9fa';
+            }
+            if (vehicleType) {
+                vehicleType.value = '';
+                vehicleType.readOnly = true;
+                vehicleType.style.background = '#f8f9fa';
+            }
+            if (vehicleBrand) {
+                vehicleBrand.value = '';
+                vehicleBrand.readOnly = true;
+                vehicleBrand.style.background = '#f8f9fa';
+            }
+            if (vehicleModel) {
+                vehicleModel.value = '';
+                vehicleModel.readOnly = true;
+                vehicleModel.style.background = '#f8f9fa';
+            }
+            if (vehiclePlate) {
+                vehiclePlate.value = '';
+                vehiclePlate.readOnly = true;
+                vehiclePlate.style.background = '#f8f9fa';
             }
         }
 
@@ -6946,6 +6946,15 @@ input[list] {
             if (vehicleModel) vehicleModel.value = customer.vehicle_model || '';
             if (vehiclePlate) vehiclePlate.value = customer.plate_number || '';
             
+            // Automatically fill loyalty fields if customer matches
+            const loyaltyCardNoInput = document.getElementById('loyaltyCardNo');
+            if (loyaltyCardNoInput) {
+                const cardVal = customer.customer_id || customer.id_number || '';
+                loyaltyCardNoInput.value = cardVal;
+                // Dispatch input event to trigger autocomplete
+                loyaltyCardNoInput.dispatchEvent(new Event('input'));
+            }
+
             // Hide search results and clear search input
             const resultsDiv = document.getElementById(prefix + 'CustomerResults');
             const searchInput = document.getElementById(prefix + 'SearchCustomer');
@@ -6960,6 +6969,109 @@ input[list] {
             }
         }
 
+        // ── NEW: Search customer by typing in First Name field ──────────────────
+        function searchCustomerByName(prefix) {
+            const firstNameInput = document.getElementById(prefix + 'FirstName');
+            const resultsDiv = document.getElementById(prefix + 'FirstNameResults');
+            
+            if (!firstNameInput || !resultsDiv) return;
+            
+            const query = firstNameInput.value.trim().toLowerCase();
+            
+            console.log('Searching customers with query:', query);
+            
+            // Show dropdown even with 1 character
+            if (query.length < 1) {
+                resultsDiv.style.display = 'none';
+                return;
+            }
+            
+            // Filter customers by first name or last name
+            const filtered = customerData.filter(c => {
+                const firstName = (c.first_name || '').toLowerCase();
+                const lastName = (c.last_name || '').toLowerCase();
+                const fullName = (firstName + ' ' + lastName).trim();
+                
+                return firstName.includes(query) || 
+                       lastName.includes(query) ||
+                       fullName.includes(query);
+            });
+            
+            console.log('Found', filtered.length, 'matching customers');
+            
+            if (filtered.length === 0) {
+                resultsDiv.innerHTML = '<div style="padding:16px;text-align:center;color:#94a3b8;font-size:13px;">No customers found</div>';
+                resultsDiv.style.display = 'block';
+                return;
+            }
+            
+            // Build results HTML
+            let html = '';
+            filtered.forEach(customer => {
+                const displayName = (customer.first_name + ' ' + customer.last_name).trim();
+                const displayContact = customer.contact_number || 'No contact';
+                const displayVehicle = [customer.vehicle_brand, customer.vehicle_model].filter(Boolean).join(' ') || 'No vehicle';
+                const displayPlate = customer.plate_number || 'No plate';
+                
+                html += `
+                    <div onclick="selectCustomerFromName('${prefix}', ${customer.id})" 
+                         style="padding:12px 16px;cursor:pointer;border-bottom:1px solid #f1f5f9;transition:background .15s;"
+                         onmouseover="this.style.background='#f8fbff'"
+                         onmouseout="this.style.background='#fff'">
+                        <div style="font-weight:600;font-size:13px;color:#1e293b;margin-bottom:4px;">
+                            ${escapeHtml(displayName)}
+                        </div>
+                        <div style="font-size:12px;color:#64748b;display:flex;gap:12px;flex-wrap:wrap;">
+                            <span><i class="fas fa-phone" style="width:14px;"></i> ${escapeHtml(displayContact)}</span>
+                            <span><i class="fas fa-car" style="width:14px;"></i> ${escapeHtml(displayVehicle)}</span>
+                            <span><i class="fas fa-id-card" style="width:14px;"></i> ${escapeHtml(displayPlate)}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            resultsDiv.innerHTML = html;
+            resultsDiv.style.display = 'block';
+        }
+
+        // ── Select customer from First Name dropdown ────────────────────────────
+        function selectCustomerFromName(prefix, customerId) {
+            const customer = customerData.find(c => c.id == customerId);
+            if (!customer) return;
+            
+            console.log('Selected customer from name field:', customer);
+            
+            // Fill in all customer fields
+            const firstNameInput = document.getElementById(prefix + 'FirstName');
+            const lastNameInput = document.getElementById(prefix + 'LastName');
+            const contactInput = document.getElementById(prefix + 'ContactNumber');
+            const vehicleType = document.getElementById(prefix + 'VehicleType');
+            const vehicleBrand = document.getElementById(prefix + 'VehicleBrand');
+            const vehicleModel = document.getElementById(prefix + 'VehicleModel');
+            const vehiclePlate = document.getElementById(prefix + 'VehiclePlate');
+            
+            if (firstNameInput) firstNameInput.value = customer.first_name || '';
+            if (lastNameInput) lastNameInput.value = customer.last_name || '';
+            if (contactInput) contactInput.value = customer.contact_number || '';
+            if (vehicleType) vehicleType.value = customer.vehicle_type || '';
+            if (vehicleBrand) vehicleBrand.value = customer.vehicle_brand || '';
+            if (vehicleModel) vehicleModel.value = customer.vehicle_model || '';
+            if (vehiclePlate) vehiclePlate.value = customer.plate_number || '';
+            
+            // Automatically fill loyalty fields if customer matches
+            const loyaltyCardNoInput = document.getElementById('loyaltyCardNo');
+            if (loyaltyCardNoInput) {
+                const cardVal = customer.customer_id || customer.id_number || '';
+                loyaltyCardNoInput.value = cardVal;
+                // Dispatch input event to trigger autocomplete
+                loyaltyCardNoInput.dispatchEvent(new Event('input'));
+            }
+
+            // Hide the first name dropdown
+            const resultsDiv = document.getElementById(prefix + 'FirstNameResults');
+            if (resultsDiv) resultsDiv.style.display = 'none';
+        }
+
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
@@ -6968,19 +7080,20 @@ input[list] {
 
         // Close customer results when clicking outside
         document.addEventListener('click', function(e) {
-            if (!e.target.closest('#joSearchCustomer') && !e.target.closest('#joCustomerResults')) {
-                const resultsDiv = document.getElementById('joCustomerResults');
+            // Close first name dropdown
+            if (!e.target.closest('#joFirstName') && !e.target.closest('#joFirstNameResults')) {
+                const resultsDiv = document.getElementById('joFirstNameResults');
                 if (resultsDiv) resultsDiv.style.display = 'none';
             }
-            if (!e.target.closest('#merchSearchCustomer') && !e.target.closest('#merchCustomerResults')) {
-                const resultsDiv = document.getElementById('merchCustomerResults');
+            if (!e.target.closest('#merchFirstName') && !e.target.closest('#merchFirstNameResults')) {
+                const resultsDiv = document.getElementById('merchFirstNameResults');
                 if (resultsDiv) resultsDiv.style.display = 'none';
             }
         });
 
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
-            // Set initial state for walk-in customer
+            // Set initial state for No Customer
             toggleCustomerType('jo');
             toggleCustomerType('merch'); // Initialize merchandise section too
         });
@@ -7451,16 +7564,8 @@ input[list] {
             if (stock)  stock.value  = '';
             closeProductDropdown();
             
-            // Reset customer type to walk-in
-            const merchWalkinRadio = document.getElementById('merchCustomerTypeWalkin');
-            if (merchWalkinRadio) {
-                merchWalkinRadio.checked = true;
-                toggleCustomerType('merch');
-            }
-            
-            // Clear search customer field
-            const searchCustomer = document.getElementById('merchSearchCustomer');
-            if (searchCustomer) searchCustomer.value = '';
+            // Customer fields remain readonly - must search for customer
+            // (Walk-in option removed - all customers must be registered)
             
             // Clear customer details
             const merchFirstName = document.getElementById('merchFirstName');
@@ -7471,22 +7576,21 @@ input[list] {
             if (merchContactNumber) merchContactNumber.value = '';
             
             // Hide customer results if open
-            const customerResults = document.getElementById('merchCustomerResults');
-            if (customerResults) customerResults.style.display = 'none';
+            const firstNameResults = document.getElementById('merchFirstNameResults');
+            if (firstNameResults) firstNameResults.style.display = 'none';
+
+            // Reset Loyalty
+            const loyaltyProgram = document.getElementById('loyaltyProgram');
+            if (loyaltyProgram) {
+                loyaltyProgram.value = 'No Loyalty';
+                onLoyaltyChange();
+            }
         }
 
         // ── Reset Job Order form fields only ─────────────────────────────────
         function resetJobOrderForm() {
-            // Customer Type - reset to walk-in
-            const walkinRadio = document.getElementById('joCustomerTypeWalkin');
-            if (walkinRadio) {
-                walkinRadio.checked = true;
-                toggleCustomerType('jo');
-            }
-            
-            // Clear search customer field
-            const searchCustomer = document.getElementById('joSearchCustomer');
-            if (searchCustomer) searchCustomer.value = '';
+            // Customer fields remain readonly - must search for customer
+            // (Walk-in option removed - all customers must be registered)
             
             // Clear customer details
             const joFirstName = document.getElementById('joFirstName');
@@ -7495,6 +7599,10 @@ input[list] {
             if (joFirstName) joFirstName.value = '';
             if (joLastName) joLastName.value = '';
             if (joContactNumber) joContactNumber.value = '';
+            
+            // Hide customer results if open
+            const firstNameResults = document.getElementById('joFirstNameResults');
+            if (firstNameResults) firstNameResults.style.display = 'none';
             
             // Clear vehicle details
             const joVehicleType = document.getElementById('joVehicleType');
@@ -7752,6 +7860,7 @@ input[list] {
             if (v) v.textContent = '₱' + fmtNum(vat);
             if (g) g.textContent = '₱' + fmtNum(grand);
             computeChange();
+            updateLoyaltyPointsEarned(grand);
         }
 
         function fmtNum(n) {
@@ -7962,6 +8071,26 @@ input[list] {
                 }
             }
 
+            // ── Loyalty validation & fields ──────────────────────────────────
+            const loyaltyProgram = document.getElementById('loyaltyProgram')?.value || 'No Loyalty';
+            const loyaltyCardNo = (document.getElementById('loyaltyCardNo')?.value || '').trim();
+            const loyaltyPointsBalance = parseInt(document.getElementById('loyaltyPointsBalance')?.value || 0) || 0;
+            const loyaltyPointsEarned = parseInt(document.getElementById('loyaltyPointsEarned')?.value || 0) || 0;
+            const loyaltyPointsRedeemed = parseInt(document.getElementById('loyaltyPointsRedeemed')?.value || 0) || 0;
+
+            if (loyaltyProgram === 'Petron Rewards Card') {
+                if (!loyaltyCardNo) {
+                    showTxnAlert('Please enter the Loyalty Card Number.', 'warning');
+                    document.getElementById('loyaltyCardNo')?.focus();
+                    return;
+                }
+                if (loyaltyPointsRedeemed > loyaltyPointsBalance) {
+                    showTxnAlert(`Cannot redeem more points than current balance (${loyaltyPointsBalance} pts).`, 'warning');
+                    document.getElementById('loyaltyPointsRedeemed')?.focus();
+                    return;
+                }
+            }
+
             // ── JO data ───────────────────────────────────────────────────────
             let joData = {};
             if (hasService) {
@@ -8009,7 +8138,7 @@ input[list] {
                 action:              'create_transaction',
                 customer_first_name: firstName || null,
                 customer_last_name:  lastName  || null,
-                customer_name:       [firstName, lastName].filter(Boolean).join(' ') || 'Walk-in Customer',
+                customer_name:       [firstName, lastName].filter(Boolean).join(' ') || 'No Customer',
                 payment_method:      method,
                 amount_paid:         amountPaid > 0 ? amountPaid : null,
                 amount_tendered:     method === 'Cash' ? (amountPaid > 0 ? amountPaid : null) : null,
@@ -8038,6 +8167,12 @@ input[list] {
                 credit_account_number: isCredit ? (document.getElementById('creditAccountNumber')?.value || null) : null,
                 credit_po_number:      isCredit ? (document.getElementById('creditPoNumber')?.value || null) : null,
                 credit_due_date:       isCredit ? (document.getElementById('creditDueDate')?.value || null) : null,
+                
+                // Loyalty fields
+                loyalty_type:            loyaltyProgram,
+                loyalty_card_no:         loyaltyProgram === 'Petron Rewards Card' ? loyaltyCardNo : null,
+                loyalty_points_earned:   loyaltyProgram === 'Petron Rewards Card' ? loyaltyPointsEarned : null,
+                loyalty_points_redeemed: loyaltyProgram === 'Petron Rewards Card' ? loyaltyPointsRedeemed : null,
 
                 items: cart.map(i => ({
                     item_type:    i.item_type,
@@ -9635,7 +9770,7 @@ input[list] {
                         
                         // Populate modal fields
                         document.getElementById('viewMTxnRef').textContent = txn.transaction_id || '—';
-                        document.getElementById('viewMTCustomer').textContent = txn.customer_name || 'Walk-in Customer';
+                        document.getElementById('viewMTCustomer').textContent = txn.customer_name || 'No Customer';
                         document.getElementById('viewMTShift').textContent = (txn.shift_name || txn.shift_period) || '—';
                         document.getElementById('viewMTDate').textContent = txn.transaction_date || '—';
                         document.getElementById('viewMTPayMethod').textContent = txn.payment_method || '—';

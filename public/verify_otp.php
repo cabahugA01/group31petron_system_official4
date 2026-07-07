@@ -27,14 +27,15 @@ if (!empty($email)) {
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' && isset($_GET['resend']) && $_GET['resend'] === '1' && !empty($email)) {
     try {
         $uid_col = 'id';
+        // Include superadmin so developer/superadmin accounts can resend/verify OTPs
+        $role_filter_sql = "AND LOWER(TRIM(role)) IN ('staff','manager','admin','developer','superadmin')";
 
         // Find user by email
-        $stmt = $pdo->prepare("SELECT `{$uid_col}` AS user_id, username, TRIM(email) AS email, role FROM users WHERE LOWER(TRIM(email)) = LOWER(?) AND LOWER(TRIM(status)) = 'active' LIMIT 1");
+        $stmt = $pdo->prepare("SELECT `{$uid_col}` AS user_id, username, TRIM(email) AS email, role FROM users WHERE LOWER(TRIM(email)) = LOWER(?) AND LOWER(TRIM(status)) = 'active' {$role_filter_sql} LIMIT 1");
         $stmt->execute([$email]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($user) {
-            // Generate new OTP
             $otp_code = sprintf("%06d", random_int(100000, 999999));
 
             // Delete old OTPs and insert new one
@@ -100,6 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['otp'])) {
                     WHERE  prt.token      = ?
                       AND  prt.token_type = 'reset'
                       AND  LOWER(TRIM(u.status)) = 'active'
+                      AND  LOWER(TRIM(u.role)) IN ('staff','manager','admin','developer','superadmin')
                       AND  LOWER(TRIM(u.email)) = LOWER(?)
                     ORDER BY prt.id DESC
                     LIMIT  1

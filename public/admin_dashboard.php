@@ -386,22 +386,25 @@ $pending_price_requests = adm_table_exists($pdo, 'pending_price_approvals')
 $pending_inventory_approvals = $pending_purchase_orders + $pending_fuel_purchase_orders;
 $total_pending_approvals = $pending_user_accounts + $pending_customer_requests + $pending_inventory_approvals + $pending_price_requests;
 
-$fuel_total_count = adm_table_exists($pdo, 'fuel_inventory')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM fuel_inventory WHERE {$station_sql}", $station_params)
-    : 0;
-$fuel_critical_count = adm_table_exists($pdo, 'fuel_inventory')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM fuel_inventory WHERE {$station_sql} AND COALESCE(current_level, current_stock, 0) <= COALESCE(critical_level, 0)", $station_params)
-    : 0;
-$fuel_low_count = adm_table_exists($pdo, 'fuel_inventory')
-    ? (int) adm_value(
-        $pdo,
-        "SELECT COUNT(*) FROM fuel_inventory
-         WHERE {$station_sql}
-           AND COALESCE(current_level, current_stock, 0) > COALESCE(critical_level, 0)
-           AND COALESCE(current_level, current_stock, 0) <= COALESCE(reorder_level, 0)",
-        $station_params
-    )
-    : 0;
+$fuel_total_count = 0;
+$fuel_critical_count = 0;
+$fuel_low_count = 0;
+if (adm_table_exists($pdo, 'fuel_inventory')) {
+    $fuel_inv_rows = adm_rows($pdo, "SELECT current_level, current_stock, capacity FROM fuel_inventory WHERE {$station_sql}", $station_params);
+    $fuel_total_count = count($fuel_inv_rows);
+    foreach ($fuel_inv_rows as $fi_row) {
+        $capacity = (float)($fi_row['capacity'] ?? 0);
+        $level = min(max(0, (float)($fi_row['current_level'] ?? $fi_row['current_stock'] ?? 0)), $capacity);
+        if ($capacity == 14000)    { $critical_lvl = 5000; $low_lvl = 7000; }
+        elseif ($capacity == 7000) { $critical_lvl = 1000; $low_lvl = 2000; }
+        else                       { $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20; }
+        if ($level <= $critical_lvl) {
+            $fuel_critical_count++;
+        } elseif ($level <= $low_lvl) {
+            $fuel_low_count++;
+        }
+    }
+}
 $fuel_normal_count = max(0, $fuel_total_count - $fuel_low_count - $fuel_critical_count);
 
 $merch_total_count = adm_table_exists($pdo, 'station_inventory')
@@ -949,25 +952,33 @@ $recent_transactions = array_slice($recent_transactions, 0, 10);
 
 $low_inventory_rows = [];
 if (adm_table_exists($pdo, 'fuel_inventory')) {
-    $low_inventory_rows = array_merge($low_inventory_rows, adm_rows(
-        $pdo,
-        "SELECT 'Fuel' AS type,
-                fuel_type AS product,
-                COALESCE(current_level, current_stock, 0) AS current_stock,
-                COALESCE(reorder_level, 0) AS reorder_level,
-                CASE
-                    WHEN COALESCE(current_level, current_stock, 0) <= COALESCE(critical_level, 0) THEN 'Critical'
-                    WHEN COALESCE(current_level, current_stock, 0) <= COALESCE(reorder_level, 0) THEN 'Low'
-                    ELSE 'Normal'
-                END AS status,
-                'admin_inventory_fuel.php' AS action_url
-         FROM fuel_inventory
-         WHERE {$station_sql}
-           AND COALESCE(current_level, current_stock, 0) <= COALESCE(reorder_level, 0)
-         ORDER BY current_stock ASC
-         LIMIT 8",
-        $station_params
-    ));
+    $fuel_all = adm_rows($pdo, "SELECT fuel_type, current_level, current_stock, capacity FROM fuel_inventory WHERE {$station_sql}", $station_params);
+    foreach ($fuel_all as $fi_row) {
+        $capacity = (float)($fi_row['capacity'] ?? 0);
+        $level = min(max(0, (float)($fi_row['current_level'] ?? $fi_row['current_stock'] ?? 0)), $capacity);
+        if ($capacity == 14000)    { $critical_lvl = 5000; $low_lvl = 7000; }
+        elseif ($capacity == 7000) { $critical_lvl = 1000; $low_lvl = 2000; }
+        else                       { $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20; }
+        if ($level <= 0) {
+            $status = 'Out of Stock';
+        } elseif ($level <= $critical_lvl) {
+            $status = 'Critical';
+        } elseif ($level <= $low_lvl) {
+            $status = 'Low';
+        } else {
+            $status = 'Normal';
+        }
+        if ($status !== 'Normal') {
+            $low_inventory_rows[] = [
+                'type' => 'Fuel',
+                'product' => $fi_row['fuel_type'],
+                'current_stock' => $level,
+                'reorder_level' => $low_lvl,
+                'status' => $status,
+                'action_url' => 'admin_inventory_fuel.php'
+            ];
+        }
+    }
 }
 if (adm_table_exists($pdo, 'station_inventory')) {
     $product_name_expr = adm_table_exists($pdo, 'products') ? 'COALESCE(p.name, CONCAT(\'Product #\', si.product_id))' : 'CONCAT(\'Product #\', si.product_id)';

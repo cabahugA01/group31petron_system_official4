@@ -495,12 +495,19 @@ try {
     $service_queue_count = (int)$stmt->fetchColumn();
 } catch (Exception $e) {}
 
-// 5. Fuel Stock Alerts
+// 5. Fuel Stock Alerts (dynamic capacity-based thresholds: Critical + Low)
 $fuel_stock_alerts_count = 0;
 try {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM fuel_inventory WHERE station_id=? AND current_level <= reorder_level");
+    $stmt = $pdo->prepare("SELECT current_level, capacity FROM fuel_inventory WHERE station_id=?");
     $stmt->execute([$station_id]);
-    $fuel_stock_alerts_count = (int)$stmt->fetchColumn();
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $fi_row) {
+        $fi_cap   = (float)($fi_row['capacity'] ?? 0);
+        $fi_level = min(max(0, (float)($fi_row['current_level'] ?? 0)), $fi_cap);
+        if ($fi_cap == 14000)    { $fi_low = 7000; }
+        elseif ($fi_cap == 7000) { $fi_low = 3000; }
+        else                     { $fi_low = $fi_cap * 0.20; }
+        if ($fi_level <= $fi_low) $fuel_stock_alerts_count++;
+    }
 } catch (Exception $e) {}
 
 // 6. Merchandise Stock Alerts
@@ -853,17 +860,31 @@ $active_services = dashboard_fetch_all($pdo, "
     LIMIT 25
 ", [$station_id]);
 
-// Table 3: Fuel Stock Alerts
-$fuel_stock_alerts = dashboard_fetch_all($pdo, "
-    SELECT fuel_type, current_level AS current_stock, reorder_level,
-           CASE 
-               WHEN current_level <= critical_level THEN 'Critical'
-               ELSE 'Low'
-           END AS status
-    FROM fuel_inventory 
-    WHERE station_id = ? AND current_level <= reorder_level
-    ORDER BY current_level ASC
-", [$station_id]);
+// Table 3: Fuel Stock Alerts (dynamic capacity-based thresholds: Critical + Low)
+$fuel_stock_alerts = [];
+try {
+    $fi_rows = $pdo->prepare("SELECT fuel_type, current_level, capacity FROM fuel_inventory WHERE station_id=?");
+    $fi_rows->execute([$station_id]);
+    foreach ($fi_rows->fetchAll(PDO::FETCH_ASSOC) as $fi_row) {
+        $fi_cap  = (float)($fi_row['capacity'] ?? 0);
+        $fi_level = min(max(0, (float)($fi_row['current_level'] ?? 0)), $fi_cap);
+        if ($fi_cap == 14000)    { $fi_crit = 5000; $fi_low = 7000; }
+        elseif ($fi_cap == 7000) { $fi_crit = 1000; $fi_low = 2000; }
+        else                     { $fi_crit = $fi_cap * 0.10; $fi_low = $fi_cap * 0.20; }
+        if ($fi_level <= $fi_low) {  // show anything at or below Low threshold
+            if ($fi_level <= 0)           { $st = 'Out of Stock'; }
+            elseif ($fi_level <= $fi_crit){ $st = 'Critical'; }
+            else                          { $st = 'Low'; }
+            $fuel_stock_alerts[] = [
+                'fuel_type'     => $fi_row['fuel_type'],
+                'current_stock' => $fi_level,
+                'reorder_level' => $fi_low,
+                'status'        => $st,
+            ];
+        }
+    }
+    usort($fuel_stock_alerts, fn($a,$b) => $a['current_stock'] <=> $b['current_stock']);
+} catch (Exception $e) {}
 
 // Table 4: Merchandise Low Stock
 $merch_low_stock_table = dashboard_fetch_all($pdo, "
@@ -1429,24 +1450,30 @@ include __DIR__ . '/../partials/header.php';
                 <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px;">
                     <?php foreach ($tank_levels as $tl):
                         $pct        = $tl['pct'];
-                        $current    = (float)$tl['current_stock'];
+                        $current    = (float)$tl['display_stock'];
                         $capacity   = (float)$tl['total_capacity'];
-                        $reorder    = (float)$tl['reorder_level'];
-                        $critical   = (float)$tl['critical_level'];
                         $pump_name  = $tl['tank_label'];        // e.g. "DIESEL 1 - 1"
                         $fuel_name  = $tl['fuel_type_name'];    // e.g. "Diesel 1"
 
-                        // Status driven by actual DB thresholds
+                        // Status driven by dynamic capacity-based thresholds (14k=5000/7000, 7k=2000/3000)
+                        if ($capacity == 14000)     { $dynamic_crit = 5000; $dynamic_low = 7000; }
+                        elseif ($capacity == 7000)  { $dynamic_crit = 1000; $dynamic_low = 2000; }
+                        else                        { $dynamic_crit = $capacity * 0.10; $dynamic_low = $capacity * 0.20; }
+
                         if ($capacity <= 0) {
                             $status_text  = 'No Data';
                             $status_color = '#94a3b8';
                             $status_bg    = '#f1f5f9';
-                        } elseif ($current <= 0 || ($critical > 0 && $current <= $critical)) {
+                        } elseif ($current <= 0) {
+                            $status_text  = 'Out of Stock';
+                            $status_color = '#ef4444';
+                            $status_bg    = '#fef2f2';
+                        } elseif ($current <= $dynamic_crit) {
                             $status_text  = 'Critical';
                             $status_color = '#ef4444';
                             $status_bg    = '#fef2f2';
-                        } elseif ($reorder > 0 && $current <= $reorder) {
-                            $status_text  = 'Low Stock';
+                        } elseif ($current <= $dynamic_low) {
+                            $status_text  = 'Low';
                             $status_color = '#f97316';
                             $status_bg    = '#fff7ed';
                         } elseif ($pct >= 80) {

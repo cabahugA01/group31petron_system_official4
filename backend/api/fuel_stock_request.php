@@ -177,22 +177,25 @@ function handle_get_low_stock($pdo, $station_id) {
     $result = [];
     foreach ($fuels as $f) {
         $level = (float)$f['current_level'];
-        $cap   = (float)($f['capacity'] ?: 1);
+        $cap   = (float)($f['capacity'] ?? 0);
         $pct   = $cap > 0 ? ($level / $cap) * 100 : 0;
 
-        if ($level <= 0)      $status = 'OUT OF STOCK';
-        elseif ($pct <= 10)   $status = 'CRITICAL';
-        elseif ($pct <= 25)   $status = 'LOW';
-        elseif ($level <= 500) $status = 'LOW STOCK';
-        else                  $status = 'AVAILABLE';
+        if ($cap == 14000)    { $crit = 5000; $low = 7000; }
+        elseif ($cap == 7000) { $crit = 1000; $low = 2000; }
+        else                  { $crit = $cap * 0.10; $low = $cap * 0.20; }
+
+        if ($level <= 0)         { $status = 'OUT OF STOCK'; }
+        elseif ($level <= $crit) { $status = 'CRITICAL'; }
+        elseif ($level <= $low)  { $status = 'LOW'; }
+        else                     { $status = 'AVAILABLE'; }
 
         $result[] = [
             'fuel_type'     => $f['fuel_type'],
             'current_level' => $level,
-            'capacity'      => (float)$f['capacity'],
+            'capacity'      => $cap,
             'fill_pct'      => round($pct, 1),
             'status'        => $status,
-            'is_low'        => in_array($status, ['OUT OF STOCK', 'CRITICAL', 'LOW', 'LOW STOCK']),
+            'is_low'        => in_array($status, ['OUT OF STOCK', 'CRITICAL', 'LOW']),
         ];
     }
 

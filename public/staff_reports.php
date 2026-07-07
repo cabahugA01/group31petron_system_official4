@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * STAFF REPORTS & ADD-ONS MODULE
  * Professional implementation matching Manager Reports theme and styling.
@@ -299,25 +299,15 @@ try {
                 ['label' => 'Total Linked Txns', 'value' => count($report_data), 'icon' => 'fa-database', 'class' => 'stat-green'],
             ];
         } elseif ($sub_tab === 'fuel_sales') {
-            // ---- Physical Tank Config (17 tanks) ----
+            // ---- Physical Tank Config (7 tanks) ----
             $PHYSICAL_TANKS = [
-                ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1-1',     'tank'=>'Underground Tank #1',  'capacity'=>20000],
-                ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1-2',     'tank'=>'Underground Tank #2',  'capacity'=>20000],
-                ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1-3',     'tank'=>'Underground Tank #3',  'capacity'=>20000],
-                ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1-4',     'tank'=>'Underground Tank #4',  'capacity'=>20000],
-                ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2-5',     'tank'=>'Underground Tank #5',  'capacity'=>20000],
-                ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2-6',     'tank'=>'Underground Tank #6',  'capacity'=>20000],
-                ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE-1',     'tank'=>'Underground Tank #7',  'capacity'=>15000],
-                ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL-1', 'tank'=>'Underground Tank #8',  'capacity'=>15000],
-                ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL-2', 'tank'=>'Underground Tank #9',  'capacity'=>15000],
-                ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS-1',     'tank'=>'Underground Tank #10', 'capacity'=>20000],
-                ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS-2',     'tank'=>'Underground Tank #11', 'capacity'=>20000],
-                ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS-3',     'tank'=>'Underground Tank #12', 'capacity'=>20000],
-                ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS-4',     'tank'=>'Underground Tank #13', 'capacity'=>20000],
-                ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1-1',   'tank'=>'Underground Tank #14', 'capacity'=>20000],
-                ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1-2',   'tank'=>'Underground Tank #15', 'capacity'=>20000],
-                ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2-3',   'tank'=>'Underground Tank #16', 'capacity'=>20000],
-                ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2-4',   'tank'=>'Underground Tank #17', 'capacity'=>20000],
+                ['fuel_type'=>'Diesel',       'label'=>'DIESEL - 1',       'tank'=>'UGT #1',  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
+                ['fuel_type'=>'Diesel',       'label'=>'DIESEL - 2',       'tank'=>'UGT #2',  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
+                ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'UGT #3',  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
+                ['fuel_type'=>'Xtra UNL',     'label'=>'XTR ADVANCE - 1',  'tank'=>'UGT #4',  'capacity'=>7000,  'reorder_level'=>2000, 'critical_level'=>1000],
+                ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'UGT #5',  'capacity'=>7000,  'reorder_level'=>2000, 'critical_level'=>1000],
+                ['fuel_type'=>'Xtra UNL',     'label'=>'XTR ADVANCE - 2',  'tank'=>'UGT #6',  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
+                ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'UGT #7',  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
             ];
 
             // ---- 1. Meter Readings: Liters Sold = ending − beginning ± calibration ----

@@ -15,8 +15,20 @@ const ASSETS_TO_CACHE = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('[Service Worker] Pre-caching offline assets');
-      return cache.addAll(ASSETS_TO_CACHE);
+      console.log('[Service Worker] Pre-caching offline assets (resilient)');
+      // Cache assets individually and ignore failures so install does not fail
+      return Promise.all(ASSETS_TO_CACHE.map(function(asset){
+        return fetch(asset, {cache: 'no-store'}).then(function(resp){
+          if(!resp || !resp.ok){
+            console.warn('[Service Worker] Asset not cached (missing or bad):', asset, resp && resp.status);
+            return null;
+          }
+          return cache.put(asset, resp.clone());
+        }).catch(function(err){
+          console.warn('[Service Worker] Asset fetch error:', asset, err);
+          return null;
+        });
+      }));
     }).then(() => self.skipWaiting())
   );
 });

@@ -18,26 +18,7 @@ if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
     exit;
 }
 
-// ── 17-Tanker Configuration ──────────────────────────────────────────
-$TANK_CONFIG_17 = [
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 1',     'tank'=>'Underground Tank #1',  'tanker_num'=>1,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 2',     'tank'=>'Underground Tank #2',  'tanker_num'=>2,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 3',     'tank'=>'Underground Tank #3',  'tanker_num'=>3,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 1 - 4',     'tank'=>'Underground Tank #4',  'tanker_num'=>4,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 5',     'tank'=>'Underground Tank #5',  'tanker_num'=>5,  'capacity'=>50000],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL 2 - 6',     'tank'=>'Underground Tank #6',  'tanker_num'=>6,  'capacity'=>50000],
-    ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'Underground Tank #7',  'tanker_num'=>7,  'capacity'=>20000],
-    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'Underground Tank #8',  'tanker_num'=>8,  'capacity'=>45000],
-    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 2', 'tank'=>'Underground Tank #9',  'tanker_num'=>9,  'capacity'=>45000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'Underground Tank #10', 'tanker_num'=>10, 'capacity'=>20000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 2',     'tank'=>'Underground Tank #11', 'tanker_num'=>11, 'capacity'=>20000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 3',     'tank'=>'Underground Tank #12', 'tanker_num'=>12, 'capacity'=>20000],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 4',     'tank'=>'Underground Tank #13', 'tanker_num'=>13, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 1',  'tank'=>'Underground Tank #14', 'tanker_num'=>14, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 1 - 2',  'tank'=>'Underground Tank #15', 'tanker_num'=>15, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 3',  'tank'=>'Underground Tank #16', 'tanker_num'=>16, 'capacity'=>20000],
-    ['fuel_type'=>'XTRA UNL',     'label'=>'XTRA UNL 2 - 4',  'tank'=>'Underground Tank #17', 'tanker_num'=>17, 'capacity'=>20000],
-];
+$TANK_CONFIG_17 = get_tank_config();
 
 // ── AJAX Handler ─────────────────────────────────────────────────────
 if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
@@ -119,27 +100,42 @@ $total_fuel_volume = 0;
 
 foreach ($TANK_CONFIG_17 as $tc) {
     $ft_key   = strtolower(trim($tc['fuel_type']));
-    if ($ft_key === 'xtra unl') {
-        if (strpos(strtolower($tc['label']), 'xtra unl 1') !== false) {
-            $ft_key = 'xtra unl 1';
-        } elseif (strpos(strtolower($tc['label']), 'xtra unl 2') !== false) {
-            $ft_key = 'xtra unl 2';
-        }
+    if ($ft_key === 'xtra unl' || $ft_key === 'xtr advance') {
+        $cand = '';
+        if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'xtra unl 1'; }
+        elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'xtra unl 2'; }
+        if ($cand && isset($fi_lookup[$cand])) { $ft_key = $cand; }
+        else { $ft_key = 'xtra unl'; }
+    } elseif ($ft_key === 'diesel') {
+        $cand = '';
+        if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'diesel 1'; }
+        elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'diesel 2'; }
+        if ($cand && isset($fi_lookup[$cand])) { $ft_key = $cand; }
+        else { $ft_key = 'diesel'; }
     }
     $tank_key = strtolower(trim($tc['tank']));
     $inv      = $fi_lookup[$ft_key] ?? null;
 
     $capacity  = (float)$tc['capacity'];
-    $cur_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
+    $cur_level = min(
+        $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0,
+        $capacity
+    );
 
-    $same_type_count = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key) {
+    $same_type_count = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key, $fi_lookup) {
         $k = strtolower(trim($t['fuel_type']));
-        if ($k === 'xtra unl') {
-            if (strpos(strtolower($t['label']), 'xtra unl 1') !== false) {
-                $k = 'xtra unl 1';
-            } elseif (strpos(strtolower($t['label']), 'xtra unl 2') !== false) {
-                $k = 'xtra unl 2';
-            }
+        if ($k === 'xtra unl' || $k === 'xtr advance') {
+            $cand = '';
+            if (strpos(strtolower($t['label']), '1') !== false) { $cand = 'xtra unl 1'; }
+            elseif (strpos(strtolower($t['label']), '2') !== false) { $cand = 'xtra unl 2'; }
+            if ($cand && isset($fi_lookup[$cand])) { $k = $cand; }
+            else { $k = 'xtra unl'; }
+        } elseif ($k === 'diesel') {
+            $cand = '';
+            if (strpos(strtolower($t['label']), '1') !== false) { $cand = 'diesel 1'; }
+            elseif (strpos(strtolower($t['label']), '2') !== false) { $cand = 'diesel 2'; }
+            if ($cand && isset($fi_lookup[$cand])) { $k = $cand; }
+            else { $k = 'diesel'; }
         }
         return $k === $ft_key;
     }));
@@ -152,24 +148,31 @@ foreach ($TANK_CONFIG_17 as $tc) {
 
     $beginning = $same_type_count > 0 ? round($cur_level / $same_type_count, 2) : 0;
     $total_available = $beginning + $purchases;
-    $ending_system   = max(0, $total_available - $sales - $calibration);
+    $ending_system   = min(max(0, $total_available - $sales - $calibration), $capacity);
 
     $remaining_capacity = max(0, $capacity - $ending_system);
     $total_fuel_volume += $ending_system;
 
-    $fill_pct = $capacity > 0 ? ($ending_system / $capacity) * 100 : 0;
-    if ($ending_system <= 0) {
-        $status = 'Out of Stock';
-        $sc = '#dc3545';
-    } elseif ($fill_pct <= 10) {
-        $status = 'Critical';
-        $sc = '#dc3545';
-    } elseif ($fill_pct <= 25) {
-        $status = 'Low';
-        $sc = '#fd7e14';
+    // Capacity-based thresholds aligned with TANK_CONFIG_17
+    if ($capacity == 14000) {
+        $critical_lvl = 2500; $low_lvl = 5000;
+    } elseif ($capacity == 7000) {
+        $critical_lvl = 1000; $low_lvl = 2000;
     } else {
-        $status = 'Normal';
-        $sc = '#28a745';
+        $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20;
+    }
+
+    // fill_pct = actual proportion (not capped at 100)
+    $fill_pct = $capacity > 0 ? round(($ending_system / $capacity) * 100, 2) : 0;
+
+    if ($ending_system <= 0) {
+        $status = 'Out of Stock'; $sc = '#dc3545';
+    } elseif ($ending_system <= $critical_lvl) {
+        $status = 'Critical';    $sc = '#dc3545';
+    } elseif ($ending_system <= $low_lvl) {
+        $status = 'Low';         $sc = '#fd7e14';
+    } else {
+        $status = 'Normal';      $sc = '#28a745';
     }
 
     $price = $price_lookup[$ft_key] ?? ($inv ? (float)($inv['price_per_liter'] ?? 0) : 0);
@@ -182,11 +185,13 @@ foreach ($TANK_CONFIG_17 as $tc) {
         'fuel_type'          => $tc['fuel_type'],
         'capacity'           => $capacity,
         'current_volume'     => $ending_system,
+        'fill_pct'           => $fill_pct,
         'remaining_capacity' => $remaining_capacity,
         'status'             => $status,
         'status_color'       => $sc,
         'last_updated'       => $timestamp,
-        'price'              => $price
+        'price'              => $price,
+        'reorder_level'      => $low_lvl
     ];
 }
 
@@ -206,37 +211,49 @@ $alert_rows = [];
 foreach ($rows as $r) {
     if (in_array($r['status'], ['Low', 'Critical', 'Out of Stock'])) {
         $ft_key = strtolower(trim($r['fuel_type']));
-        if ($ft_key === 'xtra unl') {
-            if (strpos(strtolower($r['tank_name']), 'xtra unl 1') !== false) {
-                $ft_key = 'xtra unl 1';
-            } elseif (strpos(strtolower($r['tank_name']), 'xtra unl 2') !== false) {
-                $ft_key = 'xtra unl 2';
-            }
+        if ($ft_key === 'xtra unl' || $ft_key === 'xtr advance') {
+            $cand = '';
+            if (strpos(strtolower($r['tank_name'] ?? ''), '1') !== false) { $cand = 'xtra unl 1'; }
+            elseif (strpos(strtolower($r['tank_name'] ?? ''), '2') !== false) { $cand = 'xtra unl 2'; }
+            if ($cand && isset($fi_lookup[$cand])) { $ft_key = $cand; }
+            else { $ft_key = 'xtra unl'; }
+        } elseif ($ft_key === 'diesel') {
+            $cand = '';
+            if (strpos(strtolower($r['label'] ?? ''), '1') !== false) { $cand = 'diesel 1'; }
+            elseif (strpos(strtolower($r['label'] ?? ''), '2') !== false) { $cand = 'diesel 2'; }
+            if ($cand && isset($fi_lookup[$cand])) { $ft_key = $cand; }
+            else { $ft_key = 'diesel'; }
         }
         $inv = $fi_lookup[$ft_key] ?? null;
-        $same_type_count = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key) {
+        $same_type_count = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key, $fi_lookup) {
             $k = strtolower(trim($t['fuel_type']));
-            if ($k === 'xtra unl') {
-                if (strpos(strtolower($t['label']), 'xtra unl 1') !== false) {
-                    $k = 'xtra unl 1';
-                } elseif (strpos(strtolower($t['label']), 'xtra unl 2') !== false) {
-                    $k = 'xtra unl 2';
-                }
+            if ($k === 'xtra unl' || $k === 'xtr advance') {
+                $cand = '';
+                if (strpos(strtolower($t['label']), '1') !== false) { $cand = 'xtra unl 1'; }
+                elseif (strpos(strtolower($t['label']), '2') !== false) { $cand = 'xtra unl 2'; }
+                if ($cand && isset($fi_lookup[$cand])) { $k = $cand; }
+                else { $k = 'xtra unl'; }
+            } elseif ($k === 'diesel') {
+                $cand = '';
+                if (strpos(strtolower($t['label']), '1') !== false) { $cand = 'diesel 1'; }
+                elseif (strpos(strtolower($t['label']), '2') !== false) { $cand = 'diesel 2'; }
+                if ($cand && isset($fi_lookup[$cand])) { $k = $cand; }
+                else { $k = 'diesel'; }
             }
             return $k === $ft_key;
         }));
         
-        $reorder_level_per_tank = $inv ? (float)$inv['reorder_level'] / $same_type_count : 0.25 * $r['capacity'];
+        $reorder_level_per_tank = $inv ? (float)$inv['reorder_level'] / max(1, $same_type_count) : 0.25 * $r['capacity'];
         
         if ($r['status'] === 'Out of Stock' || $r['current_volume'] <= 0) {
             $alert_type = 'Empty Tank';
-            $recommended_action = '🚨 Urgent Refill Required - Tank Empty';
+            $recommended_action = 'Urgent Refill Required - Tank Empty';
         } elseif ($r['status'] === 'Critical') {
             $alert_type = 'Critical Fuel';
-            $recommended_action = '🚨 Critical Depletion Warning - Refill Immediately';
+            $recommended_action = 'Critical Depletion Warning - Refill Immediately';
         } else {
             $alert_type = 'Low Fuel';
-            $recommended_action = '📋 Initiate Delivery Request';
+            $recommended_action = 'Initiate Delivery Request';
         }
         
         $alert_rows[] = array_merge($r, [
@@ -631,15 +648,15 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     <?php if ($active_tab === 'overview'): ?>
     <!-- Export Buttons (Overview Tab Only) -->
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
-        <button onclick="exportTableToExcel('fuelTanksTable','manager_fuel_inventory_<?= date('Ymd') ?>')"
+        <button onclick="exportTableToExcel('mgrFuelTable','manager_fuel_inventory_<?= date('Ymd') ?>')"
                 class="flt-btn flt-btn-excel" title="Export to Excel">
             <i class="fas fa-file-excel"></i> Excel
         </button>
-        <button onclick="exportTableToCSV('fuelTanksTable','manager_fuel_inventory_<?= date('Ymd') ?>.csv')"
+        <button onclick="exportTableToCSV('mgrFuelTable','manager_fuel_inventory_<?= date('Ymd') ?>.csv')"
                 class="flt-btn flt-btn-csv" title="Export to CSV">
             <i class="fas fa-file-csv"></i> CSV
         </button>
-        <button onclick="exportTableToPDF('fuelTanksTable','Fuel Inventory Monitoring')"
+        <button onclick="exportTableToPDF('mgrFuelTable','Fuel Inventory Monitoring')"
                 class="flt-btn flt-btn-pdf" title="Export to PDF">
             <i class="fas fa-file-pdf"></i> PDF
         </button>
@@ -754,20 +771,23 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
         <table class="table" id="mgrFuelTable">
             <thead>
                 <tr>
-                    <th style="width:70px;text-align:center;">Tank ID</th>
-                    <th>Tank Name</th>
+                    <th style="text-align:center;width:80px;">UGT No.</th>
                     <th>Fuel Type</th>
-                    <th style="text-align:right;">Tank Capacity</th>
-                    <th style="text-align:right;">Current Volume</th>
-                    <th style="text-align:right;">Remaining Capacity</th>
+                    <th style="text-align:right;">Current Level (L)</th>
+                    <th style="text-align:right;">Capacity (L)</th>
+                    <th style="width:140px;text-align:center;">Fill %</th>
+                    <th style="text-align:right;">Reorder Level</th>
+                    <th style="text-align:right;">Price/L</th>
                     <th style="text-align:center;">Status</th>
                     <th>Last Updated</th>
-                    <th style="text-align:center;width:180px;">Actions</th>
+                    <th style="text-align:center;width:100px;">Actions</th>
                 </tr>
             </thead>
             <tbody id="fuelTableBody">
             <?php foreach ($rows as $r): 
                 $ts_str = $r['last_updated'] ? date('M d, Y h:i A', strtotime($r['last_updated'])) : '—';
+                $pct = $r['fill_pct'];
+                $pct_color = $pct < 25 ? '#dc3545' : ($pct < 50 ? '#fd7e14' : '#28a745');
             ?>
                 <tr class="fuel-row" 
                     data-id="<?= $r['tank_id'] ?>"
@@ -775,12 +795,20 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
                     data-desc="<?= strtolower(htmlspecialchars($r['tank_description'])) ?>"
                     data-type="<?= strtolower(htmlspecialchars($r['fuel_type'])) ?>"
                     data-status="<?= strtolower($r['status']) ?>">
-                    <td style="text-align:center;font-weight:700;color:#002F70;"><?= $r['tank_id'] ?></td>
-                    <td><strong><?= htmlspecialchars($r['tank_name']) ?></strong><br><small style="color:#64748b;"><?= htmlspecialchars($r['tank_description']) ?></small></td>
+                    <td style="text-align:center;font-weight:700;color:#002F70;"><?= htmlspecialchars($r['tank_id']) ?></td>
                     <td><span style="font-weight:600;"><?= htmlspecialchars($r['fuel_type']) ?></span></td>
-                    <td style="text-align:right;font-weight:600;color:#475569;"><?= number_format($r['capacity'], 0) ?> L</td>
                     <td style="text-align:right;font-weight:700;color:#002F70;"><?= number_format($r['current_volume'], 2) ?> L</td>
-                    <td style="text-align:right;font-weight:600;color:#0f172a;"><?= number_format($r['remaining_capacity'], 2) ?> L</td>
+                    <td style="text-align:right;font-weight:600;color:#475569;"><?= number_format($r['capacity'], 0) ?> L</td>
+                    <td>
+                        <div style="display:flex;align-items:center;gap:8px;justify-content:center;">
+                            <div style="flex:1;height:8px;background:#e0e0e0;border-radius:4px;overflow:hidden;min-width:60px;">
+                                <div style="width:<?= min($pct,100) ?>%;height:100%;background:<?= $pct_color ?>;border-radius:4px;"></div>
+                            </div>
+                            <span style="font-size:11px;font-weight:600;min-width:32px;text-align:right;"><?= number_format($pct, 1) ?>%</span>
+                        </div>
+                    </td>
+                    <td style="text-align:right;font-weight:600;color:#475569;"><?= number_format($r['reorder_level'], 0) ?> L</td>
+                    <td style="text-align:right;font-weight:600;color:#0f172a;">₱<?= number_format($r['price'], 2) ?></td>
                     <td style="text-align:center;">
                         <span class="inv-stock-badge" style="background:<?= $r['status_color'] ?>20;color:<?= $r['status_color'] ?>;border:1px solid <?= $r['status_color'] ?>40;padding:4px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;">
                             <?= htmlspecialchars($r['status']) ?>
@@ -1045,8 +1073,8 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
         </div>
         <div class="modal-body">
             <table style="width:100%;font-size:13px;border-collapse:collapse;">
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0;color:#64748b;font-weight:600;width:180px;">Tank ID:</td><td id="detTankId" style="font-weight:700;color:#0f172a;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0;color:#64748b;font-weight:600;">Tank Name:</td><td id="detTankName" style="font-weight:700;color:#0f172a;"></td></tr>
+                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0;color:#64748b;font-weight:600;width:180px;">UGT No:</td><td id="detTankId" style="font-weight:700;color:#0f172a;"></td></tr>
+                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0;color:#64748b;font-weight:600;">Tank Reference:</td><td id="detTankName" style="font-weight:700;color:#0f172a;"></td></tr>
                 <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0;color:#64748b;font-weight:600;">Tank Description:</td><td id="detTankDesc" style="color:#334155;"></td></tr>
                 <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0;color:#64748b;font-weight:600;">Fuel Type:</td><td id="detFuelType" style="font-weight:700;color:#0f172a;"></td></tr>
                 <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0;color:#64748b;font-weight:600;">Tank Capacity:</td><td id="detCapacity" style="font-weight:600;color:#475569;"></td></tr>
@@ -1301,8 +1329,8 @@ function printTankRecord(r) {
     pw.document.write('<div class="header"><h2>Fuel Tank Inventory Record</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
     pw.document.write('<div class="section"><h4>Tank Details</h4>');
     pw.document.write('<table class="info">');
-    pw.document.write('<tr><td>Tank ID:</td><td><strong>' + r.tank_id + '</strong></td></tr>');
-    pw.document.write('<tr><td>Tank Name:</td><td><strong>' + esc(r.tank_name) + '</strong></td></tr>');
+    pw.document.write('<tr><td>UGT No:</td><td><strong>' + r.tank_id + '</strong></td></tr>');
+    pw.document.write('<tr><td>Tank Reference:</td><td><strong>' + esc(r.tank_name) + '</strong></td></tr>');
     pw.document.write('<tr><td>Tank Description:</td><td>' + esc(r.tank_description) + '</td></tr>');
     pw.document.write('<tr><td>Fuel Type:</td><td><strong>' + esc(r.fuel_type) + '</strong></td></tr>');
     pw.document.write('</table></div>');
@@ -1445,7 +1473,8 @@ function printTankAlert(r) {
     pw.document.write('<div class="header"><h2>⚠ Fuel Stock Alert</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
     pw.document.write('<div class="section"><h4>Tank Information</h4>');
     pw.document.write('<table class="info">');
-    pw.document.write('<tr><td>Tank Name:</td><td><strong>' + esc(r.tank_name) + '</strong></td></tr>');
+    pw.document.write('<tr><td>UGT No:</td><td><strong>' + r.tank_id + '</strong></td></tr>');
+    pw.document.write('<tr><td>Tank Reference:</td><td><strong>' + esc(r.tank_name) + '</strong></td></tr>');
     pw.document.write('<tr><td>Location:</td><td>' + esc(r.tank_description) + '</td></tr>');
     pw.document.write('<tr><td>Fuel Type:</td><td><strong>' + esc(r.fuel_type) + '</strong></td></tr>');
     pw.document.write('</table></div>');

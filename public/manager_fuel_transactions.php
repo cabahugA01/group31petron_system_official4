@@ -855,13 +855,26 @@ try {
     // Tank levels
     $stmt = $pdo->prepare("
         SELECT fi.*, ft.name as fuel_type_name,
-               CASE WHEN fi.current_stock<=0 THEN 'Out of Stock' WHEN fi.current_stock<=fi.critical_level THEN 'Low Stock' ELSE 'Available' END as stock_status,
+               CASE WHEN fi.current_stock<=0 THEN 'Out of Stock' WHEN fi.current_stock<=fi.critical_level THEN 'Critical' ELSE 'Normal' END as stock_status,
                (SELECT COUNT(*) FROM fuel_pumps fp WHERE fp.fuel_type_id=fi.fuel_type_id AND fp.station_id=fi.station_id) as pump_count
         FROM fuel_inventory fi JOIN fuel_types ft ON fi.fuel_type_id=ft.id
         WHERE fi.station_id=? ORDER BY ft.name
     ");
     $stmt->execute([$station_id]);
     $tank_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($tank_data as &$td) {
+        $capacity = (float)($td['capacity'] ?? 0);
+        $td['current_stock'] = min(max(0, (float)($td['current_stock'] ?? 0)), $capacity);
+        $td['current_level'] = min(max(0, (float)($td['current_level'] ?? 0)), $capacity);
+        if ($capacity == 14000)    { $critical_lvl = 5000; $low_lvl = 7000; }
+        elseif ($capacity == 7000) { $critical_lvl = 1000; $low_lvl = 2000; }
+        else                       { $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20; }
+        if ($td['current_stock'] <= 0)              { $td['stock_status'] = 'Out of Stock'; }
+        elseif ($td['current_stock'] <= $critical_lvl) { $td['stock_status'] = 'Critical'; }
+        elseif ($td['current_stock'] <= $low_lvl)   { $td['stock_status'] = 'Low'; }
+        else                                        { $td['stock_status'] = 'Normal'; }
+    }
+    unset($td);
 } catch (Exception $e) { error_log("tank_data: ".$e->getMessage()); }
 
 // -- Build calibration lookup from fuel_inventory (used in Fuel Transactions section) --
@@ -1015,8 +1028,8 @@ try {
 
 // Counts for stats
 $total_tanks    = count($tank_data);
-$available_cnt  = count(array_filter($tank_data, fn($t) => $t['stock_status'] === 'Available'));
-$low_stock_cnt  = count(array_filter($tank_data, fn($t) => $t['stock_status'] === 'Low Stock'));
+$available_cnt  = count(array_filter($tank_data, fn($t) => $t['stock_status'] === 'Normal'));
+$low_stock_cnt  = count(array_filter($tank_data, fn($t) => in_array($t['stock_status'], ['Critical', 'Low', 'Out of Stock'])));
 $pending_cnt    = count($pending_readings);
 $open_variances = count(array_filter($variance_reports, fn($v) => strtolower($v['status']) === 'open'));
 $high_variances = count(array_filter($variance_reports, fn($v) => abs($v['variance_percent'] ?? 0) > 5));
@@ -1724,16 +1737,25 @@ foreach ($reconciliation_data as $rec) {
         </tr></thead>
         <tbody>
         <?php foreach ($reconciliation_data as $rec):
-            $fill_pct  = $rec['capacity'] > 0 ? ($rec['current_stock'] / $rec['capacity']) * 100 : 0;
+            $capacity = (float)($rec['capacity'] ?? 0);
+            $current_stock = min((float)$rec['current_stock'], $capacity);
+            if ($capacity == 14000) {
+                $critical_lvl = 5000;
+            } elseif ($capacity == 7000) {
+                $critical_lvl = 1000;
+            } else {
+                $critical_lvl = $capacity * 0.10;
+            }
+            $fill_pct  = $capacity > 0 ? ($current_stock / $capacity) * 100 : 0;
             $ft_key    = strtolower(trim($rec['fuel_type_name']));
             $last_del  = $last_delivery_map[$ft_key] ?? null;
             $last_rdg  = $last_reading_map[$ft_key]  ?? null;
-            $bar_color = $fill_pct > 40 ? $colors['success'] : ($fill_pct > 15 ? $colors['warning'] : $colors['danger']);
+            $bar_color = $current_stock <= $critical_lvl ? $colors['danger'] : $colors['success'];
         ?>
         <tr>
             <td><strong><?php echo htmlspecialchars($rec['fuel_type_name']); ?></strong></td>
-            <td><?php echo number_format($rec['current_stock'], 2); ?> L</td>
-            <td><?php echo $rec['capacity'] ? number_format($rec['capacity'], 2).' L' : 'N/A'; ?></td>
+            <td><?php echo number_format($current_stock, 2); ?> L</td>
+            <td><?php echo $capacity ? number_format($capacity, 2).' L' : 'N/A'; ?></td>
             <td><strong><?php echo number_format($rec['total_sold_today'], 2); ?> L</strong></td>
             <td style="font-size:.78rem;color:#555;">
                 <?php echo $last_del ? date('M j, Y', strtotime($last_del)) : '<span style="color:#bbb;">-</span>'; ?>
@@ -1755,12 +1777,10 @@ foreach ($reconciliation_data as $rec) {
                 </div>
             </td>
             <td>
-                <?php if ($fill_pct <= 0): ?>
+                <?php if ($current_stock <= 0): ?>
                     <span class="tag-investigate">OUT OF STOCK</span>
-                <?php elseif ($fill_pct <= 15): ?>
-                    <span class="tag-investigate">CRITICAL LOW</span>
-                <?php elseif ($fill_pct <= 40): ?>
-                    <span class="tag-open">LOW STOCK</span>
+                <?php elseif ($current_stock <= $critical_lvl): ?>
+                    <span class="tag-investigate">CRITICAL</span>
                 <?php else: ?>
                     <span class="tag-resolved">NORMAL</span>
                 <?php endif; ?>

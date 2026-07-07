@@ -163,6 +163,28 @@ if (!function_exists('getStatusLabel')) {
     }
 }
 
+if (!function_exists('normalizeFuelType')) {
+    function normalizeFuelType($fuel_type) {
+        $fuel_upper = strtoupper($fuel_type ?? '');
+        
+        if (strpos($fuel_upper, 'TURBO') !== false && strpos($fuel_upper, 'DIESEL') !== false) {
+            return 'Turbo Diesel';
+        } elseif (strpos($fuel_upper, 'KEROSENE') !== false) {
+            return 'Kerosene';
+        } elseif (strpos($fuel_upper, 'XCS') !== false) {
+            return 'XCS Plus';
+        } elseif (strpos($fuel_upper, 'XTRA') !== false || strpos($fuel_upper, 'UNL') !== false) {
+            return 'Xtra UNL';
+        } elseif (strpos($fuel_upper, 'DIESEL') !== false) {
+            return 'Diesel';
+        } else {
+            // Fallback: remove numbers and clean up
+            $clean = preg_replace('/\s*\d+\s*-?\s*\d*\s*/', ' ', $fuel_type);
+            return trim(preg_replace('/\s+/', ' ', $clean));
+        }
+    }
+}
+
 // ── GET Filters ──────────────────────────────────────────────
 // Default date: if no date provided in URL, use the most recent date with transactions.
 // Falls back to today if nothing found.
@@ -504,14 +526,33 @@ try {
 
 // ── EXPORTS ──────────────────────────────────────────────────
 if (in_array($export, ['excel', 'pdf'])) {
-    $headers = ['Date', 'Shift', 'Fuel Line', 'Fuel Type', 'Staff Encoder', 'Beginning', 'Ending', 'Staff Calibration', 'Manager Calibration', 'Liters Sold', 'Status', 'Validated By', 'Date Validated'];
+    $headers = ['Date', 'Shift', 'Fuel Type', 'Staff Encoder', 'Beginning', 'Ending', 'Staff Calibration', 'Manager Calibration', 'Liters Sold', 'Status', 'Validated By', 'Date Validated'];
     $rows_fmt = [];
     foreach ($records as $r) {
+        // Normalize fuel type for export
+        $fuel_display = $r['fuel_type'];
+        $fuel_upper = strtoupper($fuel_display);
+        
+        if (strpos($fuel_upper, 'TURBO') !== false && strpos($fuel_upper, 'DIESEL') !== false) {
+            $fuel_normalized = 'Turbo Diesel';
+        } elseif (strpos($fuel_upper, 'KEROSENE') !== false) {
+            $fuel_normalized = 'Kerosene';
+        } elseif (strpos($fuel_upper, 'XCS') !== false) {
+            $fuel_normalized = 'XCS Plus';
+        } elseif (strpos($fuel_upper, 'XTRA') !== false || strpos($fuel_upper, 'UNL') !== false) {
+            $fuel_normalized = 'Xtra UNL';
+        } elseif (strpos($fuel_upper, 'DIESEL') !== false) {
+            $fuel_normalized = 'Diesel';
+        } else {
+            // Fallback: remove numbers and clean up
+            $clean = preg_replace('/\s*\d+\s*-?\s*\d*\s*/', ' ', $fuel_display);
+            $fuel_normalized = trim(preg_replace('/\s+/', ' ', $clean));
+        }
+        
         $rows_fmt[] = [
             date('Y-m-d', strtotime($r['transaction_date'])),
             formatShiftLabel($r['shift_period']),
-            $r['pump_number'] ?? '—',
-            $r['fuel_type'],
+            $fuel_normalized,
             $r['staff_name'] ?? '—',
             number_format($r['previous_reading'], 2),
             number_format($r['present_reading'], 2),
@@ -759,7 +800,6 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                     <tr>
                         <th>Date</th>
                         <th>Shift</th>
-                        <th>Fuel Line</th>
                         <th>Fuel Type</th>
                         <th>Staff</th>
                         <th style="text-align:right;">Beginning</th>
@@ -773,7 +813,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                 <tbody>
                     <?php if (empty($records)): ?>
                         <tr>
-                            <td colspan="11" style="text-align:center;padding:40px;color:#94a3b8;">
+                            <td colspan="10" style="text-align:center;padding:40px;color:#94a3b8;">
                                 <i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>
                                 No calibration/readings records found for the selected filters.
                             </td>
@@ -794,8 +834,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                             <tr>
                                 <td><?= date('M d, Y', strtotime($r['transaction_date'])) ?></td>
                                 <td><strong><?= htmlspecialchars($shift_lbl) ?></strong></td>
-                                <td><strong><?= htmlspecialchars($r['pump_number'] ?? '—') ?></strong></td>
-                                <td><?= htmlspecialchars($r['fuel_type']) ?></td>
+                                <td><?= htmlspecialchars(normalizeFuelType($r['fuel_type'])) ?></td>
                                 <td><?= htmlspecialchars($r['staff_name']) ?></td>
                                 <td style="text-align:right; font-family: monospace;"><?= number_format($r['previous_reading'], 2) ?></td>
                                 <td style="text-align:right; font-family: monospace;"><?= number_format($r['present_reading'], 2) ?></td>

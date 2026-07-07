@@ -798,7 +798,6 @@ include __DIR__ . '/../partials/header.php';
                     <th style="width:100px;">Movement ID</th>
                     <th>Date</th>
                     <th>Fuel Type</th>
-                    <th>Tank Reference</th>
                     <th style="text-align:center;">Movement Type</th>
                     <th style="text-align:right;">Liters</th>
                     <th style="text-align:right;">Previous Volume</th>
@@ -810,7 +809,7 @@ include __DIR__ . '/../partials/header.php';
             <tbody id="fuelMovTableBody">
             <?php if (empty($fuel_movements)): ?>
                 <tr>
-                    <td colspan="10" style="text-align:center;padding:24px;color:#64748b;">
+                    <td colspan="9" style="text-align:center;padding:24px;color:#64748b;">
                         <i class="fas fa-info-circle" style="color:#002F6C;font-size:24px;margin-bottom:8px;display:block;"></i>
                         No fuel movements found.
                     </td>
@@ -857,7 +856,6 @@ include __DIR__ . '/../partials/header.php';
                         <td><code style="font-weight:700;">#<?= $fm['movement_id'] ?></code></td>
                         <td style="font-size:11px;color:#64748b;"><?= $date_str ?></td>
                         <td><strong><?= htmlspecialchars($fm['fuel_type']) ?></strong></td>
-                        <td><?= htmlspecialchars($fm['tank'] ?? '—') ?></td>
                         <td style="text-align:center;">
                             <span class="<?= $badge_class ?>"><?= $mov_label ?></span>
                         </td>

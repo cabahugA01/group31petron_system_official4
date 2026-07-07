@@ -105,8 +105,21 @@ try {
 } catch (Exception $e) {}
 
 $total_stock = array_sum(array_column($tanks,'current_level'));
-$low_count   = count(array_filter($tanks, fn($t) => ($t['current_level']??0) <= ($t['reorder_level']??0) && ($t['current_level']??0) > 0));
-$out_count   = count(array_filter($tanks, fn($t) => ($t['current_level']??0) <= 0));
+$low_count   = 0;
+$out_count   = 0;
+foreach ($tanks as $t) {
+    $lvl = (float)($t['current_level'] ?? $t['current_stock'] ?? 0);
+    $cap = (float)($t['capacity'] ?? 0);
+    if ($cap == 14000)    { $critical_lvl = 2500; $low_lvl = 5000; }
+    elseif ($cap == 7000) { $critical_lvl = 1000; $low_lvl = 2000; }
+    else                  { $critical_lvl = $cap * 0.10; $low_lvl = $cap * 0.20; }
+
+    if ($lvl <= 0) {
+        $out_count++;
+    } elseif ($lvl <= $low_lvl) {
+        $low_count++;
+    }
+}
 ?>
 
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
@@ -158,8 +171,15 @@ $out_count   = count(array_filter($tanks, fn($t) => ($t['current_level']??0) <= 
     $lvl  = (float)($t['current_level'] ?? $t['current_stock'] ?? 0);
     $cap  = (float)($t['capacity'] ?? 0);
     $pct  = $cap > 0 ? round($lvl/$cap*100,1) : 0;
-    $ror  = (float)($t['reorder_level'] ?? 0);
-    $status = $lvl <= 0 ? ['Out of Stock','#dc3545'] : ($lvl <= $ror ? ['Low Stock','#fd7e14'] : ['Normal','#28a745']);
+    if ($cap == 14000)    { $critical_lvl = 2500; $low_lvl = 5000; }
+    elseif ($cap == 7000) { $critical_lvl = 1000; $low_lvl = 2000; }
+    else                  { $critical_lvl = $cap * 0.10; $low_lvl = $cap * 0.20; }
+    $ror = $low_lvl;
+
+    if ($lvl <= 0)                 $status = ['Out of Stock','#dc3545'];
+    elseif ($lvl <= $critical_lvl) $status = ['Critical','#dc3545'];
+    elseif ($lvl <= $low_lvl)      $status = ['Low','#fd7e14'];
+    else                           $status = ['Normal','#28a745'];
   ?>
     <tr>
       <td><strong><?= htmlspecialchars($t['display_type'] ?? $t['fuel_type'] ?? 'N/A') ?></strong></td>

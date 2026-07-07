@@ -117,6 +117,28 @@ try {
     } catch (PDOException $e) {
         // Column already exists, ignore error
     }
+    
+    // Add loyalty-related columns if they don't exist
+    try {
+        $pdo->exec("ALTER TABLE sales ADD COLUMN loyalty_type VARCHAR(64) NULL");
+    } catch (PDOException $e) {
+        // ignore
+    }
+    try {
+        $pdo->exec("ALTER TABLE sales ADD COLUMN loyalty_card_no VARCHAR(64) NULL");
+    } catch (PDOException $e) {
+        // ignore
+    }
+    try {
+        $pdo->exec("ALTER TABLE sales ADD COLUMN loyalty_points_earned INT NULL");
+    } catch (PDOException $e) {
+        // ignore
+    }
+    try {
+        $pdo->exec("ALTER TABLE sales ADD COLUMN loyalty_points_redeemed INT NULL");
+    } catch (PDOException $e) {
+        // ignore
+    }
 } catch (PDOException $e) {}
 
 // Handle New Transaction
@@ -330,12 +352,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     } else {
                         // Insert Sale
                         $sale_id = uniqid('SALE-');
-                        $stmt = $pdo->prepare("INSERT INTO sales (id, station_id, user_id, customer, sale_date, sale_time, payment_method, total, credit_card_number, credit_card_expiry, ar_customer_id, credit_limit, status, created_at) VALUES (?, ?, ?, ?, CURDATE(), CURTIME(), ?, ?, ?, ?, ?, ?, ?, NOW())");
+                        $loyalty_type = $_POST['loyalty'] ?? null;
+                        $loyalty_card_no = $_POST['loyalty_card_no'] ?? null;
+                        $loyalty_points_earned = !empty($_POST['points_earned']) ? (int)$_POST['points_earned'] : null;
+                        $loyalty_points_redeemed = !empty($_POST['redeem_points']) ? (int)$_POST['redeem_points'] : null;
+
+                        $stmt = $pdo->prepare("INSERT INTO sales (id, station_id, user_id, customer, sale_date, sale_time, payment_method, total, credit_card_number, credit_card_expiry, ar_customer_id, credit_limit, loyalty_type, loyalty_card_no, loyalty_points_earned, loyalty_points_redeemed, status, created_at) VALUES (?, ?, ?, ?, CURDATE(), CURTIME(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
                         $stmt->execute([$sale_id, $station_id, $me['id'], $customer_name, $payment_type, $final_total, 
                             ($payment_type === 'Credit Card' ? $credit_card_number : null),
                             ($payment_type === 'Credit Card' ? $credit_card_expiry : null),
                             ($payment_type === 'Account Receivable' ? $ar_customer_id : null),
                             ($payment_type === 'Account Receivable' && !empty($credit_limit) ? $credit_limit : null),
+                            $loyalty_type,
+                            $loyalty_card_no,
+                            $loyalty_points_earned,
+                            $loyalty_points_redeemed,
                             'Completed'
                         ]);
                        $last_sale_id = $sale_id;
@@ -816,14 +847,26 @@ function closeModal(id) {
             <div>
                 <div class="form-group mb-3">
                     <label class="lbl">Payment Type</label>
-                    <select name="payment_type" id="payment_method_pos" class="inp full" onchange="toggleCreditFields()">
-                        <option value="">Select payment type</option>
+                    <select name="payment_type" id="payment_method_pos" class="inp full" onchange="toggleCreditFields(); toggleLoyaltyFields();">
+                        <option value="">-- Select Payment Method --</option>
                         <option value="Cash">Cash</option>
                         <option value="Credit Card">Credit Card</option>
-                        <option value="Account Receivable">Account Receivable (Customer Credit)</option>
+                        <option value="Debit Card">Debit Card</option>
+                        <option value="GCash">GCash</option>
+                        <option value="Maya">Maya</option>
+                        <option value="Petron Fleet Card">Petron Fleet Card</option>
+                        <option value="Credit Account">Credit Account</option>
                     </select>
                 </div>
-                
+
+                <div class="form-group mb-3">
+                    <label class="lbl">Loyalty</label>
+                    <select name="loyalty" id="loyalty_select" class="inp full" onchange="toggleLoyaltyFields()">
+                        <option value="No Loyalty">No Loyalty</option>
+                        <option value="Petron Rewards Card">Petron Rewards Card</option>
+                    </select>
+                </div>
+
                 <!-- Credit Card Field -->
                 <div class="form-group mb-3" id="credit_card_field" style="display: none;">
                     <label class="lbl">Credit Card Details</label>
@@ -831,13 +874,33 @@ function closeModal(id) {
                     <input type="text" name="credit_card_expiry" id="credit_card_expiry" class="inp full" placeholder="MM/YY" maxlength="5">
                     <small class="muted">Required for Credit Card payments</small>
                 </div>
-                
+
                 <!-- Account Receivable Field -->
                 <div class="form-group mb-3" id="account_receivable_field" style="display: none;">
                     <label class="lbl">Customer Credit Details</label>
                     <input type="text" name="customer_id" id="customer_id" class="inp full mb-2" placeholder="Customer ID">
                     <input type="text" name="credit_limit" id="credit_limit" class="inp full" placeholder="Credit Limit (optional)">
                     <small class="muted">Required for Account Receivable payments</small>
+                </div>
+
+                <!-- Loyalty Fields (shown when Petron Rewards Card selected) -->
+                <div id="loyalty_fields" style="display: none; margin-top: 8px;">
+                    <div class="form-group mb-3">
+                        <label class="lbl">Loyalty Card No.</label>
+                        <input type="text" name="loyalty_card_no" id="loyalty_card_no" class="inp full" placeholder="Enter loyalty card number">
+                    </div>
+                    <div class="form-group mb-3">
+                        <label class="lbl">Points Balance</label>
+                        <input type="text" id="points_balance" class="inp full" readonly placeholder="0">
+                    </div>
+                    <div class="form-group mb-3">
+                        <label class="lbl">Points Earned</label>
+                        <input type="number" id="points_earned" name="points_earned" class="inp full" min="0" value="0">
+                    </div>
+                    <div class="form-group mb-3">
+                        <label class="lbl">Redeem Points (optional)</label>
+                        <input type="number" id="redeem_points" name="redeem_points" class="inp full" min="0" value="0">
+                    </div>
                 </div>
             </div>
             
@@ -1396,16 +1459,32 @@ function toggleCreditFields() {
     const paymentType = document.getElementById('payment_method_pos').value;
     const creditCardField = document.getElementById('credit_card_field');
     const accountReceivableField = document.getElementById('account_receivable_field');
-    
+
     // Hide all additional fields by default
     if (creditCardField) creditCardField.style.display = 'none';
     if (accountReceivableField) accountReceivableField.style.display = 'none';
-    
+
     // Show relevant fields based on payment type
     if (paymentType === 'Credit Card') {
         if (creditCardField) creditCardField.style.display = 'block';
     } else if (paymentType === 'Account Receivable') {
         if (accountReceivableField) accountReceivableField.style.display = 'block';
+    }
+
+    // Keep loyalty fields updated as well
+    toggleLoyaltyFields();
+}
+
+// Toggle Loyalty fields
+function toggleLoyaltyFields() {
+    const loyaltySelect = document.getElementById('loyalty_select');
+    const loyaltyFields = document.getElementById('loyalty_fields');
+    if (!loyaltySelect || !loyaltyFields) return;
+
+    if (loyaltySelect.value === 'Petron Rewards Card') {
+        loyaltyFields.style.display = 'block';
+    } else {
+        loyaltyFields.style.display = 'none';
     }
 }
 
@@ -1429,7 +1508,7 @@ function validateMultiPayment() {
     
     // Validate payment type
     if (!paymentType) {
-        alert('Payment method is required. Please select Cash, Credit Card, or Account Receivable.');
+        alert('Payment method is required.');
         return false;
     }
     
@@ -1455,6 +1534,16 @@ function validateMultiPayment() {
         
         if (!customerId || !customerId.value.trim()) {
             alert('Customer ID is required for Account Receivable payments.');
+            return false;
+        }
+    }
+    
+    // Loyalty validation when Petron Rewards Card selected
+    const loyaltyEl = document.getElementById('loyalty_select');
+    if (loyaltyEl && loyaltyEl.value === 'Petron Rewards Card') {
+        const cardNo = document.getElementById('loyalty_card_no');
+        if (!cardNo || !cardNo.value.trim()) {
+            alert('Loyalty Card No. is required for Petron Rewards Card.');
             return false;
         }
     }

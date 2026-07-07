@@ -70,7 +70,7 @@ if(in_array($role, ['superadmin','admin','manager'])){
     // 4. Anomalies Detected
     $sales_data = read_json('sales.json', []);
     foreach($sales_data as $s){
-        if(($s['total'] > 10000 || $s['total'] == 0)) $header_alerts[] = ['msg'=>"Anomaly Detected: â‚±".number_format($s['total']), 'time'=>$s['date']??'', 'link'=>'transactions.php'];
+        if(($s['total'] > 10000 || $s['total'] == 0)) $header_alerts[] = ['msg'=>"Anomaly Detected: ₱".number_format($s['total']), 'time'=>$s['date']??'', 'link'=>'transactions.php'];
     }
     // 5. Inventory (keep existing)
     try {
@@ -285,11 +285,9 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_table_design.css?v=2.0.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_customer_management.css?v=2.0.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/vendor/fontawesome/css/all.min.css">
-  <!-- GLOBAL TEXT VISIBILITY FIX - Ensures all text is readable while keeping original colors -->
-  <style>
-    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-       TEXT VISIBILITY FIX - Keep all colors, just fix text contrast
-    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+    <!-- GLOBAL TEXT VISIBILITY FIX - Ensures all text is readable while keeping original colors -->
+    <style>
+        /* ===== TEXT VISIBILITY FIX - Keep all colors, just fix text contrast ===== */
     
     /* Only fix form labels and inputs - keep everything else as is */
     label:not([style*="color:"]), 
@@ -811,7 +809,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
             top: 0; left: 0;
             width: 100%;
             height: 70px;
-            z-index: 1002;
+            z-index: 12002;
             background-color: var(--header-bg);
             padding: 0; /* Reset padding to handle split bg */
             display: flex;
@@ -2341,7 +2339,152 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
       </style>
 </head>
 <body class="app" data-page="<?php echo htmlspecialchars($page_id); ?>" data-role="<?php echo htmlspecialchars($role); ?>">
-  <!-- Debug Info (remove after fixing) -->
+<!-- NUCLEAR-HEADER-FIX: Force header above any overlays and ensure clicks reach controls -->
+<style id="nuclearHeaderFix">
+    .top-header{ position:fixed !important; top:0; left:0; right:0; z-index:2147483647 !important; pointer-events:auto !important; }
+    .top-header *{ pointer-events:auto !important; }
+    /* Make common backdrop/overlay elements pass pointer-events through so header remains clickable */
+    .mobile-sidebar-backdrop, .modal-backdrop, .sr-modal-overlay, .overlay-block, .ui-block { pointer-events:none !important; }
+    /* Keep dropdowns above everything */
+    #notificationDropdown, #profileDropdown, .notif-dropdown, .profile-dropdown { z-index:2147483646 !important; pointer-events:auto !important; }
+</style>
+
+<!-- Move header dropdowns to body to avoid clipping by ancestor overflow -->
+<script>
+(function(){
+    function moveToBody(id){
+        try{
+            var el = document.getElementById(id);
+            if(!el) return null;
+            if(el.dataset.moved === '1') return el;
+            var ph = document.createElement('div'); ph.style.display='none'; el.parentNode.insertBefore(ph, el);
+            el.dataset._ph = '';
+            document.body.appendChild(el);
+            el.style.position = 'fixed';
+            el.style.left = '0px';
+            el.style.top = '0px';
+            el.style.margin = '0';
+            el.dataset.moved = '1';
+            return el;
+        }catch(e){return null;}
+    }
+
+    function positionDropdown(dropdownId, triggerEl){
+        try{
+            var d = document.getElementById(dropdownId);
+            if(!d || !triggerEl) return;
+            // ensure block is visible to measure
+            var wasHidden = window.getComputedStyle(d).display === 'none';
+            if(wasHidden){ d.style.display = 'block'; d.style.visibility = 'hidden'; }
+            var rect = triggerEl.getBoundingClientRect();
+
+            // Prefer a compact width for profile, larger for notifications
+            var desiredWidth;
+            if(dropdownId === 'profileDropdown') {
+                desiredWidth = 240; // profile menu should be compact
+            } else if (dropdownId === 'notificationDropdown') {
+                desiredWidth = Math.min(380, Math.max(260, d.offsetWidth || 320));
+            } else {
+                desiredWidth = Math.min(380, Math.max(240, d.offsetWidth || 320));
+            }
+            // Never exceed viewport minus small padding
+            var width = Math.min(desiredWidth, Math.max(160, window.innerWidth - 24));
+            d.style.width = width + 'px';
+
+            // Position horizontally: prefer aligning right edge to trigger's right edge
+            var left = Math.round(rect.right - width - 6);
+            // If there's not enough room on the right, try aligning left edge to trigger's left
+            if(left < 8) left = Math.round(rect.left + 6);
+            if(left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8);
+
+            // Position vertically: below trigger; if dropdown would overflow viewport bottom, place above
+            var topBelow = Math.round(rect.bottom + 8);
+            var bottomOverflow = topBelow + d.offsetHeight > window.innerHeight - 8;
+            var top = topBelow;
+            if(dropdownId === 'profileDropdown' && bottomOverflow){
+                // place above trigger if it would overflow
+                top = Math.round(rect.top - d.offsetHeight - 8);
+                if(top < 8) top = 8;
+            }
+
+            d.style.left = left + 'px';
+            d.style.top = top + 'px';
+            d.style.visibility = '';
+            if(wasHidden && !d.classList.contains('show')) d.style.display = 'none';
+        }catch(e){console && console.warn && console.warn('positionDropdown err', e);}  
+    }
+
+    function toggleDropdown(dropdownId, triggerSel){
+        var trigger = (typeof triggerSel === 'string') ? document.querySelector(triggerSel) : triggerSel;
+        if(!trigger) return;
+        var d = moveToBody(dropdownId) || document.getElementById(dropdownId);
+        if(!d) return;
+        var showing = d.classList.contains('show');
+        if(!showing){
+            // Close any other header dropdowns first (mutual exclusivity)
+            closeAllHeaderDropdowns(dropdownId);
+            d.classList.add('show');
+            d.style.display = 'block';
+            positionDropdown(dropdownId, trigger);
+        } else {
+            d.classList.remove('show');
+            d.style.display = 'none';
+        }
+    }
+
+    function closeAllHeaderDropdowns(exceptId){
+        try{
+            var ids = ['notificationDropdown','profileDropdown','varianceAlertDropdown'];
+            ids.forEach(function(id){
+                if(!id) return;
+                if(id === exceptId) return;
+                var el = document.getElementById(id);
+                if(!el) return;
+                el.classList.remove('show');
+                el.style.display = 'none';
+            });
+            // Also hide any generic dropdown classes used in header
+            document.querySelectorAll('.notif-dropdown, .profile-dropdown').forEach(function(el){
+                if(el.id && el.id === exceptId) return;
+                el.classList.remove('show'); el.style.display = 'none';
+            });
+        }catch(e){ console && console.warn && console.warn('closeAllHeaderDropdowns err', e); }
+    }
+
+    // Replace existing toggle handlers with safe wrappers
+    window.petronToggleNotif = function(e){
+        try{ toggleDropdown('notificationDropdown', '#notificationBell'); if(e && e.preventDefault) e.preventDefault(); }catch(err){}
+    };
+    window.petronToggleProfile = function(e){
+        try{ toggleDropdown('profileDropdown', '#profileMenu'); if(e && e.preventDefault) e.preventDefault(); }catch(err){}
+    };
+
+    // Reposition visible dropdowns on resize/scroll
+    function repositionAll(){
+        var nb = document.getElementById('notificationBell');
+        var pd = document.getElementById('profileMenu');
+        var nd = document.getElementById('notificationDropdown');
+        var prd = document.getElementById('profileDropdown');
+        if(nd && nd.classList.contains('show') && nb) positionDropdown('notificationDropdown', nb);
+        if(prd && prd.classList.contains('show') && pd) positionDropdown('profileDropdown', pd);
+    }
+    window.addEventListener('resize', function(){ setTimeout(repositionAll, 50); }, {passive:true});
+    window.addEventListener('scroll', function(){ setTimeout(repositionAll, 50); }, {passive:true});
+
+    // On DOM ready, move dropdowns so they cannot be clipped
+    document.addEventListener('DOMContentLoaded', function(){
+        moveToBody('notificationDropdown');
+        moveToBody('profileDropdown');
+        moveToBody('varianceAlertDropdown');
+    });
+
+    // Expose helpers so other header scripts can reuse positioning/toggle behavior
+    window.petronHeaderToggle = toggleDropdown;
+    window.petronHeaderRepositionAll = repositionAll;
+})();
+</script>
+
+    <!-- Debug Info (remove after fixing) -->
   <aside class="sidebar" id="mainSidebar">
     <div class="sidebar-menu">
             <nav class="nav">
@@ -2653,10 +2796,33 @@ require_once __DIR__ . '/rbac_menu.php';
   <div class="mobile-sidebar-backdrop" id="mobileSidebarBackdrop"></div>
 
   <!-- GLOBAL TOP HEADER -->
+    <script>
+    // Fallback global stubs — ensures onclick attributes don't throw
+    // These will be replaced by full implementations later in the file if available.
+    window.petronToggleSidebar = window.petronToggleSidebar || function(e){
+        try { console && console.warn && console.warn('petronToggleSidebar fallback'); } catch(e){}
+        try {
+            var s = document.getElementById('mainSidebar');
+            if (s) s.classList.toggle('collapsed');
+        } catch(err){}
+    };
+    window.petronToggleNotif = window.petronToggleNotif || function(e){
+        try { console && console.warn && console.warn('petronToggleNotif fallback'); } catch(e){}
+        try { var nd = document.getElementById('notificationDropdown'); if (nd) nd.classList.toggle('show'); } catch(err){}
+    };
+    window.petronToggleProfile = window.petronToggleProfile || function(e){
+        try { console && console.warn && console.warn('petronToggleProfile fallback'); } catch(e){}
+        try { var pd = document.getElementById('profileDropdown'); if (pd) pd.classList.toggle('show'); } catch(err){}
+    };
+    window.petronToggleTheme = window.petronToggleTheme || function(e){
+        try { console && console.warn && console.warn('petronToggleTheme fallback'); } catch(e){}
+        try { document.body.classList.toggle('dark-theme'); } catch(err){}
+    };
+    </script>
     <header class="top-header">
         <div class="header-left">
             <!-- Sidebar Toggle Button -->
-            <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" aria-label="Toggle Sidebar" onclick="petronToggleSidebar()" style="margin-right: 15px; z-index: 99999 !important; pointer-events: auto !important; position: relative !important; cursor: pointer !important;">
+            <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" aria-label="Toggle Sidebar" onclick="petronToggleSidebar(event)" style="margin-right: 15px; z-index: 99999 !important; pointer-events: auto !important; position: relative !important; cursor: pointer !important;">
                 <i class="fas fa-bars" id="sidebarToggleIcon" style="pointer-events: none !important;"></i>
             </button>
             <?php 
@@ -2789,7 +2955,7 @@ require_once __DIR__ . '/rbac_menu.php';
             <?php endif; ?>
 
             <!-- Theme Toggle Button -->
-            <div class="theme-toggle-btn" id="themeToggle" title="Switch to Dark Mode" aria-label="Toggle theme" onclick="petronToggleTheme()">
+            <div class="theme-toggle-btn" id="themeToggle" title="Switch to Dark Mode" aria-label="Toggle theme" onclick="petronToggleTheme(event)">
                 <i class="fas fa-moon" id="themeIcon"></i>
             </div>
 
@@ -2960,7 +3126,7 @@ require_once __DIR__ . '/rbac_menu.php';
     </div>
     <?php endforeach; ?>
 
-    <!-- â•â• GLOBAL JS TOAST HELPER â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+    <!-- GLOBAL JS TOAST HELPER - Simple toast notifications helper -->
     <div id="petron-toast-container"></div>
     <script>
     /**
@@ -3054,13 +3220,24 @@ require_once __DIR__ . '/rbac_menu.php';
 
 
     // ── Global header action functions (called via onclick attributes) ──────────
-
-    window.petronToggleSidebar = function() {
+    
+    // FIXED: Ensure functions are immediately available and properly handle all edge cases
+    
+    window.petronToggleSidebar = function(e) {
+        console.log('Sidebar toggle clicked'); // Debug
+        if (e) {
+            e.stopPropagation();
+        }
+        // Close any open header dropdowns when toggling sidebar
+        try{ if (typeof closeAllHeaderDropdowns === 'function') closeAllHeaderDropdowns(); }catch(e){}
         var s = document.getElementById('mainSidebar');
         var backdrop = document.getElementById('mobileSidebarBackdrop');
         var icon = document.getElementById('sidebarToggleIcon');
         var main = document.querySelector('.main');
-        if (!s) return;
+        if (!s) {
+            console.error('Sidebar element not found');
+            return;
+        }
         if (window.innerWidth < 992) {
             var isOpen = s.classList.contains('mobile-open');
             s.classList.toggle('mobile-open');
@@ -3087,13 +3264,33 @@ require_once __DIR__ . '/rbac_menu.php';
     };
 
     window.petronToggleNotif = function(e) {
-        if (e) { e.stopPropagation(); }
+        // Prefer using shared header toggle if available
+        if (window.petronHeaderToggle) {
+            if (e && e.preventDefault) e.preventDefault();
+            window.petronHeaderToggle('notificationDropdown', '#notificationBell');
+            if (typeof window.loadStaffNotifications === 'function') window.loadStaffNotifications();
+            else if (typeof window.saLoadNotifications === 'function') window.saLoadNotifications();
+            return;
+        }
+        console.log('Notification bell clicked'); // Debug
+        // Allow clicks originating from inside the dropdown (links) to proceed
+        if (e && e.target && e.target.closest && e.target.closest('.notif-dropdown')) {
+            return; // let link click proceed
+        }
+        if (e) {
+            e.stopPropagation();
+        }
         var nd = document.getElementById('notificationDropdown');
         var pd = document.getElementById('profileDropdown');
-        if (pd) pd.classList.remove('show');
-        if (!nd) return;
+        if (pd) { pd.classList.remove('show'); pd.style.display = 'none'; }
+        if (!nd) {
+            console.error('Notification dropdown not found');
+            return;
+        }
         var wasHidden = !nd.classList.contains('show');
         nd.classList.toggle('show');
+        nd.style.display = nd.classList.contains('show') ? 'block' : 'none';
+        console.log('Notification dropdown is now:', nd.classList.contains('show') ? 'visible' : 'hidden');
         if (wasHidden) {
             if (typeof window.loadStaffNotifications === 'function') window.loadStaffNotifications();
             else if (typeof window.saLoadNotifications === 'function') window.saLoadNotifications();
@@ -3101,14 +3298,39 @@ require_once __DIR__ . '/rbac_menu.php';
     };
 
     window.petronToggleProfile = function(e) {
-        if (e) { e.stopPropagation(); }
+        // Prefer shared toggle implementation when available
+        if (window.petronHeaderToggle) {
+            if (e && e.preventDefault) e.preventDefault();
+            window.petronHeaderToggle('profileDropdown', '#profileMenu');
+            return;
+        }
+        console.log('Profile menu clicked'); // Debug
+        // If the click originates from an actionable link inside the dropdown, allow it
+        if (e && e.target && e.target.closest && e.target.closest('.profile-dropdown')) {
+            return; // allow link navigation
+        }
+        if (e) {
+            e.stopPropagation();
+        }
         var nd = document.getElementById('notificationDropdown');
         var pd = document.getElementById('profileDropdown');
-        if (nd) nd.classList.remove('show');
-        if (pd) pd.classList.toggle('show');
+        if (nd) { nd.classList.remove('show'); nd.style.display = 'none'; }
+        if (!pd) {
+            console.error('Profile dropdown not found');
+            return;
+        }
+        pd.classList.toggle('show');
+        pd.style.display = pd.classList.contains('show') ? 'block' : 'none';
+        console.log('Profile dropdown is now:', pd.classList.contains('show') ? 'visible' : 'hidden');
     };
 
-    window.petronToggleTheme = function() {
+    window.petronToggleTheme = function(e) {
+        console.log('Theme toggle clicked'); // Debug
+        if (e) {
+            e.stopPropagation();
+        }
+        // Close header dropdowns when switching theme
+        try{ if (typeof closeAllHeaderDropdowns === 'function') closeAllHeaderDropdowns(); }catch(e){}
         var isDark = document.body.classList.contains('dark-theme');
         var icon = document.getElementById('themeIcon');
         var btn  = document.getElementById('themeToggle');
@@ -3118,12 +3340,14 @@ require_once __DIR__ . '/rbac_menu.php';
             if (btn)  btn.title = 'Switch to Dark Mode';
             localStorage.setItem('petronTheme', 'light');
             if (typeof showPetronFlash === 'function') showPetronFlash('Switched to Light Mode', 'info', 2000);
+            console.log('Switched to Light Mode');
         } else {
             document.body.classList.add('dark-theme');
             if (icon) icon.className = 'fas fa-sun';
             if (btn)  btn.title = 'Switch to Light Mode';
             localStorage.setItem('petronTheme', 'dark');
             if (typeof showPetronFlash === 'function') showPetronFlash('Switched to Dark Mode', 'info', 2000);
+            console.log('Switched to Dark Mode');
         }
     };
 
@@ -3153,6 +3377,51 @@ require_once __DIR__ . '/rbac_menu.php';
 
     // Init sidebar state + mobile backdrop on DOMContentLoaded
     document.addEventListener('DOMContentLoaded', function() {
+        console.log('Header initialized - adding event listeners');
+        
+        // ADD BACKUP EVENT LISTENERS FOR ALL HEADER BUTTONS
+        // These will fire even if onclick attributes fail
+        
+        var sidebarBtn = document.getElementById('sidebarCollapseBtn');
+        if (sidebarBtn) {
+            sidebarBtn.addEventListener('click', function(e) {
+                console.log('Sidebar button clicked (event listener)');
+                petronToggleSidebar(e);
+            });
+        }
+        
+        var notifBell = document.getElementById('notificationBell');
+        if (notifBell) {
+            notifBell.addEventListener('click', function(e) {
+                console.log('Notification bell clicked (event listener)');
+                petronToggleNotif(e);
+            });
+        }
+
+        var varianceBell = document.getElementById('varianceAlertBell');
+        if (varianceBell) {
+            varianceBell.addEventListener('click', function(e){
+                try{ if (typeof toggleDropdown === 'function') { toggleDropdown('varianceAlertDropdown', '#varianceAlertBell'); if (e && e.preventDefault) e.preventDefault(); } }
+                catch(err){ console.error('varianceBell handler err', err); }
+            });
+        }
+        
+        var themeToggle = document.getElementById('themeToggle');
+        if (themeToggle) {
+            themeToggle.addEventListener('click', function(e) {
+                console.log('Theme toggle clicked (event listener)');
+                petronToggleTheme(e);
+            });
+        }
+        
+        var profileMenu = document.getElementById('profileMenu');
+        if (profileMenu) {
+            profileMenu.addEventListener('click', function(e) {
+                console.log('Profile menu clicked (event listener)');
+                petronToggleProfile(e);
+            });
+        }
+        
         // Restore sidebar state (desktop only)
         if (window.innerWidth >= 992) {
             var saved = localStorage.getItem('sidebarState');
@@ -3186,6 +3455,165 @@ require_once __DIR__ . '/rbac_menu.php';
                 document.body.style.overflow = '';
             }
         });
+
+        // --- FALLBACK: Capture-phase listener to ensure header icons respond even
+        // if other event listeners or overlays interfere. This will call the
+        // existing toggle functions but will NOT prevent default link navigation.
+        document.addEventListener('click', function(e) {
+            try {
+                var c = e.target;
+                var sb = c.closest && c.closest('#sidebarCollapseBtn, .sidebar-collapse-btn');
+                if (sb) { petronToggleSidebar(e); return; }
+                var nb = c.closest && c.closest('#notificationBell, .notification-bell');
+                if (nb) { petronToggleNotif(e); return; }
+                var tt = c.closest && c.closest('#themeToggle, .theme-toggle-btn');
+                if (tt) { petronToggleTheme(e); return; }
+                var pm = c.closest && c.closest('#profileMenu, .profile-access');
+                if (pm) { petronToggleProfile(e); return; }
+            } catch (err) {
+                console.error('Header fallback listener error', err);
+            }
+        }, true); // use capture phase
+
+        // Robust initializer: ensure header controls are interactive, remove duplicate
+        // event listeners by cloning nodes, and attach single click handlers.
+        function initHeaderControls() {
+            try {
+                const mapping = {
+                    'sidebarCollapseBtn': window.petronToggleSidebar,
+                    'notificationBell':   window.petronToggleNotif,
+                    'themeToggle':        window.petronToggleTheme,
+                    'profileMenu':        window.petronToggleProfile
+                };
+
+                Object.keys(mapping).forEach(function(id) {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    // Force styles so overlays don't block
+                    el.style.pointerEvents = 'auto';
+                    el.style.zIndex = '99999';
+                    el.style.position = el.style.position || 'relative';
+
+                    // Replace element with a shallow clone to remove previously attached listeners
+                    const clone = el.cloneNode(true);
+                    el.parentNode.replaceChild(clone, el);
+
+                    // Attach single click listener
+                    clone.addEventListener('click', function(ev) {
+                        try {
+                            ev.stopPropagation();
+                            // Do not call preventDefault to allow link navigation inside dropdowns
+                            const fn = mapping[id];
+                            if (typeof fn === 'function') fn(ev);
+                        } catch (err) { console.error('Header control handler error', err); }
+                    });
+                });
+
+                // Diagnostic: log topmost element when header area is clicked (helps find overlays)
+                ['header-left','header-center','header-right','top-header'].forEach(function(cls) {
+                    const container = document.querySelector('.' + cls);
+                    if (!container) return;
+                    container.addEventListener('click', function(ev) {
+                        try {
+                            const x = ev.clientX, y = ev.clientY;
+                            const topEl = document.elementFromPoint(x, y);
+                            if (topEl) console.log('Header click at', x, y, 'top element:', topEl.tagName, topEl.id || topEl.className);
+                        } catch (err) {}
+                    }, true);
+                });
+            } catch (e) { console.error('initHeaderControls failed', e); }
+        }
+
+        // Run initializer once DOM is ready (after other listeners are added)
+        if (document.readyState === 'complete' || document.readyState === 'interactive') {
+            setTimeout(initHeaderControls, 50);
+        } else {
+            document.addEventListener('DOMContentLoaded', function() { setTimeout(initHeaderControls, 50); });
+        }
+
+        // Capture-phase pointerdown to ensure toggles fire even when other code stops propagation
+        document.addEventListener('pointerdown', function(ev) {
+            try {
+                const t = ev.target;
+                if (!t) return;
+                const sb = t.closest && t.closest('#sidebarCollapseBtn, .sidebar-collapse-btn');
+                const nb = t.closest && t.closest('#notificationBell, .notification-bell');
+                const tt = t.closest && t.closest('#themeToggle, .theme-toggle-btn');
+                const pm = t.closest && t.closest('#profileMenu, .profile-access');
+                if (sb) { console.log('Sidebar toggle clicked (pointerdown)'); ev.stopPropagation(); petronToggleSidebar(ev); }
+                else if (nb) { console.log('Notification bell clicked (pointerdown)'); ev.stopPropagation(); petronToggleNotif(ev); }
+                else if (tt) { console.log('Theme toggle clicked (pointerdown)'); ev.stopPropagation(); petronToggleTheme(ev); }
+                else if (pm) { console.log('Profile menu clicked (pointerdown)'); ev.stopPropagation(); petronToggleProfile(ev); }
+            } catch (err) { console.error('pointerdown listener error', err); }
+        }, true);
+
+        // Keyboard accessibility: Enter/Space activate controls
+        document.addEventListener('keydown', function(ev) {
+            try {
+                if (ev.key !== 'Enter' && ev.key !== ' ') return;
+                const t = ev.target;
+                if (!t) return;
+                if (t.id === 'sidebarCollapseBtn' || t.classList.contains('sidebar-collapse-btn')) { ev.preventDefault(); petronToggleSidebar(ev); }
+                if (t.id === 'notificationBell' || t.classList.contains('notification-bell')) { ev.preventDefault(); petronToggleNotif(ev); }
+                if (t.id === 'themeToggle' || t.classList.contains('theme-toggle-btn')) { ev.preventDefault(); petronToggleTheme(ev); }
+                if (t.id === 'profileMenu' || t.classList.contains('profile-access')) { ev.preventDefault(); petronToggleProfile(ev); }
+            } catch (err) {}
+        }, false);
+
+        // --- UNBLOCKER: Detect and disable any overlaying elements that cover the header
+        function unblockHeaderOverlays() {
+            try {
+                const header = document.querySelector('.top-header');
+                if (!header) return;
+                const hr = header.getBoundingClientRect();
+                // find potentially blocking elements
+                const els = Array.from(document.body.children);
+                const changed = [];
+                function intersects(r1, r2) {
+                    return !(r2.left > r1.right || r2.right < r1.left || r2.top > r1.bottom || r2.bottom < r1.top);
+                }
+                // Walk many elements to detect overlays (limit to first 500 to avoid perf issues)
+                const all = Array.from(document.querySelectorAll('body *')).slice(0, 1000);
+                all.forEach(function(el) {
+                    if (!el || el === header || header.contains(el)) return;
+                    const s = getComputedStyle(el);
+                    if (s.display === 'none' || s.visibility === 'hidden' || s.pointerEvents === 'none') return;
+                    const r = el.getBoundingClientRect();
+                    if (r.width === 0 || r.height === 0) return;
+                    // Only consider elements that are positioned and likely overlays
+                    if (s.position === 'fixed' || s.position === 'absolute' || parseInt(s.zIndex) > 0) {
+                        if (intersects(hr, r)) {
+                            // mark and disable pointer events
+                            if (!el.dataset._hdrUnblocked) {
+                                el.dataset._hdrUnblocked = el.style.pointerEvents || '';
+                                el.style.pointerEvents = 'none';
+                                el.style.outline = '2px dashed rgba(255,0,0,0.12)';
+                                changed.push(el);
+                            }
+                        }
+                    }
+                });
+                if (changed.length) console.log('Unblocked header by disabling pointer-events on', changed.length, 'elements', changed);
+            } catch (err) { console.error('unblockHeaderOverlays error', err); }
+        }
+
+        // Restore function (for debugging)
+        window.restoreHeaderOverlays = function() {
+            try {
+                document.querySelectorAll('[data-_hdrUnblocked]').forEach(function(el){
+                    el.style.pointerEvents = el.dataset._hdrUnblocked || '';
+                    el.style.outline = '';
+                    delete el.dataset._hdrUnblocked;
+                });
+                console.log('Header overlays restored');
+            } catch (e) { console.error(e); }
+        };
+
+        // Run immediately and on resize; also observe mutations to catch dynamic overlays
+        setTimeout(unblockHeaderOverlays, 100);
+        window.addEventListener('resize', function(){ setTimeout(unblockHeaderOverlays, 50); });
+        const mo = new MutationObserver(function(){ setTimeout(unblockHeaderOverlays, 30); });
+        mo.observe(document.body, { childList: true, subtree: true });
         // Hash-based active sidebar link
         var hash = window.location.hash;
         if (hash) {
@@ -3195,6 +3623,9 @@ require_once __DIR__ . '/rbac_menu.php';
                 if (parent) parent.style.display = 'block';
             });
         }
+        
+        // Log success message
+        console.log('Header navigation fully initialized and ready');
     });
         // ---- CAPTURE-PHASE HEADER CLICK HANDLER (removed - conflicts with normal handlers) ----
         (function() {
@@ -3444,12 +3875,12 @@ require_once __DIR__ . '/rbac_menu.php';
         $is_admin_role      = ($role === 'admin');
         $is_manager_role    = ($role === 'manager');
         $notif_generator    = $is_superadmin_role
-            ? '../backend/api/superadmin_notification_generator.php'
+            ? '/backend/api/superadmin_notification_generator.php'
             : ($is_admin_role
-                ? '../backend/api/admin_notification_generator.php'
+                ? '/backend/api/admin_notification_generator.php'
                 : ($is_manager_role
-                    ? '../backend/api/manager_notification_generator.php'
-                    : '../backend/api/staff_notification_generator.php'));
+                    ? '/backend/api/manager_notification_generator.php'
+                    : '/backend/api/staff_notification_generator.php'));
         ?>
 
         <?php if ($is_superadmin_role): ?>
@@ -3457,8 +3888,16 @@ require_once __DIR__ . '/rbac_menu.php';
         (function () {
             'use strict';
 
-            const API_LIST = '../backend/api/notifications_api.php';
-            const API_GEN  = '../backend/api/superadmin_notification_generator.php';
+            const BASE_PATH = (window.pageData && window.pageData.appBasePath)
+                ? window.pageData.appBasePath.replace(/\/$/, '')
+                : '';
+            const resolveApiPath = (path) => {
+                if (!path) return path;
+                if (path.startsWith('http://') || path.startsWith('https://')) return path;
+                return BASE_PATH ? BASE_PATH + path : path;
+            };
+            const API_LIST = resolveApiPath('/backend/api/notifications_api.php');
+            const API_GEN  = resolveApiPath('/backend/api/superadmin_notification_generator.php');
 
             // Severity â†’ colour mapping
             const SEV_COLOR = {
@@ -3627,8 +4066,16 @@ require_once __DIR__ . '/rbac_menu.php';
         (function () {
             'use strict';
 
-            const API_LIST = '../backend/api/notifications_api.php';
-            const API_GEN  = '<?php echo $notif_generator; ?>';
+            const BASE_PATH = (window.pageData && window.pageData.appBasePath)
+                ? window.pageData.appBasePath.replace(/\/$/, '')
+                : '';
+            const resolveApiPath = (path) => {
+                if (!path) return path;
+                if (path.startsWith('http://') || path.startsWith('https://')) return path;
+                return BASE_PATH ? BASE_PATH + path : path;
+            };
+            const API_LIST = resolveApiPath('/backend/api/notifications_api.php');
+            const API_GEN  = resolveApiPath('<?php echo $notif_generator; ?>');
 
             // Inject styles for hover effects
             if (!document.getElementById('notifStyles')) {

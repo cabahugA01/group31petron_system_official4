@@ -1,0 +1,7 @@
+/* Placeholder for manager_customer_management.css
+   If you have a custom stylesheet, replace contents with the original CSS.
+   Created to avoid 404 errors and allow service worker caching. */
+
+/* Basic fallback styles (non-intrusive) */
+.manager-customer-table { width: 100%; }
+.manager-customer-actions { display: inline-flex; gap: 8px; }

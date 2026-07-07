@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Manager Purchase Requests — public/manager_purchase_requests.php
 // Flow: Staff Stock Request → Manager encodes Qty+Remarks → Forward to Admin
@@ -317,7 +317,7 @@ include __DIR__ . '/../partials/header.php';
                     <?php foreach ($fuel_requests as $req):
                         $st  = $req['status'] ?? 'Pending';
                         $cls = 'pr-sbadge pr-sbadge-' . strtolower($st);
-                        $stockClr = in_array($req['stock_status'] ?? '', ['OUT OF STOCK','CRITICAL']) ? '#dc3545' : '#dc3545';
+                        $stockClr = in_array($req['stock_status'] ?? '', ['OUT OF STOCK','CRITICAL']) ? '#dc3545' : (($req['stock_status'] ?? '') == 'LOW' ? '#fd7e14' : '#28a745');
                     ?>
                     <tr>
                         <td style="font-family:monospace;font-size:11px;color:#888;">#<?php echo $req['id']; ?></td>

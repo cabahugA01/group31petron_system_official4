@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'dashboard';
 require_once __DIR__ . '/../backend/lib.php';
@@ -145,26 +145,36 @@ function getShiftData($pdo, $station_id, $shift_number) {
     $service_query->execute([$station_id, $start, $end]);
     $service_data = $service_query->fetch(PDO::FETCH_ASSOC);
     
-    // Fuel Tank Levels
+    // Fuel Tank Levels — fetch raw then normalize via PHP (14k/7k capacity formula)
     $fuel_levels_query = $pdo->prepare("
         SELECT COALESCE(ft.name, fi.fuel_type) AS fuel_type_name,
                COALESCE(fi.current_level, fi.current_stock, 0) AS current_stock,
-               COALESCE(fi.capacity, 0) AS capacity,
-               CASE
-                   WHEN COALESCE(fi.current_level, fi.current_stock, 0) <= 0 THEN 'Out of Stock'
-                   WHEN COALESCE(fi.capacity, 0) > 0
-                        AND (COALESCE(fi.current_level, fi.current_stock, 0) / COALESCE(fi.capacity, 0)) * 100 <= 10 THEN 'Critical'
-                   WHEN COALESCE(fi.capacity, 0) > 0
-                        AND (COALESCE(fi.current_level, fi.current_stock, 0) / COALESCE(fi.capacity, 0)) * 100 <= 25 THEN 'Low Stock'
-                   ELSE 'Normal'
-               END AS stock_status
+               COALESCE(fi.capacity, 0) AS capacity
         FROM fuel_inventory fi
         LEFT JOIN fuel_types ft ON fi.fuel_type_id = ft.id
         WHERE fi.station_id = ?
         ORDER BY current_stock ASC
     ");
     $fuel_levels_query->execute([$station_id]);
-    $fuel_levels = $fuel_levels_query->fetchAll(PDO::FETCH_ASSOC);
+    $fuel_levels_raw = $fuel_levels_query->fetchAll(PDO::FETCH_ASSOC);
+    $fuel_levels = [];
+    foreach ($fuel_levels_raw as $fl) {
+        $fl_cap   = (float)($fl['capacity'] ?? 0);
+        $fl_level = min(max(0, (float)($fl['current_stock'] ?? 0)), $fl_cap);
+        if ($fl_cap == 14000)    { $fl_crit = 5000; $fl_low = 7000; }
+        elseif ($fl_cap == 7000) { $fl_crit = 1000; $fl_low = 2000; }
+        else                     { $fl_crit = $fl_cap * 0.10; $fl_low = $fl_cap * 0.20; }
+        if ($fl_level <= 0)           { $fl_status = 'Out of Stock'; }
+        elseif ($fl_level <= $fl_crit){ $fl_status = 'Critical'; }
+        elseif ($fl_level <= $fl_low) { $fl_status = 'Low'; }
+        else                          { $fl_status = 'Normal'; }
+        $fuel_levels[] = [
+            'fuel_type_name' => $fl['fuel_type_name'],
+            'current_stock'  => $fl_level,
+            'capacity'       => $fl_cap,
+            'stock_status'   => $fl_status,
+        ];
+    }
     
     // Merchandise Low Stock
     $merch_low_stock_query = $pdo->prepare("
@@ -853,18 +863,18 @@ try {
                     <h3 style="color: #003366;">Fuel Tank Levels & Monitoring</h3>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
                         <?php foreach ($shift1_data['fuel_levels'] as $fl): ?>
-                            <div style="background: #f7f7f7; padding: 15px; border-radius: 8px; border-left: 4px solid <?= $fl['stock_status'] == 'Critical' || $fl['stock_status'] == 'Out of Stock' ? '#dc3545' : ($fl['stock_status'] == 'Low Stock' ? '#6c757d' : '#28a745') ?>;">
+                            <div style="background: #f7f7f7; padding: 15px; border-radius: 8px; border-left: 4px solid <?= in_array($fl['stock_status'], ['Critical', 'Out of Stock']) ? '#dc3545' : ($fl['stock_status'] == 'Low' ? '#fd7e14' : '#28a745') ?>;">
                                 <div style="font-weight: 600; color: #003366; margin-bottom: 5px;"><?= htmlspecialchars($fl['fuel_type_name']) ?></div>
                                 <div style="font-size: 24px; font-weight: 700; color: #003366;"><?= number_format($fl['current_stock'], 2) ?> L</div>
                                 <div style="font-size: 12px; color: #666666;">Capacity: <?= number_format($fl['capacity'], 2) ?> L</div>
                                 <div style="margin-top: 5px;">
-                                    <span style="padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; background: <?= $fl['stock_status'] == 'Critical' || $fl['stock_status'] == 'Out of Stock' ? '#f8d7da' : ($fl['stock_status'] == 'Low Stock' ? '#e8e8e8' : '#d4edda') ?>; color: <?= $fl['stock_status'] == 'Critical' || $fl['stock_status'] == 'Out of Stock' ? '#721c24' : ($fl['stock_status'] == 'Low Stock' ? '#666666' : '#155724') ?>;">
+                                    <span style="padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; background: <?= in_array($fl['stock_status'], ['Critical', 'Out of Stock']) ? '#f8d7da' : ($fl['stock_status'] == 'Low' ? '#ffe8cc' : '#d4edda') ?>; color: <?= in_array($fl['stock_status'], ['Critical', 'Out of Stock']) ? '#721c24' : ($fl['stock_status'] == 'Low' ? '#d9480f' : '#155724') ?>;">
                                         <?= $fl['stock_status'] ?>
                                     </span>
                                 </div>
                                 <?php if ($fl['capacity'] > 0): ?>
                                     <div style="background: #e8e8e8; height: 6px; border-radius: 3px; margin-top: 8px; overflow: hidden;">
-                                        <div style="background: <?= $fl['stock_status'] == 'Critical' || $fl['stock_status'] == 'Out of Stock' ? '#dc3545' : ($fl['stock_status'] == 'Low Stock' ? '#6c757d' : '#28a745') ?>; height: 100%; width: <?= min(100, ($fl['current_stock'] / $fl['capacity']) * 100) ?>%;"></div>
+                                        <div style="background: <?= in_array($fl['stock_status'], ['Critical', 'Out of Stock']) ? '#dc3545' : ($fl['stock_status'] == 'Low' ? '#fd7e14' : '#28a745') ?>; height: 100%; width: <?= min(100, ($fl['current_stock'] / $fl['capacity']) * 100) ?>%;"></div>
                                     </div>
                                 <?php endif; ?>
                             </div>
@@ -1101,18 +1111,18 @@ try {
                     <h3 style="color: #003366;">Fuel Tank Levels & Variance Alerts</h3>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
                         <?php foreach ($shift2_data['fuel_levels'] as $fl): ?>
-                            <div style="background: #f7f7f7; padding: 15px; border-radius: 8px; border-left: 4px solid <?= $fl['stock_status'] == 'Critical' || $fl['stock_status'] == 'Out of Stock' ? '#dc3545' : ($fl['stock_status'] == 'Low Stock' ? '#6c757d' : '#28a745') ?>;">
+                            <div style="background: #f7f7f7; padding: 15px; border-radius: 8px; border-left: 4px solid <?= in_array($fl['stock_status'], ['Critical', 'Out of Stock']) ? '#dc3545' : ($fl['stock_status'] == 'Low' ? '#fd7e14' : '#28a745') ?>;">
                                 <div style="font-weight: 600; color: #003366; margin-bottom: 5px;"><?= htmlspecialchars($fl['fuel_type_name']) ?></div>
                                 <div style="font-size: 24px; font-weight: 700; color: #003366;"><?= number_format($fl['current_stock'], 2) ?> L</div>
                                 <div style="font-size: 12px; color: #666666;">Capacity: <?= number_format($fl['capacity'], 2) ?> L</div>
                                 <div style="margin-top: 5px;">
-                                    <span style="padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; background: <?= $fl['stock_status'] == 'Critical' || $fl['stock_status'] == 'Out of Stock' ? '#f8d7da' : ($fl['stock_status'] == 'Low Stock' ? '#e8e8e8' : '#d4edda') ?>; color: <?= $fl['stock_status'] == 'Critical' || $fl['stock_status'] == 'Out of Stock' ? '#721c24' : ($fl['stock_status'] == 'Low Stock' ? '#666666' : '#155724') ?>;">
+                                    <span style="padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; background: <?= in_array($fl['stock_status'], ['Critical', 'Out of Stock']) ? '#f8d7da' : ($fl['stock_status'] == 'Low' ? '#ffe8cc' : '#d4edda') ?>; color: <?= in_array($fl['stock_status'], ['Critical', 'Out of Stock']) ? '#721c24' : ($fl['stock_status'] == 'Low' ? '#d9480f' : '#155724') ?>;">
                                         <?= $fl['stock_status'] ?>
                                     </span>
                                 </div>
                                 <?php if ($fl['capacity'] > 0): ?>
                                     <div style="background: #e8e8e8; height: 6px; border-radius: 3px; margin-top: 8px; overflow: hidden;">
-                                        <div style="background: <?= $fl['stock_status'] == 'Critical' || $fl['stock_status'] == 'Out of Stock' ? '#dc3545' : ($fl['stock_status'] == 'Low Stock' ? '#6c757d' : '#28a745') ?>; height: 100%; width: <?= min(100, ($fl['current_stock'] / $fl['capacity']) * 100) ?>%;"></div>
+                                        <div style="background: <?= in_array($fl['stock_status'], ['Critical', 'Out of Stock']) ? '#dc3545' : ($fl['stock_status'] == 'Low' ? '#fd7e14' : '#28a745') ?>; height: 100%; width: <?= min(100, ($fl['current_stock'] / $fl['capacity']) * 100) ?>%;"></div>
                                     </div>
                                 <?php endif; ?>
                             </div>

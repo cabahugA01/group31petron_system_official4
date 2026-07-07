@@ -1531,6 +1531,20 @@ try {
     }
 }
 
+foreach ($tank_data as &$td) {
+    $capacity = (float)($td['capacity'] ?? 0);
+    $td['current_stock'] = min(max(0, (float)($td['current_stock'] ?? 0)), $capacity);
+    $td['current_level'] = min(max(0, (float)($td['current_level'] ?? 0)), $capacity);
+    if ($capacity == 14000)    { $critical_lvl = 2500; $low_lvl = 5000; }
+    elseif ($capacity == 7000) { $critical_lvl = 1000; $low_lvl = 2000; }
+    else                       { $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20; }
+    if ($td['current_stock'] <= 0)                 { $td['stock_status'] = 'Out of Stock'; }
+    elseif ($td['current_stock'] <= $critical_lvl) { $td['stock_status'] = 'Critical'; }
+    elseif ($td['current_stock'] <= $low_lvl)      { $td['stock_status'] = 'Low'; }
+    else                                           { $td['stock_status'] = 'Normal'; }
+}
+unset($td);
+
 // -- Build calibration lookup from fuel_inventory (used in Fuel Transactions section) --
 $cal_lookup = [];
 foreach ($tank_data as $td) {
@@ -1702,8 +1716,8 @@ try {
 
 // Counts for stats
 $total_tanks    = count($tank_data);
-$available_cnt  = count(array_filter($tank_data, fn($t) => $t['stock_status'] === 'Available'));
-$low_stock_cnt  = count(array_filter($tank_data, fn($t) => $t['stock_status'] === 'Low Stock'));
+$available_cnt  = count(array_filter($tank_data, fn($t) => $t['stock_status'] === 'Normal'));
+$low_stock_cnt  = count(array_filter($tank_data, fn($t) => in_array($t['stock_status'], ['Critical', 'Low', 'Out of Stock'])));
 $pending_cnt    = count($pending_readings);
 $open_variances = count(array_filter($variance_reports, fn($v) => strtolower($v['status']) === 'open'));
 $high_variances = count(array_filter($variance_reports, fn($v) => abs($v['variance_percent'] ?? 0) > 5));
@@ -1830,9 +1844,9 @@ html, body {
 .tank-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
 .tank-name { font-size:1rem; font-weight:700; color:#333; }
 .tank-status { font-size:.78rem; font-weight:700; }
-.status-available { color:#28a745; }
-.status-low-stock, .status-low { color:#dc3545; }
-.status-out-of-stock, .status-out { color:#dc3545; }
+.status-available, .status-normal { color:#28a745; }
+.status-low-stock, .status-low { color:#fd7e14; }
+.status-out-of-stock, .status-out, .status-critical { color:#dc3545; }
 .tank-level { font-size:1.6rem; font-weight:700; color:<?php echo $colors['primary']; ?>; }
 .tank-capacity { font-size:.8rem; color:#666; }
 .tank-progress { width:100%; height:10px; background:#e9ecef; border-radius:5px; overflow:hidden; margin:10px 0; }

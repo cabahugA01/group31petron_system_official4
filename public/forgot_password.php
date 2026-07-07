@@ -46,6 +46,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $input = trim($recovery_id);
             $user = null;
+            // Include superadmin so developer/superadmin accounts can request password reset
+            $allowed_roles_sql = "AND LOWER(TRIM(role)) IN ('staff','manager','admin','developer','superadmin')";
 
             // --- Strategy 1: If input looks like an email, try email match first ---
             if (strpos($input, '@') !== false) {
@@ -54,6 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     FROM users
                     WHERE LOWER(TRIM(email)) = LOWER(?)
                       AND LOWER(TRIM(status)) = 'active'
+                      {$allowed_roles_sql}
                     LIMIT 1
                 ");
                 $stmt->execute([$input]);
@@ -67,6 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     FROM users
                     WHERE (LOWER(TRIM(username)) = LOWER(?) OR LOWER(TRIM(email)) = LOWER(?))
                       AND LOWER(TRIM(status)) = 'active'
+                      {$allowed_roles_sql}
                     LIMIT 1
                 ");
                 $stmt->execute([$input, $input]);
@@ -86,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($user) {
                 if (empty($user['email'])) {
-                    $error = "This account has no email address. Please contact administrator.";
+                    $error = "This account has no registered email address. Please contact the administrator to update your profile.";
                 } else {
                     // Generate OTP
                     $otp_code = sprintf("%06d", random_int(100000, 999999));
