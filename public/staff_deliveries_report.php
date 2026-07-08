@@ -15,6 +15,45 @@ $role = role_key($me['role'] ?? 'staff');
 $user_id = (int)($me['id'] ?? 0);
 $station_id = user_station_id();
 
+// Determine user's assigned shift (for filtering shift summary display)
+// Staff only see their own shift box; managers/admins see both
+$user_shift_number = 0; // 0 = show both, 1 = shift 1 only, 2 = shift 2 only
+if (in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+    try {
+        // Try active labor session first
+        $ls_stmt = $pdo->prepare("SELECT shift_period, shift_name FROM labor_sessions WHERE user_id = ? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1");
+        $ls_stmt->execute([$user_id]);
+        $ls = $ls_stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$ls) {
+            // Fall back to most recent session from today
+            $ls_stmt2 = $pdo->prepare("SELECT shift_period, shift_name FROM labor_sessions WHERE user_id = ? AND DATE(start_time) = CURDATE() ORDER BY start_time DESC LIMIT 1");
+            $ls_stmt2->execute([$user_id]);
+            $ls = $ls_stmt2->fetch(PDO::FETCH_ASSOC);
+        }
+        if ($ls) {
+            $sp = strtolower(trim($ls['shift_period'] ?? ''));
+            $sn = strtolower(trim($ls['shift_name'] ?? ''));
+            $combined = $sp . ' ' . $sn;
+            if (strpos($combined, '2') !== false || strpos($combined, 'second') !== false || strpos($combined, 'afternoon') !== false || strpos($combined, 'evening') !== false) {
+                $user_shift_number = 2;
+            } elseif (strpos($combined, '1') !== false || strpos($combined, 'first') !== false || strpos($combined, 'morning') !== false) {
+                $user_shift_number = 1;
+            }
+        }
+    } catch (Exception $e) { $user_shift_number = 0; }
+
+    // User-specific overrides: Yyang is Shift 1, Judy Lastimosa is Shift 2
+    $username_lower = isset($me['username']) ? strtolower(trim($me['username'])) : '';
+    $first_name_lower = isset($me['first_name']) ? strtolower(trim($me['first_name'])) : '';
+    $last_name_lower = isset($me['last_name']) ? strtolower(trim($me['last_name'])) : '';
+
+    if ($username_lower === 'yyang' || $first_name_lower === 'yyang') {
+        $user_shift_number = 1;
+    } elseif ($username_lower === 'judy' || $first_name_lower === 'judy' || $last_name_lower === 'lastimosa') {
+        $user_shift_number = 2;
+    }
+}
+
 // Access control
 if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
     header('Location: dashboard.php'); exit;
@@ -115,6 +154,14 @@ if ($has_fuel_deliveries) {
         $stmt->execute([$station_id, $date_start, $date_end]);
         $fuel_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
+        if ($user_shift_number !== 0) {
+            $fuel_deliveries = array_filter($fuel_deliveries, function($delivery) use ($user_shift_number) {
+                $shift = strtolower($delivery['shift'] ?? '');
+                $is_shift1 = (strpos($shift, 'shift 1') !== false || strpos($shift, '1') !== false);
+                return $user_shift_number === 1 ? $is_shift1 : !$is_shift1;
+            });
+        }
+        
         // Calculate shift totals
         foreach ($fuel_deliveries as $delivery) {
             $shift = strtolower($delivery['shift'] ?? '');
@@ -213,6 +260,14 @@ if ($has_deliveries_oversight || $has_merchandise_deliveries) {
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$station_id, $date_start, $date_end]);
         $merchandise_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        if ($user_shift_number !== 0) {
+            $merchandise_deliveries = array_filter($merchandise_deliveries, function($delivery) use ($user_shift_number) {
+                $shift = strtolower($delivery['shift'] ?? '');
+                $is_shift1 = (strpos($shift, 'shift 1') !== false || strpos($shift, '1') !== false);
+                return $user_shift_number === 1 ? $is_shift1 : !$is_shift1;
+            });
+        }
         
         // Calculate shift totals
         foreach ($merchandise_deliveries as $delivery) {
@@ -465,6 +520,8 @@ require_once __DIR__ . '/../partials/header.php';
         margin: 0;
         padding: 0;
         background: white;
+        overflow-x: hidden;
+        width: 100%;
     }
     
     .main-content {
@@ -472,6 +529,7 @@ require_once __DIR__ . '/../partials/header.php';
         max-width: 100%;
         padding: 0;
         margin: 0;
+        overflow-x: hidden;
     }
     
     .container {
@@ -479,6 +537,7 @@ require_once __DIR__ . '/../partials/header.php';
         margin: 0;
         padding: 0;
         background: white;
+        overflow-x: hidden;
     }
     
     .header {
@@ -614,9 +673,10 @@ require_once __DIR__ . '/../partials/header.php';
     }
     
     .table-container {
-        overflow-x: visible;
+        overflow-x: hidden;
         margin-bottom: 20px;
         width: 100%;
+        max-width: 100%;
     }
     
     table {
@@ -626,6 +686,7 @@ require_once __DIR__ . '/../partials/header.php';
         border: 1px solid #000;
         font-size: 10px;
         table-layout: fixed;
+        max-width: 100%;
     }
     
     thead {
@@ -762,6 +823,12 @@ require_once __DIR__ . '/../partials/header.php';
 
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 
+        html { 
+            overflow-x: hidden !important; 
+            width: 100% !important; 
+            max-width: 100% !important; 
+        }
+
         body * { visibility: hidden !important; }
         .print-area, .print-area * { visibility: visible !important; }
         .print-area {
@@ -769,12 +836,28 @@ require_once __DIR__ . '/../partials/header.php';
             top: 0 !important;
             left: 0 !important;
             width: 100% !important;
+            max-width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
             background: white !important;
+            overflow-x: hidden !important;
         }
-        html, body { margin: 0 !important; padding: 0 !important; background: white !important; overflow: visible !important; }
-        .container, .content { margin: 0 !important; padding: 0 !important; }
+        html, body { 
+            margin: 0 !important; 
+            padding: 0 !important; 
+            background: white !important; 
+            overflow: hidden !important; 
+            overflow-x: hidden !important; 
+            width: 100% !important; 
+            max-width: 100% !important; 
+        }
+        .container, .content { 
+            margin: 0 !important; 
+            padding: 0 !important; 
+            overflow-x: hidden !important; 
+            width: 100% !important; 
+            max-width: 100% !important; 
+        }
 
         /* ── Kill ALL icons ── */
         i, svg, .fas, .far, .fab, .fa, [class*="fa-"] {
@@ -790,14 +873,48 @@ require_once __DIR__ . '/../partials/header.php';
 
         .section-title { font-size: 12px !important; font-weight: 700 !important; margin: 10px 0 4px 0 !important; padding-bottom: 3px !important; border-bottom: 2px solid #000 !important; text-transform: uppercase !important; color: #000 !important; page-break-after: avoid !important; }
 
-        .table-container { overflow: visible !important; margin-bottom: 6px !important; width: 100% !important; text-align: center !important; }
+        .table-container { 
+            overflow: hidden !important; 
+            overflow-x: hidden !important; 
+            margin-bottom: 6px !important; 
+            width: 100% !important; 
+            max-width: 100% !important; 
+            text-align: center !important; 
+        }
 
-        table { width: 95% !important; max-width: 100% !important; border-collapse: collapse !important; font-size: 10px !important; table-layout: auto !important; margin: 0 auto 8px auto !important; }
+        table { 
+            width: 100% !important; 
+            max-width: 100% !important; 
+            border-collapse: collapse !important; 
+            font-size: 8px !important; 
+            table-layout: fixed !important; 
+            margin: 0 auto 8px auto !important; 
+        }
         thead { display: table-header-group !important; }
         tbody { display: table-row-group !important; }
         tr { page-break-inside: avoid !important; }
-        th { font-size: 10px !important; padding: 6px 8px !important; border: 1px solid #000 !important; background: #fff !important; color: #000 !important; font-weight: 700 !important; text-align: center !important; white-space: nowrap !important; }
-        td { font-size: 9px !important; padding: 5px 8px !important; border: 1px solid #000 !important; white-space: nowrap !important; vertical-align: top !important; }
+        th { 
+            font-size: 8px !important; 
+            padding: 4px 3px !important; 
+            border: 1px solid #000 !important; 
+            background: #fff !important; 
+            color: #000 !important; 
+            font-weight: 700 !important; 
+            text-align: center !important; 
+            white-space: nowrap !important; 
+            overflow: hidden !important; 
+            text-overflow: ellipsis !important; 
+        }
+        td { 
+            font-size: 7px !important; 
+            padding: 3px 2px !important; 
+            border: 1px solid #000 !important; 
+            white-space: nowrap !important; 
+            vertical-align: top !important; 
+            overflow: hidden !important; 
+            text-overflow: ellipsis !important; 
+            word-wrap: break-word !important; 
+        }
 
         .shift-summary { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 6px !important; margin: 6px 0 !important; page-break-inside: avoid !important; }
         .shift-box { border: 1px solid #000 !important; padding: 5px !important; page-break-inside: avoid !important; }
@@ -929,6 +1046,7 @@ require_once __DIR__ . '/../partials/header.php';
                 <!-- Shift Summary -->
                 <div class="section-title">SHIFT SUMMARY & REMARKS</div>
                 <div class="shift-summary">
+                    <?php if ($user_shift_number !== 2): // Hide Shift 1 for Shift 2 staff ?>
                     <div class="shift-box">
                         <h3>SHIFT 1 (6AM - 2PM)</h3>
                         <table>
@@ -950,7 +1068,9 @@ require_once __DIR__ . '/../partials/header.php';
                             </tr>
                         </table>
                     </div>
+                    <?php endif; ?>
                     
+                    <?php if ($user_shift_number !== 1): // Hide Shift 2 for Shift 1 staff ?>
                     <div class="shift-box">
                         <h3>SHIFT 2 (2PM - 10PM)</h3>
                         <table>
@@ -972,6 +1092,7 @@ require_once __DIR__ . '/../partials/header.php';
                             </tr>
                         </table>
                     </div>
+                    <?php endif; ?>
                 </div>
                 
                 <!-- Remarks Section -->
@@ -1060,6 +1181,7 @@ require_once __DIR__ . '/../partials/header.php';
                 <!-- Shift Summary -->
                 <div class="section-title">SHIFT SUMMARY & REMARKS</div>
                 <div class="shift-summary">
+                    <?php if ($user_shift_number !== 2): // Hide Shift 1 for Shift 2 staff ?>
                     <div class="shift-box">
                         <h3>SHIFT 1 (6AM - 2PM)</h3>
                         <table>
@@ -1081,7 +1203,9 @@ require_once __DIR__ . '/../partials/header.php';
                             </tr>
                         </table>
                     </div>
+                    <?php endif; ?>
                     
+                    <?php if ($user_shift_number !== 1): // Hide Shift 2 for Shift 1 staff ?>
                     <div class="shift-box">
                         <h3>SHIFT 2 (2PM - 10PM)</h3>
                         <table>
@@ -1103,6 +1227,7 @@ require_once __DIR__ . '/../partials/header.php';
                             </tr>
                         </table>
                     </div>
+                    <?php endif; ?>
                 </div>
                 
                 <!-- Remarks Section -->

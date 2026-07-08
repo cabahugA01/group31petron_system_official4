@@ -758,63 +758,120 @@ foreach ($raw_weekly as $row) {
 $weekly_chart_labels = array_keys($weekly_days);
 $weekly_chart_data = array_values($weekly_days);
 
-// Chart 6: Fuel Tank Levels — one card per PUMP NOZZLE (17 total)
-// JOIN: fuel_pumps at station × fuel_inventory by fuel_type_id at user's station
-// This gives each pump nozzle its own card with the shared tank's current level.
-$tank_levels = dashboard_fetch_all($pdo, "
-    SELECT
-        fp.id                                                   AS pump_id,
-        fp.pump_number                                          AS tank_label,
-        COALESCE(fi.fuel_type, SUBSTRING_INDEX(fp.pump_number,' - ',1)) AS fuel_type_name,
-        GREATEST(COALESCE(fi.current_level, 0), 0)             AS current_stock,
-        COALESCE(fi.capacity, 0)                               AS total_capacity,
-        COALESCE(fi.reorder_level, 0)                          AS reorder_level,
-        COALESCE(fi.critical_level, 0)                         AS critical_level
-    FROM fuel_pumps fp
-    LEFT JOIN fuel_inventory fi
-        ON fi.fuel_type_id = fp.fuel_type_id
-       AND fi.station_id   = ?
-    WHERE fp.station_id = ?
-    ORDER BY
-        CASE
-            WHEN fp.pump_number LIKE 'DIESEL 1%'  THEN 1
-            WHEN fp.pump_number LIKE 'DIESEL 2%'  THEN 2
-            WHEN fp.pump_number LIKE 'DIESEL%'    THEN 3
-            WHEN fp.pump_number LIKE 'KEROSENE%'  THEN 4
-            WHEN fp.pump_number LIKE 'TURBO%'     THEN 5
-            WHEN fp.pump_number LIKE 'XCS%'       THEN 6
-            WHEN fp.pump_number LIKE 'XTRA%'      THEN 7
-            ELSE 8
-        END,
-        fp.pump_number ASC
-", [$station_id, $station_id]);
+// Chart 6: Fuel Tank Levels — 7 physical underground storage tanks (UGTs)
+// Computes current level based on Beginning Inventory + Deliveries - Sales - Calibrations.
+$TANK_CONFIG = get_tank_config();
 
-// If no pumps registered for the user's station, fall back to fuel_inventory only
-if (empty($tank_levels)) {
-    $tank_levels = dashboard_fetch_all($pdo, "
-        SELECT
-            id                                      AS pump_id,
-            fuel_type                               AS tank_label,
-            fuel_type                               AS fuel_type_name,
-            GREATEST(COALESCE(current_level,0),0)   AS current_stock,
-            COALESCE(capacity,0)                    AS total_capacity,
-            COALESCE(reorder_level,0)               AS reorder_level,
-            COALESCE(critical_level,0)              AS critical_level
-        FROM fuel_inventory
-        WHERE station_id = ?
-        ORDER BY fuel_type ASC
-    ", [$station_id]);
-}
+$fi_lookup = [];
+try {
+    $s = $pdo->prepare("SELECT fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated FROM fuel_inventory WHERE station_id = ?");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $fi_lookup[strtolower(trim($row['fuel_type']))] = $row;
+    }
+} catch (Exception $e) {}
 
-foreach ($tank_levels as &$tl) {
-    $current         = max(0.0, (float)$tl['current_stock']);
-    $capacity        = (float)$tl['total_capacity'];
-    $display_current = $capacity > 0 ? min($current, $capacity) : $current;
-    $tl['current_stock'] = $current;
-    $tl['display_stock'] = $display_current;
-    $tl['pct'] = $capacity > 0 ? min(100.0, round(($display_current / $capacity) * 100, 1)) : 0;
+$del_lookup = [];
+try {
+    $s = $pdo->prepare("SELECT tank_assigned, fuel_type, SUM(delivery_liters) AS total_del FROM fuel_deliveries WHERE station_id=? AND DATE(delivery_date)=CURDATE() AND status='Verified' GROUP BY tank_assigned, fuel_type");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $del_lookup[strtolower(trim($row['tank_assigned']))] = (float)$row['total_del'];
+    }
+} catch (Exception $e) {}
+
+$sales_lookup = [];
+try {
+    $s = $pdo->prepare("SELECT fuel_type, SUM(liters_sold) AS total_sales FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date)=CURDATE() AND status='Verified' GROUP BY fuel_type");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $sales_lookup[strtolower(trim($row['fuel_type']))] = (float)$row['total_sales'];
+    }
+} catch (Exception $e) {}
+
+$adj_lookup = [];
+try {
+    $s = $pdo->prepare("SELECT fi.fuel_type, COALESCE(SUM(fa.liters),0) AS total_adj FROM fuel_adjustments fa JOIN fuel_inventory fi ON fa.fuel_type_id=fi.fuel_type_id AND fi.station_id=fa.station_id WHERE fa.station_id=? AND DATE(fa.adjustment_date)=CURDATE() GROUP BY fi.fuel_type");
+    $s->execute([$station_id]);
+    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $adj_lookup[strtolower(trim($row['fuel_type']))] = (float)$row['total_adj'];
+    }
+} catch (Exception $e) {}
+
+$tank_levels = [];
+foreach ($TANK_CONFIG as $tc) {
+    $ft_key   = strtolower(trim($tc['fuel_type']));
+    // XTRA UNL split: distinguish sub-groups by label
+    if ($ft_key === 'xtra unl') {
+        if (strpos(strtolower($tc['label']), 'xtra unl 1') !== false) {
+            $ft_key = 'xtra unl 1';
+        } elseif (strpos(strtolower($tc['label']), 'xtra unl 2') !== false) {
+            $ft_key = 'xtra unl 2';
+        }
+    }
+    $tank_key = strtolower(trim($tc['tank']));
+    $inv      = $fi_lookup[$ft_key] ?? null;
+
+    $capacity  = (float)$tc['capacity'];
+    $cur_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
+
+    // Number of tanks for this fuel sub-group (respecting XTRA UNL split)
+    $same_type_count = count(array_filter($TANK_CONFIG, function($t) use ($ft_key) {
+        $k = strtolower(trim($t['fuel_type']));
+        if ($k === 'xtra unl') {
+            if (strpos(strtolower($t['label']), 'xtra unl 1') !== false) {
+                $k = 'xtra unl 1';
+            } elseif (strpos(strtolower($t['label']), 'xtra unl 2') !== false) {
+                $k = 'xtra unl 2';
+            }
+        }
+        return $k === $ft_key;
+    }));
+
+    // Deliveries: per tank_assigned
+    $purchases = $del_lookup[$tank_key] ?? 0;
+
+    // Sales & Calibration: split equally
+    $sales_total = $sales_lookup[$ft_key] ?? 0;
+    $adj_total   = $adj_lookup[$ft_key] ?? 0;
+    $sales       = $same_type_count > 0 ? round($sales_total / $same_type_count, 2) : 0;
+    $calibration_adj = $same_type_count > 0 ? round($adj_total / $same_type_count, 2) : 0;
+
+    // Beginning Balance
+    $beginning = $same_type_count > 0 ? round($cur_level / $same_type_count, 2) : 0;
+
+    $total_available = $beginning + $purchases;
+    $ending_system   = min(max(0, $total_available - $sales - $calibration_adj), $capacity);
+
+    $current_level_tank = $ending_system;
+
+    // Thresholds aligned with TANK_CONFIG_17
+    if ($capacity == 14000) {
+        $critical_lvl = 2500; $low_lvl = 5000;
+    } elseif ($capacity == 7000) {
+        $critical_lvl = 1000; $low_lvl = 2000;
+    } else {
+        $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20;
+    }
+
+    $fill_pct = $capacity > 0 ? round(($current_level_tank / $capacity) * 100, 2) : 0;
+    if      ($current_level_tank <= 0)             { $status = 'Out of Stock'; $sc = '#dc3545'; }
+    elseif  ($current_level_tank <= $critical_lvl) { $status = 'Critical';     $sc = '#dc3545'; }
+    elseif  ($current_level_tank <= $low_lvl)      { $status = 'Low';          $sc = '#fd7e14'; }
+    else                                           { $status = 'Normal';       $sc = '#28a745'; }
+
+    $tank_levels[] = [
+        'tank_label'   => $tc['label'],
+        'tank_assign'  => $tc['tank'],
+        'fuel_type'    => $tc['fuel_type'],
+        'level'        => $current_level_tank,
+        'capacity'     => $capacity,
+        'status'       => $status,
+        'status_color' => $sc,
+        'pct'          => min(100.0, round($fill_pct, 1)),
+        'reorder_level'=> $tc['reorder_level'] ?? 0
+    ];
 }
-unset($tl);
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1450,48 +1507,28 @@ include __DIR__ . '/../partials/header.php';
                 <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px;">
                     <?php foreach ($tank_levels as $tl):
                         $pct        = $tl['pct'];
-                        $current    = (float)$tl['display_stock'];
-                        $capacity   = (float)$tl['total_capacity'];
-                        $pump_name  = $tl['tank_label'];        // e.g. "DIESEL 1 - 1"
-                        $fuel_name  = $tl['fuel_type_name'];    // e.g. "Diesel 1"
+                        $current    = (float)$tl['level'];
+                        $capacity   = (float)$tl['capacity'];
+                        $pump_name  = $tl['tank_label'];        // e.g. "DIESEL - 1"
+                        $fuel_name  = $tl['fuel_type'] . ' · ' . $tl['tank_assign'];    // e.g. "Diesel · UGT #1"
+                        $status_text = $tl['status'];
+                        $status_color = $tl['status_color'];
+                        $reorder    = (float)$tl['reorder_level'];
 
-                        // Status driven by dynamic capacity-based thresholds (14k=5000/7000, 7k=2000/3000)
-                        if ($capacity == 14000)     { $dynamic_crit = 5000; $dynamic_low = 7000; }
-                        elseif ($capacity == 7000)  { $dynamic_crit = 1000; $dynamic_low = 2000; }
-                        else                        { $dynamic_crit = $capacity * 0.10; $dynamic_low = $capacity * 0.20; }
-
-                        if ($capacity <= 0) {
-                            $status_text  = 'No Data';
-                            $status_color = '#94a3b8';
-                            $status_bg    = '#f1f5f9';
-                        } elseif ($current <= 0) {
-                            $status_text  = 'Out of Stock';
-                            $status_color = '#ef4444';
-                            $status_bg    = '#fef2f2';
-                        } elseif ($current <= $dynamic_crit) {
-                            $status_text  = 'Critical';
-                            $status_color = '#ef4444';
-                            $status_bg    = '#fef2f2';
-                        } elseif ($current <= $dynamic_low) {
-                            $status_text  = 'Low';
-                            $status_color = '#f97316';
-                            $status_bg    = '#fff7ed';
-                        } elseif ($pct >= 80) {
-                            $status_text  = 'Full';
-                            $status_color = '#16a34a';
-                            $status_bg    = '#f0fdf4';
+                        if ($status_text === 'Normal') {
+                            $status_bg = '#f0fdf4';
+                        } elseif ($status_text === 'Low') {
+                            $status_bg = '#fff7ed';
                         } else {
-                            $status_text  = 'Available';
-                            $status_color = '#22c55e';
-                            $status_bg    = '#f0fdf4';
+                            $status_bg = '#fef2f2';
                         }
                     ?>
                         <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,0.07);">
-                            <!-- Pump label (primary) -->
+                            <!-- Tank label (primary) -->
                             <div style="font-weight:800; font-size:11px; color:#1e293b; margin-bottom:2px; text-transform:uppercase; letter-spacing:0.4px;">
                                 <?= htmlspecialchars($pump_name) ?>
                             </div>
-                            <!-- Fuel type (secondary) -->
+                            <!-- Fuel type & Tank (secondary) -->
                             <div style="font-size:10px; color:#94a3b8; margin-bottom:10px;">
                                 <?= htmlspecialchars($fuel_name) ?>
                             </div>

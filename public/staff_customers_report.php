@@ -196,33 +196,130 @@ require_once __DIR__ . '/../partials/header.php';
 
     @media print {
         @page { size: legal portrait; margin: 0.5in 0.4in; }
+        
         body * { visibility: hidden !important; }
         .print-area, .print-area * { visibility: visible !important; }
         .print-area {
-            position: absolute !important;
+            position: fixed !important;
             top: 0 !important;
             left: 0 !important;
             width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
             background: white !important;
+            overflow-x: hidden !important;
         }
-        html, body { margin: 0 !important; padding: 0 !important; background: white !important; }
-        .controls, i, svg, .fas, .far, .fab, .fa, [class*="fa-"] { display: none !important; }
-        .container, .content { margin: 0 !important; padding: 0 !important; }
-        .header { text-align: center !important; border-bottom: 2px solid #000 !important; padding: 6px 0 !important; margin: 0 0 8px 0 !important; }
-        .header h1 { font-size: 16px !important; font-weight: 800 !important; color: #000 !important; margin: 0 0 3px 0 !important; }
-        .header p { font-size: 10px !important; color: #000 !important; margin: 2px 0 !important; }
+        
+        html, body { 
+            margin: 0 !important; 
+            padding: 0 !important; 
+            background: white !important; 
+            overflow-x: hidden !important;
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+        
+        /* Hide sidebar, navigation, hamburger menu, ALL UI controls */
+        .controls, .sidebar, .header-nav, .top-nav, nav, .menu-toggle, .hamburger, 
+        #sidebar, #header, #menu-toggle, .nav, .navbar, .menu-btn,
+        .toggle-btn, .sidebar-toggle, [class*="toggle"], [class*="menu-btn"],
+        .btn, button, .action-controls, .filter-controls {
+            display: none !important;
+            visibility: hidden !important;
+        }
+        
+        /* ── Kill ALL icons everywhere ── */
+        i, svg, .fas, .far, .fab, .fa, [class*="fa-"], .fa-solid, .fa-regular, .fa-brands,
+        .icon, [class*="icon-"] {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+            font-size: 0 !important;
+            line-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            visibility: hidden !important;
+        }
+        
+        /* Re-show print area but keep icons hidden */
+        .print-area i, .print-area svg, .print-area .fas, .print-area .far,
+        .print-area .fab, .print-area .fa, .print-area [class*="fa-"],
+        .print-area .icon, .print-area [class*="icon-"] {
+            display: none !important;
+            visibility: hidden !important;
+        }
+        
+        .container, .content { 
+            margin: 0 !important; 
+            padding: 0 !important; 
+            overflow-x: hidden !important;
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+        
+        .header { 
+            text-align: center !important; 
+            border-bottom: 2px solid #000 !important; 
+            padding: 6px 0 !important; 
+            margin: 0 0 8px 0 !important; 
+        }
+        .header h1 { 
+            font-size: 16px !important; 
+            font-weight: 800 !important; 
+            color: #000 !important; 
+            margin: 0 0 3px 0 !important; 
+            padding: 0 !important;
+        }
+        .header p { 
+            font-size: 10px !important; 
+            color: #000 !important; 
+            margin: 2px 0 !important; 
+            padding: 0 !important;
+        }
         .section-title { font-size: 12px !important; font-weight: 800 !important; margin: 8px 0 4px !important; border-bottom: 2px solid #000 !important; page-break-after: avoid !important; }
         .summary-cards { display: none !important; }
         .print-summary-table { display: table !important; }
-        .table-container { overflow: visible !important; width: 100% !important; text-align: center !important; margin-bottom: 8px !important; }
-        table { width: 95% !important; max-width: 100% !important; border-collapse: collapse !important; font-size: 9px !important; table-layout: auto !important; margin: 0 auto 8px !important; }
+        .table-container { 
+            overflow: hidden !important; 
+            overflow-x: hidden !important; 
+            width: 100% !important; 
+            max-width: 100% !important; 
+            text-align: center !important; 
+            margin-bottom: 8px !important; 
+        }
+        table { 
+            width: 100% !important; 
+            max-width: 100% !important; 
+            border-collapse: collapse !important; 
+            font-size: 8px !important; 
+            table-layout: fixed !important; 
+            margin: 0 auto 8px !important; 
+        }
         thead { display: table-header-group !important; }
         tbody { display: table-row-group !important; }
         tr { page-break-inside: avoid !important; }
-        th { font-size: 9px !important; padding: 5px 6px !important; border: 1px solid #000 !important; background: #fff !important; color: #000 !important; font-weight: 800 !important; text-align: center !important; white-space: nowrap !important; }
-        td { font-size: 8px !important; padding: 4px 6px !important; border: 1px solid #000 !important; white-space: nowrap !important; vertical-align: top !important; }
+        th { 
+            font-size: 8px !important; 
+            padding: 4px 3px !important; 
+            border: 1px solid #000 !important; 
+            background: #fff !important; 
+            color: #000 !important; 
+            font-weight: 800 !important; 
+            text-align: center !important; 
+            white-space: nowrap !important; 
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+        td { 
+            font-size: 7px !important; 
+            padding: 3px 2px !important; 
+            border: 1px solid #000 !important; 
+            white-space: nowrap !important; 
+            vertical-align: top !important; 
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            word-wrap: break-word !important;
+        }
         .two-col, .three-col { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 6px !important; margin: 6px 0 !important; page-break-inside: avoid !important; }
         .summary-box { border: 1px solid #000 !important; padding: 5px !important; }
         .summary-box h3 { font-size: 9px !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px !important; }

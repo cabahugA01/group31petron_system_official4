@@ -288,14 +288,68 @@ body,html{overflow-x:hidden;max-width:100%;}
         <div class="sub">MANAGE MERCHANDISE ITEMS AND MONITOR STOCK LEVELS.</div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <?php
-        $export_table_id       = 'merchTable';
-        $export_filename       = 'merch_inventory_' . date('Ymd');
-        $export_title          = 'Merchandise Inventory';
-        $export_rows_select_id = 'merchRowsLimit';
-        $export_default_rows   = 25;
-        require __DIR__ . '/../partials/export_buttons.php';
-        ?>
+        <!-- Custom Export Buttons for Merchandise Inventory -->
+        <button onclick="exportTableToExcel('merchTable','merch_inventory_<?= date('Ymd') ?>.xls')"
+                title="Export to Excel"
+                class="exp-btn exp-btn-excel">
+            <i class="fas fa-file-excel"></i> Excel
+        </button>
+        
+        <button onclick="exportTableToCSV('merchTable','merch_inventory_<?= date('Ymd') ?>.csv')"
+                title="Export to CSV"
+                class="exp-btn exp-btn-csv">
+            <i class="fas fa-file-csv"></i> CSV
+        </button>
+        
+        <button onclick="window.open('staff_inventory_merchandise_export.php', '_blank')"
+                title="Export to PDF / Print"
+                class="exp-btn exp-btn-pdf">
+            <i class="fas fa-file-pdf"></i> PDF
+        </button>
+        
+        <style>
+        .exp-btn {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 6px !important;
+            height: 36px !important;
+            padding: 7px 14px !important;
+            border-radius: 4px !important;
+            font-size: 11px !important;
+            font-weight: 600 !important;
+            cursor: pointer !important;
+            text-decoration: none !important;
+            border: 1px solid transparent !important;
+            transition: all .2s ease-in-out !important;
+            white-space: nowrap !important;
+            background: #fff !important;
+        }
+        .exp-btn-excel {
+            color: #16a34a !important;
+            border-color: #16a34a !important;
+        }
+        .exp-btn-excel:hover {
+            background: #16a34a !important;
+            color: #fff !important;
+        }
+        .exp-btn-csv {
+            color: #002F70 !important;
+            border-color: #002F70 !important;
+        }
+        .exp-btn-csv:hover {
+            background: #002F70 !important;
+            color: #fff !important;
+        }
+        .exp-btn-pdf {
+            color: #dc2626 !important;
+            border-color: #dc2626 !important;
+        }
+        .exp-btn-pdf:hover {
+            background: #dc2626 !important;
+            color: #fff !important;
+        }
+        </style>
     </div>
 </div>
 

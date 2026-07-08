@@ -178,63 +178,273 @@ if ($format === 'excel') {
 // 7. Handle PDF Export
 if ($format === 'pdf') {
     header('Content-Type: text/html; charset=utf-8');
+    
+    // Build filter summary text
+    $filterSummary = [];
+    if ($search !== '') $filterSummary[] = "Search: \"$search\"";
+    if ($type !== '') $filterSummary[] = "Customer Type: " . ucfirst($type);
+    if ($status !== '') $filterSummary[] = "Status: " . ucfirst($status);
+    if ($dateFrom !== '' && $dateTo !== '') {
+        $filterSummary[] = "Date Registered: " . date('M d, Y', strtotime($dateFrom)) . " to " . date('M d, Y', strtotime($dateTo));
+    } elseif ($dateFrom !== '') {
+        $filterSummary[] = "Date Registered From: " . date('M d, Y', strtotime($dateFrom));
+    } elseif ($dateTo !== '') {
+        $filterSummary[] = "Date Registered To: " . date('M d, Y', strtotime($dateTo));
+    }
+    $filterText = !empty($filterSummary) ? implode(' | ', $filterSummary) : 'None';
+    
     ?>
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="UTF-8">
-        <title>Customer List PDF - <?= date('Y-m-d') ?></title>
+        <title>Customer List Report - <?= date('Y-m-d') ?></title>
         <style>
-            body { font-family: Arial, sans-serif; color: #333; margin: 20px; font-size: 11px; line-height: 1.4; }
-            .header { border-bottom: 2px solid #002F70; padding-bottom: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start; }
-            .header h1 { margin: 0; color: #002F70; font-size: 18px; text-transform: uppercase; }
-            .station-info { text-align: right; color: #555; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-            th { background: #002F70; color: white; padding: 6px 8px; font-size: 10px; text-align: left; text-transform: uppercase; border: 1px solid #cbd5e1; }
-            td { padding: 6px 8px; border: 1px solid #e2e8f0; }
-            tr:nth-child(even) { background: #f8fafc; }
-            .footer { margin-top: 30px; text-align: center; font-size: 9px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px; }
-            .no-print { display: flex; justify-content: center; gap: 8px; margin-bottom: 20px; }
-            .no-print button { padding: 8px 16px; font-size: 12px; cursor: pointer; font-weight: bold; background: #002F70; color: white; border: none; border-radius: 4px; }
-            .no-print button.close { background: #64748b; }
-            @media print { .no-print { display: none; } }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            html, body {
+                font-family: Arial, sans-serif;
+                color: #000;
+                font-size: 11px;
+                line-height: 1.4;
+                margin: 0;
+                padding: 0;
+                overflow-x: hidden;
+            }
+            body {
+                padding: 20px;
+            }
+            
+            /* Report Header */
+            .report-header {
+                text-align: center;
+                border-bottom: 3px solid #002F70;
+                padding-bottom: 12px;
+                margin-bottom: 16px;
+            }
+            .report-header h1 {
+                font-size: 16px;
+                font-weight: bold;
+                color: #002F70;
+                margin-bottom: 3px;
+                text-transform: uppercase;
+            }
+            .report-header h2 {
+                font-size: 14px;
+                font-weight: bold;
+                color: #002F70;
+                margin-bottom: 10px;
+                text-transform: uppercase;
+            }
+            
+            /* Station Info Grid */
+            .station-info {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 8px 20px;
+                margin-bottom: 14px;
+                font-size: 10px;
+            }
+            .info-item {
+                display: flex;
+            }
+            .info-label {
+                font-weight: bold;
+                min-width: 100px;
+                color: #333;
+            }
+            .info-value {
+                color: #000;
+            }
+            
+            /* Applied Filters Section */
+            .filters-section {
+                background: #f8fafc;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 10px 12px;
+                margin-bottom: 16px;
+            }
+            .filters-section h3 {
+                font-size: 11px;
+                font-weight: bold;
+                color: #002F70;
+                margin-bottom: 6px;
+                text-transform: uppercase;
+            }
+            .filters-section p {
+                font-size: 10px;
+                color: #333;
+                line-height: 1.5;
+            }
+            
+            /* Customer Table */
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 16px;
+                font-size: 9px;
+            }
+            thead {
+                background: #002F70;
+            }
+            th {
+                color: white;
+                padding: 8px 6px;
+                text-align: left;
+                font-weight: bold;
+                font-size: 9px;
+                text-transform: uppercase;
+                border: 1px solid #001f4d;
+            }
+            td {
+                padding: 6px 6px;
+                border: 1px solid #cbd5e1;
+                color: #000;
+                font-size: 9px;
+            }
+            tbody tr:nth-child(even) {
+                background: #f8fafc;
+            }
+            tbody tr:hover {
+                background: #e0e7ff;
+            }
+            
+
+            
+            /* No Print Elements */
+            .no-print {
+                display: flex;
+                justify-content: center;
+                gap: 10px;
+                margin-bottom: 20px;
+            }
+            .no-print button {
+                padding: 10px 20px;
+                font-size: 13px;
+                font-weight: bold;
+                cursor: pointer;
+                border: none;
+                border-radius: 4px;
+                transition: all 0.2s;
+            }
+            .btn-print {
+                background: #002F70;
+                color: white;
+            }
+            .btn-print:hover {
+                background: #001f4d;
+            }
+            .btn-close {
+                background: #64748b;
+                color: white;
+            }
+            .btn-close:hover {
+                background: #475569;
+            }
+            
+            /* Hide icons */
+            i, svg, .fas, .far, .fab, .fa {
+                display: none !important;
+            }
+            
+            /* Print Styles */
+            @media print {
+                @page {
+                    margin: 0.5in;
+                    size: landscape;
+                }
+                
+                html, body {
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    overflow-x: hidden !important;
+                }
+                
+                body {
+                    padding: 0 !important;
+                }
+                
+                .no-print {
+                    display: none !important;
+                }
+                
+                /* Ensure table fits */
+                table {
+                    font-size: 8px !important;
+                    page-break-inside: auto;
+                }
+                
+                tr {
+                    page-break-inside: avoid;
+                    page-break-after: auto;
+                }
+                
+                thead {
+                    display: table-header-group;
+                }
+                
+                th, td {
+                    padding: 5px 4px !important;
+                    font-size: 8px !important;
+                }
+            }
         </style>
     </head>
     <body>
+        <!-- No Print Buttons -->
         <div class="no-print">
-            <button onclick="window.print()">Print PDF</button>
-            <button class="close" onclick="window.close()">Close Window</button>
+            <button class="btn-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
+            <button class="btn-close" onclick="window.close()">✖ Close Window</button>
         </div>
-        <div class="header">
-            <div>
-                <h1>Petron Customer Directory</h1>
-                <div style="margin-top: 4px;"><strong>Generated By:</strong> <?= htmlspecialchars($generated_by) ?></div>
-                <div><strong>Export Date:</strong> <?= date('F d, Y h:i A') ?></div>
+        
+        <!-- Report Header -->
+        <div class="report-header">
+            <h1>PETRON STATION & SERVICE CENTER</h1>
+            <h2>CUSTOMER LIST REPORT</h2>
+        </div>
+        
+        <!-- Station & Report Information -->
+        <div class="station-info">
+            <div class="info-item">
+                <span class="info-label">Branch:</span>
+                <span class="info-value"><?= htmlspecialchars($station_name) ?></span>
             </div>
-            <div class="station-info">
-                <strong><?= htmlspecialchars($station_name) ?></strong><br>
-                <?= htmlspecialchars($station_location) ?>
+            <div class="info-item">
+                <span class="info-label">Generated By:</span>
+                <span class="info-value"><?= htmlspecialchars($generated_by) ?></span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Address:</span>
+                <span class="info-value"><?= htmlspecialchars($station_location ?: 'N/A') ?></span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Print Date & Time:</span>
+                <span class="info-value"><?= date('F d, Y h:i A') ?></span>
             </div>
         </div>
         
-        <p><strong>Total Records:</strong> <?= count($customers) ?> customers match the selected filter criteria.</p>
+        <!-- Applied Filters Section -->
+        <div class="filters-section">
+            <h3>Applied Filters</h3>
+            <p><?= htmlspecialchars($filterText) ?></p>
+        </div>
         
+        <!-- Customer Data Table -->
         <table>
             <thead>
                 <tr>
-                    <th>Customer ID</th>
-                    <th>Customer Name</th>
-                    <th>Contact Number</th>
-                    <th>Type</th>
-                    <th>Transactions</th>
-                    <th>Last Transaction</th>
-                    <th>Status</th>
-                    <th>Date Registered</th>
+                    <th style="width: 10%;">Customer ID</th>
+                    <th style="width: 20%;">Customer Name</th>
+                    <th style="width: 12%;">Contact No.</th>
+                    <th style="width: 12%;">Customer Type</th>
+                    <th style="width: 12%;">Total Transactions</th>
+                    <th style="width: 15%;">Last Transaction</th>
+                    <th style="width: 10%;">Status</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($customers)): ?>
-                    <tr><td colspan="8" style="text-align: center; color: #888;">No customers found matching criteria.</td></tr>
+                    <tr><td colspan="7" style="text-align: center; color: #888; padding: 20px;">No customers found matching the filter criteria.</td></tr>
                 <?php else: ?>
                     <?php foreach ($customers as $c): 
                         $fullName = trim($c['first_name'] . ' ' . $c['middle_name'] . ' ' . $c['last_name']);
@@ -244,24 +454,22 @@ if ($format === 'pdf') {
                             <td><?= htmlspecialchars($fullName) ?></td>
                             <td><?= htmlspecialchars($c['contact_number']) ?></td>
                             <td><?= ucfirst(htmlspecialchars($c['customer_type'])) ?></td>
-                            <td style="text-align: right;"><?= $c['total_transactions'] ?></td>
-                            <td><?= $c['last_transaction'] ? date('M d, Y H:i', strtotime($c['last_transaction'])) : 'Never' ?></td>
+                            <td style="text-align: center;"><?= $c['total_transactions'] ?></td>
+                            <td><?= $c['last_transaction'] ? date('M d, Y h:i A', strtotime($c['last_transaction'])) : 'Never' ?></td>
                             <td><?= ucfirst(htmlspecialchars($c['status'])) ?></td>
-                            <td><?= date('M d, Y', strtotime($c['registered_at'])) ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
             </tbody>
         </table>
         
-        <div class="footer">
-            System Generated Report - Petron Management System - Confidential
-        </div>
         <script>
-            window.onload = function() {
-                // Auto trigger print dialogue for user convenience
-                // window.print();
-            }
+            // Auto-trigger print dialog on page load
+            window.addEventListener('load', function() {
+                setTimeout(function() {
+                    window.print();
+                }, 500);
+            });
         </script>
     </body>
     </html>

@@ -445,6 +445,99 @@ include __DIR__ . '/../partials/header.php';
 .toast-error   { background:#dc3545; }
 @keyframes tUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
 .batch-loading { text-align:center; padding:20px; color:#6c757d; }
+
+/* Print Styles - Hide Action Buttons and ACTION Column */
+.no-print {
+    /* For screen - visible normally */
+}
+
+@media print {
+    @page {
+        margin: 0.5in;
+    }
+    
+    /* CRITICAL: Hide anything with no-print class */
+    .no-print,
+    th.no-print,
+    td.no-print {
+        display: none !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        max-width: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: none !important;
+        overflow: hidden !important;
+    }
+    
+    /* CRITICAL: Hide the ACTION column completely using multiple methods */
+    table th:last-child,
+    table td:last-child,
+    .pm-table th:last-child,
+    .pm-table td:last-child,
+    th:nth-last-child(1),
+    td:nth-last-child(1) {
+        display: none !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        max-width: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: none !important;
+    }
+    
+    /* Hide all buttons and action elements */
+    button,
+    .btn, .btn-view, .btn-edit, .btn-danger, .btn-success,
+    .action-col,
+    .header-actions,
+    .page-head button,
+    [class*="btn-"],
+    input[type="button"],
+    input[type="submit"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    
+    /* Hide all icons */
+    i, svg, .fas, .far, .fab, .fa, .icon,
+    [class*="fa-"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    
+    /* Hide navigation and UI elements */
+    .sidebar, nav, .header-actions, .page-head .header-actions,
+    #sidebar, .menu-toggle, .hamburger {
+        display: none !important;
+    }
+    
+    /* Clean table layout for print */
+    body, html {
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow-x: hidden !important;
+    }
+    
+    .pm-table {
+        width: 100% !important;
+        font-size: 9px !important;
+        table-layout: fixed !important;
+    }
+    
+    .pm-table th,
+    .pm-table td {
+        padding: 6px 4px !important;
+        font-size: 8px !important;
+        border: 1px solid #000 !important;
+    }
+    
+    .pm-table thead th {
+        background: #fff !important;
+        color: #000 !important;
+        font-weight: bold !important;
+    }
+}
 </style>
 
 <div class="page-head">
@@ -501,7 +594,7 @@ include __DIR__ . '/../partials/header.php';
                         <th>Stock</th>
                         <th>Batch ID</th>
                         <th>Status</th>
-                        <th style="">Actions</th>
+                        <th class="no-print" style="">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="merchTableBody">
@@ -577,7 +670,7 @@ include __DIR__ . '/../partials/header.php';
                     </td>
 
                     <!-- 10. Actions -->
-                    <td>
+                    <td class="no-print">
                         <div class="action-col">
                             <button class="btn btn-view" onclick="viewProduct(<?php echo (int)$p['id']; ?>)">
                                 <i class="fas fa-eye"></i> View

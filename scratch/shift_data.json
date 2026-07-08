@@ -1,0 +1,360 @@
+{
+    "labor_sessions": [
+        {
+            "id": 116,
+            "user_id": 9,
+            "station_id": 1253,
+            "start_time": "2026-07-08 21:39:23",
+            "end_time": null,
+            "hours_worked": "0.00",
+            "created_at": "2026-07-08 21:39:23",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM ??? 12:00 Midnight"
+        },
+        {
+            "id": 115,
+            "user_id": 9,
+            "station_id": 1253,
+            "start_time": "2026-07-08 00:29:41",
+            "end_time": "2026-07-08 21:02:44",
+            "hours_worked": "20.55",
+            "created_at": "2026-07-08 00:29:41",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM \u2013 12:00 Midnight"
+        },
+        {
+            "id": 114,
+            "user_id": 9,
+            "station_id": 1253,
+            "start_time": "2026-07-08 00:24:37",
+            "end_time": "2026-07-08 00:26:31",
+            "hours_worked": "0.02",
+            "created_at": "2026-07-08 00:24:37",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM \u2013 12:00 Midnight"
+        },
+        {
+            "id": 113,
+            "user_id": 9,
+            "station_id": 1253,
+            "start_time": "2026-07-07 23:35:12",
+            "end_time": "2026-07-08 00:06:45",
+            "hours_worked": "0.52",
+            "created_at": "2026-07-07 23:35:12",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM \u2013 12:00 Midnight"
+        },
+        {
+            "id": 112,
+            "user_id": 8,
+            "station_id": 1253,
+            "start_time": "2026-07-07 19:33:27",
+            "end_time": null,
+            "hours_worked": "0.00",
+            "created_at": "2026-07-07 19:33:27",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM ??? 12:00 Midnight"
+        },
+        {
+            "id": 111,
+            "user_id": 9,
+            "station_id": 1253,
+            "start_time": "2026-07-07 18:36:40",
+            "end_time": "2026-07-07 23:35:00",
+            "hours_worked": "4.97",
+            "created_at": "2026-07-07 18:36:40",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM \u2013 12:00 Midnight"
+        },
+        {
+            "id": 110,
+            "user_id": 8,
+            "station_id": 1253,
+            "start_time": "2026-07-07 17:40:06",
+            "end_time": "2026-07-07 17:50:49",
+            "hours_worked": "0.17",
+            "created_at": "2026-07-07 17:40:06",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM ??? 12:00 Midnight"
+        },
+        {
+            "id": 109,
+            "user_id": 8,
+            "station_id": 1253,
+            "start_time": "2026-07-07 07:46:59",
+            "end_time": "2026-07-07 07:47:22",
+            "hours_worked": "0.00",
+            "created_at": "2026-07-07 07:46:59",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM ??? 12:00 Midnight"
+        },
+        {
+            "id": 108,
+            "user_id": 8,
+            "station_id": 1253,
+            "start_time": "2026-07-07 07:36:39",
+            "end_time": "2026-07-07 07:36:45",
+            "hours_worked": "0.00",
+            "created_at": "2026-07-07 07:36:39",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM ??? 12:00 Midnight"
+        },
+        {
+            "id": 107,
+            "user_id": 9,
+            "station_id": 1253,
+            "start_time": "2026-07-07 07:36:18",
+            "end_time": "2026-07-07 07:36:25",
+            "hours_worked": "0.00",
+            "created_at": "2026-07-07 07:36:18",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM \u2013 12:00 Midnight"
+        },
+        {
+            "id": 106,
+            "user_id": 9,
+            "station_id": 1253,
+            "start_time": "2026-07-07 00:03:27",
+            "end_time": "2026-07-07 00:03:30",
+            "hours_worked": "0.00",
+            "created_at": "2026-07-07 00:03:27",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM \u2013 12:00 Midnight"
+        },
+        {
+            "id": 105,
+            "user_id": 8,
+            "station_id": 1253,
+            "start_time": "2026-07-06 21:13:15",
+            "end_time": "2026-07-07 00:04:35",
+            "hours_worked": "2.85",
+            "created_at": "2026-07-06 21:13:15",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM ??? 12:00 Midnight"
+        },
+        {
+            "id": 104,
+            "user_id": 8,
+            "station_id": 1253,
+            "start_time": "2026-07-06 20:51:07",
+            "end_time": "2026-07-06 20:58:44",
+            "hours_worked": "0.12",
+            "created_at": "2026-07-06 20:51:07",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM ??? 12:00 Midnight"
+        },
+        {
+            "id": 103,
+            "user_id": 8,
+            "station_id": 1253,
+            "start_time": "2026-07-06 20:40:22",
+            "end_time": "2026-07-06 20:45:02",
+            "hours_worked": "0.07",
+            "created_at": "2026-07-06 20:40:22",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM ??? 12:00 Midnight"
+        },
+        {
+            "id": 102,
+            "user_id": 8,
+            "station_id": 1253,
+            "start_time": "2026-07-06 16:20:21",
+            "end_time": "2026-07-06 16:34:09",
+            "hours_worked": "0.22",
+            "created_at": "2026-07-06 16:20:21",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM ??? 12:00 Midnight"
+        },
+        {
+            "id": 101,
+            "user_id": 9,
+            "station_id": 1253,
+            "start_time": "2026-07-06 15:41:28",
+            "end_time": "2026-07-06 15:41:36",
+            "hours_worked": "0.00",
+            "created_at": "2026-07-06 15:41:28",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM \u2013 12:00 Midnight"
+        },
+        {
+            "id": 100,
+            "user_id": 9,
+            "station_id": 1253,
+            "start_time": "2026-07-06 02:12:36",
+            "end_time": "2026-07-06 02:12:40",
+            "hours_worked": "0.00",
+            "created_at": "2026-07-06 02:12:36",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM \u2013 12:00 Midnight"
+        },
+        {
+            "id": 99,
+            "user_id": 8,
+            "station_id": 1253,
+            "start_time": "2026-07-06 01:45:35",
+            "end_time": "2026-07-06 01:48:00",
+            "hours_worked": "0.03",
+            "created_at": "2026-07-06 01:45:35",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM ??? 12:00 Midnight"
+        },
+        {
+            "id": 98,
+            "user_id": 8,
+            "station_id": 1253,
+            "start_time": "2026-07-05 14:47:46",
+            "end_time": "2026-07-06 00:55:15",
+            "hours_worked": "10.12",
+            "created_at": "2026-07-05 14:47:46",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM ??? 12:00 Midnight"
+        },
+        {
+            "id": 97,
+            "user_id": 8,
+            "station_id": 1253,
+            "start_time": "2026-07-03 20:32:32",
+            "end_time": "2026-07-04 07:32:35",
+            "hours_worked": "11.00",
+            "created_at": "2026-07-03 20:32:32",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM ??? 12:00 Midnight"
+        },
+        {
+            "id": 96,
+            "user_id": 8,
+            "station_id": 1253,
+            "start_time": "2026-07-03 13:40:15",
+            "end_time": "2026-07-03 16:01:27",
+            "hours_worked": "2.35",
+            "created_at": "2026-07-03 13:40:15",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM ??? 12:00 Midnight"
+        },
+        {
+            "id": 95,
+            "user_id": 9,
+            "station_id": 1253,
+            "start_time": "2026-07-03 12:18:36",
+            "end_time": "2026-07-06 01:52:11",
+            "hours_worked": "61.55",
+            "created_at": "2026-07-03 12:18:36",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM \u2013 12:00 Midnight"
+        },
+        {
+            "id": 94,
+            "user_id": 9,
+            "station_id": 1253,
+            "start_time": "2026-07-02 11:38:57",
+            "end_time": "2026-07-02 12:35:08",
+            "hours_worked": "0.93",
+            "created_at": "2026-07-02 11:38:57",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM \u2013 12:00 Midnight"
+        },
+        {
+            "id": 93,
+            "user_id": 8,
+            "station_id": 1253,
+            "start_time": "2026-07-01 20:56:17",
+            "end_time": "2026-07-03 12:18:29",
+            "hours_worked": "39.37",
+            "created_at": "2026-07-01 20:56:17",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM ??? 12:00 Midnight"
+        },
+        {
+            "id": 92,
+            "user_id": 9,
+            "station_id": 1,
+            "start_time": "2026-06-30 23:46:25",
+            "end_time": "2026-07-01 20:54:56",
+            "hours_worked": "21.13",
+            "created_at": "2026-06-30 23:46:25",
+            "shift_period": "second",
+            "shift_name": "Second Shift: 2:00 PM \u2013 12:00 Midnight"
+        },
+        {
+            "id": 4,
+            "user_id": 18,
+            "station_id": 1250,
+            "start_time": "2026-02-17 15:11:58",
+            "end_time": "2026-02-17 15:11:58",
+            "hours_worked": "0.00",
+            "created_at": "2026-02-17 15:11:58",
+            "shift_period": null,
+            "shift_name": null
+        },
+        {
+            "id": 3,
+            "user_id": 18,
+            "station_id": 1250,
+            "start_time": "2026-02-17 15:11:57",
+            "end_time": "2026-02-17 15:11:57",
+            "hours_worked": "0.00",
+            "created_at": "2026-02-17 15:11:57",
+            "shift_period": null,
+            "shift_name": null
+        },
+        {
+            "id": 2,
+            "user_id": 18,
+            "station_id": 1250,
+            "start_time": "2026-02-17 15:11:54",
+            "end_time": "2026-02-17 15:11:56",
+            "hours_worked": "0.00",
+            "created_at": "2026-02-17 15:11:54",
+            "shift_period": null,
+            "shift_name": null
+        },
+        {
+            "id": 1,
+            "user_id": 15,
+            "station_id": 1205,
+            "start_time": "2026-02-09 09:47:50",
+            "end_time": null,
+            "hours_worked": "0.00",
+            "created_at": "2026-02-09 09:47:50",
+            "shift_period": null,
+            "shift_name": null
+        }
+    ],
+    "users": [
+        {
+            "id": 1,
+            "username": "developer",
+            "first_name": "Yang",
+            "last_name": "",
+            "role": "superadmin"
+        },
+        {
+            "id": 3,
+            "username": "Edgar",
+            "first_name": "Edgar",
+            "last_name": "Eslit",
+            "role": "manager"
+        },
+        {
+            "id": 4,
+            "username": "pepito",
+            "first_name": "Kathrine",
+            "last_name": "Pepito",
+            "role": "admin"
+        },
+        {
+            "id": 8,
+            "username": "yyang",
+            "first_name": "Yyang",
+            "last_name": "",
+            "role": "staff"
+        },
+        {
+            "id": 9,
+            "username": "judy",
+            "first_name": "Judy",
+            "last_name": "Lastimosa",
+            "role": "staff"
+        }
+    ]
+}

@@ -400,10 +400,10 @@ body, html { overflow-x: hidden !important; }
 /* ══ Modal Elements ══ */
 .sr-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:10000; display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; transition:opacity .2s ease-in-out; }
 .sr-modal-overlay.open { opacity:1; pointer-events:auto; }
-.sr-modal-box { background:#fff; border-radius:12px; width:100%; max-width:540px; box-shadow:0 10px 25px rgba(0,0,0,.2); display:flex; flex-direction:column; max-height:90vh; overflow:hidden; }
+.sr-modal-box { background:#fff; border-radius:12px; width:100%; max-width:540px; box-shadow:0 10px 25px rgba(0,0,0,.2); display:flex; flex-direction:column; max-height:90vh; overflow:hidden; pointer-events:auto !important; position:relative; z-index:10001; }
 .sr-modal-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e2e8f0; }
 .sr-modal-title { font-size:16px; font-weight:700; color:#002F70; }
-.sr-modal-close { background:none !important; background-color:transparent !important; border:none !important; font-size:24px; color:#64748b !important; cursor:pointer; box-shadow:none !important; }
+.sr-modal-close { background:none !important; background-color:transparent !important; border:none !important; font-size:24px; color:#64748b !important; cursor:pointer !important; box-shadow:none !important; pointer-events:auto !important; }
 .sr-modal-close:hover { color:#1e293b !important; }
 
 /* Modal close and tab button overrides to prevent global button overrides */
@@ -414,6 +414,8 @@ body, html { overflow-x: hidden !important; }
     background-color: transparent !important;
     border: none !important;
     box-shadow: none !important;
+    pointer-events: auto !important;
+    cursor: pointer !important;
 }
 .modal-tab-btn.active {
     border-bottom: 2px solid #002F70 !important;
@@ -423,16 +425,19 @@ body, html { overflow-x: hidden !important; }
     color: #64748b !important;
 }
 .sr-info-box { background:#eff6ff; border-left:4px solid #002F70; padding:12px 16px; margin:16px; border-radius:0 8px 8px 0; font-size:13px; color:#1e293b; line-height:1.5; }
-.fsr-select-bar { display:flex; align-items:center; padding:10px 20px; background:#f8fafc; border-bottom:1px solid #e2e8f0; font-size:13px; font-weight:600; }
-#fsrCheckList { overflow-y:auto; flex:1; padding:8px 16px; }
-.fsr-cb-row { display:flex; align-items:flex-start; gap:12px; padding:10px 12px; border-radius:8px; border:1px solid #e2e8f0; margin-bottom:8px; cursor:pointer; transition:all .15s ease; }
+.fsr-select-bar { display:flex; align-items:center; padding:10px 20px; background:#f8fafc; border-bottom:1px solid #e2e8f0; font-size:13px; font-weight:600; pointer-events:auto !important; }
+.fsr-select-bar input[type="checkbox"] { pointer-events:auto !important; cursor:pointer !important; }
+.fsr-select-bar label { pointer-events:auto !important; cursor:pointer !important; }
+#fsrCheckList { overflow-y:auto; flex:1; padding:8px 16px; pointer-events:auto !important; }
+.fsr-cb-row { display:flex; align-items:flex-start; gap:12px; padding:10px 12px; border-radius:8px; border:1px solid #e2e8f0; margin-bottom:8px; cursor:pointer !important; transition:all .15s ease; pointer-events:auto !important; }
 .fsr-cb-row:hover { background:#f8fafc; border-color:#cbd5e1; }
 .fsr-cb-row.checked { background:#f0fdf4; border-color:#86efac; }
-.fsr-cb-row input[type="checkbox"] { margin-top:3px; transform:scale(1.1); }
-.fsr-item-info { flex:1; }
+.fsr-cb-row input[type="checkbox"] { margin-top:3px; transform:scale(1.1); cursor:pointer !important; pointer-events:auto !important; }
+.fsr-item-info { flex:1; pointer-events:none; }
 .fsr-item-name { font-weight:700; font-size:14px; color:#1e293b; }
 .fsr-item-meta { font-size:12px; color:#64748b; margin-top:3px; display:flex; align-items:center; flex-wrap:wrap; gap:4px; }
-.sr-modal-footer { display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:16px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; }
+.sr-modal-footer { display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:16px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; pointer-events:auto !important; }
+.sr-modal-footer button { pointer-events:auto !important; cursor:pointer !important; }
 
 /* Petron-clean flt-btn Styles */
 .flt-btn { display:inline-flex; align-items:center; gap:6px; padding:0 14px; height:35px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; text-decoration:none; border:1px solid transparent; background:#fff !important; transition:all .15s; }
@@ -575,7 +580,7 @@ body, html { overflow-x: hidden !important; }
         <!-- Export Buttons -->
         <button onclick="exportTableToExcel('fuelTable', 'fuel_inventory_' + new Date().toISOString().slice(0,10) + '.xls')" class="flt-btn flt-btn-excel" style="height:36px;"><i class="fas fa-file-excel"></i> Excel</button>
         <button onclick="exportTableToCSV('fuelTable', 'fuel_inventory_' + new Date().toISOString().slice(0,10) + '.csv')" class="flt-btn flt-btn-csv" style="height:36px;"><i class="fas fa-file-csv"></i> CSV</button>
-        <button onclick="exportTableToPDF('fuelTable', 'Fuel Inventory')" class="flt-btn flt-btn-pdf" style="height:36px;"><i class="fas fa-file-pdf"></i> PDF</button>
+        <button onclick="window.open('staff_inventory_fuel_export.php', '_blank')" class="flt-btn flt-btn-pdf" style="height:36px;"><i class="fas fa-file-pdf"></i> PDF</button>
     </div>
 </div>
 
@@ -876,8 +881,8 @@ function openFuelSrModal() {
     renderFsrCheckList();
     syncFsrSelectAll();
     document.getElementById('fsrError').style.display = 'none';
-    document.getElementById('fsrSubmitBtn').disabled  = false;
-    document.getElementById('fsrSubmitBtn').innerHTML = 'Submit Request';
+    var sb = document.getElementById('fsrSubmitBtn');
+    if (sb) { sb.disabled = false; sb.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request'; }
     document.getElementById('fuelSrModal').classList.add('open');
 }
 
@@ -956,14 +961,16 @@ if (selectAllEl) {
 }
 
 // ── Close stock request modal ─────────────────────────────────────────────────────────────────────
-function closeFuelSrModal() { document.getElementById('fuelSrModal').classList.remove('open'); }
-document.getElementById('fuelSrClose').addEventListener('click', closeFuelSrModal);
-document.getElementById('fsrCancelBtn').addEventListener('click', closeFuelSrModal);
-document.getElementById('fuelSrModal').addEventListener('click', function(e) { if (e.target === this) closeFuelSrModal(); });
-document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeFuelSrModal(); });
+function closeFuelSrModal() {
+    var m = document.getElementById('fuelSrModal');
+    if (m) m.classList.remove('open');
+}
+
+// Event listener setup is deferred to DOMContentLoaded to avoid race
+// conditions when elements are moved to body
 
 // ── Submit stock request ────────────────────────────────────────────────────────────────────
-document.getElementById('fsrSubmitBtn').addEventListener('click', function() {
+function submitFuelStockRequest() {
     var checked = document.querySelectorAll('.fsr-item-cb:checked');
     if (checked.length === 0) {
         var el = document.getElementById('fsrError');
@@ -972,9 +979,9 @@ document.getElementById('fsrSubmitBtn').addEventListener('click', function() {
         return;
     }
 
-    var btn = this;
+    var btn = document.getElementById('fsrSubmitBtn');
     btn.disabled = true;
-    btn.innerHTML = 'Submitting...';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
     document.getElementById('fsrError').style.display = 'none';
 
     var queue = [];
@@ -1019,7 +1026,7 @@ document.getElementById('fsrSubmitBtn').addEventListener('click', function() {
         });
     }
     submitNext();
-});
+}
 
 function closeFsrSuccess() {
     document.getElementById('fsrSuccessPopup').style.display  = 'none';
@@ -1240,10 +1247,43 @@ function printTankRecord(r) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Move modals to body to avoid z-index and stacking context issues
     ['tankModal', 'movementModal', 'fuelSrModal', 'fsrSuccessOverlay', 'fsrSuccessPopup'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el && el.parentNode !== document.body) document.body.appendChild(el);
     });
+
+    // Wire modal buttons AFTER elements are moved to body
+    var closeBtn   = document.getElementById('fuelSrClose');
+    var cancelBtn  = document.getElementById('fsrCancelBtn');
+    var submitBtn  = document.getElementById('fsrSubmitBtn');
+    var overlay    = document.getElementById('fuelSrModal');
+    var selectAll  = document.getElementById('fsrSelectAll');
+
+    if (closeBtn)  closeBtn.addEventListener('click',  closeFuelSrModal);
+    if (cancelBtn) cancelBtn.addEventListener('click', closeFuelSrModal);
+    if (overlay)   overlay.addEventListener('click', function(e) {
+        if (e.target === this) closeFuelSrModal();
+    });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeFuelSrModal();
+    });
+
+    if (selectAll) {
+        selectAll.addEventListener('change', function() {
+            var c = this.checked;
+            document.querySelectorAll('.fsr-item-cb').forEach(function(cb) { cb.checked = c; });
+            document.querySelectorAll('.fsr-cb-row').forEach(function(row) { row.classList.toggle('checked', c); });
+            syncFsrSelectAll();
+        });
+    }
+
+    if (submitBtn) {
+        submitBtn.addEventListener('click', function() {
+            submitFuelStockRequest();
+        });
+    }
+
     if (typeof setupTablePagination === 'function') {
         setupTablePagination('fuelTable', 'fuelRowsLimit', 'fuelPagination', 20);
     }

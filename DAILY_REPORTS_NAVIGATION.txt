@@ -1,0 +1,278 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    DAILY REPORTS - NAVIGATION STRUCTURE                      ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+SIDEBAR NAVIGATION HIERARCHY
+═════════════════════════════════════════════════════════════════════════════════
+
+📊 Reports (staff_reports.php)
+    │
+    ├── 📅 Daily Reports (NEW - Nested Submenu)
+    │   │
+    │   ├── ☀️ Shift 1 Fuel Sales
+    │   │   └─→ reports/staff_shift_fuel_report.php?shift=shift1
+    │   │       📋 Sections:
+    │   │           • Report Header (Station, Cashier, Date)
+    │   │           • Fuel Sales Income (by type)
+    │   │           • Meter Reading Report (UGT table)
+    │   │           • Volume Sales Summary
+    │   │           • Payment Breakdown
+    │   │           • Fuel Inventory Movement
+    │   │
+    │   ├── 🌙 Shift 2 Fuel Sales
+    │   │   └─→ reports/staff_shift_fuel_report.php?shift=shift2
+    │   │       📋 Same structure as Shift 1
+    │   │
+    │   ├── 🕐 24-Hour Fuel Summary
+    │   │   └─→ reports/staff_shift_fuel_report.php?shift=24hour
+    │   │       📋 Consolidated full-day report
+    │   │
+    │   └── 🛒 Merchandise & Service Sales
+    │       └─→ reports/staff_daily_merchandise_service_report.php
+    │           📋 Sections:
+    │               • KPI Cards (Sales/Income/Total)
+    │               • Merchandise Sales Table
+    │               • Service Income Table
+    │               • Grand Total Summary
+    │
+    ├── 💵 Sales Reports
+    │   └─→ staff_fuel_sales_summary.php
+    │
+    ├── 🚚 Deliveries Reports
+    │   └─→ staff_deliveries_report.php
+    │
+    ├── 💳 Payments Reports
+    │   └─→ staff_payments_report.php
+    │
+    ├── 👥 Customer Reports
+    │   └─→ staff_customers_report.php
+    │
+    └── 📈 Activity Reports
+        └─→ staff_activity_report.php
+
+
+ALTERNATIVE ACCESS: INDEX PAGE (Landing Page)
+═════════════════════════════════════════════════════════════════════════════════
+
+🏠 Daily Reports Index
+   └─→ reports/daily_reports_index.php
+       │
+       ├── 📅 Date Selector (Calendar picker)
+       │
+       ├── ⛽ FUEL SALES REPORTS
+       │   ├── [CARD] Shift 1 Fuel Sales ☀️
+       │   ├── [CARD] Shift 2 Fuel Sales 🌙
+       │   └── [CARD] 24-Hour Fuel Summary 🕐
+       │
+       └── 🛍️ MERCHANDISE & SERVICES
+           └── [CARD] Daily Merchandise & Service Sales
+
+
+URL PATTERNS
+═════════════════════════════════════════════════════════════════════════════════
+
+SHIFT FUEL REPORTS:
+  Base URL: /reports/staff_shift_fuel_report.php
+  Parameters:
+    • shift={shift1|shift2|24hour}  (Required)
+    • report_date=YYYY-MM-DD        (Optional, defaults to today)
+  
+  Examples:
+    ✓ /reports/staff_shift_fuel_report.php?shift=shift1&report_date=2026-07-04
+    ✓ /reports/staff_shift_fuel_report.php?shift=shift2
+    ✓ /reports/staff_shift_fuel_report.php?shift=24hour&report_date=2026-07-08
+
+MERCHANDISE/SERVICE REPORT:
+  Base URL: /reports/staff_daily_merchandise_service_report.php
+  Parameters:
+    • report_date=YYYY-MM-DD        (Optional, defaults to today)
+  
+  Examples:
+    ✓ /reports/staff_daily_merchandise_service_report.php?report_date=2026-07-04
+    ✓ /reports/staff_daily_merchandise_service_report.php
+
+INDEX PAGE:
+  Base URL: /reports/daily_reports_index.php
+  Parameters:
+    • report_date=YYYY-MM-DD        (Optional, defaults to today)
+  
+  Example:
+    ✓ /reports/daily_reports_index.php?report_date=2026-07-04
+
+
+PAGE INTERACTIONS
+═════════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  SHIFT FUEL REPORT PAGE                                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  [◄ Back to Reports]                               [🖨️ Print Report]       │
+│                                                                              │
+│  [ Shift 1 ]  [ Shift 2 ]  [ 24-Hour ]  ← Tab Navigation                   │
+│                                                                              │
+│  ╔══════════════════════════════════════════════════════════════════════╗  │
+│  ║                 PETRON STATION MANAGEMENT SYSTEM                     ║  │
+│  ║                   Shift 1 Fuel Sales Report                          ║  │
+│  ╠══════════════════════════════════════════════════════════════════════╣  │
+│  ║  Shift: Shift 1 (6:00 AM – 2:00 PM)     Cashier: Juan Dela Cruz    ║  │
+│  ║  Report Date: July 4, 2026               Station: Vamba-5 BLDG      ║  │
+│  ╚══════════════════════════════════════════════════════════════════════╝  │
+│                                                                              │
+│  1. Fuel Sales Income                                                       │
+│  ┌──────────────┬────────────┬──────────┬──────────────┐                   │
+│  │ Fuel Type    │ Liters     │ Price/L  │ Sales Amount │                   │
+│  ├──────────────┼────────────┼──────────┼──────────────┤                   │
+│  │ Diesel       │ 2,150.00   │ ₱64.35   │ ₱138,352.50  │                   │
+│  │ XCS Plus     │   845.00   │ ₱71.25   │  ₱60,206.25  │                   │
+│  │ ...          │ ...        │ ...      │ ...          │                   │
+│  └──────────────┴────────────┴──────────┴──────────────┘                   │
+│                                                                              │
+│  2. Meter Reading Report                                                    │
+│  3. Volume Sales Summary                                                    │
+│  4. Payment Breakdown                                                       │
+│  5. Fuel Inventory Movement                                                 │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  MERCHANDISE & SERVICE REPORT PAGE                                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  [◄ Back to Reports]                               [🖨️ Print Report]       │
+│                                                                              │
+│  ╔══════════════════════════════════════════════════════════════════════╗  │
+│  ║                 PETRON STATION MANAGEMENT SYSTEM                     ║  │
+│  ║            Daily Merchandise & Service Sales Report                  ║  │
+│  ╚══════════════════════════════════════════════════════════════════════╝  │
+│                                                                              │
+│  [📊 KPI Cards]                                                             │
+│  ┌──────────────────┬──────────────────┬──────────────────┐                │
+│  │ Merchandise Sales│ Service Income   │ Total Revenue    │                │
+│  │   ₱50,250.00     │   ₱12,450.00     │   ₱62,700.00     │                │
+│  └──────────────────┴──────────────────┴──────────────────┘                │
+│                                                                              │
+│  1. Merchandise Sales Table                                                 │
+│  2. Service Income Table                                                    │
+│  3. Grand Total Summary                                                     │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  DAILY REPORTS INDEX PAGE (Landing Page)                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  [◄ Back to Reports]                                                        │
+│                                                                              │
+│                         📅 Daily Reports                                     │
+│                         Station Name Here                                    │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ 📅 Select Date: [2026-07-08 ▼]  [🔍 Load Reports]  [📆 Today]     │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  ⛽ FUEL SALES REPORTS                                                      │
+│  ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐           │
+│  │   ☀️             │ │   🌙             │ │   🕐             │           │
+│  │                  │ │                  │ │                  │           │
+│  │ Shift 1 Fuel     │ │ Shift 2 Fuel     │ │ 24-Hour Fuel     │           │
+│  │ Sales Report     │ │ Sales Report     │ │ Summary          │           │
+│  │                  │ │                  │ │                  │           │
+│  │ 6:00 AM - 2:00 PM│ │ 2:00 PM -10:00 PM│ │ Full Day Summary │           │
+│  └──────────────────┘ └──────────────────┘ └──────────────────┘           │
+│                                                                              │
+│  🛍️ MERCHANDISE & SERVICES                                                 │
+│  ┌──────────────────────────────────────────────┐                           │
+│  │   🛒                                          │                           │
+│  │                                               │                           │
+│  │   Daily Merchandise & Service Sales          │                           │
+│  │                                               │                           │
+│  │   All Day Transactions                        │                           │
+│  └──────────────────────────────────────────────┘                           │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+ACCESS CONTROL FLOW
+═════════════════════════════════════════════════════════════════════════════════
+
+User Request → Authentication Check → Role Check → Module Check → Report Display
+     ↓                  ↓                  ↓             ↓              ↓
+  Any User      Session Valid?    Authorized Role?  Module Enabled?   Show Report
+                     ↓                  ↓                 ↓
+                  ✓ Yes              ✓ Staff          ✓ Reports
+                  ✗ No → Login      ✗ Guest → Deny    ✗ Disabled → Message
+
+
+AUTHORIZED ROLES:
+  ✓ Staff
+  ✓ Cashier
+  ✓ Pump Attendant
+  ✓ Manager
+  ✓ Admin
+  ✓ SuperAdmin
+  ✓ Developer
+
+REQUIRED PERMISSIONS:
+  • view_personal_reports
+  • view_operational_reports
+
+MODULE REQUIREMENT:
+  • reports module must be enabled
+
+
+FILE LOCATIONS
+═════════════════════════════════════════════════════════════════════════════════
+
+REPORT FILES:
+  public/reports/
+  ├── staff_shift_fuel_report.php              (Main fuel report, 3 shift types)
+  ├── staff_daily_merchandise_service_report.php  (Merch/service report)
+  └── daily_reports_index.php                  (Landing page)
+
+NAVIGATION FILES:
+  includes/
+  └── staff_sidebar.php                        (Sidebar with nested submenu)
+  
+  partials/
+  └── rbac_menu.php                            (RBAC menu configuration)
+
+DOCUMENTATION:
+  /
+  ├── DAILY_REPORTS_GUIDE.md                   (User guide)
+  ├── DAILY_REPORTS_IMPLEMENTATION.md          (Technical docs)
+  └── DAILY_REPORTS_NAVIGATION.txt             (This file - navigation map)
+
+
+QUICK ACCESS CHEATSHEET
+═════════════════════════════════════════════════════════════════════════════════
+
+KEYBOARD SHORTCUTS (Future Enhancement):
+  Ctrl+P          → Print current report
+  Ctrl+Left/Right → Switch shift tabs
+  Ctrl+T          → Jump to today's date
+
+COMMON WORKFLOWS:
+
+1. View Today's Shift 1 Report:
+   Sidebar → Reports → Daily Reports → Shift 1 Fuel Sales
+
+2. View Past Date Report:
+   Index Page → Select Date → Click Report Card
+
+3. Print Report for Manager:
+   Open Report → Print Button → Save as PDF → Email
+
+4. Compare Shifts:
+   Open Shift 1 → Note totals → Click Shift 2 Tab → Compare
+
+5. Export to Excel (Manual):
+   Open Report → Print → Save as PDF → Convert PDF to Excel online
+
+
+═════════════════════════════════════════════════════════════════════════════════
+End of Navigation Structure Document
+Version: 1.0 | Date: July 8, 2026 | Author: Kiro Development Team
+═════════════════════════════════════════════════════════════════════════════════

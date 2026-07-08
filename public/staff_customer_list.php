@@ -654,6 +654,119 @@ include __DIR__ . '/../partials/header.php';
     color: #ffffff !important;
 }
 
+/* ── Print CSS for PDF Export ── */
+@media print {
+    @page {
+        margin: 0.5in;
+    }
+    
+    /* Hide all UI elements */
+    .sidebar, .int-head, .header-actions, .filters-bar, .action-btns,
+    .modal, .no-print, nav, header, footer, button, .btn,
+    #sidebar, .menu-toggle, .hamburger, [class*="toggle"],
+    .summary-cards, .stats-cards, .card, .cust-stats,
+    [class*="summary"], [class*="stats"], [class*="card"],
+    #btnAddCustomer, .btn-add, [class*="btn-"] {
+        display: none !important;
+    }
+    
+    /* Hide Actions column - last column */
+    table th:last-child,
+    table td:last-child {
+        display: none !important;
+    }
+    
+    /* Hide all Font Awesome icons */
+    i, svg, .fas, .far, .fab, .fa, [class*="fa-"], .icon {
+        display: none !important;
+    }
+    
+    /* Full width for table */
+    body, html {
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow-x: hidden !important;
+        width: 100% !important;
+    }
+    
+    .main-content {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+    }
+    
+    /* Print Header */
+    body::before {
+        content: "";
+        display: block;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    
+    /* Show only the customer table */
+    #customersTableContainer {
+        display: block !important;
+        width: 100% !important;
+        overflow: visible !important;
+        padding: 20px 0 !important;
+    }
+    
+    /* Add proper header before table */
+    #customersTableContainer::before {
+        content: "PETRON STATION MANAGEMENT SYSTEM";
+        display: block;
+        text-align: center;
+        font-size: 16px;
+        font-weight: bold;
+        margin-bottom: 5px;
+        color: #000;
+    }
+    
+    #customersTableContainer::after {
+        content: "CUSTOMER DIRECTORY";
+        display: block;
+        text-align: center;
+        font-size: 14px;
+        font-weight: bold;
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #000;
+        color: #000;
+    }
+    
+    table {
+        width: 100% !important;
+        font-size: 9px !important;
+        border-collapse: collapse !important;
+        margin-top: 15px !important;
+    }
+    
+    thead {
+        display: table-header-group !important;
+    }
+    
+    th {
+        background: #fff !important;
+        color: #000 !important;
+        border: 1px solid #000 !important;
+        padding: 6px 4px !important;
+        font-size: 8px !important;
+        font-weight: bold !important;
+        text-align: center !important;
+    }
+    
+    td {
+        border: 1px solid #000 !important;
+        padding: 4px 3px !important;
+        font-size: 7px !important;
+        text-align: left !important;
+    }
+    
+    tr {
+        page-break-inside: avoid !important;
+    }
+}
+
 </style>
 
 <div class="int-head" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 2px solid #e9ecef;">
@@ -1729,6 +1842,13 @@ function exportCustomerData(format) {
         date_to: dateTo
     });
     
+    // For PDF, open the print-optimized page
+    if (format === 'pdf') {
+        window.open(`staff_customer_export.php?${params.toString()}&format=pdf`, '_blank');
+        return;
+    }
+    
+    // For Excel/CSV, use the export script
     window.open(`staff_customer_export.php?${params.toString()}`, '_blank');
 }
 

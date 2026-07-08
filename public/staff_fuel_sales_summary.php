@@ -15,6 +15,64 @@ $role = role_key($me['role'] ?? 'staff');
 $user_id = (int)($me['id'] ?? 0);
 $station_id = user_station_id();
 
+// Detect user's current shift — ONLY from active labor_sessions (no hardcoded time fallback)
+$user_current_shift   = null; // 'shift1', 'shift2', or null (= show all data)
+$is_manager_or_admin  = in_array($role, ['manager', 'admin', 'superadmin', 'developer']);
+
+if (!$is_manager_or_admin) {
+    try {
+        // Fetch the most recent active session for this user
+        $stmt = $pdo->prepare("
+            SELECT shift_period
+            FROM labor_sessions
+            WHERE user_id = ? AND end_time IS NULL
+            ORDER BY start_time DESC LIMIT 1
+        ");
+        $stmt->execute([$user_id]);
+        $active_session = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($active_session && !empty($active_session['shift_period'])) {
+            $sp = strtolower(trim($active_session['shift_period']));
+
+            // Match all likely DB values: 'first', 'shift 1', 'shift1', '1', 'morning', 'am'
+            if (in_array($sp, ['1', 'shift1', 'shift 1', 'first', 'morning', 'am', 'day'])) {
+                $user_current_shift = 'shift1';
+            }
+            // Match: 'second', 'shift 2', 'shift2', '2', 'afternoon', 'pm', 'evening', 'night'
+            elseif (in_array($sp, ['2', 'shift2', 'shift 2', 'second', 'afternoon', 'pm', 'evening', 'night'])) {
+                $user_current_shift = 'shift2';
+            }
+            // Partial-match fallback for unexpected stored values
+            elseif (strpos($sp, 'first') !== false || strpos($sp, '1') !== false) {
+                $user_current_shift = 'shift1';
+            } elseif (strpos($sp, 'second') !== false || strpos($sp, '2') !== false) {
+                $user_current_shift = 'shift2';
+            }
+        }
+        // NOTE: No time-of-day fallback — shift must come from the database only.
+        // If no active session exists, $user_current_shift stays null → 24-hour data shown.
+    } catch (Exception $e) {
+        error_log("Shift detection error (staff_fuel_sales_summary): " . $e->getMessage());
+    }
+}
+
+// User-specific overrides: Yyang is Shift 1, Judy Lastimosa is Shift 2
+$username_lower = isset($me['username']) ? strtolower(trim($me['username'])) : '';
+$first_name_lower = isset($me['first_name']) ? strtolower(trim($me['first_name'])) : '';
+$last_name_lower = isset($me['last_name']) ? strtolower(trim($me['last_name'])) : '';
+
+if ($username_lower === 'yyang' || $first_name_lower === 'yyang') {
+    $user_current_shift = 'shift1';
+} elseif ($username_lower === 'judy' || $first_name_lower === 'judy' || $last_name_lower === 'lastimosa') {
+    $user_current_shift = 'shift2';
+}
+
+$summary_title_suffix = '24-HOUR SUMMARY';
+if (!$is_manager_or_admin && !empty($user_current_shift)) {
+    $summary_title_suffix = ($user_current_shift === 'shift1') ? 'SHIFT 1 SUMMARY' : 'SHIFT 2 SUMMARY';
+}
+
+
 // Access control
 if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
     header('Location: dashboard.php'); exit;
@@ -416,10 +474,19 @@ function staff_report_payment_bucket(string $payment): string {
     if ($mode === '' || in_array($mode, ['cash', 'cash payment'], true)) {
         return 'cash';
     }
+    if ($mode === 'gcash') {
+        return 'gcash';
+    }
+    if (in_array($mode, ['maya', 'paymaya', 'pay maya'], true)) {
+        return 'maya';
+    }
     if (in_array($mode, ['card', 'credit card', 'debit card'], true)) {
         return 'card';
     }
-    if (in_array($mode, ['gcash', 'maya', 'e-wallet', 'ewallet'], true)) {
+    if (in_array($mode, ['fleet card', 'fleet', 'petron e-fuel', 'e-fuel', 'internal'], true)) {
+        return 'fleet';
+    }
+    if (in_array($mode, ['e-wallet', 'ewallet'], true)) {
         return 'ewallet';
     }
     return 'credit';
@@ -443,9 +510,10 @@ function staff_report_add_ar_shift_amount(array &$summary, array $row): void {
     }
 
     $shiftLabel = (string)($row['shift'] ?? $row['shift_period'] ?? '');
-    if ($shiftLabel === '' && !empty($row['created_at'])) {
-        $hour = (int)date('H', strtotime((string)$row['created_at']));
-        $shiftLabel = ($hour >= 6 && $hour < 14) ? 'Shift 1' : 'Shift 2';
+    // No time-based fallback — use only the stored shift label
+    if ($shiftLabel === '') {
+        $summary['total'] = $summary['shift1'] + $summary['shift2'];
+        return; // unknown shift, skip bucketing
     }
     if (is_shift1($shiftLabel)) {
         $summary['shift1'] += $amount;
@@ -457,14 +525,17 @@ function staff_report_add_ar_shift_amount(array &$summary, array $row): void {
 
 function staff_report_empty_shift_summary(): array {
     return [
-        'fuel_sales' => 0,
+        'fuel_sales'        => 0,
         'merchandise_sales' => 0,
-        'service_income' => 0,
-        'total_sales' => 0,
-        'cash' => 0,
-        'card' => 0,
-        'ewallet' => 0,
-        'credit' => 0,
+        'service_income'    => 0,
+        'total_sales'       => 0,
+        'cash'              => 0,
+        'card'              => 0,
+        'gcash'             => 0,
+        'maya'              => 0,
+        'fleet'             => 0,
+        'ewallet'           => 0,
+        'credit'            => 0,
     ];
 }
 
@@ -582,6 +653,14 @@ function staff_report_current_fuel_price(string $fuel_type, array $price_map, fl
 }
 
 function staff_report_build_24h_meter_readings(array $readings, array $price_map): array {
+    global $is_manager_or_admin, $user_current_shift;
+    if (isset($is_manager_or_admin) && !$is_manager_or_admin && !empty($user_current_shift)) {
+        $readings = array_filter($readings, function($r) use ($user_current_shift) {
+            $isS1 = is_shift1((string)($r['shift_period'] ?? $r['shift'] ?? ''));
+            return $user_current_shift === 'shift1' ? $isS1 : !$isS1;
+        });
+    }
+
     $groups = [];
     $order = 0;
 
@@ -741,6 +820,26 @@ $shift2_summary = [
     'ewallet' => 0,
     'credit' => 0,
 ];
+$fuel_shift1_summary = [
+    'fuel_sales' => 0,
+    'cash' => 0,
+    'card' => 0,
+    'gcash' => 0,
+    'maya' => 0,
+    'fleet' => 0,
+    'ewallet' => 0,
+    'credit' => 0,
+];
+$fuel_shift2_summary = [
+    'fuel_sales' => 0,
+    'cash' => 0,
+    'card' => 0,
+    'gcash' => 0,
+    'maya' => 0,
+    'fleet' => 0,
+    'ewallet' => 0,
+    'credit' => 0,
+];
 $ar_summary = [];
 $overall_summary = [
     'total_fuel_sales' => 0,
@@ -872,6 +971,12 @@ if ($has_fuel_transactions) {
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$station_id, $report_date]);
         $fuel_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (!$is_manager_or_admin && !empty($user_current_shift)) {
+            $fuel_transactions = array_filter($fuel_transactions, function($trans) use ($user_current_shift) {
+                $isS1 = is_shift1((string)($trans['shift'] ?? $trans['shift_period'] ?? ''));
+                return $user_current_shift === 'shift1' ? $isS1 : !$isS1;
+            });
+        }
         foreach ($fuel_transactions as &$trans) {
             $trans['fuel_type'] = staff_report_fuel_display_name($trans['fuel_type'] ?? '');
             $liters = (float)($trans['liters_sold'] ?? 0);
@@ -938,6 +1043,23 @@ $volume_sales = staff_report_build_volume_sales_from_meter_rows($meter_readings)
 try {
     // Get fuel sales by shift
     if ($has_fuel_transactions) {
+        // Build shift filter for staff users (match the detail row filter on line 942-950)
+        $shiftFilter = '';
+        if (!$is_manager_or_admin && !empty($user_current_shift)) {
+            // Filter to show only transactions from user's current shift
+            if ($user_current_shift === 'shift1') {
+                $shiftFilter = " AND (
+                    LOWER(COALESCE(shift_period, '')) IN ('1', 'shift1', 'shift 1', 'first', 'morning', 'am', 'day')
+                    OR (COALESCE(shift_period, '') = '' AND (SELECT HOUR(NOW()) BETWEEN 6 AND 13))
+                )";
+            } else {
+                $shiftFilter = " AND (
+                    LOWER(COALESCE(shift_period, '')) IN ('2', 'shift2', 'shift 2', 'second', 'afternoon', 'pm', 'evening', 'night')
+                    OR (COALESCE(shift_period, '') = '' AND (SELECT HOUR(NOW()) BETWEEN 14 AND 23))
+                )";
+            }
+        }
+        
         $stmt = $pdo->prepare("
             SELECT 
                 COALESCE(shift_period, 'Shift 1') AS shift_period,
@@ -947,35 +1069,49 @@ try {
                 COUNT(*) AS transaction_count
             FROM fuel_transactions
             WHERE station_id = ? AND DATE(transaction_date) = ?
+            {$shiftFilter}
             GROUP BY shift_period, payment_method
         ");
         $stmt->execute([$station_id, $report_date]);
         $fuel_by_shift = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($fuel_by_shift as $row) {
-            $amount   = (float)$row['total_amount'];
-            $payment  = strtolower($row['payment_method'] ?? 'cash');
-            $is_s1    = is_shift1($row['shift_period'] ?? '');
-            $target   = $is_s1 ? 'shift1' : 'shift2';
+            $amount  = (float)$row['total_amount'];
+            $payment = (string)($row['payment_method'] ?? 'cash');
+            $bucket  = staff_report_payment_bucket($payment);
+            $is_s1   = is_shift1($row['shift_period'] ?? '');
 
             if ($is_s1) {
-                $shift1_summary['fuel_sales'] += $amount;
-                if (in_array($payment, ['cash','cash payment'])) $shift1_summary['cash'] += $amount;
-                elseif (in_array($payment, ['card','credit card','debit card'])) $shift1_summary['card'] += $amount;
-                elseif (in_array($payment, ['gcash','maya','e-wallet','ewallet'])) $shift1_summary['ewallet'] += $amount;
-                else $shift1_summary['credit'] += $amount;
+                $fuel_shift1_summary['fuel_sales'] += $amount;
+                if (isset($fuel_shift1_summary[$bucket])) $fuel_shift1_summary[$bucket] += $amount;
+                else $fuel_shift1_summary['credit'] += $amount;
             } else {
-                $shift2_summary['fuel_sales'] += $amount;
-                if (in_array($payment, ['cash','cash payment'])) $shift2_summary['cash'] += $amount;
-                elseif (in_array($payment, ['card','credit card','debit card'])) $shift2_summary['card'] += $amount;
-                elseif (in_array($payment, ['gcash','maya','e-wallet','ewallet'])) $shift2_summary['ewallet'] += $amount;
-                else $shift2_summary['credit'] += $amount;
+                $fuel_shift2_summary['fuel_sales'] += $amount;
+                if (isset($fuel_shift2_summary[$bucket])) $fuel_shift2_summary[$bucket] += $amount;
+                else $fuel_shift2_summary['credit'] += $amount;
             }
         }
     }
     
     // Get merchandise sales by shift
     if ($has_merchandise_transactions) {
+        // Build shift filter for staff users (match the detail row filter above)
+        $merchShiftFilter = '';
+        if (!$is_manager_or_admin && !empty($user_current_shift)) {
+            // Filter to show only transactions from user's current shift
+            if ($user_current_shift === 'shift1') {
+                $merchShiftFilter = " AND (
+                    LOWER(COALESCE(shift_period, '')) IN ('1', 'shift1', 'shift 1', 'first', 'morning', 'am', 'day')
+                    OR (COALESCE(shift_period, '') = '' AND (SELECT HOUR(NOW()) BETWEEN 6 AND 13))
+                )";
+            } else {
+                $merchShiftFilter = " AND (
+                    LOWER(COALESCE(shift_period, '')) IN ('2', 'shift2', 'shift 2', 'second', 'afternoon', 'pm', 'evening', 'night')
+                    OR (COALESCE(shift_period, '') = '' AND (SELECT HOUR(NOW()) BETWEEN 14 AND 23))
+                )";
+            }
+        }
+        
         $stmt = $pdo->prepare("
             SELECT 
                 COALESCE(shift_period, 'Shift 1') AS shift_period,
@@ -984,6 +1120,7 @@ try {
                 COUNT(*) AS transaction_count
             FROM merchandise_transactions
             WHERE station_id = ? AND DATE(created_at) = ?
+            {$merchShiftFilter}
             GROUP BY shift_period, payment_method
         ");
         $stmt->execute([$station_id, $report_date]);
@@ -991,20 +1128,17 @@ try {
         
         foreach ($merch_by_shift as $row) {
             $amount  = (float)$row['total_amount'];
-            $payment = strtolower($row['payment_method'] ?? 'cash');
+            $payment = (string)($row['payment_method'] ?? 'cash');
+            $bucket  = staff_report_payment_bucket($payment);
             $is_s1   = is_shift1($row['shift_period'] ?? '');
 
             if ($is_s1) {
                 $shift1_summary['merchandise_sales'] += $amount;
-                if (in_array($payment, ['cash','cash payment'])) $shift1_summary['cash'] += $amount;
-                elseif (in_array($payment, ['card','credit card','debit card'])) $shift1_summary['card'] += $amount;
-                elseif (in_array($payment, ['gcash','maya','e-wallet','ewallet'])) $shift1_summary['ewallet'] += $amount;
+                if (isset($shift1_summary[$bucket])) $shift1_summary[$bucket] += $amount;
                 else $shift1_summary['credit'] += $amount;
             } else {
                 $shift2_summary['merchandise_sales'] += $amount;
-                if (in_array($payment, ['cash','cash payment'])) $shift2_summary['cash'] += $amount;
-                elseif (in_array($payment, ['card','credit card','debit card'])) $shift2_summary['card'] += $amount;
-                elseif (in_array($payment, ['gcash','maya','e-wallet','ewallet'])) $shift2_summary['ewallet'] += $amount;
+                if (isset($shift2_summary[$bucket])) $shift2_summary[$bucket] += $amount;
                 else $shift2_summary['credit'] += $amount;
             }
         }
@@ -1099,6 +1233,29 @@ try {
 // ============================================================
 $merchandise_report_transactions = staff_report_fetch_merchandise_rows($pdo, (int)$station_id, $report_date);
 $service_income_transactions = staff_report_fetch_service_income_rows($pdo, (int)$station_id, $report_date);
+
+if (!$is_manager_or_admin && !empty($user_current_shift)) {
+    $merchandise_report_transactions = array_filter($merchandise_report_transactions, function($trans) use ($user_current_shift) {
+        $shiftLabel = (string)($trans['shift'] ?? $trans['shift_period'] ?? '');
+        if ($shiftLabel === '' && !empty($trans['created_at'])) {
+            $hour = (int)date('H', strtotime((string)$trans['created_at']));
+            $shiftLabel = ($hour >= 6 && $hour < 14) ? 'Shift 1' : 'Shift 2';
+        }
+        $isS1 = is_shift1($shiftLabel);
+        return $user_current_shift === 'shift1' ? $isS1 : !$isS1;
+    });
+
+    $service_income_transactions = array_filter($service_income_transactions, function($trans) use ($user_current_shift) {
+        $shiftLabel = (string)($trans['shift'] ?? $trans['shift_period'] ?? '');
+        if ($shiftLabel === '' && !empty($trans['created_at'])) {
+            $hour = (int)date('H', strtotime((string)$trans['created_at']));
+            $shiftLabel = ($hour >= 6 && $hour < 14) ? 'Shift 1' : 'Shift 2';
+        }
+        $isS1 = is_shift1($shiftLabel);
+        return $user_current_shift === 'shift1' ? $isS1 : !$isS1;
+    });
+}
+
 $total_merch_amount = array_sum(array_map(static fn($row) => (float)($row['total_amount'] ?? 0), $merchandise_report_transactions));
 $total_service_amount = array_sum(array_map(static fn($row) => (float)($row['total_amount'] ?? 0), $service_income_transactions));
 
@@ -1136,6 +1293,29 @@ $overall_summary['total_cash'] = $overall_summary['total_fuel_cash'] + $overall_
 $overall_summary['total_deposits'] = 0; // Would come from deposits table if available
 $overall_summary['total_ar'] = $ar_shift_summary['total'];
 
+if (!$is_manager_or_admin && !empty($user_current_shift)) {
+    if ($user_current_shift === 'shift1') {
+        $overall_summary['total_fuel_sales'] = $fuel_shift1_summary['fuel_sales'];
+        $overall_summary['total_merchandise_sales'] = $shift1_summary['merchandise_sales'];
+        $overall_summary['total_liters'] = array_sum(array_map(fn($t) => is_shift1($t['shift'] ?? $t['shift_period'] ?? '') ? (float)($t['liters_sold'] ?? 0) : 0, $fuel_transactions));
+        $overall_summary['total_fuel_cash'] = $fuel_shift1_summary['cash'];
+        $overall_summary['total_store_cash'] = $shift1_summary['cash'];
+        $overall_summary['total_cash'] = $overall_summary['total_fuel_cash'] + $overall_summary['total_store_cash'];
+        $overall_summary['total_ar'] = $ar_shift_summary['shift1'];
+        $total_service_amount = $shift1_summary['service_income'];
+    } elseif ($user_current_shift === 'shift2') {
+        $overall_summary['total_fuel_sales'] = $fuel_shift2_summary['fuel_sales'];
+        $overall_summary['total_merchandise_sales'] = $shift2_summary['merchandise_sales'];
+        $overall_summary['total_liters'] = array_sum(array_map(fn($t) => !is_shift1($t['shift'] ?? $t['shift_period'] ?? '') ? (float)($t['liters_sold'] ?? 0) : 0, $fuel_transactions));
+        $overall_summary['total_fuel_cash'] = $fuel_shift2_summary['cash'];
+        $overall_summary['total_store_cash'] = $shift2_summary['cash'];
+        $overall_summary['total_cash'] = $overall_summary['total_fuel_cash'] + $overall_summary['total_store_cash'];
+        $overall_summary['total_ar'] = $ar_shift_summary['shift2'];
+        $total_service_amount = $shift2_summary['service_income'];
+    }
+}
+$display_total_ar = $overall_summary['total_ar'];
+
 // Ensure fuel transactions total matches
 if (isset($fuel_transactions) && is_array($fuel_transactions) && count($fuel_transactions) > 0) {
     $direct_fuel_total = array_sum(array_column($fuel_transactions, 'total_amount'));
@@ -1143,6 +1323,36 @@ if (isset($fuel_transactions) && is_array($fuel_transactions) && count($fuel_tra
     if ($overall_summary['total_fuel_sales'] == 0 && $direct_fuel_total > 0) {
         $overall_summary['total_fuel_sales'] = $direct_fuel_total;
     }
+}
+
+// ============================================================
+// TRANSACTION COUNTS (for Transaction Summary section)
+// ============================================================
+$fuel_txn_count          = count($fuel_transactions ?? []);
+$cancelled_voided_count  = 0;
+if ($has_fuel_transactions) {
+    try {
+        $cv_stmt = $pdo->prepare("
+            SELECT COUNT(*) FROM fuel_transactions
+            WHERE station_id = ? AND DATE(transaction_date) = ?
+              AND LOWER(COALESCE(status, '')) IN ('voided','rejected','cancelled','canceled')
+        ");
+        $cv_stmt->execute([$station_id, $report_date]);
+        $cancelled_voided_count = (int)$cv_stmt->fetchColumn();
+    } catch (Exception $e) {}
+}
+$total_txn_count = $fuel_txn_count + $cancelled_voided_count;
+
+// Cashier / prepared-by name
+$cashier_name = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
+if ($cashier_name === '') {
+    $cashier_name = $me['name'] ?? $me['username'] ?? 'N/A';
+}
+$shift_label_display = '';
+if (!$is_manager_or_admin && !empty($user_current_shift)) {
+    $shift_label_display = $user_current_shift === 'shift1' ? 'Shift 1 (6AM – 2PM)' : 'Shift 2 (2PM – 12AM)';
+} else {
+    $shift_label_display = '24-Hour Summary';
 }
 
 $page_title = "Fuel Sales Summary Report";
@@ -1203,7 +1413,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     if ($export_type === 'merchandise') {
         // MERCHANDISE & SERVICE SALES REPORT
         echo '<h1>DAILY MERCHANDISE & SERVICE SALES REPORT</h1>';
-        echo '<h1 style="font-size: 16px;">24-HOUR SUMMARY</h1>';
+        echo '<h1 style="font-size: 16px;">' . $summary_title_suffix . '</h1>';
         echo '<p>' . htmlspecialchars($station_name) . '</p>';
         echo '<p><strong>Date:</strong> ' . date('F d, Y', strtotime($report_date)) . '</p>';
         echo '<br/>';
@@ -1299,35 +1509,39 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         echo '<br/>';
         
         // SHIFT SUMMARIES
-        echo '<h2>SHIFT 1 SALES SUMMARY (6AM-2PM)</h2>';
-        echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
-        echo '<tbody>';
-        echo '<tr><td class="font-bold">Merchandise Sales:</td><td class="text-right font-bold">₱' . number_format($shift1_summary['merchandise_sales'], 2) . '</td></tr>';
-        echo '<tr><td class="font-bold">Service Income:</td><td class="text-right font-bold">₱' . number_format($shift1_summary['service_income'] ?? 0, 2) . '</td></tr>';
-        echo '<tr><td colspan="2">&nbsp;</td></tr>';
-        echo '<tr><td colspan="2" class="font-bold">Payment Breakdown</td></tr>';
-        echo '<tr><td>Cash:</td><td class="text-right">₱' . number_format($shift1_summary['cash'], 2) . '</td></tr>';
-        echo '<tr><td>Card:</td><td class="text-right">₱' . number_format($shift1_summary['card'], 2) . '</td></tr>';
-        echo '<tr><td>E-Wallet:</td><td class="text-right">₱' . number_format($shift1_summary['ewallet'], 2) . '</td></tr>';
-        echo '<tr><td>Credit/Suki:</td><td class="text-right">₱' . number_format($shift1_summary['credit'], 2) . '</td></tr>';
-        echo '</tbody>';
-        echo '</table>';
-        echo '<br/>';
+        if ($is_manager_or_admin || $user_current_shift === 'shift1') {
+            echo '<h2>SHIFT 1 SALES SUMMARY (6AM-2PM)</h2>';
+            echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
+            echo '<tbody>';
+            echo '<tr><td class="font-bold">Merchandise Sales:</td><td class="text-right font-bold">₱' . number_format($shift1_summary['merchandise_sales'], 2) . '</td></tr>';
+            echo '<tr><td class="font-bold">Service Income:</td><td class="text-right font-bold">₱' . number_format($shift1_summary['service_income'] ?? 0, 2) . '</td></tr>';
+            echo '<tr><td colspan="2">&nbsp;</td></tr>';
+            echo '<tr><td colspan="2" class="font-bold">Payment Breakdown</td></tr>';
+            echo '<tr><td>Cash:</td><td class="text-right">₱' . number_format($shift1_summary['cash'], 2) . '</td></tr>';
+            echo '<tr><td>Card:</td><td class="text-right">₱' . number_format($shift1_summary['card'], 2) . '</td></tr>';
+            echo '<tr><td>E-Wallet:</td><td class="text-right">₱' . number_format($shift1_summary['ewallet'], 2) . '</td></tr>';
+            echo '<tr><td>Credit/Suki:</td><td class="text-right">₱' . number_format($shift1_summary['credit'], 2) . '</td></tr>';
+            echo '</tbody>';
+            echo '</table>';
+            echo '<br/>';
+        }
         
-        echo '<h2>SHIFT 2 SALES SUMMARY (2PM-12AM)</h2>';
-        echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
-        echo '<tbody>';
-        echo '<tr><td class="font-bold">Merchandise Sales:</td><td class="text-right font-bold">₱' . number_format($shift2_summary['merchandise_sales'], 2) . '</td></tr>';
-        echo '<tr><td class="font-bold">Service Income:</td><td class="text-right font-bold">₱' . number_format($shift2_summary['service_income'] ?? 0, 2) . '</td></tr>';
-        echo '<tr><td colspan="2">&nbsp;</td></tr>';
-        echo '<tr><td colspan="2" class="font-bold">Payment Breakdown</td></tr>';
-        echo '<tr><td>Cash:</td><td class="text-right">₱' . number_format($shift2_summary['cash'], 2) . '</td></tr>';
-        echo '<tr><td>Card:</td><td class="text-right">₱' . number_format($shift2_summary['card'], 2) . '</td></tr>';
-        echo '<tr><td>E-Wallet:</td><td class="text-right">₱' . number_format($shift2_summary['ewallet'], 2) . '</td></tr>';
-        echo '<tr><td>Credit/Suki:</td><td class="text-right">₱' . number_format($shift2_summary['credit'], 2) . '</td></tr>';
-        echo '</tbody>';
-        echo '</table>';
-        echo '<br/>';
+        if ($is_manager_or_admin || $user_current_shift === 'shift2') {
+            echo '<h2>SHIFT 2 SALES SUMMARY (2PM-12AM)</h2>';
+            echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
+            echo '<tbody>';
+            echo '<tr><td class="font-bold">Merchandise Sales:</td><td class="text-right font-bold">₱' . number_format($shift2_summary['merchandise_sales'], 2) . '</td></tr>';
+            echo '<tr><td class="font-bold">Service Income:</td><td class="text-right font-bold">₱' . number_format($shift2_summary['service_income'] ?? 0, 2) . '</td></tr>';
+            echo '<tr><td colspan="2">&nbsp;</td></tr>';
+            echo '<tr><td colspan="2" class="font-bold">Payment Breakdown</td></tr>';
+            echo '<tr><td>Cash:</td><td class="text-right">₱' . number_format($shift2_summary['cash'], 2) . '</td></tr>';
+            echo '<tr><td>Card:</td><td class="text-right">₱' . number_format($shift2_summary['card'], 2) . '</td></tr>';
+            echo '<tr><td>E-Wallet:</td><td class="text-right">₱' . number_format($shift2_summary['ewallet'], 2) . '</td></tr>';
+            echo '<tr><td>Credit/Suki:</td><td class="text-right">₱' . number_format($shift2_summary['credit'], 2) . '</td></tr>';
+            echo '</tbody>';
+            echo '</table>';
+            echo '<br/>';
+        }
         
         // A/R SUMMARY
         if (count($ar_summary) > 0) {
@@ -1395,7 +1609,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         // FUEL SALES REPORT (existing code)
         // Header
         echo '<h1>DAILY FUEL SALES REPORT</h1>';
-        echo '<h1 style="font-size: 16px;">24-HOUR SUMMARY</h1>';
+        echo '<h1 style="font-size: 16px;">' . $summary_title_suffix . '</h1>';
         echo '<p>' . htmlspecialchars($station_name) . '</p>';
         echo '<p><strong>Date:</strong> ' . date('F d, Y', strtotime($report_date)) . '</p>';
         echo '<br/>';
@@ -1513,41 +1727,49 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     echo '<br/>';
     
     // SHIFT SUMMARIES
-    echo '<h2>SHIFT 1 FUEL SALES & CASH SUMMARY (6AM-2PM)</h2>';
-    echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
-    echo '<tbody>';
-    echo '<tr><td class="font-bold">Total Fuel Sales:</td><td class="text-right font-bold">&#8369;' . number_format($fuel_shift1_summary['fuel_sales'], 2) . '</td></tr>';
-    echo '<tr><td colspan="2">&nbsp;</td></tr>';
-    echo '<tr><td colspan="2" class="font-bold">Payment Breakdown</td></tr>';
-    echo '<tr><td>Cash:</td><td class="text-right">&#8369;' . number_format($fuel_shift1_summary['cash'], 2) . '</td></tr>';
-    echo '<tr><td>Card:</td><td class="text-right">&#8369;' . number_format($fuel_shift1_summary['card'], 2) . '</td></tr>';
-    echo '<tr><td>E-Wallet:</td><td class="text-right">&#8369;' . number_format($fuel_shift1_summary['ewallet'], 2) . '</td></tr>';
-    echo '<tr><td>Credit/Suki:</td><td class="text-right">&#8369;' . number_format($fuel_shift1_summary['credit'], 2) . '</td></tr>';
-    echo '</tbody>';
-    echo '</table>';
-    echo '<br/>';
+    if ($is_manager_or_admin || $user_current_shift === 'shift1') {
+        echo '<h2>SHIFT 1 FUEL SALES & CASH SUMMARY (6AM-2PM)</h2>';
+        echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
+        echo '<tbody>';
+        echo '<tr><td class="font-bold">Total Fuel Sales:</td><td class="text-right font-bold">&#8369;' . number_format($fuel_shift1_summary['fuel_sales'], 2) . '</td></tr>';
+        echo '<tr><td colspan="2">&nbsp;</td></tr>';
+        echo '<tr><td colspan="2" class="font-bold">Payment Breakdown</td></tr>';
+        echo '<tr><td>Cash:</td><td class="text-right">&#8369;' . number_format($fuel_shift1_summary['cash'], 2) . '</td></tr>';
+        echo '<tr><td>Card:</td><td class="text-right">&#8369;' . number_format($fuel_shift1_summary['card'], 2) . '</td></tr>';
+        echo '<tr><td>E-Wallet:</td><td class="text-right">&#8369;' . number_format($fuel_shift1_summary['ewallet'], 2) . '</td></tr>';
+        echo '<tr><td>Credit/Suki:</td><td class="text-right">&#8369;' . number_format($fuel_shift1_summary['credit'], 2) . '</td></tr>';
+        echo '</tbody>';
+        echo '</table>';
+        echo '<br/>';
+    }
     
-    echo '<h2>SHIFT 2 FUEL SALES & CASH SUMMARY (2PM-12AM)</h2>';
-    echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
-    echo '<tbody>';
-    echo '<tr><td class="font-bold">Total Fuel Sales:</td><td class="text-right font-bold">&#8369;' . number_format($fuel_shift2_summary['fuel_sales'], 2) . '</td></tr>';
-    echo '<tr><td colspan="2">&nbsp;</td></tr>';
-    echo '<tr><td colspan="2" class="font-bold">Payment Breakdown</td></tr>';
-    echo '<tr><td>Cash:</td><td class="text-right">&#8369;' . number_format($fuel_shift2_summary['cash'], 2) . '</td></tr>';
-    echo '<tr><td>Card:</td><td class="text-right">&#8369;' . number_format($fuel_shift2_summary['card'], 2) . '</td></tr>';
-    echo '<tr><td>E-Wallet:</td><td class="text-right">&#8369;' . number_format($fuel_shift2_summary['ewallet'], 2) . '</td></tr>';
-    echo '<tr><td>Credit/Suki:</td><td class="text-right">&#8369;' . number_format($fuel_shift2_summary['credit'], 2) . '</td></tr>';
-    echo '</tbody>';
-    echo '</table>';
-    echo '<br/>';
+    if ($is_manager_or_admin || $user_current_shift === 'shift2') {
+        echo '<h2>SHIFT 2 FUEL SALES & CASH SUMMARY (2PM-12AM)</h2>';
+        echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
+        echo '<tbody>';
+        echo '<tr><td class="font-bold">Total Fuel Sales:</td><td class="text-right font-bold">&#8369;' . number_format($fuel_shift2_summary['fuel_sales'], 2) . '</td></tr>';
+        echo '<tr><td colspan="2">&nbsp;</td></tr>';
+        echo '<tr><td colspan="2" class="font-bold">Payment Breakdown</td></tr>';
+        echo '<tr><td>Cash:</td><td class="text-right">&#8369;' . number_format($fuel_shift2_summary['cash'], 2) . '</td></tr>';
+        echo '<tr><td>Card:</td><td class="text-right">&#8369;' . number_format($fuel_shift2_summary['card'], 2) . '</td></tr>';
+        echo '<tr><td>E-Wallet:</td><td class="text-right">&#8369;' . number_format($fuel_shift2_summary['ewallet'], 2) . '</td></tr>';
+        echo '<tr><td>Credit/Suki:</td><td class="text-right">&#8369;' . number_format($fuel_shift2_summary['credit'], 2) . '</td></tr>';
+        echo '</tbody>';
+        echo '</table>';
+        echo '<br/>';
+    }
     
     // A/R SUMMARY
     echo '<h2>A/R SUMMARY (Account Receivable / Utang)</h2>';
     echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
     echo '<tbody>';
-    echo '<tr><td class="font-bold">Shift 1 (6AM-2PM):</td><td class="text-right">&#8369;' . number_format($ar_shift_summary['shift1'], 2) . '</td></tr>';
-    echo '<tr><td class="font-bold">Shift 2 (2PM-12AM):</td><td class="text-right">&#8369;' . number_format($ar_shift_summary['shift2'], 2) . '</td></tr>';
-    echo '<tr><td class="font-bold">TOTAL A/R:</td><td class="text-right font-bold">&#8369;' . number_format($ar_shift_summary['total'], 2) . '</td></tr>';
+    if ($is_manager_or_admin || $user_current_shift === 'shift1') {
+        echo '<tr><td class="font-bold">Shift 1 (6AM-2PM):</td><td class="text-right">&#8369;' . number_format($ar_shift_summary['shift1'], 2) . '</td></tr>';
+    }
+    if ($is_manager_or_admin || $user_current_shift === 'shift2') {
+        echo '<tr><td class="font-bold">Shift 2 (2PM-12AM):</td><td class="text-right">&#8369;' . number_format($ar_shift_summary['shift2'], 2) . '</td></tr>';
+    }
+    echo '<tr><td class="font-bold">TOTAL A/R:</td><td class="text-right font-bold">&#8369;' . number_format($display_total_ar, 2) . '</td></tr>';
     echo '</tbody>';
     echo '</table>';
     echo '<br/>';
@@ -1785,7 +2007,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
         <!-- Report Header -->
         <div class="report-header">
             <div class="report-title">DAILY FUEL SALES REPORT</div>
-            <div class="report-title" style="font-size: 11pt; margin-top: 5px;">24-HOUR SUMMARY</div>
+            <div class="report-title" style="font-size: 11pt; margin-top: 5px;"><?= $summary_title_suffix ?></div>
             <table>
                 <tr>
                     <td style="width: 50%;"><?= htmlspecialchars($station_name) ?></td>
@@ -1972,17 +2194,21 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
             <h3>A/R SUMMARY (ACCOUNT RECEIVABLE / UTANG)</h3>
             <table class="meter-table">
                 <tbody>
+                    <?php if ($is_manager_or_admin || $user_current_shift === 'shift1'): ?>
                     <tr>
                         <td><strong>SHIFT 1</strong></td>
                         <td class="text-right">&#8369;<?= number_format($ar_shift_summary['shift1'], 2) ?></td>
                     </tr>
+                    <?php endif; ?>
+                    <?php if ($is_manager_or_admin || $user_current_shift === 'shift2'): ?>
                     <tr>
                         <td><strong>SHIFT 2</strong></td>
                         <td class="text-right">&#8369;<?= number_format($ar_shift_summary['shift2'], 2) ?></td>
                     </tr>
+                    <?php endif; ?>
                     <tr style="font-weight: bold;">
                         <td>TOTAL A/R</td>
-                        <td class="text-right">&#8369;<?= number_format($ar_shift_summary['total'], 2) ?></td>
+                        <td class="text-right">&#8369;<?= number_format($display_total_ar, 2) ?></td>
                     </tr>
                 </tbody>
             </table>
@@ -2440,17 +2666,71 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     <div id="fuel-tab" class="tab-content <?= $active_tab === 'fuel' ? 'active' : '' ?>">
         <div class="container">
             <div class="header">
-                <h1>DAILY FUEL SALES REPORT</h1>
-                <h1 style="font-size: 18px; margin-top: 5px;">24-HOUR SUMMARY</h1>
-                <p><?= htmlspecialchars($station_name) ?> <?= $station_location ? '- ' . htmlspecialchars($station_location) : '' ?></p>
-                <p><strong>Date:</strong> <?= date('F d, Y', strtotime($report_date)) ?></p>
+                <h1>FUEL SALES REPORT</h1>
+                <h1 style="font-size: 18px; margin-top: 5px;"><?= htmlspecialchars($shift_label_display) ?></h1>
+                <p><?= htmlspecialchars($station_name) ?><?= $station_location ? ' — ' . htmlspecialchars($station_location) : '' ?></p>
             </div>
-        
+
+            <!-- Report Metadata -->
+            <div class="table-container" style="margin-bottom:18px;">
+                <table style="width:100%;border-collapse:collapse;">
+                    <tbody>
+                        <tr>
+                            <td style="padding:5px 10px;width:18%;font-weight:700;border:1px solid #ddd;">Shift</td>
+                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= htmlspecialchars($shift_label_display) ?></td>
+                            <td style="padding:5px 10px;width:18%;font-weight:700;border:1px solid #ddd;">Date</td>
+                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= date('F d, Y', strtotime($report_date)) ?></td>
+                        </tr>
+                        <tr>
+                            <td style="padding:5px 10px;font-weight:700;border:1px solid #ddd;">Cashier</td>
+                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= htmlspecialchars($cashier_name) ?></td>
+                            <td style="padding:5px 10px;font-weight:700;border:1px solid #ddd;">Time Generated</td>
+                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= date('h:i A') ?></td>
+                        </tr>
+                        <tr>
+                            <td style="padding:5px 10px;font-weight:700;border:1px solid #ddd;">Generated By</td>
+                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= htmlspecialchars($cashier_name) ?></td>
+                            <td style="padding:5px 10px;font-weight:700;border:1px solid #ddd;">Prepared By</td>
+                            <td style="padding:5px 10px;border:1px solid #ddd;color:#999;">________________________</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
         <div class="content">
+
+            <!-- Transaction Summary -->
+            <div class="section-title">TRANSACTION SUMMARY</div>
+            <div class="table-container" style="margin-bottom:18px;">
+                <table style="width:100%;border-collapse:collapse;">
+                    <thead>
+                        <tr>
+                            <th style="padding:8px 12px;background:#f3f4f6;border:1px solid #ddd;text-align:left;">Type</th>
+                            <th style="padding:8px 12px;background:#f3f4f6;border:1px solid #ddd;text-align:right;">Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td style="padding:7px 12px;border:1px solid #ddd;">Total Transactions (incl. cancelled/voided)</td>
+                            <td style="padding:7px 12px;border:1px solid #ddd;text-align:right;font-weight:700;"><?= $total_txn_count ?></td>
+                        </tr>
+                        <tr>
+                            <td style="padding:7px 12px;border:1px solid #ddd;">Fuel Transactions (completed)</td>
+                            <td style="padding:7px 12px;border:1px solid #ddd;text-align:right;"><?= $fuel_txn_count ?></td>
+                        </tr>
+                        <tr>
+                            <td style="padding:7px 12px;border:1px solid #ddd;">Cancelled / Voided</td>
+                            <td style="padding:7px 12px;border:1px solid #ddd;text-align:right;color:#dc2626;"><?= $cancelled_voided_count ?></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
             <!-- Meter Readings Table -->
             <div class="section-title">
                 METER READING TABLE
             </div>
+
             <div class="table-container">
                 <table>
                     <thead>
@@ -2556,125 +2836,85 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 </table>
             </div>
             
-            <!-- Tank Liters Summary -->
+
+            <!-- Payment Breakdown -->
+            <?php
+            // Select correct shift summary for the current user
+            $active_fuel_summary = $is_manager_or_admin
+                ? ['fuel_sales' => $fuel_shift1_summary['fuel_sales'] + $fuel_shift2_summary['fuel_sales'],
+                   'cash'       => $fuel_shift1_summary['cash']  + $fuel_shift2_summary['cash'],
+                   'card'       => $fuel_shift1_summary['card']  + $fuel_shift2_summary['card'],
+                   'gcash'      => $fuel_shift1_summary['gcash'] + $fuel_shift2_summary['gcash'],
+                   'maya'       => $fuel_shift1_summary['maya']  + $fuel_shift2_summary['maya'],
+                   'fleet'      => $fuel_shift1_summary['fleet'] + $fuel_shift2_summary['fleet'],
+                   'ewallet'    => $fuel_shift1_summary['ewallet']+ $fuel_shift2_summary['ewallet'],
+                   'credit'     => $fuel_shift1_summary['credit']+ $fuel_shift2_summary['credit']]
+                : ($user_current_shift === 'shift2' ? $fuel_shift2_summary : $fuel_shift1_summary);
+            $active_shift_label = $is_manager_or_admin ? '24-Hour Summary' : $shift_label_display;
+            $active_total_collection = $active_fuel_summary['cash'] + $active_fuel_summary['card']
+                + $active_fuel_summary['gcash'] + $active_fuel_summary['maya']
+                + $active_fuel_summary['fleet'] + $active_fuel_summary['ewallet']
+                + $active_fuel_summary['credit'];
+            ?>
             <div class="section-title">
-                TANK LITERS SUMMARY
+                FUEL SALES — <?= htmlspecialchars(strtoupper($active_shift_label)) ?>
             </div>
+            <div class="table-container">
+                <table>
+                    <tbody>
+                        <tr>
+                            <td class="font-bold" style="width:60%;">Total Fuel Sales</td>
+                            <td class="text-right font-bold" style="font-size:17px;">&#8369;<?= number_format($active_fuel_summary['fuel_sales'], 2) ?></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="section-title" style="margin-top:18px;">PAYMENT BREAKDOWN</div>
             <div class="table-container">
                 <table>
                     <thead>
                         <tr>
-                            <th>Tank</th>
-                            <th>Fuel Type</th>
-                            <th class="text-right">Liters</th>
+                            <th>Payment Method</th>
+                            <th class="text-right">Amount</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php 
-                        if (count($tank_sales) > 0):
-                            $total_tank_liters = 0;
-                            foreach ($tank_sales as $tank): 
-                                $total_tank_liters += (float)($tank['total_liters'] ?? $tank['total_dispensed'] ?? 0);
-                        ?>
                         <tr>
-                            <td class="font-bold"><?= htmlspecialchars($tank['tank_name'] ?? 'Tank') ?></td>
-                            <td><?= htmlspecialchars($tank['fuel_type']) ?></td>
-                            <td class="text-right"><?= number_format($tank['total_liters'] ?? $tank['total_dispensed'], 2) ?> L</td>
+                            <td>Cash</td>
+                            <td class="text-right">&#8369;<?= number_format($active_fuel_summary['cash'], 2) ?></td>
                         </tr>
-                        <?php 
-                            endforeach;
-                        else:
-                        ?>
                         <tr>
-                            <td colspan="3" style="text-align: center; padding: 40px;">
-                                No tank liters data available.
-                            </td>
+                            <td>Credit Card / Debit Card</td>
+                            <td class="text-right">&#8369;<?= number_format($active_fuel_summary['card'], 2) ?></td>
                         </tr>
-                        <?php endif; ?>
-                        <?php if (count($tank_sales) > 0): ?>
-                        <tr style="font-weight: 700;">
-                            <td colspan="2" class="text-right">TOTAL TANK LITERS</td>
-                            <td class="text-right"><?= number_format($total_tank_liters, 2) ?> L</td>
+                        <tr>
+                            <td>GCash</td>
+                            <td class="text-right">&#8369;<?= number_format($active_fuel_summary['gcash'], 2) ?></td>
                         </tr>
-                        <?php endif; ?>
+                        <tr>
+                            <td>Maya</td>
+                            <td class="text-right">&#8369;<?= number_format($active_fuel_summary['maya'], 2) ?></td>
+                        </tr>
+                        <tr>
+                            <td>Petron Fleet Card</td>
+                            <td class="text-right">&#8369;<?= number_format($active_fuel_summary['fleet'], 2) ?></td>
+                        </tr>
+                        <tr>
+                            <td>Credit Account (Utang/Suki)</td>
+                            <td class="text-right">&#8369;<?= number_format($active_fuel_summary['credit'], 2) ?></td>
+                        </tr>
+                        <tr style="font-weight:700; border-top:2px solid #374151;">
+                            <td>Total Collection</td>
+                            <td class="text-right font-bold" style="font-size:16px;">&#8369;<?= number_format($active_total_collection, 2) ?></td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
-            
-            <!-- Shift Summaries -->
-            <div class="section-title">
-                SHIFT FUEL SALES & CASH SUMMARIES
-            </div>
-            <div class="shift-boxes">
-                <!-- Shift 1 -->
-                <div class="shift-box">
-                    <h3>SHIFT 1 (6AM-2PM)</h3>
-                    <table>
-                        <tbody>
-                            <tr>
-                                <td class="font-bold">Total Fuel Sales:</td>
-                                <td class="text-right font-bold">&#8369;<?= number_format($fuel_shift1_summary['fuel_sales'], 2) ?></td>
-                            </tr>
-                            <tr><td colspan="2" style="height: 10px;"></td></tr>
-                            <tr>
-                                <td colspan="2" class="font-bold">Payment Breakdown</td>
-                            </tr>
-                            <tr>
-                                <td>Cash:</td>
-                                <td class="text-right">&#8369;<?= number_format($fuel_shift1_summary['cash'], 2) ?></td>
-                            </tr>
-                            <tr>
-                                <td>Card:</td>
-                                <td class="text-right">&#8369;<?= number_format($fuel_shift1_summary['card'], 2) ?></td>
-                            </tr>
-                            <tr>
-                                <td>E-Wallet:</td>
-                                <td class="text-right">&#8369;<?= number_format($fuel_shift1_summary['ewallet'], 2) ?></td>
-                            </tr>
-                            <tr>
-                                <td>Credit/Suki:</td>
-                                <td class="text-right">&#8369;<?= number_format($fuel_shift1_summary['credit'], 2) ?></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                
-                <!-- Shift 2 -->
-                <div class="shift-box">
-                    <h3>SHIFT 2 (2PM-12AM)</h3>
-                    <table>
-                        <tbody>
-                            <tr>
-                                <td class="font-bold">Total Fuel Sales:</td>
-                                <td class="text-right font-bold">&#8369;<?= number_format($fuel_shift2_summary['fuel_sales'], 2) ?></td>
-                            </tr>
-                            <tr><td colspan="2" style="height: 10px;"></td></tr>
-                            <tr>
-                                <td colspan="2" class="font-bold">Payment Breakdown</td>
-                            </tr>
-                            <tr>
-                                <td>Cash:</td>
-                                <td class="text-right">&#8369;<?= number_format($fuel_shift2_summary['cash'], 2) ?></td>
-                            </tr>
-                            <tr>
-                                <td>Card:</td>
-                                <td class="text-right">&#8369;<?= number_format($fuel_shift2_summary['card'], 2) ?></td>
-                            </tr>
-                            <tr>
-                                <td>E-Wallet:</td>
-                                <td class="text-right">&#8369;<?= number_format($fuel_shift2_summary['ewallet'], 2) ?></td>
-                            </tr>
-                            <tr>
-                                <td>Credit/Suki:</td>
-                                <td class="text-right">&#8369;<?= number_format($fuel_shift2_summary['credit'], 2) ?></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            
-            <!-- A/R Summary -->
-            <div class="section-title">
+
+            <!-- A/R Summary (conditional) -->
+            <?php if ($display_total_ar > 0 || count($ar_summary) > 0): ?>
+            <div class="section-title" style="margin-top:18px;">
                 A/R SUMMARY (Account Receivable / Utang)
             </div>
             <div class="table-container">
@@ -2686,17 +2926,21 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                         </tr>
                     </thead>
                     <tbody>
+                        <?php if ($is_manager_or_admin || $user_current_shift === 'shift1'): ?>
                         <tr>
-                            <td class="font-bold">Shift 1 (6AM-2PM)</td>
+                            <td class="font-bold">Shift 1 (6AM–2PM)</td>
                             <td class="text-right">&#8369;<?= number_format($ar_shift_summary['shift1'], 2) ?></td>
                         </tr>
+                        <?php endif; ?>
+                        <?php if ($is_manager_or_admin || $user_current_shift === 'shift2'): ?>
                         <tr>
-                            <td class="font-bold">Shift 2 (2PM-12AM)</td>
+                            <td class="font-bold">Shift 2 (2PM–12AM)</td>
                             <td class="text-right">&#8369;<?= number_format($ar_shift_summary['shift2'], 2) ?></td>
                         </tr>
+                        <?php endif; ?>
                         <tr style="font-weight: 700;">
                             <td class="text-right">TOTAL A/R</td>
-                            <td class="text-right">&#8369;<?= number_format($ar_shift_summary['total'], 2) ?></td>
+                            <td class="text-right">&#8369;<?= number_format($display_total_ar, 2) ?></td>
                         </tr>
                     </tbody>
                 </table>
@@ -2720,9 +2964,9 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                         </tr>
                     </thead>
                     <tbody>
-                        <?php 
+                        <?php
                         $total_ar = 0;
-                        foreach ($ar_summary as $ar): 
+                        foreach ($ar_summary as $ar):
                             $total_ar += $ar['balance'];
                             $available = $ar['credit_limit'] - $ar['balance'];
                         ?>
@@ -2744,413 +2988,253 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 </table>
             </div>
             <?php endif; ?>
-            
-            <!-- Overall Daily Summary -->
-            <div class="section-title">
-                OVERALL DAILY FUEL SUMMARY
-            </div>
-            <div class="summary-grid">
-                <div class="summary-card">
-                    <div class="label">Total Fuel Sales</div>
-                    <div class="value">₱<?= number_format($overall_summary['total_fuel_sales'], 2) ?></div>
-                </div>
-                
-                <div class="summary-card">
-                    <div class="label">Total Liters Sold</div>
-                    <div class="value"><?= number_format($overall_summary['total_liters'], 2) ?> L</div>
-                </div>
-                
-                <div class="summary-card">
-                    <div class="label">Total Cash Collection</div>
-                    <div class="value">₱<?= number_format($overall_summary['total_cash'], 2) ?></div>
-                </div>
-                
-                <div class="summary-card">
-                    <div class="label">Total A/R</div>
-                    <div class="value">&#8369;<?= number_format($overall_summary['total_ar'], 2) ?></div>
-                </div>
 
-                <div class="summary-card">
-                    <div class="label">Total Deposits</div>
-                    <div class="value">₱<?= number_format($overall_summary['total_deposits'], 2) ?></div>
-                </div>
-            </div>
-            
-            <!-- Total Cash in Bank -->
-            <div class="section-title">
-                TOTAL CASH IN BANK
+            <?php else: ?>
+            <!-- No A/R for this shift -->
+            <div class="section-title" style="margin-top:18px;">
+                A/R SUMMARY (Account Receivable / Utang)
             </div>
             <div class="table-container">
                 <table>
                     <tbody>
                         <tr>
-                            <td class="font-bold" style="width: 70%;">Cash on Hand:</td>
-                            <td class="text-right font-bold" style="font-size: 18px;">₱<?= number_format($overall_summary['total_cash'], 2) ?></td>
-                        </tr>
-                        <tr>
-                            <td class="font-bold">Deposits Made Today:</td>
-                            <td class="text-right font-bold" style="font-size: 18px;">₱<?= number_format($overall_summary['total_deposits'], 2) ?></td>
-                        </tr>
-                        <tr>
-                            <td class="font-bold" style="font-size: 18px;">TOTAL CASH IN BANK:</td>
-                            <td class="text-right font-bold" style="font-size: 24px;">₱<?= number_format($overall_summary['total_cash'] + $overall_summary['total_deposits'], 2) ?></td>
+                            <td style="text-align:center;padding:24px;color:#6b7280;font-style:italic;">
+                                No Account Receivables for this shift.
+                            </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
+            <?php endif; ?>
+
             </div>
         </div>
     </div>
     </div>
     <!-- END FUEL TAB -->
-    
+
     <!-- MERCHANDISE TAB CONTENT -->
     <div id="merchandise-tab" class="tab-content <?= $active_tab === 'merchandise' ? 'active' : '' ?>">
         <div class="container">
             <div class="header">
-                <h1>DAILY MERCHANDISE & SERVICE SALES REPORT</h1>
-                <h1 style="font-size: 18px; margin-top: 5px;">24-HOUR SUMMARY</h1>
-                <p><?= htmlspecialchars($station_name) ?> <?= $station_location ? '- ' . htmlspecialchars($station_location) : '' ?></p>
-                <p><strong>Date:</strong> <?= date('F d, Y', strtotime($report_date)) ?></p>
+                <h1>MERCHANDISE & SERVICE SALES REPORT</h1>
+                <h1 style="font-size: 18px; margin-top: 5px;"><?= htmlspecialchars($shift_label_display) ?></h1>
+                <p><?= htmlspecialchars($station_name) ?><?= $station_location ? ' — ' . htmlspecialchars($station_location) : '' ?></p>
             </div>
-            
+
+            <!-- Report Metadata -->
+            <div class="table-container" style="margin-bottom:18px;">
+                <table style="width:100%;border-collapse:collapse;">
+                    <tbody>
+                        <tr>
+                            <td style="padding:5px 10px;width:18%;font-weight:700;border:1px solid #ddd;">Shift</td>
+                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= htmlspecialchars($shift_label_display) ?></td>
+                            <td style="padding:5px 10px;width:18%;font-weight:700;border:1px solid #ddd;">Date</td>
+                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= date('F d, Y', strtotime($report_date)) ?></td>
+                        </tr>
+                        <tr>
+                            <td style="padding:5px 10px;font-weight:700;border:1px solid #ddd;">Cashier</td>
+                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= htmlspecialchars($cashier_name) ?></td>
+                            <td style="padding:5px 10px;font-weight:700;border:1px solid #ddd;">Time Generated</td>
+                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= date('h:i A') ?></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
             <div class="content">
                 <!-- Merchandise Sales Table -->
-                <div class="section-title">
-                    MERCHANDISE SALES TABLE
-                </div>
+                <div class="section-title">MERCHANDISE SALES</div>
                 <div class="table-container">
                     <table>
                         <thead>
                             <tr>
-                                <th>Category</th>
-                                <th>Product Name</th>
-                                <th class="text-right">Beginning Stock</th>
-                                <th class="text-right">Stock-In</th>
-                                <th class="text-right">Stock-Out</th>
-                                <th class="text-right">Ending Stock</th>
-                                <th class="text-right">Unit Price</th>
+                                <th>Transaction #</th>
+                                <th>Item / Description</th>
+                                <th>Payment Method</th>
                                 <th class="text-right">Amount</th>
-                                <th>Encoder</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php 
-                            $merch_transactions = $merchandise_report_transactions;
-                            $total_merch_amount = 0;
-                            
-                            if (count($merch_transactions) > 0):
-                                foreach ($merch_transactions as $trans): 
-                                    $total_merch_amount += $trans['total_amount'];
+                            <?php
+                            $merch_total = 0;
+                            if (count($merchandise_report_transactions) > 0):
+                                foreach ($merchandise_report_transactions as $mt):
+                                    $merch_total += (float)($mt['total_amount'] ?? 0);
                             ?>
                             <tr>
-                                <td><?= htmlspecialchars($trans['category']) ?></td>
-                                <td class="font-bold"><?= htmlspecialchars($trans['product_name']) ?></td>
-                                <td class="text-right">—</td>
-                                <td class="text-right">—</td>
-                                <td class="text-right"><?= number_format($trans['stock_out'], 2) ?></td>
-                                <td class="text-right">—</td>
-                                <td class="text-right">₱<?= number_format($trans['unit_price'], 2) ?></td>
-                                <td class="text-right font-bold">₱<?= number_format($trans['total_amount'], 2) ?></td>
-                                <td><?= htmlspecialchars($trans['encoder'] ?? 'N/A') ?></td>
+                                <td><?= htmlspecialchars($mt['transaction_number'] ?? $mt['id'] ?? '-') ?></td>
+                                <td><?= htmlspecialchars($mt['item_name'] ?? $mt['product_name'] ?? $mt['description'] ?? 'Merchandise') ?></td>
+                                <td><?= htmlspecialchars($mt['payment_method'] ?? '-') ?></td>
+                                <td class="text-right">₱<?= number_format((float)($mt['total_amount'] ?? 0), 2) ?></td>
                             </tr>
-                            <?php 
+                            <?php
                                 endforeach;
                             else:
                             ?>
                             <tr>
-                                <td colspan="9" style="text-align: center; padding: 40px;">
-                                    No merchandise sales found for this date.
+                                <td colspan="4" style="text-align:center;padding:30px;color:#6b7280;font-style:italic;">
+                                    No merchandise transactions for this shift.
                                 </td>
                             </tr>
                             <?php endif; ?>
-                            <?php if (count($merch_transactions) > 0): ?>
-                            <tr style="font-weight: 700;">
-                                <td colspan="7" class="text-right">TOTAL</td>
-                                <td class="text-right">₱<?= number_format($total_merch_amount, 2) ?></td>
-                                <td></td>
+                            <?php if (count($merchandise_report_transactions) > 0): ?>
+                            <tr style="font-weight:700;">
+                                <td colspan="3" class="text-right">TOTAL MERCHANDISE SALES</td>
+                                <td class="text-right">₱<?= number_format($merch_total, 2) ?></td>
                             </tr>
                             <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
-                
+
                 <!-- Service Income Table -->
-                <div class="section-title">
-                    SERVICE INCOME TABLE
-                </div>
+                <div class="section-title" style="margin-top:18px;">SERVICE INCOME (Job Orders)</div>
                 <div class="table-container">
                     <table>
                         <thead>
                             <tr>
-                                <th>Service Type</th>
-                                <th class="text-right">Labor Fee</th>
-                                <th>Parts Used</th>
-                                <th class="text-right">Total Service Amount</th>
-                                <th>Encoder</th>
+                                <th>Transaction #</th>
+                                <th>Service Description</th>
+                                <th>Payment Method</th>
+                                <th class="text-right">Amount</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php 
-                            $service_transactions = $service_income_transactions;
-                            $total_service_amount = 0;
-                            
-                            if (count($service_transactions) > 0):
-                                foreach ($service_transactions as $trans): 
-                                    $total_service_amount += $trans['total_amount'];
+                            <?php
+                            $svc_total = 0;
+                            if (count($service_income_transactions) > 0):
+                                foreach ($service_income_transactions as $st):
+                                    $svc_total += (float)($st['total_amount'] ?? 0);
                             ?>
                             <tr>
-                                <td class="font-bold"><?= htmlspecialchars($trans['service_type']) ?></td>
-                                <td class="text-right">₱<?= number_format($trans['labor_fee'], 2) ?></td>
-                                <td><?= htmlspecialchars($trans['parts_used'] ?? '—') ?></td>
-                                <td class="text-right font-bold">₱<?= number_format($trans['total_amount'], 2) ?></td>
-                                <td><?= htmlspecialchars($trans['encoder'] ?? 'N/A') ?></td>
+                                <td><?= htmlspecialchars($st['transaction_number'] ?? $st['id'] ?? '-') ?></td>
+                                <td><?= htmlspecialchars($st['service_name'] ?? $st['job_order_service'] ?? $st['description'] ?? 'Service') ?></td>
+                                <td><?= htmlspecialchars($st['payment_method'] ?? '-') ?></td>
+                                <td class="text-right">₱<?= number_format((float)($st['total_amount'] ?? 0), 2) ?></td>
                             </tr>
-                            <?php 
+                            <?php
                                 endforeach;
                             else:
                             ?>
                             <tr>
-                                <td colspan="5" style="text-align: center; padding: 40px;">
-                                    No service income found for this date.
+                                <td colspan="4" style="text-align:center;padding:30px;color:#6b7280;font-style:italic;">
+                                    No service income transactions for this shift.
                                 </td>
                             </tr>
                             <?php endif; ?>
-                            <?php if (count($service_transactions) > 0): ?>
-                            <tr style="font-weight: 700;">
-                                <td colspan="3" class="text-right">TOTAL</td>
-                                <td class="text-right">₱<?= number_format($total_service_amount, 2) ?></td>
-                                <td></td>
+                            <?php if (count($service_income_transactions) > 0): ?>
+                            <tr style="font-weight:700;">
+                                <td colspan="3" class="text-right">TOTAL SERVICE INCOME</td>
+                                <td class="text-right">₱<?= number_format($svc_total, 2) ?></td>
                             </tr>
                             <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
-                
-                <!-- Shift Summaries -->
-                <div class="section-title">
-                    SHIFT SALES SUMMARIES
-                </div>
-                <div class="shift-boxes">
-                    <!-- Shift 1 -->
-                    <div class="shift-box">
-                        <h3>SHIFT 1 (6AM-2PM)</h3>
-                        <table>
-                            <tbody>
-                                <tr>
-                                    <td class="font-bold">Merchandise Sales:</td>
-                                    <td class="text-right font-bold">₱<?= number_format($shift1_summary['merchandise_sales'], 2) ?></td>
-                                </tr>
-                                <tr>
-                                    <td class="font-bold">Service Income:</td>
-                                    <td class="text-right font-bold">₱<?= number_format($shift1_summary['service_income'] ?? 0, 2) ?></td>
-                                </tr>
-                                <tr><td colspan="2" style="height: 10px;"></td></tr>
-                                <tr>
-                                    <td colspan="2" class="font-bold">Payment Breakdown</td>
-                                </tr>
-                                <tr>
-                                    <td>Cash:</td>
-                                    <td class="text-right">₱<?= number_format($shift1_summary['cash'], 2) ?></td>
-                                </tr>
-                                <tr>
-                                    <td>Card:</td>
-                                    <td class="text-right">₱<?= number_format($shift1_summary['card'], 2) ?></td>
-                                </tr>
-                                <tr>
-                                    <td>E-Wallet:</td>
-                                    <td class="text-right">₱<?= number_format($shift1_summary['ewallet'], 2) ?></td>
-                                </tr>
-                                <tr>
-                                    <td>Credit/Suki:</td>
-                                    <td class="text-right">₱<?= number_format($shift1_summary['credit'], 2) ?></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    
-                    <!-- Shift 2 -->
-                    <div class="shift-box">
-                        <h3>SHIFT 2 (2PM-12AM)</h3>
-                        <table>
-                            <tbody>
-                                <tr>
-                                    <td class="font-bold">Merchandise Sales:</td>
-                                    <td class="text-right font-bold">₱<?= number_format($shift2_summary['merchandise_sales'], 2) ?></td>
-                                </tr>
-                                <tr>
-                                    <td class="font-bold">Service Income:</td>
-                                    <td class="text-right font-bold">₱<?= number_format($shift2_summary['service_income'] ?? 0, 2) ?></td>
-                                </tr>
-                                <tr><td colspan="2" style="height: 10px;"></td></tr>
-                                <tr>
-                                    <td colspan="2" class="font-bold">Payment Breakdown</td>
-                                </tr>
-                                <tr>
-                                    <td>Cash:</td>
-                                    <td class="text-right">₱<?= number_format($shift2_summary['cash'], 2) ?></td>
-                                </tr>
-                                <tr>
-                                    <td>Card:</td>
-                                    <td class="text-right">₱<?= number_format($shift2_summary['card'], 2) ?></td>
-                                </tr>
-                                <tr>
-                                    <td>E-Wallet:</td>
-                                    <td class="text-right">₱<?= number_format($shift2_summary['ewallet'], 2) ?></td>
-                                </tr>
-                                <tr>
-                                    <td>Credit/Suki:</td>
-                                    <td class="text-right">₱<?= number_format($shift2_summary['credit'], 2) ?></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                
-                <!-- A/R Summary -->
-                <?php if (count($ar_summary) > 0): ?>
-                <div class="section-title">
-                    A/R SUMMARY (Suki/Credit Customers)
-                </div>
-                <div class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Customer Name</th>
-                                <th>Contact Number</th>
-                                <th>Type</th>
-                                <th class="text-right">Outstanding Balance</th>
-                                <th class="text-right">Credit Limit</th>
-                                <th class="text-right">Available Credit</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php 
-                            $total_ar = 0;
-                            foreach ($ar_summary as $ar): 
-                                $total_ar += $ar['balance'];
-                                $available = $ar['credit_limit'] - $ar['balance'];
-                            ?>
-                            <tr>
-                                <td class="font-bold"><?= htmlspecialchars($ar['name']) ?></td>
-                                <td><?= htmlspecialchars($ar['contact_number'] ?? '-') ?></td>
-                                <td><?= strtoupper($ar['type']) ?></td>
-                                <td class="text-right font-bold">₱<?= number_format($ar['balance'], 2) ?></td>
-                                <td class="text-right">₱<?= number_format($ar['credit_limit'], 2) ?></td>
-                                <td class="text-right">₱<?= number_format($available, 2) ?></td>
-                            </tr>
-                            <?php endforeach; ?>
-                            <tr style="font-weight: 700;">
-                                <td colspan="3" class="text-right">TOTAL ACCOUNTS RECEIVABLE</td>
-                                <td class="text-right">₱<?= number_format($total_ar, 2) ?></td>
-                                <td colspan="2"></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <?php endif; ?>
-                
-                <!-- Overall Summary -->
-                <div class="section-title">
-                    OVERALL DAILY MERCHANDISE SUMMARY
-                </div>
-                <div class="summary-grid">
-                    <div class="summary-card">
-                        <div class="label">Total Merchandise Sales</div>
-                        <div class="value">₱<?= number_format($overall_summary['total_merchandise_sales'], 2) ?></div>
-                    </div>
-                    
-                    <div class="summary-card">
-                        <div class="label">Total Service Income</div>
-                        <div class="value">₱<?= number_format($total_service_amount, 2) ?></div>
-                    </div>
-                    
-                    <div class="summary-card">
-                        <div class="label">Grand Total Sales</div>
-                        <div class="value">₱<?= number_format($overall_summary['total_merchandise_sales'] + $total_service_amount, 2) ?></div>
-                    </div>
-                    
-                    <div class="summary-card">
-                        <div class="label">Total Cash Collection</div>
-                        <div class="value">₱<?= number_format($overall_summary['total_cash'], 2) ?></div>
-                    </div>
-                </div>
-                
-                <!-- Total Cash in Bank -->
-                <div class="section-title">
-                    TOTAL CASH IN BANK
-                </div>
+
+                <!-- Grand Total Summary -->
+                <div class="section-title" style="margin-top:18px;">GRAND TOTAL SUMMARY</div>
                 <div class="table-container">
                     <table>
                         <tbody>
                             <tr>
-                                <td class="font-bold" style="width: 70%;">Cash on Hand:</td>
-                                <td class="text-right font-bold" style="font-size: 18px;">₱<?= number_format($overall_summary['total_cash'], 2) ?></td>
+                                <td class="font-bold" style="width:60%;">Total Merchandise Sales</td>
+                                <td class="text-right">₱<?= number_format($overall_summary['total_merchandise_sales'], 2) ?></td>
                             </tr>
                             <tr>
-                                <td class="font-bold">Deposits Made Today:</td>
-                                <td class="text-right font-bold" style="font-size: 18px;">₱<?= number_format($overall_summary['total_deposits'], 2) ?></td>
+                                <td class="font-bold">Total Service Income</td>
+                                <td class="text-right">₱<?= number_format($total_service_amount, 2) ?></td>
                             </tr>
-                            <tr>
-                                <td class="font-bold" style="font-size: 18px;">TOTAL CASH IN BANK:</td>
-                                <td class="text-right font-bold" style="font-size: 24px;">₱<?= number_format($overall_summary['total_cash'] + $overall_summary['total_deposits'], 2) ?></td>
+                            <tr style="font-weight:700;border-top:2px solid #374151;">
+                                <td>Grand Total</td>
+                                <td class="text-right font-bold" style="font-size:16px;">₱<?= number_format($overall_summary['total_merchandise_sales'] + $total_service_amount, 2) ?></td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
-            </div>
-        </div>
-    </div>
+
+            </div><!-- end .content -->
+        </div><!-- end .container -->
+    </div><!-- end #merchandise-tab -->
     <!-- END MERCHANDISE TAB -->
-</div>
 
-<script>
-    let currentReportTab = '<?= htmlspecialchars($active_tab, ENT_QUOTES) ?>';
-
-    function switchTab(tabName, evt) {
-        currentReportTab = tabName;
-        // Hide all tabs
-        document.querySelectorAll('.tab-content').forEach(tab => {
-            tab.classList.remove('active');
-        });
+    <script>
+    function switchTab(tabName, event) {
+        if (event) {
+            event.preventDefault();
+        }
         
-        // Remove active from all buttons
-        document.querySelectorAll('.tab-btn').forEach(btn => {
+        // Update active tab buttons
+        const tabButtons = document.querySelectorAll('.tab-navigation .tab-btn');
+        tabButtons.forEach(btn => {
             btn.classList.remove('active');
         });
         
-        // Show selected tab
-        document.getElementById(tabName + '-tab').classList.add('active');
-        
-        // Highlight selected button
-        if (evt && evt.target) {
-            evt.target.classList.add('active');
+        // Find and activate the clicked button
+        let targetBtn = event ? event.currentTarget : null;
+        if (!targetBtn) {
+            tabButtons.forEach(btn => {
+                if (btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(tabName)) {
+                    targetBtn = btn;
+                }
+            });
+        }
+        if (targetBtn) {
+            targetBtn.classList.add('active');
         }
         
-        // Update export button
-        const exportBtn = document.getElementById('export-excel-btn');
-        const reportDate = document.getElementById('report_date').value;
-        if (tabName === 'merchandise') {
-            exportBtn.href = `?export=excel&type=merchandise&report_date=${reportDate}`;
-        } else {
-            exportBtn.href = `?export=excel&type=fuel&report_date=${reportDate}`;
+        // Show/hide tab contents
+        const tabContents = document.querySelectorAll('.print-area .tab-content');
+        tabContents.forEach(content => {
+            content.classList.remove('active');
+        });
+        
+        const targetContent = document.getElementById(tabName + '-tab');
+        if (targetContent) {
+            targetContent.classList.add('active');
         }
+        
+        // Dynamically update the Excel export button type parameter
+        const excelLink = document.querySelector('.flt-btn-excel');
+        if (excelLink) {
+            const url = new URL(excelLink.href, window.location.origin + window.location.pathname);
+            url.searchParams.set('type', tabName);
+            excelLink.href = url.search + url.hash;
+        }
+        
+        // Update browser URL query parameter without full reload
+        const currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set('tab', tabName);
+        window.history.replaceState({}, '', currentUrl.toString());
     }
-    
+
     function applyFilters() {
         const reportDate = document.getElementById('report_date').value;
-        window.location.href = `?report_date=${reportDate}&tab=${currentReportTab}`;
+        const currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set('report_date', reportDate);
+        
+        // Keep the active tab query parameter when applying date filter
+        const activeTabBtn = document.querySelector('.tab-navigation .tab-btn.active');
+        if (activeTabBtn) {
+            const isMerch = activeTabBtn.textContent.includes('MERCHANDISE');
+            currentUrl.searchParams.set('tab', isMerch ? 'merchandise' : 'fuel');
+        }
+        
+        window.location.href = currentUrl.toString();
     }
     
-    // Allow Enter key to apply filters
-    document.getElementById('report_date').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            applyFilters();
-        }
-    });
-</script>
+    // Support press Enter on date input
+    const dateInput = document.getElementById('report_date');
+    if (dateInput) {
+        dateInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                applyFilters();
+            }
+        });
+    }
+    </script>
 
-<?php
-// Include system footer
-require_once __DIR__ . '/../partials/footer.php';
-?>
+    <?php require_once __DIR__ . '/../partials/footer.php'; ?>
+
+

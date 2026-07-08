@@ -37,7 +37,15 @@ if (!in_array($role, ['superadmin','developer']) && !is_module_enabled('transact
 }
 
 if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
-    header('Location: dashboard.php');
+    if ($role === 'superadmin' || $role === 'developer') {
+        header('Location: super_admin_dashboard.php');
+    } elseif ($role === 'admin') {
+        header('Location: admin_dashboard.php');
+    } elseif ($role === 'manager') {
+        header('Location: manager_dashboard.php');
+    } else {
+        header('Location: staff_dashboard.php');
+    }
     exit;
 }
 
@@ -1500,6 +1508,7 @@ if ($section === 'merchandise') {
                        COALESCE(NULLIF(TRIM(CONCAT(COALESCE(cb.first_name,''),' ',COALESCE(cb.last_name,''))),''),
                                 cb.username, 'Staff')                    AS created_by_name,
                        'job_orders' AS _source,
+                       'job_order'  AS transaction_type,
                        $jo_col_due_date    AS due_date,
                        $jo_col_balance_due AS balance_due_col
                 FROM job_orders jo
@@ -1542,6 +1551,7 @@ if ($section === 'merchandise') {
                 SELECT
                     mt.id,
                     mt.customer_name,
+                    mt.transaction_type,
                     COALESCE($mt_col_est_duration, 0) AS estimated_duration,
                     COALESCE(mt.job_order_service, 'Service') AS service_type,
                     '' AS service_description,
@@ -4469,8 +4479,7 @@ input[list] {
                                        id="joLastName" 
                                        class="txn-input"
                                        placeholder="Customer last name"
-                                       autocomplete="off"
-                                       readonly>
+                                       autocomplete="off">
                             </div>
                         </div>
                         <div class="txn-form-grid" style="margin-bottom:14px;">
@@ -4529,11 +4538,10 @@ input[list] {
                         <!-- Vehicle Brand + Model -->
                         <div class="txn-form-grid" style="margin-bottom:14px;">
                             <div class="txn-field">
-                                <label>Vehicle Brand <span style="font-size:10px;color:#94a3b8;">(Auto-filled)</span></label>
+                                <label>Vehicle Brand</label>
                                 <input type="text" id="joVehicleBrand" class="txn-input auto-pull"
                                        placeholder="e.g. Toyota, Honda..."
-                                       autocomplete="off"
-                                       style="background:#f8f9fa;">
+                                       autocomplete="off">
                             </div>
                             <div class="txn-field">
                                 <label>Vehicle Model</label>
@@ -4551,8 +4559,8 @@ input[list] {
                         <!-- Service Category -->
                         <div class="txn-form-grid" style="margin-bottom:14px;">
                             <div class="txn-field">
-                                <label>Service Category <span style="font-size:10px;color:#94a3b8;">(Auto-filled)</span></label>
-                                <select id="joServiceCategory" class="txn-select auto-pull" onchange="onServiceCategoryChange()" style="background:#f8f9fa;">
+                                <label>Service Category</label>
+                                <select id="joServiceCategory" class="txn-select auto-pull" onchange="onServiceCategoryChange()">
                                     <option value="">-- Select Category --</option>
                                     <option value="Lubrication">Lubrication</option>
                                     <option value="PMS">PMS</option>
@@ -4830,8 +4838,7 @@ input[list] {
                                        id="merchLastName"
                                        class="txn-input"
                                        placeholder="Customer last name"
-                                       autocomplete="off"
-                                       readonly>
+                                       autocomplete="off">
                             </div>
                         </div>
                         <div class="txn-form-grid" style="margin-bottom:14px;">
@@ -4981,7 +4988,7 @@ input[list] {
                         </div>
 
                         <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;">
-                            <button type="button" class="txn-btn secondary" onclick="resetMerchandiseForm()" title="Reset merchandise fields">
+                            <button type="button" class="txn-btn secondary" onclick="fullResetMerchandiseForm()" title="Reset merchandise fields">
                                 <i class="fas fa-undo"></i> Reset Form
                             </button>
                             <button type="button" class="txn-btn success" onclick="addProductFromFormToCart()" id="addItemBtn">
@@ -6169,6 +6176,13 @@ input[list] {
             const q = (document.getElementById('productSearch')?.value || '').toLowerCase();
             const list = document.getElementById('productDropdownList');
             if (!list) return;
+            // Only clear selectedProduct if user is actively changing text away from selection
+            if (selectedProduct) {
+                const currentLabel = selectedProduct.name + (selectedProduct.size ? ' · ' + selectedProduct.size : '');
+                if (q !== currentLabel.toLowerCase()) {
+                    selectedProduct = null; // user is searching for a different product
+                }
+            }
             list.style.display = 'block';
             list.querySelectorAll('.prod-option').forEach(opt => {
                 const search = (opt.dataset.search || '').toLowerCase();
@@ -6833,36 +6847,36 @@ input[list] {
                 firstNameInput.style.background = '#fff';  // White background
             }
             
-            // Other fields are readonly - auto-filled from selection
+            // All fields are editable - staff can type manually or auto-fill from customer search
             if (lastNameInput) {
                 lastNameInput.value = '';
-                lastNameInput.readOnly = true;
-                lastNameInput.style.background = '#f8f9fa';
+                lastNameInput.readOnly = false;
+                lastNameInput.style.background = '#fff';
             }
             if (contactInput) {
                 contactInput.value = '';
-                contactInput.readOnly = true;
-                contactInput.style.background = '#f8f9fa';
+                contactInput.readOnly = false;
+                contactInput.style.background = '#fff';
             }
             if (vehicleType) {
                 vehicleType.value = '';
-                vehicleType.readOnly = true;
-                vehicleType.style.background = '#f8f9fa';
+                vehicleType.readOnly = false;
+                vehicleType.style.background = '#fff';
             }
             if (vehicleBrand) {
                 vehicleBrand.value = '';
-                vehicleBrand.readOnly = true;
-                vehicleBrand.style.background = '#f8f9fa';
+                vehicleBrand.readOnly = false;
+                vehicleBrand.style.background = '#fff';
             }
             if (vehicleModel) {
                 vehicleModel.value = '';
-                vehicleModel.readOnly = true;
-                vehicleModel.style.background = '#f8f9fa';
+                vehicleModel.readOnly = false;
+                vehicleModel.style.background = '#fff';
             }
             if (vehiclePlate) {
                 vehiclePlate.value = '';
-                vehiclePlate.readOnly = true;
-                vehiclePlate.style.background = '#f8f9fa';
+                vehiclePlate.readOnly = false;
+                vehiclePlate.style.background = '#fff';
             }
         }
 
@@ -7379,9 +7393,29 @@ input[list] {
             if (modal && e.target === modal) closeAddProductModal();
         });
 
+        // ── Try to recover selectedProduct from what's shown in the search box ──
+        function tryResolveSelectedProduct() {
+            if (selectedProduct) return true; // already set
+            const searchVal = (document.getElementById('productSearch')?.value || '').trim();
+            if (!searchVal) return false;
+            const list = document.getElementById('productDropdownList');
+            if (!list) return false;
+            // Find the first visible prod-option whose name matches what's shown
+            const opts = list.querySelectorAll('.prod-option');
+            for (const opt of opts) {
+                const label = opt.dataset.name + (opt.dataset.size ? ' · ' + opt.dataset.size : '');
+                if (label.toLowerCase() === searchVal.toLowerCase() || opt.dataset.name.toLowerCase() === searchVal.toLowerCase()) {
+                    selectProduct(opt);
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // ── Add merchandise to cart ───────────────────────────────────────────
         function addToCart() {
-            if (!selectedProduct) { showTxnAlert('Please select a product first.', 'warning'); return; }
+            tryResolveSelectedProduct();
+            if (!selectedProduct) { showTxnAlert('Please select a product from the dropdown first.', 'warning'); return; }
             const qty = parseInt(document.getElementById('itemQty')?.value || 1);
             if (isNaN(qty) || qty < 1) { showTxnAlert('Quantity must be at least 1.', 'warning'); return; }
 
@@ -7462,8 +7496,11 @@ input[list] {
 
         // ── Add currently selected product in merchandise form to cart ──────
         function addProductFromFormToCart() {
+            tryResolveSelectedProduct();
             if (!selectedProduct) {
-                showTxnAlert('Please select a product from the dropdown first.', 'warning');
+                showTxnAlert('Please select a product from the dropdown list first.', 'warning');
+                document.getElementById('productSearch')?.focus();
+                openProductDropdown();
                 return;
             }
             addToCart();
@@ -7549,7 +7586,7 @@ input[list] {
             }
         }
 
-        // ── Reset merchandise form fields only ───────────────────────────────
+        // ── Reset merchandise form fields only (product section — keeps customer info) ──
         function resetMerchandiseForm() {
             selectedProduct = null;
             const search = document.getElementById('productSearch');
@@ -7563,22 +7600,23 @@ input[list] {
             if (price)  price.value  = '';
             if (stock)  stock.value  = '';
             closeProductDropdown();
-            
-            // Customer fields remain readonly - must search for customer
-            // (Walk-in option removed - all customers must be registered)
-            
-            // Clear customer details
+            // NOTE: Customer fields are intentionally NOT cleared here
+            // so they persist across multiple cart additions.
+        }
+
+        // ── Full reset: product fields + customer fields (called by Reset Form button) ──
+        function fullResetMerchandiseForm() {
+            resetMerchandiseForm(); // clears product fields
+            // Also clear customer details
             const merchFirstName = document.getElementById('merchFirstName');
             const merchLastName = document.getElementById('merchLastName');
             const merchContactNumber = document.getElementById('merchContactNumber');
-            if (merchFirstName) merchFirstName.value = '';
-            if (merchLastName) merchLastName.value = '';
-            if (merchContactNumber) merchContactNumber.value = '';
-            
-            // Hide customer results if open
+            if (merchFirstName) { merchFirstName.value = ''; }
+            if (merchLastName)  { merchLastName.value = ''; }
+            if (merchContactNumber) { merchContactNumber.value = ''; }
+            // Hide customer results dropdown if open
             const firstNameResults = document.getElementById('merchFirstNameResults');
             if (firstNameResults) firstNameResults.style.display = 'none';
-
             // Reset Loyalty
             const loyaltyProgram = document.getElementById('loyaltyProgram');
             if (loyaltyProgram) {
@@ -8593,6 +8631,7 @@ input[list] {
                         data-jo-filter="<?= $row_filter ?>"
                         data-jo-shift="<?= $shift_key_data ?>"
                         data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
+                        data-jo-type="<?= htmlspecialchars($job['transaction_type'] ?? 'job_order') ?>"
                         data-jo-mechanic="<?= htmlspecialchars($job['mechanic_name'] ?? '') ?>"
                         data-jo-service="<?= htmlspecialchars($job['service_type'] ?? '') ?>"
                         data-jo-date="<?= date('Y-m-d', strtotime($job['created_at'])) ?>"
@@ -8886,10 +8925,9 @@ input[list] {
                 // Status filter
                 var statusOk = (joState.status === 'all' || rowFilter === joState.status);
 
-                // Type filter: job_order = native job_orders, combined = merchandise_transactions
-                var typeOk = true;
-                if (joState.type === 'job_order')  typeOk = (rowSource === 'job_orders');
-                if (joState.type === 'combined')    typeOk = (rowSource === 'merchandise_transactions');
+                // Type filter: job_order = job_order type, combined = combined type
+                var rowType = row.getAttribute('data-jo-type') || 'job_order';
+                var typeOk = (joState.type === 'all' || rowType === joState.type);
 
                 // Date range filter
                 var dateOk = true;

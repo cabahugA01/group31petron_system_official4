@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * STAFF REPORTS & ADD-ONS MODULE
  * Professional implementation matching Manager Reports theme and styling.
@@ -26,6 +26,63 @@ if (!in_array($role, ['superadmin','developer']) && !is_module_enabled('reports'
 if (!$station_id) {
     die('Error: You are not assigned to a station.');
 }
+
+// Detect user's current shift — ONLY from active labor_sessions (no hardcoded time fallback)
+$user_current_shift   = null; // 'shift1', 'shift2', or null (= show all data)
+$is_manager_or_admin  = in_array($role, ['manager', 'admin', 'superadmin', 'developer']);
+
+if (!$is_manager_or_admin) {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT shift_period
+            FROM labor_sessions
+            WHERE user_id = ? AND end_time IS NULL
+            ORDER BY start_time DESC LIMIT 1
+        ");
+        $stmt->execute([$user_id]);
+        $active_session = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($active_session && !empty($active_session['shift_period'])) {
+            $sp = strtolower(trim($active_session['shift_period']));
+
+            // Exact + known-alias matching for Shift 1
+            if (in_array($sp, ['1', 'shift1', 'shift 1', 'first', 'morning', 'am', 'day'])) {
+                $user_current_shift = 'shift1';
+            }
+            // Exact + known-alias matching for Shift 2
+            elseif (in_array($sp, ['2', 'shift2', 'shift 2', 'second', 'afternoon', 'pm', 'evening', 'night'])) {
+                $user_current_shift = 'shift2';
+            }
+            // Partial-match fallback for unexpected stored values
+            elseif (strpos($sp, 'first') !== false || strpos($sp, '1') !== false) {
+                $user_current_shift = 'shift1';
+            } elseif (strpos($sp, 'second') !== false || strpos($sp, '2') !== false) {
+                $user_current_shift = 'shift2';
+            }
+        }
+        // NOTE: No time-of-day fallback — shift must come from the database only.
+        // If no active session exists, $user_current_shift stays null → all data shown.
+    } catch (Exception $e) {
+        error_log("Shift detection error (staff_reports): " . $e->getMessage());
+    }
+}
+
+// User-specific overrides: Yyang is Shift 1, Judy Lastimosa is Shift 2
+$username_lower = isset($me['username']) ? strtolower(trim($me['username'])) : '';
+$first_name_lower = isset($me['first_name']) ? strtolower(trim($me['first_name'])) : '';
+$last_name_lower = isset($me['last_name']) ? strtolower(trim($me['last_name'])) : '';
+
+if ($username_lower === 'yyang' || $first_name_lower === 'yyang') {
+    $user_current_shift = 'shift1';
+} elseif ($username_lower === 'judy' || $first_name_lower === 'judy' || $last_name_lower === 'lastimosa') {
+    $user_current_shift = 'shift2';
+}
+
+
+// Helper: can this user see Shift 1 data?
+$can_see_shift1 = ($is_manager_or_admin || $user_current_shift === 'shift1' || $user_current_shift === null);
+// Helper: can this user see Shift 2 data?
+$can_see_shift2 = ($is_manager_or_admin || $user_current_shift === 'shift2' || $user_current_shift === null);
 
 // Helper: check columns dynamically to prevent runtime query crashes
 function has_col(PDO $pdo, string $table, string $col): bool {
@@ -1424,9 +1481,13 @@ if (isset($_GET['export']) && $sub_tab === 'fuel_sales') {
             fputcsv($out,[$pt['label'],$ft,number_format($pt['capacity'],2),number_format($disp,2),$util.'%']);
         }
 
-        // Shifts
-        _fs_shift_csv($out, $shift1_sales, 'SHIFT 1 SALES & CASH SUMMARY (6:00 AM – 2:00 PM)');
-        _fs_shift_csv($out, $shift2_sales, 'SHIFT 2 SALES & CASH SUMMARY (2:00 PM – 12:00 MN)');
+        // Shifts (gated by user's active shift)
+        if ($can_see_shift1) {
+            _fs_shift_csv($out, $shift1_sales, 'SHIFT 1 SALES & CASH SUMMARY (6:00 AM – 2:00 PM)');
+        }
+        if ($can_see_shift2) {
+            _fs_shift_csv($out, $shift2_sales, 'SHIFT 2 SALES & CASH SUMMARY (2:00 PM – 12:00 MN)');
+        }
 
         // AR Summary — Customer Name + Outstanding Balance
         fputcsv($out, []);
@@ -1570,17 +1631,20 @@ tr:last-child td{border-bottom:none;}
 </div>
 
 <div class="two-col">
+'.($can_see_shift1 ? '
   <div class="section">
     <div class="section-head"><span>Shift 1 Sales &amp; Cash (6:00 AM - 2:00 PM)</span></div>
-    <table><thead><tr><th>Fuel Type</th><th>Liters</th><th>Total Sales (₱)</th><th>Cash Received (₱)</th><th>Digital (₱)</th><th>Credit (₱)</th></tr></thead>
+    <table><thead><tr><th>Fuel Type</th><th>Liters</th><th>Total Sales (&#8369;)</th><th>Cash Received (&#8369;)</th><th>Digital (&#8369;)</th><th>Credit (&#8369;)</th></tr></thead>
     <tbody>'.$print_rows_s1.'</tbody></table>
   </div>
+' : '').'
+'.($can_see_shift2 ? '
   <div class="section">
     <div class="section-head"><span>Shift 2 Sales &amp; Cash (2:00 PM - 12:00 MN)</span></div>
-    <table><thead><tr><th>Fuel Type</th><th>Liters</th><th>Total Sales (₱)</th><th>Cash Received (₱)</th><th>Digital (₱)</th><th>Credit (₱)</th></tr></thead>
+    <table><thead><tr><th>Fuel Type</th><th>Liters</th><th>Total Sales (&#8369;)</th><th>Cash Received (&#8369;)</th><th>Digital (&#8369;)</th><th>Credit (&#8369;)</th></tr></thead>
     <tbody>'.$print_rows_s2.'</tbody></table>
   </div>
-</div>
+' : '').'</div>
 
 <div class="section">
   <div class="section-head"><span>Service Income (Job Orders)</span></div>
@@ -1877,23 +1941,27 @@ if (isset($_GET['export']) && $sub_tab === 'merch_sales') {
         }
         if (empty($merch_items)) fputcsv($out, ['(No merchandise sales)']);
 
-        // Shift 1
-        fputcsv($out, []);
-        fputcsv($out, ['SHIFT 1 SALES SUMMARY (6:00 AM – 2:00 PM)']);
-        fputcsv($out, ['CATEGORY','ITEMS SOLD','TOTAL AMOUNT (₱)','CASH (₱)','DIGITAL (₱)','CREDIT/AR (₱)']);
-        foreach ($merch_shift1 as $r) {
-            fputcsv($out, [$r['category'],number_format($r['total_qty'],2),number_format($r['total_amount'],2),number_format($r['cash_amount'],2),number_format($r['digital_amount'],2),number_format($r['credit_amount'],2)]);
+        // Shift 1 (gated)
+        if ($can_see_shift1) {
+            fputcsv($out, []);
+            fputcsv($out, ['SHIFT 1 SALES SUMMARY (6:00 AM - 2:00 PM)']);
+            fputcsv($out, ['CATEGORY','ITEMS SOLD','TOTAL AMOUNT (PHP)','CASH (PHP)','DIGITAL (PHP)','CREDIT/AR (PHP)']);
+            foreach ($merch_shift1 as $r) {
+                fputcsv($out, [$r['category'],number_format($r['total_qty'],2),number_format($r['total_amount'],2),number_format($r['cash_amount'],2),number_format($r['digital_amount'],2),number_format($r['credit_amount'],2)]);
+            }
+            if (empty($merch_shift1)) fputcsv($out, ['(No Shift 1 data)']);
         }
-        if (empty($merch_shift1)) fputcsv($out, ['(No Shift 1 data)']);
 
-        // Shift 2
-        fputcsv($out, []);
-        fputcsv($out, ['SHIFT 2 SALES SUMMARY (2:00 PM – 12:00 MN)']);
-        fputcsv($out, ['CATEGORY','ITEMS SOLD','TOTAL AMOUNT (₱)','CASH (₱)','DIGITAL (₱)','CREDIT/AR (₱)']);
-        foreach ($merch_shift2 as $r) {
-            fputcsv($out, [$r['category'],number_format($r['total_qty'],2),number_format($r['total_amount'],2),number_format($r['cash_amount'],2),number_format($r['digital_amount'],2),number_format($r['credit_amount'],2)]);
+        // Shift 2 (gated)
+        if ($can_see_shift2) {
+            fputcsv($out, []);
+            fputcsv($out, ['SHIFT 2 SALES SUMMARY (2:00 PM - 12:00 MN)']);
+            fputcsv($out, ['CATEGORY','ITEMS SOLD','TOTAL AMOUNT (PHP)','CASH (PHP)','DIGITAL (PHP)','CREDIT/AR (PHP)']);
+            foreach ($merch_shift2 as $r) {
+                fputcsv($out, [$r['category'],number_format($r['total_qty'],2),number_format($r['total_amount'],2),number_format($r['cash_amount'],2),number_format($r['digital_amount'],2),number_format($r['credit_amount'],2)]);
+            }
+            if (empty($merch_shift2)) fputcsv($out, ['(No Shift 2 data)']);
         }
-        if (empty($merch_shift2)) fputcsv($out, ['(No Shift 2 data)']);
 
         // Category Totals
         fputcsv($out, []);
@@ -2010,17 +2078,20 @@ tr:last-child td{border-bottom:none;}
         echo '</tbody></table></div></div>
 
 <div class="two-col">
+'.($can_see_shift1 ? '
   <div class="section">
     <div class="section-head"><span>Shift 1 Sales (6:00 AM - 2:00 PM)</span></div>
-    <table><thead><tr><th>Category</th><th>Items</th><th>Total (₱)</th><th>Cash (₱)</th><th>Digital (₱)</th><th>Credit (₱)</th></tr></thead>
+    <table><thead><tr><th>Category</th><th>Items</th><th>Total</th><th>Cash</th><th>Digital</th><th>Credit</th></tr></thead>
     <tbody>'._ms_shift_rows($merch_shift1).'</tbody></table>
   </div>
+' : '').'
+'.($can_see_shift2 ? '
   <div class="section">
     <div class="section-head"><span>Shift 2 Sales (2:00 PM - 12:00 MN)</span></div>
-    <table><thead><tr><th>Category</th><th>Items</th><th>Total (₱)</th><th>Cash (₱)</th><th>Digital (₱)</th><th>Credit (₱)</th></tr></thead>
+    <table><thead><tr><th>Category</th><th>Items</th><th>Total</th><th>Cash</th><th>Digital</th><th>Credit</th></tr></thead>
     <tbody>'._ms_shift_rows($merch_shift2).'</tbody></table>
   </div>
-</div>
+' : '').'</div>
 
 <div class="two-col">
   <div class="section">
@@ -2643,7 +2714,8 @@ require_once __DIR__ . '/../partials/header.php';
 
       <!-- COL 3: Shift Summaries + AR -->
       <div class="fs-col">
-        <!-- Shift 1 -->
+        <!-- Shift 1 (visible to Shift 1 users and managers) -->
+        <?php if ($can_see_shift1): ?>
         <div class="fs-panel">
           <div class="fs-panel-head navy"><i class="fa-solid fa-sun" style="margin-right:5px;"></i>Shift 1 Sales &amp; Cash (6AM–2PM)</div>
           <?php if(empty($shift1_sales)): ?>
@@ -2667,7 +2739,9 @@ require_once __DIR__ . '/../partials/header.php';
           </table>
           <?php endif; ?>
         </div>
-        <!-- Shift 2 -->
+        <?php endif; ?>
+        <!-- Shift 2 (visible to Shift 2 users and managers) -->
+        <?php if ($can_see_shift2): ?>
         <div class="fs-panel">
           <div class="fs-panel-head navy"><i class="fa-solid fa-moon" style="margin-right:5px;"></i>Shift 2 Sales &amp; Cash (2PM–12MN)</div>
           <?php if(empty($shift2_sales)): ?>
@@ -2691,6 +2765,7 @@ require_once __DIR__ . '/../partials/header.php';
           </table>
           <?php endif; ?>
         </div>
+        <?php endif; ?>
         <!-- AR Summary -->
         <div class="fs-panel">
           <div class="fs-panel-head red"><i class="fa-solid fa-file-invoice" style="margin-right:5px;"></i>A/R Summary <span style="opacity:.7;font-weight:400;">(<?= count($ar_summary) ?> records)</span></div>
@@ -2916,9 +2991,10 @@ require_once __DIR__ . '/../partials/header.php';
       <?php endif; ?>
     </div>
 
-    <!-- Shift 1 & 2 side by side -->
+    <!-- Shift 1 & 2 side by side (shift-gated) -->
     <div class="ms-two">
-      <!-- Shift 1 -->
+      <!-- Shift 1 (visible to Shift 1 users and managers) -->
+      <?php if ($can_see_shift1): ?>
       <div class="ms-panel">
         <div class="ms-panel-head navy"><i class="fa-solid fa-sun" style="margin-right:5px;"></i>Shift 1 Sales &amp; Cash (6AM–2PM)</div>
         <?php if(empty($merch_shift1)): ?>
@@ -2947,7 +3023,9 @@ require_once __DIR__ . '/../partials/header.php';
         </table>
         <?php endif; ?>
       </div>
-      <!-- Shift 2 -->
+      <?php endif; ?>
+      <!-- Shift 2 (visible to Shift 2 users and managers) -->
+      <?php if ($can_see_shift2): ?>
       <div class="ms-panel">
         <div class="ms-panel-head navy"><i class="fa-solid fa-moon" style="margin-right:5px;"></i>Shift 2 Sales &amp; Cash (2PM–12MN)</div>
         <?php if(empty($merch_shift2)): ?>
@@ -2976,6 +3054,7 @@ require_once __DIR__ . '/../partials/header.php';
         </table>
         <?php endif; ?>
       </div>
+      <?php endif; ?>
     </div>
 
     <!-- Category Totals + A/R side by side -->

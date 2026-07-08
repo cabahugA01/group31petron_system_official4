@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'mgr_job_orders';
 require_once __DIR__ . '/../backend/lib.php';
@@ -18,7 +18,7 @@ $db_config  = require __DIR__ . '/../config/database_config.php';
 
 if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
     $_SESSION['error'] = 'Access denied.';
-    header('Location: dashboard.php'); exit;
+    header('Location: staff_dashboard.php'); exit;
 }
 
 // ── POST handlers ─────────────────────────────────────────────────────────

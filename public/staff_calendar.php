@@ -449,6 +449,16 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
+/* ── Global Font Awesome Icon Fix ── */
+i.fas, i.far, i.fab, i.fa, i[class*="fa-"] {
+    font-style: normal !important;
+    font-family: "Font Awesome 6 Free", "Font Awesome 5 Free", "FontAwesome" !important;
+    font-weight: 900 !important;
+    display: inline-block !important;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
 /* Google Calendar Style */
 .cal-layout { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff; display: flex; height: 100vh; overflow: hidden; }
 .cal-layout * { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; box-sizing: border-box; }
@@ -485,8 +495,42 @@ include __DIR__ . '/../partials/header.php';
 .cal-menu-btn:hover { background: #f1f3f4; }
 .cal-month-title { font-size: 22px; font-weight: 400; color: #3c4043; }
 .cal-header-right { display: flex; align-items: center; gap: 8px; }
-.cal-view-btn { background: none; border: 1px solid #dadce0; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; color: #3c4043; display: flex; align-items: center; gap: 6px; position: relative; }
-.cal-view-btn:hover { background: #f1f3f4; }
+.cal-view-btn { 
+    background: white !important; 
+    border: 1px solid #dadce0 !important; 
+    padding: 8px 16px !important; 
+    border-radius: 4px !important; 
+    cursor: pointer !important; 
+    font-size: 14px !important; 
+    color: #3c4043 !important; 
+    display: flex !important; 
+    align-items: center !important; 
+    gap: 6px !important; 
+    position: relative !important;
+    text-decoration: none !important;
+    box-shadow: none !important;
+}
+.cal-view-btn:hover { 
+    background: #f1f3f4 !important; 
+    color: #3c4043 !important;
+}
+.cal-view-btn:focus { 
+    outline: none !important; 
+    background: #f1f3f4 !important; 
+    color: #3c4043 !important;
+    box-shadow: none !important;
+}
+.cal-view-btn:active {
+    background: #f1f3f4 !important;
+    color: #3c4043 !important;
+    box-shadow: none !important;
+}
+.cal-view-btn i {
+    font-style: normal;
+    font-family: "Font Awesome 6 Free", "Font Awesome 5 Free";
+    font-weight: 900;
+    display: inline-block;
+}
 
 /* View dropdown */
 .cal-view-dropdown { position: absolute; top: 100%; right: 0; margin-top: 4px; background: #fff; border: 1px solid #dadce0; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.2); z-index: 100; display: none; }
@@ -495,8 +539,29 @@ include __DIR__ . '/../partials/header.php';
 .cal-view-option:hover { background: #f1f3f4; }
 .cal-view-option.active { background: #e8f0fe; }
 .cal-view-option .shortcut { font-size: 12px; color: #5f6368; }
-.cal-icon-btn { background: none; border: none; padding: 12px; border-radius: 50%; cursor: pointer; color: #5f6368; font-size: 18px; }
-.cal-icon-btn:hover { background: #f1f3f4; }
+.cal-icon-btn { 
+    background: none; 
+    border: none; 
+    padding: 12px; 
+    border-radius: 50%; 
+    cursor: pointer; 
+    color: #5f6368; 
+    font-size: 18px; 
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    height: auto;
+}
+.cal-icon-btn:hover { 
+    background: #f1f3f4; 
+}
+.cal-icon-btn i {
+    font-style: normal;
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+}
 
 /* Calendar grid */
 .cal-content { flex: 1; overflow: auto; }
@@ -783,7 +848,6 @@ include __DIR__ . '/../partials/header.php';
                 <?php elseif ($current_view === 'day'): ?>
                 <!-- Day View -->
                 <div style="padding: 20px;">
-                    <h2 style="margin-bottom: 20px; color: #3c4043;"><?= $today->format('l, F j, Y') ?></h2>
                     <?php 
                     $day_events = $month_events[$today_str] ?? [];
                     if (empty($day_events)):

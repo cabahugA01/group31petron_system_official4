@@ -15,6 +15,45 @@ $role = role_key($me['role'] ?? 'staff');
 $user_id = (int)($me['id'] ?? 0);
 $station_id = user_station_id();
 
+// Determine user's assigned shift (for filtering shift summary display)
+// Staff only see their own shift box; managers/admins see both
+$user_shift_number = 0; // 0 = show both, 1 = shift 1 only, 2 = shift 2 only
+if (in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+    try {
+        // Try active labor session first
+        $ls_stmt = $pdo->prepare("SELECT shift_period, shift_name FROM labor_sessions WHERE user_id = ? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1");
+        $ls_stmt->execute([$user_id]);
+        $ls = $ls_stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$ls) {
+            // Fall back to most recent session from today
+            $ls_stmt2 = $pdo->prepare("SELECT shift_period, shift_name FROM labor_sessions WHERE user_id = ? AND DATE(start_time) = CURDATE() ORDER BY start_time DESC LIMIT 1");
+            $ls_stmt2->execute([$user_id]);
+            $ls = $ls_stmt2->fetch(PDO::FETCH_ASSOC);
+        }
+        if ($ls) {
+            $sp = strtolower(trim($ls['shift_period'] ?? ''));
+            $sn = strtolower(trim($ls['shift_name'] ?? ''));
+            $combined = $sp . ' ' . $sn;
+            if (strpos($combined, '2') !== false || strpos($combined, 'second') !== false || strpos($combined, 'afternoon') !== false || strpos($combined, 'evening') !== false) {
+                $user_shift_number = 2;
+            } elseif (strpos($combined, '1') !== false || strpos($combined, 'first') !== false || strpos($combined, 'morning') !== false) {
+                $user_shift_number = 1;
+            }
+        }
+    } catch (Exception $e) { $user_shift_number = 0; }
+
+    // User-specific overrides: Yyang is Shift 1, Judy Lastimosa is Shift 2
+    $username_lower = isset($me['username']) ? strtolower(trim($me['username'])) : '';
+    $first_name_lower = isset($me['first_name']) ? strtolower(trim($me['first_name'])) : '';
+    $last_name_lower = isset($me['last_name']) ? strtolower(trim($me['last_name'])) : '';
+
+    if ($username_lower === 'yyang' || $first_name_lower === 'yyang') {
+        $user_shift_number = 1;
+    } elseif ($username_lower === 'judy' || $first_name_lower === 'judy' || $last_name_lower === 'lastimosa') {
+        $user_shift_number = 2;
+    }
+}
+
 // Access control
 if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
     header('Location: dashboard.php'); exit;
@@ -248,6 +287,18 @@ if (count($payments) === 0) {
     }
 }
 
+// Filter payments based on user shift if user is staff
+if ($user_shift_number !== 0) {
+    $payments = array_filter($payments, function($payment) use ($user_shift_number) {
+        $is_shift1 = payment_is_shift1($payment);
+        if ($user_shift_number === 1) {
+            return $is_shift1;
+        } else {
+            return !$is_shift1;
+        }
+    });
+}
+
 foreach ($payments as $payment) {
     $amount = (float)($payment['amount_paid'] ?? 0);
     $bucket = payment_mode_bucket($payment['payment_mode'] ?? 'cash');
@@ -366,44 +417,48 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     echo '<br/>';
     
     // Shift 1 Summary
-    echo '<h3>SHIFT 1 PAYMENTS SUMMARY (6AM - 2PM)</h3>';
-    echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
-    echo '<thead>';
-    echo '<tr>';
-    echo '<th>Payment Mode</th>';
-    echo '<th>Total Amount</th>';
-    echo '</tr>';
-    echo '</thead>';
-    echo '<tbody>';
-    echo '<tr><td>Cash</td><td class="text-right font-bold">₱' . number_format($shift1_cash, 2) . '</td></tr>';
-    echo '<tr><td>Card</td><td class="text-right font-bold">₱' . number_format($shift1_card, 2) . '</td></tr>';
-    echo '<tr><td>E-Wallet</td><td class="text-right font-bold">₱' . number_format($shift1_ewallet, 2) . '</td></tr>';
-    echo '<tr><td>E-Fuel Card</td><td class="text-right font-bold">₱' . number_format($shift1_efuel, 2) . '</td></tr>';
-    echo '<tr><td>Fleet Card</td><td class="text-right font-bold">₱' . number_format($shift1_fleet, 2) . '</td></tr>';
-    echo '<tr class="font-bold"><td>SHIFT 1 TOTAL</td><td class="text-right">₱' . number_format($shift1_total, 2) . '</td></tr>';
-    echo '</tbody>';
-    echo '</table>';
-    echo '<br/>';
+    if ($user_shift_number !== 2) {
+        echo '<h3>SHIFT 1 PAYMENTS SUMMARY (6AM - 2PM)</h3>';
+        echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
+        echo '<thead>';
+        echo '<tr>';
+        echo '<th>Payment Mode</th>';
+        echo '<th>Total Amount</th>';
+        echo '</tr>';
+        echo '</thead>';
+        echo '<tbody>';
+        echo '<tr><td>Cash</td><td class="text-right font-bold">₱' . number_format($shift1_cash, 2) . '</td></tr>';
+        echo '<tr><td>Card</td><td class="text-right font-bold">₱' . number_format($shift1_card, 2) . '</td></tr>';
+        echo '<tr><td>E-Wallet</td><td class="text-right font-bold">₱' . number_format($shift1_ewallet, 2) . '</td></tr>';
+        echo '<tr><td>E-Fuel Card</td><td class="text-right font-bold">₱' . number_format($shift1_efuel, 2) . '</td></tr>';
+        echo '<tr><td>Fleet Card</td><td class="text-right font-bold">₱' . number_format($shift1_fleet, 2) . '</td></tr>';
+        echo '<tr class="font-bold"><td>SHIFT 1 TOTAL</td><td class="text-right">₱' . number_format($shift1_total, 2) . '</td></tr>';
+        echo '</tbody>';
+        echo '</table>';
+        echo '<br/>';
+    }
     
     // Shift 2 Summary
-    echo '<h3>SHIFT 2 PAYMENTS SUMMARY (2PM - 10PM)</h3>';
-    echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
-    echo '<thead>';
-    echo '<tr>';
-    echo '<th>Payment Mode</th>';
-    echo '<th>Total Amount</th>';
-    echo '</tr>';
-    echo '</thead>';
-    echo '<tbody>';
-    echo '<tr><td>Cash</td><td class="text-right font-bold">₱' . number_format($shift2_cash, 2) . '</td></tr>';
-    echo '<tr><td>Card</td><td class="text-right font-bold">₱' . number_format($shift2_card, 2) . '</td></tr>';
-    echo '<tr><td>E-Wallet</td><td class="text-right font-bold">₱' . number_format($shift2_ewallet, 2) . '</td></tr>';
-    echo '<tr><td>E-Fuel Card</td><td class="text-right font-bold">₱' . number_format($shift2_efuel, 2) . '</td></tr>';
-    echo '<tr><td>Fleet Card</td><td class="text-right font-bold">₱' . number_format($shift2_fleet, 2) . '</td></tr>';
-    echo '<tr class="font-bold"><td>SHIFT 2 TOTAL</td><td class="text-right">₱' . number_format($shift2_total, 2) . '</td></tr>';
-    echo '</tbody>';
-    echo '</table>';
-    echo '<br/>';
+    if ($user_shift_number !== 1) {
+        echo '<h3>SHIFT 2 PAYMENTS SUMMARY (2PM - 10PM)</h3>';
+        echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
+        echo '<thead>';
+        echo '<tr>';
+        echo '<th>Payment Mode</th>';
+        echo '<th>Total Amount</th>';
+        echo '</tr>';
+        echo '</thead>';
+        echo '<tbody>';
+        echo '<tr><td>Cash</td><td class="text-right font-bold">₱' . number_format($shift2_cash, 2) . '</td></tr>';
+        echo '<tr><td>Card</td><td class="text-right font-bold">₱' . number_format($shift2_card, 2) . '</td></tr>';
+        echo '<tr><td>E-Wallet</td><td class="text-right font-bold">₱' . number_format($shift2_ewallet, 2) . '</td></tr>';
+        echo '<tr><td>E-Fuel Card</td><td class="text-right font-bold">₱' . number_format($shift2_efuel, 2) . '</td></tr>';
+        echo '<tr><td>Fleet Card</td><td class="text-right font-bold">₱' . number_format($shift2_fleet, 2) . '</td></tr>';
+        echo '<tr class="font-bold"><td>SHIFT 2 TOTAL</td><td class="text-right">₱' . number_format($shift2_total, 2) . '</td></tr>';
+        echo '</tbody>';
+        echo '</table>';
+        echo '<br/>';
+    }
     
     // Overall Summary
     echo '<h3>OVERALL DAILY SUMMARY</h3>';
@@ -597,9 +652,29 @@ require_once __DIR__ . '/../partials/header.php';
         table-layout: fixed;
     }
     
+    /* Specific column widths for better layout */
+    #paymentsTable th:nth-child(1),
+    #paymentsTable td:nth-child(1) { width: 15%; } /* Transaction ID */
+    #paymentsTable th:nth-child(2),
+    #paymentsTable td:nth-child(2) { width: 14%; } /* Customer Name */
+    #paymentsTable th:nth-child(3),
+    #paymentsTable td:nth-child(3) { width: 10%; } /* Payment Mode */
+    #paymentsTable th:nth-child(4),
+    #paymentsTable td:nth-child(4) { width: 10%; } /* Amount Paid */
+    #paymentsTable th:nth-child(5),
+    #paymentsTable td:nth-child(5) { width: 10%; } /* Outstanding */
+    #paymentsTable th:nth-child(6),
+    #paymentsTable td:nth-child(6) { width: 8%; } /* Shift */
+    #paymentsTable th:nth-child(7),
+    #paymentsTable td:nth-child(7) { width: 12%; } /* Encoder */
+    #paymentsTable th:nth-child(8),
+    #paymentsTable td:nth-child(8) { width: 8%; } /* Status */
+    #paymentsTable th:nth-child(9),
+    #paymentsTable td:nth-child(9) { width: 13%; } /* Remarks */
+    
     thead { background: #fff; color: #000; }
-    th { padding: 6px 4px; text-align: left; font-weight: 700; font-size: 9px; text-transform: uppercase; border: 1px solid #000; white-space: nowrap; }
-    td { padding: 5px 4px; border: 1px solid #000; font-size: 10px; white-space: nowrap; }
+    th { padding: 6px 4px; text-align: left; font-weight: 700; font-size: 9px; text-transform: uppercase; border: 1px solid #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    td { padding: 5px 4px; border: 1px solid #000; font-size: 10px; word-wrap: break-word; overflow-wrap: break-word; }
     tbody tr { background: #fff; }
     .text-right { text-align: right; }
     .text-center { text-align: center; }
@@ -621,22 +696,48 @@ require_once __DIR__ . '/../partials/header.php';
             position: fixed !important; top: 0 !important; left: 0 !important;
             width: 100% !important; margin: 0 !important; padding: 0 !important;
             background: white !important;
+            overflow-x: hidden !important;
         }
-        html, body { margin: 0 !important; padding: 0 !important; background: white !important; }
-        .container, .content { margin: 0 !important; padding: 0 !important; }
+        html, body { 
+            margin: 0 !important; 
+            padding: 0 !important; 
+            background: white !important; 
+            overflow-x: hidden !important;
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+        .container, .content { 
+            margin: 0 !important; 
+            padding: 0 !important; 
+            overflow-x: hidden !important;
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+
+        /* Hide sidebar, navigation, header elements */
+        .sidebar, .header-nav, .top-nav, nav, .menu-toggle, .hamburger, 
+        #sidebar, #header, #menu-toggle, .nav, .navbar, .menu-btn,
+        .toggle-btn, .sidebar-toggle, [class*="toggle"], [class*="menu-btn"] {
+            display: none !important;
+            visibility: hidden !important;
+            width: 0 !important;
+            height: 0 !important;
+        }
 
         /* ── Kill ALL icons everywhere ── */
         i, svg, .fas, .far, .fab, .fa, .fa-solid, .fa-regular, .fa-brands,
-        [class*="fa-"], [class^="fa "] {
+        [class*="fa-"], [class^="fa "], .icon, [class*="icon-"] {
             display: none !important;
             width: 0 !important; height: 0 !important;
             font-size: 0 !important; line-height: 0 !important;
             margin: 0 !important; padding: 0 !important;
+            visibility: hidden !important;
         }
         /* Re-show the print-area text but keep icons gone */
         .print-area, .print-area * { visibility: visible !important; }
         .print-area i, .print-area svg, .print-area .fas, .print-area .far,
-        .print-area .fab, .print-area .fa, .print-area [class*="fa-"] {
+        .print-area .fab, .print-area .fa, .print-area [class*="fa-"],
+        .print-area .icon, .print-area [class*="icon-"] {
             display: none !important;
             width: 0 !important; height: 0 !important;
             font-size: 0 !important; line-height: 0 !important;
@@ -648,13 +749,46 @@ require_once __DIR__ . '/../partials/header.php';
         .header h1 { font-size: 16px !important; font-weight: 700 !important; color: #000 !important; margin: 0 0 3px 0 !important; }
         .header p { font-size: 10px !important; color: #000 !important; margin: 2px 0 !important; }
         .section-title { font-size: 12px !important; font-weight: 700 !important; margin: 8px 0 4px 0 !important; border-bottom: 2px solid #000 !important; page-break-after: avoid !important; }
-        .table-container { overflow: visible !important; width: 100% !important; text-align: center !important; }
-        table { width: 95% !important; max-width: 100% !important; border-collapse: collapse !important; font-size: 10px !important; table-layout: auto !important; margin: 0 auto 8px auto !important; }
+        .table-container { 
+            overflow: hidden !important; 
+            overflow-x: hidden !important; 
+            width: 100% !important; 
+            max-width: 100% !important; 
+            text-align: center !important; 
+        }
+        table { 
+            width: 100% !important; 
+            max-width: 100% !important; 
+            border-collapse: collapse !important; 
+            font-size: 9px !important; 
+            table-layout: fixed !important; 
+            margin: 0 auto 8px auto !important; 
+        }
         thead { display: table-header-group !important; }
         tbody { display: table-row-group !important; }
         tr { page-break-inside: avoid !important; }
-        th { font-size: 10px !important; padding: 6px 8px !important; border: 1px solid #000 !important; background: #fff !important; color: #000 !important; font-weight: 700 !important; text-align: center !important; white-space: nowrap !important; }
-        td { font-size: 9px !important; padding: 5px 8px !important; border: 1px solid #000 !important; white-space: nowrap !important; vertical-align: top !important; }
+        th { 
+            font-size: 9px !important; 
+            padding: 5px 4px !important; 
+            border: 1px solid #000 !important; 
+            background: #fff !important; 
+            color: #000 !important; 
+            font-weight: 700 !important; 
+            text-align: center !important; 
+            white-space: nowrap !important; 
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+        td { 
+            font-size: 8px !important; 
+            padding: 4px 3px !important; 
+            border: 1px solid #000 !important; 
+            white-space: nowrap !important; 
+            vertical-align: top !important; 
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            word-wrap: break-word !important;
+        }
         .shift-summary { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 6px !important; margin: 6px 0 !important; page-break-inside: avoid !important; }
         .shift-box { border: 1px solid #000 !important; padding: 5px !important; }
         .shift-box h3 { font-size: 10px !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px 0 !important; }
@@ -741,6 +875,7 @@ require_once __DIR__ . '/../partials/header.php';
             
             <div class="section-title">SHIFT SUMMARY</div>
             <div class="shift-summary">
+                <?php if ($user_shift_number !== 2): // Hide Shift 1 summary for Shift 2 staff ?>
                 <div class="shift-box">
                     <h3>SHIFT 1 (6AM - 2PM)</h3>
                     <table>
@@ -755,7 +890,9 @@ require_once __DIR__ . '/../partials/header.php';
                         </tbody>
                     </table>
                 </div>
+                <?php endif; ?>
                 
+                <?php if ($user_shift_number !== 1): // Hide Shift 2 summary for Shift 1 staff ?>
                 <div class="shift-box">
                     <h3>SHIFT 2 (2PM - 10PM)</h3>
                     <table>
@@ -770,6 +907,7 @@ require_once __DIR__ . '/../partials/header.php';
                         </tbody>
                     </table>
                 </div>
+                <?php endif; ?>
             </div>
             
             <div class="section-title">OVERALL DAILY SUMMARY</div>
