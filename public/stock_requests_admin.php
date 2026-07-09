@@ -37,9 +37,10 @@ include __DIR__ . '/../partials/header.php';
 
 /* ── Tabs ── */
 .tab-nav { display:flex; gap:0; border-bottom:2px solid #e9ecef; margin-bottom:20px; }
-.tab-btn { padding:10px 22px; background:none; border:none; border-bottom:3px solid transparent; font-size:14px; font-weight:600; color:#6c757d; cursor:pointer; margin-bottom:-2px; transition:all .15s; }
-.tab-btn.active { color:#002F70; border-bottom-color:#002F70; }
-.tab-btn:hover { color:#002F70; }
+.tab-btn { padding:10px 22px; background:#f8f9fa; border:none; border-bottom:3px solid transparent; font-size:14px; font-weight:600; color:#475569 !important; cursor:pointer; margin-bottom:-2px; transition:all .15s; }
+.tab-btn.active { background:#002F70 !important; color:#ffffff !important; border-bottom-color:#002F70; font-weight:800; }
+.tab-btn.active i { color:#ffffff !important; }
+.tab-btn:hover { color:#002F70 !important; background:rgba(0,47,108,0.1); }
 
 /* ── Badges ── */
 .sbadge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:600; white-space:nowrap; }

@@ -177,16 +177,19 @@ include __DIR__ . "/../partials/header.php";
 .empty-state h3 { font-size:1.2rem; font-weight:700; color:#333; margin:0 0 8px; }
 .empty-state p { font-size:0.9rem; max-width:420px; margin:0 auto; line-height:1.6; }
 /* == Main type tabs == */
+/* == Main type tabs == */
 .main-tab-nav { display:flex; gap:0; border-bottom:2px solid #e9ecef; margin-bottom:22px; }
-.main-tab-btn { padding:11px 26px; background:none; border:none; border-bottom:3px solid transparent; font-size:14px; font-weight:600; color:#6c757d; cursor:pointer; margin-bottom:-2px; transition:all .15s; display:flex; align-items:center; gap:7px; }
-.main-tab-btn.active { color:#002F70; border-bottom-color:#002F70; }
-.main-tab-btn:hover  { color:#002F70; }
-.main-tab-badge { background:#dc2626; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; }
+.main-tab-btn { padding:11px 26px; background:#f8f9fa; border:none; border-bottom:3px solid transparent; font-size:14px; font-weight:600; color:#475569 !important; cursor:pointer; margin-bottom:-2px; transition:all .15s; display:flex; align-items:center; gap:7px; }
+.main-tab-btn.active { background:#002F70 !important; color:#ffffff !important; border-bottom-color:#002F70; font-weight:800; }
+.main-tab-btn.active i { color:#ffffff !important; }
+.main-tab-btn:hover  { color:#002F70 !important; background:rgba(0,47,108,0.1); }
+
 /* == Sub tabs == */
 .tab-nav { display:flex; gap:0; border-bottom:2px solid #e9ecef; margin-bottom:20px; }
-.tab-btn { padding:10px 22px; background:none; border:none; border-bottom:3px solid transparent; font-size:14px; font-weight:600; color:#6c757d; cursor:pointer; margin-bottom:-2px; transition:all .15s; }
-.tab-btn.active { color:#002F70; border-bottom-color:#002F70; }
-.tab-btn:hover { color:#002F70; }
+.tab-btn { padding:10px 22px; background:#f8f9fa; border:none; border-bottom:3px solid transparent; font-size:14px; font-weight:600; color:#475569 !important; cursor:pointer; margin-bottom:-2px; transition:all .15s; }
+.tab-btn.active { background:#002F70 !important; color:#ffffff !important; border-bottom-color:#002F70; font-weight:800; }
+.tab-btn.active i { color:#ffffff !important; }
+.tab-btn:hover { color:#002F70 !important; background:rgba(0,47,108,0.1); }
 /* == Card wrapper == */
 .inv-card { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); margin-bottom:24px; overflow:hidden; }
 .inv-card-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e9ecef; flex-wrap:wrap; gap:8px; }

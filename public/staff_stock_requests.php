@@ -566,7 +566,7 @@ include __DIR__ . '/../partials/header.php';
                                         <td style="font-size:11.5px;color:#475569;"><?= htmlspecialchars($tank_lbl) ?></td>
                                         <td><strong><?= htmlspecialchars($r['fuel_type']) ?></strong></td>
                                         <td><?= number_format((float)$r['current_level'], 2) ?> L</td>
-                                        <td style="font-weight:700;color:#002F70;"><?= number_format((float)$r['requested_liters'], 2) ?> L</td>
+                                        <td style="font-weight:700;color:#002F70;"><?= $r['requested_liters'] > 0 ? number_format((float)$r['requested_liters'], 2) . ' L' : '<span style="color:#94a3b8;font-weight:normal;">Pending Manager Input</span>' ?></td>
                                         <td><span class="<?= $s_cls ?>"><?= $st ?></span></td>
                                         <td style="font-size:11.5px;color:#64748b;"><?= $updated ?></td>
                                         <td>
@@ -681,7 +681,7 @@ include __DIR__ . '/../partials/header.php';
                                             <span style="font-size:11px;color:#64748b;">SKU: <code><?= htmlspecialchars($r['item_sku'] ?? '&mdash;') ?></code> | Cat: <?= htmlspecialchars($r['item_category'] ?? '') ?></span>
                                         </td>
                                         <td><?= number_format((int)$r['current_stock']) ?> pcs</td>
-                                        <td style="font-weight:700;color:#002F70;"><?= number_format((int)$r['requested_quantity']) ?> pcs</td>
+                                        <td style="font-weight:700;color:#002F70;"><?= $r['requested_quantity'] > 0 ? number_format((int)$r['requested_quantity']) . ' pcs' : '<span style="color:#94a3b8;font-weight:normal;">Pending Manager Input</span>' ?></td>
                                         <td><span class="<?= $s_cls ?>"><?= $st ?></span></td>
                                         <td style="font-size:11.5px;color:#64748b;"><?= $updated ?></td>
                                         <td>
@@ -737,7 +737,12 @@ function viewRequest(type, req) {
     var category = type === 'fuel' ? 'Fuel' : 'Merchandise';
     var product = type === 'fuel' ? req.fuel_type : req.item_name;
     var current = type === 'fuel' ? parseFloat(req.current_level).toLocaleString() + ' L' : parseInt(req.current_stock).toLocaleString() + ' pcs';
-    var requested = type === 'fuel' ? parseFloat(req.requested_liters).toLocaleString() + ' L' : parseInt(req.requested_quantity).toLocaleString() + ' pcs';
+    var requested = '—';
+    if (type === 'fuel') {
+        requested = parseFloat(req.requested_liters) > 0 ? parseFloat(req.requested_liters).toLocaleString() + ' L' : '<span style="color:#94a3b8;font-weight:normal;">Pending Manager Input</span>';
+    } else {
+        requested = parseInt(req.requested_quantity) > 0 ? parseInt(req.requested_quantity).toLocaleString() + ' pcs' : '<span style="color:#94a3b8;font-weight:normal;">Pending Manager Input</span>';
+    }
     
     var approved = '—';
     if (type === 'fuel' && req.approved_liters !== null) {
@@ -818,7 +823,12 @@ function printRequest(type, req) {
     var category = type === 'fuel' ? 'Fuel' : 'Merchandise';
     var product = type === 'fuel' ? req.fuel_type : req.item_name;
     var current = type === 'fuel' ? parseFloat(req.current_level).toLocaleString() + ' L' : parseInt(req.current_stock).toLocaleString() + ' pcs';
-    var requested = type === 'fuel' ? parseFloat(req.requested_liters).toLocaleString() + ' L' : parseInt(req.requested_quantity).toLocaleString() + ' pcs';
+    var requested = '—';
+    if (type === 'fuel') {
+        requested = parseFloat(req.requested_liters) > 0 ? parseFloat(req.requested_liters).toLocaleString() + ' L' : 'Pending Manager Input';
+    } else {
+        requested = parseInt(req.requested_quantity) > 0 ? parseInt(req.requested_quantity).toLocaleString() + ' pcs' : 'Pending Manager Input';
+    }
     
     var approved = '—';
     if (type === 'fuel' && req.approved_liters !== null) {

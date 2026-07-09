@@ -50,9 +50,11 @@ try {
         created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         read_at      TIMESTAMP NULL,
         INDEX idx_user_status (user_id, status),
+        INDEX idx_event_type  (event_type),
+        INDEX idx_source_key  (source_key),
         INDEX idx_created_at  (created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-} catch (Exception $e) { /* already exists */ }
+} catch (Throwable $e) {}
 
 // ── Route ─────────────────────────────────────────────────────
 $method = $_SERVER['REQUEST_METHOD'];

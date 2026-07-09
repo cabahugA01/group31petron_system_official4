@@ -103,11 +103,11 @@ include __DIR__ . '/../partials/header.php';
     border-bottom: 2px solid #e9ecef;
 }
 .tab-btn {
-    background: none;
+    background: #f8f9fa;
     border: none;
     padding: 10px 20px;
     font-weight: 700;
-    color: #6c757d;
+    color: #475569 !important;
     border-bottom: 3px solid transparent;
     cursor: pointer;
     font-size: 12px;
@@ -119,12 +119,18 @@ include __DIR__ . '/../partials/header.php';
     gap: 6px;
 }
 .tab-btn:hover {
-    color: #002F70;
+    color: #002F70 !important;
     border-bottom-color: #dee2e6;
+    background: rgba(0,47,112,0.1);
 }
 .tab-btn.active {
-    color: #002F70;
+    background: #002F70 !important;
+    color: #ffffff !important;
     border-bottom-color: #002F70;
+    font-weight: 800;
+}
+.tab-btn.active i {
+    color: #ffffff !important;
 }
 .tab-btn .badge {
     background: #fd7e14;

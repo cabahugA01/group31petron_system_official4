@@ -229,6 +229,57 @@ function dashboard_datetime_expression(PDO $pdo, string $table, string $alias = 
     return count($parts) === 1 ? $parts[0] : 'COALESCE(' . implode(', ', $parts) . ')';
 }
 
+function dashboard_service_status_label($workflow_status, $validation_status = null): string {
+    $wf = strtolower(trim((string) $workflow_status));
+    $val = strtolower(trim((string) $validation_status));
+
+    $is = static fn(string $value, array $options): bool => in_array($value, $options, true);
+
+    if ($is($wf, ['rejected', 'cancelled', 'canceled', 'voided']) || $is($val, ['rejected', 'cancelled', 'canceled', 'voided'])) {
+        return 'Rejected';
+    }
+    if ($is($wf, ['finalized', 'released']) || $is($val, ['finalized', 'released'])) {
+        return 'Released';
+    }
+    if ($is($wf, ['completed', 'verified']) || $is($val, ['completed', 'verified'])) {
+        return 'Completed';
+    }
+    if ($is($wf, ['in progress', 'ongoing', 'awaiting parts', 'on hold']) || $is($val, ['in progress', 'ongoing', 'awaiting parts', 'on hold'])) {
+        return 'In Progress';
+    }
+    if ($is($wf, ['approved', 'validated', 'adjusted', 'reviewed']) || $is($val, ['approved', 'validated', 'adjusted', 'reviewed'])) {
+        return 'Approved';
+    }
+
+    return 'Pending Validation';
+}
+
+function dashboard_service_tracker_filters(PDO $pdo, string $alias = ''): array {
+    $filters = [];
+
+    if (dashboard_has_column($pdo, 'merchandise_transactions', 'transaction_type')) {
+        $col = dashboard_column_sql('transaction_type', $alias);
+        $filters[] = "LOWER(COALESCE({$col}, '')) IN ('job_order', 'combined', 'service')";
+    }
+    if (dashboard_has_column($pdo, 'merchandise_transactions', 'job_order_service')) {
+        $col = dashboard_column_sql('job_order_service', $alias);
+        $filters[] = "({$col} IS NOT NULL AND TRIM({$col}) <> '')";
+    }
+    if (dashboard_has_column($pdo, 'merchandise_transactions', 'job_order_id')) {
+        $filters[] = dashboard_column_sql('job_order_id', $alias) . ' IS NOT NULL';
+    }
+    if (dashboard_has_column($pdo, 'merchandise_transactions', 'job_order_db_id')) {
+        $filters[] = dashboard_column_sql('job_order_db_id', $alias) . ' IS NOT NULL';
+    }
+
+    return $filters;
+}
+
+function dashboard_service_tracker_where(PDO $pdo, string $alias = ''): string {
+    $filters = dashboard_service_tracker_filters($pdo, $alias);
+    return empty($filters) ? '0=1' : '(' . implode(' OR ', $filters) . ')';
+}
+
 function dashboard_signature_query(PDO $pdo, string $key, string $from_where_sql, array $params, array $columns): string {
     $signature_columns = array_map(
         static fn($column) => "COALESCE(CAST({$column} AS CHAR), '')",
@@ -433,6 +484,19 @@ $fuel_dt_expr = dashboard_datetime_expression($pdo, 'fuel_transactions', '', ['t
 $merch_dt_expr = dashboard_datetime_expression($pdo, 'merchandise_transactions', '', ['created_at', 'transaction_date']);
 $job_dt_expr = dashboard_datetime_expression($pdo, 'job_orders', '', ['created_at']);
 $merch_dt_expr_mt = dashboard_datetime_expression($pdo, 'merchandise_transactions', 'mt', ['created_at', 'transaction_date']);
+$job_validation_expr = dashboard_has_column($pdo, 'job_orders', 'validation_status') ? 'validation_status' : 'NULL';
+$mt_service_where = dashboard_service_tracker_where($pdo, 'mt');
+$mt_workflow_expr = dashboard_has_column($pdo, 'merchandise_transactions', 'workflow_status') ? dashboard_column_sql('workflow_status', 'mt') : 'NULL';
+$mt_validation_expr = dashboard_has_column($pdo, 'merchandise_transactions', 'validation_status') ? dashboard_column_sql('validation_status', 'mt') : 'NULL';
+$mt_queue_status_expr = "LOWER(COALESCE(NULLIF(TRIM({$mt_workflow_expr}), ''), NULLIF(TRIM({$mt_validation_expr}), ''), 'pending'))";
+$open_service_statuses_sql = "'pending','pending validation','reviewed','approved','validated','adjusted','in progress','ongoing','awaiting parts','on hold'";
+$pending_validation_statuses_sql = "'pending','pending validation',''";
+$job_queue_status_expr = "LOWER(COALESCE(NULLIF(TRIM(status), ''), 'pending'))";
+$job_queue_validation_expr = "LOWER(COALESCE(NULLIF(TRIM({$job_validation_expr}), ''), 'pending validation'))";
+$mt_queue_workflow_expr = "LOWER(COALESCE(NULLIF(TRIM({$mt_workflow_expr}), ''), ''))";
+$mt_queue_validation_expr = "LOWER(COALESCE(NULLIF(TRIM({$mt_validation_expr}), ''), 'pending validation'))";
+$job_active_queue_condition = "({$job_queue_status_expr} IN ({$open_service_statuses_sql}) OR ({$job_queue_status_expr} IN ('completed','verified') AND {$job_queue_validation_expr} IN ({$pending_validation_statuses_sql})))";
+$mt_active_queue_condition = "({$mt_queue_status_expr} IN ({$open_service_statuses_sql}) OR ({$mt_queue_workflow_expr} IN ('completed','verified') AND {$mt_queue_validation_expr} IN ({$pending_validation_statuses_sql})))";
 
 // METRICS QUERY BLOCK
 // ─────────────────────────────────────────────────────────────────────────────
@@ -489,11 +553,24 @@ try {
     $stmt = $pdo->prepare("
         SELECT COUNT(*) FROM job_orders
         WHERE station_id = ?
-          AND status IN ('Pending','Reviewed','In Progress','Awaiting Parts')
+          AND {$job_active_queue_condition}
     ");
     $stmt->execute([$station_id]);
     $service_queue_count = (int)$stmt->fetchColumn();
 } catch (Exception $e) {}
+if ($mt_service_where !== '0=1') {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*)
+            FROM merchandise_transactions mt
+            WHERE mt.station_id = ?
+              AND {$mt_service_where}
+              AND {$mt_active_queue_condition}
+        ");
+        $stmt->execute([$station_id]);
+        $service_queue_count += (int)$stmt->fetchColumn();
+    } catch (Exception $e) {}
+}
 
 // 5. Fuel Stock Alerts (dynamic capacity-based thresholds: Critical + Low)
 $fuel_stock_alerts_count = 0;
@@ -690,33 +767,65 @@ if (!empty($raw_merch_sales)) {
 }
 
 // Chart 4: Service Status Distribution (Doughnut Chart)
-$raw_statuses = dashboard_fetch_all($pdo, "
-    SELECT status, COUNT(*) AS count
-    FROM job_orders
-    WHERE station_id = ? AND DATE({$job_dt_expr}) BETWEEN ? AND ?
-    GROUP BY status
-", [$station_id, $date_from, $date_to]);
-
+// Mirrors the Job Order Tracker sources: native job_orders + service rows encoded in merchandise_transactions.
 $canonical_statuses = [
-    'Pending' => 0,
+    'Pending Validation' => 0,
+    'Approved' => 0,
     'In Progress' => 0,
     'Completed' => 0,
-    'Released' => 0
+    'Released' => 0,
+    'Rejected' => 0,
 ];
-foreach ($raw_statuses as $row) {
-    $st = strtolower(trim($row['status']));
-    if (in_array($st, ['pending', 'reviewed'])) {
-        $canonical_statuses['Pending'] += (int)$row['count'];
-    } elseif (in_array($st, ['in progress', 'awaiting parts'])) {
-        $canonical_statuses['In Progress'] += (int)$row['count'];
-    } elseif (in_array($st, ['completed', 'verified'])) {
-        $canonical_statuses['Completed'] += (int)$row['count'];
-    } elseif (in_array($st, ['finalized', 'released'])) {
-        $canonical_statuses['Released'] += (int)$row['count'];
+
+$job_validation_expr = dashboard_has_column($pdo, 'job_orders', 'validation_status') ? 'validation_status' : 'NULL';
+$raw_job_statuses = dashboard_fetch_all($pdo, "
+    SELECT status AS workflow_status, {$job_validation_expr} AS validation_status
+    FROM job_orders
+    WHERE station_id = ? AND DATE({$job_dt_expr}) BETWEEN ? AND ?
+", [$station_id, $date_from, $date_to]);
+
+foreach ($raw_job_statuses as $row) {
+    $label = dashboard_service_status_label($row['workflow_status'] ?? null, $row['validation_status'] ?? null);
+    if (isset($canonical_statuses[$label])) {
+        $canonical_statuses[$label]++;
     }
 }
-$status_chart_labels = array_keys($canonical_statuses);
-$status_chart_data = array_values($canonical_statuses);
+
+$mt_workflow_expr = dashboard_has_column($pdo, 'merchandise_transactions', 'workflow_status') ? 'mt.workflow_status' : 'NULL';
+$mt_validation_expr = dashboard_has_column($pdo, 'merchandise_transactions', 'validation_status') ? 'mt.validation_status' : 'NULL';
+$mt_service_filters = [];
+if (dashboard_has_column($pdo, 'merchandise_transactions', 'transaction_type')) {
+    $mt_service_filters[] = "LOWER(COALESCE(mt.transaction_type, '')) IN ('job_order', 'combined')";
+}
+if (dashboard_has_column($pdo, 'merchandise_transactions', 'job_order_service')) {
+    $mt_service_filters[] = "(mt.job_order_service IS NOT NULL AND TRIM(mt.job_order_service) <> '')";
+}
+if (dashboard_has_column($pdo, 'merchandise_transactions', 'job_order_id')) {
+    $mt_service_filters[] = 'mt.job_order_id IS NOT NULL';
+}
+if (dashboard_has_column($pdo, 'merchandise_transactions', 'job_order_db_id')) {
+    $mt_service_filters[] = 'mt.job_order_db_id IS NOT NULL';
+}
+
+if (!empty($mt_service_filters)) {
+    $raw_tracker_statuses = dashboard_fetch_all($pdo, "
+        SELECT {$mt_workflow_expr} AS workflow_status, {$mt_validation_expr} AS validation_status
+        FROM merchandise_transactions mt
+        WHERE mt.station_id = ?
+          AND DATE({$merch_dt_expr_mt}) BETWEEN ? AND ?
+          AND (" . implode(' OR ', $mt_service_filters) . ")
+    ", [$station_id, $date_from, $date_to]);
+
+    foreach ($raw_tracker_statuses as $row) {
+        $label = dashboard_service_status_label($row['workflow_status'] ?? null, $row['validation_status'] ?? null);
+        if (isset($canonical_statuses[$label])) {
+            $canonical_statuses[$label]++;
+        }
+    }
+}
+
+$status_chart_labels = array_keys(array_filter($canonical_statuses, static fn($count) => $count > 0));
+$status_chart_data = array_values(array_filter($canonical_statuses, static fn($count) => $count > 0));
 
 // Chart 5: Weekly Transaction Trend (Line Chart)
 $monday = date('Y-m-d', strtotime('monday this week', strtotime($date_from)));
@@ -885,9 +994,18 @@ $recent_transactions = dashboard_fetch_all($pdo, "
         FROM fuel_transactions 
         WHERE station_id = ?
         UNION ALL
-        SELECT {$merch_dt_expr} AS time, 'Merchandise' AS type, customer_name AS customer, total_amount AS amount, validation_status AS status
-        FROM merchandise_transactions 
-        WHERE station_id = ?
+        SELECT
+            {$merch_dt_expr_mt} AS time,
+            CASE WHEN {$mt_service_where} THEN 'Service' ELSE 'Merchandise' END AS type,
+            mt.customer_name AS customer,
+            mt.total_amount AS amount,
+            CASE
+                WHEN {$mt_service_where}
+                    THEN COALESCE(NULLIF(TRIM({$mt_workflow_expr}), ''), NULLIF(TRIM({$mt_validation_expr}), ''), 'Pending Validation')
+                ELSE COALESCE(NULLIF(TRIM({$mt_validation_expr}), ''), 'Pending')
+            END AS status
+        FROM merchandise_transactions mt
+        WHERE mt.station_id = ?
         UNION ALL
         SELECT {$job_dt_expr} AS time, 'Service' AS type, customer_name AS customer, total_cost AS amount, status
         FROM job_orders 
@@ -916,6 +1034,69 @@ $active_services = dashboard_fetch_all($pdo, "
     ORDER BY {$job_dt_expr} DESC
     LIMIT 25
 ", [$station_id]);
+
+// Include Job Order Tracker service rows saved through merchandise_transactions.
+$active_service_sql = "
+    SELECT
+        COALESCE(job_order_number, job_order_id, CONCAT('JO-', id)) AS service_no,
+        COALESCE(customer_name, 'Walk-in')                          AS customer,
+        CONCAT(
+            COALESCE(NULLIF(vehicle_plate,''), '-'),
+            CASE WHEN vehicle_type != '' AND vehicle_type IS NOT NULL
+                 THEN CONCAT(' (', vehicle_type, ')') ELSE '' END
+        )                                                           AS vehicle,
+        COALESCE(service_type, service_description, 'Service')      AS service,
+        status                                                      AS workflow_status,
+        {$job_validation_expr}                                      AS validation_status,
+        {$job_dt_expr}                                              AS created_at
+    FROM job_orders
+    WHERE station_id = ?
+      AND {$job_active_queue_condition}
+";
+$active_service_params = [$station_id];
+
+if ($mt_service_where !== '0=1') {
+    $active_service_sql .= "
+        UNION ALL
+        SELECT
+            COALESCE(NULLIF(CAST(mt.job_order_id AS CHAR), ''), NULLIF(mt.transaction_id, ''), CONCAT('JO-', mt.id)) AS service_no,
+            COALESCE(mt.customer_name, 'Walk-in')                                                                    AS customer,
+            CONCAT(
+                COALESCE(NULLIF(mt.job_order_vehicle_plate,''), '-'),
+                CASE WHEN mt.job_order_vehicle_type != '' AND mt.job_order_vehicle_type IS NOT NULL
+                     THEN CONCAT(' (', mt.job_order_vehicle_type, ')') ELSE '' END
+            )                                                                                                       AS vehicle,
+            COALESCE(mt.job_order_service, 'Service')                                                               AS service,
+            {$mt_workflow_expr}                                                                                     AS workflow_status,
+            {$mt_validation_expr}                                                                                   AS validation_status,
+            {$merch_dt_expr_mt}                                                                                     AS created_at
+        FROM merchandise_transactions mt
+        WHERE mt.station_id = ?
+          AND {$mt_service_where}
+          AND {$mt_active_queue_condition}
+    ";
+    $active_service_params[] = $station_id;
+}
+
+$active_services = dashboard_fetch_all($pdo, "
+    SELECT *
+    FROM ({$active_service_sql}) AS active_queue
+    ORDER BY created_at DESC
+    LIMIT 25
+", $active_service_params);
+
+foreach ($active_services as &$active_service) {
+    $active_service['status'] = dashboard_service_status_label(
+        $active_service['workflow_status'] ?? null,
+        $active_service['validation_status'] ?? null
+    );
+    $wf = strtolower(trim((string)($active_service['workflow_status'] ?? '')));
+    $val = strtolower(trim((string)($active_service['validation_status'] ?? '')));
+    if (in_array($wf, ['completed', 'verified'], true) && in_array($val, ['', 'pending', 'pending validation'], true)) {
+        $active_service['status'] = 'Completed / Pending Validation';
+    }
+}
+unset($active_service);
 
 // Table 3: Fuel Stock Alerts (dynamic capacity-based thresholds: Critical + Low)
 $fuel_stock_alerts = [];
@@ -1993,6 +2174,14 @@ include __DIR__ . '/../partials/header.php';
         const labels = <?= json_encode($status_chart_labels) ?>;
         const data   = <?= json_encode($status_chart_data) ?>;
         const total  = data.reduce((a, b) => a + b, 0);
+        const statusColors = {
+            'Pending Validation': '#eab308',
+            'Approved': '#16a34a',
+            'In Progress': '#3b82f6',
+            'Completed': '#22c55e',
+            'Released': '#64748b',
+            'Rejected': '#ef4444'
+        };
 
         if (total === 0) {
             showEmptyState('serviceStatusChart', 'tools',
@@ -2006,7 +2195,7 @@ include __DIR__ . '/../partials/header.php';
                 labels,
                 datasets: [{
                     data,
-                    backgroundColor: ['#eab308','#3b82f6','#16a34a','#64748b'],
+                    backgroundColor: labels.map(label => statusColors[label] || '#94a3b8'),
                     borderWidth: 2,
                     borderColor: '#fff',
                     hoverOffset: 6

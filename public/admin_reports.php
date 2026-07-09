@@ -419,6 +419,7 @@ require_once __DIR__ . '/../partials/header.php';
     <div class="rpt-content">
         <!-- Date Filter Bar -->
         <form method="GET" class="rpt-filter-bar">
+            <input type="hidden" name="section" id="adminReportSection" value="<?= htmlspecialchars($_GET['section'] ?? 'merchandise') ?>">
             <label><i class="fas fa-calendar"></i> Report Date:</label>
             <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" required>
             <span style="color: #64748b;">to</span>
@@ -473,7 +474,9 @@ function exportReport(type) {
 
     if (!tables.length) { alert('No table data found to export.'); return; }
 
-    const section  = new URL(window.location).searchParams.get('section') || 'operations';
+    const section  = document.getElementById('adminReportSection')?.value
+                  || new URL(window.location).searchParams.get('section')
+                  || 'merchandise';
     const dateFrom = document.querySelector('input[name="date_from"]')?.value || '';
     const dateTo   = document.querySelector('input[name="date_to"]')?.value || '';
     const filename = `Admin_Report_${section}_${dateFrom}_to_${dateTo}`;

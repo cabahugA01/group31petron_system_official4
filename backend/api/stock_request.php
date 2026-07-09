@@ -115,6 +115,11 @@ function handle_create($pdo, $me, $role, $station_id) {
     $requested_quantity = (int)($input['requested_quantity'] ?? 0);
     $remarks            = trim($input['remarks'] ?? '');
 
+    // Staff cannot specify quantity, force to 0
+    if (in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+        $requested_quantity = 0;
+    }
+
     if ($item_id <= 0 || empty($item_name)) {
         echo json_encode(['success' => false, 'message' => 'Item is required']); return;
     }

@@ -1060,7 +1060,7 @@ include __DIR__ . '/../partials/header.php';
             <?php
             foreach ($sorted as $cat_label => $items):
             ?>
-                <tr class="cat-header"><td colspan="12"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                <tr class="cat-header no-paginate"><td colspan="12"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                 <?php foreach ($items as $item):
                     $stock    = (float)($item['stock_level'] ?? 0);
                     $reorder  = (float)($item['reorder_level'] ?? 10);
@@ -1262,7 +1262,7 @@ include __DIR__ . '/../partials/header.php';
                 }
                 if (empty($cat_alerts)) continue;
             ?>
-                <tr class="cat-header"><td colspan="9"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                <tr class="cat-header no-paginate"><td colspan="9"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                 <?php foreach ($cat_alerts as $item):
                     $alert_count++;
                     $stock    = (float)($item['stock_level'] ?? 0);
@@ -1647,6 +1647,7 @@ include __DIR__ . '/../partials/header.php';
             </tbody>
         </table>
     </div>
+    <div id="mgrRequestsPagination" style="padding:10px 20px;"></div>
 </div>
 <?php endif; ?>
 
@@ -2340,20 +2341,62 @@ function filterInvTable() {
         var rCat = (r.dataset.cat || '').toLowerCase();
         var rName = (r.dataset.name || '').toLowerCase();
         var rSku = (r.dataset.sku || '').toLowerCase();
-        var rInv = (r.dataset.invStatus || '').toLowerCase(); // available, low, critical, out of stock, variance detected
+        var rInv = (r.dataset.invStatus || '').toLowerCase();
         var hasVar = r.dataset.hasVariance === 'true';
 
         var matchesCat = !cat || rCat === cat;
         var matchesSrch = !srch || rName.includes(srch) || rSku.includes(srch);
         var matchesStock = !stFlt || rInv.includes(stFlt);
-        
+
         var matchesLow = !lowFlt || rInv === 'low' || rInv === 'critical';
         var matchesCrit = !critFlt || rInv === 'critical';
         var matchesVar = !varFlt || hasVar;
 
         var ok = matchesCat && matchesSrch && matchesStock && matchesLow && matchesCrit && matchesVar;
-        r.style.display = ok ? '' : 'none';
+        if (ok) {
+            r.classList.remove('search-hidden');
+        } else {
+            r.classList.add('search-hidden');
+        }
     });
+
+    // Update category header visibility based on filtered items
+    var tbody = document.getElementById('merchTableBody');
+    var rows = Array.from(tbody.querySelectorAll('tr'));
+    var currentHeader = null;
+    var hasVisibleItems = false;
+    rows.forEach(function(r) {
+        if (r.classList.contains('cat-header')) {
+            if (currentHeader) {
+                if (hasVisibleItems) {
+                    currentHeader.classList.remove('search-hidden');
+                    currentHeader.style.display = '';
+                } else {
+                    currentHeader.classList.add('search-hidden');
+                    currentHeader.style.display = 'none';
+                }
+            }
+            currentHeader = r;
+            hasVisibleItems = false;
+        } else if (r.classList.contains('merch-row')) {
+            if (!r.classList.contains('search-hidden')) {
+                hasVisibleItems = true;
+            }
+        }
+    });
+    if (currentHeader) {
+        if (hasVisibleItems) {
+            currentHeader.classList.remove('search-hidden');
+            currentHeader.style.display = '';
+        } else {
+            currentHeader.classList.add('search-hidden');
+            currentHeader.style.display = 'none';
+        }
+    }
+
+    if (window.tablePaginationTriggers && window.tablePaginationTriggers['mgrMerchTable']) {
+        window.tablePaginationTriggers['mgrMerchTable']();
+    }
 }
 
 function filterAlertTable() {
@@ -2369,8 +2412,18 @@ function filterAlertTable() {
         var matchesCat = !cat || rCat === cat;
         var matchesSrch = !srch || rName.includes(srch) || rSku.includes(srch);
         var matchesType = !type || rType === type;
-        r.style.display = (matchesCat && matchesSrch && matchesType) ? '' : 'none';
+        
+        var ok = matchesCat && matchesSrch && matchesType;
+        if (ok) {
+            r.classList.remove('search-hidden');
+        } else {
+            r.classList.add('search-hidden');
+        }
     });
+
+    if (window.tablePaginationTriggers && window.tablePaginationTriggers['mgrAlertTable']) {
+        window.tablePaginationTriggers['mgrAlertTable']();
+    }
 }
 
 function openCreateStockRequest(id, name, stock, reorder) {
@@ -2609,8 +2662,56 @@ function filterMovTable() {
         
         var matchesType = !type || rType === type;
         var matchesSrch = !srch || rProduct.includes(srch) || rSku.includes(srch) || rUser.includes(srch);
-        r.style.display = (matchesType && matchesSrch) ? '' : 'none';
+        
+        var ok = matchesType && matchesSrch;
+        if (ok) {
+            r.classList.remove('search-hidden');
+        } else {
+            r.classList.add('search-hidden');
+        }
     });
+
+    if (window.tablePaginationTriggers && window.tablePaginationTriggers['mgrMovTable']) {
+        window.tablePaginationTriggers['mgrMovTable']();
+    }
+}
+
+function filterRequestsTable() {
+    var srch = document.getElementById('reqSearch').value.toLowerCase();
+    var cat = document.getElementById('reqCatFilter').value.toLowerCase();
+    var status = document.getElementById('reqStatusFilter').value.toLowerCase();
+    var user = document.getElementById('reqUserFilter').value.toLowerCase();
+    var dateFrom = document.getElementById('reqDateFrom').value;
+    var dateTo = document.getElementById('reqDateTo').value;
+
+    document.querySelectorAll('#mgrRequestsTable tbody .req-row').forEach(function(r) {
+        var rId = (r.dataset.id || '').toLowerCase();
+        var rItem = (r.dataset.itemName || '').toLowerCase();
+        var rCat = (r.dataset.category || '').toLowerCase();
+        var rStatus = (r.dataset.status || '').toLowerCase();
+        var rUser = (r.dataset.staffName || '').toLowerCase();
+        var rDate = r.dataset.createdAt;
+
+        var matchesSrch = !srch || rItem.includes(srch) || rId.includes(srch) || ('sr-' + rId.padStart(4, '0')).includes(srch);
+        var matchesCat = !cat || rCat === cat;
+        var matchesStatus = !status || rStatus === status;
+        var matchesUser = !user || rUser === user;
+        
+        var matchesDate = true;
+        if (dateFrom && rDate < dateFrom) matchesDate = false;
+        if (dateTo && rDate > dateTo) matchesDate = false;
+
+        var ok = matchesSrch && matchesCat && matchesStatus && matchesUser && matchesDate;
+        if (ok) {
+            r.classList.remove('search-hidden');
+        } else {
+            r.classList.add('search-hidden');
+        }
+    });
+
+    if (window.tablePaginationTriggers && window.tablePaginationTriggers['mgrRequestsTable']) {
+        window.tablePaginationTriggers['mgrRequestsTable']();
+    }
 }
 
 function exportMovTablePDF() {
@@ -2638,7 +2739,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <?php elseif ($active_tab === 'movement'): ?>
     setupTablePagination('mgrMovTable', 'mgrMerchRowsLimit', 'mgrMovPagination', 50);
     <?php elseif ($active_tab === 'requests'): ?>
-    setupTablePagination('mgrRequestsTable', 'mgrMerchRowsLimit', 'mgrMerchPagination', 50);
+    setupTablePagination('mgrRequestsTable', 'mgrMerchRowsLimit', 'mgrRequestsPagination', 50);
     <?php elseif ($active_tab === 'deliveries'): ?>
     setupTablePagination('mgrDeliveriesTable', 'mgrMerchRowsLimit', 'mgrMerchPagination', 50);
     <?php elseif ($active_tab === 'history'): ?>

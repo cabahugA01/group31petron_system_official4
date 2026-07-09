@@ -32,10 +32,10 @@ try {
     $station_name = $s->fetchColumn() ?: '';
 } catch (Exception $e) {}
 
-// Active section tab
-$section = $_GET['section'] ?? 'fuel_sales';
-$valid_sections = ['fuel_sales','merchandise','service_income','payments','customers'];
-if (!in_array($section, $valid_sections)) $section = 'fuel_sales';
+// Active section tab. Operations Reports are focused on merchandise/service, payments, and customers.
+$section = $_GET['section'] ?? 'merchandise';
+$valid_sections = ['merchandise','service_income','payments','customers'];
+if (!in_array($section, $valid_sections, true)) $section = 'merchandise';
 
 // Active shift filter
 $active_shift = (int)($_GET['shift'] ?? 0); // 0 = all, 1 = shift1, 2 = shift2
@@ -51,6 +51,71 @@ ksort($shifts);
 
 // Admin reports use their own full 8-section rendering for the merchandise tab.
 // Other tabs (fuel, service_income, payments, customers) use the same data-fetch function below.
+
+function srAdminTrackerServiceWhere(string $alias = 'mt'): string {
+    $p = $alias !== '' ? $alias . '.' : '';
+    return "(
+        LOWER(COALESCE({$p}transaction_type, '')) IN ('job_order', 'combined', 'service')
+        OR ({$p}job_order_service IS NOT NULL AND TRIM({$p}job_order_service) <> '')
+        OR {$p}job_order_id IS NOT NULL
+        OR {$p}job_order_db_id IS NOT NULL
+    )";
+}
+
+function srAdminNotTrackerServiceWhere(string $alias = 'mt'): string {
+    return 'NOT ' . srAdminTrackerServiceWhere($alias);
+}
+
+function srAdminNonRejectedWhere(string $alias, string $workflow_col = 'workflow_status', string $validation_col = 'validation_status'): string {
+    $p = $alias !== '' ? $alias . '.' : '';
+    return "LOWER(COALESCE({$p}{$workflow_col}, '')) NOT IN ('rejected','cancelled','canceled','voided')
+        AND LOWER(COALESCE({$p}{$validation_col}, '')) NOT IN ('rejected','cancelled','canceled','voided')";
+}
+
+function srAdminCompletedServiceWhere(string $alias, string $workflow_col = 'workflow_status', string $validation_col = 'validation_status'): string {
+    $p = $alias !== '' ? $alias . '.' : '';
+    return "(
+        LOWER(COALESCE({$p}{$workflow_col}, '')) IN ('completed','verified','released','finalized')
+        OR LOWER(COALESCE({$p}{$validation_col}, '')) IN ('approved','validated','adjusted','completed','verified')
+    )";
+}
+
+function srAdminPaymentMethodCase(string $expr): string {
+    return "CASE
+        WHEN LOWER(COALESCE({$expr},'')) LIKE '%fleet%' THEN 'Fleet'
+        WHEN LOWER(COALESCE({$expr},'')) LIKE '%fuel card%'
+          OR LOWER(COALESCE({$expr},'')) LIKE '%efuel%' THEN 'E-Fuel'
+        WHEN LOWER(COALESCE({$expr},'')) LIKE '%card%' THEN 'Card'
+        WHEN LOWER(COALESCE({$expr},'')) LIKE '%wallet%'
+          OR LOWER(COALESCE({$expr},'')) LIKE '%gcash%'
+          OR LOWER(COALESCE({$expr},'')) LIKE '%maya%' THEN 'E-Wallet'
+        WHEN LOWER(COALESCE({$expr},'')) LIKE '%cash%'
+          OR COALESCE({$expr},'') = '' THEN 'Cash'
+        ELSE COALESCE(NULLIF({$expr},''), 'Cash')
+    END";
+}
+
+function srAdminShiftCondition(string $alias, string $datetime_expr, string $shift_start_t): string {
+    $p = $alias !== '' ? $alias . '.' : '';
+    $has_shift_cols = in_array($alias, ['mt', 'ft'], true);
+
+    if ($shift_start_t === '06:00:00') {
+        $time = "(TIME({$datetime_expr}) >= '06:00:00' AND TIME({$datetime_expr}) < '14:00:00')";
+        if (!$has_shift_cols) return $time;
+        return "(LOWER(COALESCE({$p}shift_period,'')) IN ('first','morning','1','shift1','shift 1')
+            OR {$p}shift_name LIKE '%First%'
+            OR {$p}shift_name LIKE '%Morning%'
+            OR (COALESCE({$p}shift_period,'') = '' AND {$time}))";
+    }
+
+    $time = "(TIME({$datetime_expr}) >= '14:00:00' OR TIME({$datetime_expr}) < '06:00:00')";
+    if (!$has_shift_cols) return $time;
+    return "(LOWER(COALESCE({$p}shift_period,'')) IN ('second','afternoon','evening','2','shift2','shift 2','night','midnight')
+        OR {$p}shift_name LIKE '%Second%'
+        OR {$p}shift_name LIKE '%Afternoon%'
+        OR {$p}shift_name LIKE '%Evening%'
+        OR (COALESCE({$p}shift_period,'') = '' AND {$time}))";
+}
 ?>
 
 <style>
@@ -236,7 +301,6 @@ ksort($shifts);
 <div class="sr-section-tabs">
     <?php
     $tabs = [
-        'fuel_sales'      => ['label'=>'Fuel Sales Report',         'ico'=>'fas fa-gas-pump'],
         'merchandise'     => ['label'=>'Daily Merchandise & Service Sales Report',   'ico'=>'fas fa-shopping-cart'],
         'service_income'  => ['label'=>'Service Income Report',      'ico'=>'fas fa-wrench'],
         'payments'        => ['label'=>'Payments Report',            'ico'=>'fas fa-money-bill-wave'],
@@ -244,7 +308,7 @@ ksort($shifts);
     ];
     foreach ($tabs as $key => $tab): ?>
         <button class="sr-section-tab <?= $section === $key ? 'active' : '' ?>"
-                onclick="srSwitchSection('<?= $key ?>')">
+                onclick="srSwitchSection('<?= $key ?>', this)">
             <i class="<?= $tab['ico'] ?>"></i> <?= $tab['label'] ?>
         </button>
     <?php endforeach; ?>
@@ -355,56 +419,78 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                 break;
 
             case 'service_income':
-                $is_s1 = ($shift_start_t === '06:00:00');
-                if ($is_s1) {
-                    $shift_cond = "(TIME(jo.created_at) >= '06:00:00' AND TIME(jo.created_at) < '14:00:00')";
-                } else {
-                    $shift_cond = "NOT (TIME(jo.created_at) >= '06:00:00' AND TIME(jo.created_at) < '14:00:00')";
-                }
+                $jo_shift_cond = srAdminShiftCondition('jo', 'jo.created_at', $shift_start_t);
+                $mt_shift_cond = srAdminShiftCondition('mt', 'COALESCE(mt.transaction_date, mt.created_at)', $shift_start_t);
+                $mt_service_where = srAdminTrackerServiceWhere('mt');
+                $jo_done_where = srAdminCompletedServiceWhere('jo', 'status', 'validation_status');
+                $mt_done_where = srAdminCompletedServiceWhere('mt');
+                $jo_ok_where = srAdminNonRejectedWhere('jo', 'status', 'validation_status');
+                $mt_ok_where = srAdminNonRejectedWhere('mt');
 
                 $q = $pdo->prepare("
                     SELECT
-                        COALESCE(jo.service_type, 'General Service') AS service_type,
-                        COALESCE(jo.actual_labor_cost, jo.estimated_labor_cost, 0) AS labor_fee,
-                        COALESCE(jo.actual_parts_cost, jo.estimated_parts_cost, 0) AS parts_used,
-                        COALESCE(jo.total_cost, jo.estimated_cost, 0) AS total_amount,
-                        TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS encoder
-                    FROM job_orders jo
-                    LEFT JOIN users u ON jo.created_by = u.id
-                    WHERE jo.station_id = ?
-                      AND DATE(jo.created_at) BETWEEN ? AND ?
-                      AND $shift_cond
-                      AND jo.status = 'Completed'
-                    ORDER BY jo.service_type
+                        service_type,
+                        SUM(labor_fee) AS labor_fee,
+                        SUM(parts_used) AS parts_used,
+                        SUM(total_amount) AS total_amount,
+                        GROUP_CONCAT(DISTINCT NULLIF(encoder, '') ORDER BY encoder SEPARATOR ', ') AS encoder
+                    FROM (
+                        SELECT
+                            COALESCE(jo.service_type, 'General Service') AS service_type,
+                            COALESCE(jo.actual_labor_cost, jo.estimated_labor_cost, jo.estimated_cost, jo.total_cost, 0) AS labor_fee,
+                            COALESCE(jo.actual_parts_cost, jo.estimated_parts_cost, 0) AS parts_used,
+                            COALESCE(jo.total_cost, jo.estimated_cost, COALESCE(jo.actual_labor_cost,0) + COALESCE(jo.actual_parts_cost,0), 0) AS total_amount,
+                            TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS encoder
+                        FROM job_orders jo
+                        LEFT JOIN users u ON jo.created_by = u.id
+                        WHERE jo.station_id = ?
+                          AND DATE(jo.created_at) BETWEEN ? AND ?
+                          AND {$jo_shift_cond}
+                          AND {$jo_ok_where}
+                          AND {$jo_done_where}
+
+                        UNION ALL
+
+                        SELECT
+                            COALESCE(mt.job_order_service, 'Service') AS service_type,
+                            COALESCE((
+                                SELECT SUM(COALESCE(i.subtotal, i.quantity * i.unit_price, 0))
+                                FROM merchandise_transaction_items i
+                                WHERE i.transaction_id = mt.id
+                                  AND COALESCE(i.item_type, 'merchandise') = 'service'
+                            ), mt.total_amount, 0) AS labor_fee,
+                            COALESCE((
+                                SELECT SUM(COALESCE(i.subtotal, i.quantity * i.unit_price, 0))
+                                FROM merchandise_transaction_items i
+                                WHERE i.transaction_id = mt.id
+                                  AND COALESCE(i.item_type, 'merchandise') <> 'service'
+                            ), 0) AS parts_used,
+                            COALESCE(mt.total_amount, 0) AS total_amount,
+                            TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS encoder
+                        FROM merchandise_transactions mt
+                        LEFT JOIN users u ON mt.staff_id = u.id
+                        WHERE mt.station_id = ?
+                          AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+                          AND {$mt_shift_cond}
+                          AND {$mt_service_where}
+                          AND {$mt_ok_where}
+                          AND {$mt_done_where}
+                    ) svc
+                    GROUP BY service_type
+                    ORDER BY service_type
                 ");
-                $q->execute([$station_id, $date_start, $date_end]);
+                $q->execute([$station_id, $date_start, $date_end, $station_id, $date_start, $date_end]);
                 $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
                 break;
 
             case 'payments':
-                $is_s1 = ($shift_start_t === '06:00:00');
-                if ($is_s1) {
-                    $shift_cond = "(LOWER(COALESCE(ft.shift_period,'')) IN ('first','morning','1','shift1','shift 1') OR ft.shift_name LIKE '%First%' OR ft.shift_name LIKE '%Morning%' OR (COALESCE(ft.shift_period,'') = '' AND TIME(ft.transaction_date) >= '06:00:00' AND TIME(ft.transaction_date) < '14:00:00'))";
-                    $m_shift_cond = "(LOWER(COALESCE(mt.shift_period,'')) IN ('first','morning','1','shift1','shift 1') OR mt.shift_name LIKE '%First%' OR mt.shift_name LIKE '%Morning%' OR (COALESCE(mt.shift_period,'') = '' AND TIME(mt.created_at) >= '06:00:00' AND TIME(mt.created_at) < '14:00:00'))";
-                } else {
-                    $shift_cond = "(LOWER(COALESCE(ft.shift_period,'')) IN ('second','afternoon','evening','2','shift2','shift 2','night','midnight') OR ft.shift_name LIKE '%Second%' OR ft.shift_name LIKE '%Afternoon%' OR ft.shift_name LIKE '%Evening%' OR (COALESCE(ft.shift_period,'') = '' AND (TIME(ft.transaction_date) >= '14:00:00' OR TIME(ft.transaction_date) < '06:00:00')))";
-                    $m_shift_cond = "(LOWER(COALESCE(mt.shift_period,'')) IN ('second','afternoon','evening','2','shift2','shift 2','night','midnight') OR mt.shift_name LIKE '%Second%' OR mt.shift_name LIKE '%Afternoon%' OR mt.shift_name LIKE '%Evening%' OR (COALESCE(mt.shift_period,'') = '' AND (TIME(mt.created_at) >= '14:00:00' OR TIME(mt.created_at) < '06:00:00')))";
-                }
+                $shift_cond = srAdminShiftCondition('ft', 'ft.transaction_date', $shift_start_t);
+                $m_shift_cond = srAdminShiftCondition('mt', 'COALESCE(mt.transaction_date, mt.created_at)', $shift_start_t);
+                $jo_shift_cond = srAdminShiftCondition('jo', 'jo.created_at', $shift_start_t);
 
                 $q = $pdo->prepare("
                     SELECT
-                        CASE
-                            WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fleet%' THEN 'Fleet'
-                            WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fuel card%'
-                              OR LOWER(COALESCE(payment_method,'')) LIKE '%efuel%' THEN 'E-Fuel'
-                            WHEN LOWER(COALESCE(payment_method,'')) LIKE '%card%' THEN 'Card'
-                            WHEN LOWER(COALESCE(payment_method,'')) LIKE '%wallet%'
-                              OR LOWER(COALESCE(payment_method,'')) LIKE '%gcash%'
-                              OR LOWER(COALESCE(payment_method,'')) LIKE '%maya%' THEN 'E-Wallet'
-                            WHEN LOWER(COALESCE(payment_method,'')) LIKE '%cash%'
-                              OR COALESCE(payment_method,'') = '' THEN 'Cash'
-                            ELSE COALESCE(NULLIF(payment_method,''), 'Cash')
-                        END AS mode_of_payment,
+                        " . srAdminPaymentMethodCase('payment_method') . " AS mode_of_payment,
                         COUNT(*) AS txn_count,
                         SUM(COALESCE(total_amount, 0)) AS amount
                     FROM fuel_transactions ft
@@ -421,27 +507,37 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                 try {
                     $q2 = $pdo->prepare("
                         SELECT
-                            CASE
-                                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fleet%' THEN 'Fleet'
-                                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%card%' THEN 'Card'
-                                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%wallet%'
-                                  OR LOWER(COALESCE(payment_method,'')) LIKE '%gcash%'
-                                  OR LOWER(COALESCE(payment_method,'')) LIKE '%maya%' THEN 'E-Wallet'
-                                ELSE 'Cash'
-                            END AS mode_of_payment,
+                            " . srAdminPaymentMethodCase('payment_method') . " AS mode_of_payment,
                             COUNT(*) AS txn_count,
                             SUM(COALESCE(total_amount, 0)) AS amount
                         FROM merchandise_transactions mt
                         WHERE mt.station_id = ?
-                          AND DATE(mt.created_at) BETWEEN ? AND ?
+                          AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
                           AND $m_shift_cond
+                          AND " . srAdminNonRejectedWhere('mt') . "
                         GROUP BY mode_of_payment
                     ");
                     $q2->execute([$station_id, $date_start, $date_end]);
                     $merch_pay = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+                    $q3 = $pdo->prepare("
+                        SELECT
+                            " . srAdminPaymentMethodCase('payment_method') . " AS mode_of_payment,
+                            COUNT(*) AS txn_count,
+                            SUM(COALESCE(total_cost, estimated_cost, 0)) AS amount
+                        FROM job_orders jo
+                        WHERE jo.station_id = ?
+                          AND DATE(jo.created_at) BETWEEN ? AND ?
+                          AND $jo_shift_cond
+                          AND " . srAdminNonRejectedWhere('jo', 'status', 'validation_status') . "
+                        GROUP BY mode_of_payment
+                    ");
+                    $q3->execute([$station_id, $date_start, $date_end]);
+                    $jo_pay = $q3->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
                     // Merge with fuel payments
                     $merged = [];
-                    foreach (array_merge($rows, $merch_pay) as $r) {
+                    foreach (array_merge($rows, $merch_pay, $jo_pay) as $r) {
                         $m = $r['mode_of_payment'];
                         if (!isset($merged[$m])) $merged[$m] = ['mode_of_payment'=>$m,'txn_count'=>0,'amount'=>0];
                         $merged[$m]['txn_count'] += $r['txn_count'];
@@ -525,6 +621,50 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                     $q->execute([$station_id, $date_start, $date_end, $station_id]);
                 }
                 $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+                // Correct source merge: registered customers from both merchandise tracker and native job orders.
+                try {
+                    $m_shift_cond = srAdminShiftCondition('mt', 'COALESCE(mt.transaction_date, mt.created_at)', $shift_start_t);
+                    $jo_shift_cond = srAdminShiftCondition('jo', 'jo.created_at', $shift_start_t);
+                    $mt_customer_id = $has_cid ? 'mt.customer_id' : 'NULL';
+                    $q = $pdo->prepare("
+                        SELECT
+                            COALESCE(c.name, tx.customer_name, 'Registered Customer') AS customer_name,
+                            CONCAT('#', c.id) AS customer_ref,
+                            COUNT(*) AS txn_count,
+                            COALESCE(c.balance, c.current_balance, 0) AS balance,
+                            {$lp_col} AS loyalty_points
+                        FROM (
+                            SELECT {$mt_customer_id} AS customer_id, NULLIF(TRIM(mt.customer_name), '') AS customer_name
+                            FROM merchandise_transactions mt
+                            WHERE mt.station_id = ?
+                              AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+                              AND {$m_shift_cond}
+                              AND " . srAdminNonRejectedWhere('mt') . "
+
+                            UNION ALL
+
+                            SELECT jo.customer_id, NULLIF(TRIM(jo.customer_name), '') AS customer_name
+                            FROM job_orders jo
+                            WHERE jo.station_id = ?
+                              AND DATE(jo.created_at) BETWEEN ? AND ?
+                              AND {$jo_shift_cond}
+                              AND " . srAdminNonRejectedWhere('jo', 'status', 'validation_status') . "
+                        ) tx
+                        JOIN customers c
+                          ON c.station_id = ?
+                         AND (
+                              (tx.customer_id IS NOT NULL AND c.id = tx.customer_id)
+                              OR (tx.customer_id IS NULL AND tx.customer_name IS NOT NULL AND c.name = tx.customer_name)
+                         )
+                        GROUP BY c.id, c.name, c.balance, c.current_balance
+                        ORDER BY txn_count DESC, customer_name ASC
+                    ");
+                    $q->execute([$station_id, $date_start, $date_end, $station_id, $date_start, $date_end, $station_id]);
+                    $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                } catch (Exception $customerMergeEx) {
+                    error_log('Admin customers merged report: ' . $customerMergeEx->getMessage());
+                }
                 break;
         }
     } catch (Exception $ex) {
@@ -541,7 +681,6 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
     <!-- Centered Report Header (matches staff reports style) -->
     <?php
     $report_titles = [
-        'fuel_sales'     => ['title'=>'FUEL SALES REPORT',          'sub'=>'SHIFT SUMMARY'],
         'merchandise'    => ['title'=>'DAILY MERCHANDISE & SERVICE SALES REPORT',    'sub'=>'24-HOUR SUMMARY'],
         'service_income' => ['title'=>'SERVICE INCOME REPORT',       'sub'=>'SHIFT SUMMARY'],
         'payments'       => ['title'=>'PAYMENTS REPORT',             'sub'=>'SHIFT SUMMARY'],
@@ -634,6 +773,10 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
         <?php elseif ($sec_key === 'merchandise'): 
             // COMPREHENSIVE DAILY MERCHANDISE & SERVICE SALES REPORT (ADMIN ONLY)
             // 8 Sections with detailed breakdown
+            $mt_service_where = srAdminTrackerServiceWhere('mt');
+            $mt_not_service_where = srAdminNotTrackerServiceWhere('mt');
+            $mt_ok_where = srAdminNonRejectedWhere('mt');
+            $jo_ok_where = srAdminNonRejectedWhere('jo', 'status', 'validation_status');
             
             // Section 1: Merchandise Sales (from merchandise_transaction_items)
             $merch_sales = [];
@@ -651,8 +794,10 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                     JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
                     LEFT JOIN users u ON mt.staff_id = u.id
                     WHERE mt.station_id = ?
-                      AND DATE(mt.created_at) BETWEEN ? AND ?
-                      AND mti.item_type = 'merchandise'
+                      AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+                      AND {$mt_not_service_where}
+                      AND {$mt_ok_where}
+                      AND COALESCE(mti.item_type, 'merchandise') <> 'service'
                     ORDER BY mt.created_at, mti.id
                 ");
                 $q->execute([$station_id, $date_start, $date_end]);
@@ -681,6 +826,36 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                 ");
                 $q->execute([$station_id, $date_start, $date_end]);
                 $job_orders = $q->fetchAll(PDO::FETCH_ASSOC);
+                $q2 = $pdo->prepare("
+                    SELECT COALESCE(NULLIF(CAST(mt.job_order_id AS CHAR), ''), NULLIF(mt.transaction_id, ''), CONCAT('JO-', mt.id)) AS jo_number,
+                           COALESCE(mt.customer_name, '-') AS customer_name,
+                           COALESCE(mt.job_order_vehicle_plate, '-') AS vehicle_plate,
+                           COALESCE(mt.job_order_service, 'Service') AS service_type,
+                           COALESCE((
+                               SELECT SUM(COALESCE(i.subtotal, i.quantity * i.unit_price, 0))
+                               FROM merchandise_transaction_items i
+                               WHERE i.transaction_id = mt.id
+                                 AND COALESCE(i.item_type, 'merchandise') = 'service'
+                           ), mt.total_amount, 0) AS labor_fee,
+                           COALESCE((
+                               SELECT SUM(COALESCE(i.subtotal, i.quantity * i.unit_price, 0))
+                               FROM merchandise_transaction_items i
+                               WHERE i.transaction_id = mt.id
+                                 AND COALESCE(i.item_type, 'merchandise') <> 'service'
+                           ), 0) AS parts_cost,
+                           COALESCE(mt.total_amount, 0) AS total_amount,
+                           COALESCE(NULLIF(mt.job_order_mechanic_name, ''), 'Unassigned') AS mechanic,
+                           TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS staff_encoder
+                    FROM merchandise_transactions mt
+                    LEFT JOIN users u ON mt.staff_id = u.id
+                    WHERE mt.station_id = ?
+                      AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+                      AND {$mt_service_where}
+                      AND {$mt_ok_where}
+                    ORDER BY COALESCE(mt.transaction_date, mt.created_at)
+                ");
+                $q2->execute([$station_id, $date_start, $date_end]);
+                $job_orders = array_merge($job_orders, $q2->fetchAll(PDO::FETCH_ASSOC) ?: []);
             } catch (Exception $e) { error_log('Admin job_orders: '.$e->getMessage()); }
             
             // Section 3: Parts Used in Job Orders
@@ -704,6 +879,25 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                 ");
                 $q->execute([$station_id, $date_start, $date_end]);
                 $jo_parts = $q->fetchAll(PDO::FETCH_ASSOC);
+                $q2 = $pdo->prepare("
+                    SELECT COALESCE(NULLIF(CAST(mt.job_order_id AS CHAR), ''), NULLIF(mt.transaction_id, ''), CONCAT('JO-', mt.id)) AS jo_number,
+                           COALESCE(mt.customer_name, '-') AS customer_name,
+                           COALESCE(mti.product_name, '-') AS product_name,
+                           COALESCE(mti.category, 'Parts') AS category,
+                           COALESCE(mti.quantity, 0) AS quantity_used,
+                           COALESCE(mti.unit_price, 0) AS unit_price,
+                           COALESCE(mti.subtotal, mti.quantity * mti.unit_price, 0) AS total_cost
+                    FROM merchandise_transaction_items mti
+                    JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
+                    WHERE mt.station_id = ?
+                      AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+                      AND {$mt_service_where}
+                      AND {$mt_ok_where}
+                      AND COALESCE(mti.item_type, 'merchandise') <> 'service'
+                    ORDER BY COALESCE(mt.transaction_date, mt.created_at), mti.id
+                ");
+                $q2->execute([$station_id, $date_start, $date_end]);
+                $jo_parts = array_merge($jo_parts, $q2->fetchAll(PDO::FETCH_ASSOC) ?: []);
             } catch (Exception $e) { error_log('Admin jo_parts: '.$e->getMessage()); }
             
             // Section 4: Payment Breakdown
@@ -715,12 +909,16 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                            SUM(COALESCE(total_amount,0)) AS total_amount
                     FROM (
                         SELECT payment_method, total_amount FROM merchandise_transactions
-                        WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?
+                        WHERE station_id = ? AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
+                          AND LOWER(COALESCE(workflow_status, '')) NOT IN ('rejected','cancelled','canceled','voided')
+                          AND LOWER(COALESCE(validation_status, '')) NOT IN ('rejected','cancelled','canceled','voided')
                         UNION ALL
                         SELECT payment_method,
                                COALESCE(total_cost, actual_labor_cost + actual_parts_cost, estimated_cost, 0) AS total_amount
                         FROM job_orders
                         WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?
+                          AND LOWER(COALESCE(status, '')) NOT IN ('rejected','cancelled','canceled','voided')
+                          AND LOWER(COALESCE(validation_status, '')) NOT IN ('rejected','cancelled','canceled','voided')
                     ) combined
                     GROUP BY payment_method
                     ORDER BY total_amount DESC
@@ -750,6 +948,72 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                 ");
                 $q->execute([$station_id, $date_start, $date_end, $station_id, $date_start, $date_end, $station_id]);
                 $staff_performance = $q->fetchAll(PDO::FETCH_ASSOC);
+                $q2 = $pdo->prepare("
+                    SELECT CONCAT(u.first_name, ' ', u.last_name) AS staff_name,
+                           (
+                               SELECT COUNT(*)
+                               FROM merchandise_transactions mt
+                               WHERE mt.staff_id = u.id
+                                 AND mt.station_id = ?
+                                 AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+                                 AND {$mt_not_service_where}
+                                 AND " . srAdminNonRejectedWhere('mt') . "
+                           ) AS merch_txn,
+                           (
+                               SELECT COUNT(*)
+                               FROM merchandise_transactions mt
+                               WHERE mt.staff_id = u.id
+                                 AND mt.station_id = ?
+                                 AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+                                 AND {$mt_service_where}
+                                 AND " . srAdminNonRejectedWhere('mt') . "
+                           ) + (
+                               SELECT COUNT(*)
+                               FROM job_orders jo
+                               WHERE jo.created_by = u.id
+                                 AND jo.station_id = ?
+                                 AND DATE(jo.created_at) BETWEEN ? AND ?
+                                 AND " . srAdminNonRejectedWhere('jo', 'status', 'validation_status') . "
+                           ) AS jo_count,
+                           (
+                               SELECT COALESCE(SUM(mt.total_amount), 0)
+                               FROM merchandise_transactions mt
+                               WHERE mt.staff_id = u.id
+                                 AND mt.station_id = ?
+                                 AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+                                 AND {$mt_not_service_where}
+                                 AND " . srAdminNonRejectedWhere('mt') . "
+                           ) AS total_sales,
+                           (
+                               SELECT COALESCE(SUM(mt.total_amount), 0)
+                               FROM merchandise_transactions mt
+                               WHERE mt.staff_id = u.id
+                                 AND mt.station_id = ?
+                                 AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+                                 AND " . srAdminNonRejectedWhere('mt') . "
+                           ) + (
+                               SELECT COALESCE(SUM(COALESCE(jo.total_cost, jo.estimated_cost, 0)), 0)
+                               FROM job_orders jo
+                               WHERE jo.created_by = u.id
+                                 AND jo.station_id = ?
+                                 AND DATE(jo.created_at) BETWEEN ? AND ?
+                                 AND " . srAdminNonRejectedWhere('jo', 'status', 'validation_status') . "
+                           ) AS total_collection
+                    FROM users u
+                    WHERE u.role = 'staff' AND u.station_id = ?
+                    HAVING merch_txn > 0 OR jo_count > 0
+                    ORDER BY total_collection DESC
+                ");
+                $q2->execute([
+                    $station_id, $date_start, $date_end,
+                    $station_id, $date_start, $date_end,
+                    $station_id, $date_start, $date_end,
+                    $station_id, $date_start, $date_end,
+                    $station_id, $date_start, $date_end,
+                    $station_id, $date_start, $date_end,
+                    $station_id
+                ]);
+                $staff_performance = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
             } catch (Exception $e) {}
             
             // Section 6: Inventory Impact Summary (from station_inventory + merchandise_transaction_items)
@@ -775,6 +1039,29 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                 ");
                 $q->execute([$station_id, $station_id, $date_start, $date_end, $station_id, $station_id]);
                 $inventory_impact = $q->fetchAll(PDO::FETCH_ASSOC);
+                $q2 = $pdo->prepare("
+                    SELECT
+                        COALESCE(ip.product_name, mti.product_name, CONCAT('Product #', mti.product_id)) AS product_name,
+                        COALESCE(ip.sku, '-') AS sku,
+                        COALESCE(si.stock_level, ip.stock_quantity, ip.stock, 0)
+                            + SUM(COALESCE(mti.quantity, 0)) AS beginning_stock,
+                        SUM(CASE WHEN {$mt_not_service_where} THEN COALESCE(mti.quantity, 0) ELSE 0 END) AS sold,
+                        SUM(CASE WHEN {$mt_service_where} THEN COALESCE(mti.quantity, 0) ELSE 0 END) AS used_in_jo,
+                        COALESCE(si.stock_level, ip.stock_quantity, ip.stock, 0) AS ending_stock
+                    FROM merchandise_transaction_items mti
+                    JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
+                    LEFT JOIN inventory_products ip ON ip.id = mti.product_id
+                    LEFT JOIN station_inventory si ON si.product_id = mti.product_id AND si.station_id = mt.station_id
+                    WHERE mt.station_id = ?
+                      AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+                      AND COALESCE(mti.item_type, 'merchandise') <> 'service'
+                      AND {$mt_ok_where}
+                    GROUP BY mti.product_id, ip.product_name, mti.product_name, ip.sku, si.stock_level, ip.stock_quantity, ip.stock
+                    HAVING sold > 0 OR used_in_jo > 0
+                    ORDER BY product_name
+                ");
+                $q2->execute([$station_id, $date_start, $date_end]);
+                $inventory_impact = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
             } catch (Exception $e) { error_log('Admin inventory_impact: '.$e->getMessage()); }
             
             // Section 7: Daily Collection Summary
@@ -785,8 +1072,10 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                     SELECT COALESCE(SUM(mti.subtotal), 0)
                     FROM merchandise_transaction_items mti
                     JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
-                    WHERE mt.station_id = ? AND DATE(mt.created_at) BETWEEN ? AND ?
-                      AND mti.item_type = 'merchandise'
+                    WHERE mt.station_id = ? AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+                      AND COALESCE(mti.item_type, 'merchandise') <> 'service'
+                      AND {$mt_not_service_where}
+                      AND {$mt_ok_where}
                 ");
                 $q1->execute([$station_id, $date_start, $date_end]);
                 $merch_sales_total = (float)$q1->fetchColumn();
@@ -796,21 +1085,51 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                     SELECT COALESCE(SUM(mti.subtotal), 0)
                     FROM merchandise_transaction_items mti
                     JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
-                    WHERE mt.station_id = ? AND DATE(mt.created_at) BETWEEN ? AND ?
-                      AND mti.item_type = 'service'
+                    WHERE mt.station_id = ? AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+                      AND COALESCE(mti.item_type, 'merchandise') = 'service'
+                      AND {$mt_service_where}
+                      AND {$mt_ok_where}
                 ");
                 $q1b->execute([$station_id, $date_start, $date_end]);
                 $service_pos_total = (float)$q1b->fetchColumn();
 
                 // Labor income from job orders
-                $q2 = $pdo->prepare("SELECT COALESCE(SUM(COALESCE(actual_labor_cost, estimated_labor_cost, 0)), 0) FROM job_orders WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?");
+                $q2 = $pdo->prepare("SELECT COALESCE(SUM(COALESCE(actual_labor_cost, estimated_labor_cost, 0)), 0) FROM job_orders jo WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ? AND {$jo_ok_where}");
                 $q2->execute([$station_id, $date_start, $date_end]);
                 $labor_income_total = (float)$q2->fetchColumn();
+                $q2b = $pdo->prepare("
+                    SELECT COALESCE(SUM(COALESCE(service_items.service_total, mt.total_amount, 0)), 0)
+                    FROM merchandise_transactions mt
+                    LEFT JOIN (
+                        SELECT transaction_id, SUM(COALESCE(subtotal, quantity * unit_price, 0)) AS service_total
+                        FROM merchandise_transaction_items
+                        WHERE COALESCE(item_type, 'merchandise') = 'service'
+                        GROUP BY transaction_id
+                    ) service_items ON service_items.transaction_id = mt.id
+                    WHERE mt.station_id = ?
+                      AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+                      AND {$mt_service_where}
+                      AND {$mt_ok_where}
+                ");
+                $q2b->execute([$station_id, $date_start, $date_end]);
+                $labor_income_total += (float)$q2b->fetchColumn();
 
                 // Parts from job orders
-                $q3 = $pdo->prepare("SELECT COALESCE(SUM(COALESCE(actual_parts_cost, estimated_parts_cost, 0)), 0) FROM job_orders WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?");
+                $q3 = $pdo->prepare("SELECT COALESCE(SUM(COALESCE(actual_parts_cost, estimated_parts_cost, 0)), 0) FROM job_orders jo WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ? AND {$jo_ok_where}");
                 $q3->execute([$station_id, $date_start, $date_end]);
                 $parts_sales_total = (float)$q3->fetchColumn();
+                $q3b = $pdo->prepare("
+                    SELECT COALESCE(SUM(COALESCE(mti.subtotal, mti.quantity * mti.unit_price, 0)), 0)
+                    FROM merchandise_transaction_items mti
+                    JOIN merchandise_transactions mt ON mti.transaction_id = mt.id
+                    WHERE mt.station_id = ?
+                      AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+                      AND {$mt_service_where}
+                      AND {$mt_ok_where}
+                      AND COALESCE(mti.item_type, 'merchandise') <> 'service'
+                ");
+                $q3b->execute([$station_id, $date_start, $date_end]);
+                $parts_sales_total += (float)$q3b->fetchColumn();
 
                 $gross_sales = $merch_sales_total + $service_pos_total + $labor_income_total + $parts_sales_total;
 
@@ -829,18 +1148,40 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
             $audit_summary = [];
             try {
                 // Merchandise count
-                $qa = $pdo->prepare("SELECT COUNT(DISTINCT id) FROM merchandise_transactions WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ?");
+                $qa = $pdo->prepare("SELECT COUNT(DISTINCT mt.id) FROM merchandise_transactions mt WHERE mt.station_id=? AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ? AND {$mt_not_service_where}");
                 $qa->execute([$station_id, $date_start, $date_end]);
                 $merch_txn_count = (int)$qa->fetchColumn();
 
                 // Job order count
-                $qb = $pdo->prepare("SELECT COUNT(DISTINCT id) FROM job_orders WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ?");
-                $qb->execute([$station_id, $date_start, $date_end]);
+                $qb = $pdo->prepare("
+                    SELECT SUM(cnt) FROM (
+                        SELECT COUNT(DISTINCT mt.id) AS cnt
+                        FROM merchandise_transactions mt
+                        WHERE mt.station_id=? AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ? AND {$mt_service_where}
+                        UNION ALL
+                        SELECT COUNT(DISTINCT jo.id) AS cnt
+                        FROM job_orders jo
+                        WHERE jo.station_id=? AND DATE(jo.created_at) BETWEEN ? AND ?
+                    ) x
+                ");
+                $qb->execute([$station_id, $date_start, $date_end, $station_id, $date_start, $date_end]);
                 $jo_count = (int)$qb->fetchColumn();
 
                 // Voided/cancelled via validation_status
-                $qc = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ? AND LOWER(COALESCE(validation_status,''))='rejected'");
-                $qc->execute([$station_id, $date_start, $date_end]);
+                $qc = $pdo->prepare("
+                    SELECT SUM(cnt) FROM (
+                        SELECT COUNT(*) AS cnt
+                        FROM merchandise_transactions mt
+                        WHERE mt.station_id=? AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+                          AND (LOWER(COALESCE(mt.validation_status,'')) IN ('rejected','cancelled','canceled','voided') OR LOWER(COALESCE(mt.workflow_status,'')) IN ('rejected','cancelled','canceled','voided'))
+                        UNION ALL
+                        SELECT COUNT(*) AS cnt
+                        FROM job_orders jo
+                        WHERE jo.station_id=? AND DATE(jo.created_at) BETWEEN ? AND ?
+                          AND (LOWER(COALESCE(jo.validation_status,'')) IN ('rejected','cancelled','canceled','voided') OR LOWER(COALESCE(jo.status,'')) IN ('rejected','cancelled','canceled','voided'))
+                    ) x
+                ");
+                $qc->execute([$station_id, $date_start, $date_end, $station_id, $date_start, $date_end]);
                 $cancelled_txn = (int)$qc->fetchColumn();
 
                 $audit_summary = [
@@ -1186,21 +1527,28 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
 <?php endforeach; // tabs ?>
 
 <script>
-function srSwitchSection(key) {
+function srSwitchSection(key, trigger) {
     // Update section panels
     document.querySelectorAll('.sr-section-panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.sr-section-tab').forEach(t => t.classList.remove('active'));
     const panel = document.getElementById('sr-panel-' + key);
     if (panel) panel.classList.add('active');
-    event.currentTarget.classList.add('active');
+    if (trigger) trigger.classList.add('active');
+
+    const hidden = document.getElementById('adminReportSection');
+    if (hidden) hidden.value = key;
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('section', key);
+    window.history.replaceState({}, '', url);
 }
 
-function srFilterShift(shift, section) {
+function srFilterShift(shift, section, trigger) {
     // Update shift buttons inside this panel
     const panel = document.getElementById('sr-panel-' + section);
     if (!panel) return;
     panel.querySelectorAll('.sr-shift-btn').forEach(b => b.classList.remove('active'));
-    event.currentTarget.classList.add('active');
+    if (trigger) trigger.classList.add('active');
 
     // Show/hide shift blocks
     panel.querySelectorAll('.sr-shift-block').forEach(block => {

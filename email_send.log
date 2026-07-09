@@ -20,3 +20,7 @@
 {"time":"2026-07-08T15:17:44+02:00","to":"yyangcabahug@gmail.com","otp":"123456","attempts":[{"method":"phpmailer","attempt":1,"success":true,"info":""}]}
 {"time":"2026-07-08T15:20:59+02:00","to":"yyangcabahug@gmail.com","otp":"654321","attempts":[{"method":"phpmailer","attempt":1,"transport":"primary","success":true,"info":""}]}
 {"time":"2026-07-08T15:21:43+02:00","to":"yyangcabahug@gmail.com","otp":"901594","attempts":[{"method":"phpmailer","attempt":1,"transport":"primary","success":true,"info":""}]}
+{"time":"2026-07-09T01:05:08+02:00","to":"cabahug.amiedamas@gmail.com","otp":"873993","attempts":[{"method":"phpmailer","attempt":1,"transport":"primary","success":true,"info":""}]}
+{"time":"2026-07-09T01:06:12+02:00","to":"yyangcabahug@gmail.com","otp":"813873","attempts":[{"method":"phpmailer","attempt":1,"transport":"primary","success":true,"info":""}]}
+{"time":"2026-07-09T01:07:22+02:00","to":"yyangcabahug@gmail.com","otp":"118727","attempts":[{"method":"phpmailer","attempt":1,"transport":"primary","success":true,"info":""}]}
+{"time":"2026-07-09T01:08:21+02:00","to":"amiecabahug2020@gmail.com","otp":"263667","attempts":[{"method":"phpmailer","attempt":1,"transport":"primary","success":true,"info":""}]}

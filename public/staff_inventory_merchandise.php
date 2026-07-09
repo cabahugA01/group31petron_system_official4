@@ -227,17 +227,47 @@ body,html{overflow-x:hidden;max-width:100%;}
 }
 
 /* ── Modal base ── */
-.mi-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;}
-.mi-overlay.open{display:flex;}
-.mi-box{background:#fff;border-radius:14px;padding:28px;width:600px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,.3);animation:miIn .2s ease;}
-.mi-box.wide{width:700px;}
+.mi-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;padding:20px 16px;overflow-y:auto;}
+.mi-overlay.open{display:flex !important;}
+.mi-box{background:#fff;border-radius:14px;padding:0;width:600px;max-width:calc(100vw - 32px);max-height:calc(100vh - 60px);display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.3);animation:miIn .2s ease;overflow:hidden;position:relative;}
+.mi-box.wide{width:700px;max-width:calc(100vw - 32px);}
 @keyframes miIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
-.mi-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;padding-bottom:14px;border-bottom:2px solid #e9ecef;}
+.mi-head{display:flex;justify-content:space-between;align-items:center;padding:20px 28px;border-bottom:2px solid #e9ecef;flex-shrink:0;background:#fff;position:relative;z-index:1;}
 .mi-title{font-size:1.05rem;font-weight:700;color:#002F70;display:flex;align-items:center;gap:8px;}
-.mi-close{background:none;border:none;font-size:22px;cursor:pointer;color:#adb5bd;}
+.mi-close{background:none;border:none;font-size:22px;cursor:pointer;color:#adb5bd;padding:0;line-height:1;}
 .mi-close:hover{color:#333;}
-.mi-foot{display:flex;gap:10px;justify-content:flex-end;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid #e9ecef;}
+.mi-body{padding:28px;overflow-y:auto !important;overflow-x:hidden;flex:1;-webkit-overflow-scrolling:touch;min-height:0;position:relative;max-height:none !important;}
+.mi-foot{display:flex;gap:10px;justify-content:flex-end;align-items:center;padding:16px 28px;border-top:1px solid #e9ecef;flex-shrink:0;background:#fff;position:relative;z-index:1;}
 .mi-info{background:#e8f4fd;border-left:4px solid #002F70;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#002F70;line-height:1.6;}
+
+/* ── Stock Request Product List ── */
+#srProductsList{
+  height:280px !important;
+  max-height:280px !important;
+  overflow-y:scroll !important;
+  overflow-x:hidden !important;
+  -webkit-overflow-scrolling:touch !important;
+  overscroll-behavior:contain !important;
+  display:block !important;
+}
+
+/* ── Modal mobile adjustments ── */
+@media(max-height:600px){
+  .mi-box{max-height:calc(100vh - 40px);}
+  .mi-overlay{padding:10px;}
+  .mi-head{padding:14px 20px;}
+  .mi-body{padding:20px;}
+  .mi-foot{padding:12px 20px;}
+  #srProductsList{max-height:180px !important;}
+}
+@media(max-width:500px){
+  .mi-box,.mi-box.wide{width:100%;max-width:calc(100vw - 20px);}
+  .mi-head{padding:14px 16px;}
+  .mi-body{padding:16px;}
+  .mi-foot{padding:12px 16px;flex-wrap:wrap;}
+  .mi-foot .txn-btn{flex:1;min-width:120px;}
+  #srProductsList{max-height:200px !important;}
+}
 
 /* ── View Details modal ── */
 .vd-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;margin-bottom:14px;}
@@ -516,7 +546,9 @@ body,html{overflow-x:hidden;max-width:100%;}
             <div class="mi-title"><i class="fas fa-eye"></i> Product Details</div>
             <button class="mi-close" onclick="closeVd()">&times;</button>
         </div>
-        <div id="vdContent"></div>
+        <div class="mi-body">
+            <div id="vdContent"></div>
+        </div>
         <div class="mi-foot">
             <button class="txn-btn secondary" onclick="closeVd()">Close</button>
             <button class="txn-btn primary" id="vdSrBtn" onclick="closeVdOpenSr()"><i class="fas fa-box"></i> Request Stock</button>
@@ -531,27 +563,29 @@ body,html{overflow-x:hidden;max-width:100%;}
             <div class="mi-title"><i class="fas fa-box"></i> Stock Request</div>
             <button class="mi-close" id="srModalClose">&times;</button>
         </div>
-        <div class="mi-info">
-            <i class="fas fa-info-circle"></i>
-            <strong>Fill in the details below and submit your request.</strong><br>
-            &bull; Manager will review and approve/reject with a quantity<br>
-            &bull; Audit trail logged: Staff ID, Item, Timestamp<br>
-            &bull; You can track status under <em>Stock Request</em> in the sidebar
-        </div>
-
-        <div style="margin-bottom: 16px;">
-            <label style="display:block;font-size:12.5px;font-weight:700;color:#374151;margin-bottom:8px;">
-                <i class="fas fa-exclamation-triangle" style="color:#eab308;margin-right:4px;"></i> Select Products Needing Replenishment <span style="color:#dc2626;">*</span>
-            </label>
-            <div id="srProductsList" style="max-height: 280px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; background: #f8fafc; display:flex; flex-direction:column; gap:6px;">
-                <!-- Populated via JavaScript with checkboxes for low/critical/out of stock items -->
+        <div class="mi-body">
+            <div class="mi-info">
+                <i class="fas fa-info-circle"></i>
+                <strong>Fill in the details below and submit your request.</strong><br>
+                &bull; Quantity will be determined exclusively by Management during review<br>
+                &bull; Audit trail logged: Staff ID, Item, Timestamp<br>
+                &bull; You can track status under <em>Stock Request</em> in the sidebar
             </div>
+
+            <div style="margin-bottom: 16px;">
+                <label style="display:block;font-size:12.5px;font-weight:700;color:#374151;margin-bottom:8px;">
+                    <i class="fas fa-exclamation-triangle" style="color:#eab308;margin-right:4px;"></i> Select Products Needing Replenishment <span style="color:#dc2626;">*</span>
+                </label>
+                <div id="srProductsList" style="border:1px solid #cbd5e1;border-radius:8px;padding:10px;background:#f8fafc;">
+                    <!-- Populated via JavaScript with checkboxes for low/critical/out of stock items -->
+                </div>
+            </div>
+            <div class="sr-field">
+                <label for="srReason"><i class="fas fa-comment-alt"></i> Reason / Remarks</label>
+                <textarea id="srReason" placeholder="e.g. Running low, expected high demand this weekend..."></textarea>
+            </div>
+            <div id="srError" style="display:none;background:#fee2e2;color:#dc3545;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:10px;"></div>
         </div>
-        <div class="sr-field">
-            <label for="srReason"><i class="fas fa-comment-alt"></i> Reason / Remarks</label>
-            <textarea id="srReason" placeholder="e.g. Running low, expected high demand this weekend..."></textarea>
-        </div>
-        <div id="srError" style="display:none;background:#fee2e2;color:#dc3545;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:10px;"></div>
         <div class="mi-foot">
             <button class="txn-btn secondary" id="srCancelBtn">Cancel</button>
             <button class="txn-btn primary" id="srSubmitBtn"><i class="fas fa-paper-plane"></i> Submit Request</button>
@@ -580,15 +614,77 @@ function applyFilters() {
     var q    = (document.getElementById('merchSearch').value || '').toLowerCase();
     var cat  = (document.getElementById('filterCategory').value || '').toLowerCase();
     var stat = (document.getElementById('filterStatus').value || '');
+    var sortBy = document.getElementById('sortBy').value;
+
+    // 1. Filter each data row — use search-hidden class (works with pagination)
     document.querySelectorAll('#merchTableBody .merch-row').forEach(function(r) {
         var name    = (r.dataset.name || '').toLowerCase();
         var rcat    = (r.dataset.category || '').toLowerCase();
         var rstat   = (r.dataset.status || '');
         var matchQ  = !q    || name.indexOf(q) !== -1;
         var matchC  = !cat  || rcat === cat;
-        var matchS  = !stat || rstat === stat || (stat==='out' && (rstat==='out'||rstat==='critical'));
-        r.style.display = (matchQ && matchC && matchS) ? '' : 'none';
+        // "out" filter also includes critical items
+        var matchS  = !stat || rstat === stat || (stat === 'out' && (rstat === 'out' || rstat === 'critical'));
+        var visible = matchQ && matchC && matchS;
+        if (visible) {
+            r.classList.remove('search-hidden');
+            r.style.display = ''; // ensure visible
+        } else {
+            r.classList.add('search-hidden');
+            r.style.display = 'none';
+        }
     });
+
+    // 2. Update category header visibility
+    var tbody = document.getElementById('merchTableBody');
+
+    if (sortBy === 'default') {
+        // Show/hide category headers based on whether they have ≥1 visible item underneath
+        var rows = Array.from(tbody.querySelectorAll('tr'));
+        var currentHeader = null;
+        var hasVisibleItems = false;
+
+        rows.forEach(function(r) {
+            if (r.classList.contains('cat-header')) {
+                if (currentHeader) {
+                    currentHeader.style.display = hasVisibleItems ? '' : 'none';
+                    if (!hasVisibleItems) {
+                        currentHeader.classList.add('search-hidden');
+                    } else {
+                        currentHeader.classList.remove('search-hidden');
+                    }
+                }
+                currentHeader = r;
+                hasVisibleItems = false;
+            } else if (r.classList.contains('merch-row')) {
+                if (!r.classList.contains('search-hidden')) {
+                    hasVisibleItems = true;
+                }
+            }
+        });
+        // Handle last group
+        if (currentHeader) {
+            currentHeader.style.display = hasVisibleItems ? '' : 'none';
+            if (!hasVisibleItems) {
+                currentHeader.classList.add('search-hidden');
+            } else {
+                currentHeader.classList.remove('search-hidden');
+            }
+        }
+    } else {
+        // Global sort mode — always hide category headers
+        Array.from(tbody.querySelectorAll('.cat-header')).forEach(function(h) {
+            h.style.display = 'none';
+            h.classList.add('search-hidden');
+        });
+    }
+
+    // 3. Trigger pagination reset (go to page 1)
+    if (window.tablePaginationTriggers && window.tablePaginationTriggers['merchTable']) {
+        window.tablePaginationTriggers['merchTable']();
+    } else if (window.setTablePage) {
+        window.setTablePage('merchTable', 1);
+    }
 }
 ['input','change'].forEach(function(ev) {
     document.getElementById('merchSearch').addEventListener(ev, applyFilters);
@@ -599,12 +695,51 @@ document.getElementById('sortBy').addEventListener('change', function() {
     var val = this.value;
     var tbody = document.getElementById('merchTableBody');
     var rows  = Array.from(tbody.querySelectorAll('.merch-row'));
-    if (val === 'name_asc')    rows.sort(function(a,b){ return (a.dataset.name||'').localeCompare(b.dataset.name||''); });
-    if (val === 'name_desc')   rows.sort(function(a,b){ return (b.dataset.name||'').localeCompare(a.dataset.name||''); });
-    if (val === 'stock_asc')   rows.sort(function(a,b){ return parseInt(a.dataset.stock||0)-parseInt(b.dataset.stock||0); });
-    if (val === 'stock_desc')  rows.sort(function(a,b){ return parseInt(b.dataset.stock||0)-parseInt(a.dataset.stock||0); });
-    if (val === 'newest')      rows.sort(function(a,b){ return (b.dataset.updated||'').localeCompare(a.dataset.updated||''); });
-    if (val !== 'default') rows.forEach(function(r){ tbody.appendChild(r); });
+    var headers = Array.from(tbody.querySelectorAll('.cat-header'));
+
+    if (val === 'default') {
+        // Show all category headers initially
+        headers.forEach(function(h) { h.style.display = ''; });
+
+        // Sort rows by category first, then by name
+        rows.sort(function(a, b) {
+            var catA = (a.dataset.category || '').toLowerCase();
+            var catB = (b.dataset.category || '').toLowerCase();
+            if (catA !== catB) {
+                return catA.localeCompare(catB);
+            }
+            var nameA = (a.dataset.name || '').toLowerCase();
+            var nameB = (b.dataset.name || '').toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
+
+        // Re-append in grouped category order
+        headers.forEach(function(h) {
+            tbody.appendChild(h);
+            var hCat = h.textContent.trim().toLowerCase();
+            rows.forEach(function(r) {
+                var rCat = (r.dataset.category || '').toLowerCase();
+                if (rCat === hCat) {
+                    tbody.appendChild(r);
+                }
+            });
+        });
+    } else {
+        // Hide all category headers because it's a global sort
+        headers.forEach(function(h) { h.style.display = 'none'; });
+
+        // Sort rows globally
+        if (val === 'name_asc')    rows.sort(function(a,b){ return (a.dataset.name||'').localeCompare(b.dataset.name||''); });
+        if (val === 'name_desc')   rows.sort(function(a,b){ return (b.dataset.name||'').localeCompare(a.dataset.name||''); });
+        if (val === 'stock_asc')   rows.sort(function(a,b){ return parseInt(a.dataset.stock||0)-parseInt(b.dataset.stock||0); });
+        if (val === 'stock_desc')  rows.sort(function(a,b){ return parseInt(b.dataset.stock||0)-parseInt(a.dataset.stock||0); });
+        if (val === 'newest')      rows.sort(function(a,b){ return (b.dataset.updated||'').localeCompare(a.dataset.updated||''); });
+
+        rows.forEach(function(r){ tbody.appendChild(r); });
+    }
+
+    // Re-apply filters and update pagination
+    applyFilters();
 });
 
 // ── View Details ──────────────────────────────────────────────
@@ -690,7 +825,25 @@ function openSrModal(preselect) {
             listEl.appendChild(row);
         });
     }
-    document.getElementById('srModal').classList.add('open');
+    
+    // Force display and scrolling
+    var modal = document.getElementById('srModal');
+    modal.classList.add('open');
+    
+    // Force reflow to ensure CSS is applied and scrolling works
+    setTimeout(function() {
+        var modalBody = modal.querySelector('.mi-body');
+        if (modalBody) {
+            modalBody.style.overflowY = 'auto';
+            modalBody.style.maxHeight = 'none';
+        }
+        // Don't override CSS - let the stylesheet handle it
+        if (listEl) {
+            // Force browser to recalculate height
+            listEl.style.display = 'block';
+            void listEl.offsetHeight; // Force reflow
+        }
+    }, 50);
 }
 function closeSrModal() { document.getElementById('srModal').classList.remove('open'); }
 document.getElementById('srModalClose').addEventListener('click', closeSrModal);
@@ -747,10 +900,6 @@ document.getElementById('srSubmitBtn').addEventListener('click', function() {
         var it = items[currentIndex];
         currentIndex++;
 
-        // Calculate auto requested qty: capacity - stock (at least 10 or 1)
-        var requestedQty = Math.max(1, it.capacity - it.stock);
-        if (requestedQty <= 0) requestedQty = 10;
-
         fetch('../backend/api/stock_request.php?action=create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -760,7 +909,7 @@ document.getElementById('srSubmitBtn').addEventListener('click', function() {
                 item_name: it.name,
                 item_category: it.category,
                 current_stock: it.stock,
-                requested_quantity: requestedQty,
+                requested_quantity: 0,
                 remarks: reason || 'Low stock automatic request'
             })
         })
@@ -798,6 +947,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (el && el.parentNode !== document.body) document.body.appendChild(el);
     });
     setupTablePagination('merchTable', 'merchRowsLimit', 'merchPagination', 50);
+    applyFilters();
 });
 </script>
 

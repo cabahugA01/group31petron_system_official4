@@ -945,6 +945,7 @@ function generateSecurePassword(int $length = 12): string {
  */
 function create_role_notification($pdo, $targetRole, $type, $title, $message, $specificUserId = null) {
   try {
+    ensure_notifications_table($pdo);
     $sql = "INSERT INTO notifications (user_id, type, title, message) 
             SELECT u.id, ?, ?, ? FROM users u 
             WHERE u.role = ? AND u.status = 'Active'";
@@ -962,6 +963,90 @@ function create_role_notification($pdo, $targetRole, $type, $title, $message, $s
     error_log("Failed to create role notification: " . $e->getMessage());
     return 0;
   }
+}
+
+function ensure_notifications_table(PDO $pdo): void {
+  static $ready = false;
+  if ($ready) return;
+
+  $pdo->exec("CREATE TABLE IF NOT EXISTS notifications (
+    id           INT AUTO_INCREMENT PRIMARY KEY,
+    user_id      INT NOT NULL,
+    type         ENUM('success','warning','error','info') NOT NULL DEFAULT 'info',
+    title        VARCHAR(255) NOT NULL,
+    message      TEXT NULL,
+    event_type   VARCHAR(80) NOT NULL DEFAULT 'general',
+    severity     ENUM('low','medium','high','critical') NOT NULL DEFAULT 'medium',
+    source_key   VARCHAR(200) NULL,
+    redirect_url VARCHAR(500) NULL,
+    status       ENUM('unread','read') NOT NULL DEFAULT 'unread',
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    read_at      TIMESTAMP NULL
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+  $existing = [];
+  $stmt = $pdo->query("SHOW COLUMNS FROM notifications");
+  foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $col) {
+    $existing[strtolower($col['Field'])] = true;
+  }
+
+  $columns = [
+    'type'         => "ALTER TABLE notifications ADD COLUMN type ENUM('success','warning','error','info') NOT NULL DEFAULT 'info' AFTER user_id",
+    'title'        => "ALTER TABLE notifications ADD COLUMN title VARCHAR(255) NOT NULL DEFAULT 'Notification' AFTER type",
+    'message'      => "ALTER TABLE notifications ADD COLUMN message TEXT NULL AFTER title",
+    'event_type'   => "ALTER TABLE notifications ADD COLUMN event_type VARCHAR(80) NOT NULL DEFAULT 'general' AFTER message",
+    'severity'     => "ALTER TABLE notifications ADD COLUMN severity ENUM('low','medium','high','critical') NOT NULL DEFAULT 'medium' AFTER event_type",
+    'source_key'   => "ALTER TABLE notifications ADD COLUMN source_key VARCHAR(200) NULL AFTER severity",
+    'redirect_url' => "ALTER TABLE notifications ADD COLUMN redirect_url VARCHAR(500) NULL AFTER source_key",
+    'status'       => "ALTER TABLE notifications ADD COLUMN status ENUM('unread','read') NOT NULL DEFAULT 'unread' AFTER redirect_url",
+    'created_at'   => "ALTER TABLE notifications ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER status",
+    'read_at'      => "ALTER TABLE notifications ADD COLUMN read_at TIMESTAMP NULL AFTER created_at",
+  ];
+  foreach ($columns as $name => $sql) {
+    if (empty($existing[$name])) {
+      try { $pdo->exec($sql); } catch (Exception $e) {}
+    }
+  }
+
+  $indexes = [];
+  try {
+    $stmt = $pdo->query("SHOW INDEX FROM notifications");
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $idx) {
+      $indexes[$idx['Key_name']] = true;
+    }
+  } catch (Exception $e) {}
+
+  foreach ([
+    'idx_notif_user_status' => [
+      "ALTER TABLE notifications ADD INDEX idx_notif_user_status (user_id, status)",
+      ['idx_notif_user_status', 'idx_user_status']
+    ],
+    'idx_notif_created_at' => [
+      "ALTER TABLE notifications ADD INDEX idx_notif_created_at (created_at)",
+      ['idx_notif_created_at', 'idx_created_at']
+    ],
+    'idx_notif_event_type' => [
+      "ALTER TABLE notifications ADD INDEX idx_notif_event_type (event_type)",
+      ['idx_notif_event_type', 'idx_event_type']
+    ],
+    'idx_notif_source_key' => [
+      "ALTER TABLE notifications ADD INDEX idx_notif_source_key (source_key)",
+      ['idx_notif_source_key', 'idx_source_key']
+    ],
+  ] as $name => [$sql, $aliases]) {
+    $hasIndex = false;
+    foreach ($aliases as $alias) {
+      if (!empty($indexes[$alias])) {
+        $hasIndex = true;
+        break;
+      }
+    }
+    if (!$hasIndex) {
+      try { $pdo->exec($sql); } catch (Exception $e) {}
+    }
+  }
+
+  $ready = true;
 }
 
 /**

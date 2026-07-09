@@ -1061,9 +1061,10 @@ body{overflow-x:hidden !important;max-width:100vw !important;}
 
 /* Tab Navigation */
 .tab-navigation{display:flex;gap:8px;margin-right:20px;}
-.tab-btn{display:flex;align-items:center;gap:8px;padding:10px 18px;background:transparent;border:none;border-bottom:3px solid transparent;font-size:14px;font-weight:600;color:#6c757d;cursor:pointer;transition:all 0.2s;margin-bottom:-2px;}
-.tab-btn:hover{color:#002F70;background:rgba(0,47,108,0.05);}
-.tab-btn.active{color:#002F70;border-bottom-color:#002F70;background:rgba(0,47,108,0.05);}
+.tab-btn{display:flex;align-items:center;gap:8px;padding:10px 18px;background:#f8f9fa;border:none;border-bottom:3px solid transparent;font-size:14px;font-weight:600;color:#475569 !important;cursor:pointer;transition:all 0.2s;margin-bottom:-2px;}
+.tab-btn:hover{color:#002F70 !important;background:rgba(0,47,108,0.1);}
+.tab-btn.active{background:#002F70 !important;color:#ffffff !important;border-bottom-color:#002F70;font-weight:800;}
+.tab-btn.active i{color:#ffffff !important;}
 .tab-btn i{font-size:14px;}
 .tab-count{background:rgba(0,47,108,0.1);color:#002F70;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;}
 .tab-btn.active .tab-count{background:rgba(0,47,108,0.15);}

@@ -40,26 +40,7 @@ $station_id = (int)($me['station_id'] ?? 0);
 $sw = $station_id ? $station_id : 0;
 
 // ── Ensure notifications table exists ────────────────────────
-try {
-    $pdo->exec("CREATE TABLE IF NOT EXISTS notifications (
-        id           INT AUTO_INCREMENT PRIMARY KEY,
-        user_id      INT NOT NULL,
-        type         ENUM('success','warning','error','info') NOT NULL DEFAULT 'info',
-        title        VARCHAR(255) NOT NULL,
-        message      TEXT NOT NULL,
-        event_type   VARCHAR(80) NOT NULL DEFAULT 'general',
-        severity     ENUM('low','medium','high','critical') NOT NULL DEFAULT 'medium',
-        source_key   VARCHAR(200) NULL,
-        redirect_url VARCHAR(500) NULL,
-        status       ENUM('unread','read') NOT NULL DEFAULT 'unread',
-        created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        read_at      TIMESTAMP NULL,
-        INDEX idx_user_status (user_id, status),
-        INDEX idx_event_type  (event_type),
-        INDEX idx_source_key  (source_key),
-        INDEX idx_created_at  (created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-} catch (Exception $e) { /* already exists */ }
+try { ensure_notifications_table($pdo); } catch (Exception $e) {}
 
 $generated = 0;
 

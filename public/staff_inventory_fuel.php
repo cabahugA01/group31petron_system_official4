@@ -833,7 +833,7 @@ body, html { overflow-x: hidden !important; }
 
         <div class="sr-info-box">
             <strong>Select the fuel types you want to request, then click Submit.</strong><br>
-            &bull; Manager will review and set the approved liters<br>
+            &bull; Volume/Liters will be determined exclusively by Management during review<br>
             &bull; Fuel inventory is NOT updated until Manager processes the delivery
         </div>
 

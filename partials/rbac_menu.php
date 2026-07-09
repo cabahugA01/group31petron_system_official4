@@ -416,7 +416,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 $filtered_item['sub_items'] = [
                     ['id' => 'mgr_inv_merch',    'label' => 'Merchandise Inventory',  'href' => 'manager_inventory_merchandise.php',      'ico' => 'fas fa-box',              'permissions' => ['manage_inventory', 'view_inventory']],
                     ['id' => 'mgr_inv_fuel',     'label' => 'Fuel Inventory',         'href' => 'manager_inventory_fuel.php',             'ico' => 'fas fa-gas-pump',         'permissions' => ['manage_inventory', 'view_inventory']],
-                    ['id' => 'mgr_stock_review', 'label' => 'Purchase Request Review',   'href' => 'manager_stock_request_review.php',       'ico' => 'fas fa-clipboard-check',  'permissions' => ['manage_inventory', 'view_inventory']],
+                    ['id' => 'mgr_stock_review', 'label' => 'Purchase Request',   'href' => 'manager_stock_request_review.php',       'ico' => 'fas fa-clipboard-check',  'permissions' => ['manage_inventory', 'view_inventory']],
                     ['id' => 'mgr_inv_movement', 'label' => 'Inventory Movement History', 'href' => 'manager_inventory_movement_history.php', 'ico' => 'fas fa-history',         'permissions' => ['manage_inventory', 'view_inventory']],
                 ];
                 $filtered_menu[] = $filtered_item;

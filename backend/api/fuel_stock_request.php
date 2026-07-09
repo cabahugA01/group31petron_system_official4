@@ -215,6 +215,11 @@ function handle_create($pdo, $me, $role, $station_id) {
     $requested_liters = (float)($input['requested_liters'] ?? 0);
     $remarks          = trim($input['remarks']          ?? '');
 
+    // Staff cannot specify liters, force to 0
+    if (in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+        $requested_liters = 0.0;
+    }
+
     if (empty($fuel_type)) {
         echo json_encode(['success' => false, 'message' => 'Fuel type is required']); return;
     }

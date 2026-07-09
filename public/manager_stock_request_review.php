@@ -1,686 +1,695 @@
 <?php
+// ============================================================
+// Manager Merchandise Purchase Requests — public/manager_stock_request_review.php
+// Flow: Staff Stock Requests -> Manager generates Merchandise Purchase Request -> Admin validates
+// ============================================================
 $page_id = 'mgr_stock_review';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
 
 $me         = current_user();
-$role       = role_key($me['role'] ?? '');
 $station_id = user_station_id();
+$role       = role_key($me['role'] ?? '');
 
-// Module gate
-if (!in_array($role, ['superadmin', 'developer']) && !is_module_enabled('inventory')) {
-    render_module_disabled_page('Inventory');
-}
+// Access control
 if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
+    $_SESSION['error'] = 'Access denied. Manager access required.';
     header('Location: dashboard.php');
     exit;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POST Actions (Approve & Generate PO / Reject / Revision / Remarks)
-// ─────────────────────────────────────────────────────────────────────────────
+// Ensure the required tables and schema modifications exist
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS purchase_order_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        po_id INT NOT NULL,
+        product_id INT NULL,
+        item_name VARCHAR(255) NOT NULL,
+        quantity INT NOT NULL,
+        quantity_ordered INT NULL,
+        unit_price DECIMAL(10,2) NOT NULL,
+        total_price DECIMAL(10,2) NOT NULL,
+        quantity_received INT NULL,
+        received_at DATETIME NULL,
+        received_by INT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (Exception $ignored) {}
+
+// ── Handle POST Actions ──────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
-    
-    // 1. Approve & Generate PO
-    if ($action === 'approve_generate_po') {
-        $req_id            = (int)($_POST['request_id'] ?? 0);
-        $approved_qty      = (int)($_POST['approved_quantity'] ?? 0);
-        $po_number         = trim($_POST['po_number'] ?? '');
-        $supplier_name     = trim($_POST['supplier_name'] ?? 'Petron Regional Depot');
+
+    // 1. Generate Merchandise Purchase Request
+    if ($action === 'generate_merch_pr') {
+        $pr_number = trim($_POST['pr_number'] ?? '');
         $expected_delivery = trim($_POST['expected_delivery'] ?? '');
-        $unit_cost         = (float)($_POST['unit_cost'] ?? 0);
-        $notes             = trim($_POST['manager_notes'] ?? '');
-        
-        if ($req_id > 0 && $approved_qty > 0) {
-            try {
-                $pdo->beginTransaction();
-                
-                // Fetch request
-                $stmt = $pdo->prepare("SELECT * FROM stock_requests WHERE id = ? AND station_id = ?");
-                $stmt->execute([$req_id, $station_id]);
-                $req = $stmt->fetch(PDO::FETCH_ASSOC);
-                
-                if (!$req) throw new Exception("Purchase request not found.");
-                
-                if (empty($po_number)) {
-                    $po_number = "PO-2026-" . str_pad($req_id, 5, '0', STR_PAD_LEFT);
-                }
-                if (empty($expected_delivery)) {
-                    $expected_delivery = date('Y-m-d', strtotime('+2 days'));
-                }
-                if ($unit_cost <= 0) {
-                    $stmt = $pdo->prepare("SELECT unit_price FROM inventory_products WHERE id = ?");
-                    $stmt->execute([$req['item_id']]);
-                    $unit_cost = (float)($stmt->fetchColumn() ?: 145.00);
-                }
-                $subtotal = $approved_qty * $unit_cost;
-                
-                // Resolve supplier_id from name
-                $stmt_sup = $pdo->prepare("SELECT id FROM suppliers WHERE name LIKE ? OR id = 1 LIMIT 1");
-                $stmt_sup->execute(['%' . $supplier_name . '%']);
-                $supplier_id = (int)($stmt_sup->fetchColumn() ?: 1);
-
-                // Check existing PO or insert new
-                $stmtPO = $pdo->prepare("SELECT id FROM purchase_orders WHERE request_id = ? AND type = 'merch'");
-                $stmtPO->execute([$req_id]);
-                $existPO = $stmtPO->fetchColumn();
-                
-                if ($existPO) {
-                    $pdo->prepare("
-                        UPDATE purchase_orders 
-                        SET quantity = ?, unit_price = ?, total_amount = ?, po_number = ?, supplier_id = ?, expected_delivery_date = ?, status = 'Pending Admin Validation', remarks = ?, updated_at = NOW()
-                        WHERE id = ?
-                    ")->execute([
-                        $approved_qty, $unit_cost, $subtotal, $po_number, $supplier_id, $expected_delivery, $notes, $existPO
-                    ]);
-                } else {
-                    $pdo->prepare("
-                        INSERT INTO purchase_orders 
-                            (request_id, product_name, quantity, unit_price, total_amount, type, po_number, station_id, supplier_id, expected_delivery_date, created_by, status, remarks, created_at, updated_at, admin_finalized)
-                        VALUES (?, ?, ?, ?, ?, 'merch', ?, ?, ?, ?, ?, 'Pending Admin Validation', ?, NOW(), NOW(), 0)
-                    ")->execute([
-                        $req_id, $req['item_name'], $approved_qty, $unit_cost, $subtotal, $po_number, $station_id, $supplier_id, $expected_delivery, $me['id'], $notes
-                    ]);
-                }
-                
-                // Update Stock Request status to 'Approved by Manager'
-                $pdo->prepare("
-                    UPDATE stock_requests 
-                    SET status = 'Approved by Manager', approved_quantity = ?, manager_id = ?, manager_notes = ?, processed_at = NOW(), updated_at = NOW()
-                    WHERE id = ?
-                ")->execute([
-                    $approved_qty, $me['id'], $notes, $req_id
-                ]);
-                
-                // Audit log & Activity log
-                $audit_note = "Manager approved qty={$approved_qty}. PO: {$po_number}. Forwarded to Admin.";
-                if ($notes) $audit_note .= " Notes: {$notes}";
-                
-                $pdo->prepare("
-                    INSERT INTO stock_request_audit
-                        (stock_request_id, action_type, performed_by, performed_by_role, old_status, new_status, notes)
-                    VALUES (?, 'Approved & PO Generated', ?, ?, ?, 'Approved by Manager', ?)
-                ")->execute([$req_id, $me['id'], $role, $req['status'], $audit_note]);
-                
-                log_activity($pdo, $me['id'], 'Approve & Generate PO', "Request REQ-" . str_pad($req_id, 4, '0', STR_PAD_LEFT) . " | {$req['item_name']} | PO: {$po_number} generated");
-                
-                $pdo->commit();
-                $_SESSION['success'] = "Purchase Order Created &mdash; {$po_number} | Status: Pending Admin Approval";
-            } catch (Exception $e) {
-                if ($pdo->inTransaction()) $pdo->rollBack();
-                $_SESSION['error'] = 'Error: ' . $e->getMessage();
-            }
-        } else {
-            $_SESSION['error'] = 'Invalid quantity or request ID.';
-        }
-        header('Location: manager_stock_request_review.php'); exit;
-    }
-
-    // 2. Reject Request
-    if ($action === 'reject_request') {
-        $req_id = (int)($_POST['request_id'] ?? 0);
-        $notes = trim($_POST['manager_notes'] ?? '');
-        
-        if ($req_id > 0 && !empty($notes)) {
-            try {
-                $pdo->beginTransaction();
-                
-                $stmt = $pdo->prepare("SELECT * FROM stock_requests WHERE id = ? AND station_id = ?");
-                $stmt->execute([$req_id, $station_id]);
-                $req = $stmt->fetch(PDO::FETCH_ASSOC);
-                
-                if (!$req) throw new Exception("Purchase request not found.");
-                
-                $pdo->prepare("
-                    UPDATE stock_requests 
-                    SET status = 'Rejected', manager_id = ?, manager_notes = ?, processed_at = NOW(), updated_at = NOW()
-                    WHERE id = ?
-                ")->execute([
-                    $me['id'], $notes, $req_id
-                ]);
-                
-                $pdo->prepare("
-                    INSERT INTO stock_request_audit
-                        (stock_request_id, action_type, performed_by, performed_by_role, old_status, new_status, notes)
-                    VALUES (?, 'Rejected', ?, ?, ?, 'Rejected', ?)
-                ")->execute([$req_id, $me['id'], $role, $req['status'], "Rejected by {$me['name']}. Reason: {$notes}"]);
-                
-                log_activity($pdo, $me['id'], 'Reject Purchase Request', "Request REQ-" . str_pad($req_id, 4, '0', STR_PAD_LEFT) . " rejected by {$me['name']}");
-                
-                $pdo->commit();
-                $_SESSION['success'] = "Purchase request REQ-" . str_pad($req_id, 4, '0', STR_PAD_LEFT) . " rejected.";
-            } catch (Exception $e) {
-                if ($pdo->inTransaction()) $pdo->rollBack();
-                $_SESSION['error'] = 'Error: ' . $e->getMessage();
-            }
-        } else {
-            $_SESSION['error'] = 'Rejection reason is required.';
-        }
-        header('Location: manager_stock_request_review.php'); exit;
-    }
-
-    // 3. Adjust Request
-    if ($action === 'adjust_request') {
-        $req_id = (int)($_POST['request_id'] ?? 0);
-        $adjusted_qty = (int)($_POST['adjusted_quantity'] ?? 0);
-        $notes = trim($_POST['manager_notes'] ?? '');
-        if ($req_id > 0 && $adjusted_qty > 0) {
-            try {
-                $stmt = $pdo->prepare("SELECT * FROM stock_requests WHERE id = ? AND station_id = ?");
-                $stmt->execute([$req_id, $station_id]);
-                $req = $stmt->fetch(PDO::FETCH_ASSOC);
-                if (!$req) throw new Exception("Purchase request not found.");
-
-                $old_qty = $req['requested_quantity'];
-
-                $pdo->prepare("
-                    UPDATE stock_requests 
-                    SET requested_quantity = ?, manager_id = ?, manager_notes = ?, updated_at = NOW()
-                    WHERE id = ? AND station_id = ?
-                ")->execute([$adjusted_qty, $me['id'], $notes, $req_id, $station_id]);
-                
-                $pdo->prepare("
-                    INSERT INTO stock_request_audit
-                        (stock_request_id, action_type, performed_by, performed_by_role, old_status, new_status, notes)
-                    VALUES (?, 'Adjusted Quantity', ?, ?, ?, ?, ?)
-                ")->execute([$req_id, $me['id'], $role, $req['status'], $req['status'], "Quantity adjusted from {$old_qty} to {$adjusted_qty} by {$me['name']}. Notes: {$notes}"]);
-
-                log_activity($pdo, $me['id'], 'Adjust Purchase Request', "Adjusted REQ-" . str_pad($req_id, 4, '0', STR_PAD_LEFT) . " quantity from {$old_qty} to {$adjusted_qty}");
-                $_SESSION['success'] = "Purchase request REQ-" . str_pad($req_id, 4, '0', STR_PAD_LEFT) . " quantity adjusted to {$adjusted_qty}.";
-            } catch (Exception $e) {
-                $_SESSION['error'] = 'Error adjusting request: ' . $e->getMessage();
-            }
-        } else {
-            $_SESSION['error'] = 'Valid adjusted quantity is required.';
-        }
-        header('Location: manager_stock_request_review.php'); exit;
-    }
-
-    // 4. Add Remarks / Update Notes
-    if ($action === 'add_remarks') {
-        $req_id = (int)($_POST['request_id'] ?? 0);
         $remarks = trim($_POST['remarks'] ?? '');
-        if ($req_id > 0) {
-            try {
-                $pdo->prepare("
-                    UPDATE stock_requests 
-                    SET manager_notes = ?, updated_at = NOW()
-                    WHERE id = ? AND station_id = ?
-                ")->execute([$remarks, $req_id, $station_id]);
-                
-                log_activity($pdo, $me['id'], 'Update Purchase Request Remarks', "Remarks updated for Request REQ-" . str_pad($req_id, 4, '0', STR_PAD_LEFT));
-                $_SESSION['success'] = "Remarks updated successfully for Request REQ-" . str_pad($req_id, 4, '0', STR_PAD_LEFT) . ".";
-            } catch (Exception $e) {
-                $_SESSION['error'] = 'Error updating remarks: ' . $e->getMessage();
-            }
-        } else {
-            $_SESSION['error'] = 'Invalid request ID.';
+        $quantities = $_POST['quantities'] ?? []; // Array of product_id => qty
+        $stock_req_ids = $_POST['stock_req_ids'] ?? []; // Array of product_id => stock_request_id
+        
+        if (empty($pr_number)) {
+            $pr_number = "PR-" . date('Ymd') . "-" . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
         }
-        header('Location: manager_stock_request_review.php'); exit;
-    }
 
-    // 5. Generate Fuel Purchase Order / Approve Fuel Request
-    if ($action === 'fuel_generate_po') {
-        $req_id            = (int)($_POST['request_id'] ?? 0);
-        $approved_liters   = (float)($_POST['approved_liters'] ?? 0);
-        $unit_cost         = (float)($_POST['unit_cost'] ?? 0);
-        $po_number         = trim($_POST['po_number'] ?? '');
-        $expected_delivery = trim($_POST['expected_delivery'] ?? '');
-        $notes             = trim($_POST['manager_notes'] ?? '');
+        try {
+            $pdo->beginTransaction();
 
-        if ($req_id > 0 && $approved_liters > 0) {
-            try {
-                $pdo->beginTransaction();
+            $total_amount = 0;
+            $items_to_insert = [];
 
-                // Fetch request
-                $stmt = $pdo->prepare("SELECT * FROM fuel_stock_requests WHERE id = ? AND station_id = ?");
-                $stmt->execute([$req_id, $station_id]);
-                $req = $stmt->fetch(PDO::FETCH_ASSOC);
+            foreach ($quantities as $prod_id => $qty) {
+                $qty = (int)$qty;
+                if ($qty <= 0) continue;
 
-                if (!$req) {
-                    throw new Exception("Fuel request not found.");
+                // Retrieve product details
+                $p_stmt = $pdo->prepare("SELECT product_name, unit_cost, unit_price FROM inventory_products WHERE id = ?");
+                $p_stmt->execute([$prod_id]);
+                $prod = $p_stmt->fetch(PDO::FETCH_ASSOC);
+                if (!$prod) continue;
+
+                $unit_cost = (float)($prod['unit_cost'] ?: ($prod['unit_price'] * 0.8) ?: 145.00);
+                $subtotal = $qty * $unit_cost;
+                $total_amount += $subtotal;
+
+                $items_to_insert[] = [
+                    'product_id' => $prod_id,
+                    'product_name' => $prod['product_name'],
+                    'quantity' => $qty,
+                    'unit_price' => $unit_cost,
+                    'total_price' => $subtotal,
+                    'stock_req_id' => isset($stock_req_ids[$prod_id]) ? (int)$stock_req_ids[$prod_id] : null
+                ];
+            }
+
+            if (empty($items_to_insert)) {
+                throw new Exception("Please specify quantity for at least one item.");
+            }
+
+            // Find or default to Petron supplier ID
+            $supplier_id = $pdo->query("SELECT id FROM suppliers WHERE name LIKE '%Petron%' OR id = 1 LIMIT 1")->fetchColumn() ?: 1;
+
+            // Resolve the representative stock request ID
+            $first_req_id = null;
+            foreach ($items_to_insert as $item) {
+                if ($item['stock_req_id']) {
+                    $first_req_id = $item['stock_req_id'];
+                    break;
                 }
+            }
 
-                if (empty($po_number)) {
-                    $po_number = "POF-2026-" . str_pad($req_id, 5, '0', STR_PAD_LEFT);
-                }
-                if (empty($expected_delivery)) {
-                    $expected_delivery = date('Y-m-d', strtotime('+2 days'));
-                }
+            // Insert into purchase_orders
+            $po_stmt = $pdo->prepare("
+                INSERT INTO purchase_orders 
+                    (po_number, station_id, supplier_id, created_by, status, expected_delivery_date, remarks, type, total_amount, request_id, created_at, updated_at, admin_finalized)
+                VALUES (?, ?, ?, ?, 'Pending Admin Validation', ?, ?, 'merch', ?, ?, NOW(), NOW(), 0)
+            ");
+            $po_stmt->execute([
+                $pr_number, $station_id, $supplier_id, $me['id'], $expected_delivery ?: null, $remarks, $total_amount, $first_req_id
+            ]);
+            $po_id = $pdo->lastInsertId();
 
-                $subtotal = $approved_liters * $unit_cost;
-
-                // Get or create Petron supplier ID
-                $supplier_id = $pdo->query("SELECT id FROM suppliers WHERE name LIKE '%Petron%' LIMIT 1")->fetchColumn() ?: 1;
-
-                // Resolve fuel_type_id
-                $ft_stmt = $pdo->prepare("SELECT id FROM fuel_types WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1");
-                $ft_stmt->execute([$req['fuel_type']]);
-                $fuel_type_id = (int)($ft_stmt->fetchColumn() ?: 0);
-                
-                // If fuel type not found, create it
-                if ($fuel_type_id === 0) {
-                    $pdo->prepare("INSERT INTO fuel_types (name) VALUES (?)")->execute([$req['fuel_type']]);
-                    $fuel_type_id = (int)$pdo->lastInsertId();
-                }
-                
-                // Ensure we have a valid fuel_type_id
-                if ($fuel_type_id === 0) {
-                    throw new Exception("Unable to resolve or create fuel type: " . $req['fuel_type']);
-                }
-
-                // Check if existing PO exists
-                $stmtPO = $pdo->prepare("SELECT id FROM fuel_purchase_orders WHERE po_number = ? AND station_id = ?");
-                $stmtPO->execute([$po_number, $station_id]);
-                $existPO = $stmtPO->fetchColumn();
-
-                if ($existPO) {
-                    $pdo->prepare("
-                        UPDATE fuel_purchase_orders 
-                        SET volume = ?, unit_price = ?, total_amount = ?, supplier_id = ?, expected_delivery_date = ?, status = 'Pending Admin Validation', notes = ?, updated_at = NOW()
-                        WHERE id = ?
-                    ")->execute([
-                        $approved_liters, $unit_cost, $subtotal, $supplier_id, $expected_delivery, $notes, $existPO
-                    ]);
-                } else {
-                    $pdo->prepare("
-                        INSERT INTO fuel_purchase_orders 
-                            (po_number, station_id, fuel_type_id, volume, unit_price, total_amount, supplier_id, expected_delivery_date, status, created_by, notes, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending Admin Validation', ?, ?, NOW(), NOW())
-                    ")->execute([
-                        $po_number, $station_id, $fuel_type_id, $approved_liters, $unit_cost, $subtotal, $supplier_id, $expected_delivery, $me['id'], $notes
-                    ]);
-                }
-
-                // Update Fuel Request status to 'Approved'
-                $pdo->prepare("
-                    UPDATE fuel_stock_requests 
-                    SET status = 'Approved', approved_liters = ?, manager_id = ?, manager_notes = ?, processed_at = NOW(), updated_at = NOW()
-                    WHERE id = ?
-                ")->execute([
-                    $approved_liters, $me['id'], $notes, $req_id
+            // Insert items & update linked stock requests
+            foreach ($items_to_insert as $item) {
+                $item_stmt = $pdo->prepare("
+                    INSERT INTO purchase_order_items 
+                        (po_id, product_id, item_name, quantity, quantity_ordered, unit_price, total_price)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ");
+                $item_stmt->execute([
+                    $po_id, $item['product_id'], $item['product_name'], $item['quantity'], $item['quantity'], $item['unit_price'], $item['total_price']
                 ]);
 
-                // Audit log & Activity log
-                $audit_note = "Approved: {$req['requested_liters']} L → {$approved_liters} L. Unit Cost: ₱{$unit_cost}/L. PO: {$po_number}.";
-                if ($notes) $audit_note .= " Notes: {$notes}";
+                // Update stock request status if linked
+                if ($item['stock_req_id']) {
+                    $sr_stmt = $pdo->prepare("
+                        UPDATE stock_requests 
+                        SET status = 'Approved', approved_quantity = ?, manager_id = ?, manager_notes = ?, processed_at = NOW(), updated_at = NOW()
+                        WHERE id = ? AND station_id = ?
+                    ");
+                    $sr_stmt->execute([
+                        $item['quantity'], $me['id'], $remarks, $item['stock_req_id'], $station_id
+                    ]);
 
-                $pdo->prepare("
-                    INSERT INTO fuel_stock_request_audit
-                        (request_id, action_type, performed_by, performed_by_role, old_status, new_status, notes)
-                    VALUES (?, 'Approved', ?, ?, ?, 'Approved', ?)
-                ")->execute([$req_id, $me['id'], $role, $req['status'], $audit_note]);
-
-                // Log to main audit_trail
-                try {
-                    $pdo->prepare("
-                        INSERT INTO audit_trail (transaction_id, manager_id, station_id, action_type, new_value, notes, created_at)
-                        VALUES (?, ?, ?, 'Approve Fuel Request', ?, ?, NOW())
-                    ")->execute(['FSR-'.$req_id, $me['id'], $station_id, "Approved {$approved_liters} L of {$req['fuel_type']}", $audit_note]);
-                } catch (Exception $ignored) {}
-
-                $pdo->commit();
-                $_SESSION['success'] = "Fuel request approved & PO generated. {$approved_liters} L of {$req['fuel_type']} &mdash; Pending Admin validation.";
-            } catch (Exception $e) {
-                if ($pdo->inTransaction()) $pdo->rollBack();
-                $_SESSION['error'] = 'Error: ' . $e->getMessage();
+                    // Audit trail for stock request
+                    $audit_stmt = $pdo->prepare("
+                        INSERT INTO stock_request_audit
+                            (stock_request_id, action_type, performed_by, performed_by_role, old_status, new_status, notes)
+                        VALUES (?, 'Approved', ?, ?, 'Pending', 'Approved', ?)
+                    ");
+                    $audit_stmt->execute([
+                        $item['stock_req_id'], $me['id'], $role, "Approved by Manager. Associated with Purchase Request: $pr_number"
+                    ]);
+                }
             }
-        } else {
-            $_SESSION['error'] = 'Approved liters must be greater than 0.';
+
+            log_activity($pdo, $me['id'], 'Generate Purchase Request', "Generated Merchandise Purchase Request: $pr_number");
+            $pdo->commit();
+            $_SESSION['success'] = "Merchandise Purchase Request <strong>$pr_number</strong> generated successfully and forwarded to Admin.";
+
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $_SESSION['error'] = "Error: " . $e->getMessage();
         }
-        header('Location: manager_stock_request_review.php?subtab=fuel'); exit;
+
+        header('Location: manager_stock_request_review.php');
+        exit;
     }
 
-    // 5b. Add Fuel Request Remarks / Review
-    if ($action === 'fuel_add_remarks') {
-        $req_id = (int)($_POST['request_id'] ?? 0);
-        $remarks = trim($_POST['remarks'] ?? '');
-        if ($req_id > 0) {
+    // 2. Cancel Purchase Request
+    if ($action === 'cancel_pr') {
+        $po_id = (int)($_POST['po_id'] ?? 0);
+        if ($po_id > 0) {
             try {
-                $pdo->prepare("
-                    UPDATE fuel_stock_requests 
-                    SET manager_notes = ?, updated_at = NOW()
-                    WHERE id = ? AND station_id = ?
-                ")->execute([$remarks, $req_id, $station_id]);
+                $pdo->beginTransaction();
+                
+                $stmt = $pdo->prepare("SELECT * FROM purchase_orders WHERE id = ? AND station_id = ?");
+                $stmt->execute([$po_id, $station_id]);
+                $po = $stmt->fetch(PDO::FETCH_ASSOC);
 
-                log_activity($pdo, $me['id'], 'Update Fuel Request Remarks', "Remarks updated for Request FSR-" . str_pad($req_id, 4, '0', STR_PAD_LEFT));
-                $_SESSION['success'] = "Remarks updated successfully for Request FSR-" . str_pad($req_id, 4, '0', STR_PAD_LEFT) . ".";
-            } catch (Exception $e) {
-                $_SESSION['error'] = 'Error updating remarks: ' . $e->getMessage();
-            }
-        } else {
-            $_SESSION['error'] = 'Invalid request ID.';
-        }
-        header('Location: manager_stock_request_review.php?subtab=fuel'); exit;
-    }
+                if ($po && in_array($po['status'], ['Pending', 'Pending Admin Validation', 'Pending Approval', 'Draft'])) {
+                    // Update status to Cancelled
+                    $pdo->prepare("UPDATE purchase_orders SET status = 'Cancelled', updated_at = NOW() WHERE id = ?")->execute([$po_id]);
 
-
-    // 6. Reject Fuel Stock Request
-    if ($action === 'fuel_reject') {
-        $req_id = (int)($_POST['request_id'] ?? 0);
-        $manager_notes = trim($_POST['manager_notes'] ?? '');
-
-        if ($req_id > 0 && !empty($manager_notes)) {
-            try {
-                $stmt = $pdo->prepare("SELECT * FROM fuel_stock_requests WHERE id = ? AND station_id = ?");
-                $stmt->execute([$req_id, $station_id]);
-                $req = $stmt->fetch(PDO::FETCH_ASSOC);
-
-                if ($req && strtolower($req['status']) === 'pending') {
-                    $pdo->beginTransaction();
-                    $pdo->prepare("
-                        UPDATE fuel_stock_requests
-                        SET status='Rejected', manager_id=?, manager_notes=?,
-                            processed_at=NOW(), updated_at=NOW()
-                        WHERE id=?
-                    ")->execute([$me['id'], $manager_notes, $req_id]);
-
-                    $note = "Rejected by {$me['name']}. Reason: {$manager_notes}";
-                    $pdo->prepare("
-                        INSERT INTO fuel_stock_request_audit
-                            (request_id, action_type, performed_by, performed_by_role, old_status, new_status, notes)
-                        VALUES (?, 'Rejected', ?, ?, 'Pending', 'Rejected', ?)
-                    ")->execute([$req_id, $me['id'], $role, $note]);
-
-                    try {
+                    // Restore linked stock requests back to Pending
+                    if ($po['request_id']) {
                         $pdo->prepare("
-                            INSERT INTO audit_trail (transaction_id, manager_id, station_id, action_type, new_value, notes, created_at)
-                            VALUES (?, ?, ?, 'Reject Fuel Request', ?, ?, NOW())
-                        ")->execute(['FSR-'.$req_id, $me['id'], $station_id, "Rejected {$req['fuel_type']} ({$req['requested_liters']} L)", $note]);
-                    } catch (Exception $ignored) {}
+                            UPDATE stock_requests sr
+                            JOIN purchase_order_items poi ON poi.product_id = sr.item_id AND sr.status = 'Approved'
+                            SET sr.status = 'Pending', sr.approved_quantity = NULL, sr.processed_at = NULL 
+                            WHERE poi.po_id = ? AND sr.station_id = ?
+                        ")->execute([$po_id, $station_id]);
+                    }
 
+                    log_activity($pdo, $me['id'], 'Cancel Purchase Request', "Cancelled Purchase Request: {$po['po_number']}");
                     $pdo->commit();
-                    $_SESSION['success'] = 'Fuel request rejected successfully.';
+                    $_SESSION['success'] = "Purchase Request <strong>{$po['po_number']}</strong> has been cancelled.";
                 } else {
-                    $_SESSION['error'] = 'Request not found or already processed.';
+                    throw new Exception("Unable to cancel. Purchase Request not found or already processed.");
                 }
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
+                $_SESSION['error'] = "Error: " . $e->getMessage();
+            }
+        }
+        header('Location: manager_stock_request_review.php');
+        exit;
+    }
+
+    // 3. Generate Fuel Purchase Request
+    if ($action === 'generate_fuel_pr') {
+        $pr_number       = trim($_POST['pr_number'] ?? '');
+        $expected_delivery = trim($_POST['expected_delivery'] ?? '');
+        $remarks         = trim($_POST['remarks'] ?? '');
+        $fuel_quantities = $_POST['fuel_quantities'] ?? [];  // fuel_type_id => liters
+        $fuel_req_id     = (int)($_POST['fuel_req_id'] ?? 0);
+
+        if (empty($pr_number)) {
+            $pr_number = 'FPR-' . date('Ymd') . '-' . str_pad(rand(1,9999), 4, '0', STR_PAD_LEFT);
+        }
+        try {
+            $pdo->beginTransaction();
+            $supplier_id = (int)($pdo->query("SELECT id FROM suppliers LIMIT 1")->fetchColumn() ?: 1);
+            $inserted = 0;
+            foreach ($fuel_quantities as $fuel_type_id => $liters) {
+                $liters = (float)$liters;
+                if ($liters <= 0) continue;
+                $fp = $pdo->prepare("SELECT price_per_liter FROM fuel_inventory WHERE fuel_type_id = ? AND station_id = ? LIMIT 1");
+                $fp->execute([$fuel_type_id, $station_id]);
+                $price = (float)($fp->fetchColumn() ?: 60.00);
+                $note_text = ($fuel_req_id > 0 ? "[FSR:{$fuel_req_id}] " : '') . $remarks;
+                $pdo->prepare("
+                    INSERT INTO fuel_purchase_orders
+                        (po_number, station_id, fuel_type_id, volume, unit_price, total_amount,
+                         supplier_id, expected_delivery_date, status, created_by, notes, batch_id, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending Admin Validation', ?, ?, ?, NOW(), NOW())
+                ")->execute([
+                    $pr_number, $station_id, $fuel_type_id, $liters, $price, $liters * $price,
+                    $supplier_id, $expected_delivery ?: null, $me['id'], $note_text, $pr_number
+                ]);
+                $inserted++;
+            }
+            if ($inserted === 0) throw new Exception('Enter liters for at least one fuel type.');
+            if ($fuel_req_id > 0) {
+                $pdo->prepare("UPDATE fuel_stock_requests SET status='Approved', manager_id=?, processed_at=NOW() WHERE id=? AND station_id=?")
+                    ->execute([$me['id'], $fuel_req_id, $station_id]);
+            }
+            if (function_exists('log_activity')) log_activity($pdo, $me['id'], 'Generate Fuel PR', "Generated Fuel PR: $pr_number");
+            $pdo->commit();
+            $_SESSION['success'] = "Fuel Purchase Request <strong>$pr_number</strong> generated and forwarded to Admin.";
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $_SESSION['error'] = 'Error: ' . $e->getMessage();
+        }
+        header('Location: manager_stock_request_review.php?tab=fuel'); exit;
+    }
+
+    // 4. Cancel Fuel Purchase Request
+    if ($action === 'cancel_fuel_pr') {
+        $batch_id = trim($_POST['batch_id'] ?? '');
+        if ($batch_id) {
+            try {
+                $chk = $pdo->prepare("SELECT status FROM fuel_purchase_orders WHERE batch_id=? AND station_id=? LIMIT 1");
+                $chk->execute([$batch_id, $station_id]);
+                $fst = $chk->fetchColumn();
+                if (in_array($fst, ['Pending', 'Pending Admin Validation', 'Draft'])) {
+                    $pdo->prepare("UPDATE fuel_purchase_orders SET status='Cancelled' WHERE batch_id=? AND station_id=?")
+                        ->execute([$batch_id, $station_id]);
+                    $_SESSION['success'] = "Fuel PR <strong>$batch_id</strong> cancelled.";
+                } else {
+                    throw new Exception('Cannot cancel a request with status: ' . $fst);
+                }
+            } catch (Exception $e) {
                 $_SESSION['error'] = 'Error: ' . $e->getMessage();
             }
-        } else {
-            $_SESSION['error'] = 'Rejection reason is required.';
         }
-        header('Location: manager_stock_request_review.php?subtab=fuel'); exit;
+        header('Location: manager_stock_request_review.php?tab=fuel'); exit;
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Fetch and Calculate Data
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Fetch Summary Metrics ───────────────────────────────────────────────────
+try {
+    $stats_stmt = $pdo->prepare("
+        SELECT 
+            COUNT(*) AS total_prs,
+            SUM(CASE WHEN status IN ('Pending', 'Pending Admin Validation', 'Pending Approval', 'Draft') THEN 1 ELSE 0 END) AS pending_prs,
+            SUM(CASE WHEN status IN ('Approved', 'Approved PO', 'Confirmed', 'Official', 'Admin Finalized') THEN 1 ELSE 0 END) AS generated_prs,
+            SUM(CASE WHEN status IN ('Approved', 'Approved PO', 'Confirmed', 'Official', 'Admin Finalized') AND COALESCE(stock_in_done, 0) = 0 THEN 1 ELSE 0 END) AS waiting_delivery_prs
+        FROM purchase_orders
+        WHERE type = 'merch' AND station_id = ?
+    ");
+    $stats_stmt->execute([$station_id]);
+    $stats = $stats_stmt->fetch(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $stats = [];
+}
 
-// Calculate summary cards metrics
-$stmt = $pdo->prepare("
-    SELECT 
-        COUNT(*) AS total_count,
-        SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END) AS pending_count,
-        SUM(CASE WHEN status IN ('Approved', 'Approved by Manager', 'Validated') THEN 1 ELSE 0 END) AS approved_count,
-        SUM(CASE WHEN status = 'Rejected' THEN 1 ELSE 0 END) AS rejected_count,
-        COALESCE(SUM(requested_quantity), 0) AS total_items
-    FROM stock_requests 
-    WHERE station_id = ? AND LOWER(COALESCE(item_category, '')) != 'fuel'
-");
-$stmt->execute([$station_id]);
-$stats = $stmt->fetch(PDO::FETCH_ASSOC);
+$total_prs = $stats['total_prs'] ?? 0;
+$pending_prs = $stats['pending_prs'] ?? 0;
+$generated_prs = $stats['generated_prs'] ?? 0;
+$waiting_delivery_prs = $stats['waiting_delivery_prs'] ?? 0;
 
-$summary_total_requests = $stats['total_count'];
-$summary_pending_requests = $stats['pending_count'];
-$summary_approved_requests = $stats['approved_count'];
-$summary_rejected_requests = $stats['rejected_count'];
-$summary_total_items = $stats['total_items'];
-
-// Fetch all requests
-$requests_list = [];
-$categories_list = [];
-$requesters_list = [];
+// ── Fetch Purchase Requests ──────────────────────────────────────────────────
+$purchase_requests = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT sr.*, COALESCE(u.name, 'Unknown Staff') AS staff_name, 
-               m.name AS manager_name,
-               COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
-               COALESCE(si.unit, 'pcs') AS unit,
-               COALESCE(ip.unit_price, 145.00) AS unit_price,
-               ip.sku AS prod_sku,
-               po.po_number,
-               po.status AS po_status,
-               po.total_amount AS po_total,
-               po.created_at AS po_created,
-               po.remarks AS po_remarks,
-               s.name AS po_supplier
-        FROM stock_requests sr 
-        LEFT JOIN users u ON sr.staff_id = u.id 
-        LEFT JOIN users m ON sr.manager_id = m.id
-        LEFT JOIN inventory_products ip ON sr.item_id = ip.id
-        LEFT JOIN station_inventory si ON sr.item_id = si.product_id AND si.station_id = sr.station_id
-        LEFT JOIN purchase_orders po ON po.request_id = sr.id AND po.type = 'merch'
-        LEFT JOIN suppliers s ON po.supplier_id = s.id
-        WHERE sr.station_id = ? AND LOWER(COALESCE(sr.item_category, '')) != 'fuel'
-        ORDER BY CASE sr.status WHEN 'Pending' THEN 1 ELSE 2 END, sr.created_at DESC
+        SELECT po.*, 
+               u.name AS prepared_by_name,
+               sr.id AS linked_stock_request_id,
+               sr_u.name AS requested_by_name,
+               (SELECT COUNT(*) FROM purchase_order_items WHERE po_id = po.id) AS total_products
+        FROM purchase_orders po
+        LEFT JOIN users u ON po.created_by = u.id
+        LEFT JOIN stock_requests sr ON po.request_id = sr.id
+        LEFT JOIN users sr_u ON sr.staff_id = sr_u.id
+        WHERE po.station_id = ? AND po.type = 'merch'
+        ORDER BY po.created_at DESC
     ");
     $stmt->execute([$station_id]);
-    $requests_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    foreach ($requests_list as $r) {
-        $cat = $r['item_category'] ?? '';
-        if ($cat !== '') {
-            $categories_list[$cat] = true;
-        }
-        $reqBy = $r['staff_name'] ?? '';
-        if ($reqBy !== '') {
-            $requesters_list[$reqBy] = true;
-        }
+    $purchase_requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+// ── Fetch Pending Stock Requests (grouped by staff + timestamp) ──────────────
+$pending_items = [];
+try {
+    $pending_stmt = $pdo->prepare("
+        SELECT sr.*, u.name AS staff_name, 
+               COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
+               COALESCE(si.stock_level, ip.stock_quantity, ip.stock, sr.current_stock, 0) AS current_stock_actual,
+               COALESCE(si.unit, ip.size, 'pcs') AS unit,
+               ip.sku AS prod_sku
+        FROM stock_requests sr
+        LEFT JOIN users u ON sr.staff_id = u.id
+        LEFT JOIN inventory_products ip ON sr.item_id = ip.id
+        LEFT JOIN station_inventory si ON sr.item_id = si.product_id AND si.station_id = sr.station_id
+        WHERE sr.station_id = ? AND sr.status = 'Pending' AND LOWER(COALESCE(sr.item_category, '')) != 'fuel'
+        ORDER BY sr.created_at DESC
+    ");
+    $pending_stmt->execute([$station_id]);
+    $pending_items = $pending_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+$grouped_requests = [];
+foreach ($pending_items as $item) {
+    $time_key = date('YmdHi', strtotime($item['created_at']));
+    // Group by staff ID and the YYYYMMDDHHMM timestamp
+    $group_key = $item['staff_id'] . '_' . $time_key;
+    if (!isset($grouped_requests[$group_key])) {
+        $grouped_requests[$group_key] = [
+            'staff_name' => $item['staff_name'],
+            'created_at' => $item['created_at'],
+            'date_formatted' => date('M d, Y h:i A', strtotime($item['created_at'])),
+            'items' => []
+        ];
     }
-    ksort($categories_list);
-    ksort($requesters_list);
-} catch (Exception $e) {
-    // Fail silently
+    $grouped_requests[$group_key]['items'][] = $item;
 }
 
-// ── Fetch Fuel Stock Requests (from staff) ───────────────────────────────────
-$fuel_requests_list = [];
+// ── Fetch Active Products (for manual addition) ─────────────────────────────
+$all_station_products = [];
 try {
-    $fstmt = $pdo->prepare("
-        SELECT fsr.*, COALESCE(u.name, 'Unknown Staff') AS staff_name
+    $products_stmt = $pdo->prepare("
+        SELECT ip.*, 
+               COALESCE(si.stock_level, ip.stock_quantity, ip.stock, 0) AS current_stock_actual, 
+               COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
+               COALESCE(si.unit, ip.size, 'pcs') AS stock_unit
+        FROM inventory_products ip
+        LEFT JOIN station_inventory si ON ip.id = si.product_id AND si.station_id = ?
+        WHERE ip.station_id = ? AND LOWER(ip.category) != 'fuel' AND ip.status = 'active'
+        ORDER BY ip.product_name ASC
+    ");
+    $products_stmt->execute([$station_id, $station_id]);
+    $all_station_products = $products_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+// ── Fetch PO Items Grouped by PO ID ─────────────────────────────────────────
+$po_items_grouped = [];
+try {
+    $items_stmt = $pdo->prepare("
+        SELECT poi.* 
+        FROM purchase_order_items poi
+        JOIN purchase_orders po ON poi.po_id = po.id
+        WHERE po.station_id = ? AND po.type = 'merch'
+    ");
+    $items_stmt->execute([$station_id]);
+    $all_po_items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($all_po_items as $item) {
+        $po_items_grouped[$item['po_id']][] = $item;
+    }
+} catch (Exception $e) {}
+
+// ── Active tab ────────────────────────────────────────────────────────────────
+$active_tab = $_GET['tab'] ?? 'merchandise';
+
+// ── Fuel PRs grouped by batch_id ─────────────────────────────────────────────
+$fuel_prs = [];
+try {
+    $fp_stmt = $pdo->prepare("
+        SELECT fpo.batch_id, fpo.po_number, fpo.status, fpo.expected_delivery_date,
+               MIN(fpo.created_at) AS created_at,
+               u.name AS prepared_by_name,
+               GROUP_CONCAT(DISTINCT COALESCE(fi.fuel_type, CONCAT('Type#',fpo.fuel_type_id))
+                   ORDER BY COALESCE(fi.fuel_type,'') SEPARATOR ', ') AS fuel_types,
+               COUNT(DISTINCT fpo.id) AS total_fuel_items,
+               SUM(fpo.total_amount) AS batch_total,
+               MAX(fpo.notes) AS notes
+        FROM fuel_purchase_orders fpo
+        LEFT JOIN users u ON fpo.created_by = u.id
+        LEFT JOIN (SELECT DISTINCT fuel_type_id, fuel_type FROM fuel_inventory) fi ON fpo.fuel_type_id = fi.fuel_type_id
+        WHERE fpo.station_id = ?
+        GROUP BY fpo.batch_id, fpo.po_number, fpo.status, fpo.expected_delivery_date, u.name
+        ORDER BY MIN(fpo.created_at) DESC
+    ");
+    $fp_stmt->execute([$station_id]);
+    $fuel_prs = $fp_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+// ── Fuel PR items grouped by batch_id ────────────────────────────────────────
+$fuel_pr_items_grouped = [];
+try {
+    $fpi_stmt = $pdo->prepare("
+        SELECT fpo.*, COALESCE(fi.fuel_type, CONCAT('Type#',fpo.fuel_type_id)) AS fuel_type_name
+        FROM fuel_purchase_orders fpo
+        LEFT JOIN (SELECT DISTINCT fuel_type_id, fuel_type FROM fuel_inventory) fi ON fpo.fuel_type_id = fi.fuel_type_id
+        WHERE fpo.station_id = ?
+    ");
+    $fpi_stmt->execute([$station_id]);
+    foreach ($fpi_stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $fuel_pr_items_grouped[$row['batch_id']][] = $row;
+    }
+} catch (Exception $e) {}
+
+// ── Fuel Summary Stats ───────────────────────────────────────────────────────
+$fuel_total_prs = count($fuel_prs);
+$fuel_pending_prs = 0; $fuel_generated_prs = 0; $fuel_waiting_prs = 0;
+foreach ($fuel_prs as $fp) {
+    if (in_array($fp['status'], ['Pending','Pending Admin Validation','Draft'])) {
+        $fuel_pending_prs++;
+    } elseif (in_array($fp['status'], ['Approved PO','Approved','Confirmed','Official','Admin Finalized'])) {
+        $fuel_generated_prs++;
+        // Waiting for delivery = no actual delivery yet
+        $items = $fuel_pr_items_grouped[$fp['batch_id']] ?? [];
+        $has_delivery = false;
+        foreach ($items as $it) { if ($it['actual_volume'] > 0) { $has_delivery = true; break; } }
+        if (!$has_delivery) $fuel_waiting_prs++;
+    }
+}
+
+// ── Pending Fuel Stock Requests ───────────────────────────────────────────────
+$fuel_inventory_list = [];
+try {
+    $fi_stmt = $pdo->prepare("SELECT * FROM fuel_inventory WHERE station_id = ? ORDER BY fuel_type");
+    $fi_stmt->execute([$station_id]);
+    $fuel_inventory_list = $fi_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+$pending_fuel_requests = [];
+try {
+    $pfr_stmt = $pdo->prepare("
+        SELECT fsr.*, u.name AS staff_name
         FROM fuel_stock_requests fsr
         LEFT JOIN users u ON fsr.staff_id = u.id
-        WHERE fsr.station_id = ?
-        ORDER BY
-            CASE fsr.status WHEN 'Pending' THEN 1 ELSE 2 END,
-            fsr.created_at DESC
+        WHERE fsr.station_id = ? AND fsr.status = 'Pending'
+        ORDER BY fsr.created_at DESC
     ");
-    $fstmt->execute([$station_id]);
-    $fuel_requests_list = $fstmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) { /* fail silently */ }
+    $pfr_stmt->execute([$station_id]);
+    $pending_fuel_requests = $pfr_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
 
-$fuel_pending_count  = count(array_filter($fuel_requests_list, fn($r) => strtolower($r['status']) === 'pending'));
-$fuel_approved_count = count(array_filter($fuel_requests_list, fn($r) => strtolower($r['status']) === 'approved'));
-$fuel_rejected_count = count(array_filter($fuel_requests_list, fn($r) => strtolower($r['status']) === 'rejected'));
-
-$active_sub_tab = $_GET['subtab'] ?? 'merchandise';
+// Fuel PR number auto-gen
+$f_today = date('Ymd');
+try {
+    $fpr_c = $pdo->prepare("SELECT COUNT(DISTINCT batch_id) FROM fuel_purchase_orders WHERE batch_id LIKE ?");
+    $fpr_c->execute(["FPR-{$f_today}-%"]);
+    $fpr_seq = (int)$fpr_c->fetchColumn() + 1;
+} catch (Exception $e) { $fpr_seq = 1; }
+$fpr_number_auto = 'FPR-' . $f_today . '-' . str_pad($fpr_seq, 4, '0', STR_PAD_LEFT);
 
 include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-/* == PAGE HEADER - matches standard Petron dashboard layout == */
-.int-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-bottom: 20px;
-    margin-top: 0px !important;
+/* Modern, Clean Styles aligned with SuperAdmin dashboard aesthetics */
+.pr-container {
+    padding: 24px;
+    font-family: 'Inter', sans-serif;
+    color: #1e293b;
 }
-.int-head h1 {
-    font-size: 20px;
+.pr-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+.pr-title {
+    font-size: 24px;
     font-weight: 800;
     color: #002F6C;
     margin: 0;
     display: flex;
     align-items: center;
-    gap: 8px;
-    letter-spacing: -0.5px;
+    gap: 10px;
 }
-.int-head .sub {
-    font-size: 12px;
+.pr-subtitle {
+    font-size: 13px;
     color: #64748b;
-    margin-top: 2px;
+    margin-top: 4px;
 }
-
-/* Custom Table & Badge styling */
-.table-wrap {
-    overflow-x: auto;
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+    margin-bottom: 24px;
+}
+.summary-card {
     background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.summary-card-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+}
+.summary-card-value {
+    font-size: 28px;
+    font-weight: 800;
+    color: #002F6C;
+    margin-top: 6px;
+}
+.summary-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+}
+.bg-total { background: #eff6ff; color: #1d4ed8; }
+.bg-pending { background: #fffbeb; color: #d97706; }
+.bg-generated { background: #f0fdf4; color: #16a34a; }
+.bg-waiting { background: #faf5ff; color: #9333ea; }
+
+.action-bar {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+.action-buttons {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+.btn-pr {
+    padding: 8px 16px;
     border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+    text-decoration: none;
 }
-.table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12.5px;
-}
-.table th {
+.btn-primary-pr {
     background: #002F6C;
     color: #fff;
-    font-weight: 700;
-    text-align: left;
-    padding: 11px 14px;
-    border-bottom: 1px solid #e2e8f0;
-    white-space: nowrap;
 }
-.table td {
-    padding: 11px 14px;
-    border-bottom: 1px solid #f1f5f9;
+.btn-primary-pr:hover {
+    background: #001f4d;
+}
+.btn-outline-pr {
+    background: #fff;
+    border-color: #cbd5e1;
+    color: #475569;
+}
+.btn-outline-pr:hover {
+    background: #f8fafc;
+    border-color: #94a3b8;
+}
+
+.tab-nav {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 1px;
+}
+.tab-btn {
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #64748b;
+    border: none;
+    background: none;
+    border-bottom: 3px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+.tab-btn:hover {
+    color: #002F6C;
+}
+.tab-btn.active {
+    color: #002F6C;
+    border-bottom-color: #002F6C;
+}
+
+
+.table-wrap-pr {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    overflow-x: auto;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.table-pr {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.table-pr th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: .5px;
+    padding: 14px 18px;
+    border-bottom: 1px solid #e2e8f0;
+    text-align: left;
+}
+.table-pr td {
+    padding: 14px 18px;
+    border-bottom: 1px solid #e2e8f0;
     color: #334155;
     vertical-align: middle;
 }
-.table tr:hover {
+.table-pr tr:hover td {
     background: #f8fafc;
 }
-
-.badge-pending {
-    background: #fff3cd;
-    color: #856404;
-    border: 1px solid #ffeeba;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 700;
-    display: inline-block;
-    white-space: nowrap;
-}
-.badge-approved {
-    background: #d4edda;
-    color: #155724;
-    border: 1px solid #c3e6cb;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 700;
-    display: inline-block;
-    white-space: nowrap;
-}
-.badge-rejected {
-    background: #f8d7da;
-    color: #721c24;
-    border: 1px solid #f5c6cb;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 700;
-    display: inline-block;
-    white-space: nowrap;
-}
-.badge-revision {
-    background: #ffe8cc;
-    color: #d97706;
-    border: 1px solid #ffd8a8;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 700;
-    display: inline-block;
-    white-space: nowrap;
-}
-
-.flt-btn {
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    border: 1px solid #cbd5e1;
-    background: #fff;
-    transition: all .15s;
-}
-.flt-btn:hover { background: #f1f5f9; }
-.flt-btn-excel { color: #16a34a !important; border-color: #16a34a !important; }
-.flt-btn-excel:hover  { background: #16a34a !important; color: #fff !important; }
-.flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
-.flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
-
-/* == Transaction Action Buttons (txn-btn style) == */
-.txn-btn {
+.status-badge {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    gap: 5px;
-    padding: 5px 10px;
-    border-radius: 5px;
+    padding: 4px 10px;
+    border-radius: 9999px;
     font-size: 11px;
     font-weight: 700;
-    cursor: pointer;
-    white-space: nowrap;
-    line-height: 1.2;
-    width: 100%;
-    transition: all .18s;
-    background: white !important;
-    border: 1px solid transparent;
-    text-decoration: none;
-    box-sizing: border-box;
+    text-transform: uppercase;
+    letter-spacing: .3px;
 }
-.txn-btn-info { color: #6b7280 !important; border-color: #6b7280 !important; }
-.txn-btn-info:hover { background: #6b7280 !important; color: #fff !important; }
-.txn-btn-secondary { color: #002F6C !important; border-color: #002F6C !important; }
-.txn-btn-secondary:hover { background: #002F6C !important; color: #fff !important; }
-.txn-btn-approve { color: #16a34a !important; border-color: #16a34a !important; }
-.txn-btn-approve:hover { background: #16a34a !important; color: #fff !important; }
-.txn-btn-reject { color: #dc2626 !important; border-color: #dc2626 !important; }
-.txn-btn-reject:hover { background: #dc2626 !important; color: #fff !important; }
+.status-pending { background: #fef3c7; color: #d97706; }
+.status-approved { background: #dcfce7; color: #15803d; }
+.status-received { background: #dbeafe; color: #1d4ed8; }
+.status-cancelled { background: #fee2e2; color: #b91c1c; }
 
-/* Modals */
 .modal-overlay {
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(15, 23, 42, 0.6);
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
+    z-index: 10000;
     padding: 20px;
-    overflow-y: auto;
 }
 .modal-overlay.open {
-    opacity: 1;
-    pointer-events: auto;
+    display: flex;
 }
 .modal-box {
     background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
-    width: 90%;
-    max-width: 720px;
-    max-height: 90vh;
-    overflow: hidden;
-    margin: auto;
-    position: relative;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 800px;
+    max-height: calc(100vh - 60px);
     display: flex;
     flex-direction: column;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    animation: modalFadeIn 0.18s ease-out;
+}
+@keyframes modalFadeIn {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
 }
 .modal-header {
     padding: 16px 20px;
@@ -688,1267 +697,1234 @@ include __DIR__ . '/../partials/header.php';
     display: flex;
     align-items: center;
     justify-content: space-between;
-    flex-shrink: 0;
+    background: #002F6C;
+    border-radius: 12px 12px 0 0;
+    color: #fff;
 }
-.modal-header h3 {
-    margin: 0;
+.modal-title {
     font-size: 16px;
     font-weight: 800;
-    color: #002F6C;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.modal-close {
+    background: none;
+    border: none;
+    color: #fff;
+    opacity: 0.8;
+    font-size: 22px;
+    cursor: pointer;
+}
+.modal-close:hover {
+    opacity: 1;
 }
 .modal-body {
     padding: 20px;
     overflow-y: auto;
-    max-height: calc(90vh - 140px);
     flex: 1;
 }
 .modal-footer {
-    padding: 12px 20px;
+    padding: 14px 20px;
     border-top: 1px solid #e2e8f0;
     display: flex;
     justify-content: flex-end;
-    gap: 8px;
-    flex-shrink: 0;
-    background: #fff;
-}
-.btn-cancel {
-    background: #fff;
-    border: 1px solid #cbd5e1;
-    color: #475569;
-    padding: 8px 16px;
-    border-radius: 6px;
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 13px;
-}
-.btn-cancel:hover {
+    gap: 10px;
     background: #f8fafc;
+    border-radius: 0 0 12px 12px;
 }
-/* Modal Action Buttons - Dark Blue Style */
-.btn-primary-modal {
-    background: #002F6C;
-    color: #fff;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 6px;
-    font-weight: 700;
-    font-size: 13px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-.btn-primary-modal:hover {
-    background: #001f4d;
-}
-.btn-approve-confirm {
-    background: #002F6C;
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    padding: 9px 22px;
-    font-weight: 800;
-    font-size: 13px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    transition: all 0.2s;
-}
-.btn-approve-confirm:hover {
-    background: #001f4d;
-}
-.btn-reject-confirm {
-    background: #002F6C;
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    padding: 8px 16px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-.btn-reject-confirm:hover {
-    background: #001f4d;
-}
-
-/* Modal Button Custom Overrides - Plain White Background with Outlines */
-.modal-box .btn-cancel,
-.modal-box .btn-primary-modal,
-.modal-box .btn-approve-confirm,
-.modal-box .btn-reject-confirm {
-    background-color: #ffffff !important;
-    background: #ffffff !important;
-    border-style: solid !important;
-    border-width: 1px !important;
-    border-radius: 6px !important;
-    padding: 8px 16px !important;
-    font-size: 13px !important;
-    font-weight: 700 !important;
-    cursor: pointer !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 6px !important;
-    height: auto !important;
-    box-shadow: none !important;
-    transition: all 0.15s ease !important;
-}
-
-/* Specific button style variants for readability */
-.modal-box .btn-cancel {
-    color: #475569 !important;
-    border-color: #cbd5e1 !important;
-}
-.modal-box .btn-cancel:hover {
-    background-color: #f8fafc !important;
-    border-color: #94a3b8 !important;
-    color: #1e293b !important;
-}
-
-.modal-box .btn-primary-modal,
-.modal-box .btn-approve-confirm {
-    color: #002F6C !important;
-    border-color: #002F6C !important;
-}
-.modal-box .btn-primary-modal:hover,
-.modal-box .btn-approve-confirm:hover {
-    background-color: #002F6C !important;
-    border-color: #002F6C !important;
-    color: #fff !important;
-}
-
-.modal-box .btn-reject-confirm {
-    color: #dc2626 !important;
-    border-color: #dc2626 !important;
-}
-.modal-box .btn-reject-confirm:hover {
-    background-color: #dc2626 !important;
-    border-color: #dc2626 !important;
-    color: #fff !important;
-}
-</style>
-
-<!-- ══ Page Title / Header ══ -->
-<div class="int-head">
-    <div>
-        <h1><i class="fas fa-clipboard-check"></i> Purchase Request Review</h1>
-        <div class="sub">Manage and validate store merchandise replenishment requests.</div>
-    </div>
-</div>
-
-<!-- ══ Flash Messages ══ -->
-<?php if (!empty($_SESSION['success'])): ?>
-    <div style="background:#d1e7dd; color:#0f5132; border:1px solid #badbcc; padding:12px 16px; border-radius:8px; margin-bottom:20px; font-weight:700; display:flex; align-items:center; gap:8px;">
-        <i class="fas fa-check-circle"></i> <?= $_SESSION['success']; unset($_SESSION['success']); ?>
-    </div>
-<?php endif; ?>
-<?php if (!empty($_SESSION['error'])): ?>
-    <div style="background:#f8d7da; color:#842029; border:1px solid #f5c6cb; padding:12px 16px; border-radius:8px; margin-bottom:20px; font-weight:700; display:flex; align-items:center; gap:8px;">
-        <i class="fas fa-exclamation-triangle"></i> <?= $_SESSION['error']; unset($_SESSION['error']); ?>
-    </div>
-<?php endif; ?>
-
-<!-- ══ Summary Cards ══ -->
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;">
-    <!-- Total Requests -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Total Requests</div>
-            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_total_requests) ?></div>
-        </div>
-        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-list-ol"></i></div>
-    </div>
-    <!-- Pending Requests -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Pending Requests</div>
-            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_pending_requests) ?></div>
-        </div>
-        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-hourglass-half"></i></div>
-    </div>
-    <!-- Approved Requests -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Approved Requests</div>
-            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_approved_requests) ?></div>
-        </div>
-        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-check-circle"></i></div>
-    </div>
-    <!-- Rejected Requests -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Rejected Requests</div>
-            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_rejected_requests) ?></div>
-        </div>
-        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
-    </div>
-    <!-- Total Requested Items -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Total Requested Items</div>
-            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_total_items) ?></div>
-        </div>
-        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-boxes"></i></div>
-    </div>
-</div>
-
-<!-- ══ SUB-TAB NAV: Merchandise / Fuel ══ -->
-<style>
-.req-tabs-nav {
-    display: flex;
-    gap: 8px;
+.field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
     margin-bottom: 20px;
-    background: transparent;
-    border-radius: 0;
-    overflow: visible;
-    box-shadow: none;
-    border-bottom: none;
 }
-.req-tab-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 8px 16px;
-    font-size: 13px;
+.field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.field-group label {
+    font-size: 11px;
     font-weight: 700;
-    cursor: pointer;
-    border-radius: 6px;
-    transition: all .2s;
-    text-transform: none;
-    letter-spacing: normal;
-    box-shadow: none;
-    border: 1px solid #cbd5e1;
-    background: #fff;
     color: #475569;
+    text-transform: uppercase;
+    letter-spacing: .5px;
 }
-.req-tab-btn:hover {
-    background: #f8fafc;
-    color: #0f172a;
-    border-color: #94a3b8;
+.field-group input, .field-group select, .field-group textarea {
+    padding: 8px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 13px;
+    outline: none;
+    background: #fff;
+    color: #1e293b;
+    transition: border-color 0.2s;
 }
-.req-tab-btn.active-merch {
-    background: #002F6C !important;
-    color: #fff !important;
-    border-color: #002F6C !important;
+.field-group input:focus, .field-group select:focus, .field-group textarea:focus {
+    border-color: #002F6C;
 }
-.req-tab-btn.active-fuel {
-    background: #002F6C !important;
-    color: #fff !important;
-    border-color: #002F6C !important;
+.field-group input[readonly] {
+    background: #f1f5f9;
+    color: #64748b;
+    cursor: not-allowed;
 }
-.req-tab-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 18px;
-    height: 18px;
-    padding: 0 5px;
-    border-radius: 9px;
-    font-size: 10px;
-    font-weight: 800;
+.table-inner {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 10px;
+}
+.table-inner th {
+    background: #f1f5f9;
+    padding: 10px 12px;
+    border-bottom: 2px solid #cbd5e1;
+    text-align: left;
+    color: #475569;
+    font-weight: 700;
+}
+.table-inner td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #e2e8f0;
+}
+.text-right {
+    text-align: right;
+}
+.badge-secondary {
     background: #e2e8f0;
     color: #475569;
-}
-.req-tab-btn.active-merch .req-tab-badge,
-.req-tab-btn.active-fuel .req-tab-badge {
-    background: rgba(255, 255, 255, 0.2) !important;
-    color: #fff !important;
-}
-.req-tab-pane {
-    display: none;
-}
-.req-tab-pane.active {
-    display: block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
 }
 </style>
 
-<div class="req-tabs-nav">
-  <button class="req-tab-btn <?= $active_sub_tab === 'merchandise' ? 'active-merch' : '' ?>" id="reqTabBtnMerch" onclick="switchReqTab('merchandise')">
-    <i class="fas fa-boxes"></i> Merchandise
-    <span class="req-tab-badge"><?= count($requests_list) ?></span>
-  </button>
-  <button class="req-tab-btn <?= $active_sub_tab === 'fuel' ? 'active-fuel' : '' ?>" id="reqTabBtnFuel" onclick="switchReqTab('fuel')">
-    <i class="fas fa-gas-pump"></i> Fuel
-    <span class="req-tab-badge"><?= count($fuel_requests_list) ?></span>
-  </button>
-</div>
+<div class="pr-container">
 
-<!-- ══ MERCHANDISE TAB ══ -->
-<div class="req-tab-pane <?= $active_sub_tab === 'merchandise' ? 'active' : '' ?>" id="reqTabPaneMerch">
-<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;">
-    
-    <!-- Filter bar layout -->
-    <div style="padding:20px; border-bottom:1px solid #e9ecef; display:flex; flex-direction:column; gap:16px;">
-        <div style="font-size:1rem;font-weight:700;color:#002F70;display:flex;align-items:center;gap:8px;">
-            <i class="fas fa-clipboard-list"></i> Store Purchase Requests
+    <!-- ── Header ── -->
+    <div class="pr-head">
+        <div>
+            <h1 class="pr-title">
+                <?php if ($active_tab === 'fuel'): ?>
+                    <i class="fas fa-gas-pump" style="color: #002F6C;"></i> Fuel Stock Request Review
+                <?php else: ?>
+                    <i class="fas fa-box" style="color: #002F6C;"></i> Merchandise Stock Request Review
+                <?php endif; ?>
+            </h1>
+            <div class="pr-subtitle">
+                <?php if ($active_tab === 'fuel'): ?>
+                    Review and approve fuel stock requests from your station staff.
+                <?php else: ?>
+                    Review and approve merchandise stock requests from your station staff.
+                <?php endif; ?>
+            </div>
         </div>
-        
-        <!-- Grid layout for filters -->
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; align-items:end;">
-            <div>
-                <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:5px;">Date Range</label>
-                <div style="display:flex; align-items:center; gap:6px;">
-                    <input type="date" id="reqDateFrom" onchange="filterReqTable()" style="padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; width:100%;">
-                    <span style="color:#64748b; font-size:12px;">to</span>
-                    <input type="date" id="reqDateTo" onchange="filterReqTable()" style="padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; width:100%;">
+        <div style="font-size: 12px; color: #64748b;">
+            Logged in: <strong style="color: #002F6C;"><?= htmlspecialchars($me['name']) ?></strong> (Manager)
+        </div>
+    </div>
+
+    <!-- ── Flash Alerts ── -->
+    <?php if (!empty($_SESSION['success'])): ?>
+        <div style="background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+            <i class="fas fa-check-circle"></i> <?= $_SESSION['success']; unset($_SESSION['success']); ?>
+        </div>
+    <?php endif; ?>
+    <?php if (!empty($_SESSION['error'])): ?>
+        <div style="background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+            <i class="fas fa-exclamation-circle"></i> <?= $_SESSION['error']; unset($_SESSION['error']); ?>
+        </div>
+    <?php endif; ?>
+
+    <!-- ── Sub Tabs ── -->
+    <div class="tab-nav">
+        <a href="manager_stock_request_review.php?tab=merchandise" class="tab-btn <?= $active_tab === 'merchandise' ? 'active' : '' ?>">
+            <i class="fas fa-boxes"></i> Merchandise Purchase Request
+        </a>
+        <a href="manager_stock_request_review.php?tab=fuel" class="tab-btn <?= $active_tab === 'fuel' ? 'active' : '' ?>">
+            <i class="fas fa-gas-pump"></i> Fuel Purchase Request
+        </a>
+    </div>
+
+    <?php if ($active_tab === 'fuel'): ?>
+        <!-- ==================== FUEL SUB-TAB ==================== -->
+        <!-- ── Summary Cards ── -->
+        <div class="summary-grid">
+            <div class="summary-card">
+                <div>
+                    <div class="summary-card-label">Total Fuel Purchase Requests</div>
+                    <div class="summary-card-value"><?= number_format($fuel_total_prs) ?></div>
                 </div>
+                <div class="summary-icon bg-total"><i class="fas fa-gas-pump"></i></div>
             </div>
-            
-            <div>
-                <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:5px;">Requested By</label>
-                <select id="reqByFilter" onchange="filterReqTable()" style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; width:100%;">
-                    <option value="">All Staff</option>
-                    <?php foreach (array_keys($requesters_list) as $rBy): ?>
-                        <option value="<?= htmlspecialchars(strtolower($rBy)) ?>"><?= htmlspecialchars($rBy) ?></option>
-                    <?php endforeach; ?>
-                </select>
+            <div class="summary-card">
+                <div>
+                    <div class="summary-card-label">Pending</div>
+                    <div class="summary-card-value" style="color: #d97706;"><?= number_format($fuel_pending_prs) ?></div>
+                </div>
+                <div class="summary-icon bg-pending"><i class="fas fa-hourglass-half"></i></div>
             </div>
-            
-            <div>
-                <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:5px;">Product Category</label>
-                <select id="reqCategoryFilter" onchange="filterReqTable()" style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; width:100%;">
-                    <option value="">All Categories</option>
-                    <?php foreach (array_keys($categories_list) as $c): ?>
-                        <option value="<?= htmlspecialchars(strtolower($c)) ?>"><?= htmlspecialchars($c) ?></option>
-                    <?php endforeach; ?>
-                </select>
+            <div class="summary-card">
+                <div>
+                    <div class="summary-card-label">Generated</div>
+                    <div class="summary-card-value" style="color: #16a34a;"><?= number_format($fuel_generated_prs) ?></div>
+                </div>
+                <div class="summary-icon bg-generated"><i class="fas fa-check-circle"></i></div>
             </div>
-            
-            <div>
-                <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:5px;">Status</label>
-                <select id="reqStatusFilter" onchange="filterReqTable()" style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; width:100%;">
+            <div class="summary-card">
+                <div>
+                    <div class="summary-card-label">Waiting for Delivery</div>
+                    <div class="summary-card-value" style="color: #9333ea;"><?= number_format($fuel_waiting_prs) ?></div>
+                </div>
+                <div class="summary-icon bg-waiting"><i class="fas fa-truck"></i></div>
+            </div>
+        </div>
+
+        <!-- ── Action Bar ── -->
+        <div class="action-bar">
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                <input type="text" id="fuelSearchInput" placeholder="Search Fuel PR No. or fuel type..." oninput="filterFuelPrTable()" style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; min-width: 240px; outline: none;">
+                <select id="fuelStatusFilter" onchange="filterFuelPrTable()" style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; background: #fff;">
                     <option value="">All Statuses</option>
-                    <option value="pending">Pending</option>
-                    <option value="approved">Approved by Manager</option>
-                    <option value="rejected">Rejected</option>
-                    <option value="requested revision">Requested Revision</option>
+                    <option value="pending">Pending / Pending Validation</option>
+                    <option value="admin finalized">Admin Finalized</option>
+                    <option value="approved">Approved PO / Confirmed</option>
+                    <option value="received">Received</option>
+                    <option value="cancelled">Cancelled / Rejected</option>
                 </select>
             </div>
-
-            <div>
-                <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:5px;">Search</label>
-                <input type="text" id="reqSearch" placeholder="Search ID / Product..." oninput="filterReqTable()" style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; width:100%; box-sizing:border-box;">
+            <div class="action-buttons">
+                <button onclick="openGenerateFuelModal()" class="btn-pr btn-primary-pr"><i class="fas fa-plus"></i> Generate Fuel Purchase Request</button>
+                <button onclick="exportFuelToPDF()" class="btn-pr btn-outline-pr"><i class="fas fa-file-pdf"></i> Export PDF</button>
+                <button onclick="exportFuelToExcel()" class="btn-pr btn-outline-pr"><i class="fas fa-file-excel"></i> Export Excel</button>
+                <button onclick="exportFuelToCSV()" class="btn-pr btn-outline-pr"><i class="fas fa-file-csv"></i> Export CSV</button>
+                <button onclick="location.reload()" class="btn-pr btn-outline-pr"><i class="fas fa-sync-alt"></i> Refresh</button>
             </div>
         </div>
-    </div>
 
-    <!-- Exact 10 Columns Table requested by user -->
-    <div class="table-wrap">
-        <table class="table" id="mgrReqTable">
-            <thead>
-                <tr>
-                    <th>Request ID</th>
-                    <th>Product</th>
-                    <th style="text-align:center;">Qty</th>
-                    <th>Requested By</th>
-                    <th>Supplier</th>
-                    <th>PO No.</th>
-                    <th>PO Status</th>
-                    <th style="text-align:center;">Status</th>
-                    <th>Decision Date</th>
-                    <th style="text-align:center;width:170px;">Action</th>
-                </tr>
-            </thead>
-            <tbody id="reqTableBody">
-            <?php if (empty($requests_list)): ?>
-                <tr>
-                    <td colspan="10" style="text-align:center;padding:24px;color:#64748b;">
-                        <i class="fas fa-check-circle" style="color:#28a745;font-size:24px;margin-bottom:8px;display:block;"></i>
-                        No purchase requests found.
-                    </td>
-                </tr>
-            <?php else: ?>
-                <?php foreach ($requests_list as $r):
-                    $req_code = 'REQ-' . str_pad($r['id'], 4, '0', STR_PAD_LEFT);
-                    $decision_date = $r['processed_at'] ? date('M d', strtotime($r['processed_at'])) : '—';
-                    $status_lower = strtolower($r['status'] ?? 'pending');
-                    
-                    $badge_class = 'badge-pending';
-                    $status_display = $r['status'];
-                    if (strpos($status_lower, 'approved') !== false || $status_lower === 'validated') {
-                        $badge_class = 'badge-approved';
-                        if ($status_lower === 'approved') $status_display = 'Approved by Manager';
-                    } elseif ($status_lower === 'rejected') {
-                        $badge_class = 'badge-rejected';
-                    } elseif (strpos($status_lower, 'revision') !== false) {
-                        $badge_class = 'badge-revision';
-                    }
-
-                    $po_num_display = $r['po_number'] ?: '—';
-                    $po_status_display = $r['po_status'] ?: '—';
-                    if ($r['po_status'] === 'Pending Admin Validation') {
-                        $po_status_display = 'Pending Admin Approval';
-                    }
-                    $supplier_display = $r['po_supplier'] ?: (strpos($status_lower, 'approved') !== false ? 'Petron Regional Depot' : '—');
-                ?>
-                    <tr class="req-row"
-                        data-category="<?= strtolower(htmlspecialchars($r['item_category'] ?? '')) ?>"
-                        data-status="<?= $status_lower ?>"
-                        data-requested-by="<?= strtolower(htmlspecialchars($r['staff_name'] ?? '')) ?>"
-                        data-date="<?= date('Y-m-d', strtotime($r['created_at'])) ?>"
-                        data-search="<?= strtolower(htmlspecialchars($req_code . ' ' . $r['item_name'] . ' ' . ($r['prod_sku'] ?? '') . ' ' . ($r['staff_name'] ?? '') . ' ' . ($r['po_number'] ?? ''))) ?>">
-                        
-                        <!-- 1. Request ID -->
-                        <td><code style="font-weight:800; color:#002F6C; font-size:12px;"><?= $req_code ?></code></td>
-                        
-                        <!-- 2. Product -->
-                        <td>
-                             <strong><?= htmlspecialchars($r['item_name']) ?></strong><br>
-                             <small style="color:#64748b; font-size:11px;"><?= htmlspecialchars($r['item_category'] ?? 'General') ?></small>
-                        </td>
-                        
-                        <!-- 3. Qty -->
-                        <td style="text-align:center;font-weight:800;color:#002F70;"><?= number_format($r['requested_quantity']) ?></td>
-                        
-                        <!-- 4. Requested By -->
-                        <td><?= htmlspecialchars($r['staff_name'] ?? 'Staff') ?></td>
-                        
-                        <!-- 5. Supplier -->
-                        <td><span style="font-weight:600; color:#475569;"><?= htmlspecialchars($supplier_display) ?></span></td>
-                        
-                        <!-- 6. PO No. -->
-                        <td>
-                            <?php if ($r['po_number']): ?>
-                                <code style="font-weight:700; color:#1e40af; background:#eff6ff; padding:2px 6px; border-radius:4px; border:1px solid #bfdbfe;"><?= htmlspecialchars($r['po_number']) ?></code>
-                            <?php else: ?>
-                                <span style="color:#94a3b8;">—</span>
-                            <?php endif; ?>
-                        </td>
-                        
-                        <!-- 7. PO Status -->
-                        <td>
-                            <?php if ($r['po_status']): ?>
-                                <span style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; padding:3px 7px; border-radius:4px; font-size:10px; font-weight:700; white-space:nowrap; display:inline-block;"><?= htmlspecialchars($po_status_display) ?></span>
-                            <?php else: ?>
-                                <span style="color:#94a3b8;">—</span>
-                            <?php endif; ?>
-                        </td>
-                        
-                        <!-- 8. Status -->
-                        <td style="text-align:center;">
-                            <span class="<?= $badge_class ?>"><?= htmlspecialchars($status_display) ?></span>
-                        </td>
-                        
-                        <!-- 9. Decision Date -->
-                        <td style="font-size:11px;color:#64748b; white-space:nowrap;"><?= $decision_date ?></td>
-                        
-                        <!-- 10. Action -->
-                        <td style="text-align:center;">
-                            <div style="display:flex; flex-direction:column; gap:4px; width:155px; margin:0 auto;">
-                                <!-- View -->
-                                <button class="txn-btn txn-btn-info" onclick="viewReqDetails(<?= htmlspecialchars(json_encode($r)) ?>)">
-                                    <i class="fas fa-eye"></i> View
-                                </button>
-
-                                <!-- Review -->
-                                <button class="txn-btn txn-btn-secondary" onclick="openRemarksModal(<?= htmlspecialchars(json_encode($r)) ?>)">
-                                    <i class="fas fa-comment-dots"></i> Review
-                                </button>
-
-                                <?php if ($status_lower === 'pending' || strpos($status_lower, 'revision') !== false): ?>
-                                    <!-- Generate PO -->
-                                    <button class="txn-btn txn-btn-approve" onclick="openApprovePOModal(<?= htmlspecialchars(json_encode($r)) ?>)">
-                                        <i class="fas fa-file-invoice"></i> Generate PO
-                                    </button>
-                                    
-                                    <!-- Reject -->
-                                    <button class="txn-btn txn-btn-reject" onclick="openRejectModal(<?= htmlspecialchars(json_encode($r)) ?>)">
-                                        <i class="fas fa-times"></i> Reject
-                                    </button>
-                                <?php endif; ?>
-
-                            </div>
-                        </td>
+        <!-- ── Fuel Table ── -->
+        <div class="table-wrap-pr">
+            <table class="table-pr" id="fuelPrTable">
+                <thead>
+                    <tr>
+                        <th>PR No.</th>
+                        <th>Stock Request No.</th>
+                        <th>Requested By</th>
+                        <th>Fuel Types</th>
+                        <th>Request Date</th>
+                        <th>Status</th>
+                        <th style="text-align: right; width: 140px;">Actions</th>
                     </tr>
-                <?php endforeach; ?>
-            <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-    <div id="mgrReqPagination" style="padding:10px 20px;"></div>
-</div>
-</div><!-- /merchandise tab pane -->
-
-<!-- ══ FUEL TAB ══ -->
-<div class="req-tab-pane <?= $active_sub_tab === 'fuel' ? 'active' : '' ?>" id="reqTabPaneFuel">
-<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;">
-  <div style="padding:20px;border-bottom:1px solid #e9ecef;display:flex;flex-direction:column;gap:16px;">
-    <div style="font-size:1rem;font-weight:700;color:#795548;display:flex;align-items:center;gap:8px;">
-      <i class="fas fa-gas-pump"></i> Fuel Stock Requests
-      <span style="background:#795548;color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:800;margin-left:4px;"><?= count($fuel_requests_list) ?></span>
-    </div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
-      <input type="text" id="fuelReqSearch" placeholder="Search Staff / Fuel Type..." oninput="filterFuelTable()"
-             style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:220px;">
-      <select id="fuelStatusFilter" onchange="filterFuelTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
-        <option value="">All Statuses</option>
-        <option value="pending">Pending</option>
-        <option value="approved">Approved</option>
-        <option value="rejected">Rejected</option>
-      </select>
-      <div style="margin-left:auto;display:flex;gap:6px;">
-        <span style="background:#fff3cd;color:#856404;border:1px solid #fde68a;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;"><i class="fas fa-hourglass-half"></i> Pending: <?= $fuel_pending_count ?></span>
-        <span style="background:#d4edda;color:#155724;border:1px solid #c3e6cb;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;"><i class="fas fa-check"></i> Approved: <?= $fuel_approved_count ?></span>
-        <span style="background:#f8d7da;color:#721c24;border:1px solid #f5c6cb;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;"><i class="fas fa-times"></i> Rejected: <?= $fuel_rejected_count ?></span>
-      </div>
-    </div>
-  </div>
-
-  <div class="table-wrap">
-    <table class="table" id="fuelReqTable">
-      <thead>
-        <tr>
-          <th>Request ID</th>
-          <th>Fuel Type</th>
-          <th>Current Level</th>
-          <th style="text-align:center;">Requested (L)</th>
-          <th style="text-align:center;">Approved (L)</th>
-          <th>Requested By</th>
-          <th style="text-align:center;">Status</th>
-          <th>Date</th>
-          <th>Manager Notes</th>
-          <th style="text-align:center;width:150px;">Action</th>
-        </tr>
-      </thead>
-      <tbody id="fuelReqTableBody">
-      <?php if (empty($fuel_requests_list)): ?>
-        <tr>
-          <td colspan="10" style="text-align:center;padding:36px;color:#94a3b8;">
-            <i class="fas fa-gas-pump" style="font-size:2.5rem;display:block;margin-bottom:10px;opacity:.2;"></i>
-            No fuel stock requests found.
-          </td>
-        </tr>
-      <?php else: ?>
-        <?php foreach ($fuel_requests_list as $fr):
-            $fr_code  = 'FSR-' . str_pad($fr['id'], 4, '0', STR_PAD_LEFT);
-            $fr_st    = $fr['status'] ?? 'Pending';
-            $fr_st_lc = strtolower($fr_st);
-            if ($fr_st_lc === 'approved')      { $fr_badge = 'badge-approved'; $fr_badge_lbl = 'Approved'; }
-            elseif ($fr_st_lc === 'rejected')  { $fr_badge = 'badge-rejected'; $fr_badge_lbl = 'Rejected'; }
-            else                               { $fr_badge = 'badge-pending';  $fr_badge_lbl = 'Pending'; }
-            $stock_cls = in_array($fr['stock_status'] ?? 'LOW', ['OUT OF STOCK','CRITICAL']) ? '#dc3545' : '#fd7e14';
-        ?>
-        <tr class="fuel-req-row"
-            data-status="<?= $fr_st_lc ?>"
-            data-search="<?= strtolower(htmlspecialchars($fr_code . ' ' . $fr['fuel_type'] . ' ' . ($fr['staff_name'] ?? ''))) ?>">
-          <td><code style="font-weight:800;color:#795548;font-size:12px;"><?= $fr_code ?></code></td>
-          <td><strong><?= htmlspecialchars($fr['fuel_type']) ?></strong></td>
-          <td><?= number_format($fr['current_level'] ?? 0, 2) ?> L
-            <?php if (!empty($fr['stock_status'])): ?>
-              <span style="color:<?= $stock_cls ?>;font-size:10px;font-weight:700;display:block;"><?= htmlspecialchars($fr['stock_status']) ?></span>
-            <?php endif; ?>
-          </td>
-          <td style="text-align:center;font-weight:800;color:#002F70;">
-            <?= number_format($fr['approved_liters'] ?? $fr['requested_liters'] ?? 0, 2) ?>
-          </td>
-          <td style="text-align:center;">
-            <?php if ($fr['approved_liters'] !== null): ?>
-              <strong style="color:#28a745;"><?= number_format($fr['approved_liters'], 2) ?></strong>
-            <?php else: ?>
-              <span style="color:#94a3b8;">—</span>
-            <?php endif; ?>
-          </td>
-          <td><?= htmlspecialchars($fr['staff_name'] ?? '—') ?></td>
-          <td style="text-align:center;"><span class="<?= $fr_badge ?>"><?= $fr_badge_lbl ?></span></td>
-          <td style="font-size:11px;color:#64748b;white-space:nowrap;"><?= $fr['created_at'] ? date('M d, Y', strtotime($fr['created_at'])) : '—' ?></td>
-          <td style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-              title="<?= htmlspecialchars($fr['manager_notes'] ?? '') ?>">
-            <?= $fr['manager_notes'] ? htmlspecialchars($fr['manager_notes']) : '<span style="color:#94a3b8;">—</span>' ?>
-          </td>
-          <td style="text-align:center;">
-            <div style="display:flex;flex-direction:column;gap:4px;width:155px;margin:0 auto;">
-              <!-- View -->
-              <button class="txn-btn txn-btn-info" onclick="openFuelViewModal(<?= htmlspecialchars(json_encode($fr)) ?>)">
-                <i class="fas fa-eye"></i> View
-              </button>
-              
-              <!-- Review -->
-              <button class="txn-btn txn-btn-secondary" onclick="openFuelRemarksModal(<?= htmlspecialchars(json_encode($fr)) ?>)">
-                <i class="fas fa-comment-dots"></i> Review
-              </button>
-
-              <?php if ($fr_st_lc === 'pending'): ?>
-                <!-- Generate PO -->
-                <button class="txn-btn txn-btn-approve" onclick="openFuelPOModal(<?= htmlspecialchars(json_encode($fr)) ?>)">
-                  <i class="fas fa-file-invoice"></i> Generate PO
-                </button>
-                
-                <!-- Reject -->
-                <button class="txn-btn txn-btn-reject" onclick="openFuelRejectModal(<?= htmlspecialchars(json_encode($fr)) ?>)">
-                  <i class="fas fa-times"></i> Reject
-                </button>
-              <?php endif; ?>
-            </div>
-          </td>
-        </tr>
-        <?php endforeach; ?>
-      <?php endif; ?>
-      </tbody>
-    </table>
-  </div>
-  <div id="fuelReqPagination" style="padding:10px 20px;"></div>
-</div>
-</div><!-- /fuel tab pane -->
-
-<!-- ── Fuel Details Modal (View) ── -->
-<div class="modal-overlay" id="fuelDetailsModal">
-    <div class="modal-box" style="width:500px;">
-        <div class="modal-header">
-            <h3><i class="fas fa-eye"></i> Fuel Request Details</h3>
-        </div>
-        <div class="modal-body">
-            <table style="width:100%; border-collapse:collapse; font-size:13px;">
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b; width:150px;">Request ID:</td><td id="detFuelReqId" style="font-weight:700;color:#795548;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Fuel Type:</td><td id="detFuelType" style="font-weight:700;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Current Level:</td><td id="detFuelCurrentLevel"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Stock Status:</td><td id="detFuelStockStatus" style="font-weight:700;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Requested Liters:</td><td id="detFuelRequestedQty" style="font-weight:700;color:#002F6C;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Approved Liters:</td><td id="detFuelApprovedQty" style="font-weight:700;color:#28a745;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Requested By:</td><td id="detFuelRequestedBy"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Date Requested:</td><td id="detFuelRequestDate"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Status:</td><td id="detFuelStatus" style="font-weight:700;"></td></tr>
-                <tr><td style="padding:8px 0; font-weight:600; color:#64748b;">Manager Remarks:</td><td id="detFuelManagerNotes" style="font-style:italic;"></td></tr>
+                </thead>
+                <tbody id="fuelPrTableBody">
+                    <?php if (empty($fuel_prs)): ?>
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 48px; color: #64748b;">
+                                <i class="fas fa-gas-pump" style="font-size: 32px; color: #cbd5e1; display: block; margin-bottom: 12px;"></i>
+                                No fuel purchase requests found. Click <strong>Generate Fuel Purchase Request</strong> to create one.
+                            </td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($fuel_prs as $fpr): 
+                            $status = $fpr['status'];
+                            $status_class = 'status-pending';
+                            if (in_array($status, ['Approved', 'Approved PO', 'Confirmed', 'Official', 'Admin Finalized'])) {
+                                $status_class = 'status-approved';
+                            } elseif ($status === 'Received') {
+                                $status_class = 'status-received';
+                            } elseif (in_array($status, ['Cancelled', 'Rejected', 'Rejected by Admin'])) {
+                                $status_class = 'status-cancelled';
+                            }
+                            
+                            // Try to parse [FSR:X] from notes
+                            $fsr_no = 'Manual';
+                            if (preg_match('/\[FSR:(\d+)\]/', $fpr['notes'] ?? '', $matches)) {
+                                $fsr_no = 'FSR-' . str_pad($matches[1], 5, '0', STR_PAD_LEFT);
+                            }
+                            
+                            $prepared_by = $fpr['prepared_by_name'] ?: 'Manual (Manager)';
+                        ?>
+                            <tr class="fuel-pr-row" data-search="<?= htmlspecialchars(strtolower($fpr['po_number'] . ' ' . $prepared_by . ' ' . $fpr['fuel_types'])) ?>" data-status="<?= htmlspecialchars(strtolower($status)) ?>">
+                                <td><strong><?= htmlspecialchars($fpr['po_number']) ?></strong></td>
+                                <td style="font-family: monospace; font-size: 12px;"><?= $fsr_no ?></td>
+                                <td><?= htmlspecialchars($prepared_by) ?></td>
+                                <td><?= htmlspecialchars($fpr['fuel_types']) ?></td>
+                                <td><?= date('M d, Y h:i A', strtotime($fpr['created_at'])) ?></td>
+                                <td><span class="status-badge <?= $status_class ?>"><?= htmlspecialchars($status) ?></span></td>
+                                <td style="text-align: right;">
+                                    <button type="button" class="btn-pr btn-outline-pr" onclick="viewFuelPrDetails('<?= htmlspecialchars($fpr['batch_id']) ?>')" style="padding: 4px 8px; font-size: 11px; margin-right: 4px;"><i class="fas fa-eye"></i> View</button>
+                                    <?php if (in_array($status, ['Pending', 'Pending Admin Validation', 'Pending Approval', 'Draft'])): ?>
+                                        <form action="" method="POST" style="display: inline;" onsubmit="return confirm('Are you sure you want to cancel this fuel purchase request?');">
+                                            <input type="hidden" name="action" value="cancel_fuel_pr">
+                                            <input type="hidden" name="batch_id" value="<?= htmlspecialchars($fpr['batch_id']) ?>">
+                                            <button type="submit" class="btn-pr" style="padding: 4px 8px; font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; background: #fff;"><i class="fas fa-ban"></i> Cancel</button>
+                                        </form>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
             </table>
         </div>
-        <div class="modal-footer">
-            <button onclick="closeFuelModal('fuelDetailsModal')" class="btn-cancel">Close</button>
+
+    <?php else: ?>
+        <!-- ==================== MERCHANDISE SUB-TAB ==================== -->
+        <!-- ── Summary Cards ── -->
+        <div class="summary-grid">
+            <div class="summary-card">
+                <div>
+                    <div class="summary-card-label">Total Merchandise Purchase Requests</div>
+                    <div class="summary-card-value"><?= number_format($total_prs) ?></div>
+                </div>
+                <div class="summary-icon bg-total"><i class="fas fa-file-invoice"></i></div>
+            </div>
+            <div class="summary-card">
+                <div>
+                    <div class="summary-card-label">Pending</div>
+                    <div class="summary-card-value" style="color: #d97706;"><?= number_format($pending_prs) ?></div>
+                </div>
+                <div class="summary-icon bg-pending"><i class="fas fa-hourglass-half"></i></div>
+            </div>
+            <div class="summary-card">
+                <div>
+                    <div class="summary-card-label">Generated</div>
+                    <div class="summary-card-value" style="color: #16a34a;"><?= number_format($generated_prs) ?></div>
+                </div>
+                <div class="summary-icon bg-generated"><i class="fas fa-check-circle"></i></div>
+            </div>
+            <div class="summary-card">
+                <div>
+                    <div class="summary-card-label">Waiting for Delivery</div>
+                    <div class="summary-card-value" style="color: #9333ea;"><?= number_format($waiting_delivery_prs) ?></div>
+                </div>
+                <div class="summary-icon bg-waiting"><i class="fas fa-truck"></i></div>
+            </div>
         </div>
-    </div>
+
+        <!-- ── Action Bar ── -->
+        <div class="action-bar">
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                <input type="text" id="prSearchInput" placeholder="Search PR No. or staff..." oninput="filterPrTable()" style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; min-width: 240px; outline: none;">
+                <select id="prStatusFilter" onchange="filterPrTable()" style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; background: #fff;">
+                    <option value="">All Statuses</option>
+                    <option value="pending">Pending / Pending Validation</option>
+                    <option value="admin finalized">Admin Finalized</option>
+                    <option value="approved">Approved PO / Confirmed</option>
+                    <option value="received">Received</option>
+                    <option value="cancelled">Cancelled / Rejected</option>
+                </select>
+            </div>
+            <div class="action-buttons">
+                <button onclick="openGenerateModal()" class="btn-pr btn-primary-pr"><i class="fas fa-plus"></i> Generate Merchandise Purchase Request</button>
+                <button onclick="exportToPDF()" class="btn-pr btn-outline-pr"><i class="fas fa-file-pdf"></i> Export PDF</button>
+                <button onclick="exportToExcel()" class="btn-pr btn-outline-pr"><i class="fas fa-file-excel"></i> Export Excel</button>
+                <button onclick="exportToCSV()" class="btn-pr btn-outline-pr"><i class="fas fa-file-csv"></i> Export CSV</button>
+                <button onclick="location.reload()" class="btn-pr btn-outline-pr"><i class="fas fa-sync-alt"></i> Refresh</button>
+            </div>
+        </div>
+
+        <!-- ── Table ── -->
+        <div class="table-wrap-pr">
+            <table class="table-pr" id="prTable">
+                <thead>
+                    <tr>
+                        <th>PR No.</th>
+                        <th>Stock Request No.</th>
+                        <th>Requested By</th>
+                        <th style="text-align: center;">Total Products</th>
+                        <th>Request Date</th>
+                        <th>Status</th>
+                        <th style="text-align: right; width: 140px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="prTableBody">
+                    <?php if (empty($purchase_requests)): ?>
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 48px; color: #64748b;">
+                                <i class="fas fa-file-invoice" style="font-size: 32px; color: #cbd5e1; display: block; margin-bottom: 12px;"></i>
+                                No merchandise purchase requests found. Click <strong>Generate Merchandise Purchase Request</strong> to create one.
+                            </td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($purchase_requests as $pr): 
+                            $status = $pr['status'];
+                            $status_class = 'status-pending';
+                            if (in_array($status, ['Approved', 'Approved PO', 'Confirmed', 'Official', 'Admin Finalized'])) {
+                                $status_class = 'status-approved';
+                            } elseif ($status === 'Received') {
+                                $status_class = 'status-received';
+                            } elseif (in_array($status, ['Cancelled', 'Rejected', 'Rejected by Admin'])) {
+                                $status_class = 'status-cancelled';
+                            }
+                            
+                            $requested_by = $pr['requested_by_name'] ?: 'Manual (Manager)';
+                            $stock_req = $pr['linked_stock_request_id'] ? 'REQ-' . str_pad($pr['linked_stock_request_id'], 5, '0', STR_PAD_LEFT) : 'Manual';
+                        ?>
+                            <tr class="pr-row" data-search="<?= htmlspecialchars(strtolower($pr['po_number'] . ' ' . $requested_by)) ?>" data-status="<?= htmlspecialchars(strtolower($status)) ?>">
+                                <td><strong><?= htmlspecialchars($pr['po_number']) ?></strong></td>
+                                <td style="font-family: monospace; font-size: 12px;"><?= $stock_req ?></td>
+                                <td><?= htmlspecialchars($requested_by) ?></td>
+                                <td style="text-align: center; font-weight: 700; color: #002F6C;"><?= $pr['total_products'] > 0 ? $pr['total_products'] : '<span style="color:#94a3b8;font-weight:normal;">—</span>' ?></td>
+                                <td><?= date('M d, Y h:i A', strtotime($pr['created_at'])) ?></td>
+                                <td><span class="status-badge <?= $status_class ?>"><?= htmlspecialchars($status) ?></span></td>
+                                <td style="text-align: right;">
+                                    <button type="button" class="btn-pr btn-outline-pr" onclick="viewPrDetails(<?= $pr['id'] ?>)" style="padding: 4px 8px; font-size: 11px; margin-right: 4px;"><i class="fas fa-eye"></i> View</button>
+                                    <?php if (in_array($status, ['Pending', 'Pending Admin Validation', 'Pending Approval', 'Draft'])): ?>
+                                        <form action="" method="POST" style="display: inline;" onsubmit="return confirm('Are you sure you want to cancel this purchase request?');">
+                                            <input type="hidden" name="action" value="cancel_pr">
+                                            <input type="hidden" name="po_id" value="<?= $pr['id'] ?>">
+                                            <button type="submit" class="btn-pr" style="padding: 4px 8px; font-size: 11px; color: #b91c1c; border: 1px solid #fca5a5; background: #fff;"><i class="fas fa-ban"></i> Cancel</button>
+                                        </form>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
+
 </div>
 
-<!-- ── Fuel Remarks Modal (Review) ── -->
-<div class="modal-overlay" id="fuelRemarksModal">
-    <div class="modal-box" style="width:450px;">
+<!-- ════════════════════════════════════════════════════════════
+     MODAL: GENERATE MERCHANDISE PURCHASE REQUEST
+     ════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="generateModal">
+    <div class="modal-box">
         <div class="modal-header">
-            <h3><i class="fas fa-comment-dots"></i> Review Remarks</h3>
+            <h3 class="modal-title"><i class="fas fa-file-invoice"></i> Generate Merchandise Purchase Request</h3>
+            <button class="modal-close" onclick="closeModal('generateModal')">×</button>
         </div>
-        <form action="manager_stock_request_review.php?subtab=fuel" method="POST">
-            <input type="hidden" name="action" value="fuel_add_remarks">
-            <input type="hidden" name="request_id" id="fuelRemarksReqId">
+        <form action="" method="POST" onsubmit="return validatePrForm()">
+            <input type="hidden" name="action" value="generate_merch_pr">
             <div class="modal-body">
-                <div style="margin-bottom:12px;">
-                    <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:5px;">Fuel Type</label>
-                    <div id="fuelRemarksType" style="font-weight:700; font-size:14px; color:#795548;">—</div>
-                </div>
-                <div style="margin-bottom:12px;">
-                    <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:5px;">Remarks / Notes</label>
-                    <textarea name="remarks" id="fuelRemarksInput" rows="4" placeholder="Enter review remarks..." style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; box-sizing:border-box; resize:vertical;"></textarea>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="submit" class="btn-primary-modal">Save Remarks</button>
-                <button type="button" onclick="closeFuelModal('fuelRemarksModal')" class="btn-cancel">Cancel</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- ── Fuel Purchase Order Form Modal (Generate PO) ── -->
-<div class="modal-overlay" id="fuelPOModal">
-    <div class="modal-box" style="width:620px; max-height:90vh; padding:0; overflow:hidden; border-radius:10px; display:flex; flex-direction:column;">
-        <div style="background:#fff; color:#002F6C; padding:16px 24px; border-bottom:2px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
-            <div>
-                <h3 style="margin:0; font-size:16px; font-weight:800; letter-spacing:0.5px; color:#002F6C;"><i class='fas fa-gas-pump' style='margin-right:8px;'></i>Fuel Purchase Order Form</h3>
-                <div style="font-size:11px; color:#64748b; margin-top:2px; font-weight:600; letter-spacing:0.5px;">Generate fuel PO &amp; forward to Admin for final approval</div>
-            </div>
-        </div>
-        <form action="manager_stock_request_review.php?subtab=fuel" method="POST" style="margin:0; display:flex; flex-direction:column; flex:1; min-height:0;">
-            <input type="hidden" name="action" value="fuel_generate_po">
-            <input type="hidden" name="request_id" id="fuelPOReqId">
-            <div style="padding:20px; overflow-y:auto; flex:1;">
                 
-                <!-- Form Fields Grid -->
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; background:#fdfbf7; padding:16px; border-radius:8px; border:1px solid #ebd8c8;">
-                    <div>
-                        <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">PO Number</label>
-                        <input type="text" name="po_number" id="fuelPONumberInput" readonly style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#795548; background:#f0e4dc; box-sizing:border-box;">
+                <div class="field-grid">
+                    <div class="field-group">
+                        <label>Purchase Request No.</label>
+                        <?php
+                        $today = date('Ymd');
+                        // Calculate next sequence
+                        try {
+                            $count_stmt = $pdo->prepare("SELECT COUNT(*) FROM purchase_orders WHERE po_number LIKE ?");
+                            $count_stmt->execute(["PR-$today-%"]);
+                            $seq = $count_stmt->fetchColumn() + 1;
+                        } catch (Exception $e) {
+                            $seq = 1;
+                        }
+                        $pr_number_auto = "PR-$today-" . str_pad($seq, 4, '0', STR_PAD_LEFT);
+                        ?>
+                        <input type="text" name="pr_number" id="prNoInput" value="<?= $pr_number_auto ?>" readonly>
                     </div>
-                    <div>
-                        <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Reference Request</label>
-                        <input type="text" id="fuelPORefReqInput" readonly style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#475569; background:#f0e4dc; box-sizing:border-box;">
-                    </div>
-                    <div>
-                        <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Supplier</label>
-                        <select name="supplier_name" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; box-sizing:border-box;">
-                            <option value="Petron Regional Depot">Petron Regional Depot</option>
-                            <option value="Petron Corporation">Petron Corporation</option>
-                            <option value="Petron Main Depot">Petron Main Depot</option>
+                    <div class="field-group">
+                        <label>Linked Merchandise Stock Request</label>
+                        <select name="linked_stock_request" id="stockRequestSelector" onchange="onStockRequestChanged()">
+                            <option value="">-- Manual Purchase Request (No Link) --</option>
+                            <?php foreach ($grouped_requests as $key => $grp): ?>
+                                <option value="<?= htmlspecialchars($key) ?>">
+                                    Request by <?= htmlspecialchars($grp['staff_name']) ?> (<?= $grp['date_formatted'] ?>) - <?= count($grp['items']) ?> items
+                                </option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
-                    <div>
-                        <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">PO Date</label>
-                        <input type="text" readonly value="<?= date('F d, Y') ?>" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; background:#f5ebe6; box-sizing:border-box;">
+                </div>
+
+                <div class="field-grid">
+                    <div class="field-group">
+                        <label>Date</label>
+                        <input type="text" value="<?= date('M d, Y') ?>" readonly>
                     </div>
-                    <div style="grid-column: span 2;">
-                        <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Expected Delivery</label>
-                        <input type="date" name="expected_delivery" id="fuelPOExpectedDeliveryInput" value="<?= date('Y-m-d', strtotime('+2 days')) ?>" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; box-sizing:border-box;">
+                    <div class="field-group">
+                        <label>Prepared By</label>
+                        <input type="text" value="<?= htmlspecialchars($me['name']) ?>" readonly>
                     </div>
                 </div>
 
-                <!-- ITEMS Section -->
-                <div style="margin-bottom:16px;">
-                    <div style="font-size:12px; font-weight:800; color:#795548; text-transform:uppercase; letter-spacing:0.5px; border-bottom:2px solid #795548; padding-bottom:4px; margin-bottom:10px;">
-                        ITEMS
-                    </div>
-                    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
-                        <table style="width:100%; border-collapse:collapse; font-size:13px;">
-                            <thead>
-                                <tr style="background:#f5ebe6; color:#475569; font-size:11px; text-transform:uppercase;">
-                                    <th style="padding:10px 12px; text-align:left;">Fuel Type</th>
-                                    <th style="padding:10px 12px; text-align:center;">Requested (L)</th>
-                                    <th style="padding:10px 12px; text-align:center;">Approved (L)</th>
-                                    <th style="padding:10px 12px; text-align:right;">Unit Cost / L</th>
-                                    <th style="padding:10px 12px; text-align:right;">Subtotal</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td style="padding:12px; font-weight:700;" id="fuelPOItemName">—</td>
-                                    <td style="padding:12px; text-align:center; font-weight:600;" id="fuelPORequestedQty">0</td>
-                                    <td style="padding:12px; text-align:center; width:110px;">
-                                        <input type="number" name="approved_liters" id="fuelPOApprovedQtyInput" min="0.01" step="0.01" oninput="calcFuelPOSubtotal()" style="width:100%; padding:6px; border:2px solid #795548; border-radius:5px; text-align:center; font-weight:800; font-size:14px; box-sizing:border-box;">
-                                    </td>
-                                    <td style="padding:12px; text-align:right; width:100px;">
-                                        <input type="number" name="unit_cost" id="fuelPOUnitCostInput" value="60.00" min="0.01" step="0.01" oninput="calcFuelPOSubtotal()" style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:5px; text-align:right; font-weight:700; font-size:13px; box-sizing:border-box;">
-                                    </td>
-                                    <td style="padding:12px; text-align:right; font-weight:800; color:#795548; font-size:14px;" id="fuelPOSubtotalDisplay">₱0.00</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                <!-- Manual product search (visible when Manual PR is selected) -->
+                <div id="manualProductContainer" style="margin-bottom: 20px; padding: 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+                    <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; display: block; margin-bottom: 8px;">Add Merchandise Product</label>
+                    <div style="display: flex; gap: 10px;">
+                        <select id="manualProductSelect" style="flex: 1; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px;">
+                            <option value="">-- Select Product to Add --</option>
+                            <?php foreach ($all_station_products as $p): ?>
+                                <option value="<?= $p['id'] ?>" 
+                                        data-name="<?= htmlspecialchars($p['product_name']) ?>" 
+                                        data-stock="<?= $p['current_stock_actual'] ?>" 
+                                        data-reorder="<?= $p['reorder_level'] ?>"
+                                        data-unit="<?= htmlspecialchars($p['stock_unit'] ?: ($p['size'] ?: 'pcs')) ?>">
+                                    <?= htmlspecialchars($p['product_name']) ?> (Stock: <?= $p['current_stock_actual'] ?>)
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <button type="button" class="btn-pr btn-primary-pr" onclick="addManualProductToTable()"><i class="fas fa-plus"></i> Add Product</button>
                     </div>
                 </div>
 
-                <!-- Remarks -->
-                <div style="margin-bottom:16px;">
-                    <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:5px;">Remarks</label>
-                    <textarea name="manager_notes" id="fuelPORemarksInput" rows="2" placeholder="Enter remarks..." style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; box-sizing:border-box; resize:vertical;"></textarea>
+                <div style="margin-top: 15px;">
+                    <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: .5px; display: block; margin-bottom: 8px;">Merchandise Items</label>
+                    <table class="table-inner">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th style="text-align: center; width: 120px;">Current Stock</th>
+                                <th style="text-align: center; width: 120px;">Reorder Level</th>
+                                <th style="width: 140px;">Quantity to Order</th>
+                                <th style="width: 50px; text-align: center;" id="manualThRemove"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="modalItemsBody">
+                            <!-- Items will be populated dynamically -->
+                            <tr>
+                                <td colspan="5" style="text-align: center; padding: 20px; color: #94a3b8;">
+                                    Please select a Linked Stock Request or add products manually.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
 
-                <!-- Generated By -->
-                <div style="font-size:12px; color:#64748b; background:#f8fafc; padding:10px 14px; border-radius:6px; border:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between;">
-                    <span>Generated By:</span>
-                    <strong style="color:#795548; font-size:13px;"><?= htmlspecialchars($me['name'] ?? 'Edgar Eslit') ?></strong>
+                <div class="field-grid" style="margin-top: 20px;">
+                    <div class="field-group">
+                        <label>Expected Delivery Date</label>
+                        <input type="date" name="expected_delivery" min="<?= date('Y-m-d') ?>" required>
+                    </div>
+                    <div class="field-group">
+                        <label>Remarks</label>
+                        <textarea name="remarks" rows="2" placeholder="Optional notes for Admin or supplier..."></textarea>
+                    </div>
                 </div>
 
             </div>
-            <div style="padding:12px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:10px;">
-                <button type="button" onclick="closeFuelModal('fuelPOModal')" class="btn-cancel">Cancel</button>
-                <button type="submit" class="btn-approve-confirm">
-                    <i class="fas fa-check-circle"></i> Generate PO
-                </button>
+            <div class="modal-footer">
+                <button type="button" class="btn-pr btn-outline-pr" onclick="closeModal('generateModal')">❌ Cancel</button>
+                <button type="submit" class="btn-pr btn-primary-pr">✅ Generate Merchandise Purchase Request</button>
             </div>
         </form>
     </div>
 </div>
 
-<!-- ── Fuel Reject Modal ── -->
-<div class="modal-overlay" id="fuelRejectModal">
-  <div class="modal-box" style="width:440px;">
-    <div class="modal-header">
-      <h3><i class="fas fa-times-circle" style="color:#dc3545;"></i> Reject Fuel Request</h3>
-    </div>
-    <form method="post" action="manager_stock_request_review.php?subtab=fuel">
-      <div class="modal-body">
-        <input type="hidden" name="action" value="fuel_reject">
-        <input type="hidden" name="request_id" id="fuelRejectId">
-        <div style="background:#f8f9fa;border:1px solid #e9ecef;border-radius:8px;padding:12px;margin-bottom:14px;text-align:center;">
-          <div style="font-size:11px;color:#888;text-transform:uppercase;margin-bottom:4px;">Fuel Type</div>
-          <div style="font-weight:800;font-size:16px;color:#dc3545;" id="fuelRejectType">—</div>
-        </div>
-        <div style="margin-bottom:12px;">
-          <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px;">Rejection Reason <span style="color:red;">*</span></label>
-          <textarea name="manager_notes" rows="3" required placeholder="Explain why this request is rejected..."
-                    style="width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:6px;resize:vertical;box-sizing:border-box;"></textarea>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="submit" class="btn-reject-confirm">Confirm Reject</button>
-        <button type="button" onclick="closeFuelModal('fuelRejectModal')" class="btn-cancel">Cancel</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- ══ Modal 1: Details Modal (View Request) ══ -->
+<!-- ════════════════════════════════════════════════════════════
+     MODAL: VIEW PURCHASE REQUEST DETAILS
+     ════════════════════════════════════════════════════════════ -->
 <div class="modal-overlay" id="detailsModal">
-    <div class="modal-box" style="width:500px;">
+    <div class="modal-box">
         <div class="modal-header">
-            <h3><i class="fas fa-eye"></i> Purchase Request Details</h3>
+            <h3 class="modal-title"><i class="fas fa-info-circle"></i> Purchase Request Details: <span id="detPrNo">—</span></h3>
+            <button class="modal-close" onclick="closeModal('detailsModal')">×</button>
         </div>
         <div class="modal-body">
-            <table style="width:100%; border-collapse:collapse; font-size:13px;">
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b; width:150px;">Request ID:</td><td id="detReqId" style="font-weight:700;color:#002F70;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Product Name:</td><td id="detProdName" style="font-weight:700;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">SKU:</td><td id="detSku"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Category:</td><td id="detCategory"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Current Stock:</td><td id="detCurrentStock"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Reorder Level:</td><td id="detReorderLevel"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Requested Quantity:</td><td id="detRequestedQty" style="font-weight:700;color:#002F70;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Requested By:</td><td id="detRequestedBy"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Date Requested:</td><td id="detRequestDate"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Staff Reason:</td><td id="detReason" style="font-style:italic;color:#475569;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Status:</td><td id="detStatus" style="font-weight:700;"></td></tr>
-                <tr><td style="padding:8px 0; font-weight:600; color:#64748b;">Manager Remarks:</td><td id="detManagerNotes" style="font-style:italic;"></td></tr>
-            </table>
+            
+            <div class="field-grid">
+                <div class="field-group">
+                    <label>PR Number</label>
+                    <input type="text" id="detPrNoField" readonly>
+                </div>
+                <div class="field-group">
+                    <label>Linked Stock Request</label>
+                    <input type="text" id="detLinkedSrField" readonly>
+                </div>
+            </div>
+
+            <div class="field-grid">
+                <div class="field-group">
+                    <label>Requested By / Prepared By</label>
+                    <input type="text" id="detRequestedByField" readonly>
+                </div>
+                <div class="field-group">
+                    <label>Request Date</label>
+                    <input type="text" id="detDateField" readonly>
+                </div>
+            </div>
+
+            <div class="field-grid">
+                <div class="field-group">
+                    <label>Expected Delivery Date</label>
+                    <input type="text" id="detExpectedDeliveryField" readonly>
+                </div>
+                <div class="field-group">
+                    <label>Status</label>
+                    <div style="margin-top: 5px;">
+                        <span id="detStatusBadge" class="status-badge">—</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="field-group" style="margin-bottom: 20px;">
+                <label>Remarks</label>
+                <textarea id="detRemarksField" rows="2" readonly style="background: #f1f5f9; cursor: not-allowed;"></textarea>
+            </div>
+
+            <div>
+                <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: .5px; display: block; margin-bottom: 8px;">Merchandise Items Ordered</label>
+                <table class="table-inner">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th class="text-right" style="width: 140px;">Quantity Ordered</th>
+                            <th class="text-right" style="width: 140px;">Unit Price</th>
+                            <th class="text-right" style="width: 140px;">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody id="detItemsBody">
+                        <!-- Populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+
         </div>
         <div class="modal-footer">
-            <button onclick="closeDetailsModal()" class="btn-cancel">Close</button>
-        </div>
-    </div>
+            <button type="button" class="btn-pr btn-primary-pr" onclick="closeModal('detailsModal')">Close</button>
+</div>
 </div>
 
-<!-- ══ Modal 2: Purchase Order Form (Approve & Generate PO Modal) ══ -->
-<div class="modal-overlay" id="approvePOModal">
-    <div class="modal-box" style="width:620px; max-height:90vh; padding:0; overflow:hidden; border-radius:10px; display:flex; flex-direction:column;">
-        <div style="background:#fff; color:#002F6C; padding:16px 24px; border-bottom:2px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
-            <div>
-                <h3 style="margin:0; font-size:16px; font-weight:800; letter-spacing:0.5px; color:#002F6C;"><i class='fas fa-file-invoice' style='margin-right:8px;'></i>Purchase Order Form</h3>
-                <div style="font-size:11px; color:#64748b; margin-top:2px; font-weight:600; letter-spacing:0.5px;">Generate &amp; forward to Admin for final approval</div>
-            </div>
+<!-- ════════════════════════════════════════════════════════════
+     MODAL: GENERATE FUEL PURCHASE REQUEST
+     ════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="generateFuelModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 class="modal-title"><i class="fas fa-gas-pump"></i> Generate Fuel Purchase Request</h3>
+            <button class="modal-close" onclick="closeModal('generateFuelModal')">×</button>
         </div>
-        <form action="" method="POST" style="margin:0; display:flex; flex-direction:column; flex:1; min-height:0;">
-            <input type="hidden" name="action" value="approve_generate_po">
-            <input type="hidden" name="request_id" id="poReqId">
-            <div style="padding:20px; overflow-y:auto; flex:1;">
+        <form action="" method="POST" onsubmit="return validateFuelPrForm()">
+            <input type="hidden" name="action" value="generate_fuel_pr">
+            <div class="modal-body">
                 
-                <!-- Form Fields Grid -->
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; background:#f8fafc; padding:16px; border-radius:8px; border:1px solid #e2e8f0;">
-                    <div>
-                        <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">PO Number</label>
-                        <input type="text" name="po_number" id="poNumberInput" readonly style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#002F6C; background:#e2e8f0; box-sizing:border-box;">
+                <div class="field-grid">
+                    <div class="field-group">
+                        <label>Purchase Request No.</label>
+                        <input type="text" name="pr_number" id="fuelPrNoInput" value="<?= $fpr_number_auto ?>" readonly>
                     </div>
-                    <div>
-                        <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Reference Request</label>
-                        <input type="text" id="poRefReqInput" readonly style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#475569; background:#e2e8f0; box-sizing:border-box;">
-                    </div>
-                    <div>
-                        <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Supplier</label>
-                        <select name="supplier_name" id="poSupplierSelect" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; box-sizing:border-box;">
-                            <option value="Petron Regional Depot">Petron Regional Depot</option>
-                            <option value="Petron Main Depot">Petron Main Depot</option>
-                            <option value="Petron Lube Plant Depot">Petron Lube Plant Depot</option>
-                            <option value="Petron Gasul Terminal">Petron Gasul Terminal</option>
+                    <div class="field-group">
+                        <label>Linked Fuel Stock Request</label>
+                        <select name="fuel_req_id" id="fuelRequestSelector" onchange="onFuelRequestChanged()">
+                            <option value="">-- Manual Purchase Request (No Link) --</option>
+                            <?php foreach ($pending_fuel_requests as $fr): ?>
+                                <option value="<?= htmlspecialchars($fr['id']) ?>" 
+                                        data-fuel="<?= htmlspecialchars($fr['fuel_type']) ?>" 
+                                        data-qty="<?= htmlspecialchars($fr['requested_liters']) ?>">
+                                    Request by <?= htmlspecialchars($fr['staff_name']) ?> (<?= date('M d, Y h:i A', strtotime($fr['created_at'])) ?>) - <?= htmlspecialchars($fr['fuel_type']) ?> (<?= number_format($fr['requested_liters']) ?> L)
+                                </option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
-                    <div>
-                        <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">PO Date</label>
-                        <input type="text" id="poDateDisplay" readonly value="<?= date('F d, Y') ?>" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; background:#f1f5f9; box-sizing:border-box;">
+                </div>
+
+                <div class="field-grid">
+                    <div class="field-group">
+                        <label>Date</label>
+                        <input type="text" value="<?= date('M d, Y') ?>" readonly>
                     </div>
-                    <div style="grid-column: span 2;">
-                        <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Expected Delivery</label>
-                        <input type="date" name="expected_delivery" id="poExpectedDeliveryInput" value="<?= date('Y-m-d', strtotime('+2 days')) ?>" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; box-sizing:border-box;">
+                    <div class="field-group">
+                        <label>Prepared By</label>
+                        <input type="text" value="<?= htmlspecialchars($me['name']) ?>" readonly>
                     </div>
                 </div>
 
-                <!-- ITEMS Section -->
-                <div style="margin-bottom:16px;">
-                    <div style="font-size:12px; font-weight:800; color:#002F6C; text-transform:uppercase; letter-spacing:0.5px; border-bottom:2px solid #002F6C; padding-bottom:4px; margin-bottom:10px;">
-                        ITEMS
-                    </div>
-                    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
-                        <table style="width:100%; border-collapse:collapse; font-size:13px;">
-                            <thead>
-                                <tr style="background:#f1f5f9; color:#475569; font-size:11px; text-transform:uppercase;">
-                                    <th style="padding:10px 12px; text-align:left;">Item Name</th>
-                                    <th style="padding:10px 12px; text-align:center;">Requested Qty</th>
-                                    <th style="padding:10px 12px; text-align:center;">Approved Qty</th>
-                                    <th style="padding:10px 12px; text-align:right;">Unit Cost</th>
-                                    <th style="padding:10px 12px; text-align:right;">Subtotal</th>
-                                </tr>
-                            </thead>
-                            <tbody>
+                <div style="margin-top: 15px;">
+                    <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: .5px; display: block; margin-bottom: 8px;">Fuel Items</label>
+                    <table class="table-inner">
+                        <thead>
+                            <tr>
+                                <th>Fuel Type</th>
+                                <th style="text-align: center; width: 140px;">Current Level</th>
+                                <th style="text-align: center; width: 140px;">Reorder Level</th>
+                                <th style="width: 180px;">Quantity to Order (L)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($fuel_inventory_list)): ?>
                                 <tr>
-                                    <td style="padding:12px; font-weight:700;" id="poItemName">Oil Saver (425ml)</td>
-                                    <td style="padding:12px; text-align:center; font-weight:600;" id="poRequestedQty">24</td>
-                                    <td style="padding:12px; text-align:center; width:90px;">
-                                        <input type="number" name="approved_quantity" id="poApprovedQtyInput" min="1" step="1" oninput="calcPOSubtotal()" style="width:100%; padding:6px; border:2px solid #002F6C; border-radius:5px; text-align:center; font-weight:800; font-size:14px; box-sizing:border-box;">
-                                    </td>
-                                    <td style="padding:12px; text-align:right; font-weight:600;" id="poUnitCostDisplay">₱145.00</td>
-                                    <td style="padding:12px; text-align:right; font-weight:800; color:#002F6C; font-size:14px;" id="poSubtotalDisplay">₱3,480.00</td>
+                                    <td colspan="4" style="text-align: center; padding: 20px; color: #94a3b8;">No fuel inventory data found.</td>
                                 </tr>
-                            </tbody>
-                        </table>
+                            <?php else: ?>
+                                <?php foreach ($fuel_inventory_list as $f_item): ?>
+                                    <tr>
+                                        <td><strong><?= htmlspecialchars($f_item['fuel_type']) ?></strong></td>
+                                        <td style="text-align: center;"><strong><?= number_format($f_item['current_level']) ?> L</strong></td>
+                                        <td style="text-align: center;"><strong><?= number_format($f_item['reorder_level']) ?> L</strong></td>
+                                        <td>
+                                            <input type="number" name="fuel_quantities[<?= $f_item['fuel_type_id'] ?>]" 
+                                                   id="fuel_qty_input_<?= htmlspecialchars($f_item['fuel_type']) ?>"
+                                                   min="0" placeholder="Liters to order" style="width: 100%; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="field-grid" style="margin-top: 20px;">
+                    <div class="field-group">
+                        <label>Expected Delivery Date</label>
+                        <input type="date" name="expected_delivery" min="<?= date('Y-m-d') ?>" required>
+                    </div>
+                    <div class="field-group">
+                        <label>Remarks</label>
+                        <textarea name="remarks" rows="2" placeholder="Optional notes for Tanker delivery..."></textarea>
                     </div>
                 </div>
 
-                <input type="hidden" name="unit_cost" id="poUnitCostInput">
-
-                <!-- Remarks -->
-                <div style="margin-bottom:16px;">
-                    <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:5px;">Remarks</label>
-                    <textarea name="manager_notes" id="poRemarksInput" rows="2" placeholder="Enter remarks..." style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; box-sizing:border-box; resize:vertical;"></textarea>
-                </div>
-
-                <!-- Generated By -->
-                <div style="font-size:12px; color:#64748b; background:#f8fafc; padding:10px 14px; border-radius:6px; border:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between;">
-                    <span>Generated By:</span>
-                    <strong style="color:#002F6C; font-size:13px;"><?= htmlspecialchars($me['name'] ?? 'Edgar Eslit') ?></strong>
-                </div>
-
             </div>
-            <div style="padding:12px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:10px;">
-                <button type="button" onclick="closeApprovePOModal()" class="btn-cancel">Cancel</button>
-                <button type="submit" class="btn-approve-confirm">
-                    <i class="fas fa-check-circle"></i> Generate PO
-                </button>
+            <div class="modal-footer">
+                <button type="button" class="btn-pr btn-outline-pr" onclick="closeModal('generateFuelModal')">❌ Cancel</button>
+                <button type="submit" class="btn-pr btn-primary-pr">✅ Generate Fuel Purchase Request</button>
             </div>
         </form>
     </div>
 </div>
 
-<!-- ══ Modal 3: Reject Request Modal ══ -->
-<div class="modal-overlay" id="rejectModal">
-    <div class="modal-box" style="width:450px;">
+<!-- ════════════════════════════════════════════════════════════
+     MODAL: VIEW FUEL PURCHASE REQUEST DETAILS
+     ════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="fuelDetailsModal">
+    <div class="modal-box">
         <div class="modal-header">
-            <h3 style="color:#dc3545;"><i class="fas fa-times-circle"></i> Reject Purchase Request</h3>
+            <h3 class="modal-title"><i class="fas fa-info-circle"></i> Fuel Purchase Request Details: <span id="detFuelPrNo">—</span></h3>
+            <button class="modal-close" onclick="closeModal('fuelDetailsModal')">×</button>
         </div>
-        <form action="" method="POST">
-            <input type="hidden" name="action" value="reject_request">
-            <input type="hidden" name="request_id" id="rejectReqId">
-            <div class="modal-body">
-                <p style="margin-bottom:14px;font-size:13px;color:#475569;">
-                    Rejecting purchase request for <strong id="rejectProdName"></strong>.
-                </p>
-                <div>
-                    <label style="font-size:12px;font-weight:700;color:#475569;display:block;margin-bottom:5px;">Reason for Rejection <span style="color:#dc3545;">*</span></label>
-                    <textarea name="manager_notes" rows="3" placeholder="Specify the reason for rejection..." required
-                              style="width:100%;padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
+        <div class="modal-body">
+            
+            <div class="field-grid">
+                <div class="field-group">
+                    <label>PR Number</label>
+                    <input type="text" id="detFuelPrNoField" readonly>
+                </div>
+                <div class="field-group">
+                    <label>Linked Stock Request</label>
+                    <input type="text" id="detFuelLinkedSrField" readonly>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" onclick="closeRejectModal()" class="btn-cancel">Cancel</button>
-                <button type="submit" class="btn-reject-confirm">Confirm Rejection</button>
-            </div>
-        </form>
-    </div>
-</div>
 
-<!-- ══ Modal 5: Add Remarks Modal ══ -->
-<div class="modal-overlay" id="remarksModal">
-    <div class="modal-box" style="width:450px;">
-        <div class="modal-header">
-            <h3><i class="fas fa-comment-dots"></i> Add / Edit Remarks</h3>
-        </div>
-        <form action="" method="POST">
-            <input type="hidden" name="action" value="add_remarks">
-            <input type="hidden" name="request_id" id="remarksReqId">
-            <div class="modal-body">
-                <p style="margin-bottom:14px;font-size:13px;color:#475569;">
-                    Add or update manager remarks for request on <strong id="remarksProdName"></strong>.
-                </p>
-                <div>
-                    <label style="font-size:12px;font-weight:700;color:#475569;display:block;margin-bottom:5px;">Remarks / Notes</label>
-                    <textarea name="remarks" id="remarksInput" rows="4" placeholder="Enter remarks..."
-                              style="width:100%;padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
+            <div class="field-grid">
+                <div class="field-group">
+                    <label>Requested By / Prepared By</label>
+                    <input type="text" id="detFuelRequestedByField" readonly>
+                </div>
+                <div class="field-group">
+                    <label>Request Date</label>
+                    <input type="text" id="detFuelDateField" readonly>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" onclick="closeRemarksModal()" class="btn-cancel">Cancel</button>
-                <button type="submit" class="btn-primary-modal">Save Remarks</button>
+
+            <div class="field-grid">
+                <div class="field-group">
+                    <label>Expected Delivery Date</label>
+                    <input type="text" id="detFuelExpectedDeliveryField" readonly>
+                </div>
+                <div class="field-group">
+                    <label>Status</label>
+                    <div style="margin-top: 5px;">
+                        <span id="detFuelStatusBadge" class="status-badge">—</span>
+                    </div>
+                </div>
             </div>
-        </form>
+
+            <div class="field-group" style="margin-bottom: 20px;">
+                <label>Remarks</label>
+                <textarea id="detFuelRemarksField" rows="2" readonly style="background: #f1f5f9; cursor: not-allowed;"></textarea>
+            </div>
+
+            <div>
+                <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: .5px; display: block; margin-bottom: 8px;">Fuel Items Ordered</label>
+                <table class="table-inner">
+                    <thead>
+                        <tr>
+                            <th>Fuel Type</th>
+                            <th class="text-right" style="width: 180px;">Volume Ordered (L)</th>
+                            <th class="text-right" style="width: 160px;">Unit Price (₱/L)</th>
+                            <th class="text-right" style="width: 180px;">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody id="detFuelItemsBody">
+                        <!-- Populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn-pr btn-primary-pr" onclick="closeModal('fuelDetailsModal')">Close</button>
+        </div>
     </div>
 </div>
 
 <script>
-function esc(str) {
-    if (!str) return '';
-    return str.toString()
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
+// JSON Data injected from PHP
+var groupedStockRequests = <?= json_encode($grouped_requests) ?>;
+var poItemsGrouped = <?= json_encode($po_items_grouped) ?>;
+var purchaseRequestsList = <?= json_encode($purchase_requests) ?>;
+var fuelPrsList = <?= json_encode($fuel_prs) ?>;
+var fuelPrItemsGrouped = <?= json_encode($fuel_pr_items_grouped) ?>;
 
-var currentPOItemCost = 145.00;
-
-// ── Search & Filter ──
-function filterReqTable() {
-    var search = (document.getElementById('reqSearch').value || '').toLowerCase();
-    var category = (document.getElementById('reqCategoryFilter').value || '').toLowerCase();
-    var status = (document.getElementById('reqStatusFilter').value || '').toLowerCase();
-    var requestedBy = (document.getElementById('reqByFilter').value || '').toLowerCase();
+// Search & Filter
+function filterPrTable() {
+    var search = document.getElementById('prSearchInput').value.toLowerCase();
+    var status = document.getElementById('prStatusFilter').value.toLowerCase();
     
-    var dateFromVal = document.getElementById('reqDateFrom').value;
-    var dateToVal = document.getElementById('reqDateTo').value;
-    
-    var dateFrom = dateFromVal ? new Date(dateFromVal + 'T00:00:00') : null;
-    var dateTo = dateToVal ? new Date(dateToVal + 'T23:59:59') : null;
-
-    document.querySelectorAll('#reqTableBody tr.req-row').forEach(function(row) {
-        var rowSearch = (row.dataset.search || '');
-        var rowCat = (row.dataset.category || '');
-        var rowStatus = (row.dataset.status || '');
-        var rowReqBy = (row.dataset.requestedBy || '');
+    var rows = document.querySelectorAll('#prTableBody tr.pr-row');
+    rows.forEach(function(row) {
+        var ds = row.getAttribute('data-search') || '';
+        var st = row.getAttribute('data-status') || '';
         
-        var rowDateVal = row.dataset.date;
-        var rowDate = rowDateVal ? new Date(rowDateVal + 'T00:00:00') : null;
-
-        var match = true;
-        if (search && rowSearch.indexOf(search) === -1) match = false;
-        if (category && rowCat !== category) match = false;
-        if (status && rowStatus.indexOf(status) === -1) match = false;
-        if (requestedBy && rowReqBy !== requestedBy) match = false;
+        var matchesSearch = !search || ds.indexOf(search) !== -1;
+        var matchesStatus = !status || st.indexOf(status) !== -1;
         
-        if (dateFrom && rowDate && rowDate < dateFrom) match = false;
-        if (dateTo && rowDate && rowDate > dateTo) match = false;
-
-        row.style.display = match ? '' : 'none';
+        if (matchesSearch && matchesStatus) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
     });
 }
 
-// ── View Request Details Modal ──
-function viewReqDetails(r) {
-    var reqFormatted = 'REQ-' + String(r.id).padStart(4, '0');
-    document.getElementById('detReqId').textContent = reqFormatted;
-    document.getElementById('detProdName').textContent = r.item_name;
-    document.getElementById('detSku').textContent = r.prod_sku || '—';
-    document.getElementById('detCategory').textContent = r.item_category || '—';
-    document.getElementById('detCurrentStock').textContent = Number(r.current_stock).toLocaleString() + ' ' + (r.unit || 'pcs');
-    document.getElementById('detReorderLevel').textContent = Number(r.reorder_level).toLocaleString();
-    document.getElementById('detRequestedQty').textContent = Number(r.requested_quantity).toLocaleString() + ' ' + (r.unit || 'pcs');
-    document.getElementById('detRequestedBy').textContent = r.staff_name;
-    document.getElementById('detRequestDate').textContent = r.created_at ? new Date(r.created_at).toLocaleString() : '—';
-    document.getElementById('detReason').textContent = r.remarks || 'No reason specified';
-    document.getElementById('detStatus').textContent = r.status;
-    document.getElementById('detManagerNotes').textContent = r.manager_notes || '—';
-    document.getElementById('detailsModal').classList.add('open');
-}
-function closeDetailsModal() {
-    document.getElementById('detailsModal').classList.remove('open');
+function filterFuelPrTable() {
+    var search = document.getElementById('fuelSearchInput').value.toLowerCase();
+    var status = document.getElementById('fuelStatusFilter').value.toLowerCase();
+    
+    var rows = document.querySelectorAll('#fuelPrTableBody tr.fuel-pr-row');
+    rows.forEach(function(row) {
+        var ds = row.getAttribute('data-search') || '';
+        var st = row.getAttribute('data-status') || '';
+        
+        var matchesSearch = !search || ds.indexOf(search) !== -1;
+        var matchesStatus = !status || st.indexOf(status) !== -1;
+        
+        if (matchesSearch && matchesStatus) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
 }
 
-// ── Approve & Generate PO Modal ──
-function openApprovePOModal(r) {
-    document.getElementById('poReqId').value = r.id;
-    var reqFormatted = 'REQ-' + String(r.id).padStart(4, '0');
-    document.getElementById('poRefReqInput').value = reqFormatted;
+// Modal management
+function openModal(id) {
+    document.getElementById(id).classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+    document.body.style.overflow = '';
+}
+
+// Triggered when generate PR modal opens
+function openGenerateModal() {
+    // Reset selector and items
+    document.getElementById('stockRequestSelector').value = '';
+    onStockRequestChanged();
+    openModal('generateModal');
+}
+
+// Event triggered when dropdown changes
+function onStockRequestChanged() {
+    var key = document.getElementById('stockRequestSelector').value;
+    var tbody = document.getElementById('modalItemsBody');
+    var manualContainer = document.getElementById('manualProductContainer');
     
-    var poNum = r.po_number || ('PO-2026-' + String(r.id).padStart(5, '0'));
-    document.getElementById('poNumberInput').value = poNum;
+    tbody.innerHTML = '';
     
-    if (r.po_supplier) {
-        document.getElementById('poSupplierSelect').value = r.po_supplier;
+    if (key === '') {
+        // Manual mode
+        manualContainer.style.display = 'block';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #94a3b8;">No products added yet. Select a product above to add to the request.</td></tr>';
+        document.getElementById('manualThRemove').style.display = '';
+    } else {
+        // Linked Stock Request mode
+        manualContainer.style.display = 'none';
+        document.getElementById('manualThRemove').style.display = 'none';
+        
+        var requestGroup = groupedStockRequests[key];
+        if (requestGroup && requestGroup.items.length > 0) {
+            requestGroup.items.forEach(function(item) {
+                var unit = item.unit || item.current_stock_actual ? '' : 'pcs';
+                var currentStock = item.current_stock_actual !== undefined ? item.current_stock_actual : (item.current_stock || 0);
+                var reorderLevel = item.reorder_level || 10;
+                var productId = item.item_id;
+                var stockReqId = item.id;
+                
+                var tr = document.createElement('tr');
+                tr.innerHTML = 
+                    '<td><strong>' + escHtml(item.item_name) + '</strong></td>' +
+                    '<td style="text-align: center;"><strong>' + currentStock + '</strong></td>' +
+                    '<td style="text-align: center;"><strong>' + reorderLevel + '</strong></td>' +
+                    '<td>' +
+                        '<input type="number" name="quantities[' + productId + ']" min="1" required placeholder="Qty to Order" style="width: 110px; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px;">' +
+                        '<input type="hidden" name="stock_req_ids[' + productId + ']" value="' + stockReqId + '">' +
+                    '</td>';
+                tbody.appendChild(tr);
+            });
+        } else {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #94a3b8; font-style: italic;">No pending items found for this stock request.</td></tr>';
+        }
+    }
+}
+
+// Manual Product Addition
+function addManualProductToTable() {
+    var select = document.getElementById('manualProductSelect');
+    var prodId = select.value;
+    if (!prodId) return;
+    
+    var option = select.options[select.selectedIndex];
+    var name = option.getAttribute('data-name');
+    var stock = option.getAttribute('data-stock');
+    var reorder = option.getAttribute('data-reorder');
+    var unit = option.getAttribute('data-unit') || 'pcs';
+    
+    var tbody = document.getElementById('modalItemsBody');
+    
+    // Check if product is already in the table
+    var existingInput = tbody.querySelector('input[name="quantities[' + prodId + ']"]');
+    if (existingInput) {
+        alert('Product is already in the request list.');
+        return;
     }
     
-    document.getElementById('poItemName').textContent = r.item_name;
-    document.getElementById('poRequestedQty').textContent = Number(r.requested_quantity).toLocaleString();
-    document.getElementById('poApprovedQtyInput').value = r.approved_quantity || r.requested_quantity;
+    // Clear the placeholder row if it's there
+    if (tbody.children.length === 1 && tbody.children[0].cells.length === 1) {
+        tbody.innerHTML = '';
+    }
     
-    var unitPrice = parseFloat(r.unit_price || 145.00);
-    if (isNaN(unitPrice) || unitPrice <= 0) unitPrice = 145.00;
-    currentPOItemCost = unitPrice;
+    var tr = document.createElement('tr');
+    tr.id = 'manual_row_' + prodId;
+    tr.innerHTML = 
+        '<td><strong>' + escHtml(name) + '</strong></td>' +
+        '<td style="text-align: center;"><strong>' + stock + '</strong> ' + escHtml(unit) + '</td>' +
+        '<td style="text-align: center;"><strong>' + reorder + '</strong> ' + escHtml(unit) + '</td>' +
+        '<td>' +
+            '<input type="number" name="quantities[' + prodId + ']" min="1" required placeholder="Qty to Order" style="width: 100px; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px;">' +
+        '</td>' +
+        '<td style="text-align: center;">' +
+            '<button type="button" onclick="removeManualRow(' + prodId + ')" style="background: none; border: none; color: #b91c1c; cursor: pointer; font-size: 14px;"><i class="fas fa-trash-alt"></i></button>' +
+        '</td>';
+    tbody.appendChild(tr);
     
-    document.getElementById('poUnitCostInput').value = unitPrice;
-    document.getElementById('poUnitCostDisplay').textContent = '₱' + unitPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    // Reset selection
+    select.value = '';
+}
+
+function removeManualRow(prodId) {
+    var row = document.getElementById('manual_row_' + prodId);
+    if (row) {
+        row.parentNode.removeChild(row);
+    }
+    var tbody = document.getElementById('modalItemsBody');
+    if (tbody.children.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #94a3b8;">No products added yet. Select a product above to add to the request.</td></tr>';
+    }
+}
+
+// Validate Form submission
+function validatePrForm() {
+    var tbody = document.getElementById('modalItemsBody');
     
-    document.getElementById('poRemarksInput').value = r.manager_notes || '';
+    // Check if table contains input fields
+    var inputs = tbody.querySelectorAll('input[type="number"]');
+    if (inputs.length === 0) {
+        alert('Please select a stock request or add at least one product to the purchase request.');
+        return false;
+    }
     
-    calcPOSubtotal();
-    document.getElementById('approvePOModal').classList.add('open');
-}
-
-function calcPOSubtotal() {
-    var qty = parseInt(document.getElementById('poApprovedQtyInput').value) || 0;
-    var subtotal = qty * currentPOItemCost;
-    document.getElementById('poSubtotalDisplay').textContent = '₱' + subtotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-}
-
-function closeApprovePOModal() {
-    document.getElementById('approvePOModal').classList.remove('open');
-}
-
-// ── Reject Modal ──
-function openRejectModal(r) {
-    document.getElementById('rejectReqId').value = r.id;
-    document.getElementById('rejectProdName').textContent = r.item_name;
-    document.getElementById('rejectModal').classList.add('open');
-}
-function closeRejectModal() {
-    document.getElementById('rejectModal').classList.remove('open');
-}
-
-// ── Remarks Modal ──
-function openRemarksModal(r) {
-    document.getElementById('remarksReqId').value = r.id;
-    document.getElementById('remarksProdName').textContent = r.item_name;
-    document.getElementById('remarksInput').value = r.manager_notes || '';
-    document.getElementById('remarksModal').classList.add('open');
-}
-function closeRemarksModal() {
-    document.getElementById('remarksModal').classList.remove('open');
-}
-
-// ── Print Request Slip ──
-function printRequestRecord(r) {
-    var reqFormatted = 'REQ-' + String(r.id).padStart(4, '0');
-    var pw = window.open('', '_blank');
-    pw.document.write('<!DOCTYPE html><html><head><title>Purchase Request Slip — ' + reqFormatted + '</title>');
-    pw.document.write('<style>');
-    pw.document.write('body{font-family:Arial,sans-serif;font-size:13px;color:#222;margin:0;padding:24px;}');
-    pw.document.write('.header{background:#002F6C;color:#fff;padding:16px 20px;border-radius:6px 6px 0 0;}');
-    pw.document.write('.header h2{margin:0;font-size:16px;letter-spacing:.5px;}');
-    pw.document.write('.header p{margin:4px 0 0;font-size:11px;opacity:.8;}');
-    pw.document.write('.section{border:1px solid #e2e8f0;border-top:none;padding:16px 20px;margin-bottom:12px;}');
-    pw.document.write('.section h4{margin:0 0 10px;color:#002F6C;font-size:11px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #e2e8f0;padding-bottom:6px;}');
-    pw.document.write('table.info{width:100%;border-collapse:collapse;font-size:12px;}');
-    pw.document.write('table.info tr td:first-child{color:#64748b;font-weight:600;width:180px;padding:5px 0;}');
-    pw.document.write('table.info tr td{padding:5px 0;border-bottom:1px solid #f1f5f9;}');
-    pw.document.write('.footer{text-align:center;font-size:10px;color:#94a3b8;margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;}');
-    pw.document.write('</style></head><body>');
+    var valid = false;
+    inputs.forEach(function(input) {
+        if (parseInt(input.value) > 0) {
+            valid = true;
+        }
+    });
     
-    pw.document.write('<div class="header"><h2>Purchase Replenishment Request</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
+    if (!valid) {
+        alert('Please specify a quantity greater than 0 for at least one product.');
+        return false;
+    }
     
-    pw.document.write('<div class="section"><h4>Request Details</h4><table class="info">');
-    pw.document.write('<tr><td>Request ID:</td><td><strong>' + reqFormatted + '</strong></td></tr>');
-    pw.document.write('<tr><td>Requested By:</td><td>' + esc(r.staff_name) + '</td></tr>');
-    pw.document.write('<tr><td>Date Requested:</td><td>' + (r.created_at ? new Date(r.created_at).toLocaleString() : '—') + '</td></tr>');
-    pw.document.write('<tr><td>Status:</td><td><strong>' + esc(r.status) + '</strong></td></tr>');
-    pw.document.write('</table></div>');
+    return true;
+}
 
-    pw.document.write('<div class="section"><h4>Item Specifications</h4><table class="info">');
-    pw.document.write('<tr><td>Product Name:</td><td><strong>' + esc(r.item_name) + '</strong></td></tr>');
-    pw.document.write('<tr><td>SKU:</td><td>' + esc(r.prod_sku || '—') + '</td></tr>');
-    pw.document.write('<tr><td>Category:</td><td>' + esc(r.item_category || '—') + '</td></tr>');
-    pw.document.write('<tr><td>Current Stock:</td><td>' + Number(r.current_stock).toLocaleString() + ' ' + esc(r.unit || 'pcs') + '</td></tr>');
-    pw.document.write('<tr><td>Reorder Level:</td><td>' + Number(r.reorder_level).toLocaleString() + '</td></tr>');
-    pw.document.write('<tr><td>Requested Quantity:</td><td><strong style="font-size:14px;color:#002F70;">' + Number(r.requested_quantity).toLocaleString() + ' ' + esc(r.unit || 'pcs') + '</strong></td></tr>');
-    pw.document.write('</table></div>');
+// View PR Details Modal
+function viewPrDetails(poId) {
+    var pr = purchaseRequestsList.find(function(x) { return x.id == poId; });
+    if (!pr) return;
+    
+    document.getElementById('detPrNo').textContent = pr.po_number;
+    document.getElementById('detPrNoField').value = pr.po_number;
+    
+    var stockReq = pr.linked_stock_request_id ? 'REQ-' + String(pr.linked_stock_request_id).padStart(5, '0') : 'Manual PR';
+    document.getElementById('detLinkedSrField').value = stockReq;
+    
+    var requestedBy = pr.requested_by_name ? pr.requested_by_name : 'Manual (Manager)';
+    document.getElementById('detRequestedByField').value = requestedBy;
+    
+    document.getElementById('detDateField').value = fmtDate(pr.created_at);
+    document.getElementById('detExpectedDeliveryField').value = pr.expected_delivery_date ? fmtDate(pr.expected_delivery_date, true) : '—';
+    document.getElementById('detRemarksField').value = pr.remarks || 'No remarks specified.';
+    
+    // Badge status
+    var badge = document.getElementById('detStatusBadge');
+    badge.textContent = pr.status;
+    badge.className = 'status-badge';
+    if (['Pending', 'Pending Admin Validation', 'Pending Approval', 'Draft'].indexOf(pr.status) !== -1) {
+        badge.classList.add('status-pending');
+    } else if (['Approved', 'Approved PO', 'Confirmed', 'Official'].indexOf(pr.status) !== -1) {
+        badge.classList.add('status-approved');
+    } else if (pr.status === 'Received') {
+        badge.classList.add('status-received');
+    } else {
+        badge.classList.add('status-cancelled');
+    }
+    
+    // Render items
+    var tbody = document.getElementById('detItemsBody');
+    tbody.innerHTML = '';
+    var items = poItemsGrouped[poId] || [];
+    
+    if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #64748b; padding: 12px;">No items found for this Purchase Request.</td></tr>';
+    } else {
+        var totalAmount = 0;
+        items.forEach(function(item) {
+            var subtotal = parseFloat(item.total_price || (item.quantity * item.unit_price) || 0);
+            totalAmount += subtotal;
+            
+            var tr = document.createElement('tr');
+            tr.innerHTML = 
+                '<td><strong>' + escHtml(item.item_name) + '</strong></td>' +
+                '<td class="text-right">' + item.quantity + '</td>' +
+                '<td class="text-right">₱' + parseFloat(item.unit_price).toFixed(2) + '</td>' +
+                '<td class="text-right" style="font-weight: 700;">₱' + subtotal.toFixed(2) + '</td>';
+            tbody.appendChild(tr);
+        });
+        
+        // Append Total Row
+        var trTotal = document.createElement('tr');
+        trTotal.style.background = '#f8fafc';
+        trTotal.innerHTML = 
+            '<td colspan="3" style="text-align: right; font-weight: 800;">Estimated Total Amount:</td>' +
+            '<td class="text-right" style="font-weight: 800; color: #002F6C; font-size: 14px;">₱' + totalAmount.toFixed(2) + '</td>';
+        tbody.appendChild(trTotal);
+    }
+    
+    openModal('detailsModal');
+}
 
-    pw.document.write('<div class="section"><h4>Notes & Remarks</h4><table class="info">');
-    pw.document.write('<tr><td>Reason for Request:</td><td><em>' + esc(r.remarks || '—') + '</em></td></tr>');
-    pw.document.write('<tr><td>Manager Remarks:</td><td>' + esc(r.manager_notes || '—') + '</td></tr>');
-    pw.document.write('</table></div>');
+// Fuel Modal & Request Changed Handler
+function openGenerateFuelModal() {
+    document.getElementById('fuelRequestSelector').value = '';
+    onFuelRequestChanged();
+    openModal('generateFuelModal');
+}
 
-    pw.document.write('<div class="footer">Petron Station Management System &copy; ' + new Date().getFullYear() + '</div>');
-    pw.document.write('</body></html>');
-    pw.document.close();
-    pw.print();
+function onFuelRequestChanged() {
+    var select = document.getElementById('fuelRequestSelector');
+    var selectedOption = select.options[select.selectedIndex];
+    
+    // Clear all fuel inputs first
+    var inputs = document.querySelectorAll('[id^="fuel_qty_input_"]');
+    inputs.forEach(function(input) {
+        input.value = '';
+    });
+    
+    if (selectedOption && selectedOption.value !== '') {
+        var fuelType = selectedOption.getAttribute('data-fuel');
+        var qty = selectedOption.getAttribute('data-qty');
+        
+        var inputElement = document.getElementById('fuel_qty_input_' + fuelType);
+        if (inputElement) {
+            inputElement.value = qty;
+        }
+    }
+}
+
+function validateFuelPrForm() {
+    var inputs = document.querySelectorAll('[id^="fuel_qty_input_"]');
+    var valid = false;
+    inputs.forEach(function(input) {
+        if (parseInt(input.value) > 0) {
+            valid = true;
+        }
+    });
+    
+    if (!valid) {
+        alert('Please specify a quantity greater than 0 for at least one fuel type.');
+        return false;
+    }
+    return true;
+}
+
+function viewFuelPrDetails(batchId) {
+    var pr = fuelPrsList.find(function(x) { return x.batch_id == batchId; });
+    if (!pr) return;
+    
+    document.getElementById('detFuelPrNo').textContent = pr.po_number;
+    document.getElementById('detFuelPrNoField').value = pr.po_number;
+    
+    var fsr_no = 'Manual PR';
+    var match = /\[FSR:(\d+)\]/.exec(pr.notes || '');
+    if (match) {
+        fsr_no = 'FSR-' + String(match[1]).padStart(5, '0');
+    }
+    document.getElementById('detFuelLinkedSrField').value = fsr_no;
+    
+    var requestedBy = pr.prepared_by_name ? pr.prepared_by_name : 'Manual (Manager)';
+    document.getElementById('detFuelRequestedByField').value = requestedBy;
+    
+    document.getElementById('detFuelDateField').value = fmtDate(pr.created_at);
+    document.getElementById('detFuelExpectedDeliveryField').value = pr.expected_delivery_date ? fmtDate(pr.expected_delivery_date, true) : '—';
+    document.getElementById('detFuelRemarksField').value = pr.notes || 'No remarks specified.';
+    
+    var badge = document.getElementById('detFuelStatusBadge');
+    badge.textContent = pr.status;
+    badge.className = 'status-badge';
+    if (['Pending', 'Pending Admin Validation', 'Pending Approval', 'Draft'].indexOf(pr.status) !== -1) {
+        badge.classList.add('status-pending');
+    } else if (['Approved', 'Approved PO', 'Confirmed', 'Official', 'Admin Finalized'].indexOf(pr.status) !== -1) {
+        badge.classList.add('status-approved');
+    } else if (pr.status === 'Received') {
+        badge.classList.add('status-received');
+    } else {
+        badge.classList.add('status-cancelled');
+    }
+    
+    var tbody = document.getElementById('detFuelItemsBody');
+    tbody.innerHTML = '';
+    var items = fuelPrItemsGrouped[batchId] || [];
+    
+    if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #64748b; padding: 12px;">No items found.</td></tr>';
+    } else {
+        var totalAmount = 0;
+        items.forEach(function(item) {
+            var subtotal = parseFloat(item.total_amount || 0);
+            totalAmount += subtotal;
+            
+            var tr = document.createElement('tr');
+            tr.innerHTML = 
+                '<td><strong>' + escHtml(item.fuel_type_name) + '</strong></td>' +
+                '<td class="text-right">' + numberFormat(item.volume) + ' L</td>' +
+                '<td class="text-right">₱' + parseFloat(item.price_per_liter || 0).toFixed(2) + '</td>' +
+                '<td class="text-right" style="font-weight: 700;">₱' + subtotal.toFixed(2) + '</td>';
+            tbody.appendChild(tr);
+        });
+        
+        var trTotal = document.createElement('tr');
+        trTotal.style.background = '#f8fafc';
+        trTotal.innerHTML = 
+            '<td colspan="3" style="text-align: right; font-weight: 800;">Estimated Total Amount:</td>' +
+            '<td class="text-right" style="font-weight: 800; color: #002F6C; font-size: 14px;">₱' + totalAmount.toFixed(2) + '</td>';
+        tbody.appendChild(trTotal);
+    }
+    
+    openModal('fuelDetailsModal');
+}
+
+function numberFormat(val) {
+    return parseFloat(val).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
 // ── Export Functions ──
-function exportReqTablePDF() {
-    if (typeof exportTableToPDF === 'function') {
-        exportTableToPDF('mgrReqTable', 'Purchase Requests Review Report');
-    } else {
-        window.print();
-    }
+function downloadCSV(csv, filename) {
+    var csvFile = new Blob([csv], {type: "text/csv;charset=utf-8;"});
+    var downloadLink = document.createElement("a");
+    downloadLink.download = filename;
+    downloadLink.href = window.URL.createObjectURL(csvFile);
+    downloadLink.style.display = "none";
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
 }
 
-function exportReqTableExcel() {
-    if (typeof exportTableToExcel === 'function') {
-        exportTableToExcel('mgrReqTable', 'purchase_requests_review.xls');
-    } else {
-        alert('Excel export not supported on this page.');
+function tableToCSV(tableId, filename) {
+    var csv = [];
+    var table = document.getElementById(tableId);
+    if (!table) return;
+    var rows = table.querySelectorAll("tr");
+    for (var i = 0; i < rows.length; i++) {
+        if (rows[i].style.display === "none") continue;
+        var row = [], cols = rows[i].querySelectorAll("td, th");
+        if (cols.length === 0) continue;
+        for (var j = 0; j < cols.length - 1; j++) { // exclude actions
+            var text = cols[j].innerText.trim().replace(/"/g, '""');
+            row.push('"' + text + '"');
+        }
+        csv.push(row.join(","));
     }
+    downloadCSV(csv.join("\n"), filename);
 }
 
-function exportReqTableCSV() {
-    if (typeof exportTableToCSV === 'function') {
-        exportTableToCSV('mgrReqTable', 'purchase_requests_review.csv');
-    } else {
-        alert('CSV export not supported on this page.');
-    }
+function exportToCSV() {
+    tableToCSV("prTable", "Merchandise_Purchase_Requests.csv");
 }
-// ── Tab Switching ──
-function switchReqTab(tab) {
-    document.getElementById('reqTabPaneMerch').classList.toggle('active', tab === 'merchandise');
-    document.getElementById('reqTabPaneFuel').classList.toggle('active', tab === 'fuel');
-    var btnM = document.getElementById('reqTabBtnMerch');
-    var btnF = document.getElementById('reqTabBtnFuel');
-    btnM.className = 'req-tab-btn' + (tab === 'merchandise' ? ' active-merch' : '');
-    btnF.className = 'req-tab-btn' + (tab === 'fuel' ? ' active-fuel' : '');
-    var url = new URL(window.location.href);
-    url.searchParams.set('subtab', tab);
-    history.replaceState(null, '', url.toString());
+function exportFuelToCSV() {
+    tableToCSV("fuelPrTable", "Fuel_Purchase_Requests.csv");
 }
 
-// ── Fuel Table Filter ──
-function filterFuelTable() {
-    var search = (document.getElementById('fuelReqSearch').value || '').toLowerCase();
-    var status = (document.getElementById('fuelStatusFilter').value || '').toLowerCase();
-    document.querySelectorAll('.fuel-req-row').forEach(function(row) {
-        var ds = (row.dataset.search || '').toLowerCase();
-        var st = (row.dataset.status || '').toLowerCase();
-        var matchS = !search || ds.includes(search);
-        var matchSt = !status || st.includes(status);
-        row.style.display = (matchS && matchSt) ? '' : 'none';
+function exportToExcel() {
+    tableToCSV("prTable", "Merchandise_Purchase_Requests.csv");
+}
+function exportFuelToExcel() {
+    tableToCSV("fuelPrTable", "Fuel_Purchase_Requests.csv");
+}
+
+function printTable(tableId, title) {
+    var table = document.getElementById(tableId);
+    if (!table) return;
+    var win = window.open('', '', 'height=700,width=900');
+    win.document.write('<html><head><title>' + title + '</title>');
+    win.document.write('<style>body{font-family:sans-serif;padding:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #cbd5e1;padding:8px;text-align:left;font-size:12px;}th{background:#f1f5f9;}</style>');
+    win.document.write('</head><body>');
+    win.document.write('<h2>' + title + '</h2>');
+    
+    var clone = table.cloneNode(true);
+    var rows = clone.querySelectorAll("tr");
+    rows.forEach(function(row) {
+        if (row.style.display === "none") return;
+        var cells = row.querySelectorAll("th, td");
+        if (cells.length > 0) {
+            cells[cells.length - 1].remove(); // Remove actions
+        }
     });
-}
-
-// ── Fuel View Details Modal ──
-function openFuelViewModal(r) {
-    var reqFormatted = 'FSR-' + String(r.id).padStart(4, '0');
-    document.getElementById('detFuelReqId').textContent = reqFormatted;
-    document.getElementById('detFuelType').textContent = r.fuel_type || '—';
-    document.getElementById('detFuelCurrentLevel').textContent = (r.current_level ? Number(r.current_level).toLocaleString(undefined, {minimumFractionDigits: 2}) : '0.00') + ' L';
-    document.getElementById('detFuelStockStatus').textContent = r.stock_status || '—';
-    document.getElementById('detFuelRequestedQty').textContent = (r.requested_liters ? Number(r.requested_liters).toLocaleString(undefined, {minimumFractionDigits: 2}) : '0.00') + ' L';
-    document.getElementById('detFuelApprovedQty').textContent = r.approved_liters !== null ? (Number(r.approved_liters).toLocaleString(undefined, {minimumFractionDigits: 2}) + ' L') : '—';
-    document.getElementById('detFuelRequestedBy').textContent = r.staff_name || '—';
-    document.getElementById('detFuelRequestDate').textContent = r.created_at ? new Date(r.created_at).toLocaleString() : '—';
-    document.getElementById('detFuelStatus').textContent = r.status || 'Pending';
-    document.getElementById('detFuelManagerNotes').textContent = r.manager_notes || '—';
-    document.getElementById('fuelDetailsModal').classList.add('open');
-}
-
-// ── Fuel Remarks Modal (Review) ──
-function openFuelRemarksModal(r) {
-    document.getElementById('fuelRemarksReqId').value = r.id;
-    document.getElementById('fuelRemarksType').textContent = r.fuel_type || '—';
-    document.getElementById('fuelRemarksInput').value = r.manager_notes || '';
-    document.getElementById('fuelRemarksModal').classList.add('open');
-}
-
-// ── Fuel PO Modal (Generate PO) ──
-function openFuelPOModal(r) {
-    document.getElementById('fuelPOReqId').value = r.id;
-    var reqFormatted = 'FSR-' + String(r.id).padStart(4, '0');
-    document.getElementById('fuelPORefReqInput').value = reqFormatted;
     
-    var poNum = 'POF-2026-' + String(r.id).padStart(5, '0');
-    document.getElementById('fuelPONumberInput').value = poNum;
+    win.document.write(clone.outerHTML);
+    win.document.write('</body></html>');
+    win.document.close();
+    win.print();
+}
+
+function exportToPDF() {
+    printTable("prTable", "Merchandise Purchase Requests Report");
+}
+function exportFuelToPDF() {
+    printTable("fuelPrTable", "Fuel Purchase Requests Report");
+}
+
+// Helpers
+function escHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function fmtDate(ds, dateOnly) {
+    if (!ds) return '—';
+    var d = new Date(ds);
+    if (isNaN(d.getTime())) return ds;
     
-    document.getElementById('fuelPOItemName').textContent = r.fuel_type || '—';
-    document.getElementById('fuelPORequestedQty').textContent = (r.requested_liters ? Number(r.requested_liters).toLocaleString(undefined, {minimumFractionDigits: 2}) : '0.00');
-    document.getElementById('fuelPOApprovedQtyInput').value = r.approved_liters || r.requested_liters || '';
-    
-    document.getElementById('fuelPOUnitCostInput').value = '60.00';
-    document.getElementById('fuelPORemarksInput').value = r.manager_notes || '';
-    
-    calcFuelPOSubtotal();
-    document.getElementById('fuelPOModal').classList.add('open');
-}
-
-function calcFuelPOSubtotal() {
-    var qty = parseFloat(document.getElementById('fuelPOApprovedQtyInput').value) || 0;
-    var price = parseFloat(document.getElementById('fuelPOUnitCostInput').value) || 0;
-    var subtotal = qty * price;
-    document.getElementById('fuelPOSubtotalDisplay').textContent = '₱' + subtotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-}
-
-// ── Fuel Reject Modal ──
-function openFuelRejectModal(r) {
-    document.getElementById('fuelRejectId').value = r.id;
-    document.getElementById('fuelRejectType').textContent = r.fuel_type || '—';
-    document.getElementById('fuelRejectModal').classList.add('open');
-}
-
-function closeFuelModal(id) {
-    document.getElementById(id).classList.remove('open');
-}
-
-// ── On Page Load Tab Check ──
-window.addEventListener('DOMContentLoaded', function() {
-    var params = new URLSearchParams(window.location.search);
-    var subtab = params.get('subtab');
-    if (subtab === 'fuel') {
-        switchReqTab('fuel');
-    } else {
-        switchReqTab('merchandise');
+    var options = { month: 'short', day: 'numeric', year: 'numeric' };
+    if (!dateOnly) {
+        options.hour = '2-digit';
+        options.minute = '2-digit';
     }
-});
+    return d.toLocaleString('en-US', options);
+}
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

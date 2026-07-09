@@ -190,9 +190,10 @@ include __DIR__ . '/../partials/header.php';
 
 /* Tabs */
 .tabs { display: flex; gap: 4px; border-bottom: 2px solid #e9ecef; margin-bottom: 20px; }
-.tab-btn { background: transparent; border: none; padding: 12px 24px; font-size: 14px; font-weight: 600; color: #6c757d; cursor: pointer; border-bottom: 3px solid transparent; transition: all .2s; }
-.tab-btn:hover { color: #002F70; background: #f8f9fa; }
-.tab-btn.active { color: #002F70; border-bottom-color: #002F70; background: #f0f7ff; }
+.tab-btn { background: #f8f9fa; border: none; padding: 12px 24px; font-size: 14px; font-weight: 600; color: #475569 !important; cursor: pointer; border-bottom: 3px solid transparent; transition: all .2s; }
+.tab-btn:hover { color: #002F70 !important; background: rgba(0,47,108,0.1); }
+.tab-btn.active { background: #002F70 !important; color: #ffffff !important; border-bottom-color: #002F70; font-weight: 800; }
+.tab-btn.active i { color: #ffffff !important; }
 .tab-btn i { margin-right: 8px; }
 
 .tab-content { display: none; }

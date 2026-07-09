@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modal Scroll Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 40px;
+            background: #f5f5f5;
+        }
+        
+        /* Modal CSS - Same as staff_inventory_merchandise.php */
+        .mi-overlay{
+            display:none;
+            position:fixed;
+            inset:0;
+            background:rgba(0,0,0,.55);
+            z-index:9999;
+            align-items:center;
+            justify-content:center;
+            padding:20px 16px;
+            overflow-y:auto;
+        }
+        .mi-overlay.open{display:flex;}
+        
+        .mi-box{
+            background:#fff;
+            border-radius:14px;
+            padding:0;
+            width:600px;
+            max-width:calc(100vw - 32px);
+            max-height:calc(100vh - 60px);
+            display:flex;
+            flex-direction:column;
+            box-shadow:0 24px 80px rgba(0,0,0,.3);
+            animation:miIn .2s ease;
+            overflow:hidden;
+            position:relative;
+        }
+        
+        .mi-box.wide{width:700px;max-width:calc(100vw - 32px);}
+        
+        @keyframes miIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+        
+        .mi-head{
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            padding:20px 28px;
+            border-bottom:2px solid #e9ecef;
+            flex-shrink:0;
+            background:#fff;
+            position:relative;
+            z-index:1;
+        }
+        
+        .mi-title{
+            font-size:1.05rem;
+            font-weight:700;
+            color:#002F70;
+            display:flex;
+            align-items:center;
+            gap:8px;
+        }
+        
+        .mi-close{
+            background:none;
+            border:none;
+            font-size:22px;
+            cursor:pointer;
+            color:#adb5bd;
+            padding:0;
+            line-height:1;
+        }
+        .mi-close:hover{color:#333;}
+        
+        .mi-body{
+            padding:28px;
+            overflow-y:auto;
+            overflow-x:hidden;
+            flex:1;
+            -webkit-overflow-scrolling:touch;
+            min-height:0;
+            position:relative;
+        }
+        
+        .mi-foot{
+            display:flex;
+            gap:10px;
+            justify-content:flex-end;
+            align-items:center;
+            padding:16px 28px;
+            border-top:1px solid #e9ecef;
+            flex-shrink:0;
+            background:#fff;
+            position:relative;
+            z-index:1;
+        }
+        
+        /* Mobile adjustments */
+        @media(max-height:600px){
+            .mi-box{max-height:calc(100vh - 40px);}
+            .mi-overlay{padding:10px;}
+            .mi-head{padding:14px 20px;}
+            .mi-body{padding:20px;}
+            .mi-foot{padding:12px 20px;}
+        }
+        
+        @media(max-width:500px){
+            .mi-box,.mi-box.wide{width:100%;max-width:calc(100vw - 20px);}
+            .mi-head{padding:14px 16px;}
+            .mi-body{padding:16px;}
+            .mi-foot{padding:12px 16px;flex-wrap:wrap;}
+            .mi-foot button{flex:1;min-width:120px;}
+        }
+        
+        /* Test content */
+        .test-item {
+            padding: 12px;
+            margin-bottom: 8px;
+            background: #f0f4ff;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+        }
+        
+        button {
+            padding: 8px 16px;
+            border: 1px solid #002F70;
+            background: #fff;
+            color: #002F70;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        
+        button:hover {
+            background: #002F70;
+            color: #fff;
+        }
+        
+        button.primary {
+            background: #002F70;
+            color: #fff;
+        }
+        
+        button.primary:hover {
+            background: #001f4f;
+        }
+        
+        .info-box {
+            background: #e8f4fd;
+            border-left: 4px solid #002F70;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 6px;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        
+        .status.pass { background: #d4edda; color: #155724; }
+        .status.test { background: #fff3cd; color: #856404; }
+    </style>
+</head>
+<body>
+
+<h1>🧪 Modal Scroll Test - Staff Stock Request</h1>
+
+<div class="info-box">
+    <strong>Test Instructions:</strong><br>
+    1. Click "Open Modal" button below<br>
+    2. Try scrolling inside the modal - should work smoothly<br>
+    3. Header ("Stock Request") should stay fixed at top<br>
+    4. Footer buttons should stay fixed at bottom<br>
+    5. Only the middle content (items list) should scroll<br>
+    6. Test on mobile device / resize browser window to test responsive behavior
+</div>
+
+<button onclick="openModal()" class="primary">🧪 Open Modal (Test Scrolling)</button>
+
+<div style="margin-top: 20px;">
+    <h3>Expected Behavior:</h3>
+    <ul>
+        <li><span class="status pass">✓</span> Header fixed at top while scrolling</li>
+        <li><span class="status pass">✓</span> Footer fixed at bottom while scrolling</li>
+        <li><span class="status pass">✓</span> Body content scrollable</li>
+        <li><span class="status pass">✓</span> Smooth scrolling on mobile (iOS touch)</li>
+        <li><span class="status pass">✓</span> No horizontal scroll</li>
+        <li><span class="status pass">✓</span> Responsive on small screens</li>
+    </ul>
+</div>
+
+<!-- Test Modal -->
+<div class="mi-overlay" id="testModal">
+    <div class="mi-box wide">
+        <div class="mi-head">
+            <div class="mi-title">📦 Stock Request (Test)</div>
+            <button class="mi-close" onclick="closeModal()">&times;</button>
+        </div>
+        
+        <div class="mi-body">
+            <div class="info-box">
+                <strong>This is a test modal.</strong> Scroll down to see all items below.
+                The header and footer should stay fixed while you scroll.
+            </div>
+            
+            <h4 style="margin: 0 0 15px 0; color: #002F70;">Test Items (50 items to test scrolling):</h4>
+            
+            <!-- Generate 50 test items -->
+            <script>
+                for (let i = 1; i <= 50; i++) {
+                    document.write(`
+                        <div class="test-item">
+                            <strong>Test Item #${i}</strong><br>
+                            <small style="color: #64748b;">SKU: TEST-${String(i).padStart(3, '0')} | Stock: ${Math.floor(Math.random() * 100)} units</small>
+                        </div>
+                    `);
+                }
+            </script>
+            
+            <div style="margin-top: 20px; padding: 15px; background: #d4edda; border-radius: 6px; color: #155724;">
+                <strong>✅ You've reached the bottom!</strong><br>
+                If you can see this message, scrolling is working correctly.
+            </div>
+        </div>
+        
+        <div class="mi-foot">
+            <button onclick="closeModal()">Cancel</button>
+            <button class="primary" onclick="alert('Scrolling test passed! ✓')">Submit Request</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function openModal() {
+    document.getElementById('testModal').classList.add('open');
+    document.body.style.overflow = 'hidden'; // Prevent background scroll
+}
+
+function closeModal() {
+    document.getElementById('testModal').classList.remove('open');
+    document.body.style.overflow = ''; // Restore background scroll
+}
+
+// Close modal when clicking overlay background
+document.getElementById('testModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeModal();
+    }
+});
+
+// Close modal with Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeModal();
+    }
+});
+</script>
+
+<div style="margin-top: 40px; padding: 20px; background: #fff; border-radius: 8px; border: 1px solid #e0e0e0;">
+    <h3>Troubleshooting Checklist:</h3>
+    <ol>
+        <li><strong>Modal won't scroll?</strong> Check if <code>.mi-body</code> has <code>overflow-y:auto</code> and <code>flex:1</code></li>
+        <li><strong>Header scrolling with content?</strong> Ensure <code>.mi-head</code> has <code>flex-shrink:0</code></li>
+        <li><strong>Footer scrolling with content?</strong> Ensure <code>.mi-foot</code> has <code>flex-shrink:0</code></li>
+        <li><strong>Content cut off?</strong> Check <code>.mi-box</code> has <code>overflow:hidden</code> not <code>overflow-y:auto</code></li>
+        <li><strong>Not working on mobile?</strong> Add <code>-webkit-overflow-scrolling:touch</code> to <code>.mi-body</code></li>
+    </ol>
+    
+    <h3>Technical Details:</h3>
+    <ul>
+        <li><strong>Layout:</strong> Flexbox with <code>flex-direction:column</code></li>
+        <li><strong>Scrolling:</strong> Only <code>.mi-body</code> with <code>overflow-y:auto</code></li>
+        <li><strong>Fixed elements:</strong> <code>.mi-head</code> and <code>.mi-foot</code> with <code>flex-shrink:0</code></li>
+        <li><strong>Height control:</strong> <code>max-height:calc(100vh - 60px)</code> on <code>.mi-box</code></li>
+        <li><strong>Mobile optimization:</strong> Touch scrolling and responsive padding</li>
+    </ul>
+</div>
+
+</body>
+</html>

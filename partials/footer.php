@@ -185,8 +185,9 @@
         padding-bottom: 110px !important; /* fixed footer (40px) + scroll btn (50px from bottom, 40px tall) = 90px, +20px buffer */
     }
     
-    /* Toggle Scroll Button Styling */
-    .toggle-scroll-btn {
+    /* Toggle Scroll Button Styling - ABSOLUTE MAXIMUM PRIORITY */
+    .toggle-scroll-btn,
+    #toggleScrollBtn {
         position: fixed !important;
         bottom: 50px !important; /* sits just above the 40px footer */
         right: 20px !important;
@@ -198,48 +199,72 @@
         color: white !important;
         font-size: 14px !important;
         cursor: pointer !important;
-        z-index: 10001 !important; /* Above footer (990) and modals */
+        z-index: 2147483647 !important; /* ABSOLUTE MAXIMUM z-index */
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
         box-shadow: 0 4px 14px rgba(0, 47, 112, 0.35), 0 2px 4px rgba(0,0,0,0.12) !important;
-        /* Hidden by default — shown only when scroll is needed */
-        opacity: 0 !important;
-        transform: scale(0.75) translateY(8px) !important;
-        pointer-events: none !important;
-        transition: opacity 0.25s ease, transform 0.25s ease, background 0.2s ease, box-shadow 0.2s ease !important;
-    }
-
-    .toggle-scroll-btn.visible {
+        /* Always visible and clickable */
         opacity: 1 !important;
         transform: scale(1) translateY(0) !important;
         pointer-events: auto !important;
+        transition: opacity 0.25s ease, transform 0.25s ease, background 0.2s ease, box-shadow 0.2s ease !important;
+        visibility: visible !important;
+        isolation: isolate !important;
     }
 
-    .toggle-scroll-btn:hover {
+    .toggle-scroll-btn.visible,
+    #toggleScrollBtn.visible {
+        opacity: 1 !important;
+        transform: scale(1) translateY(0) !important;
+        pointer-events: auto !important;
+        z-index: 2147483647 !important;
+        visibility: visible !important;
+    }
+
+    .toggle-scroll-btn:hover,
+    #toggleScrollBtn:hover {
         background: #0040a0 !important;
         box-shadow: 0 6px 18px rgba(0, 47, 112, 0.45), 0 3px 6px rgba(0,0,0,0.15) !important;
         transform: scale(1.08) translateY(-1px) !important;
+        pointer-events: auto !important;
+        z-index: 2147483647 !important;
     }
 
-    .toggle-scroll-btn:active {
+    .toggle-scroll-btn:active,
+    #toggleScrollBtn:active {
         transform: scale(0.94) translateY(0) !important;
         box-shadow: 0 2px 6px rgba(0, 47, 112, 0.25) !important;
+        pointer-events: auto !important;
+        z-index: 2147483647 !important;
+    }
+
+    /* Icon must not block clicks */
+    .toggle-scroll-btn i,
+    #toggleScrollBtn i {
+        pointer-events: none !important;
+        display: block !important;
+        line-height: 1 !important;
     }
 
     /* Red highlight while the page is scrolling */
-    .toggle-scroll-btn.scrolling {
+    .toggle-scroll-btn.scrolling,
+    #toggleScrollBtn.scrolling {
         background: var(--petron-red, #E30613) !important;
         border-color: #ffffff !important;
         box-shadow: 0 4px 16px rgba(227, 6, 19, 0.5), 0 2px 6px rgba(0,0,0,0.15) !important;
         transform: scale(1.12) translateY(-1px) !important;
+        pointer-events: auto !important;
+        z-index: 2147483647 !important;
     }
 
     /* Arrow icon */
-    .toggle-scroll-btn i {
+    .toggle-scroll-btn i,
+    #toggleScrollBtn i {
         display: block !important;
         line-height: 1 !important;
         transition: none !important;
+        pointer-events: none !important;
     }
 
     .toggle-scroll-btn.arrow-up i {
@@ -248,12 +273,15 @@
 
     /* Mobile */
     @media (max-width: 768px) {
-        .toggle-scroll-btn {
+        .toggle-scroll-btn,
+        #toggleScrollBtn {
             width: 36px !important;
             height: 36px !important;
             font-size: 13px !important;
             bottom: 50px !important;
             right: 12px !important;
+            pointer-events: auto !important;
+            z-index: 2147483647 !important;
         }
     }
 
@@ -299,11 +327,17 @@
     // Create fresh button as a direct child of <body>
     var btn = document.createElement('button');
     btn.id = 'toggleScrollBtn';
-    btn.className = 'toggle-scroll-btn';
+    btn.className = 'toggle-scroll-btn visible';
     btn.setAttribute('aria-label', 'Scroll to bottom');
     btn.setAttribute('title', 'Scroll to bottom');
-    btn.innerHTML = '<i class="fas fa-arrow-down"></i>';
+    btn.setAttribute('type', 'button');
+    // FORCE CLICKABILITY WITH INLINE STYLES - ABSOLUTE MAXIMUM PRIORITY
+    btn.style.cssText = 'pointer-events: auto !important; cursor: pointer !important; z-index: 2147483647 !important; position: fixed !important; opacity: 1 !important; visibility: visible !important; display: flex !important;';
+    btn.innerHTML = '<i class="fas fa-arrow-down" style="pointer-events: none !important; display: block !important;"></i>';
     document.body.appendChild(btn);
+    
+    // Debug log
+    console.log('Scroll button created with inline clickability styles');
   })();
   </script>
 
@@ -444,8 +478,18 @@
 
         btn.addEventListener('click', function (e) {
             e.preventDefault();
+            e.stopPropagation();
+            console.log('Scroll button clicked!');
             doScroll();
-        });
+        }, false);
+        
+        // FORCE button to stay clickable - ABSOLUTE MAXIMUM PRIORITY
+        setInterval(function() {
+            if (btn.style.pointerEvents !== 'auto' || btn.style.zIndex !== '2147483647') {
+                btn.style.cssText = 'pointer-events: auto !important; cursor: pointer !important; z-index: 2147483647 !important; position: fixed !important; opacity: 1 !important; visibility: visible !important; display: flex !important;';
+                console.log('⚠ Scroll button styles reset - reapplied maximum priority clickability');
+            }
+        }, 500); // Check every 500ms
 
         // Attach scroll listener to the right target
         function attachScrollListener() {
@@ -621,6 +665,22 @@
                         row.style.display = '';
                     }
                 });
+                // Adjust category headers if present
+                var catHeaders = tbody.querySelectorAll('.cat-header');
+                if (catHeaders.length > 0) {
+                    catHeaders.forEach(function(header) {
+                        var next = header.nextElementSibling;
+                        var hasVisibleItem = false;
+                        while (next && !next.classList.contains('cat-header')) {
+                            if (next.style.display !== 'none' && !next.classList.contains('search-hidden')) {
+                                hasVisibleItem = true;
+                                break;
+                            }
+                            next = next.nextElementSibling;
+                        }
+                        header.style.display = hasVisibleItem ? '' : 'none';
+                    });
+                }
                 return;
             }
             container.style.display = '';
@@ -641,6 +701,23 @@
             pageRows.forEach(function(row) {
                 row.style.display = '';
             });
+            
+            // Adjust category headers visibility: show only if there's at least one visible item following it on this page
+            var catHeaders = tbody.querySelectorAll('.cat-header');
+            if (catHeaders.length > 0) {
+                catHeaders.forEach(function(header) {
+                    var next = header.nextElementSibling;
+                    var hasVisibleItem = false;
+                    while (next && !next.classList.contains('cat-header')) {
+                        if (next.style.display !== 'none' && !next.classList.contains('search-hidden')) {
+                            hasVisibleItem = true;
+                            break;
+                        }
+                        next = next.nextElementSibling;
+                    }
+                    header.style.display = hasVisibleItem ? '' : 'none';
+                });
+            }
             
             var html = '';
             html += '<button class="cust-btn" style="padding:4px 8px;margin:2px;font-size:11px;background:#f1f5f9;color:#333;border:1px solid #ccc;border-radius:4px;cursor:pointer;" ' + (currentPage === 1 ? 'disabled' : '') + ' onclick="setTablePage(\''+tableId+'\',' + (currentPage - 1) + ')">Prev</button>';
@@ -681,6 +758,15 @@
                 currentPage = page;
                 updatePagination();
             }
+        };
+        
+        // Expose a manual trigger for updates
+        if (!window.tablePaginationTriggers) {
+            window.tablePaginationTriggers = {};
+        }
+        window.tablePaginationTriggers[tableId] = function() {
+            currentPage = 1;
+            updatePagination();
         };
         
         // Re-run setup check regularly to integrate search filter classes
