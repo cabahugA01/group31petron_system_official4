@@ -31,6 +31,16 @@ try {
 
 // ── DATA FETCH ────────────────────────────────────────────────────────────────
 
+function crAdminTrackerServiceWhere(string $alias = 'mt'): string {
+    $p = $alias !== '' ? $alias . '.' : '';
+    return "(
+        LOWER(COALESCE({$p}transaction_type, '')) IN ('job_order', 'combined', 'service')
+        OR ({$p}job_order_service IS NOT NULL AND TRIM({$p}job_order_service) <> '')
+        OR {$p}job_order_id IS NOT NULL
+        OR {$p}job_order_db_id IS NOT NULL
+    )";
+}
+
 // ACTIVITY LOGS — from audit_logs (API-level) + activity_logs (lib-level log_activity calls)
 $activity_rows = [];
 try {
@@ -166,11 +176,43 @@ try {
     $q->execute([$station_id, $date_from, $date_to]);
     $jo_tasks = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
+    // Service tracker rows that are stored through merchandise_transactions.
+    $mt_service_where = crAdminTrackerServiceWhere('mt');
+    $qTracker = $pdo->prepare("
+        SELECT
+            'Job Order' AS task_type,
+            COALESCE(mt.job_order_id, mt.transaction_id, CONCAT('MT-', mt.id)) AS task_ref,
+            COALESCE(
+                NULLIF(TRIM(mt.customer_name), ''),
+                NULLIF(TRIM(CONCAT(COALESCE(mt.customer_first_name,''), ' ', COALESCE(mt.customer_last_name,''))), ''),
+                'Walk-in'
+            ) AS assigned_to,
+            COALESCE(mt.transaction_date, mt.created_at) AS scheduled_date,
+            COALESCE(NULLIF(mt.workflow_status, ''), NULLIF(mt.validation_status, ''), 'Pending') AS status,
+            COALESCE(NULLIF(mt.job_order_service, ''), NULLIF(mt.job_order_description, ''), 'Service') AS description
+        FROM merchandise_transactions mt
+        WHERE mt.station_id = ?
+          AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+          AND {$mt_service_where}
+          AND NOT EXISTS (
+              SELECT 1
+              FROM job_orders jo2
+              WHERE jo2.station_id = mt.station_id
+                AND (
+                    (mt.job_order_db_id IS NOT NULL AND jo2.id = mt.job_order_db_id)
+                    OR (mt.job_order_id IS NOT NULL AND mt.job_order_id <> ''
+                        AND (jo2.job_order_id = mt.job_order_id OR jo2.job_order_number = mt.job_order_id))
+                )
+          )
+    ");
+    $qTracker->execute([$station_id, $date_from, $date_to]);
+    $tracker_tasks = $qTracker->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
     // Fuel Deliveries
     $q2 = $pdo->prepare("
         SELECT
             'Fuel Delivery' AS task_type,
-            COALESCE(fd.batch_id, CONCAT('FD-', fd.id)) AS task_ref,
+            COALESCE(NULLIF(fd.invoice_no, ''), CONCAT('FD-', fd.id)) AS task_ref,
             COALESCE(fd.supplier, '—') AS assigned_to,
             COALESCE(fd.delivery_date, fd.created_at) AS scheduled_date,
             COALESCE(fd.status, 'Pending') AS status,
@@ -183,7 +225,7 @@ try {
     $fd_tasks = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
     // Merge and sort by date
-    $calendar_tasks = array_merge($jo_tasks, $fd_tasks);
+    $calendar_tasks = array_merge($jo_tasks, $tracker_tasks, $fd_tasks);
     usort($calendar_tasks, fn($a, $b) => strtotime($a['scheduled_date']) <=> strtotime($b['scheduled_date']));
 } catch (Exception $e) { $calendar_tasks = []; }
 
@@ -267,12 +309,40 @@ require_once __DIR__ . '/../partials/header.php';
     *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
     html,body{background:white !important;padding:0 !important;margin:0 !important;}
     body > *{display:none !important;}
-    .rpt-printable{display:block !important;}
+    .rpt-printable{display:block !important;overflow:visible !important;}
     .cr-filter-bar,.cr-tabs,.cr-export-actions,.cr-calendar-grid{display:none !important;}
-    .cr-panel{display:block !important;}
-    .cr-tbl{font-size:10px !important;}
-    .cr-tbl thead th{font-size:9px !important;padding:5px !important;}
-    .cr-tbl tbody td,.cr-tbl tfoot td{font-size:10px !important;padding:5px !important;}
+    .cr-panel{display:none !important;overflow:visible !important;}
+    .cr-panel.active{display:block !important;}
+    .cr-rpt-header,.cr-sub-heading{
+        break-after:avoid !important;
+        page-break-after:avoid !important;
+    }
+    .cr-tbl{
+        width:100% !important;
+        max-width:100% !important;
+        border-collapse:collapse !important;
+        table-layout:auto !important;
+        font-size:9.5px !important;
+        break-inside:auto !important;
+        page-break-inside:auto !important;
+    }
+    .cr-tbl thead{display:table-header-group !important;}
+    .cr-tbl tfoot{display:table-footer-group !important;}
+    .cr-tbl tr{
+        break-inside:avoid !important;
+        page-break-inside:avoid !important;
+    }
+    .cr-tbl thead th{font-size:8.8px !important;padding:5px !important;}
+    .cr-tbl tbody td,.cr-tbl tfoot td{
+        font-size:9.5px !important;
+        padding:5px !important;
+        white-space:normal !important;
+        word-break:break-word !important;
+    }
+    .cr-empty{
+        break-inside:avoid !important;
+        page-break-inside:avoid !important;
+    }
 }
 </style>
 
@@ -576,20 +646,25 @@ function crPrint() {
         *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
         body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:0;}
         .cr-tabs,.cr-filter-bar{display:none !important;}
+        .cr-panel{display:block !important;overflow:visible !important;}
         .cr-rpt-header{text-align:center;padding:12px 0 8px;border-bottom:2px solid #000;margin-bottom:12px;}
         .rh-title{font-size:16px;font-weight:800;text-transform:uppercase;margin-bottom:3px;}
         .rh-sub{font-size:13px;font-weight:700;text-transform:uppercase;margin-bottom:6px;}
         .rh-station,.rh-date{font-size:11px;color:#444;}
+        .cr-rpt-header,.cr-sub-heading{break-after:avoid;page-break-after:avoid;}
         .cr-sub-heading{font-size:12px;font-weight:700;text-transform:uppercase;padding:6px 0;border-bottom:1px solid #ccc;margin:14px 0 8px;}
         .cr-calendar-grid{display:none !important;}
-        table{width:100%;border-collapse:collapse;font-size:9.5px;}
+        table{width:100%;max-width:100%;border-collapse:collapse;table-layout:auto;font-size:9.2px;break-inside:auto;page-break-inside:auto;}
+        thead{display:table-header-group;}
+        tfoot{display:table-footer-group;}
         thead tr{background:#f0f0f0 !important;border-top:2px solid #000;border-bottom:1px solid #999;}
-        thead th{padding:6px 5px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;}
+        thead th{padding:5px;text-align:left;font-weight:700;font-size:8.6px;text-transform:uppercase;white-space:normal;word-break:break-word;}
+        tr{break-inside:avoid;page-break-inside:avoid;}
         tbody tr{border-bottom:1px solid #ddd;}
-        tbody td{padding:5px;}
+        tbody td{padding:5px;white-space:normal;word-break:break-word;}
         tfoot tr{border-top:2px solid #000;background:#f0f0f0 !important;}
-        tfoot td{padding:6px 5px;font-weight:700;}
-        .cr-empty{text-align:center;padding:12px;color:#888;font-style:italic;}
+        tfoot td{padding:6px 5px;font-weight:700;white-space:normal;word-break:break-word;}
+        .cr-empty{text-align:center;padding:12px;color:#888;font-style:italic;break-inside:avoid;page-break-inside:avoid;}
         .cr-badge,.cr-status{padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700;}
     </style></head><body>${active.innerHTML}</body></html>`);
     w.document.close(); w.focus();

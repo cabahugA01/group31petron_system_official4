@@ -4,6 +4,7 @@
 // Flow: Staff Stock Requests -> Manager generates Merchandise Purchase Request -> Admin validates
 // ============================================================
 $page_id = 'mgr_stock_review';
+$page_title = 'Purchase Request';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
@@ -806,17 +807,13 @@ include __DIR__ . '/../partials/header.php';
     <div class="pr-head">
         <div>
             <h1 class="pr-title">
-                <?php if ($active_tab === 'fuel'): ?>
-                    <i class="fas fa-gas-pump" style="color: #002F6C;"></i> Fuel Stock Request Review
-                <?php else: ?>
-                    <i class="fas fa-box" style="color: #002F6C;"></i> Merchandise Stock Request Review
-                <?php endif; ?>
+                <i class="fas fa-clipboard-list" style="color: #002F6C;"></i> Purchase Request
             </h1>
             <div class="pr-subtitle">
                 <?php if ($active_tab === 'fuel'): ?>
-                    Review and approve fuel stock requests from your station staff.
+                    Review and generate fuel purchase requests.
                 <?php else: ?>
-                    Review and approve merchandise stock requests from your station staff.
+                    Review and generate merchandise purchase requests.
                 <?php endif; ?>
             </div>
         </div>
@@ -895,11 +892,8 @@ include __DIR__ . '/../partials/header.php';
                 </select>
             </div>
             <div class="action-buttons">
-                <button onclick="openGenerateFuelModal()" class="btn-pr btn-primary-pr"><i class="fas fa-plus"></i> Generate Fuel Purchase Request</button>
-                <button onclick="exportFuelToPDF()" class="btn-pr btn-outline-pr"><i class="fas fa-file-pdf"></i> Export PDF</button>
-                <button onclick="exportFuelToExcel()" class="btn-pr btn-outline-pr"><i class="fas fa-file-excel"></i> Export Excel</button>
-                <button onclick="exportFuelToCSV()" class="btn-pr btn-outline-pr"><i class="fas fa-file-csv"></i> Export CSV</button>
                 <button onclick="location.reload()" class="btn-pr btn-outline-pr"><i class="fas fa-sync-alt"></i> Refresh</button>
+                <button onclick="openGenerateFuelModal()" class="btn-pr btn-primary-pr"><i class="fas fa-plus"></i> Generate PO</button>
             </div>
         </div>
 
@@ -1066,7 +1060,15 @@ include __DIR__ . '/../partials/header.php';
                                 <td><strong><?= htmlspecialchars($pr['po_number']) ?></strong></td>
                                 <td style="font-family: monospace; font-size: 12px;"><?= $stock_req ?></td>
                                 <td><?= htmlspecialchars($requested_by) ?></td>
-                                <td style="text-align: center; font-weight: 700; color: #002F6C;"><?= $pr['total_products'] > 0 ? $pr['total_products'] : '<span style="color:#94a3b8;font-weight:normal;">—</span>' ?></td>
+                                <td style="text-align: center; font-weight: 700; color: #002F6C;">
+                                    <?php 
+                                    $item_count = (int)$pr['total_products'];
+                                    if ($item_count === 0 && !empty($pr['product_name'])) {
+                                        $item_count = 1;
+                                    }
+                                    echo $item_count > 0 ? $item_count : '<span style="color:#94a3b8;font-weight:normal;">—</span>';
+                                    ?>
+                                </td>
                                 <td><?= date('M d, Y h:i A', strtotime($pr['created_at'])) ?></td>
                                 <td><span class="status-badge <?= $status_class ?>"><?= htmlspecialchars($status) ?></span></td>
                                 <td style="text-align: right;">
@@ -1277,7 +1279,8 @@ include __DIR__ . '/../partials/header.php';
         </div>
         <div class="modal-footer">
             <button type="button" class="btn-pr btn-primary-pr" onclick="closeModal('detailsModal')">Close</button>
-</div>
+        </div>
+    </div>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════
@@ -1684,7 +1687,25 @@ function viewPrDetails(poId) {
     var items = poItemsGrouped[poId] || [];
     
     if (items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #64748b; padding: 12px;">No items found for this Purchase Request.</td></tr>';
+        if (pr.product_name) {
+            var subtotal = parseFloat(pr.total_amount || (pr.quantity * pr.unit_price) || 0);
+            var tr = document.createElement('tr');
+            tr.innerHTML = 
+                '<td><strong>' + escHtml(pr.product_name) + '</strong></td>' +
+                '<td class="text-right">' + parseFloat(pr.quantity).toFixed(0) + '</td>' +
+                '<td class="text-right">₱' + parseFloat(pr.unit_price || 0).toFixed(2) + '</td>' +
+                '<td class="text-right" style="font-weight: 700;">₱' + subtotal.toFixed(2) + '</td>';
+            tbody.appendChild(tr);
+            
+            var trTotal = document.createElement('tr');
+            trTotal.style.background = '#f8fafc';
+            trTotal.innerHTML = 
+                '<td colspan="3" style="text-align: right; font-weight: 800;">Estimated Total Amount:</td>' +
+                '<td class="text-right" style="font-weight: 800; color: #002F6C; font-size: 14px;">₱' + subtotal.toFixed(2) + '</td>';
+            tbody.appendChild(trTotal);
+        } else {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #64748b; padding: 12px;">No items found for this Purchase Request.</td></tr>';
+        }
     } else {
         var totalAmount = 0;
         items.forEach(function(item) {

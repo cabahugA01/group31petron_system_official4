@@ -402,9 +402,50 @@ require_once __DIR__ . '/../partials/header.php';
         font-weight: 700 !important;
     }
 
+    .sr-section-panel {
+        overflow: visible !important;
+    }
+
     .sr-shift-block {
-        page-break-inside: avoid !important;
+        break-inside: auto !important;
+        page-break-inside: auto !important;
         margin-bottom: 20px !important;
+        overflow: visible !important;
+    }
+
+    .sr-shift-heading,
+    h3 {
+        break-after: avoid !important;
+        page-break-after: avoid !important;
+    }
+
+    .sr-tbl thead,
+    .rpt-table thead,
+    .sr-table thead {
+        display: table-header-group !important;
+    }
+
+    .sr-tbl tfoot,
+    .rpt-table tfoot,
+    .sr-table tfoot {
+        display: table-footer-group !important;
+    }
+
+    .sr-tbl tr,
+    .rpt-table tr,
+    .sr-table tr {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+
+    .sr-tbl td,
+    .sr-tbl th,
+    .rpt-table td,
+    .rpt-table th,
+    .sr-table td,
+    .sr-table th {
+        white-space: normal !important;
+        word-break: break-word !important;
     }
 
     /* Show all shift blocks when printing */
@@ -419,7 +460,7 @@ require_once __DIR__ . '/../partials/header.php';
     <div class="rpt-content">
         <!-- Date Filter Bar -->
         <form method="GET" class="rpt-filter-bar">
-            <input type="hidden" name="section" id="adminReportSection" value="<?= htmlspecialchars($_GET['section'] ?? 'merchandise') ?>">
+            <input type="hidden" name="section" id="adminReportSection" value="<?= htmlspecialchars($_GET['section'] ?? 'fuel_sales') ?>">
             <label><i class="fas fa-calendar"></i> Report Date:</label>
             <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" required>
             <span style="color: #64748b;">to</span>
@@ -476,7 +517,7 @@ function exportReport(type) {
 
     const section  = document.getElementById('adminReportSection')?.value
                   || new URL(window.location).searchParams.get('section')
-                  || 'merchandise';
+                  || 'fuel_sales';
     const dateFrom = document.querySelector('input[name="date_from"]')?.value || '';
     const dateTo   = document.querySelector('input[name="date_to"]')?.value || '';
     const filename = `Admin_Report_${section}_${dateFrom}_to_${dateTo}`;
@@ -513,6 +554,7 @@ function exportExcel(tables, filename) {
         // Get heading from nearest shift block
         const block = tbl.closest('.sr-shift-block');
         let sheetName = block?.querySelector('.sr-shift-heading')?.innerText?.trim()
+                      || tbl.previousElementSibling?.innerText?.trim()
                       || `Sheet ${i + 1}`;
         // Clean sheet name (Excel limit: 31 chars, no special chars)
         sheetName = sheetName.replace(/[:\\\/?*\[\]]/g, '').substring(0, 31).trim() || `Sheet${i+1}`;
@@ -583,17 +625,22 @@ function printReport() {
         *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
         body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:0;}
         .sr-section-tabs{display:none !important;}
-        .sr-shift-block{display:block !important;}
+        .sr-section-panel{display:block !important;overflow:visible !important;}
+        .sr-shift-block{display:block !important;break-inside:auto;page-break-inside:auto;margin-bottom:14px;overflow:visible;}
+        .sr-shift-heading,h3{break-after:avoid;page-break-after:avoid;}
         .sr-shift-heading{font-size:12px;font-weight:700;text-transform:uppercase;padding:6px 0;border-bottom:1px solid #ccc;margin-bottom:8px;margin-top:16px;}
         div[style*="text-align:center"]{text-align:center;padding:10px 0 8px;border-bottom:2px solid #000;margin-bottom:12px;}
-        table{width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:6px;}
+        table{width:100%;max-width:100%;border-collapse:collapse;table-layout:auto;font-size:9.3px;margin-bottom:8px;break-inside:auto;page-break-inside:auto;}
+        thead{display:table-header-group;}
+        tfoot{display:table-footer-group;}
         thead tr{background:#f0f0f0 !important;border-top:2px solid #000;border-bottom:1px solid #999;}
-        thead th{padding:6px 5px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;}
+        thead th{padding:5px;text-align:left;font-weight:700;font-size:8.6px;text-transform:uppercase;white-space:normal;word-break:break-word;}
+        tr{break-inside:avoid;page-break-inside:avoid;}
         tbody tr{border-bottom:1px solid #ddd;}
-        tbody td{padding:5px;}
+        tbody td{padding:5px;white-space:normal;word-break:break-word;}
         tfoot tr{border-top:2px solid #000;background:#f0f0f0 !important;}
-        tfoot td{padding:6px 5px;font-weight:700;}
-        .sr-empty{text-align:center;padding:12px;color:#888;font-style:italic;}
+        tfoot td{padding:6px 5px;font-weight:700;white-space:normal;word-break:break-word;}
+        .sr-empty{text-align:center;padding:12px;color:#888;font-style:italic;break-inside:avoid;page-break-inside:avoid;}
         .sr-status,.sr-badge,.cr-badge,.cr-status,.fr-badge{padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700;}
     </style></head><body>${active.innerHTML}</body></html>`);
     w.document.close();

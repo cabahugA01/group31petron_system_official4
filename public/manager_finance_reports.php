@@ -31,6 +31,13 @@ if (!$station_id) {
 // Get active tab from URL parameter
 $active_tab = $_GET['tab'] ?? 'payments';
 
+// Active finance sub-report
+$section = $_GET['section'] ?? 'payments';
+$valid_sections = ['payments', 'suppliers', 'financial'];
+if (!in_array($section, $valid_sections, true)) {
+    $section = 'payments';
+}
+
 // Get date range from GET or use current month as default
 $date_from = $_GET['date_from'] ?? date('Y-m-01');
 $date_to   = $_GET['date_to']   ?? date('Y-m-d');
@@ -55,6 +62,48 @@ try {
     $st = $s->fetch(PDO::FETCH_ASSOC);
     if ($st) $station_name = $st['name'];
 } catch (Exception $e) {}
+
+function mfPaymentMethodCase(string $expr): string {
+    return "CASE
+        WHEN LOWER(COALESCE({$expr},'')) LIKE '%fleet%' THEN 'Fleet'
+        WHEN LOWER(COALESCE({$expr},'')) LIKE '%fuel card%'
+          OR LOWER(COALESCE({$expr},'')) LIKE '%efuel%' THEN 'E-Fuel Card'
+        WHEN LOWER(COALESCE({$expr},'')) LIKE '%card%'
+          OR LOWER(COALESCE({$expr},'')) LIKE '%credit%'
+          OR LOWER(COALESCE({$expr},'')) LIKE '%debit%' THEN 'Card'
+        WHEN LOWER(COALESCE({$expr},'')) LIKE '%wallet%'
+          OR LOWER(COALESCE({$expr},'')) LIKE '%gcash%'
+          OR LOWER(COALESCE({$expr},'')) LIKE '%maya%'
+          OR LOWER(COALESCE({$expr},'')) LIKE '%paymaya%' THEN 'E-Wallet'
+        WHEN LOWER(COALESCE({$expr},'')) LIKE '%cash%'
+          OR COALESCE({$expr},'') = '' THEN 'Cash'
+        ELSE COALESCE(NULLIF({$expr},''), 'Other')
+    END";
+}
+
+function mfNonRejectedWhere(string $alias, string $workflow_col, string $validation_col = ''): string {
+    $p = $alias !== '' ? $alias . '.' : '';
+    $where = "LOWER(COALESCE({$p}{$workflow_col}, '')) NOT IN ('rejected','cancelled','canceled','voided')";
+    if ($validation_col !== '') {
+        $where .= " AND LOWER(COALESCE({$p}{$validation_col}, '')) NOT IN ('rejected','cancelled','canceled','voided')";
+    }
+    return $where;
+}
+
+$mf_fuel_ok = mfNonRejectedWhere('ft', 'status');
+$mf_mt_ok = mfNonRejectedWhere('mt', 'workflow_status', 'validation_status');
+$mf_jo_ok = mfNonRejectedWhere('jo', 'status', 'validation_status');
+$mf_jo_amount = "COALESCE(NULLIF(jo.amount_paid, 0), NULLIF(jo.total_cost, 0), NULLIF(jo.estimated_cost, 0), COALESCE(jo.actual_labor_cost,0) + COALESCE(jo.actual_parts_cost,0), 0)";
+$mf_mt_not_native_job = "NOT EXISTS (
+    SELECT 1
+    FROM job_orders jo2
+    WHERE jo2.station_id = mt.station_id
+      AND (
+          (mt.job_order_db_id IS NOT NULL AND mt.job_order_db_id <> 0 AND jo2.id = mt.job_order_db_id)
+          OR (mt.job_order_id IS NOT NULL AND TRIM(CAST(mt.job_order_id AS CHAR)) <> ''
+              AND (jo2.job_order_number = mt.job_order_id OR jo2.job_order_id = mt.job_order_id))
+      )
+)";
 
 require_once __DIR__ . '/../partials/header.php';
 ?>
@@ -259,6 +308,26 @@ require_once __DIR__ . '/../partials/header.php';
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     .fr-section-tabs { display: none !important; }
     .rpt-filter-bar, .rpt-export-actions { display: none !important; }
+    .rpt-printable { display:block !important; overflow:visible !important; }
+    .fr-section-panel { display:none !important; overflow:visible !important; }
+    .fr-section-panel.active { display:block !important; }
+    .fr-table {
+        width:100% !important;
+        border-collapse:collapse !important;
+        table-layout:auto !important;
+        font-size:9.5px !important;
+        break-inside:auto !important;
+        page-break-inside:auto !important;
+    }
+    .fr-table thead { display:table-header-group !important; }
+    .fr-table tfoot { display:table-footer-group !important; }
+    .fr-table tr { break-inside:avoid !important; page-break-inside:avoid !important; }
+    .fr-table th, .fr-table td {
+        white-space:normal !important;
+        word-break:break-word !important;
+        padding:5px !important;
+        font-size:9.5px !important;
+    }
 }
 </style>
 
@@ -266,6 +335,7 @@ require_once __DIR__ . '/../partials/header.php';
     <div class="rpt-content">
         <!-- Date Filter Bar -->
         <form method="GET" class="rpt-filter-bar">
+            <input type="hidden" name="section" id="managerFinanceSection" value="<?= htmlspecialchars($section) ?>">
             <label><i class="fas fa-calendar"></i> Report Date:</label>
             <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" required>
             <span style="color: #64748b;">to</span>
@@ -287,25 +357,18 @@ require_once __DIR__ . '/../partials/header.php';
 
         <!-- Printable Report Content -->
         <div class="rpt-printable">
-            <?php
-            // Active section
-            $section = $_GET['section'] ?? 'payments';
-            $valid_sections = ['payments', 'suppliers', 'financial'];
-            if (!in_array($section, $valid_sections)) $section = 'payments';
-            ?>
-
             <!-- Section Tabs -->
             <div class="fr-section-tabs">
-                <button class="fr-section-tab <?= $section === 'payments' ? 'active' : '' ?>"
-                        onclick="frSwitchSection('payments')">
+                <button type="button" class="fr-section-tab <?= $section === 'payments' ? 'active' : '' ?>"
+                        onclick="frSwitchSection('payments', this)">
                     <i class="fas fa-money-bill-wave"></i> Payments Breakdown
                 </button>
-                <button class="fr-section-tab <?= $section === 'suppliers' ? 'active' : '' ?>"
-                        onclick="frSwitchSection('suppliers')">
+                <button type="button" class="fr-section-tab <?= $section === 'suppliers' ? 'active' : '' ?>"
+                        onclick="frSwitchSection('suppliers', this)">
                     <i class="fas fa-truck"></i> Suppliers & Deliveries
                 </button>
-                <button class="fr-section-tab <?= $section === 'financial' ? 'active' : '' ?>"
-                        onclick="frSwitchSection('financial')">
+                <button type="button" class="fr-section-tab <?= $section === 'financial' ? 'active' : '' ?>"
+                        onclick="frSwitchSection('financial', this)">
                     <i class="fas fa-file-invoice-dollar"></i> Financial / Payables
                 </button>
             </div>
@@ -334,54 +397,47 @@ require_once __DIR__ . '/../partials/header.php';
                 try {
                     $q = $pdo->prepare("
                         SELECT
-                            CASE
-                                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fleet%' THEN 'Fleet'
-                                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fuel card%'
-                                  OR LOWER(COALESCE(payment_method,'')) LIKE '%efuel%' THEN 'E-Fuel Card'
-                                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%card%' 
-                                  OR LOWER(COALESCE(payment_method,'')) LIKE '%credit%' 
-                                  OR LOWER(COALESCE(payment_method,'')) LIKE '%debit%' THEN 'Card'
-                                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%wallet%'
-                                  OR LOWER(COALESCE(payment_method,'')) LIKE '%gcash%'
-                                  OR LOWER(COALESCE(payment_method,'')) LIKE '%maya%'
-                                  OR LOWER(COALESCE(payment_method,'')) LIKE '%paymaya%' THEN 'E-Wallet'
-                                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%cash%'
-                                  OR COALESCE(payment_method,'') = '' THEN 'Cash'
-                                ELSE 'Other'
-                            END AS mode_of_payment,
+                            " . mfPaymentMethodCase('ft.payment_method') . " AS mode_of_payment,
                             'Fuel' AS source,
                             COUNT(*) AS txn_count,
                             SUM(COALESCE(total_amount, 0)) AS total_amount
-                        FROM fuel_transactions
-                        WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?
+                        FROM fuel_transactions ft
+                        WHERE ft.station_id = ? AND DATE(ft.transaction_date) BETWEEN ? AND ?
+                          AND {$mf_fuel_ok}
                         GROUP BY mode_of_payment
                         
                         UNION ALL
                         
                         SELECT
-                            CASE
-                                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fleet%' THEN 'Fleet'
-                                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%card%' 
-                                  OR LOWER(COALESCE(payment_method,'')) LIKE '%credit%' 
-                                  OR LOWER(COALESCE(payment_method,'')) LIKE '%debit%' THEN 'Card'
-                                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%wallet%'
-                                  OR LOWER(COALESCE(payment_method,'')) LIKE '%gcash%'
-                                  OR LOWER(COALESCE(payment_method,'')) LIKE '%maya%'
-                                  OR LOWER(COALESCE(payment_method,'')) LIKE '%paymaya%' THEN 'E-Wallet'
-                                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%cash%'
-                                  OR COALESCE(payment_method,'') = '' THEN 'Cash'
-                                ELSE 'Other'
-                            END AS mode_of_payment,
+                            " . mfPaymentMethodCase('mt.payment_method') . " AS mode_of_payment,
                             'Merchandise' AS source,
                             COUNT(*) AS txn_count,
                             SUM(COALESCE(total_amount, 0)) AS total_amount
-                        FROM merchandise_transactions
-                        WHERE station_id = ? AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
+                        FROM merchandise_transactions mt
+                        WHERE mt.station_id = ? AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+                          AND {$mf_mt_ok}
+                          AND {$mf_mt_not_native_job}
+                        GROUP BY mode_of_payment
+
+                        UNION ALL
+
+                        SELECT
+                            " . mfPaymentMethodCase('jo.payment_method') . " AS mode_of_payment,
+                            'Job Order' AS source,
+                            COUNT(*) AS txn_count,
+                            SUM({$mf_jo_amount}) AS total_amount
+                        FROM job_orders jo
+                        WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ?
+                          AND {$mf_jo_ok}
                         GROUP BY mode_of_payment
                         
                         ORDER BY total_amount DESC
                     ");
-                    $q->execute([$station_id, $date_start, $date_end, $station_id, $date_start, $date_end]);
+                    $q->execute([
+                        $station_id, $date_start, $date_end,
+                        $station_id, $date_start, $date_end,
+                        $station_id, $date_start, $date_end
+                    ]);
                     $payment_rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
                     
                     // Aggregate by mode
@@ -467,18 +523,40 @@ require_once __DIR__ . '/../partials/header.php';
                 try {
                     $q = $pdo->prepare("
                         SELECT
-                            COALESCE(supplier, 'Unknown') AS supplier_name,
-                            COUNT(*) AS delivery_count,
-                            SUM(COALESCE(quantity, 0) * COALESCE(unit_cost, 0)) AS total_value,
-                            0 AS payable_amount,
-                            SUM(COALESCE(quantity, 0) * COALESCE(unit_cost, 0)) AS variance
-                        FROM deliveries_oversight
-                        WHERE station_id = ? 
-                          AND DATE(COALESCE(delivery_date, created_at)) BETWEEN ? AND ?
-                        GROUP BY supplier
-                        ORDER BY total_value DESC
+                            supplier_name,
+                            SUM(delivery_count) AS delivery_count,
+                            SUM(total_value) AS total_value,
+                            SUM(payable_amount) AS payable_amount,
+                            SUM(total_value - payable_amount) AS variance
+                        FROM (
+                            SELECT
+                                COALESCE(NULLIF(s.name, ''), NULLIF(po.product_name, ''), 'Unknown') AS supplier_name,
+                                COUNT(DISTINCT po.id) AS delivery_count,
+                                SUM(COALESCE(poi.total_price, po.total_amount, 0)) AS total_value,
+                                SUM(CASE WHEN po.status NOT IN ('Received','Admin Finalized') THEN COALESCE(poi.total_price, po.total_amount, 0) ELSE 0 END) AS payable_amount
+                            FROM purchase_orders po
+                            LEFT JOIN purchase_order_items poi ON po.id = poi.po_id
+                            LEFT JOIN suppliers s ON po.supplier_id = s.id
+                            WHERE po.station_id = ?
+                              AND DATE(po.created_at) BETWEEN ? AND ?
+                            GROUP BY supplier_name
+
+                            UNION ALL
+
+                            SELECT
+                                COALESCE(fd.supplier, 'Unknown') AS supplier_name,
+                                COUNT(*) AS delivery_count,
+                                0 AS total_value,
+                                0 AS payable_amount
+                            FROM fuel_deliveries fd
+                            WHERE fd.station_id = ?
+                              AND DATE(COALESCE(fd.delivery_date, fd.created_at)) BETWEEN ? AND ?
+                            GROUP BY supplier_name
+                        ) src
+                        GROUP BY supplier_name
+                        ORDER BY total_value DESC, delivery_count DESC
                     ");
-                    $q->execute([$station_id, $date_start, $date_end]);
+                    $q->execute([$station_id, $date_start, $date_end, $station_id, $date_start, $date_end]);
                     $supplier_rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
                 } catch (Exception $e) {
                     $supplier_rows = [];
@@ -551,24 +629,31 @@ require_once __DIR__ . '/../partials/header.php';
                 <?php
                 // Fetch financial summary
                 try {
-                    // Expected revenue (fuel + merchandise)
-                    $q1 = $pdo->prepare("SELECT COALESCE(SUM(total_amount), 0) AS fuel_revenue FROM fuel_transactions WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?");
+                    // Expected revenue and collections from all valid transaction streams.
+                    $q1 = $pdo->prepare("SELECT COALESCE(SUM(total_amount), 0) AS fuel_revenue FROM fuel_transactions ft WHERE ft.station_id = ? AND DATE(ft.transaction_date) BETWEEN ? AND ? AND {$mf_fuel_ok}");
                     $q1->execute([$station_id, $date_start, $date_end]);
                     $fuel_rev = $q1->fetchColumn() ?: 0;
                     
-                    $q2 = $pdo->prepare("SELECT COALESCE(SUM(total_amount), 0) AS merch_revenue FROM merchandise_transactions WHERE station_id = ? AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?");
+                    $q2 = $pdo->prepare("SELECT COALESCE(SUM(total_amount), 0) AS merch_revenue FROM merchandise_transactions mt WHERE mt.station_id = ? AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ? AND {$mf_mt_ok} AND {$mf_mt_not_native_job}");
                     $q2->execute([$station_id, $date_start, $date_end]);
                     $merch_rev = $q2->fetchColumn() ?: 0;
+
+                    $q2b = $pdo->prepare("SELECT COALESCE(SUM({$mf_jo_amount}), 0) AS jo_revenue FROM job_orders jo WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ? AND {$mf_jo_ok}");
+                    $q2b->execute([$station_id, $date_start, $date_end]);
+                    $jo_rev = $q2b->fetchColumn() ?: 0;
                     
-                    $expected_revenue = $fuel_rev + $merch_rev;
+                    $expected_revenue = $fuel_rev + $merch_rev + $jo_rev;
                     
-                    // Actual collections (from payments)
-                    $q3 = $pdo->prepare("SELECT COALESCE(SUM(total_amount), 0) AS collections FROM fuel_transactions WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ? AND LOWER(payment_method) LIKE '%cash%'");
-                    $q3->execute([$station_id, $date_start, $date_end]);
-                    $actual_collections = $q3->fetchColumn() ?: 0;
+                    $actual_collections = $expected_revenue;
                     
-                    // Payables (from deliveries)
-                    $q4 = $pdo->prepare("SELECT COALESCE(SUM(quantity * unit_cost), 0) AS payables FROM deliveries_oversight WHERE station_id = ? AND DATE(COALESCE(delivery_date, created_at)) BETWEEN ? AND ?");
+                    // Payables from open purchase orders.
+                    $q4 = $pdo->prepare("
+                        SELECT COALESCE(SUM(CASE WHEN po.status NOT IN ('Received','Admin Finalized') THEN COALESCE(poi.total_price, po.total_amount, 0) ELSE 0 END), 0) AS payables
+                        FROM purchase_orders po
+                        LEFT JOIN purchase_order_items poi ON po.id = poi.po_id
+                        WHERE po.station_id = ?
+                          AND DATE(po.created_at) BETWEEN ? AND ?
+                    ");
                     $q4->execute([$station_id, $date_start, $date_end]);
                     $total_payables = $q4->fetchColumn() ?: 0;
                     
@@ -597,7 +682,7 @@ require_once __DIR__ . '/../partials/header.php';
                     </thead>
                     <tbody>
                         <tr>
-                            <td><strong>Total Revenue (Fuel + Merchandise)</strong></td>
+                            <td><strong>Total Revenue (Fuel + Merchandise + Service)</strong></td>
                             <td>₱<?= number_format($expected_revenue, 2) ?></td>
                             <td>—</td>
                             <td>—</td>
@@ -605,7 +690,7 @@ require_once __DIR__ . '/../partials/header.php';
                             <td></td>
                         </tr>
                         <tr>
-                            <td><strong>Cash Collections</strong></td>
+                            <td><strong>Total Collections</strong></td>
                             <td>₱<?= number_format($expected_revenue, 2) ?></td>
                             <td>₱<?= number_format($actual_collections, 2) ?></td>
                             <td style="color:<?= $variance > 0 ? '#c62828' : '#0d7d3e' ?>;">
@@ -644,7 +729,7 @@ require_once __DIR__ . '/../partials/header.php';
 
 <script src="../assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script>
-function frSwitchSection(sectionKey) {
+function frSwitchSection(sectionKey, trigger) {
     // Hide all panels
     document.querySelectorAll('.fr-section-panel').forEach(p => p.classList.remove('active'));
     // Show selected panel
@@ -653,12 +738,15 @@ function frSwitchSection(sectionKey) {
     
     // Update tab buttons
     document.querySelectorAll('.fr-section-tab').forEach(btn => btn.classList.remove('active'));
-    event.target.closest('.fr-section-tab').classList.add('active');
+    if (trigger) trigger.classList.add('active');
+
+    const hidden = document.getElementById('managerFinanceSection');
+    if (hidden) hidden.value = sectionKey;
     
     // Update URL without reload
     const url = new URL(window.location);
     url.searchParams.set('section', sectionKey);
-    window.history.pushState({}, '', url);
+    window.history.replaceState({}, '', url);
 }
 
 function exportReport(type) {
@@ -676,7 +764,9 @@ function exportReport(type) {
 
     if (!tables.length) { alert('No table data found to export.'); return; }
 
-    const section  = new URL(window.location).searchParams.get('section') || 'payments';
+    const section  = document.getElementById('managerFinanceSection')?.value
+                  || new URL(window.location).searchParams.get('section')
+                  || 'payments';
     const dateFrom = document.querySelector('input[name="date_from"]')?.value || '';
     const dateTo   = document.querySelector('input[name="date_to"]')?.value || '';
     const filename = `Manager_Finance_Report_${section}_${dateFrom}_to_${dateTo}`;
@@ -747,15 +837,20 @@ function printReport() {
         *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
         body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:0;}
         .fr-section-tabs{display:none !important;}
+        .fr-section-panel{display:block !important;overflow:visible !important;}
+        div[style*="text-align:center"], .fr-sub-heading{break-after:avoid;page-break-after:avoid;}
         div[style*="text-align:center"]{text-align:center;padding:10px 0 8px;border-bottom:2px solid #000;margin-bottom:12px;}
-        table{width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:6px;}
+        table{width:100%;max-width:100%;border-collapse:collapse;table-layout:auto;font-size:9.2px;margin-bottom:8px;break-inside:auto;page-break-inside:auto;}
+        thead{display:table-header-group;}
+        tfoot{display:table-footer-group;}
         thead tr{background:#f0f0f0 !important;border-top:2px solid #000;border-bottom:1px solid #999;}
-        thead th{padding:6px 5px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;}
+        thead th{padding:5px;text-align:left;font-weight:700;font-size:8.6px;text-transform:uppercase;white-space:normal;word-break:break-word;}
+        tr{break-inside:avoid;page-break-inside:avoid;}
         tbody tr{border-bottom:1px solid #ddd;}
-        tbody td{padding:5px;}
+        tbody td{padding:5px;white-space:normal;word-break:break-word;}
         tfoot tr{border-top:2px solid #000;background:#f0f0f0 !important;}
-        tfoot td{padding:6px 5px;font-weight:700;}
-        .fr-empty{text-align:center;padding:12px;color:#888;font-style:italic;}
+        tfoot td{padding:6px 5px;font-weight:700;white-space:normal;word-break:break-word;}
+        .fr-empty{text-align:center;padding:12px;color:#888;font-style:italic;break-inside:avoid;page-break-inside:avoid;}
     </style></head><body>${active.innerHTML}</body></html>`);
     w.document.close();
     w.focus();

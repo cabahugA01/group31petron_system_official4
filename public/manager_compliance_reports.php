@@ -31,6 +31,13 @@ if (!$station_id) {
 // Get active tab from URL parameter
 $active_tab = $_GET['tab'] ?? 'activity_logs';
 
+// Active compliance sub-report
+$section = $_GET['section'] ?? 'activity_logs';
+$valid_sections = ['activity_logs', 'audit_trail', 'calendar'];
+if (!in_array($section, $valid_sections, true)) {
+    $section = 'activity_logs';
+}
+
 // Get date range from GET or use current month as default
 $date_from = $_GET['date_from'] ?? date('Y-m-01');
 $date_to   = $_GET['date_to']   ?? date('Y-m-d');
@@ -55,6 +62,16 @@ try {
     $st = $s->fetch(PDO::FETCH_ASSOC);
     if ($st) $station_name = $st['name'];
 } catch (Exception $e) {}
+
+function crManagerTrackerServiceWhere(string $alias = 'mt'): string {
+    $p = $alias !== '' ? $alias . '.' : '';
+    return "(
+        LOWER(COALESCE({$p}transaction_type, '')) IN ('job_order', 'combined', 'service')
+        OR ({$p}job_order_service IS NOT NULL AND TRIM({$p}job_order_service) <> '')
+        OR {$p}job_order_id IS NOT NULL
+        OR {$p}job_order_db_id IS NOT NULL
+    )";
+}
 
 require_once __DIR__ . '/../partials/header.php';
 ?>
@@ -268,8 +285,65 @@ require_once __DIR__ . '/../partials/header.php';
 
 @media print {
     @page { size: legal portrait; margin: 0.3in 0.4in; }
-    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        box-sizing: border-box !important;
+    }
+    html, body {
+        background: #fff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    body * { visibility: hidden !important; }
+    .rpt-printable, .rpt-printable * { visibility: visible !important; }
+    .rpt-printable {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        overflow: visible !important;
+        background: #fff !important;
+    }
     .cr-section-tabs, .rpt-filter-bar, .rpt-export-actions { display: none !important; }
+    .cr-section-panel { display: none !important; overflow: visible !important; }
+    .cr-section-panel.active { display: block !important; }
+    .cr-section-panel > div:first-child {
+        break-after: avoid !important;
+        page-break-after: avoid !important;
+    }
+    .cr-table {
+        width: 100% !important;
+        max-width: 100% !important;
+        border-collapse: collapse !important;
+        table-layout: auto !important;
+        font-size: 9.4px !important;
+        break-inside: auto !important;
+        page-break-inside: auto !important;
+    }
+    .cr-table thead { display: table-header-group !important; }
+    .cr-table tfoot { display: table-footer-group !important; }
+    .cr-table tr {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+    .cr-table thead th {
+        font-size: 8.6px !important;
+        padding: 5px !important;
+        white-space: normal !important;
+        word-break: break-word !important;
+    }
+    .cr-table tbody td,
+    .cr-table tfoot td {
+        font-size: 9.2px !important;
+        padding: 5px !important;
+        white-space: normal !important;
+        word-break: break-word !important;
+    }
+    .cr-empty {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
 }
 </style>
 
@@ -277,6 +351,7 @@ require_once __DIR__ . '/../partials/header.php';
     <div class="rpt-content">
         <!-- Date Filter Bar -->
         <form method="GET" class="rpt-filter-bar">
+            <input type="hidden" name="section" id="managerComplianceSection" value="<?= htmlspecialchars($section) ?>">
             <label><i class="fas fa-calendar"></i> Report Date:</label>
             <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" required>
             <span style="color: #64748b;">to</span>
@@ -298,25 +373,18 @@ require_once __DIR__ . '/../partials/header.php';
 
         <!-- Printable Report Content -->
         <div class="rpt-printable">
-            <?php
-            // Active section
-            $section = $_GET['section'] ?? 'activity_logs';
-            $valid_sections = ['activity_logs', 'audit_trail', 'calendar'];
-            if (!in_array($section, $valid_sections)) $section = 'activity_logs';
-            ?>
-
             <!-- Section Tabs -->
             <div class="cr-section-tabs">
-                <button class="cr-section-tab <?= $section === 'activity_logs' ? 'active' : '' ?>"
-                        onclick="crSwitchSection('activity_logs')">
+                <button type="button" class="cr-section-tab <?= $section === 'activity_logs' ? 'active' : '' ?>"
+                        onclick="crSwitchSection('activity_logs', this)">
                     <i class="fas fa-history"></i> Activity Logs
                 </button>
-                <button class="cr-section-tab <?= $section === 'audit_trail' ? 'active' : '' ?>"
-                        onclick="crSwitchSection('audit_trail')">
+                <button type="button" class="cr-section-tab <?= $section === 'audit_trail' ? 'active' : '' ?>"
+                        onclick="crSwitchSection('audit_trail', this)">
                     <i class="fas fa-shield-alt"></i> Audit Trail
                 </button>
-                <button class="cr-section-tab <?= $section === 'calendar' ? 'active' : '' ?>"
-                        onclick="crSwitchSection('calendar')">
+                <button type="button" class="cr-section-tab <?= $section === 'calendar' ? 'active' : '' ?>"
+                        onclick="crSwitchSection('calendar', this)">
                     <i class="fas fa-calendar-check"></i> Calendar & Schedule
                 </button>
             </div>
@@ -585,18 +653,23 @@ require_once __DIR__ . '/../partials/header.php';
                 </div>
 
                 <?php
-                // Fetch scheduled tasks (Job Orders + Deliveries)
+                // Fetch scheduled tasks from native job orders, service tracker rows, and fuel deliveries.
+                $calendar_rows = [];
+
                 try {
-                    // Job Orders
                     $jo_q = $pdo->prepare("
                         SELECT
                             'Job Order' AS task_type,
                             COALESCE(jo.job_order_number, CONCAT('JO-', jo.id)) AS task_ref,
-                            jo.service_description AS task_description,
+                            COALESCE(NULLIF(jo.service_description, ''), NULLIF(jo.service_type, ''), 'Service') AS task_description,
                             COALESCE(jo.customer_name, c.name, 'Walk-in') AS customer_name,
-                            jo.status,
+                            COALESCE(jo.status, 'Pending') AS status,
                             jo.created_at AS scheduled_date,
-                            COALESCE(CONCAT(u.first_name, ' ', u.last_name), 'Unassigned') AS assigned_to
+                            COALESCE(
+                                NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), ''),
+                                u.username,
+                                'Unassigned'
+                            ) AS assigned_to
                         FROM job_orders jo
                         LEFT JOIN customers c ON jo.customer_id = c.id
                         LEFT JOIN users u ON jo.user_id = u.id
@@ -605,36 +678,70 @@ require_once __DIR__ . '/../partials/header.php';
                         ORDER BY jo.created_at DESC
                     ");
                     $jo_q->execute([$station_id, $date_start, $date_end]);
-                    $jo_rows = $jo_q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                    $calendar_rows = array_merge($calendar_rows, $jo_q->fetchAll(PDO::FETCH_ASSOC) ?: []);
+                } catch (Exception $e) {}
 
-                    // Deliveries
+                try {
+                    $service_where = crManagerTrackerServiceWhere('mt');
+                    $tracker_q = $pdo->prepare("
+                        SELECT
+                            'Job Order' AS task_type,
+                            COALESCE(NULLIF(mt.job_order_id, ''), mt.transaction_id, CONCAT('MT-', mt.id)) AS task_ref,
+                            COALESCE(NULLIF(mt.job_order_service, ''), NULLIF(mt.job_order_description, ''), 'Service') AS task_description,
+                            COALESCE(
+                                NULLIF(TRIM(mt.customer_name), ''),
+                                NULLIF(TRIM(CONCAT(COALESCE(mt.customer_first_name, ''), ' ', COALESCE(mt.customer_last_name, ''))), ''),
+                                'Walk-in'
+                            ) AS customer_name,
+                            COALESCE(NULLIF(mt.workflow_status, ''), NULLIF(mt.validation_status, ''), 'Pending') AS status,
+                            COALESCE(mt.transaction_date, mt.created_at) AS scheduled_date,
+                            COALESCE(
+                                NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), ''),
+                                u.username,
+                                'System'
+                            ) AS assigned_to
+                        FROM merchandise_transactions mt
+                        LEFT JOIN users u ON mt.staff_id = u.id
+                        WHERE mt.station_id = ?
+                          AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+                          AND {$service_where}
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM job_orders jo2
+                              WHERE jo2.station_id = mt.station_id
+                                AND (
+                                    (mt.job_order_db_id IS NOT NULL AND jo2.id = mt.job_order_db_id)
+                                    OR (mt.job_order_id IS NOT NULL AND mt.job_order_id <> '' AND jo2.job_order_number = mt.job_order_id)
+                                )
+                          )
+                        ORDER BY COALESCE(mt.transaction_date, mt.created_at) DESC
+                    ");
+                    $tracker_q->execute([$station_id, $date_start, $date_end]);
+                    $calendar_rows = array_merge($calendar_rows, $tracker_q->fetchAll(PDO::FETCH_ASSOC) ?: []);
+                } catch (Exception $e) {}
+
+                try {
                     $del_q = $pdo->prepare("
                         SELECT
-                            'Delivery' AS task_type,
-                            COALESCE(d.delivery_ref, CONCAT('DEL-', d.id)) AS task_ref,
-                            CONCAT(COALESCE(d.product, 'Unknown'), ' - ', d.quantity, ' ', COALESCE(d.unit, 'units')) AS task_description,
-                            COALESCE(d.supplier, 'Unknown Supplier') AS customer_name,
-                            d.status,
-                            COALESCE(d.delivery_date, d.created_at) AS scheduled_date,
-                            COALESCE(CONCAT(u.first_name, ' ', u.last_name), 'System') AS assigned_to
-                        FROM deliveries_oversight d
-                        LEFT JOIN users u ON d.encoded_by = u.id
-                        WHERE d.station_id = ?
-                          AND DATE(COALESCE(d.delivery_date, d.created_at)) BETWEEN ? AND ?
-                        ORDER BY COALESCE(d.delivery_date, d.created_at) DESC
+                            'Fuel Delivery' AS task_type,
+                            COALESCE(NULLIF(fd.invoice_no, ''), CONCAT('FD-', fd.id)) AS task_ref,
+                            CONCAT(COALESCE(fd.fuel_type, 'Fuel'), ' - ', FORMAT(COALESCE(fd.delivery_liters, 0), 2), ' L') AS task_description,
+                            COALESCE(NULLIF(fd.supplier, ''), 'Unknown Supplier') AS customer_name,
+                            COALESCE(fd.status, 'Pending') AS status,
+                            COALESCE(fd.delivery_date, fd.created_at) AS scheduled_date,
+                            COALESCE(NULLIF(fd.received_by, ''), 'System') AS assigned_to
+                        FROM fuel_deliveries fd
+                        WHERE fd.station_id = ?
+                          AND DATE(COALESCE(fd.delivery_date, fd.created_at)) BETWEEN ? AND ?
+                        ORDER BY COALESCE(fd.delivery_date, fd.created_at) DESC
                     ");
                     $del_q->execute([$station_id, $date_start, $date_end]);
-                    $del_rows = $del_q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                    $calendar_rows = array_merge($calendar_rows, $del_q->fetchAll(PDO::FETCH_ASSOC) ?: []);
+                } catch (Exception $e) {}
 
-                    // Merge both arrays
-                    $calendar_rows = array_merge($jo_rows, $del_rows);
-                    // Sort by date
-                    usort($calendar_rows, function($a, $b) {
-                        return strtotime($b['scheduled_date']) - strtotime($a['scheduled_date']);
-                    });
-                } catch (Exception $e) {
-                    $calendar_rows = [];
-                }
+                usort($calendar_rows, function($a, $b) {
+                    return strtotime($b['scheduled_date']) - strtotime($a['scheduled_date']);
+                });
                 ?>
 
                 <table class="cr-table">
@@ -687,21 +794,23 @@ require_once __DIR__ . '/../partials/header.php';
 
 <script src="../assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script>
-function crSwitchSection(sectionKey) {
-    // Hide all panels
+function crSwitchSection(sectionKey, trigger) {
     document.querySelectorAll('.cr-section-panel').forEach(p => p.classList.remove('active'));
-    // Show selected panel
+
     const panel = document.getElementById('cr-panel-' + sectionKey);
     if (panel) panel.classList.add('active');
-    
-    // Update tab buttons
+
     document.querySelectorAll('.cr-section-tab').forEach(btn => btn.classList.remove('active'));
-    event.target.closest('.cr-section-tab').classList.add('active');
-    
-    // Update URL without reload
+    const selectedTab = trigger?.closest('.cr-section-tab')
+        || document.querySelector(`.cr-section-tab[onclick*="${sectionKey}"]`);
+    if (selectedTab) selectedTab.classList.add('active');
+
+    const sectionInput = document.getElementById('managerComplianceSection');
+    if (sectionInput) sectionInput.value = sectionKey;
+
     const url = new URL(window.location);
     url.searchParams.set('section', sectionKey);
-    window.history.pushState({}, '', url);
+    window.history.replaceState({}, '', url);
 }
 
 function exportReport(type) {
@@ -719,7 +828,9 @@ function exportReport(type) {
 
     if (!tables.length) { alert('No table data found to export.'); return; }
 
-    const section  = new URL(window.location).searchParams.get('section') || 'activity_logs';
+    const section  = document.getElementById('managerComplianceSection')?.value
+        || new URL(window.location).searchParams.get('section')
+        || 'activity_logs';
     const dateFrom = document.querySelector('input[name="date_from"]')?.value || '';
     const dateTo   = document.querySelector('input[name="date_to"]')?.value || '';
     const filename = `Manager_Compliance_Report_${section}_${dateFrom}_to_${dateTo}`;
@@ -755,7 +866,11 @@ function exportExcel(tables, filename) {
                 wch: Math.min(45, Math.max(10, ...aoa.map(row => String(row[ci] ?? '').length)))
             }));
         }
-        XLSX.utils.book_append_sheet(wb, ws, `Report_${i + 1}`);
+        const heading = tbl.closest('.cr-section-panel')?.querySelector('div[style*="font-size:20px"]');
+        const sheetName = (heading?.innerText || `Report_${i + 1}`)
+            .replace(/[:\\\/?*\[\]]/g, '')
+            .substring(0, 31);
+        XLSX.utils.book_append_sheet(wb, ws, sheetName || `Report_${i + 1}`);
     });
     XLSX.writeFile(wb, filename + '.xlsx');
 }
@@ -790,16 +905,21 @@ function printReport() {
         *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
         body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:0;}
         .cr-section-tabs{display:none !important;}
+        .cr-section-panel{display:block !important;overflow:visible !important;}
+        .cr-section-panel > div:first-child{break-after:avoid;page-break-after:avoid;}
         div[style*="text-align:center"]{text-align:center;padding:10px 0 8px;border-bottom:2px solid #000;margin-bottom:12px;}
-        table{width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:6px;}
+        table{width:100%;max-width:100%;border-collapse:collapse;table-layout:auto;font-size:9.2px;margin-bottom:6px;break-inside:auto;page-break-inside:auto;}
+        thead{display:table-header-group;}
+        tfoot{display:table-footer-group;}
         thead tr{background:#f0f0f0 !important;border-top:2px solid #000;border-bottom:1px solid #999;}
-        thead th{padding:6px 5px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;}
+        thead th{padding:5px;text-align:left;font-weight:700;font-size:8.6px;text-transform:uppercase;white-space:normal;word-break:break-word;}
+        tr{break-inside:avoid;page-break-inside:avoid;}
         tbody tr{border-bottom:1px solid #ddd;}
-        tbody td{padding:5px;}
+        tbody td{padding:5px;white-space:normal;word-break:break-word;}
         tfoot tr{border-top:2px solid #000;background:#f0f0f0 !important;}
-        tfoot td{padding:6px 5px;font-weight:700;}
-        .cr-empty{text-align:center;padding:12px;color:#888;font-style:italic;}
-        .cr-badge{padding:2px 6px;border-radius:3px;font-size:9px;font-weight:700;}
+        tfoot td{padding:6px 5px;font-weight:700;white-space:normal;word-break:break-word;}
+        .cr-empty{text-align:center;padding:12px;color:#888;font-style:italic;break-inside:avoid;page-break-inside:avoid;}
+        .cr-badge{padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700;}
     </style></head><body>${active.innerHTML}</body></html>`);
     w.document.close();
     w.focus();

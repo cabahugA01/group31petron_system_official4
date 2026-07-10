@@ -34,19 +34,49 @@ try {
 
 // ── DATA FETCH ────────────────────────────────────────────────────────────────
 
-// PAYMENTS — fuel + merch combined
+function frAdminPaymentMethodCase(string $expr): string {
+    return "CASE
+        WHEN LOWER(COALESCE({$expr},'')) LIKE '%fleet%' THEN 'Fleet Card'
+        WHEN LOWER(COALESCE({$expr},'')) LIKE '%fuel card%'
+          OR LOWER(COALESCE({$expr},'')) LIKE '%efuel%' THEN 'E-Fuel Card'
+        WHEN LOWER(COALESCE({$expr},'')) LIKE '%card%' THEN 'Card'
+        WHEN LOWER(COALESCE({$expr},'')) LIKE '%wallet%'
+          OR LOWER(COALESCE({$expr},'')) LIKE '%gcash%'
+          OR LOWER(COALESCE({$expr},'')) LIKE '%maya%' THEN 'E-Wallet'
+        WHEN LOWER(COALESCE({$expr},'')) LIKE '%cash%'
+          OR COALESCE({$expr},'') = '' THEN 'Cash'
+        ELSE COALESCE(NULLIF({$expr},''), 'Cash')
+    END";
+}
+
+function frAdminNonRejectedWhere(string $alias, string $workflow_col = 'workflow_status', string $validation_col = 'validation_status'): string {
+    $p = $alias !== '' ? $alias . '.' : '';
+    return "LOWER(COALESCE({$p}{$workflow_col}, '')) NOT IN ('rejected','cancelled','canceled','voided')
+        AND LOWER(COALESCE({$p}{$validation_col}, '')) NOT IN ('rejected','cancelled','canceled','voided')";
+}
+
+$fr_bad_fuel_status = "LOWER(COALESCE(ft.status, '')) NOT IN ('rejected','cancelled','canceled','voided')";
+$fr_mt_ok_where = frAdminNonRejectedWhere('mt');
+$fr_jo_ok_where = frAdminNonRejectedWhere('jo', 'status', 'validation_status');
+$fr_jo_amount_expr = "COALESCE(NULLIF(jo.amount_paid, 0), NULLIF(jo.total_cost, 0), NULLIF(jo.estimated_cost, 0), COALESCE(jo.actual_labor_cost,0) + COALESCE(jo.actual_parts_cost,0), 0)";
+$fr_mt_not_native_job = "NOT EXISTS (
+    SELECT 1
+    FROM job_orders jo2
+    WHERE jo2.station_id = mt.station_id
+      AND (
+          (mt.job_order_db_id IS NOT NULL AND mt.job_order_db_id <> 0 AND jo2.id = mt.job_order_db_id)
+          OR (mt.job_order_id IS NOT NULL AND TRIM(CAST(mt.job_order_id AS CHAR)) <> ''
+              AND (jo2.job_order_number = mt.job_order_id OR jo2.job_order_id = mt.job_order_id))
+      )
+)";
+
+// PAYMENTS — fuel + merchandise/service tracker + native job orders combined
 $pay_rows = [];
 $pay_chart = ['labels'=>[],'data'=>[]];
 try {
     $q = $pdo->prepare("
         SELECT
-            CASE
-                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fleet%' THEN 'Fleet Card'
-                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fuel card%' OR LOWER(COALESCE(payment_method,'')) LIKE '%efuel%' THEN 'E-Fuel Card'
-                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%card%' THEN 'Card'
-                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%wallet%' OR LOWER(COALESCE(payment_method,'')) LIKE '%gcash%' OR LOWER(COALESCE(payment_method,'')) LIKE '%maya%' THEN 'E-Wallet'
-                ELSE 'Cash'
-            END AS mode_of_payment,
+            " . frAdminPaymentMethodCase('ft.payment_method') . " AS mode_of_payment,
             COUNT(*) AS txn_count,
             SUM(COALESCE(total_amount,0)) AS total_amount,
             TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) AS encoder,
@@ -54,6 +84,7 @@ try {
         FROM fuel_transactions ft
         LEFT JOIN users u ON ft.staff_id=u.id
         WHERE ft.station_id=? AND DATE(ft.transaction_date) BETWEEN ? AND ?
+          AND {$fr_bad_fuel_status}
         GROUP BY mode_of_payment, u.first_name, u.last_name
         ORDER BY total_amount DESC
     ");
@@ -62,27 +93,42 @@ try {
 
     $q2 = $pdo->prepare("
         SELECT
-            CASE
-                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%card%' THEN 'Card'
-                WHEN LOWER(COALESCE(payment_method,'')) LIKE '%wallet%' OR LOWER(COALESCE(payment_method,'')) LIKE '%gcash%' OR LOWER(COALESCE(payment_method,'')) LIKE '%maya%' THEN 'E-Wallet'
-                ELSE 'Cash'
-            END AS mode_of_payment,
+            " . frAdminPaymentMethodCase('mt.payment_method') . " AS mode_of_payment,
             COUNT(*) AS txn_count,
             SUM(COALESCE(total_amount,0)) AS total_amount,
             TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) AS encoder,
-            MAX(mt.created_at) AS last_txn
+            MAX(COALESCE(mt.transaction_date, mt.created_at)) AS last_txn
         FROM merchandise_transactions mt
         LEFT JOIN users u ON mt.staff_id=u.id
-        WHERE mt.station_id=? AND DATE(mt.created_at) BETWEEN ? AND ?
+        WHERE mt.station_id=? AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+          AND {$fr_mt_ok_where}
+          AND {$fr_mt_not_native_job}
         GROUP BY mode_of_payment, u.first_name, u.last_name
         ORDER BY total_amount DESC
     ");
     $q2->execute([$station_id, $date_from, $date_to]);
     $merch_pay = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
+    $q3 = $pdo->prepare("
+        SELECT
+            " . frAdminPaymentMethodCase('jo.payment_method') . " AS mode_of_payment,
+            COUNT(*) AS txn_count,
+            SUM({$fr_jo_amount_expr}) AS total_amount,
+            TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) AS encoder,
+            MAX(jo.created_at) AS last_txn
+        FROM job_orders jo
+        LEFT JOIN users u ON jo.created_by=u.id
+        WHERE jo.station_id=? AND DATE(jo.created_at) BETWEEN ? AND ?
+          AND {$fr_jo_ok_where}
+        GROUP BY mode_of_payment, u.first_name, u.last_name
+        ORDER BY total_amount DESC
+    ");
+    $q3->execute([$station_id, $date_from, $date_to]);
+    $jo_pay = $q3->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
     // Merge
     $merged = [];
-    foreach (array_merge($fuel_pay, $merch_pay) as $r) {
+    foreach (array_merge($fuel_pay, $merch_pay, $jo_pay) as $r) {
         $key = $r['mode_of_payment'].'||'.$r['encoder'];
         if (!isset($merged[$key])) $merged[$key] = $r;
         else {
@@ -111,7 +157,7 @@ $sup_rows = [];
 try {
     $q = $pdo->prepare("
         SELECT
-            COALESCE(s.name, po.supplier_name, '—') AS supplier_name,
+            COALESCE(NULLIF(s.name, ''), NULLIF(po.product_name, ''), '—') AS supplier_name,
             COALESCE(s.contact_person, s.phone, '—') AS contact,
             COALESCE(po.expected_delivery_date, po.created_at) AS delivery_date,
             COALESCE(poi.item_name, po.product_name, '—') AS items_delivered,
@@ -159,7 +205,7 @@ try {
     // Accounts Payable — from suppliers/deliveries
     $ap_q = $pdo->prepare("
         SELECT
-            COALESCE(s.name, po.supplier_name, '—') AS supplier_name,
+            COALESCE(NULLIF(s.name, ''), NULLIF(po.product_name, ''), '—') AS supplier_name,
             SUM(COALESCE(poi.total_price, po.total_amount, 0)) AS total_payable,
             SUM(CASE WHEN po.status NOT IN ('Received', 'Admin Finalized') THEN COALESCE(poi.total_price, po.total_amount, 0) ELSE 0 END) AS outstanding,
             MAX(po.expected_delivery_date) AS due_date,
@@ -176,40 +222,51 @@ try {
 } catch (Exception $e) { $fin_ap = []; }
 
 try {
-    // Collections — fuel + merchandise payments
+    // Collections — fuel + merchandise/service tracker + native job orders
     $col_q = $pdo->prepare("
         SELECT
-            CASE
-                WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%fleet%' THEN 'Fleet Account'
-                WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%wallet%' OR LOWER(COALESCE(ft.payment_method,'')) LIKE '%gcash%' OR LOWER(COALESCE(ft.payment_method,'')) LIKE '%maya%' THEN 'E-Wallet'
-                WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%card%' THEN 'Card'
-                ELSE 'Cash'
-            END AS collection_type,
+            " . frAdminPaymentMethodCase('ft.payment_method') . " AS collection_type,
             COUNT(*) AS txn_count,
             SUM(COALESCE(ft.total_amount,0)) AS collected_amount,
             TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) AS encoder
         FROM fuel_transactions ft
         LEFT JOIN users u ON ft.staff_id=u.id
         WHERE ft.station_id=? AND DATE(ft.transaction_date) BETWEEN ? AND ?
+          AND {$fr_bad_fuel_status}
         GROUP BY collection_type, u.first_name, u.last_name
 
         UNION ALL
 
         SELECT
-            CASE
-                WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%wallet%' OR LOWER(COALESCE(mt.payment_method,'')) LIKE '%gcash%' OR LOWER(COALESCE(mt.payment_method,'')) LIKE '%maya%' THEN 'E-Wallet'
-                WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%card%' THEN 'Card'
-                ELSE 'Cash'
-            END AS collection_type,
+            " . frAdminPaymentMethodCase('mt.payment_method') . " AS collection_type,
             COUNT(*) AS txn_count,
             SUM(COALESCE(mt.total_amount,0)) AS collected_amount,
             TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) AS encoder
         FROM merchandise_transactions mt
         LEFT JOIN users u ON mt.staff_id=u.id
-        WHERE mt.station_id=? AND DATE(mt.created_at) BETWEEN ? AND ?
+        WHERE mt.station_id=? AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+          AND {$fr_mt_ok_where}
+          AND {$fr_mt_not_native_job}
+        GROUP BY collection_type, u.first_name, u.last_name
+
+        UNION ALL
+
+        SELECT
+            " . frAdminPaymentMethodCase('jo.payment_method') . " AS collection_type,
+            COUNT(*) AS txn_count,
+            SUM({$fr_jo_amount_expr}) AS collected_amount,
+            TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) AS encoder
+        FROM job_orders jo
+        LEFT JOIN users u ON jo.created_by=u.id
+        WHERE jo.station_id=? AND DATE(jo.created_at) BETWEEN ? AND ?
+          AND {$fr_jo_ok_where}
         GROUP BY collection_type, u.first_name, u.last_name
     ");
-    $col_q->execute([$station_id, $date_from, $date_to, $station_id, $date_from, $date_to]);
+    $col_q->execute([
+        $station_id, $date_from, $date_to,
+        $station_id, $date_from, $date_to,
+        $station_id, $date_from, $date_to
+    ]);
     $raw_col = $col_q->fetchAll(PDO::FETCH_ASSOC) ?: [];
     $merged_col = [];
     foreach ($raw_col as $r) {
@@ -226,7 +283,7 @@ try {
 } catch (Exception $e) { $fin_col = []; }
 
 try {
-    // Reconciliation — expected (all transactions) vs actual (cash only)
+    // Reconciliation — expected (all valid transactions) vs actual cash/digital collections
     $recon_q = $pdo->prepare("
         SELECT
             DATE(ft.transaction_date) AS recon_date,
@@ -237,22 +294,43 @@ try {
         FROM fuel_transactions ft
         LEFT JOIN users u ON ft.staff_id=u.id
         WHERE ft.station_id=? AND DATE(ft.transaction_date) BETWEEN ? AND ?
+          AND {$fr_bad_fuel_status}
         GROUP BY recon_date, u.first_name, u.last_name
 
         UNION ALL
 
         SELECT
-            DATE(mt.created_at) AS recon_date,
+            DATE(COALESCE(mt.transaction_date, mt.created_at)) AS recon_date,
             SUM(COALESCE(mt.total_amount,0)) AS expected_total,
             SUM(CASE WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%cash%' OR COALESCE(mt.payment_method,'')='' THEN COALESCE(mt.total_amount,0) ELSE 0 END) AS actual_cash,
             SUM(CASE WHEN LOWER(COALESCE(mt.payment_method,'')) NOT LIKE '%cash%' AND COALESCE(mt.payment_method,'')!='' THEN COALESCE(mt.total_amount,0) ELSE 0 END) AS digital_collections,
             TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) AS encoder
         FROM merchandise_transactions mt
         LEFT JOIN users u ON mt.staff_id=u.id
-        WHERE mt.station_id=? AND DATE(mt.created_at) BETWEEN ? AND ?
+        WHERE mt.station_id=? AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
+          AND {$fr_mt_ok_where}
+          AND {$fr_mt_not_native_job}
+        GROUP BY recon_date, u.first_name, u.last_name
+
+        UNION ALL
+
+        SELECT
+            DATE(jo.created_at) AS recon_date,
+            SUM({$fr_jo_amount_expr}) AS expected_total,
+            SUM(CASE WHEN LOWER(COALESCE(jo.payment_method,'')) LIKE '%cash%' OR COALESCE(jo.payment_method,'')='' THEN {$fr_jo_amount_expr} ELSE 0 END) AS actual_cash,
+            SUM(CASE WHEN LOWER(COALESCE(jo.payment_method,'')) NOT LIKE '%cash%' AND COALESCE(jo.payment_method,'')!='' THEN {$fr_jo_amount_expr} ELSE 0 END) AS digital_collections,
+            TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) AS encoder
+        FROM job_orders jo
+        LEFT JOIN users u ON jo.created_by=u.id
+        WHERE jo.station_id=? AND DATE(jo.created_at) BETWEEN ? AND ?
+          AND {$fr_jo_ok_where}
         GROUP BY recon_date, u.first_name, u.last_name
     ");
-    $recon_q->execute([$station_id, $date_from, $date_to, $station_id, $date_from, $date_to]);
+    $recon_q->execute([
+        $station_id, $date_from, $date_to,
+        $station_id, $date_from, $date_to,
+        $station_id, $date_from, $date_to
+    ]);
     $raw_recon = $recon_q->fetchAll(PDO::FETCH_ASSOC) ?: [];
     $merged_recon = [];
     foreach ($raw_recon as $r) {
@@ -322,12 +400,40 @@ require_once __DIR__ . '/../partials/header.php';
     * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
     html,body { background:white !important; padding:0 !important; margin:0 !important; }
     body > * { display:none !important; }
-    .rpt-printable { display:block !important; }
+    .rpt-printable { display:block !important; overflow:visible !important; }
     .fr-filter-bar, .fr-tabs, .fr-export-actions, .fr-chart-wrap { display:none !important; }
-    .fr-section-panel { display:block !important; }
-    .fr-tbl { font-size:10px !important; }
-    .fr-tbl thead th { font-size:9px !important; padding:5px !important; }
-    .fr-tbl tbody td, .fr-tbl tfoot td { font-size:10px !important; padding:5px !important; }
+    .fr-section-panel { display:none !important; overflow:visible !important; }
+    .fr-section-panel.active { display:block !important; }
+    .fr-rpt-header, .fr-sub-heading {
+        break-after: avoid !important;
+        page-break-after: avoid !important;
+    }
+    .fr-tbl {
+        width:100% !important;
+        max-width:100% !important;
+        border-collapse:collapse !important;
+        table-layout:auto !important;
+        font-size:9.5px !important;
+        break-inside:auto !important;
+        page-break-inside:auto !important;
+    }
+    .fr-tbl thead { display:table-header-group !important; }
+    .fr-tbl tfoot { display:table-footer-group !important; }
+    .fr-tbl tr {
+        break-inside:avoid !important;
+        page-break-inside:avoid !important;
+    }
+    .fr-tbl thead th { font-size:8.8px !important; padding:5px !important; }
+    .fr-tbl tbody td, .fr-tbl tfoot td {
+        font-size:9.5px !important;
+        padding:5px !important;
+        white-space:normal !important;
+        word-break:break-word !important;
+    }
+    .fr-empty {
+        break-inside:avoid !important;
+        page-break-inside:avoid !important;
+    }
 }
 </style>
 
@@ -671,19 +777,24 @@ function frPrint() {
         *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
         body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:0;}
         .fr-tabs,.fr-filter-bar,.fr-export-actions,.fr-chart-wrap{display:none !important;}
+        .fr-section-panel{display:block !important;overflow:visible !important;}
         .fr-rpt-header{text-align:center;padding:12px 0 8px;border-bottom:2px solid #000;margin-bottom:12px;}
         .rh-title{font-size:16px;font-weight:800;text-transform:uppercase;margin-bottom:3px;}
         .rh-sub{font-size:13px;font-weight:700;text-transform:uppercase;margin-bottom:6px;}
         .rh-station,.rh-date{font-size:11px;color:#444;}
+        .fr-rpt-header,.fr-sub-heading{break-after:avoid;page-break-after:avoid;}
         .fr-sub-heading{font-size:12px;font-weight:700;text-transform:uppercase;padding:6px 0;border-bottom:1px solid #ccc;margin:16px 0 8px;}
-        table{width:100%;border-collapse:collapse;font-size:9.5px;}
+        table{width:100%;max-width:100%;border-collapse:collapse;table-layout:auto;font-size:9.2px;break-inside:auto;page-break-inside:auto;}
+        thead{display:table-header-group;}
+        tfoot{display:table-footer-group;}
         thead tr{background:#f0f0f0 !important;border-top:2px solid #000;border-bottom:1px solid #999;}
-        thead th{padding:6px 5px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;}
+        thead th{padding:5px;text-align:left;font-weight:700;font-size:8.6px;text-transform:uppercase;white-space:normal;word-break:break-word;}
+        tr{break-inside:avoid;page-break-inside:avoid;}
         tbody tr{border-bottom:1px solid #ddd;}
-        tbody td{padding:5px;}
+        tbody td{padding:5px;white-space:normal;word-break:break-word;}
         tfoot tr{border-top:2px solid #000;background:#f0f0f0 !important;}
-        tfoot td{padding:6px 5px;font-weight:700;}
-        .fr-empty{text-align:center;padding:12px;color:#888;font-style:italic;}
+        tfoot td{padding:6px 5px;font-weight:700;white-space:normal;word-break:break-word;}
+        .fr-empty{text-align:center;padding:12px;color:#888;font-style:italic;break-inside:avoid;page-break-inside:avoid;}
         .fr-badge{padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700;}
         .badge-paid{background:#dcfce7;color:#16a34a;}
         .badge-unpaid{background:#fee2e2;color:#dc2626;}

@@ -212,11 +212,46 @@ ksort($shifts);
     .reports-wrapper { box-shadow: none !important; border: none !important; }
     .rpt-content { padding: 0 !important; }
     .sr-shift-block.hidden { display: block !important; }
-    .sr-tbl { font-size: 10px !important; page-break-inside: auto !important; }
-    .sr-tbl thead th { font-size: 9px !important; padding: 6px 5px !important; }
-    .sr-tbl tbody td { font-size: 10px !important; padding: 5px !important; }
-    .sr-tbl tfoot td { font-size: 10px !important; padding: 6px 5px !important; }
-    .sr-shift-block { page-break-inside: avoid !important; margin-bottom: 16px !important; }
+    .sr-section-panel { display: none !important; overflow: visible !important; }
+    .sr-section-panel.active { display: block !important; }
+    .sr-shift-block {
+        break-inside: auto !important;
+        page-break-inside: auto !important;
+        margin-bottom: 16px !important;
+        overflow: visible !important;
+    }
+    .sr-shift-heading,
+    h3,
+    div[style*="font-size: 14px"] {
+        break-after: avoid !important;
+        page-break-after: avoid !important;
+    }
+    .sr-table, .sr-tbl {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        table-layout: auto !important;
+        font-size: 9.5px !important;
+        break-inside: auto !important;
+        page-break-inside: auto !important;
+    }
+    .sr-table thead, .sr-tbl thead { display: table-header-group !important; }
+    .sr-table tfoot, .sr-tbl tfoot { display: table-footer-group !important; }
+    .sr-table tr, .sr-tbl tr {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+    .sr-table thead th, .sr-tbl thead th { font-size: 8.8px !important; padding: 5px !important; }
+    .sr-table tbody td, .sr-table tfoot td,
+    .sr-tbl tbody td, .sr-tbl tfoot td {
+        font-size: 9.5px !important;
+        padding: 5px !important;
+        white-space: normal !important;
+        word-break: break-word !important;
+    }
+    .sr-empty {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
     .sr-section-tabs { display: none !important; }
 }
 </style>
@@ -326,6 +361,24 @@ function srManagerJobTimeShiftCondition(string $alias, bool $isShift1): string {
     return "NOT (TIME($alias.created_at) >= '06:00:00' AND TIME($alias.created_at) < '14:00:00')";
 }
 
+function srManagerMtNotNativeJobWhere(PDO $pdo, string $alias = 'mt'): string {
+    if (!srManagerTableExists($pdo, 'job_orders')) return '1=1';
+    $p = $alias !== '' ? $alias . '.' : '';
+    $jobRefMatch = "jo2.job_order_number = {$p}job_order_id";
+    if (srManagerColumnExists($pdo, 'job_orders', 'job_order_id')) {
+        $jobRefMatch .= " OR jo2.job_order_id = {$p}job_order_id";
+    }
+    return "NOT EXISTS (
+        SELECT 1
+        FROM job_orders jo2
+        WHERE jo2.station_id = {$p}station_id
+          AND (
+              ({$p}job_order_db_id IS NOT NULL AND {$p}job_order_db_id <> 0 AND jo2.id = {$p}job_order_db_id)
+              OR ({$p}job_order_id IS NOT NULL AND TRIM(CAST({$p}job_order_id AS CHAR)) <> '' AND ({$jobRefMatch}))
+          )
+    )";
+}
+
 function srManagerLineAmountSql(string $itemAlias = 'mti', string $txAlias = 'mt', string $sumAlias = 'mis'): string {
     return "ROUND(COALESCE($itemAlias.subtotal, COALESCE($itemAlias.quantity, 0) * COALESCE($itemAlias.unit_price, 0), 0)
         * CASE
@@ -343,7 +396,8 @@ function srManagerFetchEmbeddedServices(PDO $pdo, int $station_id, string $date_
     $validWhere = srManagerMerchValidWhere('mt');
     $dateExpr = 'COALESCE(mt.transaction_date, mt.created_at)';
     $shiftCond = srManagerShiftCondition('mt', $dateExpr, $isShift1);
-    $jobFilter = "(LOWER(COALESCE(mt.transaction_type, '')) IN ('job_order','combined')
+    $nativeJobGuard = srManagerMtNotNativeJobWhere($pdo, 'mt');
+    $jobFilter = "(LOWER(COALESCE(mt.transaction_type, '')) IN ('job_order','combined','service')
         OR NULLIF(TRIM(COALESCE(mt.job_order_service, '')), '') IS NOT NULL
         OR mt.job_order_id IS NOT NULL
         OR mt.job_order_db_id IS NOT NULL)";
@@ -377,6 +431,7 @@ function srManagerFetchEmbeddedServices(PDO $pdo, int $station_id, string $date_
               AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
               AND $validWhere
               AND $jobFilter
+              AND $nativeJobGuard
               AND $shiftCond
             GROUP BY mt.id, mt.workflow_status, mt.validation_status, mt.job_order_service, mt.total_amount, encoder, created_at
             HAVING labor_fee > 0 OR parts_used > 0 OR total_amount > 0
@@ -405,6 +460,7 @@ function srManagerFetchEmbeddedServices(PDO $pdo, int $station_id, string $date_
           AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
           AND $validWhere
           AND $jobFilter
+          AND $nativeJobGuard
           AND $shiftCond
           $fallbackSql
         ORDER BY created_at ASC, mt.id ASC
@@ -572,6 +628,7 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                     $validWhere = srManagerMerchValidWhere('mt');
                     $dateExpr = 'COALESCE(mt.transaction_date, mt.created_at)';
                     $shiftCond = srManagerShiftCondition('mt', $dateExpr, $isShift1);
+                    $nativeJobGuard = srManagerMtNotNativeJobWhere($pdo, 'mt');
                     $q = $pdo->prepare("
                         SELECT
                             CASE
@@ -588,10 +645,36 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                         WHERE mt.station_id = ?
                           AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
                           AND $validWhere
+                          AND $nativeJobGuard
                           AND $shiftCond
                         GROUP BY mode_of_payment
                     ");
                     $q->execute([$station_id, $date_start, $date_end, $date_start, $date_end]);
+                    $addPayment($q->fetchAll(PDO::FETCH_ASSOC) ?: []);
+                }
+                if (srManagerTableExists($pdo, 'job_orders')) {
+                    $shiftCond = srManagerJobTimeShiftCondition('jo', $isShift1);
+                    $validWhere = srManagerJobValidWhere('jo');
+                    $q = $pdo->prepare("
+                        SELECT
+                            CASE
+                                WHEN LOWER(COALESCE(jo.payment_method,'')) LIKE '%fleet%' THEN 'Fleet'
+                                WHEN LOWER(COALESCE(jo.payment_method,'')) LIKE '%fuel card%' OR LOWER(COALESCE(jo.payment_method,'')) LIKE '%efuel%' THEN 'E-Fuel'
+                                WHEN LOWER(COALESCE(jo.payment_method,'')) LIKE '%card%' THEN 'Card'
+                                WHEN LOWER(COALESCE(jo.payment_method,'')) LIKE '%wallet%' OR LOWER(COALESCE(jo.payment_method,'')) LIKE '%gcash%' OR LOWER(COALESCE(jo.payment_method,'')) LIKE '%maya%' THEN 'E-Wallet'
+                                WHEN LOWER(COALESCE(jo.payment_method,'')) LIKE '%cash%' OR COALESCE(jo.payment_method,'') = '' THEN 'Cash'
+                                ELSE COALESCE(NULLIF(jo.payment_method,''), 'Cash')
+                            END AS mode_of_payment,
+                            COUNT(*) AS txn_count,
+                            SUM(COALESCE(NULLIF(jo.amount_paid, 0), NULLIF(jo.total_cost, 0), NULLIF(jo.estimated_cost, 0), COALESCE(jo.actual_labor_cost,0) + COALESCE(jo.actual_parts_cost,0), 0)) AS amount
+                        FROM job_orders jo
+                        WHERE jo.station_id = ?
+                          AND DATE(jo.created_at) BETWEEN ? AND ?
+                          AND $validWhere
+                          AND $shiftCond
+                        GROUP BY mode_of_payment
+                    ");
+                    $q->execute([$station_id, $date_start, $date_end]);
                     $addPayment($q->fetchAll(PDO::FETCH_ASSOC) ?: []);
                 }
                 $rows = array_values($merged);
@@ -630,33 +713,62 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                 break;
 
             case 'customers':
-                if (!srManagerTableExists($pdo, 'merchandise_transactions')) break;
+                if (!srManagerTableExists($pdo, 'merchandise_transactions') && !srManagerTableExists($pdo, 'job_orders')) break;
                 $validWhere = srManagerMerchValidWhere('mt');
                 $dateExpr = 'COALESCE(mt.transaction_date, mt.created_at)';
                 $shiftCond = srManagerShiftCondition('mt', $dateExpr, $isShift1);
                 $pointsCol = srManagerColumnExists($pdo, 'customers', 'loyalty_points') ? 'c.loyalty_points' : (srManagerColumnExists($pdo, 'customers', 'points') ? 'c.points' : '0');
+                $queries = [];
+                $params = [];
+                if (srManagerTableExists($pdo, 'merchandise_transactions')) {
+                    $nativeJobGuard = srManagerMtNotNativeJobWhere($pdo, 'mt');
+                    $queries[] = "
+                        SELECT mt.customer_id, mt.credit_customer_id, NULLIF(TRIM(mt.customer_name), '') AS customer_name, mt.id AS source_id
+                        FROM merchandise_transactions mt
+                        WHERE mt.station_id = ?
+                          AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
+                          AND $validWhere
+                          AND $nativeJobGuard
+                          AND $shiftCond
+                    ";
+                    array_push($params, $station_id, $date_start, $date_end, $date_start, $date_end);
+                }
+                if (srManagerTableExists($pdo, 'job_orders')) {
+                    $joValidWhere = srManagerJobValidWhere('jo');
+                    $joShiftCond = srManagerJobTimeShiftCondition('jo', $isShift1);
+                    $queries[] = "
+                        SELECT jo.customer_id, NULL AS credit_customer_id, NULLIF(TRIM(jo.customer_name), '') AS customer_name, jo.id AS source_id
+                        FROM job_orders jo
+                        WHERE jo.station_id = ?
+                          AND DATE(jo.created_at) BETWEEN ? AND ?
+                          AND $joValidWhere
+                          AND $joShiftCond
+                    ";
+                    array_push($params, $station_id, $date_start, $date_end);
+                }
+                if (!$queries) break;
                 $q = $pdo->prepare("
                     SELECT
-                        COALESCE(NULLIF(c.name, ''), NULLIF(mt.customer_name, ''), 'Walk-in Customer') AS customer_name,
+                        COALESCE(NULLIF(c.name, ''), tx.customer_name, 'Walk-in Customer') AS customer_name,
                         COALESCE(CONCAT('#', c.id), 'Walk-in') AS customer_ref,
-                        COUNT(DISTINCT mt.id) AS txn_count,
+                        COUNT(*) AS txn_count,
                         MAX(COALESCE(c.balance, c.current_balance, 0)) AS balance,
                         MAX(COALESCE($pointsCol, 0)) AS loyalty_points
-                    FROM merchandise_transactions mt
+                    FROM (
+                        " . implode(' UNION ALL ', $queries) . "
+                    ) tx
                     LEFT JOIN customers c
-                        ON c.station_id = mt.station_id
+                        ON c.station_id = ?
                        AND (
-                            c.id = mt.credit_customer_id
-                            OR (NULLIF(mt.customer_name, '') IS NOT NULL AND LOWER(c.name) = LOWER(mt.customer_name))
+                            c.id = tx.customer_id
+                            OR c.id = tx.credit_customer_id
+                            OR (tx.customer_name IS NOT NULL AND LOWER(c.name) = LOWER(tx.customer_name))
                        )
-                    WHERE mt.station_id = ?
-                      AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
-                      AND $validWhere
-                      AND $shiftCond
                     GROUP BY customer_ref, customer_name
                     ORDER BY txn_count DESC, customer_name ASC
                 ");
-                $q->execute([$station_id, $date_start, $date_end, $date_start, $date_end]);
+                $params[] = $station_id;
+                $q->execute($params);
                 $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
                 break;
         }
@@ -674,11 +786,11 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
     <!-- Centered Report Header (matches staff reports style) -->
     <?php
     $report_titles = [
-        'fuel_sales'     => ['title'=>'FUEL SALES REPORT',          'sub'=>'SHIFT SUMMARY'],
+        'fuel_sales'     => ['title'=>'FUEL SALES REPORT',          'sub'=>'24-HOUR SUMMARY'],
         'merchandise'    => ['title'=>'DAILY MERCHANDISE & SERVICE SALES REPORT',    'sub'=>'24-HOUR SUMMARY'],
-        'service_income' => ['title'=>'SERVICE INCOME REPORT',       'sub'=>'SHIFT SUMMARY'],
-        'payments'       => ['title'=>'PAYMENTS REPORT',             'sub'=>'SHIFT SUMMARY'],
-        'customers'      => ['title'=>'CUSTOMERS REPORT',            'sub'=>'SHIFT SUMMARY'],
+        'service_income' => ['title'=>'SERVICE INCOME REPORT',       'sub'=>'24-HOUR SUMMARY'],
+        'payments'       => ['title'=>'PAYMENTS REPORT',             'sub'=>'24-HOUR SUMMARY'],
+        'customers'      => ['title'=>'CUSTOMERS REPORT',            'sub'=>'24-HOUR SUMMARY'],
     ];
     $rt = $report_titles[$sec_key] ?? ['title'=>strtoupper($tab['label']),'sub'=>'SHIFT SUMMARY'];
     ?>
