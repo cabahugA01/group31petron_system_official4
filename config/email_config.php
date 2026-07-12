@@ -83,6 +83,9 @@ function sendPasswordResetOTP($to_email, $otp) {
         error_log("Invalid email for OTP: {$to_email}");
         return false;
     }
+    
+    // DEBUG LOG - Force logging to see what's happening
+    error_log("🔥 PASSWORD RESET OTP SENDING: Email={$to_email}, OTP={$otp}, Time={$timestamp}");
 
     // Prepare message body (keep same HTML/Alt as before)
     $logo_path = __DIR__ . '/../assets/img/Petron Logo.png';

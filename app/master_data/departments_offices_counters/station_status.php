@@ -490,9 +490,9 @@ include __DIR__ . '/../partials/header.php';
             <div class="form-group">
                 <label for="newStatus">New Status</label>
                 <select id="newStatus" name="new_status" required>
-                    <option value="active">Active ✅</option>
-                    <option value="maintenance">Maintenance ⚠️</option>
-                    <option value="inactive">Inactive ❌</option>
+                    <option value="active">Active</option>
+                    <option value="maintenance">Maintenance</option>
+                    <option value="inactive">Inactive</option>
                 </select>
             </div>
             

@@ -4,7 +4,7 @@
  * Manage cancelled or invalid transactions
  */
 if (session_status() === PHP_SESSION_NONE) session_start();
-$page_id = 'voided_transactions';
+$page_id = 'manager_voided_transactions';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
 require_login();
@@ -59,6 +59,21 @@ $date_from = $_GET['date_from'] ?? '';
 $date_to = $_GET['date_to'] ?? '';
 $filter_staff = $_GET['staff'] ?? '';
 
+$where = ["vt.station_id = ?"];
+$params = [$station_id];
+if ($date_from !== '') {
+    $where[] = "DATE(vt.void_date) >= ?";
+    $params[] = $date_from;
+}
+if ($date_to !== '') {
+    $where[] = "DATE(vt.void_date) <= ?";
+    $params[] = $date_to;
+}
+if ($filter_staff !== '') {
+    $where[] = "vt.voided_by = ?";
+    $params[] = $filter_staff;
+}
+
 // ── Fetch KPI Data ─────────────────────────────────────────────────────────────
 $kpi = ['total' => 0, 'today' => 0, 'amount' => 0.00];
 try {
@@ -67,10 +82,10 @@ try {
             COUNT(*) AS total_voids,
             SUM(CASE WHEN DATE(void_date) = CURDATE() THEN 1 ELSE 0 END) AS today_voids,
             SUM(amount) AS total_voided_amount
-        FROM voided_transactions
-        WHERE station_id = ?
+        FROM voided_transactions vt
+        WHERE " . implode(' AND ', $where) . "
     ");
-    $stmt->execute([$station_id]);
+    $stmt->execute($params);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($row) {
         $kpi['total'] = (int)$row['total_voids'];
@@ -82,19 +97,6 @@ try {
 }
 
 // ── Fetch Voided Records ───────────────────────────────────────────────────────
-$where = ["vt.station_id = ?"];
-$params = [$station_id];
-
-if ($date_from && $date_to) {
-    $where[] = "DATE(vt.void_date) BETWEEN ? AND ?";
-    $params[] = $date_from;
-    $params[] = $date_to;
-}
-if ($filter_staff) {
-    $where[] = "vt.voided_by = ?";
-    $params[] = $filter_staff;
-}
-
 $voided = [];
 try {
     $stmt = $pdo->prepare("
@@ -180,7 +182,13 @@ try {
 // ── Staff list for filter ──────────────────────────────────────────────────────
 $staff_list = [];
 try {
-    $stmt = $pdo->prepare("SELECT id, name FROM users WHERE station_id = ? AND role IN ('manager','supervisor','admin') ORDER BY name");
+    $stmt = $pdo->prepare("
+        SELECT id,
+               COALESCE(NULLIF(TRIM(CONCAT(COALESCE(first_name,''),' ',COALESCE(last_name,''))),''), NULLIF(name,''), username) AS name
+        FROM users
+        WHERE station_id = ? AND role IN ('manager','supervisor','admin')
+        ORDER BY name
+    ");
     $stmt->execute([$station_id]);
     $staff_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
@@ -434,9 +442,9 @@ require_once __DIR__ . '/../partials/header.php';
             <input type="date" name="date_to" class="input" value="<?php echo htmlspecialchars($date_to); ?>" placeholder="All dates">
         </div>
         <div>
-            <label>Staff Encoder</label>
+            <label>Voided By</label>
             <select name="staff" class="input">
-                <option value="">All Staff</option>
+                <option value="">All Users</option>
                 <?php foreach ($staff_list as $staff): ?>
                 <option value="<?php echo $staff['id']; ?>" <?php echo $filter_staff == $staff['id'] ? 'selected' : ''; ?>>
                     <?php echo htmlspecialchars($staff['name']); ?>
@@ -444,8 +452,9 @@ require_once __DIR__ . '/../partials/header.php';
                 <?php endforeach; ?>
             </select>
         </div>
-        <div>
+        <div style="display:flex;gap:8px;align-items:flex-end;">
             <button type="submit" class="flt-btn flt-btn-solid-primary"><i class="fas fa-filter"></i> Apply</button>
+            <a href="voided_transactions.php" class="flt-btn flt-btn-reset"><i class="fas fa-rotate-left"></i> Reset</a>
         </div>
     </form>
 </div>

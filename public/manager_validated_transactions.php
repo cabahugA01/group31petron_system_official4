@@ -36,6 +36,8 @@ function vt_has(array $map, string $col): bool { return isset($map[strtolower($c
 
 $mt_cols = vt_cols($pdo, 'merchandise_transactions');
 $jo_cols = vt_cols($pdo, 'job_orders');
+$mti_cols = vt_cols($pdo, 'merchandise_transaction_items');
+$user_cols = vt_cols($pdo, 'users');
 
 // ── Payment status helper ─────────────────────────────────────────────────────
 function vt_pay_status(array $row): string {
@@ -48,6 +50,66 @@ function vt_pay_status(array $row): string {
     if ($paid <= 0)            return 'Unpaid';
     if ($paid < $total - 0.01) return 'Partial';
     return 'Paid';
+}
+
+function vt_filter_key(string $value): string {
+    return strtolower(preg_replace('/[^a-z0-9]+/', '', trim($value)));
+}
+
+function vt_payment_condition(string $expr, string $value, array &$params): string {
+    $key = vt_filter_key($value);
+    if ($key === '') return '';
+
+    $normalized = "LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE({$expr},'')), '-', ''), ' ', ''), '_', ''))";
+    $raw = "LOWER(TRIM(COALESCE({$expr},'')))";
+
+    if ($key === 'cash') {
+        return "{$normalized} = 'cash'";
+    }
+    if ($key === 'card') {
+        return "({$normalized} IN ('card','creditcard','debitcard') OR {$raw} LIKE '%card%')";
+    }
+    if ($key === 'ewallet') {
+        return "({$normalized} IN ('ewallet','gcash','maya','paymaya','online') OR {$raw} LIKE '%wallet%' OR {$raw} LIKE '%gcash%' OR {$raw} LIKE '%maya%')";
+    }
+    if ($key === 'petronefuel' || $key === 'efuel') {
+        return "({$normalized} LIKE '%efuel%' OR {$raw} LIKE '%e-fuel%' OR {$raw} LIKE '%petron%')";
+    }
+    if ($key === 'fleetcard') {
+        return "({$normalized} LIKE '%fleet%')";
+    }
+    if ($key === 'credit') {
+        return "({$normalized} = 'credit' OR {$raw} LIKE '%credit%')";
+    }
+
+    $params[] = $key;
+    return "{$normalized} = ?";
+}
+
+function vt_shift_keys(string $value): array {
+    $key = vt_filter_key($value);
+    if (in_array($key, ['1', 'first', 'shift1'], true)) return ['1', 'first', 'shift1'];
+    if (in_array($key, ['2', 'second', 'shift2'], true)) return ['2', 'second', 'shift2'];
+    if (in_array($key, ['3', 'third', 'shift3'], true)) return ['3', 'third', 'shift3'];
+    return $key === '' ? [] : [$key];
+}
+
+function vt_shift_condition(string $expr, string $value, array &$params): string {
+    $keys = vt_shift_keys($value);
+    if (!$keys) return '';
+    $normalized = "LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE({$expr},'')), '-', ''), ' ', ''), '_', ''))";
+    $params = array_merge($params, $keys);
+    return "{$normalized} IN (" . implode(',', array_fill(0, count($keys), '?')) . ")";
+}
+
+function vt_shift_display_case(string $expr): string {
+    $normalized = "LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE({$expr},'')), '-', ''), ' ', ''), '_', ''))";
+    return "CASE
+        WHEN {$normalized} IN ('1','first','shift1') THEN 'Shift 1'
+        WHEN {$normalized} IN ('2','second','shift2') THEN 'Shift 2'
+        WHEN {$normalized} IN ('3','third','shift3') THEN 'Shift 3'
+        ELSE COALESCE(NULLIF(TRIM({$expr}),''), 'N/A')
+    END";
 }
 
 // ── Filters ───────────────────────────────────────────────────────────────────
@@ -74,16 +136,42 @@ $mt_staff_col  = vt_has($mt_cols, 'staff_id') ? "CASE WHEN mt.staff_id > 0 THEN 
 $mt_date_col   = vt_has($mt_cols, 'transaction_date') ? "COALESCE(NULLIF(mt.transaction_date, '0000-00-00'), mt.created_at)" : 'mt.created_at';
 $mt_paid_col   = vt_has($mt_cols, 'amount_paid') ? 'mt.amount_paid' : 'NULL';
 $mt_vby_col    = vt_has($mt_cols, 'validated_by') ? "COALESCE(NULLIF(CONCAT(v.first_name,' ',v.last_name),' '), v.username, 'N/A')" : "'N/A'";
-$mt_shift_col  = "CASE WHEN LOWER(TRIM(COALESCE(mt.shift_period, mt.shift_name, u.assigned_shift, u.shift_assignment, ''))) IN ('first', 'shift 1', 'shift1') THEN 'Shift 1' WHEN LOWER(TRIM(COALESCE(mt.shift_period, mt.shift_name, u.assigned_shift, u.shift_assignment, ''))) IN ('second', 'shift 2', 'shift2') THEN 'Shift 2' ELSE COALESCE(NULLIF(TRIM(mt.shift_period),''), NULLIF(TRIM(mt.shift_name),''), NULLIF(TRIM(u.assigned_shift),''), NULLIF(TRIM(u.shift_assignment),''), 'N/A') END";
+$mt_shift_sources = [];
+if (vt_has($mt_cols, 'shift_period')) $mt_shift_sources[] = 'mt.shift_period';
+if (vt_has($mt_cols, 'shift_name')) $mt_shift_sources[] = 'mt.shift_name';
+if (vt_has($user_cols, 'assigned_shift')) $mt_shift_sources[] = 'u.assigned_shift';
+if (vt_has($user_cols, 'shift_assignment')) $mt_shift_sources[] = 'u.shift_assignment';
+$mt_shift_expr = $mt_shift_sources ? 'COALESCE(' . implode(',', $mt_shift_sources) . ", '')" : "''";
+$mt_shift_col  = vt_shift_display_case($mt_shift_expr);
 $mt_staff_id   = vt_has($mt_cols, 'staff_id') ? 'mt.staff_id' : 'NULL';
+$mt_validated_join = vt_has($mt_cols, 'validated_by') ? 'LEFT JOIN users v ON v.id = mt.validated_by' : '';
 
 // IMPORTANT: Show ALL transactions from staff - no validation_status filter
 // This ensures all merchandise and job order transactions encoded by staff are visible
 $mt_where  = "WHERE mt.station_id = ?";
 $mt_params = [$station_id];
 if ($search !== '') {
-    $mt_where .= " AND (mt.customer_name LIKE ? OR mt.transaction_id LIKE ?)";
-    $mt_params[] = "%$search%"; $mt_params[] = "%$search%";
+    $term = "%$search%";
+    $mt_search = [];
+    foreach (['customer_name', 'transaction_id', 'job_order_id', 'job_order_service', 'job_order_description', 'job_order_vehicle_plate', 'customer_first_name', 'customer_last_name', 'customer_id'] as $col) {
+        if (vt_has($mt_cols, $col)) {
+            $mt_search[] = "COALESCE(mt.`{$col}`,'') LIKE ?";
+            $mt_params[] = $term;
+        }
+    }
+    $item_search = [];
+    foreach (['product_name', 'category', 'item_type'] as $col) {
+        if (vt_has($mti_cols, $col)) {
+            $item_search[] = "COALESCE(mti_s.`{$col}`,'') LIKE ?";
+            $mt_params[] = $term;
+        }
+    }
+    if ($item_search) {
+        $mt_search[] = "EXISTS (SELECT 1 FROM merchandise_transaction_items mti_s WHERE mti_s.transaction_id = mt.id AND (" . implode(' OR ', $item_search) . "))";
+    }
+    if ($mt_search) {
+        $mt_where .= " AND (" . implode(' OR ', $mt_search) . ")";
+    }
 }
 if ($date_from !== '') {
     $mt_where .= " AND DATE({$mt_date_col}) >= ?";
@@ -94,28 +182,20 @@ if ($date_to !== '') {
     $mt_params[] = $date_to;
 }
 if ($payment_method !== '') {
-    $mt_where .= " AND LOWER(TRIM(COALESCE(mt.payment_method,''))) = LOWER(?)";
-    $mt_params[] = $payment_method;
+    $payment_sql = vt_payment_condition('mt.payment_method', $payment_method, $mt_params);
+    if ($payment_sql !== '') $mt_where .= " AND {$payment_sql}";
 }
 if ($staff_filter !== '') {
     $mt_where .= " AND mt.staff_id = ?";
     $mt_params[] = $staff_filter;
 }
 if ($shift_filter !== '') {
-    $mt_where .= " AND (mt.shift_period = ? OR u.assigned_shift = ? OR u.shift_assignment = ?)";
-    $mt_params[] = $shift_filter;
-    $mt_params[] = $shift_filter;
-    $mt_params[] = $shift_filter;
+    $shift_sql = vt_shift_condition($mt_shift_expr, $shift_filter, $mt_params);
+    if ($shift_sql !== '') $mt_where .= " AND {$shift_sql}";
 }
 
 $mt_rows = [];
 try {
-    // DIAGNOSTIC: First check if there's ANY data in merchandise_transactions for this station
-    $diag_stmt = $pdo->prepare("SELECT COUNT(*) as total, MIN(created_at) as oldest, MAX(created_at) as newest FROM merchandise_transactions WHERE station_id = ?");
-    $diag_stmt->execute([$station_id]);
-    $diag = $diag_stmt->fetch(PDO::FETCH_ASSOC);
-    error_log("DIAGNOSTIC - merchandise_transactions for station $station_id: Total={$diag['total']}, Oldest={$diag['oldest']}, Newest={$diag['newest']}");
-    
     $stmt = $pdo->prepare("
         SELECT
             mt.id AS row_id,
@@ -148,7 +228,7 @@ try {
             ) AS validation_remarks
         FROM merchandise_transactions mt
         LEFT JOIN users u ON u.id = mt.staff_id
-        LEFT JOIN users v ON v.id = mt.validated_by
+        {$mt_validated_join}
         LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
         {$mt_where}
         GROUP BY mt.id
@@ -157,7 +237,6 @@ try {
     ");
     $stmt->execute($mt_params);
     $mt_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    error_log("QUERY EXECUTED - Merchandise rows returned: " . count($mt_rows));
 } catch (Exception $e) { 
     error_log("ERROR fetching merchandise transactions: " . $e->getMessage());
     $mt_rows = []; 
@@ -171,14 +250,29 @@ $jo_pay_col    = vt_has($jo_cols, 'payment_method') ? "COALESCE(jo.payment_metho
 $jo_cost_col   = vt_has($jo_cols, 'total_cost') ? 'COALESCE(jo.total_cost,0)' : 'COALESCE(jo.estimated_cost,0)';
 $jo_paid_col   = vt_has($jo_cols, 'amount_paid') ? 'jo.amount_paid' : 'NULL';
 $jo_vby_col    = vt_has($jo_cols, 'validated_by') ? "COALESCE(NULLIF(CONCAT(v.first_name,' ',v.last_name),' '), v.username, 'N/A')" : "'N/A'";
-$jo_shift_col  = "CASE WHEN LOWER(TRIM(COALESCE(sh.name, u.assigned_shift, u.shift_assignment, ''))) IN ('first', 'shift 1', 'shift1') THEN 'Shift 1' WHEN LOWER(TRIM(COALESCE(sh.name, u.assigned_shift, u.shift_assignment, ''))) IN ('second', 'shift 2', 'shift2') THEN 'Shift 2' ELSE COALESCE(NULLIF(TRIM(sh.name),''), NULLIF(TRIM(u.assigned_shift),''), NULLIF(TRIM(u.shift_assignment),''), 'N/A') END";
+$jo_shift_sources = vt_has($jo_cols, 'shift_id') ? ['sh.name'] : [];
+if (vt_has($user_cols, 'assigned_shift')) $jo_shift_sources[] = 'u.assigned_shift';
+if (vt_has($user_cols, 'shift_assignment')) $jo_shift_sources[] = 'u.shift_assignment';
+$jo_shift_expr = $jo_shift_sources ? 'COALESCE(' . implode(',', $jo_shift_sources) . ", '')" : "''";
+$jo_shift_col  = vt_shift_display_case($jo_shift_expr);
 $jo_staff_id   = vt_has($jo_cols, 'created_by') ? 'COALESCE(jo.created_by, jo.user_id)' : 'jo.user_id';
+$jo_shift_join = vt_has($jo_cols, 'shift_id') ? 'LEFT JOIN shifts sh ON sh.id = jo.shift_id' : '';
+$jo_validated_join = vt_has($jo_cols, 'validated_by') ? 'LEFT JOIN users v ON v.id = jo.validated_by' : '';
 
 $jo_where  = "WHERE jo.station_id = ?";
 $jo_params = [$station_id];
 if ($search !== '') {
-    $jo_where .= " AND (jo.customer_name LIKE ? OR jo.service_type LIKE ? OR jo.vehicle_plate LIKE ?)";
-    $jo_params[] = "%$search%"; $jo_params[] = "%$search%"; $jo_params[] = "%$search%";
+    $term = "%$search%";
+    $jo_search = [];
+    foreach (['customer_name', 'service_type', 'service_description', 'vehicle_plate', 'job_order_id', 'job_order_number', 'additional_notes'] as $col) {
+        if (vt_has($jo_cols, $col)) {
+            $jo_search[] = "COALESCE(jo.`{$col}`,'') LIKE ?";
+            $jo_params[] = $term;
+        }
+    }
+    if ($jo_search) {
+        $jo_where .= " AND (" . implode(' OR ', $jo_search) . ")";
+    }
 }
 if ($date_from !== '') {
     $jo_where .= " AND DATE(jo.created_at) >= ?";
@@ -189,28 +283,20 @@ if ($date_to !== '') {
     $jo_params[] = $date_to;
 }
 if ($payment_method !== '') {
-    $jo_where .= " AND LOWER(TRIM(COALESCE({$jo_pay_col},''))) = LOWER(?)";
-    $jo_params[] = $payment_method;
+    $payment_sql = vt_payment_condition($jo_pay_col, $payment_method, $jo_params);
+    if ($payment_sql !== '') $jo_where .= " AND {$payment_sql}";
 }
 if ($staff_filter !== '') {
     $jo_where .= " AND COALESCE(jo.created_by, jo.user_id) = ?";
     $jo_params[] = $staff_filter;
 }
 if ($shift_filter !== '') {
-    $jo_where .= " AND (sh.name = ? OR u.assigned_shift = ? OR u.shift_assignment = ?)";
-    $jo_params[] = $shift_filter;
-    $jo_params[] = $shift_filter;
-    $jo_params[] = $shift_filter;
+    $shift_sql = vt_shift_condition($jo_shift_expr, $shift_filter, $jo_params);
+    if ($shift_sql !== '') $jo_where .= " AND {$shift_sql}";
 }
 
 $jo_rows = [];
 try {
-    // DIAGNOSTIC: First check if there's ANY data in job_orders for this station
-    $diag_stmt = $pdo->prepare("SELECT COUNT(*) as total, MIN(created_at) as oldest, MAX(created_at) as newest FROM job_orders WHERE station_id = ?");
-    $diag_stmt->execute([$station_id]);
-    $diag = $diag_stmt->fetch(PDO::FETCH_ASSOC);
-    error_log("DIAGNOSTIC - job_orders for station $station_id: Total={$diag['total']}, Oldest={$diag['oldest']}, Newest={$diag['newest']}");
-    
     $stmt = $pdo->prepare("
         SELECT
             jo.id AS row_id,
@@ -238,15 +324,14 @@ try {
             ) AS validation_remarks
         FROM job_orders jo
         LEFT JOIN users u ON u.id = COALESCE(jo.created_by, jo.user_id)
-        LEFT JOIN users v ON v.id = jo.validated_by
-        LEFT JOIN shifts sh ON sh.id = jo.shift_id
+        {$jo_validated_join}
+        {$jo_shift_join}
         {$jo_where}
         ORDER BY jo.created_at DESC
         LIMIT 500
     ");
     $stmt->execute($jo_params);
     $jo_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    error_log("QUERY EXECUTED - Job Order rows returned: " . count($jo_rows));
 } catch (Exception $e) { 
     error_log("ERROR fetching job orders: " . $e->getMessage());
     $jo_rows = []; 
@@ -257,7 +342,7 @@ $all_rows = array_merge($mt_rows, $jo_rows);
 if ($type_filter === 'merchandise') {
     $all_rows = array_filter($all_rows, fn($r) => strtolower($r['entry_type']) === 'merchandise');
 } elseif ($type_filter === 'job_order') {
-    $all_rows = array_filter($all_rows, fn($r) => strtolower($r['entry_type']) === 'job order');
+    $all_rows = array_filter($all_rows, fn($r) => in_array(strtolower($r['entry_type']), ['job order', 'combined'], true));
 }
 // Apply payment status filter (in-PHP since it's calculated)
 if ($payment_status !== '') {
@@ -268,24 +353,6 @@ if ($payment_status !== '') {
 }
 $rows = array_values($all_rows);
 usort($rows, fn($a, $b) => strtotime($b['txn_date']) - strtotime($a['txn_date']));
-
-// DEBUG: Log the results
-error_log("Manager Validated Transactions - Station $station_id - User: {$me['username']} ({$me['role']})");
-error_log("  Date Range: $date_from to $date_to");
-error_log("  Filters - Type: '$type_filter', Payment: '$payment_method', Staff: '$staff_filter', Shift: '$shift_filter', Search: '$search'");
-error_log("  Merchandise rows: " . count($mt_rows));
-error_log("  Job order rows: " . count($jo_rows));
-error_log("  All rows before filter: " . count($all_rows));
-error_log("  Final rows after filter: " . count($rows));
-if (count($rows) > 0) {
-    error_log("  First row: " . json_encode($rows[0]));
-} else {
-    // Log the SQL params to debug why no results
-    error_log("  Merch WHERE: $mt_where");
-    error_log("  Merch PARAMS: " . json_encode($mt_params));
-    error_log("  JO WHERE: $jo_where");
-    error_log("  JO PARAMS: " . json_encode($jo_params));
-}
 
 // Pre-fetch items for merchandise_transactions
 $mgr_items_map = [];

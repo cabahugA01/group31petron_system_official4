@@ -861,6 +861,9 @@ include __DIR__ . '/../partials/header.php';
 .empty-state { text-align:center; padding:40px 20px; color:#94a3b8; }
 .empty-state i { font-size:40px; display:block; margin-bottom:12px; opacity:.4; }
 
+/* Hide filtered rows */
+.search-hidden { display: none !important; }
+
 .modal-tab-btn {
     border: none;
     background: none !important;
@@ -991,7 +994,7 @@ include __DIR__ . '/../partials/header.php';
     <!-- Low Stock -->
     <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fed7aa;">
         <div>
-            <div style="font-size:11px;font-weight:700;color:#ea580c;text-transform:uppercase;letter-spacing:.3px;">⚠ Low Stock</div>
+            <div style="font-size:11px;font-weight:700;color:#ea580c;text-transform:uppercase;letter-spacing:.3px;">Low Stock</div>
             <div style="font-size:24px;font-weight:800;color:#ea580c;margin-top:4px;"><?= number_format($summary_alert_low) ?></div>
         </div>
         <div style="background:#fff7ed;color:#ea580c;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
@@ -999,7 +1002,7 @@ include __DIR__ . '/../partials/header.php';
     <!-- Critical Stock -->
     <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fecaca;">
         <div>
-            <div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.3px;">🚨 Critical Stock</div>
+            <div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.3px;">Critical Stock</div>
             <div style="font-size:24px;font-weight:800;color:#dc2626;margin-top:4px;"><?= number_format($summary_alert_critical) ?></div>
         </div>
         <div style="background:#fef2f2;color:#dc2626;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-fire"></i></div>
@@ -1007,7 +1010,7 @@ include __DIR__ . '/../partials/header.php';
     <!-- Out of Stock -->
     <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fecaca;">
         <div>
-            <div style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.3px;">❌ Out of Stock</div>
+            <div style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.3px;">Out of Stock</div>
             <div style="font-size:24px;font-weight:800;color:#991b1b;margin-top:4px;"><?= number_format($summary_out) ?></div>
         </div>
         <div style="background:#fef2f2;color:#991b1b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
@@ -1037,21 +1040,12 @@ include __DIR__ . '/../partials/header.php';
             </select>
             <select id="invStockFilter" onchange="filterInvTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
                 <option value="">All Statuses</option>
-                <option value="available">🟢 Available</option>
-                <option value="low">🟡 Low Stock</option>
-                <option value="critical">🔴 Critical Stock</option>
-                <option value="out of stock">🔴 Out of Stock</option>
-                <option value="variance detected">⚠️ Variance Detected</option>
+                <option value="available">Available</option>
+                <option value="low">Low Stock</option>
+                <option value="critical">Critical Stock</option>
+                <option value="out of stock">Out of Stock</option>
+                <option value="variance detected">Variance Detected</option>
             </select>
-            <label style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none;">
-                <input type="checkbox" id="invLowStockOnly" onchange="filterInvTable()"> Low Stock Only
-            </label>
-            <label style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none;">
-                <input type="checkbox" id="invCriticalOnly" onchange="filterInvTable()"> Critical Only
-            </label>
-            <label style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none;">
-                <input type="checkbox" id="invVarianceOnly" onchange="filterInvTable()"> With Variance Only
-            </label>
         </div>
     </div>
     <div class="table-wrap">
@@ -1113,6 +1107,8 @@ include __DIR__ . '/../partials/header.php';
                         $st = 'AVAILABLE'; $sc = '#28a745'; $si_cls = 'available';
                     }
 
+                    // If has variance, show it in status but keep underlying status in data-stock-status
+                    $stock_status_class = $si_cls; // Preserve original status for filtering
                     if ($has_variance) {
                         $st = 'VARIANCE DETECTED'; $sc = '#fd7e14'; // Warning color (Orange)
                         $si_cls = 'variance detected';
@@ -1394,11 +1390,11 @@ include __DIR__ . '/../partials/header.php';
             <input type="text" id="movSearch" placeholder="Search Product or User..." oninput="filterMovTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:180px;">
             <select id="movTypeFilter" onchange="filterMovTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
                 <option value="">All Movement Types</option>
-                <option value="delivery">📥 Delivery</option>
-                <option value="sale">📤 Sale</option>
-                <option value="adjustment">⚖️ Adjustment</option>
-                <option value="stock_request">📋 Stock Request</option>
-                <option value="correction">🔄 Correction</option>
+                <option value="delivery">Delivery</option>
+                <option value="sale">Sale</option>
+                <option value="adjustment">Adjustment</option>
+                <option value="stock_request">Stock Request</option>
+                <option value="correction">Correction</option>
             </select>
         </div>
     </div>
@@ -1434,23 +1430,23 @@ include __DIR__ . '/../partials/header.php';
                     
                     if (in_array($raw_type, ['delivery', 'stock_in', 'stock-in'])) {
                         $norm_type = 'delivery';
-                        $m_label = '📥 Delivery';
+                        $m_label = 'Delivery';
                         $badge_style = 'background:#d1fae5;color:#065f46;border:1px solid #a7f3d0;';
                     } elseif (in_array($raw_type, ['sale', 'release', 'transaction'])) {
                         $norm_type = 'sale';
-                        $m_label = '📤 Sale';
+                        $m_label = 'Sale';
                         $badge_style = 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;';
                     } elseif ($raw_type === 'adjustment') {
                         $norm_type = 'adjustment';
-                        $m_label = '⚖️ Adjustment';
+                        $m_label = 'Adjustment';
                         $badge_style = 'background:#f3e8ff;color:#5b21b6;border:1px solid #e9d5ff;';
                     } elseif (in_array($raw_type, ['stock_request', 'request'])) {
                         $norm_type = 'stock_request';
-                        $m_label = '📋 Stock Request';
+                        $m_label = 'Stock Request';
                         $badge_style = 'background:#e0f2fe;color:#075985;border:1px solid #bae6fd;';
                     } elseif ($raw_type === 'correction') {
                         $norm_type = 'correction';
-                        $m_label = '🔄 Correction';
+                        $m_label = 'Correction';
                         $badge_style = 'background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;';
                     }
                     
@@ -2350,32 +2346,42 @@ function filterInvTable() {
     var cat = document.getElementById('invCatFilter').value.toLowerCase();
     var srch = document.getElementById('invSearch').value.toLowerCase();
     var stFlt = document.getElementById('invStockFilter').value.toLowerCase();
-    var lowFlt = document.getElementById('invLowStockOnly').checked;
-    var critFlt = document.getElementById('invCriticalOnly').checked;
-    var varFlt = document.getElementById('invVarianceOnly').checked;
+
+    console.log('=== FILTER DEBUG ===');
+    console.log('Category Filter:', cat || '(all)');
+    console.log('Search Filter:', srch || '(none)');
+    console.log('Status Filter:', stFlt || '(all)');
+    console.log('');
+
+    var visibleCount = 0;
+    var statusCounts = {};
 
     document.querySelectorAll('#merchTableBody .merch-row').forEach(function(r) {
         var rCat = (r.dataset.cat || '').toLowerCase();
         var rName = (r.dataset.name || '').toLowerCase();
         var rSku = (r.dataset.sku || '').toLowerCase();
         var rInv = (r.dataset.invStatus || '').toLowerCase();
-        var hasVar = r.dataset.hasVariance === 'true';
+
+        // Count statuses for debugging
+        if (!statusCounts[rInv]) statusCounts[rInv] = 0;
+        statusCounts[rInv]++;
 
         var matchesCat = !cat || rCat === cat;
         var matchesSrch = !srch || rName.includes(srch) || rSku.includes(srch);
-        var matchesStock = !stFlt || rInv.includes(stFlt);
+        var matchesStock = !stFlt || rInv === stFlt;
 
-        var matchesLow = !lowFlt || rInv === 'low' || rInv === 'critical';
-        var matchesCrit = !critFlt || rInv === 'critical';
-        var matchesVar = !varFlt || hasVar;
-
-        var ok = matchesCat && matchesSrch && matchesStock && matchesLow && matchesCrit && matchesVar;
+        var ok = matchesCat && matchesSrch && matchesStock;
         if (ok) {
             r.classList.remove('search-hidden');
+            visibleCount++;
         } else {
             r.classList.add('search-hidden');
         }
     });
+
+    console.log('Status Counts:', statusCounts);
+    console.log('Visible Rows:', visibleCount);
+    console.log('==================');
 
     // Update category header visibility based on filtered items
     var tbody = document.getElementById('merchTableBody');
@@ -2417,14 +2423,30 @@ function filterInvTable() {
 }
 
 function filterAlertTable() {
-    var cat = document.getElementById('alertCatFilter').value.toLowerCase();
-    var srch = document.getElementById('alertSearch').value.toLowerCase();
-    var type = document.getElementById('alertTypeFilter').value.toLowerCase();
+    var cat = document.getElementById('alertCatFilter').value.toLowerCase().trim();
+    var srch = document.getElementById('alertSearch').value.toLowerCase().trim();
+    var type = document.getElementById('alertTypeFilter').value.toLowerCase().trim();
+    
+    console.log('=== Stock Alerts Filter ===');
+    console.log('Category:', cat || '(all)');
+    console.log('Search:', srch || '(none)');
+    console.log('Alert Type:', type || '(all)');
+    
+    var visibleCount = 0;
+    var typeCount = {};
+    
     document.querySelectorAll('#alertTableBody .alert-row').forEach(function(r) {
-        var rCat = (r.dataset.cat || '').toLowerCase();
-        var rName = (r.dataset.name || '').toLowerCase();
-        var rSku = (r.dataset.sku || '').toLowerCase();
-        var rType = (r.dataset.alertType || '').toLowerCase();
+        var rCat = (r.dataset.cat || '').toLowerCase().trim();
+        var rName = (r.dataset.name || '').toLowerCase().trim();
+        var rSku = (r.dataset.sku || '').toLowerCase().trim();
+        // Use dataset.alertType which corresponds to data-alert-type in HTML
+        var rType = (r.dataset.alertType || '').toLowerCase().trim();
+        
+        // Count alert types for debugging
+        if (!typeCount[rType]) {
+            typeCount[rType] = 0;
+        }
+        typeCount[rType]++;
         
         var matchesCat = !cat || rCat === cat;
         var matchesSrch = !srch || rName.includes(srch) || rSku.includes(srch);
@@ -2433,10 +2455,17 @@ function filterAlertTable() {
         var ok = matchesCat && matchesSrch && matchesType;
         if (ok) {
             r.classList.remove('search-hidden');
+            r.style.display = '';
+            visibleCount++;
         } else {
             r.classList.add('search-hidden');
+            r.style.display = 'none';
         }
     });
+
+    console.log('Visible alerts:', visibleCount);
+    console.log('Alert type breakdown:', typeCount);
+    console.log('===========================');
 
     if (window.tablePaginationTriggers && window.tablePaginationTriggers['mgrAlertTable']) {
         window.tablePaginationTriggers['mgrAlertTable']();
@@ -2669,22 +2698,24 @@ function printMovLogRecord(el) {
 }
 
 function filterMovTable() {
-    var type = document.getElementById('movTypeFilter').value.toLowerCase();
-    var srch = document.getElementById('movSearch').value.toLowerCase();
+    var type = document.getElementById('movTypeFilter').value.trim().toLowerCase();
+    var srch = document.getElementById('movSearch').value.trim().toLowerCase();
     document.querySelectorAll('#movTableBody .mov-row').forEach(function(r) {
-        var rType = (r.dataset.type || '').toLowerCase();
+        var rType = (r.dataset.type || '').trim().toLowerCase();
         var rProduct = (r.dataset.product || '').toLowerCase();
         var rSku = (r.dataset.sku || '').toLowerCase();
         var rUser = (r.dataset.user || '').toLowerCase();
         
-        var matchesType = !type || rType === type;
-        var matchesSrch = !srch || rProduct.includes(srch) || rSku.includes(srch) || rUser.includes(srch);
+        var matchesType = (type === '' || rType === type);
+        var matchesSrch = (srch === '' || rProduct.includes(srch) || rSku.includes(srch) || rUser.includes(srch));
         
         var ok = matchesType && matchesSrch;
         if (ok) {
             r.classList.remove('search-hidden');
+            r.style.display = '';
         } else {
             r.classList.add('search-hidden');
+            r.style.display = 'none';
         }
     });
 

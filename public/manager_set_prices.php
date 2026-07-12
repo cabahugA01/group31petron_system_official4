@@ -1570,7 +1570,13 @@ function deactivateFuel(id, fuelType) {
     .then(data => {
         if (data.success) {
             alert('SUCCESS: Fuel product deactivated successfully!');
-            location.reload();
+            // Dynamically change button to Activate
+            var buttons = document.querySelectorAll('button[onclick*="deactivateFuel(' + id + ',"]');
+            buttons.forEach(function(btn) {
+                btn.className = 'act-btn act-btn-activate';
+                btn.innerHTML = '<i class="fas fa-check-circle"></i> Activate';
+                btn.setAttribute('onclick', 'activateFuel(' + id + ', \'' + fuelType.replace(/'/g, "\\'") + '\')');
+            });
         } else {
             alert('Error: ' + (data.message || 'Failed to deactivate product'));
         }
@@ -1599,7 +1605,13 @@ function activateFuel(id, fuelType) {
     .then(data => {
         if (data.success) {
             alert('SUCCESS: Fuel product activated successfully!');
-            location.reload();
+            // Dynamically change button to Deactivate
+            var buttons = document.querySelectorAll('button[onclick*="activateFuel(' + id + ',"]');
+            buttons.forEach(function(btn) {
+                btn.className = 'act-btn act-btn-deactivate';
+                btn.innerHTML = '<i class="fas fa-ban"></i> Deactivate';
+                btn.setAttribute('onclick', 'deactivateFuel(' + id + ', \'' + fuelType.replace(/'/g, "\\'") + '\')');
+            });
         } else {
             alert('Error: ' + (data.message || 'Failed to activate product'));
         }
@@ -1731,7 +1743,13 @@ function deactivateMerchandise(id, productName) {
     .then(data => {
         if (data.success) {
             alert('SUCCESS: Merchandise deactivated successfully!');
-            location.reload();
+            // Dynamically change button to Activate
+            var buttons = document.querySelectorAll('button[onclick*="deactivateMerchandise(' + id + ',"]');
+            buttons.forEach(function(btn) {
+                btn.className = 'act-btn act-btn-activate';
+                btn.innerHTML = '<i class="fas fa-check-circle"></i> Activate';
+                btn.setAttribute('onclick', 'activateMerchandise(' + id + ', \'' + productName.replace(/'/g, "\\'") + '\')');
+            });
         } else {
             alert('Error: ' + (data.message || 'Failed to deactivate merchandise'));
         }
@@ -1759,7 +1777,13 @@ function activateMerchandise(id, productName) {
     .then(data => {
         if (data.success) {
             alert('SUCCESS: Merchandise activated successfully!');
-            location.reload();
+            // Dynamically change button to Deactivate
+            var buttons = document.querySelectorAll('button[onclick*="activateMerchandise(' + id + ',"]');
+            buttons.forEach(function(btn) {
+                btn.className = 'act-btn act-btn-deactivate';
+                btn.innerHTML = '<i class="fas fa-ban"></i> Deactivate';
+                btn.setAttribute('onclick', 'deactivateMerchandise(' + id + ', \'' + productName.replace(/'/g, "\\'") + '\')');
+            });
         } else {
             alert('Error: ' + (data.message || 'Failed to activate merchandise'));
         }
@@ -1881,7 +1905,13 @@ function deactivateService(id, serviceName) {
     .then(data => {
         if (data.success) {
             alert('SUCCESS: Service deactivated successfully!');
-            location.reload();
+            // Dynamically change button to Activate
+            var buttons = document.querySelectorAll('button[onclick*="deactivateService(' + id + ',"]');
+            buttons.forEach(function(btn) {
+                btn.className = 'act-btn act-btn-activate';
+                btn.innerHTML = '<i class="fas fa-check-circle"></i> Activate';
+                btn.setAttribute('onclick', 'activateService(' + id + ', \'' + serviceName.replace(/'/g, "\\'") + '\')');
+            });
         } else {
             alert('Error: ' + (data.message || 'Failed to deactivate service'));
         }
@@ -1909,7 +1939,13 @@ function activateService(id, serviceName) {
     .then(data => {
         if (data.success) {
             alert('SUCCESS: Service activated successfully!');
-            location.reload();
+            // Dynamically change button to Deactivate
+            var buttons = document.querySelectorAll('button[onclick*="activateService(' + id + ',"]');
+            buttons.forEach(function(btn) {
+                btn.className = 'act-btn act-btn-deactivate';
+                btn.innerHTML = '<i class="fas fa-ban"></i> Deactivate';
+                btn.setAttribute('onclick', 'deactivateService(' + id + ', \'' + serviceName.replace(/'/g, "\\'") + '\')');
+            });
         } else {
             alert('Error: ' + (data.message || 'Failed to activate service'));
         }

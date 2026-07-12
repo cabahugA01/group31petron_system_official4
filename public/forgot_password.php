@@ -6,6 +6,7 @@ session_start();
 require_once __DIR__ . '/../public/db_connect.php';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../config/email_config.php';
+require_once __DIR__ . '/../config/password_reset_whitelist.php';
 
 $error = '';
 $success = '';
@@ -92,31 +93,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (empty($user['email'])) {
                     $error = "This account has no registered email address. Please contact the administrator to update your profile.";
                 } else {
-                    // Generate OTP
-                    $otp_code = sprintf("%06d", random_int(100000, 999999));
+                    // ============================================================
+                    // EMAIL WHITELIST SECURITY CHECK
+                    // Only allow password reset for whitelisted email addresses
+                    // Whitelist is managed in: config/password_reset_whitelist.php
+                    // ============================================================
+                    
+                    // Check if user's email is in whitelist
+                    if (!isEmailWhitelistedForPasswordReset($user['email'])) {
+                        // Email not whitelisted - show generic message for security
+                        $error = "Password reset is currently restricted. Please contact your system administrator for assistance.";
+                        error_log("Password reset blocked for non-whitelisted email: {$user['email']} (user_id={$user['user_id']})");
+                    } else {
+                        // Email is whitelisted - proceed with OTP generation
+                        // Generate OTP
+                        $otp_code = sprintf("%06d", random_int(100000, 999999));
 
-                    // Store OTP in DB — delete old ones first
-                    $pdo->prepare("DELETE FROM password_reset_tokens WHERE user_id = ?")->execute([$user['user_id']]);
-                    $pdo->prepare("INSERT INTO password_reset_tokens (user_id, token, token_type, expires_at, ip_address) VALUES (?, ?, 'reset', DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)")
-                        ->execute([$user['user_id'], $otp_code, $_SERVER['REMOTE_ADDR']]);
+                        // Store OTP in DB — delete old ones first
+                        $pdo->prepare("DELETE FROM password_reset_tokens WHERE user_id = ?")->execute([$user['user_id']]);
+                        $pdo->prepare("INSERT INTO password_reset_tokens (user_id, token, token_type, expires_at, ip_address) VALUES (?, ?, 'reset', DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)")
+                            ->execute([$user['user_id'], $otp_code, $_SERVER['REMOTE_ADDR']]);
 
-                    // Send OTP email — give it enough time to complete SMTP handshake
-                    $email_sent = false;
-                    if (function_exists('sendPasswordResetOTP')) {
-                        @set_time_limit(60); // allow up to 60s for SMTP
-                        $email_sent = (bool) sendPasswordResetOTP($user['email'], $otp_code);
-                        if (!$email_sent) {
-                            error_log("Password reset OTP email FAILED for user_id={$user['user_id']} email={$user['email']}");
+                        // Send OTP email — give it enough time to complete SMTP handshake
+                        $email_sent = false;
+                        if (function_exists('sendPasswordResetOTP')) {
+                            @set_time_limit(60); // allow up to 60s for SMTP
+                            $email_sent = (bool) sendPasswordResetOTP($user['email'], $otp_code);
+                            if (!$email_sent) {
+                                error_log("Password reset OTP email FAILED for user_id={$user['user_id']} email={$user['email']}");
+                            }
                         }
-                    }
 
-                    // Redirect to OTP verify page; pass email_failed hint for dev feedback
-                    $redirect = "verify_otp.php?email=" . urlencode($user['email']);
-                    if (!$email_sent) {
-                        $redirect .= "&email_failed=1";
+                        // Redirect to OTP verify page; pass email_failed hint for dev feedback
+                        $redirect = "verify_otp.php?email=" . urlencode($user['email']);
+                        if (!$email_sent) {
+                            $redirect .= "&email_failed=1";
+                        }
+                        header("Location: {$redirect}");
+                        exit;
                     }
-                    header("Location: {$redirect}");
-                    exit;
                 }
             } else {
                 // For security, show generic message even if user not found

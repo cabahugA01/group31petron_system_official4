@@ -589,9 +589,9 @@ include __DIR__ . '/../partials/header.php';
                 <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:5px;">Movement Type</label>
                 <select id="movTypeFilter" onchange="filterMovTable()" style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; width:100%;">
                     <option value="">All Types</option>
-                    <option value="delivery">📥 Delivery</option>
-                    <option value="release">📤 Release/Sale</option>
-                    <option value="adjustment">⚖️ Adjustment</option>
+                    <option value="delivery">Delivery</option>
+                    <option value="release">Release/Sale</option>
+                    <option value="adjustment">Adjustment</option>
                 </select>
             </div>
 
@@ -778,9 +778,9 @@ include __DIR__ . '/../partials/header.php';
                 <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:5px;">Movement Type</label>
                 <select id="fuelMovTypeFilter" onchange="filterFuelTable()" style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; width:100%;">
                     <option value="">All Types</option>
-                    <option value="delivery">📥 Delivery</option>
-                    <option value="sale">🚗 Sale</option>
-                    <option value="adjustment">⚖️ Adjustment</option>
+                    <option value="delivery">Delivery</option>
+                    <option value="sale">Sale</option>
+                    <option value="adjustment">Adjustment</option>
                 </select>
             </div>
 

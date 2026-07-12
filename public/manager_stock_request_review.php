@@ -1579,11 +1579,11 @@ body .main {
     <!-- ==================== TAB 3: PENDING STOCK-IN ==================== -->
     <?php elseif ($active_tab === 'pending_stock_in'): ?>
         <!-- Mini Sub Tabs for Pending Stock-In -->
-        <div class="sub-tab-nav" style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 1px;">
-            <button type="button" class="sub-tab-btn active" id="subtabPendingMerchBtn" onclick="switchPendingStockInSubTab('merch')" style="padding: 10px 20px; font-size: 13.5px; font-weight: 700; color: #002F6C; border: none; background: none; border-bottom: 3px solid #002F6C; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px;">
+        <div class="sub-tab-nav" style="display: flex; gap: 8px; margin-bottom: 20px;">
+            <button type="button" class="sub-tab-btn active" id="subtabPendingMerchBtn" onclick="switchPendingStockInSubTab('merch')" style="padding: 10px 20px; font-size: 13px; font-weight: 700; color: #fff !important; background: #002F6C; border: none; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px; border-radius: 8px;">
                 <i class="fas fa-boxes"></i> Merchandise Stock-In
             </button>
-            <button type="button" class="sub-tab-btn" id="subtabPendingFuelBtn" onclick="switchPendingStockInSubTab('fuel')" style="padding: 10px 20px; font-size: 13.5px; font-weight: 700; color: #64748b; border: none; background: none; border-bottom: 3px solid transparent; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px;">
+            <button type="button" class="sub-tab-btn" id="subtabPendingFuelBtn" onclick="switchPendingStockInSubTab('fuel')" style="padding: 10px 20px; font-size: 13px; font-weight: 700; color: #64748b !important; background: #fff; border: 1px solid #cbd5e1; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px; border-radius: 8px;">
                 <i class="fas fa-gas-pump"></i> Fuel Stock-In
             </button>
         </div>
@@ -1685,11 +1685,11 @@ body .main {
     <!-- ==================== TAB 4: COMPLETED ==================== -->
     <?php elseif ($active_tab === 'completed'): ?>
         <!-- Mini Sub Tabs for Completed -->
-        <div class="sub-tab-nav" style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 1px;">
-            <button type="button" class="sub-tab-btn active" id="subtabCompletedMerchBtn" onclick="switchCompletedSubTab('merch')" style="padding: 10px 20px; font-size: 13.5px; font-weight: 700; color: #002F6C; border: none; background: none; border-bottom: 3px solid #002F6C; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px;">
+        <div class="sub-tab-nav" style="display: flex; gap: 8px; margin-bottom: 20px;">
+            <button type="button" class="sub-tab-btn active" id="subtabCompletedMerchBtn" onclick="switchCompletedSubTab('merch')" style="padding: 10px 20px; font-size: 13px; font-weight: 700; color: #fff !important; background: #002F6C; border: none; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px; border-radius: 8px;">
                 <i class="fas fa-boxes"></i> Merchandise Completed
             </button>
-            <button type="button" class="sub-tab-btn" id="subtabCompletedFuelBtn" onclick="switchCompletedSubTab('fuel')" style="padding: 10px 20px; font-size: 13.5px; font-weight: 700; color: #64748b; border: none; background: none; border-bottom: 3px solid transparent; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px;">
+            <button type="button" class="sub-tab-btn" id="subtabCompletedFuelBtn" onclick="switchCompletedSubTab('fuel')" style="padding: 10px 20px; font-size: 13px; font-weight: 700; color: #64748b !important; background: #fff; border: 1px solid #cbd5e1; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px; border-radius: 8px;">
                 <i class="fas fa-gas-pump"></i> Fuel Completed
             </button>
         </div>
@@ -2020,23 +2020,27 @@ function switchPendingStockInSubTab(type) {
     
     if (type === 'merch') {
         merchBtn.classList.add('active');
-        merchBtn.style.color = '#002F6C';
-        merchBtn.style.borderBottomColor = '#002F6C';
+        merchBtn.style.color = '#fff';
+        merchBtn.style.background = '#002F6C';
+        merchBtn.style.border = 'none';
         
         fuelBtn.classList.remove('active');
         fuelBtn.style.color = '#64748b';
-        fuelBtn.style.borderBottomColor = 'transparent';
+        fuelBtn.style.background = '#fff';
+        fuelBtn.style.border = '1px solid #cbd5e1';
         
         merchSec.style.display = 'block';
         fuelSec.style.display = 'none';
     } else {
         fuelBtn.classList.add('active');
-        fuelBtn.style.color = '#002F6C';
-        fuelBtn.style.borderBottomColor = '#002F6C';
+        fuelBtn.style.color = '#fff';
+        fuelBtn.style.background = '#002F6C';
+        fuelBtn.style.border = 'none';
         
         merchBtn.classList.remove('active');
         merchBtn.style.color = '#64748b';
-        merchBtn.style.borderBottomColor = 'transparent';
+        merchBtn.style.background = '#fff';
+        merchBtn.style.border = '1px solid #cbd5e1';
         
         fuelSec.style.display = 'block';
         merchSec.style.display = 'none';
@@ -2052,23 +2056,27 @@ function switchCompletedSubTab(type) {
     
     if (type === 'merch') {
         merchBtn.classList.add('active');
-        merchBtn.style.color = '#002F6C';
-        merchBtn.style.borderBottomColor = '#002F6C';
+        merchBtn.style.color = '#fff';
+        merchBtn.style.background = '#002F6C';
+        merchBtn.style.border = 'none';
         
         fuelBtn.classList.remove('active');
         fuelBtn.style.color = '#64748b';
-        fuelBtn.style.borderBottomColor = 'transparent';
+        fuelBtn.style.background = '#fff';
+        fuelBtn.style.border = '1px solid #cbd5e1';
         
         merchSec.style.display = 'block';
         fuelSec.style.display = 'none';
     } else {
         fuelBtn.classList.add('active');
-        fuelBtn.style.color = '#002F6C';
-        fuelBtn.style.borderBottomColor = '#002F6C';
+        fuelBtn.style.color = '#fff';
+        fuelBtn.style.background = '#002F6C';
+        fuelBtn.style.border = 'none';
         
         merchBtn.classList.remove('active');
         merchBtn.style.color = '#64748b';
-        merchBtn.style.borderBottomColor = 'transparent';
+        merchBtn.style.background = '#fff';
+        merchBtn.style.border = '1px solid #cbd5e1';
         
         fuelSec.style.display = 'block';
         merchSec.style.display = 'none';
@@ -2372,6 +2380,18 @@ function viewPurchaseOrder(btn) {
 
     openModal('viewPoModal');
 }
+
+// Initialize sub-tabs on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize Pending Stock-In sub-tabs
+    if (document.getElementById('subtabPendingMerchBtn')) {
+        switchPendingStockInSubTab('merch');
+    }
+    // Initialize Completed sub-tabs
+    if (document.getElementById('subtabCompletedMerchBtn')) {
+        switchCompletedSubTab('merch');
+    }
+});
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

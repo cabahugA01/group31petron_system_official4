@@ -7,6 +7,8 @@ require_login();
 $me         = current_user();
 $role       = role_key($me['role'] ?? '');
 $station_id = (int) user_station_id();
+$station_filter_sql = $station_id > 0 ? 'station_id = ?' : '1=1';
+$station_filter_params = $station_id > 0 ? [$station_id] : [];
 
 if (!in_array($role, ['manager', 'supervisor', 'admin', 'superadmin'])) {
     $_SESSION['error'] = 'Access denied.';
@@ -20,20 +22,20 @@ $kpi_rejected_today = 0;
 $kpi_total = 0;
 
 try {
-    $s = $pdo->prepare("SELECT COUNT(*) FROM master_data_requests WHERE status = 'Pending'");
-    $s->execute();
+    $s = $pdo->prepare("SELECT COUNT(*) FROM master_data_requests WHERE {$station_filter_sql} AND status = 'Pending'");
+    $s->execute($station_filter_params);
     $kpi_pending = (int)$s->fetchColumn();
 
-    $s = $pdo->prepare("SELECT COUNT(*) FROM master_data_requests WHERE status = 'Approved' AND DATE(updated_at) = CURRENT_DATE()");
-    $s->execute();
+    $s = $pdo->prepare("SELECT COUNT(*) FROM master_data_requests WHERE {$station_filter_sql} AND status = 'Approved' AND DATE(updated_at) = CURRENT_DATE()");
+    $s->execute($station_filter_params);
     $kpi_approved_today = (int)$s->fetchColumn();
 
-    $s = $pdo->prepare("SELECT COUNT(*) FROM master_data_requests WHERE status = 'Rejected' AND DATE(updated_at) = CURRENT_DATE()");
-    $s->execute();
+    $s = $pdo->prepare("SELECT COUNT(*) FROM master_data_requests WHERE {$station_filter_sql} AND status = 'Rejected' AND DATE(updated_at) = CURRENT_DATE()");
+    $s->execute($station_filter_params);
     $kpi_rejected_today = (int)$s->fetchColumn();
 
-    $s = $pdo->prepare("SELECT COUNT(*) FROM master_data_requests");
-    $s->execute();
+    $s = $pdo->prepare("SELECT COUNT(*) FROM master_data_requests WHERE {$station_filter_sql}");
+    $s->execute($station_filter_params);
     $kpi_total = (int)$s->fetchColumn();
 } catch (Exception $e) {}
 
@@ -43,9 +45,13 @@ $f_category = trim($_GET['category'] ?? '');
 $date_from = trim($_GET['date_from'] ?? '');
 $date_to = trim($_GET['date_to'] ?? '');
 $search = trim($_GET['search'] ?? '');
+$valid_statuses = ['Pending', 'Approved', 'Rejected'];
+$valid_categories = ['Vehicle', 'Merchandise Product', 'Service Type'];
+if ($f_status !== '' && !in_array($f_status, $valid_statuses, true)) $f_status = '';
+if ($f_category !== '' && !in_array($f_category, $valid_categories, true)) $f_category = '';
 
-$where = "WHERE 1=1";
-$params = [];
+$where = $station_id > 0 ? "WHERE r.station_id = ?" : "WHERE 1=1";
+$params = $station_id > 0 ? [$station_id] : [];
 
 if ($f_status !== '') {
     $where .= " AND r.status = ?";
@@ -64,7 +70,9 @@ if ($date_to !== '') {
     $params[] = $date_to;
 }
 if ($search !== '') {
-    $where .= " AND (r.request_no LIKE ? OR r.data_payload LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ?)";
+    $where .= " AND (r.request_no LIKE ? OR r.data_payload LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ? OR u.name LIKE ? OR u.username LIKE ?)";
+    $params[] = "%$search%";
+    $params[] = "%$search%";
     $params[] = "%$search%";
     $params[] = "%$search%";
     $params[] = "%$search%";

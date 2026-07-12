@@ -759,10 +759,10 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 
             <select id="fuelStatusFilter" onchange="filterFuelTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
                 <option value="">All Statuses</option>
-                <option value="normal">🟢 Normal</option>
-                <option value="low">🟡 Low</option>
-                <option value="critical">🔴 Critical</option>
-                <option value="out of stock">🔴 Out of Stock</option>
+                <option value="normal">Normal</option>
+                <option value="low">Low</option>
+                <option value="critical">Critical</option>
+                <option value="out of stock">Out of Stock</option>
             </select>
         </div>
     </div>
@@ -1152,24 +1152,43 @@ function esc(str) {
 }
 
 function filterFuelTable() {
-    var search = document.getElementById('fuelSearch').value.toLowerCase();
-    var type = document.getElementById('fuelTypeFilter').value.toLowerCase();
-    var status = document.getElementById('fuelStatusFilter').value.toLowerCase();
+    var search = (document.getElementById('fuelSearch').value || '').toLowerCase().trim();
+    var type = (document.getElementById('fuelTypeFilter').value || '').toLowerCase().trim();
+    var status = (document.getElementById('fuelStatusFilter').value || '').toLowerCase().trim();
+    
+    console.log('=== Fuel Table Filter Applied ===');
+    console.log('Search:', search || '(none)');
+    console.log('Fuel Type:', type || '(all)');
+    console.log('Status:', status || '(all)');
     
     var rows = document.querySelectorAll('#fuelTableBody tr.fuel-row');
+    var visibleCount = 0;
+    var statusCounts = {};
+    
     rows.forEach(function(row) {
         var match = true;
-        var rName = row.dataset.name || '';
-        var rDesc = row.dataset.desc || '';
-        var rType = row.dataset.type || '';
-        var rStatus = row.dataset.status || '';
+        var rName = (row.dataset.name || '').toLowerCase();
+        var rDesc = (row.dataset.desc || '').toLowerCase();
+        var rType = (row.dataset.type || '').toLowerCase();
+        var rStatus = (row.dataset.status || '').toLowerCase();
 
+        // Count statuses for debugging
+        if (!statusCounts[rStatus]) {
+            statusCounts[rStatus] = 0;
+        }
+        statusCounts[rStatus]++;
+
+        // Search filter - check if search term exists in name, description, or fuel type
         if (search && rName.indexOf(search) === -1 && rDesc.indexOf(search) === -1 && rType.indexOf(search) === -1) {
             match = false;
         }
+        
+        // Fuel type filter - only filter if a type is selected (not "All Fuel Types")
         if (type && rType !== type) {
             match = false;
         }
+        
+        // Status filter - only filter if a status is selected (not "All Statuses")
         if (status && rStatus !== status) {
             match = false;
         }
@@ -1177,11 +1196,18 @@ function filterFuelTable() {
         if (match) {
             row.classList.remove('search-hidden');
             row.style.display = '';
+            visibleCount++;
         } else {
             row.classList.add('search-hidden');
             row.style.display = 'none';
         }
     });
+
+    // Update visible count
+    console.log('Total rows:', rows.length);
+    console.log('Visible rows:', visibleCount);
+    console.log('Status breakdown:', statusCounts);
+    console.log('=================================');
 
     // Re-sync pagination after filter changes
     if (typeof setTablePage === 'function') {

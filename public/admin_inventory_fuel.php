@@ -533,8 +533,8 @@ body, html { overflow-x:hidden !important; }
 
 <div class="int-head">
   <div>
-    <h1><i class="fas fa-gas-pump"></i> Inventory Management</h1>
-    <div class="sub">Monitor inventory across merchandise, fuel, and movement history &middot; Today: <?= date('F d, Y') ?></div>
+    <h1><i class="fas fa-gas-pump"></i> Fuel Inventory Management</h1>
+    <div class="sub">Monitor and manage fuel inventory levels across all tanks &middot; Today: <?= date('F d, Y') ?></div>
   </div>
   
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
@@ -551,18 +551,6 @@ body, html { overflow-x:hidden !important; }
 </div>
 
 <!-- Inventory Navigation Tabs -->
-<div style="display:flex; gap:0; border-bottom:2px solid #e2e8f0; margin-bottom:22px; flex-wrap:wrap;">
-    <a href="admin_inventory_merchandise.php" class="tab-btn" style="padding:10px 20px; background:none; border:none; border-bottom:3px solid transparent; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; margin-bottom:-2px; transition:all .15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
-        <i class="fas fa-box"></i> Merchandise Inventory
-    </a>
-    <a href="admin_inventory_fuel.php" class="tab-btn active" style="padding:10px 20px; background:none; border:none; border-bottom:3px solid #002F70; font-size:13px; font-weight:600; color:#002F70; cursor:pointer; margin-bottom:-2px; transition:all .15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
-        <i class="fas fa-gas-pump"></i> Fuel Inventory
-    </a>
-    <a href="admin_inventory_history.php" class="tab-btn" style="padding:10px 20px; background:none; border:none; border-bottom:3px solid transparent; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; margin-bottom:-2px; transition:all .15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
-        <i class="fas fa-history"></i> Movement History
-    </a>
-</div>
-
 <!-- Summary Cards -->
 <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-bottom:24px;">
     <!-- Card 1: Total Fuel Available -->
@@ -626,12 +614,11 @@ body, html { overflow-x:hidden !important; }
   <!-- Filter Status -->
   <select id="sf" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none; background:#fff;">
     <option value="">All Statuses</option>
-    <option value="normal">🟢 Normal</option>
-    <option value="low">🟡 Low</option>
-    <option value="critical">🔴 Critical</option>
-    <option value="out of stock">🔴 Out of Stock</option>
+    <option value="normal">Normal</option>
+    <option value="low">Low</option>
+    <option value="critical">Critical</option>
+    <option value="out of stock">Out of Stock</option>
   </select>
-  <button onclick="window.location.reload();" class="flt-btn flt-btn-csv" style="margin-left:auto;"><i class="fas fa-sync-alt"></i> Refresh</button>
 </div>
 
 <!-- Table Wrap -->

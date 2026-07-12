@@ -9,3 +9,7 @@
 {"time":"2026-07-12T07:47:54+02:00","to":"yyangcabahug@gmail.com","otp":"734494","attempts":[{"method":"phpmailer","attempt":1,"transport":"primary","success":true,"info":""}]}
 {"time":"2026-07-12T07:49:42+02:00","to":"yyangcabahug@gmail.com","otp":"910216","attempts":[{"method":"phpmailer","attempt":1,"transport":"primary","success":true,"info":""}]}
 {"time":"2026-07-12T07:49:48+02:00","to":"yyangcabahug@gmail.com","otp":"992087","attempts":[{"method":"phpmailer","attempt":1,"transport":"primary","success":true,"info":""}]}
+{"time":"2026-07-12T14:17:10+02:00","to":"yyangcabahug@gmail.com","otp":"353640","attempts":[{"method":"phpmailer","attempt":1,"transport":"primary","success":true,"info":""}]}
+{"time":"2026-07-12T14:28:16+02:00","to":"yyangcabahug@gmail.com","otp":"880212","attempts":[{"method":"phpmailer","attempt":1,"transport":"primary","success":true,"info":""}]}
+{"time":"2026-07-12T14:31:32+02:00","to":"yyangcabahug@gmail.com","otp":"953941","attempts":[{"method":"phpmailer","attempt":1,"transport":"primary","success":true,"info":""}]}
+{"time":"2026-07-12T14:35:34+02:00","to":"yyangcabahug@gmail.com","otp":"512744","attempts":[{"method":"phpmailer","attempt":1,"transport":"primary","success":true,"info":""}]}

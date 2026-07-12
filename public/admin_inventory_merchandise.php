@@ -779,8 +779,8 @@ require_once __DIR__ . '/../partials/header.php';
 <!-- Page Header -->
 <div class="int-head">
     <div>
-        <h1><i class="fas fa-boxes"></i> Inventory Management</h1>
-        <div class="sub">Monitor inventory across merchandise, fuel, and movement history &middot; Today: <?= date('F d, Y') ?></div>
+        <h1><i class="fas fa-boxes"></i> Merchandise Inventory Management</h1>
+        <div class="sub">Monitor and manage merchandise stock levels and products &middot; Today: <?= date('F d, Y') ?></div>
     </div>
     
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
@@ -797,18 +797,6 @@ require_once __DIR__ . '/../partials/header.php';
 </div>
 
 <!-- Inventory Navigation Tabs -->
-<div style="display:flex; gap:0; border-bottom:2px solid #e2e8f0; margin-bottom:22px; flex-wrap:wrap;">
-    <a href="admin_inventory_merchandise.php" class="tab-btn active" style="padding:10px 20px; background:none; border:none; border-bottom:3px solid #002F70; font-size:13px; font-weight:600; color:#002F70; cursor:pointer; margin-bottom:-2px; transition:all .15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
-        <i class="fas fa-box"></i> Merchandise Inventory
-    </a>
-    <a href="admin_inventory_fuel.php" class="tab-btn" style="padding:10px 20px; background:none; border:none; border-bottom:3px solid transparent; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; margin-bottom:-2px; transition:all .15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
-        <i class="fas fa-gas-pump"></i> Fuel Inventory
-    </a>
-    <a href="admin_inventory_history.php" class="tab-btn" style="padding:10px 20px; background:none; border:none; border-bottom:3px solid transparent; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; margin-bottom:-2px; transition:all .15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
-        <i class="fas fa-history"></i> Movement History
-    </a>
-</div>
-
 <!-- Summary Cards -->
 <div class="afto-cards">
     <!-- Card 1: Total Merchandise Products -->

@@ -4,7 +4,7 @@
  * View adjustment history and manage transaction corrections
  */
 if (session_status() === PHP_SESSION_NONE) session_start();
-$page_id = 'manager_transactions';
+$page_id = 'manager_transaction_adjustments';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
 require_login();
@@ -204,6 +204,29 @@ $date_from = $_GET['date_from'] ?? date('Y-m-01');
 $date_to = $_GET['date_to'] ?? date('Y-m-d');
 $filter_staff = $_GET['staff'] ?? '';
 $filter_type = $_GET['type'] ?? '';
+$valid_transaction_types = ['merchandise', 'job_order', 'combined'];
+if (!in_array($filter_type, $valid_transaction_types, true)) {
+    $filter_type = '';
+}
+
+$where_adj = ["ta.station_id = ?"];
+$params_adj = [$station_id];
+if ($date_from !== '') {
+    $where_adj[] = "DATE(ta.adjustment_date) >= ?";
+    $params_adj[] = $date_from;
+}
+if ($date_to !== '') {
+    $where_adj[] = "DATE(ta.adjustment_date) <= ?";
+    $params_adj[] = $date_to;
+}
+if ($filter_staff !== '') {
+    $where_adj[] = "ta.adjusted_by = ?";
+    $params_adj[] = $filter_staff;
+}
+if ($filter_type !== '') {
+    $where_adj[] = "ta.transaction_type = ?";
+    $params_adj[] = $filter_type;
+}
 
 // ── Fetch KPI Data ─────────────────────────────────────────────────────────────
 $kpi = ['total' => 0, 'today' => 0, 'amount' => 0.00];
@@ -214,11 +237,10 @@ try {
             COUNT(*) AS total_adjustments,
             SUM(CASE WHEN DATE(adjustment_date) = CURDATE() THEN 1 ELSE 0 END) AS today_adjustments,
             SUM(ABS(amount_difference)) AS total_adjusted_amount
-        FROM transaction_adjustments
-        WHERE station_id = ?
-          AND DATE(adjustment_date) BETWEEN ? AND ?
+        FROM transaction_adjustments ta
+        WHERE " . implode(' AND ', $where_adj) . "
     ");
-    $stmt->execute([$station_id, $date_from, $date_to]);
+    $stmt->execute($params_adj);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($row) {
         $kpi['total'] = (int)$row['total_adjustments'];
@@ -233,17 +255,21 @@ try {
 $where = ["mt.station_id = ?"];
 $params = [$station_id];
 
-if ($date_from && $date_to) {
-    $where[] = "DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?";
+if ($date_from !== '') {
+    $where[] = "DATE(COALESCE(mt.transaction_date, mt.created_at)) >= ?";
     $params[] = $date_from;
+}
+if ($date_to !== '') {
+    $where[] = "DATE(COALESCE(mt.transaction_date, mt.created_at)) <= ?";
     $params[] = $date_to;
 }
 if ($filter_staff) {
     $where[] = "mt.staff_id = ?";
     $params[] = $filter_staff;
 }
-if ($filter_type === 'merchandise') {
-    $where[] = "mt.transaction_type = 'merchandise'";
+if ($filter_type !== '') {
+    $where[] = "mt.transaction_type = ?";
+    $params[] = $filter_type;
 }
 
 $transactions = [];
@@ -281,23 +307,6 @@ try {
 // ── Fetch Adjustments History ─────────────────────────────────────────────────
 $adjustments = [];
 try {
-    $where_adj = ["ta.station_id = ?"];
-    $params_adj = [$station_id];
-    
-    if ($date_from && $date_to) {
-        $where_adj[] = "DATE(ta.adjustment_date) BETWEEN ? AND ?";
-        $params_adj[] = $date_from;
-        $params_adj[] = $date_to;
-    }
-    if ($filter_staff) {
-        $where_adj[] = "ta.adjusted_by = ?";
-        $params_adj[] = $filter_staff;
-    }
-    if ($filter_type) {
-        $where_adj[] = "ta.transaction_type = ?";
-        $params_adj[] = $filter_type;
-    }
-    
     $stmt_adj = $pdo->prepare("
         SELECT 
             ta.id AS adj_id,
@@ -333,7 +342,13 @@ try {
 // ── Staff list for filter ──────────────────────────────────────────────────────
 $staff_list = [];
 try {
-    $stmt = $pdo->prepare("SELECT id, name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant') ORDER BY name");
+    $stmt = $pdo->prepare("
+        SELECT id,
+               COALESCE(NULLIF(TRIM(CONCAT(COALESCE(first_name,''),' ',COALESCE(last_name,''))),''), NULLIF(name,''), username) AS name
+        FROM users
+        WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant')
+        ORDER BY name
+    ");
     $stmt->execute([$station_id]);
     $staff_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
@@ -608,7 +623,7 @@ require_once __DIR__ . '/../partials/header.php';
             <input type="date" name="date_to" class="input" value="<?php echo htmlspecialchars($date_to); ?>">
         </div>
         <div>
-            <label>Staff Encoder</label>
+            <label>Staff / Adjusted By</label>
             <select name="staff" class="input">
                 <option value="">All Staff</option>
                 <?php foreach ($staff_list as $staff): ?>
@@ -623,10 +638,13 @@ require_once __DIR__ . '/../partials/header.php';
             <select name="type" class="input">
                 <option value="">All Types</option>
                 <option value="merchandise" <?php echo $filter_type === 'merchandise' ? 'selected' : ''; ?>>Merchandise</option>
+                <option value="job_order" <?php echo $filter_type === 'job_order' ? 'selected' : ''; ?>>Job Order</option>
+                <option value="combined" <?php echo $filter_type === 'combined' ? 'selected' : ''; ?>>Combined</option>
             </select>
         </div>
-        <div>
+        <div style="display:flex;gap:8px;align-items:flex-end;">
             <button type="submit" class="flt-btn flt-btn-solid-primary"><i class="fas fa-filter"></i> Apply</button>
+            <a href="manager_transaction_monitoring.php" class="flt-btn flt-btn-reset"><i class="fas fa-rotate-left"></i> Reset</a>
         </div>
     </form>
 </div>

@@ -339,6 +339,40 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 .inv-card-title { font-size:1rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px; }
 .inv-card-body  { padding:20px; }
 
+/* ── Filter Bar ── */
+.inv-filter-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:16px; position:relative; z-index:25; isolation:isolate; pointer-events:auto; }
+.inv-filter-bar select, .inv-filter-bar input[type=text], .inv-filter-bar input[type=date] {
+    padding:8px 10px;
+    border:1px solid #ced4da;
+    border-radius:6px;
+    font-size:13px;
+    color:#374151;
+    background:#fff;
+    height:36px;
+    outline:none;
+    pointer-events:auto;
+    position:relative;
+    z-index:2;
+}
+.inv-filter-bar select { cursor:pointer; }
+.inv-filter-bar input[type=text] { cursor:text; }
+.fuel-filter-actions { display:flex; align-items:center; gap:8px; }
+
+/* Keep filter controls above table/card surfaces */
+#sq, #cf, #sf, #df,
+select#cf, select#sf,
+input#sq, input#df {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    display: inline-block !important;
+    position: relative !important;
+    z-index: 3 !important;
+}
+#sq { cursor: text !important; }
+.inv-filter-bar button, .inv-filter-bar a { pointer-events:auto !important; position:relative; z-index:3; }
+
 /* ── No-Scroll Fixed-Layout Table ── */
 body, html { overflow-x: hidden !important; }
 
@@ -627,37 +661,60 @@ body, html { overflow-x: hidden !important; }
     </div>
 </div>
 
-<!-- ══ Unified Top Controls & Filter Bar ══ -->
-<div class="inv-filter-bar" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; background:#fff; padding:12px 16px; border:1px solid #e2e8f0; border-radius:8px;">
-  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-    <!-- Search Tank -->
+<!-- ══ Filter Bar ══ -->
+<form id="fuelFilterForm" class="inv-filter-bar" onsubmit="applyFuelInventoryFilters(event)" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px;">
     <div style="position:relative;">
-      <i class="fas fa-search" style="position:absolute; left:10px; top:11px; color:#94a3b8; font-size:12px;"></i>
-      <input type="text" id="sq" placeholder="Search Tank..." oninput="filterFuelTable()" style="padding:7px 10px 7px 28px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; width:180px; outline:none;">
+        <i class="fas fa-search" style="position:absolute; left:10px; top:11px; color:#94a3b8; font-size:12px;"></i>
+        <input type="text" id="sq" placeholder="Search Tank..." oninput="filterFuelTable()" autocomplete="off" style="padding-left:28px;">
     </div>
-    <!-- Filter Fuel Type -->
-    <select id="cf" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none; background:#fff;">
-      <option value="">All Fuel Types</option>
-      <option value="diesel">Diesel</option>
-      <option value="kerosene">Kerosene</option>
-      <option value="turbo diesel">Turbo Diesel</option>
-      <option value="xcs plus">XCS Plus</option>
-      <option value="xtra unl">XTRA UNL</option>
+    <select id="cf" onchange="filterFuelTable()">
+        <option value="">All Fuel Types</option>
+        <option value="diesel">Diesel</option>
+        <option value="kerosene">Kerosene</option>
+        <option value="turbo diesel">Turbo Diesel</option>
+        <option value="xcs plus">XCS Plus</option>
+        <option value="xtra unl">XTRA UNL</option>
     </select>
-    <!-- Filter Status -->
-    <select id="sf" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none; background:#fff;">
-      <option value="">All Statuses</option>
-      <option value="available">🟢 Available</option>
-      <option value="low">🟡 Low</option>
-      <option value="critical">🔴 Critical</option>
+    <select id="sf" onchange="filterFuelTable()">
+        <option value="">All Statuses</option>
+        <option value="normal">Normal</option>
+        <option value="low">Low</option>
+        <option value="critical">Critical</option>
+        <option value="out of stock">Out of Stock</option>
     </select>
-    <!-- Filter Date -->
     <div style="display:flex; align-items:center; gap:6px;">
-      <span style="font-size:13px; color:#64748b; font-weight:500;">Date:</span>
-      <input type="date" id="df" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none;">
+        <span style="font-size:13px; color:#64748b; font-weight:500;">Date:</span>
+        <input type="date" id="df" onchange="filterFuelTable()">
     </div>
-  </div>
-</div>
+    <div class="fuel-filter-actions">
+        <button type="submit" class="flt-btn flt-btn-search"><i class="fas fa-search"></i> Filter</button>
+        <button type="button" class="flt-btn flt-btn-reset" onclick="resetFuelInventoryFilters()"><i class="fas fa-rotate-left"></i> Reset</button>
+    </div>
+</form>
+
+<script>
+// IMMEDIATE FIX: Force enable dropdowns NOW
+(function() {
+    function forceEnableNow() {
+        ['sq', 'cf', 'sf', 'df'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.style.pointerEvents = 'auto';
+                el.style.cursor = id === 'sq' ? 'text' : 'pointer';
+                el.disabled = false;
+                el.style.opacity = '1';
+                el.style.zIndex = '3';
+            }
+        });
+    }
+    forceEnableNow();
+    setTimeout(forceEnableNow, 100);
+    setTimeout(forceEnableNow, 500);
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', forceEnableNow);
+    }
+})();
+</script>
 
 <div class="inv-card">
     <div class="inv-card-head">
@@ -737,6 +794,11 @@ body, html { overflow-x: hidden !important; }
                     </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
+                    <tr id="fuelNoResultsRow" class="no-paginate" style="display:none;">
+                        <td colspan="9" style="text-align:center;padding:32px;color:#64748b;font-size:14px;">
+                            No fuel tanks match the selected filters.
+                        </td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -1063,51 +1125,71 @@ function closeFsrSuccess() {
 function esc(str) { var d = document.createElement('div'); d.appendChild(document.createTextNode(str)); return d.innerHTML; }
 
 // ── Filter Table Logic ──────────────────────────────────────────────────────────
+function fuelFilterValue(id) {
+    var el = document.getElementById(id);
+    return el ? String(el.value || '').toLowerCase().trim() : '';
+}
+
+function refreshFuelPagination() {
+    if (window.tablePaginationTriggers && typeof window.tablePaginationTriggers.fuelTable === 'function') {
+        window.tablePaginationTriggers.fuelTable();
+    }
+}
+
 function filterFuelTable() {
-    var search = document.getElementById('sq').value.toLowerCase().trim();
-    var fuelType = document.getElementById('cf').value.toLowerCase();
-    var status = document.getElementById('sf').value.toLowerCase();
-    var dateVal = document.getElementById('df').value;
-    
-    var rows = document.querySelectorAll('#fuelTable tbody tr');
+    var search = fuelFilterValue('sq');
+    var fuelType = fuelFilterValue('cf');
+    var status = fuelFilterValue('sf');
+    var dateVal = document.getElementById('df') ? document.getElementById('df').value : '';
+    var rows = document.querySelectorAll('#fuelTable tbody tr.fuel-row');
+    var visibleCount = 0;
+
     rows.forEach(function(row) {
-        if (row.querySelector('td[colspan]')) return;
-        
-        var match = true;
         var rTankNum = (row.dataset.tankNum || '').toLowerCase();
         var rFuelType = (row.dataset.fuelType || '').toLowerCase();
         var rTankRef = (row.dataset.tankRef || '').toLowerCase();
         var rStatus = (row.dataset.status || '').toLowerCase();
-        var rDate = (row.dataset.date || '');
-        
-        if (search) {
-            if (rTankNum.indexOf(search) === -1 && 
-                rFuelType.indexOf(search) === -1 && 
-                rTankRef.indexOf(search) === -1) {
-                match = false;
-            }
+        var rDate = row.dataset.date || '';
+        var match = true;
+
+        if (search && rTankNum.indexOf(search) === -1 && rFuelType.indexOf(search) === -1 && rTankRef.indexOf(search) === -1) {
+            match = false;
         }
-        
         if (fuelType && rFuelType !== fuelType) {
             match = false;
         }
-        
-        if (status) {
-            if (status === 'critical') {
-                if (rStatus !== 'critical' && rStatus !== 'out of stock') {
-                    match = false;
-                }
-            } else if (rStatus !== status) {
-                match = false;
-            }
+        if (status && rStatus !== status) {
+            match = false;
         }
-        
         if (dateVal && rDate !== dateVal) {
             match = false;
         }
-        
+
+        row.classList.toggle('search-hidden', !match);
         row.style.display = match ? '' : 'none';
+        if (match) visibleCount++;
     });
+
+    var noResultsRow = document.getElementById('fuelNoResultsRow');
+    if (noResultsRow) {
+        noResultsRow.style.display = rows.length > 0 && visibleCount === 0 ? '' : 'none';
+    }
+
+    refreshFuelPagination();
+}
+
+function applyFuelInventoryFilters(e) {
+    if (e) e.preventDefault();
+    filterFuelTable();
+    return false;
+}
+
+function resetFuelInventoryFilters() {
+    ['sq', 'cf', 'sf', 'df'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    filterFuelTable();
 }
 
 // ── Tank Details Modal ──────────────────────────────────────────────────────────
@@ -1310,10 +1392,26 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    var filterForm = document.getElementById('fuelFilterForm');
+    if (filterForm) {
+        filterForm.addEventListener('submit', applyFuelInventoryFilters);
+    }
+
+    [['sq', 'input'], ['cf', 'change'], ['sf', 'change'], ['df', 'change']].forEach(function(item) {
+        var el = document.getElementById(item[0]);
+        if (el) {
+            el.disabled = false;
+            el.addEventListener(item[1], filterFuelTable);
+        }
+    });
+
     if (typeof setupTablePagination === 'function') {
         setupTablePagination('fuelTable', 'fuelRowsLimit', 'fuelPagination', 20);
     }
+    filterFuelTable();
 });
+
+// ── Initialize page ──
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

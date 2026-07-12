@@ -5,6 +5,7 @@ ob_start();
 require_once __DIR__ . '/../public/db_connect.php';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../config/email_config.php';
+require_once __DIR__ . '/../config/password_reset_whitelist.php';
 
 $message = '';
 $error = '';
@@ -36,35 +37,49 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' && isset($_GET['resend']) && $_GET['re
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($user) {
-            $otp_code = sprintf("%06d", random_int(100000, 999999));
-
-            // Delete old OTPs and insert new one
-            $pdo->prepare("DELETE FROM password_reset_tokens WHERE user_id = ? AND token_type = 'reset'")->execute([$user['user_id']]);
-            $pdo->prepare("INSERT INTO password_reset_tokens (user_id, token, token_type, expires_at, ip_address) VALUES (?, ?, 'reset', DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)")
-                ->execute([$user['user_id'], $otp_code, $_SERVER['REMOTE_ADDR']]);
-
-            // Send new OTP via email with extended timeout
-            $resend_sent = false;
-            if (function_exists('sendPasswordResetOTP')) {
-                @set_time_limit(60);
-                $resend_sent = (bool) sendPasswordResetOTP($user['email'], $otp_code);
-                if (!$resend_sent) {
-                    error_log("OTP resend email FAILED for user_id={$user['user_id']} email={$user['email']}");
-                }
-            }
-
-            // Log resend attempt
-            try {
-                $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, 'OTP Resend', ?, ?)")
-                    ->execute([$user['user_id'], "OTP resent to: {$email}", $_SERVER['REMOTE_ADDR']]);
-            } catch (Exception $e) {}
-
-            if ($resend_sent) {
-                $email_failed = false;
-                $success = "A new OTP has been sent to your email. Please check your inbox.";
+            // ============================================================
+            // EMAIL WHITELIST SECURITY CHECK (same as forgot_password.php)
+            // Only allow OTP resend for whitelisted email addresses
+            // Whitelist is managed in: config/password_reset_whitelist.php
+            // ============================================================
+            
+            // Check if user's email is in whitelist
+            if (!isEmailWhitelistedForPasswordReset($user['email'])) {
+                // Email not whitelisted - block OTP resend
+                $error = "Password reset is currently restricted. Please contact your system administrator.";
+                error_log("OTP resend blocked for non-whitelisted email: {$user['email']} (user_id={$user['user_id']})");
             } else {
-                $email_failed = true;
-                $error = "Could not send email. Use the OTP shown below.";
+                // Email is whitelisted - proceed with OTP resend
+                $otp_code = sprintf("%06d", random_int(100000, 999999));
+
+                // Delete old OTPs and insert new one
+                $pdo->prepare("DELETE FROM password_reset_tokens WHERE user_id = ? AND token_type = 'reset'")->execute([$user['user_id']]);
+                $pdo->prepare("INSERT INTO password_reset_tokens (user_id, token, token_type, expires_at, ip_address) VALUES (?, ?, 'reset', DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)")
+                    ->execute([$user['user_id'], $otp_code, $_SERVER['REMOTE_ADDR']]);
+
+                // Send new OTP via email with extended timeout
+                $resend_sent = false;
+                if (function_exists('sendPasswordResetOTP')) {
+                    @set_time_limit(60);
+                    $resend_sent = (bool) sendPasswordResetOTP($user['email'], $otp_code);
+                    if (!$resend_sent) {
+                        error_log("OTP resend email FAILED for user_id={$user['user_id']} email={$user['email']}");
+                    }
+                }
+
+                // Log resend attempt
+                try {
+                    $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, 'OTP Resend', ?, ?)")
+                        ->execute([$user['user_id'], "OTP resent to: {$email}", $_SERVER['REMOTE_ADDR']]);
+                } catch (Exception $e) {}
+
+                if ($resend_sent) {
+                    $email_failed = false;
+                    $success = "A new OTP has been sent to your email. Please check your inbox.";
+                } else {
+                    $email_failed = true;
+                    $error = "Could not send email. Use the OTP shown below.";
+                }
             }
         } else {
             $error = "Unable to resend OTP. Please start the password reset process again.";

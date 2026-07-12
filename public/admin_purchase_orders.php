@@ -631,11 +631,11 @@ include __DIR__ . '/../partials/header.php';
 
 /* Tabs navigation */
 .po-tabs-nav { display:flex; border-bottom:1px solid #cbd5e1; margin-bottom:20px; gap:8px; }
-.po-tab-btn { border:none; background:none; padding:10px 16px; font-weight:700; font-size:13px; text-transform:uppercase; cursor:pointer; color:#64748b; border-bottom:2px solid transparent; display:flex; align-items:center; gap:6px; transition:all 0.15s; }
-.po-tab-btn:hover { color:#002F6C; }
-.po-tab-btn.active { color:#002F6C; border-bottom-color:#002F6C; }
+.po-tab-btn { border:none; background:#fff; padding:10px 16px; font-weight:700; font-size:13px; text-transform:uppercase; cursor:pointer; color:#64748b; border:1px solid #e2e8f0; border-bottom:2px solid transparent; display:flex; align-items:center; gap:6px; transition:all 0.15s; border-radius:6px 6px 0 0; }
+.po-tab-btn:hover { color:#002F6C; background:#f8fafc; }
+.po-tab-btn.active { color:#ffffff; background:#002F6C; border-color:#002F6C; }
 .po-tab-badge { background:#cbd5e1; color:#1e293b; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px; }
-.po-tab-btn.active .po-tab-badge { background:#002F6C; color:#fff; }
+.po-tab-btn.active .po-tab-badge { background:#ffffff; color:#002F6C; }
 
 /* Table styling */
 .po-table-wrap { background:#fff; border:1px solid #e2e8f0; border-radius:11px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.05); margin-bottom:20px; }

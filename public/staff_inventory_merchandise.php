@@ -761,8 +761,7 @@ function applyFilters() {
         var matchC  = !cat    || rcat === cat;
         var matchB  = !brand  || rbrand === brand;
         var matchU  = !unit   || runit === unit;
-        // "out" filter also includes critical items
-        var matchS  = !stat   || rstat === stat || (stat === 'out' && (rstat === 'out' || rstat === 'critical'));
+        var matchS  = !stat   || rstat === stat; // Exact match only
         
         var visible = matchQ && matchC && matchB && matchU && matchS;
         if (visible) {

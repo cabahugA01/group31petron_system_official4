@@ -7,6 +7,8 @@ require_login();
 $me         = current_user();
 $role       = role_key($me['role'] ?? '');
 $station_id = (int) user_station_id();
+$mechanic_station_where = $station_id > 0 ? 'WHERE station_id = ?' : '';
+$mechanic_station_params = $station_id > 0 ? [$station_id] : [];
 
 // RBAC Authorization
 if (!in_array($role, ['manager', 'supervisor', 'admin', 'superadmin'])) {
@@ -28,8 +30,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $new_status = ($_POST['status'] ?? '') === 'active' ? 'active' : 'inactive';
         
         try {
-            $stmt = $pdo->prepare("UPDATE mechanics SET status = ?, updated_at = NOW() WHERE id = ?");
-            $stmt->execute([$new_status, $id]);
+            if ($station_id > 0) {
+                $stmt = $pdo->prepare("UPDATE mechanics SET status = ?, updated_at = NOW() WHERE id = ? AND station_id = ?");
+                $stmt->execute([$new_status, $id, $station_id]);
+            } else {
+                $stmt = $pdo->prepare("UPDATE mechanics SET status = ?, updated_at = NOW() WHERE id = ?");
+                $stmt->execute([$new_status, $id]);
+            }
             echo json_encode(['success' => true, 'status' => $new_status]);
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'error' => $e->getMessage()]);
@@ -79,8 +86,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error_msg = 'Specialty is required.';
         } else {
             try {
-                $stmt = $pdo->prepare("UPDATE mechanics SET full_name = ?, contact_no = ?, address = ?, specialization = ?, status = ?, updated_at = NOW() WHERE id = ?");
-                $stmt->execute([$full_name, $contact_no, $address, $specialization, $status, $id]);
+                if ($station_id > 0) {
+                    $stmt = $pdo->prepare("UPDATE mechanics SET full_name = ?, contact_no = ?, address = ?, specialization = ?, status = ?, updated_at = NOW() WHERE id = ? AND station_id = ?");
+                    $stmt->execute([$full_name, $contact_no, $address, $specialization, $status, $id, $station_id]);
+                } else {
+                    $stmt = $pdo->prepare("UPDATE mechanics SET full_name = ?, contact_no = ?, address = ?, specialization = ?, status = ?, updated_at = NOW() WHERE id = ?");
+                    $stmt->execute([$full_name, $contact_no, $address, $specialization, $status, $id]);
+                }
                 $success_msg = 'Mechanic details updated successfully.';
             } catch (Exception $e) {
                 $error_msg = 'Failed to update mechanic: ' . $e->getMessage();
@@ -94,15 +106,24 @@ $total_mechanics = 0;
 $active_mechanics = 0;
 $inactive_mechanics = 0;
 try {
-    $total_mechanics = (int)$pdo->query("SELECT COUNT(*) FROM mechanics")->fetchColumn();
-    $active_mechanics = (int)$pdo->query("SELECT COUNT(*) FROM mechanics WHERE status = 'active'")->fetchColumn();
-    $inactive_mechanics = (int)$pdo->query("SELECT COUNT(*) FROM mechanics WHERE status = 'inactive'")->fetchColumn();
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM mechanics {$mechanic_station_where}");
+    $stmt->execute($mechanic_station_params);
+    $total_mechanics = (int)$stmt->fetchColumn();
+
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM mechanics " . ($mechanic_station_where ? "{$mechanic_station_where} AND" : "WHERE") . " status = 'active'");
+    $stmt->execute($mechanic_station_params);
+    $active_mechanics = (int)$stmt->fetchColumn();
+
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM mechanics " . ($mechanic_station_where ? "{$mechanic_station_where} AND" : "WHERE") . " status = 'inactive'");
+    $stmt->execute($mechanic_station_params);
+    $inactive_mechanics = (int)$stmt->fetchColumn();
 } catch (Exception $e) {}
 
 // Fetch Mechanics list
 $mechanics_list = [];
 try {
-    $stmt = $pdo->query("SELECT * FROM mechanics ORDER BY full_name ASC");
+    $stmt = $pdo->prepare("SELECT * FROM mechanics {$mechanic_station_where} ORDER BY full_name ASC");
+    $stmt->execute($mechanic_station_params);
     $mechanics_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
