@@ -79,8 +79,41 @@ try {
 
 // ── Build js_items + summary stats ────────────────────────────
 $all_categories = [];
-$stats = ['total'=>0,'available'=>0,'low'=>0,'out'=>0];
+$all_brands = [];
+$all_units = [];
+$stats = ['total'=>0,'available'=>0,'low'=>0,'critical'=>0,'out'=>0];
 $js_items = [];
+
+function get_product_brand($product_name) {
+    $name = strtolower($product_name);
+    if (strpos($name, 'hardex') !== false) return 'Hardex';
+    if (strpos($name, 'petron') !== false) return 'Petron';
+    if (strpos($name, 'petromate') !== false) return 'Petron';
+    if (strpos($name, 'rev-x') !== false) return 'Rev-X';
+    if (strpos($name, 'revx') !== false) return 'Rev-X';
+    if (strpos($name, 'ultron') !== false) return 'Ultron';
+    if (strpos($name, 'sprint') !== false) return 'Sprint';
+    if (strpos($name, 'blaze') !== false) return 'Blaze';
+    if (strpos($name, 'wd') !== false) return 'WD-40';
+    if (strpos($name, 'whiz') !== false) return 'Whiz';
+    if (strpos($name, 'sakura') !== false) return 'Sakura';
+    if (strpos($name, 'vic') !== false) return 'VIC';
+    if (strpos($name, 'toyota') !== false) return 'Toyota';
+    if (strpos($name, 'falcon') !== false) return 'Falcon';
+    if (strpos($name, 'yokohama') !== false) return 'Yokohama';
+    if (strpos($name, '3m') !== false) return '3M';
+    if (strpos($name, 'shell') !== false) return 'Shell';
+    if (strpos($name, 'mobil') !== false) return 'Mobil';
+    if (strpos($name, 'castrol') !== false) return 'Castrol';
+    
+    $words = explode(' ', trim($product_name));
+    $first = $words[0] ?? '';
+    $first = preg_replace('/[^A-Za-z0-9\-]/', '', $first);
+    if (strlen($first) > 2) {
+        return ucfirst(strtolower($first));
+    }
+    return 'Petron';
+}
 
 foreach ($merch_inventory as $item) {
     if (strtolower($item['status'] ?? 'active') !== 'active') continue;
@@ -113,6 +146,7 @@ foreach ($merch_inventory as $item) {
     $stats['total']++;
     if ($st_cls==='ok') $stats['available']++;
     elseif ($st_cls==='low') $stats['low']++;
+    elseif ($st_cls==='critical') $stats['critical']++;
     else $stats['out']++;
 
     $pid = (int)$item['id'];
@@ -121,12 +155,19 @@ foreach ($merch_inventory as $item) {
     $cat_label = $item['category_name'] ?? 'Uncategorized';
     if (!in_array($cat_label,$all_categories)) $all_categories[]=$cat_label;
 
+    $brand = get_product_brand($item['name']);
+    if (!in_array($brand,$all_brands)) $all_brands[]=$brand;
+
+    $uom = format_merch_unit($item['unit'] ?? 'pcs');
+    if (!in_array($uom,$all_units)) $all_units[]=$uom;
+
     $js_items[] = [
         'id'         => $pid,
         'name'       => $item['name'],
         'sku'        => $item['sku'] ?? '',
         'category'   => $cat_label,
-        'unit'       => $item['unit'] ?? 'pcs',
+        'brand'      => $brand,
+        'unit'       => $uom,
         'stock'      => (int)$stock,
         'capacity'   => (int)$capacity,
         'reorder'    => (int)$reorder,
@@ -141,6 +182,8 @@ foreach ($merch_inventory as $item) {
     ];
 }
 sort($all_categories);
+sort($all_brands);
+sort($all_units);
 
 include __DIR__ . '/../partials/header.php';
 
@@ -227,38 +270,42 @@ body,html{overflow-x:hidden;max-width:100%;}
 }
 
 /* ── Modal base ── */
-.mi-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;padding:20px 16px;overflow-y:auto;}
+.mi-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:13000;align-items:center;justify-content:center;padding:40px 16px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
 .mi-overlay.open{display:flex !important;}
-.mi-box{background:#fff;border-radius:14px;padding:0;width:600px;max-width:calc(100vw - 32px);max-height:calc(100vh - 60px);display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.3);animation:miIn .2s ease;overflow:hidden;position:relative;}
+.mi-box{background:#fff;border-radius:14px;padding:0;width:600px;max-width:calc(100vw - 32px);display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.3);animation:miIn .2s ease;overflow:hidden;position:relative;max-height:90vh;}
 .mi-box.wide{width:700px;max-width:calc(100vw - 32px);}
 @keyframes miIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
 .mi-head{display:flex;justify-content:space-between;align-items:center;padding:20px 28px;border-bottom:2px solid #e9ecef;flex-shrink:0;background:#fff;position:relative;z-index:1;}
 .mi-title{font-size:1.05rem;font-weight:700;color:#002F70;display:flex;align-items:center;gap:8px;}
 .mi-close{background:none;border:none;font-size:22px;cursor:pointer;color:#adb5bd;padding:0;line-height:1;}
 .mi-close:hover{color:#333;}
-.mi-body{padding:28px;overflow-y:auto !important;overflow-x:hidden;flex:1;-webkit-overflow-scrolling:touch;min-height:0;position:relative;max-height:none !important;}
-.mi-foot{display:flex;gap:10px;justify-content:flex-end;align-items:center;padding:16px 28px;border-top:1px solid #e9ecef;flex-shrink:0;background:#fff;position:relative;z-index:1;}
+.mi-body{padding:28px;overflow-y:auto;flex:1;position:relative;min-height:0;}
+.mi-foot{display:flex;gap:10px;justify-content:flex-end;align-items:center;padding:16px 28px;border-top:1px solid #e9ecef;flex-shrink:0;background:#fff;position:relative;z-index:2;pointer-events:auto;}
+.mi-foot button{pointer-events:auto;cursor:pointer;}
 .mi-info{background:#e8f4fd;border-left:4px solid #002F70;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#002F70;line-height:1.6;}
 
-/* ── Stock Request Product List ── */
-#srProductsList{
-  height:280px !important;
-  max-height:280px !important;
-  overflow-y:scroll !important;
-  overflow-x:hidden !important;
-  -webkit-overflow-scrolling:touch !important;
-  overscroll-behavior:contain !important;
-  display:block !important;
+/* ── Stock Request Product List Wrapper ── */
+.sr-products-wrapper{
+  overflow-y:auto;
+  overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+  max-height:260px;
+  border:1px solid #cbd5e1;
+  border-radius:8px;
+  background:#f8fafc;
 }
+/* tbody itself should NOT have overflow/height */
+#srProductsList{display:table-row-group;}
 
 /* ── Modal mobile adjustments ── */
 @media(max-height:600px){
-  .mi-box{max-height:calc(100vh - 40px);}
-  .mi-overlay{padding:10px;}
+  .mi-overlay{padding:20px 10px;}
+  .mi-box{margin-top:10px;margin-bottom:20px;}
   .mi-head{padding:14px 20px;}
   .mi-body{padding:20px;}
   .mi-foot{padding:12px 20px;}
-  #srProductsList{max-height:180px !important;}
+  .sr-products-wrapper{max-height:150px;}
 }
 @media(max-width:500px){
   .mi-box,.mi-box.wide{width:100%;max-width:calc(100vw - 20px);}
@@ -266,7 +313,7 @@ body,html{overflow-x:hidden;max-width:100%;}
   .mi-body{padding:16px;}
   .mi-foot{padding:12px 16px;flex-wrap:wrap;}
   .mi-foot .txn-btn{flex:1;min-width:120px;}
-  #srProductsList{max-height:200px !important;}
+  .sr-products-wrapper{max-height:180px;}
 }
 
 /* ── View Details modal ── */
@@ -282,22 +329,13 @@ body,html{overflow-x:hidden;max-width:100%;}
 .sr-field select:focus,.sr-field input:focus,.sr-field textarea:focus{border-color:#002F70;box-shadow:0 0 0 2px rgba(0,47,112,.1);}
 .sr-field textarea{resize:vertical;min-height:70px;}
 
-/* ── Checkbox rows (fallback for item list) ── */
-.sr-cb-row{display:flex;align-items:center;gap:12px;padding:9px 14px;border-radius:8px;border:1px solid #dee2e6;margin-bottom:6px;cursor:pointer;transition:background .1s;user-select:none;}
-.sr-cb-row:hover{background:#f0f4ff;}
-.sr-cb-row.checked{background:#eef2ff;border-color:#90a8e0;}
-.sr-cb-row.out,.sr-cb-row.critical{border-left:4px solid #dc3545;}
-.sr-cb-row.low{border-left:4px solid #fd7e14;}
-.sr-cb-row.ok{border-left:4px solid #28a745;}
+/* ── Stock Request checkbox custom styling ── */
 .sr-cb{width:17px;height:17px;accent-color:#002F70;cursor:pointer;flex-shrink:0;}
-.sr-cb-info{flex:1;min-width:0;}
-.sr-cb-name{font-weight:700;font-size:13px;color:#212529;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.sr-cb-meta{font-size:11px;color:#6c757d;margin-top:1px;}
-.sr-cat-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6c757d;padding:6px 4px 3px;}
+
 
 /* ── Success popup ── */
-.sr-success-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10998;}
-.sr-success-popup{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10999;background:#fff;padding:28px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);text-align:center;min-width:300px;}
+.sr-success-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:14000;}
+.sr-success-popup{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:14001;background:#fff;padding:28px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);text-align:center;min-width:300px;}
 
 /* ── txn-btn override ── */
 .txn-btn{display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;padding:7px 14px!important;border-radius:4px!important;font-size:11px!important;font-weight:600!important;cursor:pointer!important;border:1px solid transparent!important;transition:all .2s!important;text-decoration:none!important;white-space:nowrap!important;background:#fff!important;}
@@ -310,6 +348,51 @@ body,html{overflow-x:hidden;max-width:100%;}
 .txn-btn.info{color:#002F70!important;border-color:#002F70!important;}
 .txn-btn.info:hover{background:#002F70!important;color:#fff!important;}
 .txn-btn.sm{padding:4px 9px!important;font-size:10px!important;}
+body.modal-open {
+  overflow: hidden !important;
+}
+body.modal-open .main {
+  overflow-y: hidden !important;
+}
+
+/* ── Filter reset button ── */
+.flt-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:36px;padding:0 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .2s;background:#fff;}
+.flt-btn-reset{color:#475569;border-color:#cbd5e1;}
+.flt-btn-reset:hover{background:#f1f5f9;border-color:#94a3b8;}
+
+/* ── Outline button (for Select All / Clear) ── */
+.int-btn-outline{display:inline-flex !important;align-items:center !important;justify-content:center !important;border:1px solid #00264D !important;background:#fff !important;color:#00264D !important;border-radius:5px !important;cursor:pointer !important;font-size:11px !important;font-weight:600 !important;padding:0 8px !important;height:28px !important;transition:all .15s !important;}
+.int-btn-outline:hover{background:#00264D !important;color:#fff !important;border-color:#00264D !important;}
+
+/* ── SR Modal 2-col grid and wide box ── */
+.mi-box.wide{width:860px;max-width:calc(100vw - 32px);}
+.sr-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.sr-grid > div{min-width:0;}
+@media(max-width:680px){.sr-grid{grid-template-columns:1fr;}.mi-box.wide{width:100%;}}
+
+/* ── Stock Request Table Styles ── */
+.sr-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11.5px;
+    table-layout: fixed;
+}
+.sr-table th, .sr-table td {
+    padding: 8px 6px;
+    vertical-align: middle;
+    box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sr-tbl-row {
+    border-bottom: 1px solid #e2e8f0;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+.sr-tbl-row:hover {
+    background: #f1f5f9;
+}
 </style>
 
 <div class="page-head" style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:16px;border-bottom:2px solid #e9ecef;margin-bottom:20px;">
@@ -397,28 +480,28 @@ body,html{overflow-x:hidden;max-width:100%;}
             <span class="inv-stat-label">Total Products</span>
             <span class="inv-stat-val"><?php echo $stats['total']; ?></span>
         </div>
-        <div class="inv-stat-icon" style="color:#2563eb;"><i class="fas fa-boxes"></i></div>
+        <div class="inv-stat-icon" style="color:#2563eb;"><i class="fas fa-box"></i></div>
     </div>
     <div class="inv-stat-card">
         <div class="inv-stat-info">
-            <span class="inv-stat-label">Available Products</span>
-            <span class="inv-stat-val"><?php echo $stats['available']; ?></span>
-        </div>
-        <div class="inv-stat-icon" style="color:#16a34a;"><i class="fas fa-check-circle"></i></div>
-    </div>
-    <div class="inv-stat-card">
-        <div class="inv-stat-info">
-            <span class="inv-stat-label">Low Stock Products</span>
+            <span class="inv-stat-label">Low Stock</span>
             <span class="inv-stat-val"><?php echo $stats['low']; ?></span>
         </div>
-        <div class="inv-stat-icon" style="color:#d97706;"><i class="fas fa-exclamation-triangle"></i></div>
+        <div class="inv-stat-icon" style="color:#fd7e14;"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
     <div class="inv-stat-card">
         <div class="inv-stat-info">
-            <span class="inv-stat-label">Out of Stock Products</span>
+            <span class="inv-stat-label">Critical Stock</span>
+            <span class="inv-stat-val"><?php echo $stats['critical']; ?></span>
+        </div>
+        <div class="inv-stat-icon" style="color:#dc2626;"><i class="fas fa-bell"></i></div>
+    </div>
+    <div class="inv-stat-card">
+        <div class="inv-stat-info">
+            <span class="inv-stat-label">Out of Stock</span>
             <span class="inv-stat-val"><?php echo $stats['out']; ?></span>
         </div>
-        <div class="inv-stat-icon" style="color:#dc2626;"><i class="fas fa-times-circle"></i></div>
+        <div class="inv-stat-icon" style="color:#7f1d1d;"><i class="fas fa-times-circle"></i></div>
     </div>
 </div>
 
@@ -427,30 +510,45 @@ body,html{overflow-x:hidden;max-width:100%;}
     <div class="inv-card-head">
         <div class="inv-card-title"><i class="fas fa-box"></i> Merchandise Stock</div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <button onclick="openSrModal()" class="txn-btn primary" style="height:36px;">
-                <i class="fas fa-box"></i> Stock Request
+            <button onclick="openSrModal()" class="txn-btn primary">
+                <i class="fas fa-plus"></i> Stock Request
             </button>
         </div>
     </div>
     <div class="inv-card-body">
 
         <!-- Filter Bar -->
-        <div class="inv-filter-bar">
-            <input type="text" id="merchSearch" placeholder="&#128269; Search products..." autocomplete="off">
+        <div class="inv-filter-bar" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px;">
+            <div style="position:relative;">
+                <i class="fas fa-search" style="position:absolute; left:10px; top:11px; color:#94a3b8; font-size:12px;"></i>
+                <input type="text" id="merchSearch" placeholder="Search Product..." autocomplete="off" style="padding-left:28px;">
+            </div>
             <select id="filterCategory">
                 <option value="">All Categories</option>
                 <?php foreach ($all_categories as $cat): ?>
                 <option value="<?php echo htmlspecialchars(strtolower($cat)); ?>"><?php echo htmlspecialchars($cat); ?></option>
                 <?php endforeach; ?>
             </select>
+            <select id="filterBrand">
+                <option value="">All Brands</option>
+                <?php foreach ($all_brands as $b): ?>
+                <option value="<?php echo htmlspecialchars(strtolower($b)); ?>"><?php echo htmlspecialchars($b); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <select id="filterUnit">
+                <option value="">All Units</option>
+                <?php foreach ($all_units as $u): ?>
+                <option value="<?php echo htmlspecialchars(strtolower($u)); ?>"><?php echo htmlspecialchars($u); ?></option>
+                <?php endforeach; ?>
+            </select>
             <select id="filterStatus">
-                <option value="">All Status</option>
+                <option value="">All Statuses</option>
                 <option value="ok">Available</option>
                 <option value="low">Low Stock</option>
-                <option value="out">Out of Stock</option>
                 <option value="critical">Critical</option>
+                <option value="out">Out of Stock</option>
             </select>
-            <select id="sortBy">
+            <select id="sortBy" style="margin-left:auto;">
                 <option value="default">Default Sort</option>
                 <option value="newest">Newest Updated</option>
                 <option value="name_asc">Name A–Z</option>
@@ -494,6 +592,8 @@ body,html{overflow-x:hidden;max-width:100%;}
                     <tr class="merch-row"
                         data-name="<?php echo strtolower(htmlspecialchars($it['name'])); ?>"
                         data-category="<?php echo strtolower(htmlspecialchars($it['category'])); ?>"
+                        data-brand="<?php echo strtolower(htmlspecialchars($it['brand'])); ?>"
+                        data-unit="<?php echo strtolower(htmlspecialchars($it['unit'])); ?>"
                         data-status="<?php echo htmlspecialchars($it['status_key']); ?>"
                         data-stock="<?php echo $it['stock']; ?>"
                         data-updated="<?php echo htmlspecialchars($it['last_updated']); ?>"
@@ -544,7 +644,6 @@ body,html{overflow-x:hidden;max-width:100%;}
     <div class="mi-box">
         <div class="mi-head">
             <div class="mi-title"><i class="fas fa-eye"></i> Product Details</div>
-            <button class="mi-close" onclick="closeVd()">&times;</button>
         </div>
         <div class="mi-body">
             <div id="vdContent"></div>
@@ -561,34 +660,66 @@ body,html{overflow-x:hidden;max-width:100%;}
     <div class="mi-box wide">
         <div class="mi-head">
             <div class="mi-title"><i class="fas fa-box"></i> Stock Request</div>
-            <button class="mi-close" id="srModalClose">&times;</button>
         </div>
         <div class="mi-body">
-            <div class="mi-info">
-                <i class="fas fa-info-circle"></i>
-                <strong>Fill in the details below and submit your request.</strong><br>
-                &bull; Quantity will be determined exclusively by Management during review<br>
-                &bull; Audit trail logged: Staff ID, Item, Timestamp<br>
-                &bull; You can track status under <em>Stock Request</em> in the sidebar
-            </div>
 
-            <div style="margin-bottom: 16px;">
-                <label style="display:block;font-size:12.5px;font-weight:700;color:#374151;margin-bottom:8px;">
-                    <i class="fas fa-exclamation-triangle" style="color:#eab308;margin-right:4px;"></i> Select Products Needing Replenishment <span style="color:#dc2626;">*</span>
-                </label>
-                <div id="srProductsList" style="border:1px solid #cbd5e1;border-radius:8px;padding:10px;background:#f8fafc;">
-                    <!-- Populated via JavaScript with checkboxes for low/critical/out of stock items -->
+            <div class="sr-grid">
+                <!-- Left Column: Request Info -->
+                <div>
+                    <div style="background:#f8fafc; padding:16px; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:16px;">
+                        <h4 style="margin:0 0 12px; font-size:14px; font-weight:700; color:#002F70; text-transform:uppercase; border-bottom:1px solid #cbd5e1; padding-bottom:6px;"><i class="fas fa-file-alt"></i> Request Information</h4>
+                        <div class="sr-info-row" style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12.5px;">
+                            <span style="color:#64748b; font-weight:600;">Request No:</span>
+                            <span style="font-weight:700; color:#1e293b;">Auto-Assigned</span>
+                        </div>
+                        <div class="sr-info-row" style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12.5px;">
+                            <span style="color:#64748b; font-weight:600;">Request Date:</span>
+                            <span style="font-weight:700; color:#1e293b;"><?= date('M d, Y') ?></span>
+                        </div>
+                        <div class="sr-info-row" style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12.5px;">
+                            <span style="color:#64748b; font-weight:600;">Requested By:</span>
+                            <span style="font-weight:700; color:#1e293b;"><?= htmlspecialchars($me['name'] ?? $me['username'] ?? 'Staff') ?></span>
+                        </div>
+                    </div>
+                    <div class="sr-field">
+                        <label for="srReason"><i class="fas fa-comment-alt"></i> Remarks / Reason</label>
+                        <textarea id="srReason" placeholder="e.g. Running low, expected high demand this weekend..."></textarea>
+                    </div>
+                </div>
+                
+                <!-- Right Column: Products Checklist Table -->
+                <div style="display:flex; flex-direction:column; max-height:360px;">
+                    <label style="display:block;font-size:12.5px;font-weight:700;color:#374151;margin-bottom:8px;">
+                        <i class="fas fa-exclamation-triangle" style="color:#eab308;margin-right:4px;"></i> Products Needing Replenishment <span style="color:#dc2626;">*</span>
+                    </label>
+                    <div style="display:flex; gap:8px; margin-bottom:8px;">
+                        <button type="button" class="int-btn-outline" onclick="srSelectAll()">Select All</button>
+                        <button type="button" class="int-btn-outline" onclick="srClearSelection()">Clear Selection</button>
+                    </div>
+                    <div class="sr-products-wrapper">
+                        <table class="sr-table">
+                            <thead>
+                                <tr style="background:#002F70; color:#fff; position:sticky; top:0; z-index:10;">
+                                    <th style="width:32px; text-align:center;">✓</th>
+                                    <th style="width:130px; text-align:left;">Product Code</th>
+                                    <th style="width:auto; text-align:left;">Product Name</th>
+                                    <th style="width:75px; text-align:center;">Current Stock</th>
+                                    <th style="width:65px; text-align:center;">Unit</th>
+                                    <th style="width:85px; text-align:center;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="srProductsList">
+                                <!-- Populated via JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
-            <div class="sr-field">
-                <label for="srReason"><i class="fas fa-comment-alt"></i> Reason / Remarks</label>
-                <textarea id="srReason" placeholder="e.g. Running low, expected high demand this weekend..."></textarea>
-            </div>
-            <div id="srError" style="display:none;background:#fee2e2;color:#dc3545;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:10px;"></div>
+            <div id="srError" style="display:none;background:#fee2e2;color:#dc3545;padding:10px 14px;border-radius:6px;font-size:13px;margin-top:10px;margin-bottom:10px;"></div>
         </div>
         <div class="mi-foot">
-            <button class="txn-btn secondary" id="srCancelBtn">Cancel</button>
-            <button class="txn-btn primary" id="srSubmitBtn"><i class="fas fa-paper-plane"></i> Submit Request</button>
+            <button class="txn-btn secondary" id="srCancelBtn" onclick="closeSrModal()" type="button">Cancel</button>
+            <button class="txn-btn primary" id="srSubmitBtn" onclick="srHandleSubmit(this)" type="button"><i class="fas fa-paper-plane"></i> Submit Request</button>
         </div>
     </div>
 </div>
@@ -611,21 +742,29 @@ var _srPreselect = null;
 
 // ── Filter / Sort ─────────────────────────────────────────────
 function applyFilters() {
-    var q    = (document.getElementById('merchSearch').value || '').toLowerCase();
-    var cat  = (document.getElementById('filterCategory').value || '').toLowerCase();
-    var stat = (document.getElementById('filterStatus').value || '');
+    var q     = (document.getElementById('merchSearch').value || '').toLowerCase();
+    var cat   = (document.getElementById('filterCategory').value || '').toLowerCase();
+    var brand = (document.getElementById('filterBrand').value || '').toLowerCase();
+    var unit  = (document.getElementById('filterUnit').value || '').toLowerCase();
+    var stat  = (document.getElementById('filterStatus').value || '');
     var sortBy = document.getElementById('sortBy').value;
 
     // 1. Filter each data row — use search-hidden class (works with pagination)
     document.querySelectorAll('#merchTableBody .merch-row').forEach(function(r) {
         var name    = (r.dataset.name || '').toLowerCase();
         var rcat    = (r.dataset.category || '').toLowerCase();
+        var rbrand  = (r.dataset.brand || '').toLowerCase();
+        var runit   = (r.dataset.unit || '').toLowerCase();
         var rstat   = (r.dataset.status || '');
-        var matchQ  = !q    || name.indexOf(q) !== -1;
-        var matchC  = !cat  || rcat === cat;
+        
+        var matchQ  = !q      || name.indexOf(q) !== -1;
+        var matchC  = !cat    || rcat === cat;
+        var matchB  = !brand  || rbrand === brand;
+        var matchU  = !unit   || runit === unit;
         // "out" filter also includes critical items
-        var matchS  = !stat || rstat === stat || (stat === 'out' && (rstat === 'out' || rstat === 'critical'));
-        var visible = matchQ && matchC && matchS;
+        var matchS  = !stat   || rstat === stat || (stat === 'out' && (rstat === 'out' || rstat === 'critical'));
+        
+        var visible = matchQ && matchC && matchB && matchU && matchS;
         if (visible) {
             r.classList.remove('search-hidden');
             r.style.display = ''; // ensure visible
@@ -686,11 +825,28 @@ function applyFilters() {
         window.setTablePage('merchTable', 1);
     }
 }
+
+function resetFilters() {
+    document.getElementById('merchSearch').value = '';
+    document.getElementById('filterCategory').value = '';
+    document.getElementById('filterBrand').value = '';
+    document.getElementById('filterUnit').value = '';
+    document.getElementById('filterStatus').value = '';
+    document.getElementById('sortBy').value = 'default';
+    // Trigger change event to sort
+    var event = new Event('change');
+    document.getElementById('sortBy').dispatchEvent(event);
+    applyFilters();
+}
+
 ['input','change'].forEach(function(ev) {
     document.getElementById('merchSearch').addEventListener(ev, applyFilters);
     document.getElementById('filterCategory').addEventListener(ev, applyFilters);
+    document.getElementById('filterBrand').addEventListener(ev, applyFilters);
+    document.getElementById('filterUnit').addEventListener(ev, applyFilters);
     document.getElementById('filterStatus').addEventListener(ev, applyFilters);
 });
+
 document.getElementById('sortBy').addEventListener('change', function() {
     var val = this.value;
     var tbody = document.getElementById('merchTableBody');
@@ -764,11 +920,15 @@ function viewDetails(it) {
         '</div>';
     document.getElementById('vdSrBtn').dataset.item = JSON.stringify(it);
     document.getElementById('vdModal').classList.add('open');
+    document.body.classList.add('modal-open');
 }
 function vdRow(label, val) {
     return '<div class="vd-row"><div class="vd-label">'+label+'</div><div class="vd-val">'+val+'</div></div>';
 }
-function closeVd() { document.getElementById('vdModal').classList.remove('open'); }
+function closeVd() {
+    document.getElementById('vdModal').classList.remove('open');
+    document.body.classList.remove('modal-open');
+}
 function closeVdOpenSr() {
     var it = JSON.parse(document.getElementById('vdSrBtn').dataset.item || '{}');
     closeVd();
@@ -778,15 +938,24 @@ document.getElementById('vdModal').addEventListener('click', function(e){ if(e.t
 
 // ── Stock Request Modal ───────────────────────────────────────
 function toggleSrRowClass(cb) {
-    var row = cb.closest('.sr-cb-row');
-    if (cb.checked) row.classList.add('checked');
-    else row.classList.remove('checked');
+    var tr = cb.closest('tr');
+    if (cb.checked) {
+        tr.style.background = '#f0fdf4';
+    } else {
+        tr.style.background = '';
+    }
 }
-function toggleSrRowClick(infoEl) {
-    var row = infoEl.closest('.sr-cb-row');
-    var cb = row.querySelector('.sr-cb');
-    cb.checked = !cb.checked;
-    toggleSrRowClass(cb);
+function srSelectAll() {
+    document.querySelectorAll('#srProductsList .sr-cb').forEach(function(cb) {
+        cb.checked = true;
+        toggleSrRowClass(cb);
+    });
+}
+function srClearSelection() {
+    document.querySelectorAll('#srProductsList .sr-cb').forEach(function(cb) {
+        cb.checked = false;
+        toggleSrRowClass(cb);
+    });
 }
 
 function openSrModal(preselect) {
@@ -803,54 +972,61 @@ function openSrModal(preselect) {
     });
 
     if (needy.length === 0) {
-        listEl.innerHTML = '<div style="padding:16px;text-align:center;color:#64748b;font-size:13px;">' +
+        listEl.innerHTML = '<tr><td colspan="6" style="padding:16px;text-align:center;color:#64748b;font-size:13px;">' +
             '<i class="fas fa-check-circle" style="color:#16a34a;font-size:1.5em;display:block;margin-bottom:8px;"></i>' +
-            'All products are currently at optimal stock levels. No low or critical items found.</div>';
+            'All products are currently at optimal stock levels. No low or critical items found.</td></tr>';
     } else {
         needy.forEach(function(it) {
             var isChecked = (preselect && parseInt(it.id) === parseInt(preselect)) ? 'checked' : '';
-            var checkedClass = isChecked ? ' checked' : '';
-            var row = document.createElement('div');
-            row.className = 'sr-cb-row ' + it.status_key + checkedClass;
-            row.innerHTML = 
-                '<input type="checkbox" class="sr-cb" value="' + it.id + '" ' + isChecked + ' onclick="event.stopPropagation(); toggleSrRowClass(this);">' +
-                '<div class="sr-cb-info" onclick="toggleSrRowClick(this);">' +
-                    '<div class="sr-cb-name">' + escHtml(it.name) + '</div>' +
-                    '<div class="sr-cb-meta">' +
-                        '<span>SKU: <code>' + escHtml(it.sku||'—') + '</code></span> | ' +
-                        '<span>Stock: <strong>' + it.stock + '</strong> / ' + it.capacity + ' ' + escHtml(it.unit) + '</span> | ' +
-                        '<span style="color:' + it.color + ';font-weight:700;">' + escHtml(it.status) + '</span>' +
-                    '</div>' +
-                '</div>';
-            listEl.appendChild(row);
+            var tr = document.createElement('tr');
+            if (isChecked) tr.style.background = '#f0fdf4';
+            tr.className = 'sr-tbl-row';
+            tr.innerHTML = 
+                '<td style="text-align:center;"><input type="checkbox" class="sr-cb" value="' + it.id + '" ' + isChecked + ' onclick="event.stopPropagation(); toggleSrRowClass(this);"></td>' +
+                '<td style="font-family:monospace; font-weight:600;">' + escHtml(it.sku || '—') + '</td>' +
+                '<td style="font-weight:700;" title="' + escHtml(it.name) + '">' + escHtml(it.name) + '</td>' +
+                '<td style="text-align:center; font-weight:600;">' + it.stock + '</td>' +
+                '<td style="text-align:center; color:#64748b;">' + escHtml(it.unit) + '</td>' +
+                '<td style="text-align:center;"><span class="status-badge" style="background:' + it.color + '20; color:' + it.color + '; border:1px solid ' + it.color + '40;">' + escHtml(it.status) + '</span></td>';
+            
+            tr.addEventListener('click', function() {
+                var cb = this.querySelector('.sr-cb');
+                cb.checked = !cb.checked;
+                toggleSrRowClass(cb);
+            });
+            listEl.appendChild(tr);
         });
     }
     
     // Force display and scrolling
     var modal = document.getElementById('srModal');
     modal.classList.add('open');
+    document.body.classList.add('modal-open');
     
-    // Force reflow to ensure CSS is applied and scrolling works
     setTimeout(function() {
         var modalBody = modal.querySelector('.mi-body');
         if (modalBody) {
             modalBody.style.overflowY = 'auto';
-            modalBody.style.maxHeight = 'none';
-        }
-        // Don't override CSS - let the stylesheet handle it
-        if (listEl) {
-            // Force browser to recalculate height
-            listEl.style.display = 'block';
-            void listEl.offsetHeight; // Force reflow
         }
     }, 50);
 }
-function closeSrModal() { document.getElementById('srModal').classList.remove('open'); }
-document.getElementById('srModalClose').addEventListener('click', closeSrModal);
-document.getElementById('srCancelBtn').addEventListener('click', closeSrModal);
-document.getElementById('srModal').addEventListener('click', function(e){ if(e.target===this) closeSrModal(); });
+function closeSrModal() {
+    var m = document.getElementById('srModal');
+    if (m) m.classList.remove('open');
+    document.body.classList.remove('modal-open');
+}
 
-document.getElementById('srSubmitBtn').addEventListener('click', function() {
+// Safe null-checked listeners (buttons also have onclick attributes as primary handler)
+(function() {
+    var closeBtn = document.getElementById('srModalClose');
+    if (closeBtn) closeBtn.addEventListener('click', closeSrModal);
+    var cancelBtn = document.getElementById('srCancelBtn');
+    if (cancelBtn) cancelBtn.addEventListener('click', closeSrModal);
+    var srModalEl = document.getElementById('srModal');
+    if (srModalEl) srModalEl.addEventListener('click', function(e){ if(e.target===this) closeSrModal(); });
+})();
+
+function srHandleSubmit(btn) {
     var checked = Array.from(document.querySelectorAll('#srProductsList .sr-cb:checked'));
     var reason = document.getElementById('srReason').value.trim();
     var errEl = document.getElementById('srError');
@@ -862,15 +1038,12 @@ document.getElementById('srSubmitBtn').addEventListener('click', function() {
     }
     errEl.style.display = 'none';
 
-    var btn = this;
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
 
-    // Process items one by one
     var items = checked.map(function(cb) {
         var id = parseInt(cb.value);
-        var it = allMerchData.find(function(x) { return x.id === id; });
-        return it;
+        return allMerchData.find(function(x) { return x.id === id; });
     }).filter(Boolean);
 
     var results = { ok: 0, fail: 0, errors: [] };
@@ -883,10 +1056,10 @@ document.getElementById('srSubmitBtn').addEventListener('click', function() {
             closeSrModal();
 
             if (results.fail === 0) {
-                document.getElementById('srSuccessMsg').innerHTML = 
+                document.getElementById('srSuccessMsg').innerHTML =
                     'Successfully submitted stock requests for <strong>' + results.ok + '</strong> items.';
             } else {
-                document.getElementById('srSuccessMsg').innerHTML = 
+                document.getElementById('srSuccessMsg').innerHTML =
                     'Submitted: <strong>' + results.ok + '</strong> succeeded, <strong>' + results.fail + '</strong> failed.<br>' +
                     '<small style="color:#dc2626;">Errors: ' + escHtml(results.errors.join(', ')) + '</small>';
             }
@@ -931,12 +1104,25 @@ document.getElementById('srSubmitBtn').addEventListener('click', function() {
     }
 
     submitNext();
-});
+}
+
+// Legacy addEventListener for Submit (safety net — onclick on button is the primary handler)
+(function() {
+    var sb = document.getElementById('srSubmitBtn');
+    if (sb && !sb.dataset.listenerBound) {
+        sb.dataset.listenerBound = '1';
+        // noop — handled by onclick attribute
+    }
+})();
+
+
+
 
 function closeSrSuccess() {
     document.getElementById('srSuccessPopup').style.display = 'none';
     document.getElementById('srSuccessOverlay').style.display = 'none';
-    window.location.href = 'staff_stock_requests.php#tab-merch';
+    // Stay on current page - reload to refresh inventory
+    window.location.reload();
 }
 function escHtml(str) { var d=document.createElement('div'); d.appendChild(document.createTextNode(str||'')); return d.innerHTML; }
 document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ closeVd(); closeSrModal(); } });

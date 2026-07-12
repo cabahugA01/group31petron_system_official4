@@ -2592,6 +2592,25 @@ require_once __DIR__ . '/../partials/header.php';
             -webkit-print-color-adjust:exact;
             print-color-adjust:exact;
         }
+        
+        /* Hide all watermarks and background elements */
+        body::before, body::after, html::before, html::after {
+            content: none !important;
+            display: none !important;
+        }
+        
+        /* Hide fixed position elements outside print area */
+        body > *:not(.wrapper):not(.content-wrapper):not(.fs-wrap) {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+        }
+        
+        /* Remove background images */
+        * {
+            background-image: none !important;
+            box-shadow: none !important;
+        }
     }
     </style>
     <div class="fs-wrap">
@@ -2931,6 +2950,25 @@ require_once __DIR__ . '/../partials/header.php';
             background:#002F70!important;
             -webkit-print-color-adjust:exact;
             print-color-adjust:exact;
+        }
+        
+        /* Hide all watermarks and background elements */
+        body::before, body::after, html::before, html::after {
+            content: none !important;
+            display: none !important;
+        }
+        
+        /* Hide fixed position elements outside print area */
+        body > *:not(.wrapper):not(.content-wrapper):not(.ms-wrap) {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+        }
+        
+        /* Remove background images */
+        * {
+            background-image: none !important;
+            box-shadow: none !important;
         }
     }
     </style>

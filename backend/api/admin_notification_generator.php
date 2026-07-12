@@ -51,6 +51,19 @@ try {
 
 $generated = 0;
 
+// Keep older unread notifications aligned with current module routes.
+try {
+    $redirect_fixes = [
+        '/public/admin_transactions_oversight.php' => '/public/admin_all_transactions.php',
+        '/public/purchase_orders.php'             => '/public/admin_purchase_orders.php',
+        '/public/inventory.php'                   => '/public/admin_inventory_merchandise.php',
+    ];
+    $fix_stmt = $pdo->prepare("UPDATE notifications SET redirect_url=? WHERE user_id=? AND redirect_url=?");
+    foreach ($redirect_fixes as $old_url => $new_url) {
+        $fix_stmt->execute([$new_url, $user_id, $old_url]);
+    }
+} catch (Exception $e) {}
+
 /**
  * Upsert a notification:
  * - If source_key already exists for this user AND status='unread' -> skip (already notified)
@@ -154,7 +167,7 @@ if ($admin_tx > 0) {
         'event_type'  => 'transaction',
         'severity'    => 'low',
         'source_key'  => "admin_tx_today_{$station_id}_".date('Y-m-d'),
-        'redirect_url'=> '/public/admin_transactions_oversight.php',
+        'redirect_url'=> '/public/admin_all_transactions.php',
     ]);
 }
 
@@ -172,7 +185,7 @@ if ($pending_po > 0) {
         'event_type'  => 'delivery',
         'severity'    => 'medium',
         'source_key'  => "pending_po_{$station_id}",
-        'redirect_url'=> '/public/purchase_orders.php',
+        'redirect_url'=> '/public/admin_purchase_orders.php',
     ]);
 }
 
@@ -190,7 +203,7 @@ if ($admin_jo > 0) {
         'event_type'  => 'job_order',
         'severity'    => 'low',
         'source_key'  => "admin_jo_today_{$station_id}_".date('Y-m-d'),
-        'redirect_url'=> '/public/admin_transactions_oversight.php',
+        'redirect_url'=> '/public/admin_all_transactions.php',
     ]);
 }
 
@@ -333,7 +346,7 @@ try {
             'event_type'  => 'inventory',
             'severity'    => 'high',
             'source_key'  => "low_inv_{$station_id}",
-            'redirect_url'=> '/public/inventory.php',
+            'redirect_url'=> '/public/admin_inventory_merchandise.php',
         ]);
     }
 } catch (Exception $e) {}

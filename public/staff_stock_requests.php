@@ -4,6 +4,10 @@ require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
 
+// ── ACCESS DISABLED: Stock Requests page removed from Staff access ──
+header("Location: staff_dashboard.php");
+exit;
+
 $me = current_user();
 $role = role_key($me['role'] ?? '');
 $station_id = user_station_id();
@@ -137,10 +141,12 @@ try {
             po.delivery_validated_at,
             po.delivery_flag,
             po.stock_in_done,
-            po.stock_in_at
+            po.stock_in_at,
+            COALESCE(ip.unit, 'pcs') AS item_unit
         FROM stock_requests sr
         LEFT JOIN users m ON sr.manager_id = m.id
         LEFT JOIN purchase_orders po ON po.request_id = sr.id AND po.type = 'merch'
+        LEFT JOIN inventory_products ip ON ip.id = sr.item_id
         WHERE sr.staff_id = ?
           AND LOWER(COALESCE(sr.item_category, '')) != 'fuel'
         ORDER BY sr.created_at DESC
@@ -429,7 +435,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="int-head" style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:16px;border-bottom:2px solid #e9ecef;margin-bottom:20px;">
         <div>
             <h1><i class="fas fa-history"></i> Stock Requests</h1>
-            <div class="sub">History &amp; tracking of your submitted stock requests. To create a new request, use the <strong>Stock Request</strong> button in Fuel Inventory or Merchandise Inventory.</div>
+            <div class="sub">History &amp; tracking of your submitted stock requests.</div>
         </div>
         <div id="export-buttons-container" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <!-- Export buttons will be dynamically updated based on active tab -->
@@ -533,7 +539,7 @@ include __DIR__ . '/../partials/header.php';
                                 <th>Date</th>
                                 <th>Tank</th>
                                 <th>Fuel Type</th>
-                                <th>Current Level (L)</th>
+                                <th>Current Level (Liters)</th>
                                 <th>Requested Liters</th>
                                 <th>Status</th>
                                 <th>Last Updated</th>
@@ -545,8 +551,7 @@ include __DIR__ . '/../partials/header.php';
                                 <tr>
                                     <td colspan="9" style="text-align:center;padding:48px;color:#64748b;">
                                         <i class="fas fa-gas-pump" style="font-size:3em;display:block;margin-bottom:12px;opacity:.2;"></i>
-                                        <strong>No fuel requests submitted yet.</strong><br>
-                                        <span style="font-size:12px;color:#94a3b8;margin-top:6px;display:block;">Use the <strong>Stock Request</strong> button in <a href="staff_inventory_fuel.php" style="color:#002F70;">Fuel Inventory</a> to submit a request.</span>
+                                        <strong>No fuel requests submitted yet.</strong>
                                     </td>
                                 </tr>
                             <?php else: ?>
@@ -565,8 +570,8 @@ include __DIR__ . '/../partials/header.php';
                                         <td><?= date('M d, Y', strtotime($r['created_at'])) ?></td>
                                         <td style="font-size:11.5px;color:#475569;"><?= htmlspecialchars($tank_lbl) ?></td>
                                         <td><strong><?= htmlspecialchars($r['fuel_type']) ?></strong></td>
-                                        <td><?= number_format((float)$r['current_level'], 2) ?> L</td>
-                                        <td style="font-weight:700;color:#002F70;"><?= $r['requested_liters'] > 0 ? number_format((float)$r['requested_liters'], 2) . ' L' : '<span style="color:#94a3b8;font-weight:normal;">Pending Manager Input</span>' ?></td>
+                                        <td><?= number_format((float)$r['current_level'], 2) ?> Liters (L)</td>
+                                        <td style="font-weight:700;color:#002F70;"><?= $r['requested_liters'] > 0 ? number_format((float)$r['requested_liters'], 2) . ' Liters (L)' : '<span style="color:#94a3b8;font-weight:normal;">Pending Manager Input</span>' ?></td>
                                         <td><span class="<?= $s_cls ?>"><?= $st ?></span></td>
                                         <td style="font-size:11.5px;color:#64748b;"><?= $updated ?></td>
                                         <td>
@@ -647,7 +652,7 @@ include __DIR__ . '/../partials/header.php';
                                 <th>Date</th>
                                 <th>Product</th>
                                 <th>Current Stock</th>
-                                <th>Requested Qty</th>
+                                <th>Requested Quantity</th>
                                 <th>Status</th>
                                 <th>Last Updated</th>
                                 <th>Actions</th>
@@ -658,8 +663,7 @@ include __DIR__ . '/../partials/header.php';
                                 <tr>
                                     <td colspan="8" style="text-align:center;padding:48px;color:#64748b;">
                                         <i class="fas fa-inbox" style="font-size:3em;display:block;margin-bottom:12px;opacity:.2;"></i>
-                                        <strong>No merchandise requests submitted yet.</strong><br>
-                                        <span style="font-size:12px;color:#94a3b8;margin-top:6px;display:block;">Use the <strong>Stock Request</strong> button in <a href="staff_inventory_merchandise.php" style="color:#002F70;">Merchandise Inventory</a> to submit a request.</span>
+                                        <strong>No merchandise requests submitted yet.</strong>
                                     </td>
                                 </tr>
                             <?php else: ?>
@@ -680,8 +684,9 @@ include __DIR__ . '/../partials/header.php';
                                             <strong><?= htmlspecialchars($r['item_name']) ?></strong><br>
                                             <span style="font-size:11px;color:#64748b;">SKU: <code><?= htmlspecialchars($r['item_sku'] ?? '&mdash;') ?></code> | Cat: <?= htmlspecialchars($r['item_category'] ?? '') ?></span>
                                         </td>
-                                        <td><?= number_format((int)$r['current_stock']) ?> pcs</td>
-                                        <td style="font-weight:700;color:#002F70;"><?= $r['requested_quantity'] > 0 ? number_format((int)$r['requested_quantity']) . ' pcs' : '<span style="color:#94a3b8;font-weight:normal;">Pending Manager Input</span>' ?></td>
+                                        <?php $mu = format_merch_unit($r['item_unit'] ?? 'pcs'); ?>
+                                        <td><?= number_format((int)$r['current_stock']) ?> <?= htmlspecialchars($mu) ?></td>
+                                        <td style="font-weight:700;color:#002F70;"><?= $r['requested_quantity'] > 0 ? number_format((int)$r['requested_quantity']) . ' ' . htmlspecialchars($mu) : '<span style="color:#94a3b8;font-weight:normal;">Pending Manager Input</span>' ?></td>
                                         <td><span class="<?= $s_cls ?>"><?= $st ?></span></td>
                                         <td style="font-size:11.5px;color:#64748b;"><?= $updated ?></td>
                                         <td>
@@ -736,19 +741,20 @@ function viewRequest(type, req) {
     
     var category = type === 'fuel' ? 'Fuel' : 'Merchandise';
     var product = type === 'fuel' ? req.fuel_type : req.item_name;
-    var current = type === 'fuel' ? parseFloat(req.current_level).toLocaleString() + ' L' : parseInt(req.current_stock).toLocaleString() + ' pcs';
+    var mu = (type === 'fuel') ? 'Liters (L)' : (req.item_unit ? req.item_unit : 'Pieces');
+    var current = type === 'fuel' ? parseFloat(req.current_level).toLocaleString() + ' ' + mu : parseInt(req.current_stock).toLocaleString() + ' ' + mu;
     var requested = '—';
     if (type === 'fuel') {
-        requested = parseFloat(req.requested_liters) > 0 ? parseFloat(req.requested_liters).toLocaleString() + ' L' : '<span style="color:#94a3b8;font-weight:normal;">Pending Manager Input</span>';
+        requested = parseFloat(req.requested_liters) > 0 ? parseFloat(req.requested_liters).toLocaleString('en-PH',{minimumFractionDigits:2}) + ' ' + mu : '<span style="color:#94a3b8;font-weight:normal;">Pending Manager Input</span>';
     } else {
-        requested = parseInt(req.requested_quantity) > 0 ? parseInt(req.requested_quantity).toLocaleString() + ' pcs' : '<span style="color:#94a3b8;font-weight:normal;">Pending Manager Input</span>';
+        requested = parseInt(req.requested_quantity) > 0 ? parseInt(req.requested_quantity).toLocaleString() + ' ' + mu : '<span style="color:#94a3b8;font-weight:normal;">Pending Manager Input</span>';
     }
     
     var approved = '—';
     if (type === 'fuel' && req.approved_liters !== null) {
-        approved = parseFloat(req.approved_liters).toLocaleString() + ' L';
+        approved = parseFloat(req.approved_liters).toLocaleString('en-PH',{minimumFractionDigits:2}) + ' ' + mu;
     } else if (type === 'merch' && req.approved_quantity !== null) {
-        approved = parseInt(req.approved_quantity).toLocaleString() + ' pcs';
+        approved = parseInt(req.approved_quantity).toLocaleString() + ' ' + mu;
     }
     
     var formattedDate = new Date(req.created_at).toLocaleString();
@@ -822,19 +828,20 @@ function printRequest(type, req) {
     
     var category = type === 'fuel' ? 'Fuel' : 'Merchandise';
     var product = type === 'fuel' ? req.fuel_type : req.item_name;
-    var current = type === 'fuel' ? parseFloat(req.current_level).toLocaleString() + ' L' : parseInt(req.current_stock).toLocaleString() + ' pcs';
+    var mu = (type === 'fuel') ? 'Liters (L)' : (req.item_unit ? req.item_unit : 'Pieces');
+    var current = type === 'fuel' ? parseFloat(req.current_level).toLocaleString() + ' ' + mu : parseInt(req.current_stock).toLocaleString() + ' ' + mu;
     var requested = '—';
     if (type === 'fuel') {
-        requested = parseFloat(req.requested_liters) > 0 ? parseFloat(req.requested_liters).toLocaleString() + ' L' : 'Pending Manager Input';
+        requested = parseFloat(req.requested_liters) > 0 ? parseFloat(req.requested_liters).toLocaleString('en-PH',{minimumFractionDigits:2}) + ' ' + mu : 'Pending Manager Input';
     } else {
-        requested = parseInt(req.requested_quantity) > 0 ? parseInt(req.requested_quantity).toLocaleString() + ' pcs' : 'Pending Manager Input';
+        requested = parseInt(req.requested_quantity) > 0 ? parseInt(req.requested_quantity).toLocaleString() + ' ' + mu : 'Pending Manager Input';
     }
     
     var approved = '—';
     if (type === 'fuel' && req.approved_liters !== null) {
-        approved = parseFloat(req.approved_liters).toLocaleString() + ' L';
+        approved = parseFloat(req.approved_liters).toLocaleString('en-PH',{minimumFractionDigits:2}) + ' ' + mu;
     } else if (type === 'merch' && req.approved_quantity !== null) {
-        approved = parseInt(req.approved_quantity).toLocaleString() + ' pcs';
+        approved = parseInt(req.approved_quantity).toLocaleString() + ' ' + mu;
     }
     
     var html = `

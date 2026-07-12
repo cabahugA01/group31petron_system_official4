@@ -449,9 +449,10 @@ function handle_approve($pdo, $me, $role, $station_id) {
         if ($manager_notes) $po_remarks .= " Notes: {$manager_notes}";
 
         // Check if PO already exists for this request
-        $existing = $pdo->prepare("SELECT id FROM purchase_orders WHERE request_id = ?");
+        $existing = $pdo->prepare("SELECT id, po_number FROM purchase_orders WHERE request_id = ?");
         $existing->execute([$request_id]);
-        if (!$existing->fetch()) {
+        $existing_po = $existing->fetch(PDO::FETCH_ASSOC);
+        if (!$existing_po) {
             $pdo->prepare("
                 INSERT INTO purchase_orders
                     (request_id, product_name, quantity, unit_price, total_amount,
@@ -462,14 +463,45 @@ function handle_approve($pdo, $me, $role, $station_id) {
                 $request_id, $req['item_name'], $approved_quantity, $unit_price, $total_amount,
                 $po_number, $req['station_id'], $me['id'], $po_remarks
             ]);
+            $po_id = $pdo->lastInsertId();
+
+            // Insert into purchase_order_items for data integrity
+            $pdo->prepare("
+                INSERT INTO purchase_order_items
+                    (po_id, product_id, item_name, quantity, quantity_ordered, unit_price, total_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ")->execute([
+                $po_id, $req['item_id'], $req['item_name'], $approved_quantity, $approved_quantity, $unit_price, $total_amount
+            ]);
         } else {
+            $po_id = $existing_po['id'];
             // Update existing PO
             $pdo->prepare("
                 UPDATE purchase_orders
-                SET quantity = ?, unit_price = ?, total_amount = ?,
+                SET product_name = ?, quantity = ?, unit_price = ?, total_amount = ?,
                     status = 'Pending Admin Validation', remarks = ?, updated_at = NOW()
                 WHERE request_id = ?
-            ")->execute([$approved_quantity, $unit_price, $total_amount, $po_remarks, $request_id]);
+            ")->execute([$req['item_name'], $approved_quantity, $unit_price, $total_amount, $po_remarks, $request_id]);
+
+            // Sync/update purchase_order_items
+            $stmt_item = $pdo->prepare("SELECT id FROM purchase_order_items WHERE po_id = ? AND product_id = ?");
+            $stmt_item->execute([$po_id, $req['item_id']]);
+            $item_exists_id = $stmt_item->fetchColumn();
+            if ($item_exists_id) {
+                $pdo->prepare("
+                    UPDATE purchase_order_items
+                    SET quantity = ?, quantity_ordered = ?, unit_price = ?, total_price = ?
+                    WHERE id = ?
+                ")->execute([$approved_quantity, $approved_quantity, $unit_price, $total_amount, $item_exists_id]);
+            } else {
+                $pdo->prepare("
+                    INSERT INTO purchase_order_items
+                        (po_id, product_id, item_name, quantity, quantity_ordered, unit_price, total_price)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ")->execute([
+                    $po_id, $req['item_id'], $req['item_name'], $approved_quantity, $approved_quantity, $unit_price, $total_amount
+                ]);
+            }
         }
 
         // Audit trail

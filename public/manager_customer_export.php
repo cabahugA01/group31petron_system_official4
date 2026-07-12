@@ -7,15 +7,21 @@
 ob_start();
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
+require_once __DIR__ . '/../backend/customer_module_helpers.php';
 ob_end_clean();
 
 require_login();
 $me         = current_user();
 $role       = role_key($me['role'] ?? '');
-$station_id = user_station_id();
+$station_id = (int)user_station_id();
+
+customer_ensure_optional_columns($pdo);
 
 if (!in_array($role, ['manager', 'admin', 'superadmin', 'developer'])) {
     die('Unauthorized');
+}
+if (!customer_can_view_all_stations($role) && $station_id <= 0) {
+    die('Error: You are not assigned to a station.');
 }
 $format      = strtolower(trim($_GET['format'] ?? 'excel'));
 $search      = trim($_GET['search'] ?? '');
@@ -47,32 +53,54 @@ if ($profileId > 0) {
 }
 
 // ─── Build customer list query ────────────────────────────────────
-$where  = ['c.station_id = ?'];
-$params = [$station_id];
+$where  = [];
+$params = [];
+customer_apply_station_scope($where, $params, 'c', $role, $station_id);
+
+$customerIdExpr = customer_id_expr($pdo, 'c');
+$displayNameExpr = customer_display_name_expr($pdo, 'c');
+$firstNameExpr = customer_first_name_expr($pdo, 'c');
+$middleNameExpr = customer_middle_name_expr($pdo, 'c');
+$lastNameExpr = customer_last_name_expr($pdo, 'c');
+$contactExpr = customer_contact_expr($pdo, 'c');
+$typeExpr = customer_type_expr($pdo, 'c');
+$statusExpr = customer_status_expr($pdo, 'c');
+$registeredExpr = customer_registered_at_expr($pdo, 'c');
+$balanceExpr = customer_balance_expr($pdo, 'c');
+$creditLimitExpr = customer_credit_limit_expr($pdo, 'c');
+$verificationExpr = customer_verification_status_expr($pdo, 'c');
 
 if ($search !== '') {
-    $where[] = "(CAST(c.id AS CHAR) LIKE ? OR c.name LIKE ? OR c.contact_number LIKE ?)";
+    $where[] = "($customerIdExpr LIKE ? OR $displayNameExpr LIKE ? OR $contactExpr LIKE ?)";
     $s = "%$search%";
     array_push($params, $s, $s, $s);
 }
-if ($type !== '')         { $where[] = "c.type = ?";       $params[] = $type; }
-if ($status !== '')       { $where[] = "c.status = ?";              $params[] = $status; }
-if ($verification !== '') { $where[] = "c.verification_status = ?"; $params[] = $verification; }
+if ($type !== '' && $type !== 'registered') { $type = ''; }
+if ($status !== '')       { $where[] = "$statusExpr = ?";       $params[] = $status; }
+if ($verification !== '') { $where[] = "$verificationExpr = ?"; $params[] = $verification; }
 
-$whereClause = implode(' AND ', $where);
+$whereClause = $where ? implode(' AND ', $where) : '1=1';
 
 $stmt = $pdo->prepare("
-    SELECT c.id, c.id AS customer_id,
-           c.name AS display_name,
-           c.name AS first_name, '' AS middle_name, '' AS last_name, c.name AS legacy_name,
-           c.contact_number, c.type AS customer_type, c.status, c.verification_status,
-           COALESCE(c.current_balance, 0) AS outstanding_balance,
-           COALESCE(c.credit_limit, 0) AS credit_limit,
-           '' AS company_name, c.contact_person AS company_contact_person,
-           c.created_at AS registered_at
+    SELECT c.id, c.station_id,
+           $customerIdExpr AS customer_id,
+           $displayNameExpr AS display_name,
+           $firstNameExpr AS first_name,
+           $middleNameExpr AS middle_name,
+           $lastNameExpr AS last_name,
+           $displayNameExpr AS legacy_name,
+           $contactExpr AS contact_number,
+           $typeExpr AS customer_type,
+           $statusExpr AS status,
+           $verificationExpr AS verification_status,
+           $balanceExpr AS outstanding_balance,
+           $creditLimitExpr AS credit_limit,
+           " . customer_company_expr($pdo, 'company_name', 'c') . " AS company_name,
+           " . customer_company_expr($pdo, 'company_contact_person', 'c') . " AS company_contact_person,
+           $registeredExpr AS registered_at
     FROM customers c
     WHERE $whereClause
-    ORDER BY c.created_at DESC
+    ORDER BY $registeredExpr DESC, c.id DESC
 ");
 $stmt->execute($params);
 $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -82,9 +110,10 @@ $filteredCustomers = [];
 foreach ($customers as $c) {
     $ob = (float)$c['outstanding_balance'];
     $totalSpent = 0;
-    try { $q = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE customer_id=? AND station_id=?"); $q->execute([$c['id'], $station_id]); $totalSpent += (float)$q->fetchColumn(); } catch(Exception $e){}
-    try { $q = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE customer_id=? AND station_id=?"); $q->execute([$c['id'], $station_id]); $totalSpent += (float)$q->fetchColumn(); } catch(Exception $e){}
-    try { $q = $pdo->prepare("SELECT COALESCE(SUM(total_cost),0) FROM job_orders WHERE customer_id=? AND station_id=?"); $q->execute([$c['id'], $station_id]); $totalSpent += (float)$q->fetchColumn(); } catch(Exception $e){}
+    $txStation = customer_can_view_all_stations($role) ? (int)($c['station_id'] ?? 0) : $station_id;
+    try { $q = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE customer_id=? AND station_id=?"); $q->execute([$c['id'], $txStation]); $totalSpent += (float)$q->fetchColumn(); } catch(Exception $e){}
+    try { $q = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE customer_id=? AND station_id=?"); $q->execute([$c['id'], $txStation]); $totalSpent += (float)$q->fetchColumn(); } catch(Exception $e){}
+    try { $q = $pdo->prepare("SELECT COALESCE(SUM(total_cost),0) FROM job_orders WHERE customer_id=? AND station_id=?"); $q->execute([$c['id'], $txStation]); $totalSpent += (float)$q->fetchColumn(); } catch(Exception $e){}
 
     if ($ob <= 0)                                          $payStatus = 'paid';
     elseif ($totalSpent > 0 && $ob < $totalSpent)         $payStatus = 'partial';
@@ -108,10 +137,10 @@ if ($format === 'csv') {
     header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
     $out = fopen('php://output', 'w');
     fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
-    fputcsv($out, ['Customer ID','Full Name','Type','Company','Contact No.','Outstanding Balance','Credit Limit','Verification','Payment Status','Status','Registered']);
+    fputcsv($out, ['Customer ID','Full Name','Registration','Company','Contact No.','Outstanding Balance','Credit Limit','Verification','Payment Status','Status','Registered']);
     foreach ($filteredCustomers as $c) {
         fputcsv($out, [
-            $c['customer_id'], $c['display_name'], ucfirst($c['customer_type']),
+            $c['customer_id'], $c['display_name'], 'Registered',
             $c['company_name'] ?: 'N/A', $c['contact_number'],
             number_format($c['outstanding_balance'], 2, '.', ''),
             number_format($c['credit_limit'], 2, '.', ''),
@@ -131,14 +160,14 @@ if ($format === 'csv') {
     echo '<h3>Customer Registry — ' . htmlspecialchars($station_name) . '</h3>';
     echo '<p>Generated: ' . date('M d, Y g:i A') . '</p>';
     echo '<table><thead><tr>
-        <th>Customer ID</th><th>Full Name</th><th>Type</th><th>Company</th><th>Contact No.</th>
+        <th>Customer ID</th><th>Full Name</th><th>Registration</th><th>Company</th><th>Contact No.</th>
         <th>Outstanding Balance</th><th>Credit Limit</th><th>Verification</th><th>Payment Status</th><th>Status</th><th>Registered</th>
     </tr></thead><tbody>';
     foreach ($filteredCustomers as $c) {
         echo '<tr>';
         echo '<td>' . htmlspecialchars($c['customer_id']) . '</td>';
         echo '<td>' . htmlspecialchars($c['display_name']) . '</td>';
-        echo '<td>' . ucfirst($c['customer_type']) . '</td>';
+        echo '<td>Registered</td>';
         echo '<td>' . htmlspecialchars($c['company_name'] ?: 'N/A') . '</td>';
         echo '<td>' . htmlspecialchars($c['contact_number']) . '</td>';
         echo '<td>' . number_format($c['outstanding_balance'], 2, '.', '') . '</td>';
@@ -183,7 +212,7 @@ tr:nth-child(even) td{background:#f8fafc;}
 </div>
 <table>
 <thead><tr>
-    <th>Customer ID</th><th>Name</th><th>Type</th><th>Company</th><th>Contact</th>
+    <th>Customer ID</th><th>Name</th><th>Registration</th><th>Company</th><th>Contact</th>
     <th>Outstanding</th><th>Credit Limit</th><th>Verification</th><th>Payment</th><th>Status</th><th>Registered</th>
 </tr></thead>
 <tbody>
@@ -194,7 +223,7 @@ tr:nth-child(even) td{background:#f8fafc;}
     <tr>
         <td><strong><?php echo htmlspecialchars($c['customer_id']); ?></strong></td>
         <td><?php echo htmlspecialchars($c['display_name']); ?></td>
-        <td><?php echo ucfirst($c['customer_type']); ?></td>
+        <td>Registered</td>
         <td><?php echo htmlspecialchars($c['company_name'] ?: '—'); ?></td>
         <td><?php echo htmlspecialchars($c['contact_number']); ?></td>
         <td>&#x20B1;<?php echo number_format($c['outstanding_balance'], 2); ?></td>
@@ -216,18 +245,47 @@ try { write_audit_log($pdo, 'Export', "Exported customer list ($format)", 'custo
 
 // ─── Profile PDF helper ───────────────────────────────────────────
 function exportProfilePdf($id, $station_name) {
-    global $pdo, $station_id;
+    global $pdo, $station_id, $role;
+
+    $customerIdExpr = customer_id_expr($pdo, 'c');
+    $displayNameExpr = customer_display_name_expr($pdo, 'c');
+    $contactExpr = customer_contact_expr($pdo, 'c');
+    $typeExpr = customer_type_expr($pdo, 'c');
+    $statusExpr = customer_status_expr($pdo, 'c');
+    $registeredExpr = customer_registered_at_expr($pdo, 'c');
+    $balanceExpr = customer_balance_expr($pdo, 'c');
+    $creditLimitExpr = customer_credit_limit_expr($pdo, 'c');
+    $verificationExpr = customer_verification_status_expr($pdo, 'c');
+    $govIdTypeExpr = customer_gov_id_type_expr($pdo, 'c');
+    $where = ['c.id = ?'];
+    $params = [$id];
+    customer_apply_station_scope($where, $params, 'c', $role, $station_id);
 
     $stmt = $pdo->prepare("
         SELECT c.*,
-               CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS registered_by_name,
-               CONCAT(COALESCE(v.first_name,''), ' ', COALESCE(v.last_name,'')) AS verified_by_name
+               $customerIdExpr AS customer_id,
+               $displayNameExpr AS display_name,
+               $contactExpr AS contact_number,
+               $typeExpr AS customer_type,
+               $statusExpr AS status,
+               $registeredExpr AS registered_at,
+               $balanceExpr AS outstanding_balance,
+               $creditLimitExpr AS credit_limit,
+               $verificationExpr AS verification_status,
+               $govIdTypeExpr AS gov_id_type,
+               " . customer_company_expr($pdo, 'company_name', 'c') . " AS company_name,
+               " . customer_company_expr($pdo, 'company_address', 'c') . " AS company_address,
+               " . customer_company_expr($pdo, 'company_contact_person', 'c') . " AS company_contact_person,
+               " . customer_company_expr($pdo, 'company_contact_number', 'c') . " AS company_contact_number,
+               " . customer_verification_remarks_expr($pdo, 'c') . " AS verification_remarks,
+               " . customer_user_name_expr('u') . " AS registered_by_name,
+               " . customer_user_name_expr('v') . " AS verified_by_name
         FROM customers c
         LEFT JOIN users u ON c.registered_by = u.id
         LEFT JOIN users v ON c.verified_by   = v.id
-        WHERE c.id = ? AND c.station_id = ?
+        WHERE " . implode(' AND ', $where) . "
     ");
-    $stmt->execute([$id, $station_id]);
+    $stmt->execute($params);
     $c = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$c) { http_response_code(404); echo 'Customer not found'; return; }
 
@@ -235,9 +293,10 @@ function exportProfilePdf($id, $station_name) {
 
     // Fetch transaction totals
     $fuelAmt = $merchAmt = $jobAmt = 0;
-    try { $q = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE customer_id=? AND station_id=?"); $q->execute([$id, $station_id]); $fuelAmt = (float)$q->fetchColumn(); } catch(Exception $e){}
-    try { $q = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE customer_id=? AND station_id=?"); $q->execute([$id, $station_id]); $merchAmt = (float)$q->fetchColumn(); } catch(Exception $e){}
-    try { $q = $pdo->prepare("SELECT COALESCE(SUM(total_cost),0) FROM job_orders WHERE customer_id=? AND station_id=?"); $q->execute([$id, $station_id]); $jobAmt = (float)$q->fetchColumn(); } catch(Exception $e){}
+    $txStation = customer_can_view_all_stations($role) ? (int)($c['station_id'] ?? 0) : $station_id;
+    try { $q = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE customer_id=? AND station_id=?"); $q->execute([$id, $txStation]); $fuelAmt = (float)$q->fetchColumn(); } catch(Exception $e){}
+    try { $q = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE customer_id=? AND station_id=?"); $q->execute([$id, $txStation]); $merchAmt = (float)$q->fetchColumn(); } catch(Exception $e){}
+    try { $q = $pdo->prepare("SELECT COALESCE(SUM(total_cost),0) FROM job_orders WHERE customer_id=? AND station_id=?"); $q->execute([$id, $txStation]); $jobAmt = (float)$q->fetchColumn(); } catch(Exception $e){}
     $totalPurchased = $fuelAmt + $merchAmt + $jobAmt;
     $ob = (float)($c['outstanding_balance'] ?? 0);
 
@@ -277,7 +336,7 @@ td{padding:5px 8px;border:1px solid #ddd;font-size:10px;}
 <tr><th>Full Name</th><td><?php echo htmlspecialchars($fullName); ?></td></tr>
 <tr><th>Contact Number</th><td><?php echo htmlspecialchars($c['contact_number']); ?></td></tr>
 <tr><th>Address</th><td><?php echo htmlspecialchars($c['address'] ?? '—'); ?></td></tr>
-<tr><th>Customer Type</th><td><?php echo ucfirst($c['customer_type']); ?></td></tr>
+<tr><th>Registration</th><td>Registered</td></tr>
 <tr><th>Date Registered</th><td><?php echo date('M d, Y', strtotime($c['registered_at'] ?? $c['created_at'])); ?></td></tr>
 <tr><th>Status</th><td><?php echo ucfirst($c['status']); ?></td></tr>
 </table>
@@ -294,9 +353,9 @@ td{padding:5px 8px;border:1px solid #ddd;font-size:10px;}
 </table>
 </div>
 </div>
-<?php if ($c['customer_type'] === 'fleet' && $c['company_name']): ?>
+<?php if (false && $c['company_name']): ?>
 <div class="section">
-<h2>Fleet / Company Information</h2>
+<h2>Company Information</h2>
 <table>
 <tr><th>Company Name</th><td><?php echo htmlspecialchars($c['company_name']); ?></td></tr>
 <tr><th>Company Address</th><td><?php echo htmlspecialchars($c['company_address'] ?? '—'); ?></td></tr>

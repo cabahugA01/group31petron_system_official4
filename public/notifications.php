@@ -502,7 +502,7 @@ function renderFbNotif($n) {
     $faIcon = 'bell';
     
     if ($evt === 'transaction') { $badgeClass = 'badge-transaction'; $faIcon = 'shopping-cart'; }
-    elseif ($evt === 'joborder') { $badgeClass = 'badge-joborder'; $faIcon = 'tools'; }
+    elseif ($evt === 'joborder' || $evt === 'job_order') { $badgeClass = 'badge-joborder'; $faIcon = 'tools'; }
     elseif ($evt === 'inventory') { $badgeClass = 'badge-inventory'; $faIcon = 'boxes'; }
     elseif ($evt === 'customer') { $badgeClass = 'badge-customer'; $faIcon = 'user'; }
     elseif ($evt === 'delivery') { $badgeClass = 'badge-delivery'; $faIcon = 'truck'; }

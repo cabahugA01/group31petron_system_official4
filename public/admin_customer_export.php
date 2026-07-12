@@ -6,6 +6,7 @@
 ob_start();
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
+require_once __DIR__ . '/../backend/customer_module_helpers.php';
 ob_end_clean();
 
 require_login();
@@ -13,8 +14,13 @@ $me         = current_user();
 $role       = role_key($me['role'] ?? '');
 $station_id = (int)user_station_id();
 
+customer_ensure_optional_columns($pdo);
+
 if (!in_array($role, ['admin', 'superadmin', 'developer'])) {
     die('Unauthorized');
+}
+if (!customer_can_view_all_stations($role) && $station_id <= 0) {
+    die('Error: You are not assigned to a station.');
 }
 
 $format    = strtolower(trim($_GET['format'] ?? 'excel'));
@@ -62,40 +68,48 @@ $txTo      = trim($_GET['tx_to']       ?? '');
 $where = [];
 $params = [];
 
-if ($role === 'admin' && $station_id > 0) {
-    $where[] = 'c.station_id = ?';
-    $params[] = $station_id;
-}
+$customerIdExpr = customer_id_expr($pdo, 'c');
+$displayNameExpr = customer_display_name_expr($pdo, 'c');
+$contactExpr = customer_contact_expr($pdo, 'c');
+$typeExpr = customer_type_expr($pdo, 'c');
+$statusExpr = customer_status_expr($pdo, 'c');
+$registeredExpr = customer_registered_at_expr($pdo, 'c');
+$balanceExpr = customer_balance_expr($pdo, 'c');
+$creditLimitExpr = customer_credit_limit_expr($pdo, 'c');
+$verificationExpr = customer_verification_status_expr($pdo, 'c');
+
+customer_apply_station_scope($where, $params, 'c', $role, $station_id);
 
 if ($search !== '') {
-    $where[] = "(CAST(c.id AS CHAR) LIKE ? OR COALESCE(c.customer_id,'') LIKE ? OR c.name LIKE ? OR COALESCE(c.contact_number,'') LIKE ?)";
+    $where[] = "(CAST(c.id AS CHAR) LIKE ? OR $customerIdExpr LIKE ? OR $displayNameExpr LIKE ? OR $contactExpr LIKE ?)";
     $s = "%$search%";
     array_push($params, $s, $s, $s, $s);
 }
-if ($cid  !== '') { $where[] = "COALESCE(c.customer_id,'') LIKE ?"; $params[] = "%$cid%"; }
-if ($cname!== '') { $where[] = "c.name LIKE ?"; $params[] = "%$cname%"; }
-if ($contact!=='') { $where[] = "COALESCE(c.contact_number,c.phone,'') LIKE ?"; $params[] = "%$contact%"; }
-if ($ctype!== '') { $where[] = "COALESCE(c.customer_type,c.type,'') = ?"; $params[] = $ctype; }
-if ($status!=='') { $where[] = "c.status = ?"; $params[] = $status; }
-if ($verif!== '') { $where[] = "COALESCE(c.verification_status,'pending') = ?"; $params[] = $verif; }
+if ($cid  !== '') { $where[] = "$customerIdExpr LIKE ?"; $params[] = "%$cid%"; }
+if ($cname!== '') { $where[] = "$displayNameExpr LIKE ?"; $params[] = "%$cname%"; }
+if ($contact!=='') { $where[] = "$contactExpr LIKE ?"; $params[] = "%$contact%"; }
+if ($ctype !== '' && $ctype !== 'registered') { $ctype = ''; }
+if ($status!=='') { $where[] = "$statusExpr = ?"; $params[] = $status; }
+if ($verif!== '') { $where[] = "$verificationExpr = ?"; $params[] = $verif; }
 if ($regBy!== '') { $where[] = "c.registered_by = ?"; $params[] = (int)$regBy; }
 if ($verBy!== '') { $where[] = "c.verified_by = ?"; $params[] = (int)$verBy; }
-if ($regFrom!=='') { $where[] = "DATE(COALESCE(c.registered_at,c.created_at)) >= ?"; $params[] = $regFrom; }
-if ($regTo  !=='') { $where[] = "DATE(COALESCE(c.registered_at,c.created_at)) <= ?"; $params[] = $regTo; }
+if ($regFrom!=='') { $where[] = "DATE($registeredExpr) >= ?"; $params[] = $regFrom; }
+if ($regTo  !=='') { $where[] = "DATE($registeredExpr) <= ?"; $params[] = $regTo; }
 
 $wc = $where ? implode(' AND ', $where) : '1=1';
 
 $stmt = $pdo->prepare("
     SELECT c.id,
-           COALESCE(c.customer_id, CONCAT('CUST-',LPAD(c.id,5,'0'))) AS customer_id_display,
-           c.name,
-           COALESCE(c.contact_number, c.phone, '') AS contact_number,
-           COALESCE(c.customer_type, c.type, 'walk-in') AS ctype,
-           c.status,
-           COALESCE(c.verification_status,'pending') AS verification_status,
-           COALESCE(c.current_balance, c.balance, 0) AS outstanding_balance,
-           COALESCE(c.credit_limit, 0) AS credit_limit,
-           COALESCE(c.registered_at, c.created_at) AS reg_date,
+           c.station_id,
+           $customerIdExpr AS customer_id_display,
+           $displayNameExpr AS name,
+           $contactExpr AS contact_number,
+           $typeExpr AS ctype,
+           $statusExpr AS status,
+           $verificationExpr AS verification_status,
+           $balanceExpr AS outstanding_balance,
+           $creditLimitExpr AS credit_limit,
+           $registeredExpr AS reg_date,
            TRIM(CONCAT(COALESCE(rb.first_name,''),' ',COALESCE(rb.last_name,''))) AS registered_by_name,
            TRIM(CONCAT(COALESCE(vb.first_name,''),' ',COALESCE(vb.last_name,''))) AS verified_by_name,
            c.verified_at
@@ -103,7 +117,7 @@ $stmt = $pdo->prepare("
     LEFT JOIN users rb ON c.registered_by = rb.id
     LEFT JOIN users vb ON c.verified_by   = vb.id
     WHERE $wc
-    ORDER BY COALESCE(c.registered_at,c.created_at) DESC
+    ORDER BY $registeredExpr DESC, c.id DESC
 ");
 $stmt->execute($params);
 $raw = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -113,11 +127,12 @@ $filteredCustomers = [];
 foreach ($raw as $c) {
     $lastTx = null;
     $totalSpent = 0.0;
+    $txStation = customer_can_view_all_stations($role) ? (int)($c['station_id'] ?? 0) : $station_id;
 
     foreach ([
-        ["SELECT MAX(transaction_date), COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE customer_id=? AND station_id=?", $station_id],
-        ["SELECT MAX(transaction_date), COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE customer_id=? AND station_id=?", $station_id],
-        ["SELECT MAX(created_at), COALESCE(SUM(total_cost),0) FROM job_orders WHERE customer_id=? AND station_id=?", $station_id],
+        ["SELECT MAX(transaction_date), COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE customer_id=? AND station_id=?", $txStation],
+        ["SELECT MAX(transaction_date), COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE customer_id=? AND station_id=?", $txStation],
+        ["SELECT MAX(created_at), COALESCE(SUM(total_cost),0) FROM job_orders WHERE customer_id=? AND station_id=?", $txStation],
     ] as [$sql, $sid]) {
         try {
             $q = $pdo->prepare($sql);
@@ -158,12 +173,12 @@ if ($format === 'csv') {
     header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
     $out = fopen('php://output', 'w');
     fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
-    fputcsv($out, ['Customer ID', 'Customer Name', 'Type', 'Contact Number', 'Registered By', 'Verified By', 'Date Registered', 'Last Transaction', 'Outstanding Balance', 'Status']);
+    fputcsv($out, ['Customer ID', 'Customer Name', 'Registration', 'Contact Number', 'Registered By', 'Verified By', 'Date Registered', 'Last Transaction', 'Outstanding Balance', 'Status']);
     foreach ($filteredCustomers as $c) {
         fputcsv($out, [
             $c['customer_id_display'],
             $c['name'],
-            ucfirst($c['ctype']),
+            'Registered',
             $c['contact_number'],
             $c['registered_by_name'] ?: 'System',
             $c['verified_by_name'] ?: '—',
@@ -187,13 +202,13 @@ if ($format === 'excel') {
     echo '<h3>Customer Registry Report — ' . htmlspecialchars($station_name) . '</h3>';
     echo '<p>Generated: ' . date('M d, Y g:i A') . '</p>';
     echo '<table><thead><tr>
-        <th>Customer ID</th><th>Customer Name</th><th>Type</th><th>Contact Number</th><th>Registered By</th><th>Verified By</th><th>Date Registered</th><th>Last Transaction</th><th>Outstanding Balance</th><th>Status</th>
+        <th>Customer ID</th><th>Customer Name</th><th>Registration</th><th>Contact Number</th><th>Registered By</th><th>Verified By</th><th>Date Registered</th><th>Last Transaction</th><th>Outstanding Balance</th><th>Status</th>
     </tr></thead><tbody>';
     foreach ($filteredCustomers as $c) {
         echo '<tr>';
         echo '<td>' . htmlspecialchars($c['customer_id_display']) . '</td>';
         echo '<td>' . htmlspecialchars($c['name']) . '</td>';
-        echo '<td>' . ucfirst($c['ctype']) . '</td>';
+        echo '<td>Registered</td>';
         echo '<td>' . htmlspecialchars($c['contact_number']) . '</td>';
         echo '<td>' . htmlspecialchars($c['registered_by_name'] ?: 'System') . '</td>';
         echo '<td>' . htmlspecialchars($c['verified_by_name'] ?: '—') . '</td>';
@@ -245,7 +260,7 @@ header('Content-Type: text/html; charset=utf-8');
         <tr>
             <th>Customer ID</th>
             <th>Customer Name</th>
-            <th>Type</th>
+            <th>Registration</th>
             <th>Contact Number</th>
             <th>Registered By</th>
             <th>Verified By</th>
@@ -263,7 +278,7 @@ header('Content-Type: text/html; charset=utf-8');
         <tr>
             <td><strong><?php echo htmlspecialchars($c['customer_id_display']); ?></strong></td>
             <td><?php echo htmlspecialchars($c['name']); ?></td>
-            <td><?php echo ucfirst($c['ctype']); ?></td>
+            <td>Registered</td>
             <td><?php echo htmlspecialchars($c['contact_number']); ?></td>
             <td><?php echo htmlspecialchars($c['registered_by_name'] ?: 'System'); ?></td>
             <td><?php echo htmlspecialchars($c['verified_by_name'] ?: '—'); ?></td>
@@ -285,20 +300,45 @@ header('Content-Type: text/html; charset=utf-8');
 // 3. EXPORT SINGLE PROFILE PDF
 // ─────────────────────────────────────────────────────────────────────
 function exportSingleProfilePdf($id, $station_name) {
-    global $pdo, $station_id;
+    global $pdo, $station_id, $role;
+
+    $customerIdExpr = customer_id_expr($pdo, 'c');
+    $displayNameExpr = customer_display_name_expr($pdo, 'c');
+    $contactExpr = customer_contact_expr($pdo, 'c');
+    $typeExpr = customer_type_expr($pdo, 'c');
+    $statusExpr = customer_status_expr($pdo, 'c');
+    $registeredExpr = customer_registered_at_expr($pdo, 'c');
+    $balanceExpr = customer_balance_expr($pdo, 'c');
+    $creditLimitExpr = customer_credit_limit_expr($pdo, 'c');
+    $verificationExpr = customer_verification_status_expr($pdo, 'c');
+    $where = ['c.id = ?'];
+    $params = [$id];
+    customer_apply_station_scope($where, $params, 'c', $role, $station_id);
 
     $stmt = $pdo->prepare("
         SELECT c.*,
-               COALESCE(c.customer_id, CONCAT('CUST-',LPAD(c.id,5,'0'))) AS customer_id_display,
-               COALESCE(c.current_balance, c.balance, 0) AS outstanding_balance,
-               TRIM(CONCAT(COALESCE(rb.first_name,''),' ',COALESCE(rb.last_name,''))) AS registered_by_name,
-               TRIM(CONCAT(COALESCE(vb.first_name,''),' ',COALESCE(vb.last_name,''))) AS verified_by_name
+               $customerIdExpr AS customer_id_display,
+               $displayNameExpr AS name,
+               $contactExpr AS contact_number,
+               $typeExpr AS customer_type,
+               $statusExpr AS status,
+               $registeredExpr AS registered_at,
+               $balanceExpr AS outstanding_balance,
+               $creditLimitExpr AS credit_limit,
+               $verificationExpr AS verification_status,
+               " . customer_company_expr($pdo, 'company_name', 'c') . " AS company_name,
+               " . customer_company_expr($pdo, 'company_address', 'c') . " AS company_address,
+               " . customer_company_expr($pdo, 'company_contact_person', 'c') . " AS company_contact_person,
+               " . customer_company_expr($pdo, 'company_contact_number', 'c') . " AS company_contact_number,
+               " . customer_verification_remarks_expr($pdo, 'c') . " AS verification_remarks,
+               " . customer_user_name_expr('rb') . " AS registered_by_name,
+               " . customer_user_name_expr('vb') . " AS verified_by_name
         FROM customers c
         LEFT JOIN users rb ON c.registered_by = rb.id
         LEFT JOIN users vb ON c.verified_by   = vb.id
-        WHERE c.id = ? AND c.station_id = ?
+        WHERE " . implode(' AND ', $where) . "
     ");
-    $stmt->execute([$id, $station_id]);
+    $stmt->execute($params);
     $c = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$c) {
@@ -314,22 +354,24 @@ function exportSingleProfilePdf($id, $station_name) {
     $lastTxDate = null;
 
     try {
-        $q = $pdo->prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount), 0) as tot, MAX(transaction_date) as last_d FROM merchandise_transactions WHERE customer_id = ?");
-        $q->execute([$id]);
+        $txStation = customer_can_view_all_stations($role) ? (int)($c['station_id'] ?? 0) : $station_id;
+
+        $q = $pdo->prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount), 0) as tot, MAX(transaction_date) as last_d FROM merchandise_transactions WHERE customer_id = ? AND station_id = ?");
+        $q->execute([$id, $txStation]);
         $r = $q->fetch(PDO::FETCH_ASSOC);
         if ($r) { $merchCount = $r['cnt']; $merchSpent = $r['tot']; if ($r['last_d']) $lastTxDate = $r['last_d']; }
     } catch(Exception $e){}
 
     try {
-        $q = $pdo->prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(total_cost), 0) as tot, MAX(created_at) as last_d FROM job_orders WHERE customer_id = ?");
-        $q->execute([$id]);
+        $q = $pdo->prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(total_cost), 0) as tot, MAX(created_at) as last_d FROM job_orders WHERE customer_id = ? AND station_id = ?");
+        $q->execute([$id, $txStation]);
         $r = $q->fetch(PDO::FETCH_ASSOC);
         if ($r) { $joCount = $r['cnt']; $joSpent = $r['tot']; if ($r['last_d']) $lastTxDate = $lastTxDate ? max($lastTxDate, $r['last_d']) : $r['last_d']; }
     } catch(Exception $e){}
 
     try {
-        $q = $pdo->prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount), 0) as tot, MAX(transaction_date) as last_d FROM fuel_transactions WHERE customer_id = ?");
-        $q->execute([$id]);
+        $q = $pdo->prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount), 0) as tot, MAX(transaction_date) as last_d FROM fuel_transactions WHERE customer_id = ? AND station_id = ?");
+        $q->execute([$id, $txStation]);
         $r = $q->fetch(PDO::FETCH_ASSOC);
         if ($r) { $fuelCount = $r['cnt']; $fuelSpent = $r['tot']; if ($r['last_d']) $lastTxDate = $lastTxDate ? max($lastTxDate, $r['last_d']) : $r['last_d']; }
     } catch(Exception $e){}
@@ -380,7 +422,7 @@ function exportSingleProfilePdf($id, $station_name) {
                 <tr><th>Full Name</th><td><?php echo htmlspecialchars($fullName); ?></td></tr>
                 <tr><th>Contact Number</th><td><?php echo htmlspecialchars($c['contact_number']); ?></td></tr>
                 <tr><th>Address</th><td><?php echo htmlspecialchars($c['address'] ?? '—'); ?></td></tr>
-                <tr><th>Customer Type</th><td><?php echo ucfirst($c['customer_type'] ?: $c['type']); ?></td></tr>
+                <tr><th>Registration</th><td>Registered</td></tr>
                 <tr><th>Date Registered</th><td><?php echo date('M d, Y', strtotime($c['registered_at'] ?? $c['created_at'])); ?></td></tr>
                 <tr><th>Registered By</th><td><?php echo htmlspecialchars($c['registered_by_name'] ?: 'System'); ?></td></tr>
                 <tr><th>Status</th><td><?php echo ucfirst($c['status']); ?></td></tr>
@@ -398,9 +440,9 @@ function exportSingleProfilePdf($id, $station_name) {
             </table>
         </div>
     </div>
-    <?php if (($c['customer_type'] === 'fleet' || $c['type'] === 'credit') && $c['company_name']): ?>
+    <?php if (false && $c['company_name']): ?>
     <div class="section">
-        <h2>Fleet / Company Information</h2>
+        <h2>Company Information</h2>
         <table>
             <tr><th>Company Name</th><td><?php echo htmlspecialchars($c['company_name']); ?></td></tr>
             <tr><th>Company Address</th><td><?php echo htmlspecialchars($c['company_address'] ?? '—'); ?></td></tr>
@@ -431,13 +473,19 @@ function exportSingleProfilePdf($id, $station_name) {
 // 4. EXPORT SINGLE CUSTOMER HISTORY TABLE
 // ─────────────────────────────────────────────────────────────────────
 function exportSingleHistory($id, $format, $station_name) {
-    global $pdo;
+    global $pdo, $station_id, $role;
 
-    $stmt = $pdo->prepare("SELECT id, COALESCE(customer_id, CONCAT('CUST-',LPAD(id,5,'0'))) AS customer_id_display, first_name, last_name, name FROM customers WHERE id = ?");
-    $stmt->execute([$id]);
+    $customerIdExpr = customer_id_expr($pdo, 'c');
+    $where = ['c.id = ?'];
+    $params = [$id];
+    customer_apply_station_scope($where, $params, 'c', $role, $station_id);
+
+    $stmt = $pdo->prepare("SELECT c.id, c.station_id, $customerIdExpr AS customer_id_display, c.first_name, c.last_name, c.name FROM customers c WHERE " . implode(' AND ', $where));
+    $stmt->execute($params);
     $c = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$c) die('Customer not found');
     $fullName = trim(implode(' ', array_filter([$c['first_name'], $c['last_name']])) ?: $c['name']);
+    $txStation = customer_can_view_all_stations($role) ? (int)($c['station_id'] ?? 0) : $station_id;
 
     $search   = trim($_GET['search'] ?? '');
     $module   = trim($_GET['module'] ?? '');
@@ -449,7 +497,7 @@ function exportSingleHistory($id, $format, $station_name) {
 
     // Fuel
     if ($module === '' || $module === 'Fuel') {
-        $where = ['ft.customer_id = ?']; $params = [$id];
+        $where = ['ft.customer_id = ?', 'ft.station_id = ?']; $params = [$id, $txStation];
         if ($search !== '') { $where[] = "ft.transaction_id LIKE ?"; $params[] = "%$search%"; }
         if ($status !== '') { $where[] = "ft.status = ?"; $params[] = $status; }
         if ($dateFrom !== '') { $where[] = "DATE(ft.transaction_date) >= ?"; $params[] = $dateFrom; }
@@ -470,7 +518,7 @@ function exportSingleHistory($id, $format, $station_name) {
 
     // Merchandise
     if ($module === '' || $module === 'Merchandise') {
-        $where = ['mt.customer_id = ?']; $params = [$id];
+        $where = ['mt.customer_id = ?', 'mt.station_id = ?']; $params = [$id, $txStation];
         if ($search !== '') { $where[] = "mt.transaction_id LIKE ?"; $params[] = "%$search%"; }
         if ($status !== '') { $where[] = "mt.validation_status = ?"; $params[] = $status; }
         if ($dateFrom !== '') { $where[] = "DATE(mt.transaction_date) >= ?"; $params[] = $dateFrom; }
@@ -491,7 +539,7 @@ function exportSingleHistory($id, $format, $station_name) {
 
     // Job Orders
     if ($module === '' || $module === 'Job Order') {
-        $where = ['jo.customer_id = ?']; $params = [$id];
+        $where = ['jo.customer_id = ?', 'jo.station_id = ?']; $params = [$id, $txStation];
         if ($search !== '') { $where[] = "(jo.job_order_id LIKE ? OR jo.job_order_number LIKE ?)"; $params[] = "%$search%"; $params[] = "%$search%"; }
         if ($status !== '') { $where[] = "jo.status = ?"; $params[] = $status; }
         if ($dateFrom !== '') { $where[] = "DATE(jo.created_at) >= ?"; $params[] = $dateFrom; }

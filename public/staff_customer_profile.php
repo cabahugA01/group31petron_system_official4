@@ -7,11 +7,14 @@
 $page_id = 'customers';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
+require_once __DIR__ . '/../backend/customer_module_helpers.php';
 require_login();
 
 $me = current_user();
 $role = role_key($me['role'] ?? '');
-$station_id = user_station_id();
+$station_id = (int)user_station_id();
+
+customer_ensure_optional_columns($pdo);
 
 // Staff only
 if (!in_array($role, ['staff', 'superadmin', 'developer'])) {
@@ -27,13 +30,41 @@ if (!$customer_id) {
 
 // Fetch customer details
 try {
+    $customerIdExpr = customer_id_expr($pdo, 'c');
+    $displayNameExpr = customer_display_name_expr($pdo, 'c');
+    $firstNameExpr = customer_first_name_expr($pdo, 'c');
+    $middleNameExpr = customer_middle_name_expr($pdo, 'c');
+    $lastNameExpr = customer_last_name_expr($pdo, 'c');
+    $contactExpr = customer_contact_expr($pdo, 'c');
+    $typeExpr = customer_type_expr($pdo, 'c');
+    $statusExpr = customer_status_expr($pdo, 'c');
+    $registeredExpr = customer_registered_at_expr($pdo, 'c');
+    $govIdTypeExpr = customer_gov_id_type_expr($pdo, 'c');
+    $updatedAtExpr = customer_has_column($pdo, 'updated_at') ? 'c.updated_at' : 'NULL';
+
+    $where = ['c.id = ?'];
+    $params = [$customer_id];
+    customer_apply_station_scope($where, $params, 'c', $role, $station_id);
+
     $stmt = $pdo->prepare("
-        SELECT c.*, u.name as registered_by_name
+        SELECT c.*,
+               $customerIdExpr AS customer_id,
+               $displayNameExpr AS display_name,
+               $firstNameExpr AS first_name,
+               $middleNameExpr AS middle_name,
+               $lastNameExpr AS last_name,
+               $contactExpr AS contact_number,
+               $typeExpr AS customer_type,
+               $statusExpr AS status,
+               $registeredExpr AS registered_at,
+               $govIdTypeExpr AS gov_id_type,
+               $updatedAtExpr AS updated_at,
+               " . customer_user_name_expr('u') . " AS registered_by_name
         FROM customers c
         LEFT JOIN users u ON c.registered_by = u.id
-        WHERE c.id = ? AND c.station_id = ?
+        WHERE " . implode(' AND ', $where) . "
     ");
-    $stmt->execute([$customer_id, $station_id]);
+    $stmt->execute($params);
     $customer = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$customer) {
@@ -97,8 +128,8 @@ include __DIR__ . '/../partials/header.php';
                 <i class="fas fa-id-card"></i> <?= htmlspecialchars($customer['customer_id'] ?? 'N/A') ?>
             </p>
             <div class="profile-badges">
-                <span class="badge badge-<?= $customer['customer_type'] === 'walk-in' ? 'walkin' : ($customer['customer_type'] === 'regular' ? 'regular' : 'fleet') ?>">
-                    <?= ucfirst($customer['customer_type'] ?? 'N/A') ?>
+                <span class="badge badge-regular">
+                    Registered
                 </span>
                 <span class="badge badge-<?= $customer['status'] === 'active' ? 'active' : 'inactive' ?>">
                     <?= ucfirst($customer['status'] ?? 'N/A') ?>
@@ -162,8 +193,7 @@ include __DIR__ . '/../partials/header.php';
 
 <script>
 function editCustomer() {
-    alert('Edit customer feature coming soon!');
-    // TODO: Implement edit functionality
+    window.location.href = 'staff_customer_list.php?edit=<?= (int)$customer_id ?>';
 }
 </script>
 

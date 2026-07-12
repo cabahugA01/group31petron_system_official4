@@ -726,6 +726,51 @@ function user_station_name(): string {
   }
 }
 
+/**
+ * Format merchandise unit of measure to follow official nomenclature:
+ * Piece, Bottle, Gallon, Pack, Box, Case, Can, Roll, etc.
+ */
+function format_merch_unit($unit) {
+    $u = strtolower(trim((string)$unit));
+    // Pieces
+    if (in_array($u, ['pcs','pc','piece','pieces'])) return 'Pieces';
+    // Bottles
+    if (in_array($u, ['bot','btl','bottle','bottles'])) return 'Bottles';
+    // Gallons
+    if (in_array($u, ['gal','gallon','gallons'])) return 'Gallons';
+    // Boxes
+    if (in_array($u, ['box','bx','boxes'])) return 'Boxes';
+    // Packs / Packages
+    if (in_array($u, ['pack','packs','pkg','pkgs','packet','packets'])) return 'Packs';
+    // Cases / Cartons
+    if (in_array($u, ['case','cases','ctn','carton','cartons'])) return 'Cases';
+    // Cans
+    if (in_array($u, ['can','cnt','cans'])) return 'Cans';
+    // Rolls
+    if (in_array($u, ['roll','rolls','rll'])) return 'Rolls';
+    // Sets
+    if (in_array($u, ['set','sets'])) return 'Sets';
+    // Pairs
+    if (in_array($u, ['pair','pairs','pr'])) return 'Pairs';
+    // Tubs / Jars
+    if (in_array($u, ['tub','tubs'])) return 'Tubs';
+    if (in_array($u, ['jar','jars'])) return 'Jars';
+    // Bags / Sachets
+    if (in_array($u, ['bag','bags'])) return 'Bags';
+    if (in_array($u, ['sachet','sachets','sct'])) return 'Sachets';
+    // Sheets / Pads
+    if (in_array($u, ['sheet','sheets','sht'])) return 'Sheets';
+    if (in_array($u, ['pad','pads'])) return 'Pads';
+    // Tubes
+    if (in_array($u, ['tube','tubes','tbe'])) return 'Tubes';
+    // Liters (fuel-side should not appear in merch, but safe fallback)
+    if (in_array($u, ['ltr','litre','litres','liter','liters','l'])) return 'Liters';
+    // Empty → default to Pieces
+    if ($u === '') return 'Pieces';
+    // Fallback: capitalize first letter
+    return ucfirst($unit);
+}
+
 function today_key(){
   return date('Y-m-d');
 }

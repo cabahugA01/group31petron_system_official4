@@ -654,9 +654,15 @@ include __DIR__ . '/../partials/header.php';
                                     <button onclick="openEditPriceModal(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars($f['raw_fuel_type']); ?>', <?php echo (float)($f['price_per_liter'] ?? 0); ?>)" class="act-btn act-btn-edit">
                                         <i class="fas fa-edit"></i> Edit
                                     </button>
-                                    <button onclick="deactivateFuel(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars($f['raw_fuel_type']); ?>')" class="act-btn act-btn-deactivate">
-                                        <i class="fas fa-ban"></i> Deactivate
-                                    </button>
+                                    <?php if (($f['status'] ?? 'active') === 'active'): ?>
+                                        <button onclick="deactivateFuel(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars($f['raw_fuel_type']); ?>')" class="act-btn act-btn-deactivate">
+                                            <i class="fas fa-ban"></i> Deactivate
+                                        </button>
+                                    <?php else: ?>
+                                        <button onclick="activateFuel(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars($f['raw_fuel_type']); ?>')" class="act-btn act-btn-activate">
+                                            <i class="fas fa-check-circle"></i> Activate
+                                        </button>
+                                    <?php endif; ?>
                                 <?php else: ?>
                                     <span style="font-size:11px;color:#94a3b8;font-style:italic;">No Actions</span>
                                 <?php endif; ?>
@@ -784,9 +790,15 @@ include __DIR__ . '/../partials/header.php';
                                 <button onclick="openEditMerchPriceModal(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars($item['product_name'] ?? ''); ?>', <?php echo $price; ?>)" class="act-btn act-btn-edit">
                                     <i class="fas fa-edit"></i> Edit
                                 </button>
-                                <button onclick="deactivateMerchandise(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars($item['product_name'] ?? ''); ?>')" class="act-btn act-btn-deactivate">
-                                    <i class="fas fa-ban"></i> Deactivate
-                                </button>
+                                <?php if (($item['status'] ?? 'active') !== 'inactive'): ?>
+                                    <button onclick="deactivateMerchandise(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars($item['product_name'] ?? ''); ?>')" class="act-btn act-btn-deactivate">
+                                        <i class="fas fa-ban"></i> Deactivate
+                                    </button>
+                                <?php else: ?>
+                                    <button onclick="activateMerchandise(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars($item['product_name'] ?? ''); ?>')" class="act-btn act-btn-activate">
+                                        <i class="fas fa-check-circle"></i> Activate
+                                    </button>
+                                <?php endif; ?>
                             </div>
                         </td>
                     </tr>
@@ -871,9 +883,15 @@ include __DIR__ . '/../partials/header.php';
                                     <button onclick="openEditServicePriceModal(<?php echo $svc['id']; ?>, '<?php echo htmlspecialchars($svc['service_name']); ?>', <?php echo $currentPrice; ?>)" class="act-btn act-btn-edit">
                                         <i class="fas fa-edit"></i> Edit
                                     </button>
-                                    <button onclick="deactivateService(<?php echo $svc['id']; ?>, '<?php echo htmlspecialchars($svc['service_name']); ?>')" class="act-btn act-btn-deactivate">
-                                        <i class="fas fa-ban"></i> Deactivate
-                                    </button>
+                                    <?php if ($isServiceActive): ?>
+                                        <button onclick="deactivateService(<?php echo $svc['id']; ?>, '<?php echo htmlspecialchars($svc['service_name']); ?>')" class="act-btn act-btn-deactivate">
+                                            <i class="fas fa-ban"></i> Deactivate
+                                        </button>
+                                    <?php else: ?>
+                                        <button onclick="activateService(<?php echo $svc['id']; ?>, '<?php echo htmlspecialchars($svc['service_name']); ?>')" class="act-btn act-btn-activate">
+                                            <i class="fas fa-check-circle"></i> Activate
+                                        </button>
+                                    <?php endif; ?>
                                 </div>
                             </td>
                         </tr>
@@ -1008,9 +1026,8 @@ function filterTable() {
 <!-- Edit Fuel Modal — Full Edit -->
 <div id="editPriceModal" class="modal">
   <div style="background:#fff;border-radius:12px;width:90%;max-width:580px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3);">
-    <div style="background:#002F6C;border-radius:12px 12px 0 0;padding:15px 20px;display:flex;align-items:center;justify-content:space-between;">
-      <h3 style="margin:0;font-size:15px;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px;"><i class="fas fa-gas-pump"></i> Edit Fuel Product</h3>
-      <button type="button" onclick="closeEditPriceModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:18px;line-height:1;">&times;</button>
+    <div style="background:#002F6C !important;border-radius:12px 12px 0 0;padding:18px 20px;display:flex;align-items:center;justify-content:space-between;">
+      <h3 style="margin:0 !important;font-size:17px !important;font-weight:800 !important;color:#ffffff !important;display:flex !important;align-items:center;gap:10px;letter-spacing:0.3px;"><i class="fas fa-gas-pump" style="font-size:18px;color:#ffffff !important;"></i> <span style="color:#ffffff !important;">EDIT FUEL PRODUCT</span></h3>
     </div>
     <form id="editPriceForm" style="padding:22px;">
       <input type="hidden" id="editFuelId">
@@ -1022,11 +1039,8 @@ function filterTable() {
         <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Capacity (L) <span style="color:#dc2626;">*</span></label><input type="number" id="editFuelCapacity" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00"></div>
         <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Critical Level (L) <span style="color:#dc2626;">*</span></label><input type="number" id="editFuelCritical" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00"></div>
       </div>
-      <div style="margin-bottom:18px; padding:10px 14px; background:#fef3c7; border:1px solid #fcd34d; border-radius:7px; font-size:12px; color:#92400e;">
-        <i class="fas fa-info-circle"></i> <strong>Price changes</strong> will be submitted to the Admin for approval before taking effect. Other fields (Fuel Type, Capacity, Critical Level) are saved immediately.
-      </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;">
-        <button type="button" onclick="closeEditPriceModal()" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
+        <button type="button" onclick="closeEditPriceModal()" style="background:#f1f5f9;color:#ffffff !important;border:1px solid #e2e8f0;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
         <button type="submit" style="background:#002F6C;color:#fff;border:none;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save"></i> Save Changes</button>
       </div>
     </form>
@@ -1130,11 +1144,6 @@ function filterTable() {
             <input type="hidden" id="rollbackHistoryId">
             
             <div class="modal-body">
-                <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;margin-bottom:18px;">
-                    <div style="color:#991b1b;font-size:13px;font-weight:600;"><i class="fas fa-exclamation-triangle"></i> Warning</div>
-                    <div style="color:#7f1d1d;font-size:12px;margin-top:4px;">This will revert the fuel price to a previous value. This action will be logged.</div>
-                </div>
-                
                 <div style="margin-bottom:15px;">
                     <label>FUEL</label>
                     <input type="text" id="rollbackFuelName" readonly class="input" style="background:#f8fafc;color:#64748b;">
@@ -1168,9 +1177,8 @@ function filterTable() {
 <!-- Add Merchandise Modal -->
 <div id="addMerchandiseModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;">
   <div style="background:#fff;border-radius:12px;width:90%;max-width:600px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3);">
-    <div style="background:#002F6C;border-radius:12px 12px 0 0;padding:15px 20px;display:flex;align-items:center;justify-content:space-between;">
-      <h3 style="margin:0;font-size:15px;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px;"><i class="fas fa-plus-circle"></i> Add New Merchandise</h3>
-      <button type="button" onclick="closeAddMerchandiseModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:18px;line-height:1;">&times;</button>
+    <div style="background:#002F6C !important;border-radius:12px 12px 0 0;padding:18px 20px;display:flex;align-items:center;justify-content:space-between;">
+      <h3 style="margin:0 !important;font-size:17px !important;font-weight:800 !important;color:#ffffff !important;display:flex !important;align-items:center;gap:10px;letter-spacing:0.3px;"><i class="fas fa-plus-circle" style="font-size:18px;color:#ffffff !important;"></i> <span style="color:#ffffff !important;">ADD NEW MERCHANDISE</span></h3>
     </div>
     <form id="addMerchandiseForm" style="padding:22px;">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
@@ -1186,7 +1194,7 @@ function filterTable() {
         <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Unit Price (₱) <span style="color:#dc2626;">*</span></label><input type="number" id="newMerchPrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00"></div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;">
-        <button type="button" onclick="closeAddMerchandiseModal()" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
+        <button type="button" onclick="closeAddMerchandiseModal()" style="background:#f1f5f9;color:#ffffff !important;border:1px solid #e2e8f0;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
         <button type="submit" style="background:#002F6C;color:#fff;border:none;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-check"></i> Add Merchandise</button>
       </div>
     </form>
@@ -1196,9 +1204,8 @@ function filterTable() {
 <!-- Edit Merchandise Modal — Full Edit -->
 <div id="editMerchPriceModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;">
   <div style="background:#fff;border-radius:12px;width:90%;max-width:600px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3);">
-    <div style="background:#002F6C;border-radius:12px 12px 0 0;padding:15px 20px;display:flex;align-items:center;justify-content:space-between;">
-      <h3 style="margin:0;font-size:15px;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px;"><i class="fas fa-box"></i> Edit Merchandise</h3>
-      <button type="button" onclick="closeEditMerchPriceModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:18px;line-height:1;">&times;</button>
+    <div style="background:#002F6C !important;border-radius:12px 12px 0 0;padding:18px 20px;display:flex;align-items:center;justify-content:space-between;">
+      <h3 style="margin:0 !important;font-size:17px !important;font-weight:800 !important;color:#ffffff !important;display:flex !important;align-items:center;gap:10px;letter-spacing:0.3px;"><i class="fas fa-box" style="font-size:18px;color:#ffffff !important;"></i> <span style="color:#ffffff !important;">EDIT MERCHANDISE</span></h3>
     </div>
     <form id="editMerchPriceForm" style="padding:22px;">
       <input type="hidden" id="editMerchId">
@@ -1215,7 +1222,7 @@ function filterTable() {
         <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Unit Price (₱) <span style="color:#dc2626;">*</span></label><input type="number" id="editMerchPrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00"></div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;">
-        <button type="button" onclick="closeEditMerchPriceModal()" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
+        <button type="button" onclick="closeEditMerchPriceModal()" style="background:#f1f5f9;color:#ffffff !important;border:1px solid #e2e8f0;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
         <button type="submit" style="background:#002F6C;color:#fff;border:none;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save"></i> Save Changes</button>
       </div>
     </form>
@@ -1259,9 +1266,8 @@ function filterTable() {
 <!-- Edit Service Modal — Full Edit -->
 <div id="editServicePriceModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;">
   <div style="background:#fff;border-radius:12px;width:90%;max-width:560px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3);">
-    <div style="background:#002F6C;border-radius:12px 12px 0 0;padding:15px 20px;display:flex;align-items:center;justify-content:space-between;">
-      <h3 style="margin:0;font-size:15px;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px;"><i class="fas fa-wrench"></i> Edit Service Type</h3>
-      <button type="button" onclick="closeEditServicePriceModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:18px;line-height:1;">&times;</button>
+    <div style="background:#002F6C !important;border-radius:12px 12px 0 0;padding:18px 20px;display:flex;align-items:center;justify-content:space-between;">
+      <h3 style="margin:0 !important;font-size:17px !important;font-weight:800 !important;color:#ffffff !important;display:flex !important;align-items:center;gap:10px;letter-spacing:0.3px;"><i class="fas fa-wrench" style="font-size:18px;color:#ffffff !important;"></i> <span style="color:#ffffff !important;">EDIT SERVICE TYPE</span></h3>
     </div>
     <form id="editServicePriceForm" style="padding:22px;">
       <input type="hidden" id="editServiceId">
@@ -1272,7 +1278,7 @@ function filterTable() {
       </div>
       <div style="margin-bottom:18px;"><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Status</label><select id="editServiceActive" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;"><option value="1">Active</option><option value="0">Inactive</option></select></div>
       <div style="display:flex;gap:10px;justify-content:flex-end;">
-        <button type="button" onclick="closeEditServicePriceModal()" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
+        <button type="button" onclick="closeEditServicePriceModal()" style="background:#f1f5f9;color:#ffffff !important;border:1px solid #e2e8f0;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
         <button type="submit" style="background:#002F6C;color:#fff;border:none;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save"></i> Save Changes</button>
       </div>
     </form>
@@ -1390,7 +1396,7 @@ document.getElementById('addProductForm').addEventListener('submit', function(e)
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('✓ Fuel product added successfully!');
+            alert('SUCCESS: Fuel product added successfully!');
             closeAddProductModal();
             location.reload();
         } else {
@@ -1415,7 +1421,7 @@ document.getElementById('editPriceForm').addEventListener('submit', function(e) 
     fd.append('critical_level', document.getElementById('editFuelCritical').value);
     fetch('manager_set_prices_handler.php', {method:'POST', body:fd})
         .then(r => r.json()).then(data => {
-            if (data.success) { alert('✓ ' + (data.message || 'Fuel product updated!')); closeEditPriceModal(); location.reload(); }
+            if (data.success) { alert('SUCCESS: ' + (data.message || 'Fuel product updated!')); closeEditPriceModal(); location.reload(); }
             else alert('Error: ' + (data.message || 'Failed'));
         }).catch(() => alert('Error updating fuel.'));
 });
@@ -1532,7 +1538,7 @@ document.getElementById('rollbackPriceForm').addEventListener('submit', function
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('✓ Price rolled back successfully!');
+            alert('SUCCESS: Price rolled back successfully!');
             closeRollbackModal();
             closeViewFuelModal();
             location.reload();
@@ -1563,7 +1569,7 @@ function deactivateFuel(id, fuelType) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('✓ Fuel product deactivated successfully!');
+            alert('SUCCESS: Fuel product deactivated successfully!');
             location.reload();
         } else {
             alert('Error: ' + (data.message || 'Failed to deactivate product'));
@@ -1572,6 +1578,35 @@ function deactivateFuel(id, fuelType) {
     .catch(error => {
         console.error('Error:', error);
         alert('Error deactivating product. Please try again.');
+    });
+}
+
+// ── Activate Fuel ───────────────────────────────────────────────────────────
+function activateFuel(id, fuelType) {
+    if (!confirm('Are you sure you want to activate "' + fuelType + '"?\n\nThis will set the fuel status to active.')) {
+        return;
+    }
+    
+    var formData = new FormData();
+    formData.append('action', 'activate_fuel');
+    formData.append('id', id);
+    
+    fetch('manager_set_prices_handler.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('SUCCESS: Fuel product activated successfully!');
+            location.reload();
+        } else {
+            alert('Error: ' + (data.message || 'Failed to activate product'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error activating product. Please try again.');
     });
 }
 
@@ -1647,7 +1682,7 @@ document.getElementById('addMerchandiseForm').addEventListener('submit', functio
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('✓ Merchandise added successfully!');
+            alert('SUCCESS: Merchandise added successfully!');
             closeAddMerchandiseModal();
             location.reload();
         } else {
@@ -1674,7 +1709,7 @@ document.getElementById('editMerchPriceForm').addEventListener('submit', functio
     fd.append('unit_price',   document.getElementById('editMerchPrice').value);
     fetch('manager_set_prices_handler.php', {method:'POST', body:fd})
         .then(r => r.json()).then(data => {
-            if (data.success) { alert('✓ Merchandise updated!'); closeEditMerchPriceModal(); location.reload(); }
+            if (data.success) { alert('SUCCESS: Merchandise updated!'); closeEditMerchPriceModal(); location.reload(); }
             else alert('Error: ' + (data.message || 'Failed'));
         }).catch(() => alert('Error updating merchandise.'));
 });
@@ -1695,7 +1730,7 @@ function deactivateMerchandise(id, productName) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('✓ Merchandise deactivated successfully!');
+            alert('SUCCESS: Merchandise deactivated successfully!');
             location.reload();
         } else {
             alert('Error: ' + (data.message || 'Failed to deactivate merchandise'));
@@ -1704,6 +1739,34 @@ function deactivateMerchandise(id, productName) {
     .catch(error => {
         console.error('Error:', error);
         alert('Error deactivating merchandise. Please try again.');
+    });
+}
+
+function activateMerchandise(id, productName) {
+    if (!confirm('Are you sure you want to activate "' + productName + '"?\n\nThis will set the merchandise status to active.')) {
+        return;
+    }
+    
+    var formData = new FormData();
+    formData.append('action', 'activate_merchandise');
+    formData.append('id', id);
+    
+    fetch('manager_set_prices_handler.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('SUCCESS: Merchandise activated successfully!');
+            location.reload();
+        } else {
+            alert('Error: ' + (data.message || 'Failed to activate merchandise'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error activating merchandise. Please try again.');
     });
 }
 
@@ -1771,7 +1834,7 @@ document.getElementById('addServiceForm').addEventListener('submit', function(e)
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('✓ Service type added successfully!');
+            alert('SUCCESS: Service type added successfully!');
             closeAddServiceModal();
             location.reload();
         } else {
@@ -1796,7 +1859,7 @@ document.getElementById('editServicePriceForm').addEventListener('submit', funct
     fd.append('active',        document.getElementById('editServiceActive').value);
     fetch('manager_set_prices_handler.php', {method:'POST', body:fd})
         .then(r => r.json()).then(data => {
-            if (data.success) { alert('✓ Service updated!'); closeEditServicePriceModal(); location.reload(); }
+            if (data.success) { alert('SUCCESS: Service updated!'); closeEditServicePriceModal(); location.reload(); }
             else alert('Error: ' + (data.message || 'Failed'));
         }).catch(() => alert('Error updating service.'));
 });
@@ -1817,7 +1880,7 @@ function deactivateService(id, serviceName) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('✓ Service deactivated successfully!');
+            alert('SUCCESS: Service deactivated successfully!');
             location.reload();
         } else {
             alert('Error: ' + (data.message || 'Failed to deactivate service'));
@@ -1826,6 +1889,34 @@ function deactivateService(id, serviceName) {
     .catch(error => {
         console.error('Error:', error);
         alert('Error deactivating service. Please try again.');
+    });
+}
+
+function activateService(id, serviceName) {
+    if (!confirm('Are you sure you want to activate "' + serviceName + '"?\n\nThis will set the service status to active.')) {
+        return;
+    }
+    
+    var formData = new FormData();
+    formData.append('action', 'activate_service');
+    formData.append('id', id);
+    
+    fetch('manager_set_prices_handler.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('SUCCESS: Service activated successfully!');
+            location.reload();
+        } else {
+            alert('Error: ' + (data.message || 'Failed to activate service'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error activating service. Please try again.');
     });
 }
 

@@ -2623,6 +2623,25 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         .tab-navigation, .tab-btn, .controls { display: none !important; }
         .tab-content { display: block !important; }
         .tab-pane { display: block !important; }
+        
+        /* Hide all watermarks and background elements */
+        body::before, body::after, html::before, html::after {
+            content: none !important;
+            display: none !important;
+        }
+        
+        /* Hide fixed position elements (watermarks) */
+        body > *:not(.print-area) {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+        }
+        
+        /* Remove background images */
+        * {
+            background-image: none !important;
+            box-shadow: none !important;
+        }
     }
 </style>
 

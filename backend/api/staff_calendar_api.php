@@ -1,326 +1,301 @@
 <?php
-require_once '../../config/database_config.php';
-require_once '../../includes/session.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
-header('Content-Type: application/json');
+require_once __DIR__ . '/../lib.php';
+require_once __DIR__ . '/../../public/db_connect.php';
+require_once __DIR__ . '/../calendar_module_helpers.php';
 
-class StaffCalendarAPI {
-    private $pdo;
-    private $station_id;
-    private $user_id;
-    private $user_role;
-    
-    public function __construct($pdo) {
+header('Content-Type: application/json; charset=utf-8');
+
+if (empty($_SESSION['user']) && !empty($_SESSION['user_id'])) {
+    $_SESSION['user'] = [
+        'id' => (int)$_SESSION['user_id'],
+        'role' => $_SESSION['role'] ?? 'staff',
+        'station_id' => $_SESSION['station_id'] ?? null,
+    ];
+}
+
+require_login();
+calendar_ensure_schema($pdo);
+
+class StaffCalendarAPI
+{
+    private PDO $pdo;
+    private array $user;
+    private int $station_id;
+    private int $user_id;
+    private string $role;
+
+    public function __construct(PDO $pdo)
+    {
         $this->pdo = $pdo;
-        $this->station_id = $_SESSION['station_id'] ?? null;
-        $this->user_id = $_SESSION['user_id'] ?? null;
-        $this->user_role = $_SESSION['role'] ?? null;
-        
+        $this->user = current_user();
+        $this->station_id = (int)user_station_id();
+        $this->user_id = (int)($this->user['id'] ?? 0);
+        $this->role = role_key($this->user['role'] ?? 'staff');
+
         if (!$this->station_id || !$this->user_id) {
             http_response_code(401);
-            echo json_encode(['error' => 'Unauthorized']);
+            echo json_encode(['success' => false, 'error' => 'Unauthorized']);
             exit;
         }
     }
-    
-    public function handleRequest() {
+
+    public function handleRequest(): array
+    {
         $action = $_GET['action'] ?? '';
-        
-        switch ($action) {
-            case 'get_events':
-                return $this->getEvents();
-            case 'get_event_types':
-                return $this->getEventTypes();
-            case 'get_staff_members':
-                return $this->getStaffMembers();
-            case 'get_managers':
-                return $this->getManagers();
-            case 'add_event':
-                return $this->addEvent();
-            case 'update_event':
-                return $this->updateEvent();
-            case 'delete_event':
-                return $this->deleteEvent();
-            case 'get_dashboard_data':
-                return $this->getDashboardData();
-            case 'get_today_events':
-                return $this->getTodayEvents();
-            case 'get_upcoming_events':
-                return $this->getUpcomingEvents();
-            default:
-                http_response_code(400);
-                return ['error' => 'Invalid action'];
-        }
-    }
-    
-    private function getEvents() {
-        $month = $_GET['month'] ?? date('Y-m');
-        $status_filter = $_GET['status'] ?? '';
-        
+
         try {
-            $query = "
-                SELECT * FROM staff_calendar_summary 
-                WHERE station_id = :station_id 
-                AND DATE_FORMAT(event_date, '%Y-%m') = :month
-            ";
-            
-            $params = [
-                ':station_id' => $this->station_id,
-                ':month' => $month
-            ];
-            
-            if ($status_filter) {
-                $query .= " AND status = :status";
-                $params[':status'] = $status_filter;
+            switch ($action) {
+                case 'get_events':
+                    $month = preg_match('/^\d{4}-\d{2}$/', $_GET['month'] ?? '') ? $_GET['month'] : date('Y-m');
+                    return ['success' => true, 'events' => $this->eventsBetween($month . '-01', date('Y-m-t', strtotime($month . '-01')), $_GET['status'] ?? '')];
+                case 'get_event_types':
+                    return $this->getEventTypes();
+                case 'get_staff_members':
+                    return $this->getStaffMembers();
+                case 'get_managers':
+                    return $this->getManagers();
+                case 'add_event':
+                    return $this->addEvent();
+                case 'update_event':
+                    return $this->updateEvent();
+                case 'delete_event':
+                    return $this->deleteEvent();
+                case 'get_dashboard_data':
+                    return $this->getDashboardData();
+                case 'get_today_events':
+                    return ['success' => true, 'events' => $this->eventsBetween(date('Y-m-d'), date('Y-m-d'))];
+                case 'get_upcoming_events':
+                    return ['success' => true, 'events' => $this->eventsBetween(date('Y-m-d'), date('Y-m-d', strtotime('+3 days')))];
+                default:
+                    http_response_code(400);
+                    return ['success' => false, 'error' => 'Invalid action'];
             }
-            
-            $query .= " ORDER BY event_date, start_time";
-            
-            $stmt = $this->pdo->prepare($query);
-            $stmt->execute($params);
-            $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            return ['success' => true, 'events' => $events];
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
+            http_response_code(500);
             return ['success' => false, 'error' => $e->getMessage()];
         }
     }
-    
-    private function getEventTypes() {
-        try {
-            $stmt = $this->pdo->prepare("
-                SELECT `user_id`, type_key, type_name, description, icon_class, color_class 
-                FROM staff_event_types 
-                WHERE is_active = TRUE 
-                ORDER BY sort_order
-            ");
-            $stmt->execute();
-            $event_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            return ['success' => true, 'event_types' => $event_types];
-        } catch (Exception $e) {
-            return ['success' => false, 'error' => $e->getMessage()];
-        }
+
+    private function requestData(): array
+    {
+        $raw = file_get_contents('php://input');
+        $json = $raw ? json_decode($raw, true) : null;
+        return is_array($json) ? $json : $_POST;
     }
-    
-    private function getStaffMembers() {
-        try {
-            $stmt = $this->pdo->prepare("
-                SELECT u.id, u.first_name, u.last_name, u.email, 
-                       COALESCE(scc.color_code, '#007bff') as color_code,
-                       COALESCE(scc.color_name, 'Blue') as color_name
-                FROM users u
-                LEFT JOIN staff_color_config scc ON u.id = scc.user_id AND scc.is_active = TRUE
-                WHERE u.station_id = :station_id 
-                AND u.role IN ('staff', 'cashier', 'pump_attendant')
-                AND u.account_status = 'Active'
-                ORDER BY u.first_name, u.last_name
-            ");
-            $stmt->execute([':station_id' => $this->station_id]);
-            $staff = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            return ['success' => true, 'staff' => $staff];
-        } catch (Exception $e) {
-            return ['success' => false, 'error' => $e->getMessage()];
+
+    private function eventsBetween(string $start, string $end, string $status = ''): array
+    {
+        $sql = "SELECT sce.*, et.type_key, et.type_name, et.icon_class, et.color_class,
+                       su.name AS staff_name, mgr.name AS manager_name
+                FROM staff_calendar_events sce
+                JOIN staff_event_types et ON sce.event_type_id = et.id
+                JOIN users su ON sce.staff_encoder_id = su.id
+                LEFT JOIN users mgr ON sce.manager_assigned_id = mgr.id
+                WHERE sce.station_id = :station_id
+                  AND sce.event_date BETWEEN :start_date AND :end_date";
+        $params = [
+            ':station_id' => $this->station_id,
+            ':start_date' => $start,
+            ':end_date' => $end,
+        ];
+
+        if ($this->role === 'staff') {
+            $sql .= " AND (sce.staff_encoder_id = :user_id OR sce.manager_assigned_id = :user_id)";
+            $params[':user_id'] = $this->user_id;
         }
-    }
-    
-    private function getManagers() {
-        try {
-            $stmt = $this->pdo->prepare("
-                SELECT u.id, u.first_name, u.last_name, u.email,
-                       COALESCE(mcc.color_code, '#dc3545') as color_code,
-                       COALESCE(mcc.color_name, 'Red') as color_name
-                FROM users u
-                LEFT JOIN manager_color_config mcc ON u.id = mcc.user_id AND mcc.is_active = TRUE
-                WHERE u.station_id = :station_id 
-                AND u.role IN ('manager', 'admin')
-                AND u.account_status = 'Active'
-                ORDER BY u.first_name, u.last_name
-            ");
-            $stmt->execute([':station_id' => $this->station_id]);
-            $managers = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            return ['success' => true, 'managers' => $managers];
-        } catch (Exception $e) {
-            return ['success' => false, 'error' => $e->getMessage()];
+
+        if ($status !== '') {
+            $sql .= " AND sce.status = :status";
+            $params[':status'] = calendar_normalize_status($status);
         }
+
+        $sql .= " ORDER BY sce.event_date, sce.start_time";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
-    
-    private function addEvent() {
-        $data = json_decode(file_get_contents('php://input'), true);
-        
-        try {
-            $stmt = $this->pdo->prepare("
-                INSERT INTO staff_calendar_events 
-                (station_id, event_type_id, staff_encoder_id, manager_assigned_id, 
-                 event_date, start_time, end_time, work_description, status, notes)
-                VALUES 
-                (:station_id, :event_type_id, :staff_encoder_id, :manager_assigned_id,
-                 :event_date, :start_time, :end_time, :work_description, :status, :notes)
-            ");
-            
-            $stmt->execute([
-                ':station_id' => $this->station_id,
-                ':event_type_id' => $data['event_type_id'],
-                ':staff_encoder_id' => $data['staff_encoder_id'],
-                ':manager_assigned_id' => $data['manager_assigned_id'] ?? null,
-                ':event_date' => $data['event_date'],
-                ':start_time' => $data['start_time'],
-                ':end_time' => $data['end_time'],
-                ':work_description' => $data['work_description'],
-                ':status' => $data['status'] ?? 'pending',
-                ':notes' => $data['notes'] ?? null
-            ]);
-            
-            $event_id = $this->pdo->lastInsertId();
-            
-            return ['success' => true, 'event_id' => $event_id, 'message' => 'Event created successfully'];
-        } catch (Exception $e) {
-            return ['success' => false, 'error' => $e->getMessage()];
+
+    private function getEventTypes(): array
+    {
+        $stmt = $this->pdo->query("
+            SELECT id, type_key, type_name, description, icon_class, color_class
+            FROM staff_event_types
+            WHERE is_active = 1
+            ORDER BY sort_order, type_name
+        ");
+        return ['success' => true, 'event_types' => $stmt->fetchAll(PDO::FETCH_ASSOC)];
+    }
+
+    private function getStaffMembers(): array
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT id, first_name, last_name, email, name
+            FROM users
+            WHERE station_id = ? AND role = 'staff' AND status = 'Active'
+            ORDER BY first_name, last_name
+        ");
+        $stmt->execute([$this->station_id]);
+        return ['success' => true, 'staff' => $stmt->fetchAll(PDO::FETCH_ASSOC)];
+    }
+
+    private function getManagers(): array
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT id, first_name, last_name, email, name
+            FROM users
+            WHERE station_id = ? AND role IN ('manager', 'admin', 'superadmin') AND status = 'Active'
+            ORDER BY first_name, last_name
+        ");
+        $stmt->execute([$this->station_id]);
+        return ['success' => true, 'managers' => $stmt->fetchAll(PDO::FETCH_ASSOC)];
+    }
+
+    private function addEvent(): array
+    {
+        $data = $this->requestData();
+        $eventTypeId = (int)($data['event_type_id'] ?? 0);
+        if (!$eventTypeId) {
+            $eventTypeId = calendar_event_type_id($this->pdo, $data['event_type'] ?? 'other');
         }
+
+        $eventDate = calendar_normalize_date($data['event_date'] ?? '');
+        $description = calendar_clean_text($data['work_description'] ?? '');
+        $startTime = calendar_normalize_time($data['start_time'] ?? '');
+        $endTime = calendar_normalize_time($data['end_time'] ?? '', $startTime);
+        $staffId = (int)($data['staff_encoder_id'] ?? $this->user_id);
+        if ($this->role === 'staff') {
+            $staffId = $this->user_id;
+        }
+
+        if (!$eventDate || !$description) {
+            return ['success' => false, 'error' => 'Date and description are required'];
+        }
+        if (!$this->staffBelongsToStation($staffId)) {
+            return ['success' => false, 'error' => 'Selected staff is not assigned to this station'];
+        }
+
+        $stmt = $this->pdo->prepare("
+            INSERT INTO staff_calendar_events
+                (station_id, event_type_id, staff_encoder_id, manager_assigned_id, event_date,
+                 start_time, end_time, work_description, status, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([
+            $this->station_id,
+            $eventTypeId,
+            $staffId,
+            $data['manager_assigned_id'] ?? null,
+            $eventDate,
+            $startTime,
+            $endTime,
+            $description,
+            calendar_normalize_status($data['status'] ?? 'pending'),
+            $data['notes'] ?? null,
+        ]);
+
+        return ['success' => true, 'event_id' => (int)$this->pdo->lastInsertId(), 'message' => 'Event created successfully'];
     }
-    
-    private function updateEvent() {
-        $data = json_decode(file_get_contents('php://input'), true);
-        $event_id = $data['event_id'] ?? 0;
-        
-        if (!$event_id) {
+
+    private function updateEvent(): array
+    {
+        $data = $this->requestData();
+        $eventId = (int)($data['event_id'] ?? 0);
+        if (!$eventId) {
             return ['success' => false, 'error' => 'Event ID required'];
         }
-        
-        try {
-            // Check if user has permission to update this event
-            $check_stmt = $this->pdo->prepare("
-                SELECT staff_encoder_id, manager_assigned_id 
-                FROM staff_calendar_events 
-                WHERE id = :event_id AND station_id = :station_id
-            ");
-            $check_stmt->execute([
-                ':event_id' => $event_id,
-                ':station_id' => $this->station_id
-            ]);
-            
-            $event = $check_stmt->fetch(PDO::FETCH_ASSOC);
-            if (!$event) {
-                return ['success' => false, 'error' => 'Event not found'];
+
+        $event = $this->loadEvent($eventId);
+        if (!$event || !$this->canManageEvent($event)) {
+            return ['success' => false, 'error' => 'Event not found or not allowed'];
+        }
+
+        $stmt = $this->pdo->prepare("
+            UPDATE staff_calendar_events
+            SET event_type_id = ?, manager_assigned_id = ?, event_date = ?, start_time = ?,
+                end_time = ?, work_description = ?, status = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND station_id = ?
+        ");
+        $stmt->execute([
+            (int)($data['event_type_id'] ?? $event['event_type_id']),
+            $data['manager_assigned_id'] ?? $event['manager_assigned_id'],
+            calendar_normalize_date($data['event_date'] ?? $event['event_date']),
+            calendar_normalize_time($data['start_time'] ?? $event['start_time']),
+            calendar_normalize_time($data['end_time'] ?? $event['end_time'], calendar_normalize_time($data['start_time'] ?? $event['start_time'])),
+            calendar_clean_text($data['work_description'] ?? $event['work_description']),
+            calendar_normalize_status($data['status'] ?? $event['status']),
+            $data['notes'] ?? $event['notes'],
+            $eventId,
+            $this->station_id,
+        ]);
+
+        return ['success' => true, 'message' => 'Event updated successfully'];
+    }
+
+    private function deleteEvent(): array
+    {
+        $eventId = (int)($_GET['event_id'] ?? 0);
+        $event = $this->loadEvent($eventId);
+        if (!$event || !$this->canManageEvent($event)) {
+            return ['success' => false, 'error' => 'Event not found or not allowed'];
+        }
+
+        $stmt = $this->pdo->prepare("DELETE FROM staff_calendar_events WHERE id = ? AND station_id = ?");
+        $stmt->execute([$eventId, $this->station_id]);
+        return ['success' => true, 'message' => 'Event deleted successfully'];
+    }
+
+    private function getDashboardData(): array
+    {
+        $today = date('Y-m-d');
+        $upcoming = date('Y-m-d', strtotime('+3 days'));
+
+        $events = $this->eventsBetween($today, $upcoming);
+        $todayCount = 0;
+        foreach ($events as $event) {
+            if (($event['event_date'] ?? '') === $today) {
+                $todayCount++;
             }
-            
-            $stmt = $this->pdo->prepare("
-                UPDATE staff_calendar_events 
-                SET event_type_id = :event_type_id,
-                    manager_assigned_id = :manager_assigned_id,
-                    event_date = :event_date,
-                    start_time = :start_time,
-                    end_time = :end_time,
-                    work_description = :work_description,
-                    status = :status,
-                    notes = :notes,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = :event_id AND station_id = :station_id
-            ");
-            
-            $stmt->execute([
-                ':event_id' => $event_id,
-                ':event_type_id' => $data['event_type_id'],
-                ':manager_assigned_id' => $data['manager_assigned_id'] ?? null,
-                ':event_date' => $data['event_date'],
-                ':start_time' => $data['start_time'],
-                ':end_time' => $data['end_time'],
-                ':work_description' => $data['work_description'],
-                ':status' => $data['status'],
-                ':notes' => $data['notes'] ?? null,
-                ':station_id' => $this->station_id
-            ]);
-            
-            return ['success' => true, 'message' => 'Event updated successfully'];
-        } catch (Exception $e) {
-            return ['success' => false, 'error' => $e->getMessage()];
         }
+
+        return [
+            'success' => true,
+            'dashboard_data' => [
+                'today_events' => $todayCount,
+                'upcoming_events' => count($events),
+            ],
+        ];
     }
-    
-    private function deleteEvent() {
-        $event_id = $_GET['event_id'] ?? 0;
-        
-        if (!$event_id) {
-            return ['success' => false, 'error' => 'Event ID required'];
+
+    private function loadEvent(int $eventId): ?array
+    {
+        if (!$eventId) {
+            return null;
         }
-        
-        try {
-            $stmt = $this->pdo->prepare("
-                DELETE FROM staff_calendar_events 
-                WHERE id = :event_id AND station_id = :station_id
-            ");
-            $stmt->execute([
-                ':event_id' => $event_id,
-                ':station_id' => $this->station_id
-            ]);
-            
-            return ['success' => true, 'message' => 'Event deleted successfully'];
-        } catch (Exception $e) {
-            return ['success' => false, 'error' => $e->getMessage()];
-        }
+        $stmt = $this->pdo->prepare("SELECT * FROM staff_calendar_events WHERE id = ? AND station_id = ?");
+        $stmt->execute([$eventId, $this->station_id]);
+        $event = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $event ?: null;
     }
-    
-    private function getDashboardData() {
-        try {
-            $stmt = $this->pdo->prepare("
-                SELECT * FROM staff_calendar_dashboard 
-                WHERE station_id = :station_id
-            ");
-            $stmt->execute([':station_id' => $this->station_id]);
-            $dashboard_data = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            return ['success' => true, 'dashboard_data' => $dashboard_data];
-        } catch (Exception $e) {
-            return ['success' => false, 'error' => $e->getMessage()];
+
+    private function canManageEvent(array $event): bool
+    {
+        if (in_array($this->role, ['manager', 'admin', 'superadmin'], true)) {
+            return true;
         }
+        return (int)$event['staff_encoder_id'] === $this->user_id || (int)$event['manager_assigned_id'] === $this->user_id;
     }
-    
-    private function getTodayEvents() {
-        try {
-            $stmt = $this->pdo->prepare("
-                SELECT * FROM staff_calendar_summary 
-                WHERE station_id = :station_id 
-                AND event_date = CURDATE()
-                ORDER BY start_time
-            ");
-            $stmt->execute([':station_id' => $this->station_id]);
-            $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            return ['success' => true, 'events' => $events];
-        } catch (Exception $e) {
-            return ['success' => false, 'error' => $e->getMessage()];
-        }
-    }
-    
-    private function getUpcomingEvents() {
-        try {
-            $stmt = $this->pdo->prepare("
-                SELECT * FROM staff_calendar_summary 
-                WHERE station_id = :station_id 
-                AND event_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 3 DAY)
-                ORDER BY event_date, start_time
-            ");
-            $stmt->execute([':station_id' => $this->station_id]);
-            $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            return ['success' => true, 'events' => $events];
-        } catch (Exception $e) {
-            return ['success' => false, 'error' => $e->getMessage()];
-        }
+
+    private function staffBelongsToStation(int $staffId): bool
+    {
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM users WHERE id = ? AND station_id = ?");
+        $stmt->execute([$staffId, $this->station_id]);
+        return (int)$stmt->fetchColumn() > 0;
     }
 }
 
-// Initialize and handle request
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname", $username, $password);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    
-    $api = new StaffCalendarAPI($pdo);
-    echo json_encode($api->handleRequest());
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode(['error' => 'Database connection failed: ' . $e->getMessage()]);
-}
-?>
+$api = new StaffCalendarAPI($pdo);
+echo json_encode($api->handleRequest());

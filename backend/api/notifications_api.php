@@ -8,7 +8,7 @@
  *
  * Actions (GET):
  *   ?action=list          — paginated list of notifications
- *   ?action=unread_count  — count of unread notifications
+ *   ?action=unread_count  — count of actionable sidebar badge items (mirrors header bell)
  *
  * Actions (POST):
  *   ?action=mark_read     — mark one notification as read (POST: notification_id)
@@ -110,15 +110,125 @@ try {
                 ]);
                 break;
 
-            // ── Unread count only ─────────────────────────────
+            // ── Unread count (sidebar-equivalent action badge) ─
             case 'unread_count':
-                $stmt = $pdo->prepare(
-                    "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'"
-                );
-                $stmt->execute([$user_id]);
+                $myStationId  = (int)($me['station_id'] ?? 0);
+                $station_param = $myStationId ? [$myStationId] : [];
+                $station_where = $myStationId ? "station_id = ? AND " : "";
+
+                // Helper for safe count
+                $safe_count = function(string $sql, array $params = []) use ($pdo) {
+                    try {
+                        $s = $pdo->prepare($sql);
+                        $s->execute($params);
+                        return (int)$s->fetchColumn();
+                    } catch (Throwable $e) { return 0; }
+                };
+
+                $action_count = 0;
+
+                if (in_array($role, ['admin', 'superadmin', 'developer'])) {
+                    // Pending merch transactions
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM merchandise_transactions WHERE {$station_where}LOWER(COALESCE(validation_status,'')) IN ('pending','pending validation','pending_validation')",
+                        $station_param
+                    );
+                    // Pending fuel transactions
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM fuel_transactions WHERE {$station_where}LOWER(COALESCE(status,'')) IN ('pending','pending validation','pending_validation')",
+                        $station_param
+                    );
+                    // Pending job orders
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM job_orders WHERE {$station_where}LOWER(COALESCE(validation_status,status,'')) IN ('pending','pending validation','pending_validation')",
+                        $station_param
+                    );
+                    // Pending merchandise POs
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM purchase_orders WHERE {$station_where}status IN ('Pending','Pending Approval','Pending Admin Validation','Submitted') AND COALESCE(admin_finalized,0)=0",
+                        $station_param
+                    );
+                    // Pending fuel POs
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM fuel_purchase_orders WHERE {$station_where}status IN ('Pending','Pending Approval','Pending Admin Validation','Submitted')",
+                        $station_param
+                    );
+                    // Low merch stock
+                    $low_merch_params = $myStationId ? [$myStationId] : [];
+                    $low_merch_where  = $myStationId ? "si.station_id=? AND " : "";
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM station_inventory si INNER JOIN inventory_products ip ON ip.id=si.product_id WHERE {$low_merch_where}COALESCE(si.stock_level,0) <= COALESCE(si.reorder_level, ip.min_stock, 10) AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels')",
+                        $low_merch_params
+                    );
+                    // Pending customers
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM customers WHERE {$station_where}LOWER(COALESCE(NULLIF(verification_status,''), NULLIF(mgr_status,''), 'verified')) IN ('pending','pending verification','pending_validation','for review')",
+                        $station_param
+                    );
+                    // Pending price approvals
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM pending_price_approvals WHERE {$station_where}status='pending'",
+                        $station_param
+                    );
+                    // Awaiting stock-in
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM purchase_orders WHERE {$station_where}admin_finalized=1 AND (COALESCE(stock_in_done,0)=0 OR status IN ('Approved','Approved PO','Admin Finalized'))",
+                        $station_param
+                    );
+                    // Fuel adjustments pending
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM fuel_adjustments WHERE {$station_where}(LOWER(COALESCE(status,''))='pending' OR status IS NULL OR status='')",
+                        $station_param
+                    );
+
+                } elseif ($role === 'manager') {
+                    // Pending merch stock requests
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM stock_requests WHERE {$station_where}status='Pending'",
+                        $station_param
+                    );
+                    // Pending fuel stock requests
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM fuel_stock_requests WHERE {$station_where}status='Pending'",
+                        $station_param
+                    );
+                    // Pending deliveries
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM deliveries_oversight WHERE {$station_where}status IN ('Pending','Ordered','Expected Delivery')",
+                        $station_param
+                    );
+                    // Low inventory
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM inventory WHERE {$station_where}stock_level <= 20",
+                        $station_param
+                    );
+                    // Pending customers
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM customers WHERE {$station_where}LOWER(COALESCE(NULLIF(verification_status,''), NULLIF(mgr_status,''), 'verified')) IN ('pending','pending verification','pending_validation','for review')",
+                        $station_param
+                    );
+
+                } elseif ($role === 'staff') {
+                    // Own active job orders
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM job_orders WHERE user_id = ? AND status IN ('Pending','In Progress','Awaiting Parts')",
+                        [$user_id]
+                    );
+                    // Pending stock-in
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM deliveries_oversight WHERE {$station_where}status='Ready for Stock-In'",
+                        $station_param
+                    );
+                    // Own pending stock requests
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM stock_requests WHERE staff_id=? AND status='Pending'",
+                        [$user_id]
+                    );
+                }
+
                 echo json_encode([
                     'success'      => true,
-                    'unread_count' => (int)$stmt->fetchColumn(),
+                    'unread_count' => $action_count,
                 ]);
                 break;
 

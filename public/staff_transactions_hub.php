@@ -5793,14 +5793,6 @@ input[list] {
                               autocomplete="off"></textarea>
                 </div>
 
-                <!-- Info banner -->
-                <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
-                            padding:10px 12px;margin-bottom:18px;font-size:11px;color:#92400e;
-                            display:flex;align-items:flex-start;gap:8px;">
-                    <i class="fas fa-info-circle" style="margin-top:1px;flex-shrink:0;"></i>
-                    <span>Your request will be reviewed by a manager. Status: <strong>Pending Manager Approval</strong></span>
-                </div>
-
                 <!-- Error -->
                 <div id="addServiceError"
                      style="display:none;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;
@@ -5923,14 +5915,6 @@ input[list] {
                               maxlength="500"
                               style="font-size:13px;resize:vertical;"
                               autocomplete="off"></textarea>
-                </div>
-
-                <!-- Info banner -->
-                <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
-                            padding:10px 12px;margin-bottom:18px;font-size:11px;color:#92400e;
-                            display:flex;align-items:flex-start;gap:8px;">
-                    <i class="fas fa-info-circle" style="margin-top:1px;flex-shrink:0;"></i>
-                    <span>Your request will be reviewed by a manager. Status: <strong>Pending Manager Approval</strong></span>
                 </div>
 
                 <!-- Error message -->
@@ -6058,14 +6042,6 @@ input[list] {
                               maxlength="500"
                               style="font-size:13px;resize:vertical;"
                               autocomplete="off"></textarea>
-                </div>
-
-                <!-- Info banner -->
-                <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
-                            padding:10px 12px;margin-bottom:18px;font-size:11px;color:#92400e;
-                            display:flex;align-items:flex-start;gap:8px;">
-                    <i class="fas fa-info-circle" style="margin-top:1px;flex-shrink:0;"></i>
-                    <span>Your submission will be reviewed by a manager before it appears in the product list.</span>
                 </div>
 
                 <!-- Error message -->
@@ -9326,23 +9302,18 @@ input[list] {
              background:rgba(0,0,0,.5);align-items:center;justify-content:center;">
           <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
                       width:100%;max-width:600px;margin:16px;overflow:hidden;animation:pmSlideIn .18s ease;">
-            <div style="background:linear-gradient(135deg,#0ea5e9,#0284c7);padding:15px 20px;
+            <div style="background:#fff;border-bottom:1px solid #e2e8f0;padding:15px 20px;
                         display:flex;align-items:center;justify-content:space-between;">
               <div style="display:flex;align-items:center;gap:10px;">
-                <div style="width:34px;height:34px;background:rgba(255,255,255,.15);border-radius:8px;
+                <div style="width:34px;height:34px;background:#f1f5f9;border-radius:8px;
                             display:flex;align-items:center;justify-content:center;">
-                  <i class="fas fa-clipboard-list" style="color:#fff;font-size:15px;"></i>
+                  <i class="fas fa-clipboard-list" style="color:#002F70;font-size:15px;"></i>
                 </div>
                 <div>
-                  <div style="color:#fff;font-weight:700;font-size:14px;">Job Order Details</div>
-                  <div id="viewJORef" style="color:#bae6fd;font-size:11px;margin-top:1px;"></div>
+                  <div style="color:#000;font-weight:700;font-size:14px;">Job Order Details</div>
+                  <div id="viewJORef" style="color:#64748b;font-size:11px;margin-top:1px;"></div>
                 </div>
               </div>
-              <button onclick="closeViewJobOrderModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;
-                      width:28px;height:28px;border-radius:6px;font-size:17px;cursor:pointer;
-                      display:flex;align-items:center;justify-content:center;"
-                      onmouseover="this.style.background='rgba(255,255,255,.28)'"
-                      onmouseout="this.style.background='rgba(255,255,255,.15)'">&times;</button>
             </div>
             <div style="padding:20px;max-height:70vh;overflow-y:auto;">
               <div style="display:grid;gap:14px;">
@@ -9403,8 +9374,11 @@ input[list] {
               </div>
             </div>
             <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;">
-              <button onclick="closeViewJobOrderModal()" style="padding:9px 18px;background:#f1f5f9;color:#475569;
-                      border:1px solid #e2e8f0;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+              <button onclick="closeViewJobOrderModal()" style="padding:0 16px !important;height:36px !important;background:#ffffff !important;color:#64748b !important;
+                      border:1px solid #64748b !important;border-radius:7px !important;font-size:13px !important;font-weight:600 !important;cursor:pointer !important;
+                      display:inline-flex !important;align-items:center !important;justify-content:center !important;transition:all 0.15s !important;min-width:90px !important;"
+                      onmouseover="this.style.background='#64748b';this.style.color='#ffffff'"
+                      onmouseout="this.style.background='#ffffff';this.style.color='#64748b'">
                 Close
               </button>
             </div>

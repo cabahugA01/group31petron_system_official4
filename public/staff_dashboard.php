@@ -126,6 +126,16 @@ function dashboard_current_shift(array $shift_periods): ?array {
         }
     }
 
+    if (!empty($shift_periods)) {
+        $first_shift = $shift_periods[0];
+        $first_start = $first_shift['start_time'] ?? '00:00:00';
+        if ($now < $first_start) {
+            $last_shift = end($shift_periods);
+            reset($shift_periods);
+            return $last_shift ?: $first_shift;
+        }
+    }
+
     return $shift_periods[0] ?? null;
 }
 
@@ -140,7 +150,11 @@ function dashboard_shift_label(array $shift): string {
     }
 
     $start = isset($shift['start_time']) ? date('g:i A', strtotime($shift['start_time'])) : '';
-    $end = isset($shift['end_time']) ? date('g:i A', strtotime($shift['end_time'])) : '';
+    $end_raw = (string) ($shift['end_time'] ?? '');
+    $end = $end_raw !== '' ? date('g:i A', strtotime($end_raw)) : '';
+    if ($end_raw >= '23:59:00') {
+        $end = '12:00 AM';
+    }
     $time_label = ($start && $end) ? " ($start - $end)" : '';
 
     return $name . $time_label;
@@ -212,6 +226,61 @@ function dashboard_column_sql(string $column, string $alias = ''): string {
         return "`{$alias}`.{$quoted}";
     }
     return $quoted;
+}
+
+function dashboard_shift_datetime_where(string $datetime_expr, string $date_from, string $date_to, string $start_time, string $end_time): array {
+    $date_sql = "DATE({$datetime_expr})";
+    $time_sql = "TIME({$datetime_expr})";
+
+    if ($start_time <= $end_time) {
+        return [
+            "({$date_sql} BETWEEN ? AND ? AND {$time_sql} >= ? AND {$time_sql} <= ?)",
+            [$date_from, $date_to, $start_time, $end_time],
+        ];
+    }
+
+    return [
+        "(
+            ({$date_sql} BETWEEN ? AND ? AND {$time_sql} >= ?)
+            OR
+            ({$date_sql} BETWEEN DATE_ADD(?, INTERVAL 1 DAY) AND DATE_ADD(?, INTERVAL 1 DAY) AND {$time_sql} <= ?)
+        )",
+        [$date_from, $date_to, $start_time, $date_from, $date_to, $end_time],
+    ];
+}
+
+function dashboard_transaction_status_where(PDO $pdo, string $table, array $columns): string {
+    $excluded = "'void', 'voided', 'rejected', 'cancelled', 'canceled'";
+    $checks = [];
+
+    foreach ($columns as $column) {
+        if (dashboard_has_column($pdo, $table, $column)) {
+            $col = dashboard_column_sql($column);
+            $checks[] = "LOWER(TRIM(COALESCE({$col}, ''))) NOT IN ({$excluded})";
+        }
+    }
+
+    return empty($checks) ? '' : ' AND ' . implode(' AND ', $checks);
+}
+
+function dashboard_shift_hour_map(string $start_time, string $end_time): array {
+    $start_ts = strtotime('2000-01-01 ' . $start_time);
+    $end_ts = strtotime('2000-01-01 ' . $end_time);
+
+    if ($start_ts === false || $end_ts === false) {
+        return array_fill_keys(range(0, 23), 0);
+    }
+
+    if ($end_ts < $start_ts) {
+        $end_ts += 86400;
+    }
+
+    $hours = [];
+    for ($ts = $start_ts; $ts <= $end_ts && count($hours) < 25; $ts += 3600) {
+        $hours[(int) date('G', $ts)] = 0;
+    }
+
+    return $hours;
 }
 
 function dashboard_datetime_expression(PDO $pdo, string $table, string $alias = '', array $preferred = ['created_at', 'transaction_date']): string {
@@ -635,39 +704,58 @@ if ($current_shift_info) {
     }
 }
 
+$hourly_shift_number = dashboard_shift_number_from_value($clock_in_shift, $shift_periods) ?? $user_assigned_shift;
+$hourly_shift_info = dashboard_shift_by_number($shift_periods, (int) $hourly_shift_number);
+if (!$hourly_shift_info) {
+    $hourly_shift_info = $current_shift_info ?: ($shift_periods[0] ?? null);
+}
+$hourly_shift_label = $hourly_shift_info ? dashboard_shift_label($hourly_shift_info) : 'Assigned Shift';
+$hourly_shift_start_time = $hourly_shift_info['start_time'] ?? '00:00:00';
+$hourly_shift_end_time = $hourly_shift_info['end_time'] ?? '23:59:59';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CHARTS QUERY BLOCK
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Chart 1: Hourly Transactions (Line Chart)
+[$fuel_shift_where, $fuel_shift_params] = dashboard_shift_datetime_where($fuel_dt_expr, $date_from, $date_to, $hourly_shift_start_time, $hourly_shift_end_time);
+[$merch_shift_where, $merch_shift_params] = dashboard_shift_datetime_where($merch_dt_expr, $date_from, $date_to, $hourly_shift_start_time, $hourly_shift_end_time);
+[$job_shift_where, $job_shift_params] = dashboard_shift_datetime_where($job_dt_expr, $date_from, $date_to, $hourly_shift_start_time, $hourly_shift_end_time);
+
+$fuel_hourly_status_where = dashboard_transaction_status_where($pdo, 'fuel_transactions', ['status']);
+$merch_hourly_status_where = dashboard_transaction_status_where($pdo, 'merchandise_transactions', ['validation_status', 'workflow_status', 'payment_status']);
+$job_hourly_status_where = dashboard_transaction_status_where($pdo, 'job_orders', ['status', 'validation_status', 'payment_status']);
+
 $hourly_tx_raw = dashboard_fetch_all($pdo, "
     SELECT hr, COUNT(*) AS count FROM (
         SELECT HOUR({$fuel_dt_expr}) AS hr FROM fuel_transactions
-        WHERE station_id = ? AND {$fuel_dt_expr} BETWEEN ? AND ?
+        WHERE station_id = ?
+          AND {$fuel_shift_where}
+          {$fuel_hourly_status_where}
         UNION ALL
         SELECT HOUR({$merch_dt_expr}) AS hr FROM merchandise_transactions
-        WHERE station_id = ? AND {$merch_dt_expr} BETWEEN ? AND ?
+        WHERE station_id = ?
+          AND {$merch_shift_where}
+          {$merch_hourly_status_where}
         UNION ALL
         SELECT HOUR({$job_dt_expr}) AS hr FROM job_orders
-        WHERE station_id = ? AND {$job_dt_expr} BETWEEN ? AND ?
+        WHERE station_id = ?
+          AND {$job_shift_where}
+          {$job_hourly_status_where}
     ) AS combined_txns
     GROUP BY hr
     ORDER BY hr
 ",
-[
-    $station_id, $current_shift_window_start, $current_shift_window_end,
-    $station_id, $current_shift_window_start, $current_shift_window_end,
-    $station_id, $current_shift_window_start, $current_shift_window_end
-]);
+array_merge(
+    [$station_id],
+    $fuel_shift_params,
+    [$station_id],
+    $merch_shift_params,
+    [$station_id],
+    $job_shift_params
+));
 
-$hourly_map = [];
-$shift_start_hour = (int)date('G', strtotime($current_shift_window_start));
-$shift_end_hour = (int)date('G', strtotime($current_shift_window_end));
-$shift_hour_count = max(1, (int)ceil((strtotime($current_shift_window_end) - strtotime($current_shift_window_start)) / 3600));
-for ($i = 0; $i <= min($shift_hour_count, 24); $i++) {
-    $hr = ($shift_start_hour + $i) % 24;
-    $hourly_map[$hr] = 0;
-}
+$hourly_map = dashboard_shift_hour_map($hourly_shift_start_time, $hourly_shift_end_time);
 foreach ($hourly_tx_raw as $row) {
     $h = (int)$row['hr'];
     if (isset($hourly_map[$h])) {
@@ -1367,6 +1455,27 @@ include __DIR__ . '/../partials/header.php';
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
+    .chart-heading-subtitle {
+        margin-left: auto;
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.35;
+        letter-spacing: 0;
+        text-align: right;
+        text-transform: none;
+    }
+    @media (max-width: 600px) {
+        .chart-panel-card h3 {
+            flex-wrap: wrap;
+            align-items: flex-start;
+        }
+        .chart-heading-subtitle {
+            width: 100%;
+            margin-left: 28px;
+            text-align: left;
+        }
+    }
     .chart-container-inner {
         position: relative;
         width: 100%;
@@ -1637,7 +1746,10 @@ include __DIR__ . '/../partials/header.php';
 <div class="charts-grid-layout">
     <!-- Hourly Transactions -->
     <div class="chart-panel-card">
-        <h3><i class="fas fa-chart-line"></i> Hourly Transactions</h3>
+        <h3>
+            <i class="fas fa-chart-line"></i> Hourly Transactions
+            <span class="chart-heading-subtitle"><?= htmlspecialchars($hourly_shift_label) ?></span>
+        </h3>
         <div class="chart-container-inner">
             <canvas id="hourlyTransactionsChart"></canvas>
         </div>
@@ -2019,11 +2131,12 @@ include __DIR__ . '/../partials/header.php';
     (function () {
         const labels = <?= json_encode($hourly_chart_labels) ?>;
         const data   = <?= json_encode($hourly_chart_data) ?>;
+        const shiftLabel = <?= json_encode($hourly_shift_label) ?>;
         const total  = data.reduce((a, b) => a + b, 0);
 
         if (total === 0) {
             showEmptyState('hourlyTransactionsChart', 'chart-line',
-                'No transactions recorded during the current shift');
+                `No transactions recorded for ${shiftLabel}`);
             return;
         }
 

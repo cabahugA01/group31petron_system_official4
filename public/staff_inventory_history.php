@@ -37,9 +37,12 @@ try {
             msi.product_name as product,
             'Delivery' as movement_type,
             msi.qty_received as quantity,
-            COALESCE(u.username, 'System') as user
+            COALESCE(u.username, 'System') as user,
+            COALESCE(si.unit, ip.size, 'pcs') as unit
         FROM merchandise_stock_in msi
         LEFT JOIN users u ON msi.encoded_by = u.id
+        LEFT JOIN inventory_products ip ON msi.product_id = ip.id
+        LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = msi.station_id
         WHERE msi.station_id = ?
         ORDER BY msi.encoded_at DESC
         LIMIT 500
@@ -308,7 +311,7 @@ include __DIR__ . '/../partials/header.php';
                         <th>Reference No.</th>
                         <th>Product</th>
                         <th>Movement</th>
-                        <th>Qty</th>
+                        <th>Quantity</th>
                         <th>User</th>
                     </tr>
                 </thead>
@@ -340,7 +343,7 @@ include __DIR__ . '/../partials/header.php';
                             </span>
                         </td>
                         <td style="font-weight:700;color:#16a34a;">
-                            +<?php echo number_format((float)$m['quantity'], 0); ?>
+                            +<?php echo number_format((float)$m['quantity'], 0); ?> <?php echo htmlspecialchars(format_merch_unit($m['unit'] ?? 'pcs')); ?>
                         </td>
                         <td><?php echo htmlspecialchars($m['user'] ?? '—'); ?></td>
                     </tr>
@@ -380,7 +383,7 @@ include __DIR__ . '/../partials/header.php';
                     <tr>
                         <th>Date</th>
                         <th>Shift</th>
-                        <th>UGT No / Fuel Type</th>
+                        <th>Fuel Type</th>
                         <th>Beginning</th>
                         <th>Ending</th>
                         <th>Calibration</th>
@@ -411,15 +414,34 @@ include __DIR__ . '/../partials/header.php';
                         </td>
                         <td>
                             <?php
+                                // Normalize fuel type name - remove tank/pump numbers
                                 $ft_raw = $f['tank'];
-                                $ft_key = strtolower(trim($ft_raw));
-                                $ugts   = $ugt_all_lookup[$ft_key] ?? [];
-                                $ugt_str = !empty($ugts) ? implode(', ', $ugts) : '';
+                                $ft_normalized = strtoupper(preg_replace('/\s+/', ' ', trim($ft_raw)));
+                                
+                                // Remove patterns like "XTRA UNL 2 - 4" → "XTRA UNL"
+                                $ft_clean = preg_replace('/\s+\d+\s*-\s*\d+$/', '', $ft_normalized);
+                                $ft_clean = preg_replace('/\s*-\s*\d+$/', '', $ft_clean);
+                                
+                                // Map to standard 7 fuel types
+                                if (strpos($ft_clean, 'TURBO') !== false && strpos($ft_clean, 'DIESEL') !== false) {
+                                    $fuel_display = 'Turbo Diesel';
+                                } elseif (strpos($ft_clean, 'XCS') !== false && strpos($ft_clean, 'PLUS') !== false) {
+                                    $fuel_display = 'XCS Plus';
+                                } elseif (strpos($ft_clean, 'XTRA') !== false && strpos($ft_clean, 'UNL') !== false) {
+                                    $fuel_display = 'Xtra UNL';
+                                } elseif (strpos($ft_clean, 'DIESEL') !== false) {
+                                    $fuel_display = 'Diesel';
+                                } elseif (strpos($ft_clean, 'KEROSENE') !== false) {
+                                    $fuel_display = 'Kerosene';
+                                } elseif (strpos($ft_clean, 'BLAZE') !== false) {
+                                    $fuel_display = 'Blaze 100';
+                                } elseif (strpos($ft_clean, 'PREMIUM') !== false) {
+                                    $fuel_display = 'Premium Plus';
+                                } else {
+                                    $fuel_display = ucwords(strtolower($ft_clean));
+                                }
                             ?>
-                            <?php if ($ugt_str): ?>
-                                <span style="font-size:11px;font-weight:700;color:#002F70;background:#e8f0fe;padding:2px 7px;border-radius:5px;display:inline-block;margin-bottom:2px;"><?php echo htmlspecialchars($ugt_str); ?></span><br>
-                            <?php endif; ?>
-                            <strong style="font-size:12px;"><?php echo htmlspecialchars($ft_raw); ?></strong>
+                            <strong style="font-size:13px;color:#002F70;"><?php echo htmlspecialchars($fuel_display); ?></strong>
                         </td>
                         <td><?php echo number_format((float)$f['beginning'], 2); ?></td>
                         <td><?php echo number_format((float)$f['ending'], 2); ?></td>

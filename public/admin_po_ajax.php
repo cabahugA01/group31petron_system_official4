@@ -75,7 +75,7 @@ if ($action === 'get_batch_items') {
         $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    echo json_encode(['items' => $items]);
+    echo json_encode(['success' => true, 'items' => $items]);
     exit;
 }
 
@@ -113,7 +113,7 @@ if ($action === 'get_pending_items') {
     }
 
     $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    echo json_encode(['items' => $items]);
+    echo json_encode(['success' => true, 'items' => $items]);
     exit;
 }
 

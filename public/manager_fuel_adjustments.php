@@ -1,7 +1,7 @@
 <?php
 // ============================================================
 // Manager Fuel Adjustments Oversight – manager_fuel_adjustments.php
-// Purpose: Consolidated history of Fuel Transaction Adjustments and Fuel Deliveries Adjustments
+// Purpose: Consolidated history of Fuel Transaction Adjustments
 // ============================================================
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'fuel_adjustments';
@@ -27,10 +27,7 @@ if ($station_id <= 0) {
 }
 
 // Active Tab
-$active_tab = $_GET['tab'] ?? 'transactions';
-if (!in_array($active_tab, ['transactions', 'deliveries'])) {
-    $active_tab = 'transactions';
-}
+$active_tab = 'transactions'; // Only transactions tab available now
 
 // ── GET Filters ──────────────────────────────────────────────
 $date_from          = trim($_GET['date_from'] ?? date('Y-m-d', strtotime('-30 days')));
@@ -86,20 +83,6 @@ if ($active_tab === 'transactions') {
     if ($search_tx !== '') {
         $where[] = "(fa.notes LIKE ? OR fa.id LIKE ?)";
         $like_val = '%' . $search_tx . '%';
-        $params[] = $like_val;
-        $params[] = $like_val;
-    }
-}
-
-// JSON & Text filters for Deliveries
-if ($active_tab === 'deliveries') {
-    if ($supplier_filter !== 'all' && $supplier_filter !== '') {
-        $where[] = "fa.notes LIKE ?";
-        $params[] = '%' . $supplier_filter . '%';
-    }
-    if ($search_del !== '') {
-        $where[] = "(fa.notes LIKE ? OR fa.id LIKE ?)";
-        $like_val = '%' . $search_del . '%';
         $params[] = $like_val;
         $params[] = $like_val;
     }
@@ -258,7 +241,7 @@ if (in_array($export, ['excel', 'pdf'])) {
         header('Content-Type: application/vnd.ms-excel; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '.xls"');
         echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>table{border-collapse:collapse}th,td{border:1px solid #ddd;padding:7px}th{background:#002F6C;color:#fff;font-size:11px}</style></head><body>';
-        echo '<h2>' . ($active_tab === 'transactions' ? 'Fuel Transaction Adjustments' : 'Fuel Deliveries Adjustments') . ' Report</h2>';
+        echo '<h2>Fuel Transaction Adjustments Report</h2>';
         echo '<p>Period: ' . $date_from . ' to ' . $date_to . ' | Records: ' . count($rows_fmt) . '</p>';
         echo '<table><thead><tr>';
         foreach ($headers as $h) echo '<th>' . htmlspecialchars($h) . '</th>';
@@ -296,7 +279,7 @@ if (in_array($export, ['excel', 'pdf'])) {
         </style></head><body>';
         echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;font-weight:bold;">🖨 Print / Save PDF</button>
         <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none;font-weight:bold;">← Back</a></div>';
-        echo '<div class="hdr"><div><h1>' . ($active_tab === 'transactions' ? 'Fuel Transaction Adjustments' : 'Fuel Deliveries Adjustments') . '</h1><p style="margin:2px 0 0;color:#666;">Period: ' . htmlspecialchars($date_from) . ' — ' . htmlspecialchars($date_to) . ' | Station: ' . htmlspecialchars(user_station_name()) . '</p></div><div style="text-align:right;"><p style="margin:0;">Generated: ' . $generated . '</p></div></div>';
+        echo '<div class="hdr"><div><h1>Fuel Transaction Adjustments</h1><p style="margin:2px 0 0;color:#666;">Period: ' . htmlspecialchars($date_from) . ' — ' . htmlspecialchars($date_to) . ' | Station: ' . htmlspecialchars(user_station_name()) . '</p></div><div style="text-align:right;"><p style="margin:0;">Generated: ' . $generated . '</p></div></div>';
         echo '<table><thead><tr>';
         foreach ($headers as $h) echo '<th>' . htmlspecialchars($h) . '</th>';
         echo '</tr></thead>';
@@ -407,23 +390,13 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
     <!-- Page Header -->
     <div class="int-head">
         <div>
-            <h1><i class="fas fa-history"></i> Adjustments Oversight</h1>
-            <div class="sub">Consolidated audit log of fuel transactions and deliveries adjustments made by managers.</div>
+            <h1><i class="fas fa-sliders-h"></i> Fuel Transaction Adjustment History</h1>
+            <div class="sub">Consolidated audit log of fuel transaction adjustments made by managers.</div>
         </div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'excel'])) ?>" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
             <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'pdf'])) ?>" class="ato-btn ato-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
         </div>
-    </div>
-
-    <!-- Tabs Navigation -->
-    <div class="tabs-navigation">
-        <a href="?tab=transactions" class="tab-btn <?= $active_tab === 'transactions' ? 'active' : '' ?>">
-            <i class="fas fa-sliders-h"></i> Fuel Transaction Adjustment History
-        </a>
-        <a href="?tab=deliveries" class="tab-btn <?= $active_tab === 'deliveries' ? 'active' : '' ?>">
-            <i class="fas fa-truck"></i> Fuel Deliveries Adjustment History
-        </a>
     </div>
 
     <!-- Summary Cards -->

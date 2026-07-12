@@ -632,22 +632,41 @@ if (in_array($export, ['excel', 'pdf'])) {
             $tbody .= '</tr>';
         }
 
-        echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fuel Transaction Validation Report</title>
-        <style>body{font-family:Arial,sans-serif;font-size:10px;padding:20px;color:#333;}
-        .pbtn{margin-bottom:12px}@media print{.pbtn{display:none}}
-        .hdr{border-bottom:3px solid #002F6C;margin-bottom:14px;padding-bottom:8px;display:flex;align-items:center;justify-content:between;}
-        h1{color:#002F6C;font-size:16px;margin:0 0 4px;text-transform:uppercase;}
-        table{width:100%;border-collapse:collapse;margin-top:10px;}
-        th{background:#002F6C;color:#fff;padding:6px;font-size:8px;text-transform:uppercase;text-align:left;}
-        td{padding:5px;border-bottom:1px solid #e2e8f0;font-size:8px;}
-        tr:nth-child(even) td{background:#f8fafc}
-        </style></head><body>';
-        echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;font-weight:bold;">🖨 Print / Save PDF</button>
-        <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none;font-weight:bold;">← Back</a></div>';
-        echo '<div class="hdr"><div><h1>Petron Fuel Transaction Validation</h1><p style="margin:2px 0 0;color:#666;">Period: ' . htmlspecialchars($date_from) . ' — ' . htmlspecialchars($date_to) . ' | Station: ' . htmlspecialchars(user_station_name()) . '</p></div><div style="text-align:right;"><p style="margin:0;">Generated: ' . $generated . '</p></div></div>';
+        echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fuel Transaction Validation Report</title>';
+        echo '<style>';
+        echo '@page{size:A4 landscape;margin:0.4in 0.3in;}';
+        echo 'body{font-family:Arial,sans-serif;font-size:9px;margin:0;padding:0;background:#fff;color:#1e293b;}';
+        echo '.report{background:#fff;max-width:100%;margin:0;}';
+        echo '.hdr{background:linear-gradient(135deg,#002F70 0%,#003d8a 100%);color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}';
+        echo '.hdr img{height:38px;width:auto;margin-right:14px;}';
+        echo 'h1{color:#fff;font-size:15px;margin:0 0 2px;text-transform:uppercase;font-weight:800;}';
+        echo '.hdr p{margin:2px 0 0;color:#93c5fd;font-size:9px;}';
+        echo 'table{width:100%;border-collapse:collapse;margin:12px 0;font-size:8px;table-layout:fixed;}';
+        echo 'th{background:#002F70;color:#fff;padding:5px 3px;font-size:7.5px;text-transform:uppercase;text-align:left;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}';
+        echo 'td{padding:4px 3px;border-bottom:1px solid #e2e8f0;font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}';
+        echo 'tr:nth-child(even) td{background:#f8fafc;}';
+        echo '@media print{';
+        echo 'body{background:#fff;margin:0;}';
+        echo '@page{size:A4 landscape;margin:0.3in 0.25in;}';
+        echo 'a[href]:after{content:none !important;display:none !important;}';
+        echo 'a{text-decoration:none !important;color:inherit !important;}';
+        echo '}';
+        echo '</style>';
+        echo '<script>';
+        echo 'window.onload=function(){window.print();setTimeout(function(){window.close();},100);};';
+        echo 'window.onafterprint=function(){window.close();};';
+        echo '</script>';
+        echo '</head><body>';
+        echo '<div class="report">';
+        echo '<div class="hdr">';
+        echo '<div><h1>Petron Fuel Transaction Validation</h1>';
+        echo '<p>Period: ' . htmlspecialchars($date_from) . ' — ' . htmlspecialchars($date_to) . ' | Station: ' . htmlspecialchars(user_station_name()) . '</p></div>';
+        echo '<div style="text-align:right;"><p style="margin:0;color:#bfdbfe;">Generated: ' . $generated . '</p></div>';
+        echo '</div>';
         echo '<table><thead><tr><th>Txn ID</th><th>Date</th><th>Shift</th><th>Fuel Type</th><th>Beginning</th><th>Ending</th><th>Calib</th><th>Liters</th><th>Price/L</th><th>Amount</th><th>Staff</th><th>Status</th><th>Val Date</th><th>Remarks</th></tr></thead>';
         echo '<tbody>' . ($tbody ?: '<tr><td colspan="14" style="text-align:center;padding:20px;color:#94a3b8">No records found.</td></tr>') . '</tbody></table>';
-        echo '</body></html>'; exit;
+        echo '</div></body></html>'; 
+        exit;
     }
 }
 

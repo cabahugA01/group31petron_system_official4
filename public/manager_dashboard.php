@@ -91,6 +91,56 @@ function mgr_column_exists(PDO $pdo, string $table, string $column): bool
     return $cache[$key];
 }
 
+function mgr_column_sql(string $column, string $alias = ''): string
+{
+    $quoted = '`' . str_replace('`', '``', $column) . '`';
+    if ($alias !== '' && preg_match('/^[A-Za-z0-9_]+$/', $alias)) {
+        return "`{$alias}`.{$quoted}";
+    }
+    return $quoted;
+}
+
+function mgr_datetime_expr(PDO $pdo, string $table, string $alias = '', array $preferred = ['transaction_date', 'created_at']): string
+{
+    $parts = [];
+    foreach ($preferred as $column) {
+        if (mgr_column_exists($pdo, $table, $column)) {
+            $parts[] = "NULLIF(" . mgr_column_sql($column, $alias) . ", '0000-00-00 00:00:00')";
+        }
+    }
+
+    if (!$parts) {
+        return 'NOW()';
+    }
+
+    return count($parts) === 1 ? $parts[0] : 'COALESCE(' . implode(', ', $parts) . ')';
+}
+
+function mgr_transaction_status_ok(PDO $pdo, string $table, array $columns, string $alias = ''): string
+{
+    $excluded = "'void', 'voided', 'rejected', 'cancelled', 'canceled'";
+    $checks = [];
+
+    foreach ($columns as $column) {
+        if (mgr_column_exists($pdo, $table, $column)) {
+            $col = mgr_column_sql($column, $alias);
+            $checks[] = "LOWER(TRIM(COALESCE({$col}, ''))) NOT IN ({$excluded})";
+        }
+    }
+
+    return $checks ? ' AND ' . implode(' AND ', $checks) : '';
+}
+
+function mgr_registered_customer_only(PDO $pdo, string $alias = ''): string
+{
+    if (!mgr_column_exists($pdo, 'customers', 'customer_type')) {
+        return '';
+    }
+
+    $col = mgr_column_sql('customer_type', $alias);
+    return " AND LOWER(COALESCE({$col}, 'regular')) <> 'walk-in'";
+}
+
 function mgr_value(PDO $pdo, string $sql, array $params = [], $default = 0)
 {
     try {
@@ -172,28 +222,37 @@ if ($station_label === '') {
 
 $station_sql = mgr_station_clause($station_id);
 $station_params = mgr_station_params($station_id);
+$fuel_dt_expr = mgr_datetime_expr($pdo, 'fuel_transactions', '', ['transaction_date', 'created_at']);
+$merch_dt_expr = mgr_datetime_expr($pdo, 'merchandise_transactions', '', ['transaction_date', 'created_at']);
+$merch_dt_expr_mt = mgr_datetime_expr($pdo, 'merchandise_transactions', 'mt', ['transaction_date', 'created_at']);
+$job_dt_expr = mgr_datetime_expr($pdo, 'job_orders', '', ['created_at', 'completed_at']);
+$fuel_status_ok = mgr_transaction_status_ok($pdo, 'fuel_transactions', ['status']);
+$merch_status_ok = mgr_transaction_status_ok($pdo, 'merchandise_transactions', ['validation_status', 'workflow_status']);
+$merch_status_ok_mt = mgr_transaction_status_ok($pdo, 'merchandise_transactions', ['validation_status', 'workflow_status'], 'mt');
+$job_status_ok = mgr_transaction_status_ok($pdo, 'job_orders', ['status', 'validation_status']);
+$registered_customer_only = mgr_registered_customer_only($pdo);
 
 // Summary cards.
 $fuel_count = mgr_table_exists($pdo, 'fuel_transactions')
-    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM fuel_transactions WHERE {$station_sql} AND DATE(transaction_date) = ?", array_merge($station_params, [$date_filter]))
+    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM fuel_transactions WHERE {$station_sql} AND DATE({$fuel_dt_expr}) = ? {$fuel_status_ok}", array_merge($station_params, [$date_filter]))
     : 0;
 
 $merch_count = mgr_table_exists($pdo, 'merchandise_transactions')
-    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$station_sql} AND DATE(COALESCE(transaction_date, created_at)) = ?", array_merge($station_params, [$date_filter]))
+    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$station_sql} AND DATE({$merch_dt_expr}) = ? {$merch_status_ok}", array_merge($station_params, [$date_filter]))
     : 0;
 
 $service_count = mgr_table_exists($pdo, 'job_orders')
-    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND DATE(created_at) = ?", array_merge($station_params, [$date_filter]))
+    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND DATE({$job_dt_expr}) = ? {$job_status_ok}", array_merge($station_params, [$date_filter]))
     : 0;
 
 $total_transactions = $fuel_count + $merch_count + $service_count;
 
 $fuel_revenue = mgr_table_exists($pdo, 'fuel_transactions')
-    ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE(transaction_date) = ?", array_merge($station_params, [$date_filter]))
+    ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE({$fuel_dt_expr}) = ? {$fuel_status_ok}", array_merge($station_params, [$date_filter]))
     : 0.0;
 
 $merch_revenue = mgr_table_exists($pdo, 'merchandise_transactions')
-    ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$station_sql} AND DATE(COALESCE(transaction_date, created_at)) = ?", array_merge($station_params, [$date_filter]))
+    ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$station_sql} AND DATE({$merch_dt_expr}) = ? {$merch_status_ok}", array_merge($station_params, [$date_filter]))
     : 0.0;
 
 $service_revenue = mgr_table_exists($pdo, 'job_orders')
@@ -202,7 +261,7 @@ $service_revenue = mgr_table_exists($pdo, 'job_orders')
         "SELECT COALESCE(SUM(COALESCE(total_cost, estimated_cost, actual_labor_cost + actual_parts_cost, 0)), 0)
          FROM job_orders
          WHERE {$station_sql}
-           AND DATE(created_at) = ?
+           AND DATE({$job_dt_expr}) = ?
            AND LOWER(COALESCE(status, '')) IN ('completed', 'verified', 'finalized', 'released')",
         array_merge($station_params, [$date_filter])
     )
@@ -211,7 +270,7 @@ $service_revenue = mgr_table_exists($pdo, 'job_orders')
 $total_revenue = $fuel_revenue + $merch_revenue + $service_revenue;
 
 $total_fuel_liters = mgr_table_exists($pdo, 'fuel_transactions')
-    ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(liters_sold), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE(transaction_date) = ?", array_merge($station_params, [$date_filter]))
+    ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(liters_sold), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE({$fuel_dt_expr}) = ? {$fuel_status_ok}", array_merge($station_params, [$date_filter]))
     : 0.0;
 
 $pending_merch_stock = mgr_table_exists($pdo, 'stock_requests')
@@ -228,6 +287,7 @@ $pending_customer_requests = mgr_table_exists($pdo, 'customers')
         "SELECT COUNT(*) FROM customers
          WHERE {$station_sql}
            AND LOWER(COALESCE(status, 'active')) <> 'inactive'
+           {$registered_customer_only}
            AND (
                 LOWER(COALESCE(verification_status, '')) = 'pending'
                 OR LOWER(COALESCE(mgr_status, '')) = 'pending'
@@ -343,16 +403,16 @@ if (mgr_table_exists($pdo, 'job_orders')) {
 // Chart data.
 $hour_labels = [];
 $hourly_sales = [];
-for ($h = 6; $h <= 23; $h++) {
+for ($h = 0; $h <= 23; $h++) {
     $hour_labels[] = date('ga', strtotime(sprintf('%02d:00:00', $h)));
     $start = $date_filter . ' ' . sprintf('%02d:00:00', $h);
     $end = $date_filter . ' ' . sprintf('%02d:59:59', $h);
 
     $fuel_hour = mgr_table_exists($pdo, 'fuel_transactions')
-        ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$station_sql} AND transaction_date BETWEEN ? AND ?", array_merge($station_params, [$start, $end]))
+        ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$station_sql} AND {$fuel_dt_expr} BETWEEN ? AND ? {$fuel_status_ok}", array_merge($station_params, [$start, $end]))
         : 0.0;
     $merch_hour = mgr_table_exists($pdo, 'merchandise_transactions')
-        ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$station_sql} AND COALESCE(transaction_date, created_at) BETWEEN ? AND ?", array_merge($station_params, [$start, $end]))
+        ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$station_sql} AND {$merch_dt_expr} BETWEEN ? AND ? {$merch_status_ok}", array_merge($station_params, [$start, $end]))
         : 0.0;
     $service_hour = mgr_table_exists($pdo, 'job_orders')
         ? (float) mgr_value(
@@ -360,7 +420,7 @@ for ($h = 6; $h <= 23; $h++) {
             "SELECT COALESCE(SUM(COALESCE(total_cost, estimated_cost, actual_labor_cost + actual_parts_cost, 0)), 0)
              FROM job_orders
              WHERE {$station_sql}
-               AND created_at BETWEEN ? AND ?
+               AND {$job_dt_expr} BETWEEN ? AND ?
                AND LOWER(COALESCE(status, '')) IN ('completed', 'verified', 'finalized', 'released')",
             array_merge($station_params, [$start, $end])
         )
@@ -369,55 +429,61 @@ for ($h = 6; $h <= 23; $h++) {
     $hourly_sales[] = $fuel_hour + $merch_hour + $service_hour;
 }
 
-$fuel_product_rules = [
-    'Diesel' => "(LOWER(fuel_type) LIKE '%diesel%' AND LOWER(fuel_type) NOT LIKE '%turbo%')",
-    'XCS' => "LOWER(fuel_type) LIKE '%xcs%'",
-    'Turbo Diesel' => "(LOWER(fuel_type) LIKE '%turbo%' OR LOWER(fuel_type) LIKE '%turbo diesel%')",
-    'XTRA' => "(LOWER(fuel_type) LIKE '%xtra%' OR LOWER(fuel_type) LIKE '%unleaded%')",
-    'Kerosene' => "LOWER(fuel_type) LIKE '%kerosene%'",
-];
-$fuel_products = array_keys($fuel_product_rules);
+$fuel_products = [];
 $fuel_sales_data = [];
-foreach ($fuel_product_rules as $rule) {
-    $fuel_sales_data[] = mgr_table_exists($pdo, 'fuel_transactions')
-        ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(liters_sold), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE(transaction_date) = ? AND {$rule}", array_merge($station_params, [$date_filter]))
-        : 0.0;
+if (mgr_table_exists($pdo, 'fuel_transactions')) {
+    $fuel_sales_rows = mgr_rows(
+        $pdo,
+        "SELECT COALESCE(NULLIF(TRIM(fuel_type), ''), 'Unspecified') AS label,
+                COALESCE(SUM(liters_sold), 0) AS total_liters
+         FROM fuel_transactions
+         WHERE {$station_sql}
+           AND DATE({$fuel_dt_expr}) = ?
+           {$fuel_status_ok}
+         GROUP BY label
+         ORDER BY total_liters DESC, label ASC",
+        array_merge($station_params, [$date_filter])
+    );
+    foreach ($fuel_sales_rows as $row) {
+        $fuel_products[] = (string) ($row['label'] ?? 'Unspecified');
+        $fuel_sales_data[] = (float) ($row['total_liters'] ?? 0);
+    }
+}
+if (!$fuel_products && mgr_table_exists($pdo, 'fuel_inventory')) {
+    $fuel_inventory_labels = mgr_rows(
+        $pdo,
+        "SELECT COALESCE(NULLIF(TRIM(fuel_type), ''), CONCAT('Fuel #', id)) AS label
+         FROM fuel_inventory
+         WHERE {$station_sql}
+         ORDER BY fuel_type",
+        $station_params
+    );
+    foreach ($fuel_inventory_labels as $row) {
+        $fuel_products[] = (string) ($row['label'] ?? 'Fuel');
+        $fuel_sales_data[] = 0.0;
+    }
 }
 
-$merch_category_rules = [
-    'Lubricants' => ["%lubricant%", "%lube%", "%grease%", "%oil%"],
-    'Drinks' => ["%drink%", "%beverage%", "%water%", "%juice%", "%cola%"],
-    'Snacks' => ["%snack%", "%biscuit%", "%cracker%", "%chips%", "%candy%"],
-    'Accessories' => ["%accessor%", "%air freshener%", "%car%", "%tire%", "%patch%"],
-    'Engine Oil' => ["%engine oil%", "%mo30%", "%mo40%", "%motor oil%"],
-];
-$merch_categories = array_keys($merch_category_rules);
 $merch_sales_data = [];
-foreach ($merch_category_rules as $patterns) {
-    if (!mgr_table_exists($pdo, 'merchandise_transaction_items') || !mgr_table_exists($pdo, 'merchandise_transactions')) {
-        $merch_sales_data[] = 0.0;
-        continue;
-    }
-
-    $like_sql = [];
-    $like_params = [];
-    foreach ($patterns as $pattern) {
-        $like_sql[] = 'LOWER(mti.category) LIKE ?';
-        $like_sql[] = 'LOWER(mti.product_name) LIKE ?';
-        $like_params[] = $pattern;
-        $like_params[] = $pattern;
-    }
-
-    $merch_sales_data[] = (float) mgr_value(
+$merch_categories = [];
+if (mgr_table_exists($pdo, 'merchandise_transaction_items') && mgr_table_exists($pdo, 'merchandise_transactions')) {
+    $merch_sales_rows = mgr_rows(
         $pdo,
-        "SELECT COALESCE(SUM(mti.subtotal), 0)
+        "SELECT COALESCE(NULLIF(TRIM(mti.category), ''), 'Others') AS label,
+                COALESCE(SUM(mti.subtotal), 0) AS total_sales
          FROM merchandise_transaction_items mti
          INNER JOIN merchandise_transactions mt ON mt.id = mti.transaction_id
          WHERE " . mgr_station_clause($station_id, 'mt') . "
-           AND DATE(COALESCE(mt.transaction_date, mt.created_at)) = ?
-           AND (" . implode(' OR ', $like_sql) . ')',
-        array_merge($station_params, [$date_filter], $like_params)
+           AND DATE({$merch_dt_expr_mt}) = ?
+           {$merch_status_ok_mt}
+         GROUP BY label
+         ORDER BY total_sales DESC, label ASC",
+        array_merge($station_params, [$date_filter])
     );
+    foreach ($merch_sales_rows as $row) {
+        $merch_categories[] = (string) ($row['label'] ?? 'Others');
+        $merch_sales_data[] = (float) ($row['total_sales'] ?? 0);
+    }
 }
 
 $selected_ts = strtotime($date_filter);
@@ -429,10 +495,10 @@ for ($i = 0; $i < 7; $i++) {
     $weekly_labels[] = date('D', strtotime($day));
 
     $fuel_day = mgr_table_exists($pdo, 'fuel_transactions')
-        ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE(transaction_date) = ?", array_merge($station_params, [$day]))
+        ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE({$fuel_dt_expr}) = ? {$fuel_status_ok}", array_merge($station_params, [$day]))
         : 0.0;
     $merch_day = mgr_table_exists($pdo, 'merchandise_transactions')
-        ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$station_sql} AND DATE(COALESCE(transaction_date, created_at)) = ?", array_merge($station_params, [$day]))
+        ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$station_sql} AND DATE({$merch_dt_expr}) = ? {$merch_status_ok}", array_merge($station_params, [$day]))
         : 0.0;
     $service_day = mgr_table_exists($pdo, 'job_orders')
         ? (float) mgr_value(
@@ -440,7 +506,7 @@ for ($i = 0; $i < 7; $i++) {
             "SELECT COALESCE(SUM(COALESCE(total_cost, estimated_cost, actual_labor_cost + actual_parts_cost, 0)), 0)
              FROM job_orders
              WHERE {$station_sql}
-               AND DATE(created_at) = ?
+               AND DATE({$job_dt_expr}) = ?
                AND LOWER(COALESCE(status, '')) IN ('completed', 'verified', 'finalized', 'released')",
             array_merge($station_params, [$day])
         )
@@ -577,6 +643,7 @@ $customer_request_rows = mgr_table_exists($pdo, 'customers')
          FROM customers
          WHERE {$station_sql}
            AND LOWER(COALESCE(status, 'active')) <> 'inactive'
+           {$registered_customer_only}
            AND (
                 LOWER(COALESCE(verification_status, '')) = 'pending'
                 OR LOWER(COALESCE(mgr_status, '')) = 'pending'
@@ -662,7 +729,7 @@ $recent_transactions = [];
 if (mgr_table_exists($pdo, 'fuel_transactions')) {
     $recent_transactions = array_merge($recent_transactions, mgr_rows(
         $pdo,
-        "SELECT transaction_date AS txn_time,
+        "SELECT {$fuel_dt_expr} AS txn_time,
                 'Fuel' AS txn_type,
                 transaction_id AS reference_no,
                 fuel_type AS detail,
@@ -671,7 +738,8 @@ if (mgr_table_exists($pdo, 'fuel_transactions')) {
                 status
          FROM fuel_transactions
          WHERE {$station_sql}
-         ORDER BY transaction_date DESC
+           {$fuel_status_ok}
+         ORDER BY {$fuel_dt_expr} DESC
          LIMIT 10",
         $station_params
     ));
@@ -679,7 +747,7 @@ if (mgr_table_exists($pdo, 'fuel_transactions')) {
 if (mgr_table_exists($pdo, 'merchandise_transactions')) {
     $recent_transactions = array_merge($recent_transactions, mgr_rows(
         $pdo,
-        "SELECT COALESCE(transaction_date, created_at) AS txn_time,
+        "SELECT {$merch_dt_expr} AS txn_time,
                 'Merchandise' AS txn_type,
                 transaction_id AS reference_no,
                 item_sku AS detail,
@@ -688,7 +756,8 @@ if (mgr_table_exists($pdo, 'merchandise_transactions')) {
                 validation_status AS status
          FROM merchandise_transactions
          WHERE {$station_sql}
-         ORDER BY COALESCE(transaction_date, created_at) DESC
+           {$merch_status_ok}
+         ORDER BY {$merch_dt_expr} DESC
          LIMIT 10",
         $station_params
     ));
@@ -696,7 +765,7 @@ if (mgr_table_exists($pdo, 'merchandise_transactions')) {
 if (mgr_table_exists($pdo, 'job_orders')) {
     $recent_transactions = array_merge($recent_transactions, mgr_rows(
         $pdo,
-        "SELECT created_at AS txn_time,
+        "SELECT {$job_dt_expr} AS txn_time,
                 'Service' AS txn_type,
                 COALESCE(job_order_number, job_order_id, CONCAT('JO-', id)) AS reference_no,
                 service_type AS detail,
@@ -705,7 +774,8 @@ if (mgr_table_exists($pdo, 'job_orders')) {
                 status
          FROM job_orders
          WHERE {$station_sql}
-         ORDER BY created_at DESC
+           {$job_status_ok}
+         ORDER BY {$job_dt_expr} DESC
          LIMIT 10",
         $station_params
     ));
@@ -888,13 +958,20 @@ $pending_fuel_transactions = mgr_table_exists($pdo, 'fuel_transactions')
     )
     : 0;
 
-$pending_merch_transactions = mgr_table_exists($pdo, 'merchandise_transactions')
+$merch_pending_parts = [];
+if (mgr_column_exists($pdo, 'merchandise_transactions', 'validation_status')) {
+    $merch_pending_parts[] = "LOWER(TRIM(COALESCE(validation_status, ''))) IN ('', 'pending', 'pending validation', 'pendingvalidation')";
+}
+if (mgr_column_exists($pdo, 'merchandise_transactions', 'workflow_status')) {
+    $merch_pending_parts[] = "LOWER(TRIM(COALESCE(workflow_status, ''))) IN ('', 'pending', 'pending validation', 'pendingvalidation', 'pending manager review')";
+}
+$pending_merch_transactions = mgr_table_exists($pdo, 'merchandise_transactions') && $merch_pending_parts
     ? (int) mgr_value(
         $pdo,
         "SELECT COUNT(*)
          FROM merchandise_transactions
          WHERE {$station_sql}
-           AND LOWER(TRIM(COALESCE(validation_status, ''))) IN ('', 'pending', 'pending validation', 'pendingvalidation')",
+           AND (" . implode(' OR ', $merch_pending_parts) . ')',
         $station_params
     )
     : 0;

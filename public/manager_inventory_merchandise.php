@@ -175,12 +175,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $po_number = "PO-" . strtoupper(uniqid());
                 
                 // Insert PO
-                $pdo->prepare("
+                $stmt_insert_po = $pdo->prepare("
                     INSERT INTO purchase_orders 
                         (request_id, product_name, quantity, unit_price, total_amount, type, po_number, station_id, created_by, status, remarks, created_at, updated_at, admin_finalized)
                     VALUES (?, ?, ?, ?, ?, 'merch', ?, ?, ?, 'Pending Admin Validation', ?, NOW(), NOW(), 0)
-                ")->execute([
+                ");
+                $stmt_insert_po->execute([
                     $req_id, $req['item_name'], $approved_qty, $unit_price, $total_amount, $po_number, $station_id, $me['id'], $notes
+                ]);
+                $po_id = $pdo->lastInsertId();
+
+                // Insert into purchase_order_items for data integrity
+                $pdo->prepare("
+                    INSERT INTO purchase_order_items
+                        (po_id, product_id, item_name, quantity, quantity_ordered, unit_price, total_price)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ")->execute([
+                    $po_id, $req['item_id'], $req['item_name'], $approved_qty, $approved_qty, $unit_price, $total_amount
                 ]);
                 
                 // Update Stock Request
@@ -969,37 +980,42 @@ include __DIR__ . '/../partials/header.php';
 <!-- TAB CONTENT 1: Inventory Stock Catalog -->
 <?php if ($active_tab === 'inventory'): ?>
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;">
+    <!-- Total Products -->
     <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Total Products</div>
             <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_total) ?></div>
         </div>
-        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-boxes"></i></div>
+        <div style="background:#f0f4ff;color:#002F70;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-boxes"></i></div>
     </div>
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
+    <!-- Low Stock -->
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fed7aa;">
         <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Available Products</div>
-            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_available) ?></div>
+            <div style="font-size:11px;font-weight:700;color:#ea580c;text-transform:uppercase;letter-spacing:.3px;">⚠ Low Stock</div>
+            <div style="font-size:24px;font-weight:800;color:#ea580c;margin-top:4px;"><?= number_format($summary_alert_low) ?></div>
         </div>
-        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-check-circle"></i></div>
+        <div style="background:#fff7ed;color:#ea580c;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
+    <!-- Critical Stock -->
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fecaca;">
         <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Low Stock Products</div>
-            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_low) ?></div>
+            <div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.3px;">🚨 Critical Stock</div>
+            <div style="font-size:24px;font-weight:800;color:#dc2626;margin-top:4px;"><?= number_format($summary_alert_critical) ?></div>
         </div>
-        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
+        <div style="background:#fef2f2;color:#dc2626;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-fire"></i></div>
     </div>
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
+    <!-- Out of Stock -->
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fecaca;">
         <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Out of Stock Products</div>
-            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_out) ?></div>
+            <div style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.3px;">❌ Out of Stock</div>
+            <div style="font-size:24px;font-weight:800;color:#991b1b;margin-top:4px;"><?= number_format($summary_out) ?></div>
         </div>
-        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
+        <div style="background:#fef2f2;color:#991b1b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
     </div>
+    <!-- Products with Variance (manager-only extra card) -->
     <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Products with Variance</div>
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">With Variance</div>
             <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_variance) ?></div>
         </div>
         <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-balance-scale"></i></div>
@@ -1065,7 +1081,7 @@ include __DIR__ . '/../partials/header.php';
                     $stock    = (float)($item['stock_level'] ?? 0);
                     $reorder  = (float)($item['reorder_level'] ?? 10);
                     $capacity = (float)($item['capacity']    ?? 0);
-                    $unit     = htmlspecialchars($item['unit'] ?? 'pcs');
+                    $unit     = htmlspecialchars(format_merch_unit($item['unit'] ?? 'pcs'));
                     $variance = $item['variance'];
                     $has_variance = ($variance !== null && (float)$variance != 0);
 
@@ -1591,7 +1607,7 @@ include __DIR__ . '/../partials/header.php';
                     <th style="text-align:center;">Category</th>
                     <th style="text-align:right;">Current Stock</th>
                     <th style="text-align:right;">Reorder Level</th>
-                    <th style="text-align:right;">Requested Qty</th>
+                    <th style="text-align:right;">Requested Quantity</th>
                     <th>Requested By</th>
                     <th style="text-align:center;">Status</th>
                     <th style="text-align:center;">Actions</th>
@@ -1621,9 +1637,10 @@ include __DIR__ . '/../partials/header.php';
                         <td><?= date('Y-m-d g:i A', strtotime($req['created_at'])) ?></td>
                         <td><strong><?= htmlspecialchars($req['item_name']) ?></strong></td>
                         <td style="text-align:center;"><?= htmlspecialchars($req['item_category']) ?></td>
-                        <td style="text-align:right;font-weight:700;color:#002F70;"><?= number_format($req['current_stock']) ?></td>
-                        <td style="text-align:right;font-weight:600;color:#475569;"><?= number_format($req['reorder_level']) ?></td>
-                        <td style="text-align:right;font-weight:700;color:#0f172a;"><?= number_format($req['requested_quantity']) ?></td>
+                        <?php $req_unit = format_merch_unit($req['unit'] ?? 'pcs'); ?>
+                        <td style="text-align:right;font-weight:700;color:#002F70;"><?= number_format($req['current_stock']) ?> <?= htmlspecialchars($req_unit) ?></td>
+                        <td style="text-align:right;font-weight:600;color:#475569;"><?= number_format($req['reorder_level']) ?> <?= htmlspecialchars($req_unit) ?></td>
+                        <td style="text-align:right;font-weight:700;color:#0f172a;"><?= number_format($req['requested_quantity']) ?> <?= htmlspecialchars($req_unit) ?></td>
                         <td><strong><?= htmlspecialchars($req['staff_name'] ?? 'Staff') ?></strong></td>
                         <td style="text-align:center;"><span class="status-badge <?= $badge_cls ?>"><?= htmlspecialchars($req['status']) ?></span></td>
                         <td style="text-align:center;">

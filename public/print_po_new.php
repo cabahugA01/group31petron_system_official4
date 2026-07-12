@@ -324,8 +324,6 @@ $station_addr  = htmlspecialchars($raw_addr);
 $station_phone = htmlspecialchars($po['station_contact'] ?? 'N/A');
 $vat_tin       = htmlspecialchars($po['station_vat_tin'] ?? '—');
 
-// Audit trail URL
-$audit_url = 'activity_logs.php?module=' . urlencode('Purchase Order') . '&start=' . date('Y-m-01') . '&end=' . date('Y-m-d');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -334,26 +332,26 @@ $audit_url = 'activity_logs.php?module=' . urlencode('Purchase Order') . '&start
 <title>Purchase Order — <?php echo $po_number; ?></title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:12px;color:#333;background:#fff;padding:25px;line-height:1.4}
-.po-document{width:100%;max-width:850px;margin:0 auto;border:1px solid #ddd;padding:30px;position:relative;background:#fff;box-shadow:0 0 10px rgba(0,0,0,0.05);}
-.header-box{display:flex;justify-content:space-between;align-items:center;position:relative;padding-bottom:12px;}
-.divider-double{border-top:3px double #333;margin:15px 0;}
-.divider-single{border-top:1px dashed #ccc;margin:15px 0;}
-.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:15px;}
-.info-block{border:1px solid #e2e8f0;border-radius:6px;padding:12px;background:#f8fafc;}
-.info-block h3{font-size:13px;font-weight:bold;color:#0f172a;border-bottom:1px solid #cbd5e1;padding-bottom:4px;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;}
-.info-row{margin-bottom:4px;display:flex;}
-.info-row strong{width:150px;color:#475569;display:inline-block;}
+body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:11px;color:#333;background:#fff;padding:15px;line-height:1.3}
+.po-document{width:100%;max-width:850px;margin:0 auto;border:1px solid #ddd;padding:20px;position:relative;background:#fff;box-shadow:0 0 10px rgba(0,0,0,0.05);}
+.header-box{display:flex;justify-content:space-between;align-items:center;position:relative;padding-bottom:8px;}
+.divider-double{border-top:3px double #333;margin:10px 0;}
+.divider-single{border-top:1px dashed #ccc;margin:10px 0;}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;}
+.info-block{border:1px solid #e2e8f0;border-radius:4px;padding:8px;background:#f8fafc;}
+.info-block h3{font-size:11px;font-weight:bold;color:#0f172a;border-bottom:1px solid #cbd5e1;padding-bottom:3px;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.3px;}
+.info-row{margin-bottom:3px;display:flex;font-size:10px;}
+.info-row strong{width:140px;color:#475569;display:inline-block;}
 .info-row span{color:#0f172a;flex:1;}
-.items-table{width:100%;border-collapse:collapse;margin:15px 0;}
-.items-table th{background:#002F6C;color:#fff;padding:8px 10px;font-weight:600;text-align:left;font-size:11px;text-transform:uppercase;}
-.items-table td{padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#0f172a;}
+.items-table{width:100%;border-collapse:collapse;margin:8px 0;}
+.items-table th{background:#002F6C;color:#fff;padding:6px 8px;font-weight:600;text-align:left;font-size:10px;text-transform:uppercase;}
+.items-table td{padding:5px 8px;border-bottom:1px solid #e2e8f0;color:#0f172a;font-size:10px;}
 .items-table th.r, .items-table td.r{text-align:right;}
-.signatures-box{display:grid;grid-template-columns:1fr 1fr 1fr;gap:25px;margin-top:40px;}
+.signatures-box{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-top:25px;}
 .sig-col{text-align:center;}
-.sig-line{border-top:1px solid #475569;width:80%;margin:45px auto 4px auto;}
-.btn-print-bar{max-width:850px;margin:0 auto 15px auto;display:flex;justify-content:flex-end;gap:10px;}
-.btn-print{font-family:sans-serif;font-size:12px;padding:8px 16px;background:#002F6C;color:#fff;border:none;border-radius:4px;cursor:pointer;text-decoration:none;font-weight:600;}
+.sig-line{border-top:1px solid #475569;width:80%;margin:30px auto 3px auto;}
+.btn-print-bar{max-width:850px;margin:0 auto 10px auto;display:flex;justify-content:flex-end;gap:10px;}
+.btn-print{font-family:sans-serif;font-size:11px;padding:6px 14px;background:#002F6C;color:#fff;border:none;border-radius:4px;cursor:pointer;text-decoration:none;font-weight:600;}
 .btn-print:hover{background:#0b448a;}
 .btn-back{background:#fff;color:#333;border:1px solid #ccc;}
 .btn-back:hover{background:#f5f5f5;}
@@ -366,7 +364,7 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:12px;
     border: 3px solid #2e7d32;
     color: #2e7d32;
     padding: 2px 10px;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: bold;
     text-transform: uppercase;
     transform: rotate(-10deg);
@@ -387,9 +385,20 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:12px;
 }
 
 @media print{
-    .btn-print-bar{display:none;}
-    body{padding:0;background:#fff;}
-    .po-document{border:none;padding:0;box-shadow:none;}
+    @page {
+        size: A4;
+        margin: 0.5cm;
+    }
+    .btn-print-bar{display:none !important;}
+    body{padding:0;background:#fff;margin:0;}
+    .po-document{border:none;padding:15px;box-shadow:none;page-break-after:avoid;}
+    a[href]:after{content:none !important;}
+    .header-box{padding-bottom:5px;}
+    .info-grid{gap:8px;margin-bottom:8px;}
+    .info-block{padding:6px;}
+    .items-table{margin:6px 0;}
+    .signatures-box{margin-top:15px;gap:15px;}
+    .sig-line{margin:20px auto 3px auto;}
 }
 </style>
 </head>
@@ -410,16 +419,16 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:12px;
             ?>
             <img src="<?php echo $logo_url; ?>" alt="Petron Logo" style="width:65px; height:65px; object-fit:contain;" onerror="this.src='../assets/img/Petron Logo.png'">
             <div>
-                <h1 style="font-family:'Segoe UI', Arial, sans-serif; font-size:17px; font-weight:800; color:#002F6C; margin:0; line-height:1.2;">
+                <h1 style="font-family:'Segoe UI', Arial, sans-serif; font-size:15px; font-weight:800; color:#002F6C; margin:0; line-height:1.1;">
                     Petron Station Management System
                 </h1>
-                <p style="font-size:10px; color:#333; margin-top:4px; font-weight:600;">
+                <p style="font-size:9px; color:#333; margin-top:3px; font-weight:600;">
                     <?php echo htmlspecialchars($station_name); ?>
                 </p>
-                <p style="font-size:9.5px; color:#666; margin-top:2px; text-transform:uppercase; line-height:1.3;">
+                <p style="font-size:8.5px; color:#666; margin-top:2px; text-transform:uppercase; line-height:1.2;">
                     <?php echo htmlspecialchars($station_addr); ?>
                 </p>
-                <p style="font-size:9px; color:#666; margin-top:1px;">
+                <p style="font-size:8px; color:#666; margin-top:1px;">
                     Contact: <?php echo htmlspecialchars($station_phone); ?>
                 </p>
             </div>
@@ -434,10 +443,10 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:12px;
                 <small>PURCHASE ORDER</small>
             </div>
             
-            <div style="font-size:20px; font-weight:900; color:#002F6C; letter-spacing:-0.5px; font-family:'Courier New', Courier, monospace;">
+            <div style="font-size:18px; font-weight:900; color:#002F6C; letter-spacing:-0.5px; font-family:'Courier New', Courier, monospace;">
                 <?php echo $po_number; ?>
             </div>
-            <div style="font-size:9.5px; color:#555; margin-top:4px; line-height:1.4;">
+            <div style="font-size:9px; color:#555; margin-top:3px; line-height:1.3;">
                 <strong>Finalized:</strong> <?php echo $finalized_date; ?> <?php echo $finalized_time; ?><br>
                 <strong>Printed:</strong> <?php echo $printed_date; ?>
             </div>
@@ -445,7 +454,7 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:12px;
     </div>
 
     <!-- Solid thick blue divider line underneath header -->
-    <div style="border-top: 4px solid #002F6C; margin-bottom: 20px; width: 100%;"></div>
+    <div style="border-top: 3px solid #002F6C; margin-bottom: 12px; width: 100%;"></div>
 
     <!-- Info Sections in 2 Columns Grid -->
     <div class="info-grid">
@@ -469,9 +478,9 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:12px;
     </div>
 
     <!-- Supplier & Delivery Information -->
-    <div class="info-block" style="margin-bottom:15px;">
+    <div class="info-block" style="margin-bottom:10px;">
         <h3>Supplier &amp; Delivery Information</h3>
-        <div class="info-grid" style="grid-template-columns:1fr 1fr; gap:10px 30px; margin-bottom:0; background:none; padding:0; border:none;">
+        <div class="info-grid" style="grid-template-columns:1fr 1fr; gap:8px 25px; margin-bottom:0; background:none; padding:0; border:none;">
             <div>
                 <div class="info-row"><strong>Supplier</strong> <span><?php echo $supplier_name; ?></span></div>
                 <div class="info-row"><strong>Expected Delivery</strong> <span><?php echo $expected_delivery_date; ?></span></div>
@@ -489,7 +498,7 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:12px;
 
     <!-- Order Details -->
     <div>
-        <h3 style="font-size:12px; font-weight:bold; color:#0f172a; text-transform:uppercase; margin-bottom:6px;">Order Details</h3>
+        <h3 style="font-size:11px; font-weight:bold; color:#0f172a; text-transform:uppercase; margin-bottom:4px;">Order Details</h3>
         <table class="items-table">
             <thead>
                 <tr>
@@ -528,47 +537,38 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:12px;
     </div>
 
     <!-- Order Summary -->
-    <div style="display:flex; justify-content:flex-end; margin-top:10px;">
-        <div style="width:300px; line-height:1.6; border:1px solid #e2e8f0; border-radius:6px; padding:10px; background:#f8fafc;">
+    <div style="display:flex; justify-content:flex-end; margin-top:6px;">
+        <div style="width:280px; line-height:1.5; border:1px solid #e2e8f0; border-radius:4px; padding:8px; background:#f8fafc; font-size:10px;">
             <div style="display:flex; justify-content:space-between;"><span>Subtotal</span> <span style="font-weight:600;">₱<?php echo number_format($subtotal, 2); ?></span></div>
             <div style="display:flex; justify-content:space-between;"><span>Discount</span> <span style="font-weight:600;">₱0.00</span></div>
             <div style="display:flex; justify-content:space-between;"><span>VAT (12% Included)</span> <span style="font-weight:600;">₱<?php echo number_format($subtotal * 0.12, 2); ?></span></div>
-            <div style="display:flex; justify-content:space-between; font-weight:bold; border-top:1px solid #cbd5e1; margin-top:6px; padding-top:6px; font-size:13px; color:#002F6C;">
+            <div style="display:flex; justify-content:space-between; font-weight:bold; border-top:1px solid #cbd5e1; margin-top:4px; padding-top:4px; font-size:11px; color:#002F6C;">
                 <span>Grand Total</span> <span>₱<?php echo number_format($subtotal, 2); ?></span>
             </div>
         </div>
     </div>
 
-    <div class="divider-single" style="margin-top:20px;"></div>
+    <div class="divider-single" style="margin-top:12px; margin-bottom:35px;"></div>
 
     <!-- Signature Section -->
     <div class="signatures-box">
         <div class="sig-col">
             <div class="sig-line"></div>
-            <strong>Prepared By (Admin)</strong>
-            <div style="font-size:11px; color:#475569; margin-top:2px;"><?php echo $admin_name; ?></div>
+            <strong style="font-size:10px;">Prepared By (Admin)</strong>
+            <div style="font-size:9px; color:#475569; margin-top:2px;"><?php echo $admin_name; ?></div>
         </div>
         <div class="sig-col">
             <div class="sig-line"></div>
-            <strong>Supplier Representative</strong>
-            <div style="font-size:10px; color:#94a3b8; margin-top:2px;">Signature over Printed Name / Date</div>
+            <strong style="font-size:10px;">Supplier Representative</strong>
+            <div style="font-size:8px; color:#94a3b8; margin-top:2px;">Signature over Printed Name / Date</div>
         </div>
         <div class="sig-col">
             <div class="sig-line"></div>
-            <strong>Received By</strong>
-            <div style="font-size:10px; color:#94a3b8; margin-top:2px;">Signature over Printed Name / Date</div>
+            <strong style="font-size:10px;">Received By</strong>
+            <div style="font-size:8px; color:#94a3b8; margin-top:2px;">Signature over Printed Name / Date</div>
         </div>
     </div>
 
-    <div class="divider-double" style="margin-bottom:8px; margin-top:30px;"></div>
-    
-    <!-- Footer -->
-    <div style="display:flex; justify-content:space-between; font-size:10px; color:#64748b;">
-        <div>Generated by Petron Station Management System</div>
-        <div>Printed by: <?php echo $admin_name; ?></div>
-        <div>Date Printed: <?php echo $printed_date; ?></div>
-        <div>Page 1 of 1</div>
-    </div>
     
 </div>
 

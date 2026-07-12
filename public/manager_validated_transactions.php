@@ -441,35 +441,53 @@ if ($export_type === 'pdf') {
     echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">';
     echo '<title>Validated Transactions | Petron Station Management</title>';
     echo '<style>';
-    echo 'body{font-family:Arial,Helvetica,sans-serif;font-size:12px;margin:0;padding:0;background:#f1f5f9;color:#1e293b;}';
-    echo '.action-bar{background:#002F70;padding:12px 24px;display:flex;align-items:center;text-align:center;justify-content:center;gap:12px;}';
-    echo '.action-bar h2{color:#fff;font-size:15px;margin:0;}';
-    echo '.btn-print{display:inline-flex;align-items:center;gap:7px;padding:9px 20px;background:#DC0032;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;text-decoration:none;}';
-    echo '.btn-back{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;}';
-    echo '.btn-back:hover,.btn-print:hover{opacity:.85;}';
-    echo '.report{background:#fff;max-width:1200px;margin:20px auto;border-radius:10px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.12);}';
-    echo '.rpt-header{background:linear-gradient(135deg,#002F70 0%,#003d8a 100%);padding:22px 28px;display:flex;align-items:center;gap:18px;}';
-    echo '.rpt-header img{height:52px;width:auto;}';
-    echo '.rpt-header-text h1{color:#fff;font-size:18px;font-weight:800;margin:0 0 3px;}';
-    echo '.rpt-header-text p{color:#93c5fd;font-size:11px;margin:0;}';
-    echo '.rpt-header-meta{margin-left:auto;text-align:right;color:#bfdbfe;font-size:11px;line-height:1.7;}';
+    echo '@page{size:A4 landscape;margin:0.4in 0.3in;}';
+    echo 'body{font-family:Arial,Helvetica,sans-serif;font-size:9px;margin:0;padding:0;background:#fff;color:#1e293b;}';
+    echo '.report{background:#fff;max-width:100%;margin:0;border-radius:0;overflow:hidden;}';
+    echo '.rpt-header{background:linear-gradient(135deg,#002F70 0%,#003d8a 100%);padding:14px 20px;display:flex;align-items:center;gap:14px;}';
+    echo '.rpt-header img{height:38px;width:auto;}';
+    echo '.rpt-header-text h1{color:#fff;font-size:15px;font-weight:800;margin:0 0 2px;}';
+    echo '.rpt-header-text p{color:#93c5fd;font-size:10px;margin:0;}';
+    echo '.rpt-header-meta{margin-left:auto;text-align:right;color:#bfdbfe;font-size:9px;line-height:1.6;}';
     echo '.rpt-header-meta strong{color:#fff;}';
-    echo '.rpt-body{padding:20px;overflow-x:hidden;}';
-    echo 'table{width:100%;border-collapse:collapse;font-size:11px;}';
+    echo '.rpt-body{padding:12px;overflow-x:auto;}';
+    echo 'table{width:100%;border-collapse:collapse;font-size:8px;table-layout:fixed;}';
     echo 'thead tr{background:#002F70;}';
-    echo 'th{padding:9px 8px;color:#fff;font-weight:700;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;}';
-    echo 'td{padding:8px;border-bottom:1px solid #e2e8f0;}';
+    echo 'th{padding:5px 3px;color:#fff;font-weight:700;text-align:left;font-size:7.5px;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}';
+    echo 'td{padding:4px 3px;border-bottom:1px solid #e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}';
     echo 'tr:nth-child(even) td{background:#f8fafc;}';
     echo '.amount{text-align:right;font-weight:700;color:#002F70;}';
     echo '.total-row td{background:#f0f7ff!important;font-weight:800;color:#002F70;border-top:2px solid #002F70;}';
-    echo '.rpt-footer{padding:16px 28px;background:#f8fafc;border-top:2px solid #e2e8f0;font-size:10px;color:#64748b;text-align:center;}';
-    echo '@media print{.action-bar{display:none!important;}body{background:#fff;}.report{box-shadow:none;border-radius:0;margin:0;max-width:100%;}table{font-size:9.5px;}th,td{padding:5px 4px;}}';
-    echo '</style></head><body>';
-    echo '<div class="action-bar">';
-    echo '  <h2>Validated Transactions Report</h2>';
-    echo '  <a href="javascript:window.print()" class="btn-print">Print / Save as PDF</a>';
-    echo '  <a href="javascript:void(0)" onclick="window.history.length>1?window.history.back():window.close()" class="btn-back">Back</a>';
-    echo '</div>';
+    echo '.rpt-footer{padding:10px 20px;background:#f8fafc;border-top:2px solid #e2e8f0;font-size:8px;color:#64748b;text-align:center;}';
+    // Column widths
+    echo 'th:nth-child(1),td:nth-child(1){width:10%;}'; // Txn ID
+    echo 'th:nth-child(2),td:nth-child(2){width:9%;}'; // Customer
+    echo 'th:nth-child(3),td:nth-child(3){width:7%;}'; // Type
+    echo 'th:nth-child(4),td:nth-child(4){width:15%;}'; // Items/Service
+    echo 'th:nth-child(5),td:nth-child(5){width:8%;}'; // Vehicle Plate
+    echo 'th:nth-child(6),td:nth-child(6){width:7%;}'; // Amount
+    echo 'th:nth-child(7),td:nth-child(7){width:6%;}'; // Payment Method
+    echo 'th:nth-child(8),td:nth-child(8){width:6%;}'; // Payment Status
+    echo 'th:nth-child(9),td:nth-child(9){width:5%;}'; // Shift
+    echo 'th:nth-child(10),td:nth-child(10){width:8%;}'; // Staff
+    echo 'th:nth-child(11),td:nth-child(11){width:8%;}'; // Date
+    echo 'th:nth-child(12),td:nth-child(12){width:7%;}'; // Validated By
+    echo 'th:nth-child(13),td:nth-child(13){width:4%;}'; // Validation Remarks
+    // Print styles - remove all URLs and footer
+    echo '@media print{';
+    echo 'body{background:#fff;margin:0;}';
+    echo '.report{margin:0;max-width:100%;}';
+    echo '@page{size:A4 landscape;margin:0.3in 0.25in;}';
+    echo 'a[href]:after{content:none !important;display:none !important;}'; // Remove URL after links
+    echo 'a{text-decoration:none !important;color:inherit !important;}'; // Remove link styling
+    echo '.rpt-footer{display:none !important;}'; // Hide footer completely during print
+    echo '}';
+    echo '</style>';
+    echo '<script>';
+    echo 'window.onload=function(){window.print();setTimeout(function(){window.close();},100);};';
+    echo 'window.onafterprint=function(){window.close();};';
+    echo '</script>';
+    echo '</head><body>';
     echo '<div class="report">';
     echo '<div class="rpt-header">';
     echo '  <img src="' . $logo_url . '" alt="Petron Logo">';
@@ -526,7 +544,6 @@ if ($export_type === 'pdf') {
     echo '<td colspan="7"></td>';
     echo '</tr>';
     echo '</tbody></table></div>';
-    echo '<div class="rpt-footer">&#169; ' . date('Y') . ' Petron Station &amp; Service Center Management System. All Rights Reserved.</div>';
     echo '</div></body></html>';
     exit;
 }
@@ -669,9 +686,26 @@ try {
         </thead>
         <tbody>
             <?php if (count($rows) > 0): ?>
-                <?php foreach ($rows as $r): ?>
                 <?php 
+                // Group tracking for action buttons
+                $prev_customer = null;
+                $prev_date = null;
+                $group_index = 0;
+                
+                foreach ($rows as $idx => $r): 
                     $pay_st = vt_pay_status($r); 
+                    
+                    // Check if this is a new group (different customer or different date)
+                    $current_customer = $r['customer'];
+                    $current_date = date('Y-m-d', strtotime($r['txn_date']));
+                    $is_new_group = ($current_customer !== $prev_customer || $current_date !== $prev_date);
+                    $show_actions = $is_new_group; // Only show actions for first row in group
+                    
+                    if ($is_new_group) {
+                        $group_index++;
+                        $prev_customer = $current_customer;
+                        $prev_date = $current_date;
+                    }
                     
                     // Build items list for this row
                     $rc_row_items = [];
@@ -774,6 +808,7 @@ try {
                     </td>
                     <td style="font-size:10px;color:#64748b;"><?php echo htmlspecialchars(substr($r['staff_name'], 0, 12)); ?></td>
                     <td style="text-align:center;padding:6px 4px;" onclick="event.stopPropagation()">
+                        <?php if ($show_actions): ?>
                         <div style="display:flex;flex-direction:column;gap:3px;align-items:stretch;">
                         <button class="vt-btn-action vt-btn-view" onclick="viewValidatedTransaction('<?php echo $r['_source']; ?>', <?php echo $r['row_id']; ?>)" title="View details" style="padding:3px 6px;font-size:9px;width:100%;">
                             <i class="fas fa-eye"></i> View
@@ -807,6 +842,7 @@ try {
                             <?php endif; ?>
                         <?php endif; ?>
                         </div>
+                        <?php endif; ?>
                     </td>
                 </tr>
                 <?php if (!empty($rc_row_items)): ?>

@@ -45,6 +45,8 @@ include __DIR__ . '/../partials/header.php';
     justify-content: center;
     z-index: 9999;
     backdrop-filter: blur(4px);
+    overflow-y: auto;
+    padding: 40px 20px;
 }
 .modal-overlay.active {
     display: flex;
@@ -54,10 +56,12 @@ include __DIR__ . '/../partials/header.php';
     border-radius: 12px;
     max-width: 750px;
     width: 95%;
-    max-height: 90vh;
-    overflow-y: auto;
+    max-height: 85vh;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
     border: 1px solid #e2e8f0;
+    margin: auto;
+    display: flex;
+    flex-direction: column;
 }
 .modal-header {
     padding: 18px 24px;
@@ -68,6 +72,7 @@ include __DIR__ . '/../partials/header.php';
     background: #f8fafc;
     border-top-left-radius: 12px;
     border-top-right-radius: 12px;
+    flex-shrink: 0;
 }
 .modal-header h3 {
     margin: 0;
@@ -95,6 +100,9 @@ include __DIR__ . '/../partials/header.php';
 }
 .modal-body {
     padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
 }
 .modal-footer {
     padding: 16px 24px;
@@ -105,6 +113,40 @@ include __DIR__ . '/../partials/header.php';
     background: #f8fafc;
     border-bottom-left-radius: 12px;
     border-bottom-right-radius: 12px;
+    flex-shrink: 0;
+}
+
+/* Transaction Buttons (Standard Design) */
+.txn-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid;
+    transition: all 0.15s ease;
+    text-decoration: none;
+}
+.txn-btn.primary {
+    background: #002F70;
+    color: #ffffff;
+    border-color: #002F70;
+}
+.txn-btn.primary:hover {
+    background: #001f4d;
+    border-color: #001f4d;
+}
+.txn-btn.secondary {
+    background: #ffffff;
+    color: #475569;
+    border-color: #cbd5e1;
+}
+.txn-btn.secondary:hover {
+    background: #f8fafc;
+    border-color: #94a3b8;
 }
 
 /* Global Button Override Fixes - excluding export buttons */
@@ -208,7 +250,7 @@ include __DIR__ . '/../partials/header.php';
     box-shadow: 0 0 0 3px rgba(0, 47, 112, 0.15);
 }
 
-/* Customer Type Selector Options */
+/* Registration badge options */
 .type-selector {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -608,7 +650,9 @@ include __DIR__ . '/../partials/header.php';
 /* Export Buttons - Merchandise Inventory Style */
 .btn-export-pdf,
 .btn-export-excel,
-.btn-export-csv {
+.btn-export-csv,
+.btn-modal-cancel,
+.btn-modal-print {
     background: #ffffff !important;
     border: 1px solid transparent !important;
     border-radius: 7px !important;
@@ -633,6 +677,24 @@ include __DIR__ . '/../partials/header.php';
 }
 .btn-export-excel:hover {
     background: #1d6f42 !important;
+    color: #ffffff !important;
+}
+
+.btn-modal-cancel {
+    color: #64748b !important;
+    border-color: #64748b !important;
+}
+.btn-modal-cancel:hover {
+    background: #64748b !important;
+    color: #ffffff !important;
+}
+
+.btn-modal-print {
+    color: #002F70 !important;
+    border-color: #002F70 !important;
+}
+.btn-modal-print:hover {
+    background: #002F70 !important;
     color: #ffffff !important;
 }
 
@@ -801,14 +863,14 @@ include __DIR__ . '/../partials/header.php';
         <div class="summary-card-icon yellow"><i class="fas fa-star"></i></div>
         <div class="summary-card-content">
             <h3 id="regularCustomersCount">—</h3>
-            <p>Regular Customers</p>
+            <p>Registered Customers</p>
         </div>
     </div>
     <div class="summary-card">
         <div class="summary-card-icon purple"><i class="fas fa-building"></i></div>
         <div class="summary-card-content">
             <h3 id="fleetAccountsCount">—</h3>
-            <p>Fleet Accounts</p>
+            <p>Active Customers</p>
         </div>
     </div>
 </div>
@@ -819,15 +881,6 @@ include __DIR__ . '/../partials/header.php';
         <div class="form-group" style="margin-bottom: 0;">
             <label>Search Customer</label>
             <input type="text" id="custSearchInput" placeholder="Customer ID / Name / Contact Number...">
-        </div>
-        <div class="form-group" style="margin-bottom: 0;">
-            <label>Customer Type</label>
-            <select id="custFilterType">
-                <option value="">All</option>
-                <option value="walk-in">Walk-in</option>
-                <option value="regular">Regular</option>
-                <option value="fleet">Fleet / Company</option>
-            </select>
         </div>
         <div class="form-group" style="margin-bottom: 0;">
             <label>Status</label>
@@ -859,7 +912,7 @@ include __DIR__ . '/../partials/header.php';
             <i class="fas fa-users"></i> Customer Records
         </div>
         <div>
-            <button onclick="openCustomerModal('addCustomerModal')" class="txn-btn primary" style="height:36px;">
+            <button onclick="openCustomerAddModal()" class="txn-btn primary" style="height:36px;">
                 <i class="fas fa-user-plus"></i> Add Customer
             </button>
         </div>
@@ -884,10 +937,6 @@ include __DIR__ . '/../partials/header.php';
             <div class="alert alert-error" id="addError"></div>
             
             <form id="addForm" enctype="multipart/form-data">
-                <div style="background:#f0f9ff; border:1px solid #bfdbfe; border-radius:8px; padding:12px; margin-bottom:16px; font-size:13px; color:#1e40af;">
-                    <i class="fas fa-info-circle"></i> <strong>Customer ID</strong> will be auto-generated.
-                </div>
-                
                 <div class="form-grid">
                     <div class="form-group">
                         <label>First Name <span class="required">*</span></label>
@@ -917,24 +966,7 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                 </div>
                 
-                <label style="display:block; font-size:13px; font-weight:600; color:#334155; margin-bottom:8px;">
-                    Customer Type <span class="required">*</span>
-                </label>
-                <div class="type-selector" id="addTypeSelector">
-                    <div class="type-option selected" data-value="walk-in" onclick="selectCustomerType('add', 'walk-in')">
-                        <i class="fas fa-walking"></i>
-                        <span>Walk-in</span>
-                    </div>
-                    <div class="type-option" data-value="regular" onclick="selectCustomerType('add', 'regular')">
-                        <i class="fas fa-star"></i>
-                        <span>Regular</span>
-                    </div>
-                    <div class="type-option" data-value="fleet" onclick="selectCustomerType('add', 'fleet')">
-                        <i class="fas fa-building"></i>
-                        <span>Fleet/Company</span>
-                    </div>
-                </div>
-                <input type="hidden" name="customer_type" id="addCustomerType" value="walk-in">
+                <input type="hidden" name="customer_type" id="addCustomerType" value="regular">
                 
                 <div class="form-grid">
                     <div class="form-group">
@@ -962,14 +994,11 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                 </div>
                 
-                <div style="background:#fef3c7; border:1px solid #fde68a; border-radius:8px; padding:10px 14px; font-size:12px; color:#92400e; margin-top:12px;">
-                    <i class="fas fa-lock"></i> Staff can upload the documents but cannot preview, open, or download them after saving.
-                </div>
             </form>
         </div>
         <div class="modal-footer">
-            <button onclick="closeCustomerModal('addCustomerModal')"><i class="fas fa-times"></i> Cancel</button>
-            <button onclick="submitCustomerAdd()" id="addSubmitBtn" class="btn-primary"><i class="fas fa-save"></i> Save Customer</button>
+            <button type="button" class="txn-btn secondary" onclick="closeCustomerModal('addCustomerModal')"><i class="fas fa-times"></i> Cancel</button>
+            <button type="button" onclick="submitCustomerAdd()" id="addSubmitBtn" class="txn-btn primary"><i class="fas fa-save"></i> Save Customer</button>
         </div>
     </div>
 </div>
@@ -1022,29 +1051,12 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                 </div>
                 
-                <label style="display:block; font-size:13px; font-weight:600; color:#334155; margin-bottom:8px;">
-                    Customer Type <span class="required">*</span>
-                </label>
-                <div class="type-selector" id="editTypeSelector">
-                    <div class="type-option" data-value="walk-in" onclick="selectCustomerType('edit', 'walk-in')">
-                        <i class="fas fa-walking"></i>
-                        <span>Walk-in</span>
-                    </div>
-                    <div class="type-option" data-value="regular" onclick="selectCustomerType('edit', 'regular')">
-                        <i class="fas fa-star"></i>
-                        <span>Regular</span>
-                    </div>
-                    <div class="type-option" data-value="fleet" onclick="selectCustomerType('edit', 'fleet')">
-                        <i class="fas fa-building"></i>
-                        <span>Fleet/Company</span>
-                    </div>
-                </div>
-                <input type="hidden" name="customer_type" id="editCustomerType" value="walk-in">
+                <input type="hidden" name="customer_type" id="editCustomerType" value="regular">
             </form>
         </div>
         <div class="modal-footer">
-            <button onclick="closeCustomerModal('editCustomerModal')"><i class="fas fa-times"></i> Cancel</button>
-            <button onclick="submitCustomerEdit()" id="editSubmitBtn" class="btn-primary"><i class="fas fa-save"></i> Update Customer</button>
+            <button type="button" class="txn-btn secondary" onclick="closeCustomerModal('editCustomerModal')"><i class="fas fa-times"></i> Cancel</button>
+            <button type="button" onclick="submitCustomerEdit()" id="editSubmitBtn" class="txn-btn primary"><i class="fas fa-save"></i> Update Customer</button>
         </div>
     </div>
 </div>
@@ -1064,17 +1076,17 @@ include __DIR__ . '/../partials/header.php';
             
             <div id="viewModalContent" style="display:none;">
                 <!-- Profile Header -->
-                <div style="background:linear-gradient(135deg,#002F70,#004c99); color:#ffffff; padding:20px; border-radius:8px; margin-bottom:20px;">
+                <div style="border:1px solid #e2e8f0; padding:20px; border-radius:8px; margin-bottom:20px;">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                         <div>
-                            <h2 style="margin:0 0 4px; font-size:22px; color:#ffffff; font-weight:700;" id="profFullName"></h2>
-                            <p style="margin:0 0 10px; font-size:13px; opacity:0.9;" id="profCustId"></p>
+                            <h2 style="margin:0 0 4px; font-size:22px; color:#000; font-weight:700;" id="profFullName"></h2>
+                            <p style="margin:0 0 10px; font-size:13px; color:#64748b;" id="profCustId"></p>
                             <div style="display:flex; gap:8px;">
                                 <span class="badge" id="profTypeBadge"></span>
                                 <span class="badge" id="profStatusBadge"></span>
                             </div>
                         </div>
-                        <div style="text-align:right; font-size:12px; opacity:0.85;">
+                        <div style="text-align:right; font-size:12px; color:#64748b;">
                             <div><strong>Registered:</strong> <span id="profRegDate"></span></div>
                             <div style="margin-top:2px;"><strong>Last Visit:</strong> <span id="profLastDate"></span></div>
                         </div>
@@ -1084,17 +1096,13 @@ include __DIR__ . '/../partials/header.php';
                 <!-- Profile Details -->
                 <div class="info-section">
                     <h4><i class="fas fa-user"></i> Customer Information</h4>
-                    <div class="info-grid-2">
-                        <div>
-                            <div class="info-row"><span class="info-label">Customer ID</span><span class="info-value" id="valCustId"></span></div>
-                            <div class="info-row"><span class="info-label">Full Name</span><span class="info-value" id="valFullName"></span></div>
-                            <div class="info-row"><span class="info-label">Contact Number</span><span class="info-value" id="valContact"></span></div>
-                        </div>
-                        <div>
-                            <div class="info-row"><span class="info-label">Address</span><span class="info-value" id="valAddress"></span></div>
-                            <div class="info-row"><span class="info-label">Customer Type</span><span class="info-value" id="valType"></span></div>
-                            <div class="info-row"><span class="info-label">Status</span><span class="info-value" id="valStatus"></span></div>
-                        </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px;">
+                        <div class="info-row"><span class="info-label">Customer ID</span><span class="info-value" id="valCustId"></span></div>
+                        <div class="info-row"><span class="info-label">Full Name</span><span class="info-value" id="valFullName"></span></div>
+                        <div class="info-row"><span class="info-label">Contact Number</span><span class="info-value" id="valContact"></span></div>
+                        <div class="info-row"><span class="info-label">Address</span><span class="info-value" id="valAddress"></span></div>
+                        <div class="info-row"><span class="info-label">Registration</span><span class="info-value" id="valType"></span></div>
+                        <div class="info-row"><span class="info-label">Status</span><span class="info-value" id="valStatus"></span></div>
                     </div>
                 </div>
                 
@@ -1114,27 +1122,11 @@ include __DIR__ . '/../partials/header.php';
                             <div class="num" id="statServiceCount">0</div>
                             <div class="lbl">Job Orders</div>
                         </div>
-                        <div class="tx-card" style="background:#ecfdf5; border-color:#a7f3d0;">
-                            <div class="num" style="color:#059669;" id="statTotalSpent">\u20B10.00</div>
-                            <div class="lbl" style="color:#059669;">Total Amount Spent</div>
+                        <div class="tx-card" style="border:1px solid #e2e8f0;">
+                            <div class="num" style="color:#000;" id="statTotalSpent">₱0.00</div>
+                            <div class="lbl" style="color:#64748b;">Total Amount Spent</div>
                         </div>
                     </div>
-                </div>
-
-                <!-- Staff Restricted Fields Notice -->
-                <div style="background:#fef3c7; border:1px solid #fde68a; border-radius:8px; padding:12px 16px; margin: 4px 0 12px; font-size:12px; color:#92400e;">
-                    <div style="display:flex; align-items:center; gap:8px; font-weight:700; margin-bottom:6px;">
-                        <i class="fas fa-lock"></i> Staff-Restricted Information
-                    </div>
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:3px 16px;">
-                        <span><i class="fas fa-times-circle" style="color:#dc2626;"></i> Government ID Image</span>
-                        <span><i class="fas fa-times-circle" style="color:#dc2626;"></i> Certificate of Registration (CR)</span>
-                        <span><i class="fas fa-times-circle" style="color:#dc2626;"></i> Outstanding Balance</span>
-                        <span><i class="fas fa-times-circle" style="color:#dc2626;"></i> Credit Limit</span>
-                        <span><i class="fas fa-times-circle" style="color:#dc2626;"></i> Payment History</span>
-                        <span><i class="fas fa-times-circle" style="color:#dc2626;"></i> Verification Status</span>
-                    </div>
-                    <div style="margin-top:6px; font-style:italic;">These fields are accessible to Managers and Administrators only.</div>
                 </div>
                 
                 <!-- History Table with Filters -->
@@ -1199,8 +1191,8 @@ include __DIR__ . '/../partials/header.php';
             </div>
         </div>
         <div class="modal-footer">
-            <button onclick="printCustomerProfileFromModal()"><i class="fas fa-print"></i> Print Customer Profile</button>
-            <button onclick="closeCustomerModal('viewCustomerModal')"><i class="fas fa-times"></i> Close</button>
+            <button class="btn-modal-cancel" onclick="closeCustomerModal('viewCustomerModal')">Cancel</button>
+            <button class="btn-modal-print" onclick="printCustomerProfileFromModal()"><i class="fas fa-print"></i> Print Profile</button>
         </div>
     </div>
 </div>
@@ -1248,13 +1240,17 @@ let txCurrentPage = 1;
 let txLimit = 10;
 
 document.addEventListener('DOMContentLoaded', () => {
-    loadCustomerList();
+    const editId = parseInt(new URLSearchParams(window.location.search).get('edit') || '0', 10);
+    loadCustomerList().then(() => {
+        if (editId > 0) {
+            openCustomerEditModal(editId);
+        }
+    });
 });
 
 // Load customer directory list
 function loadCustomerList() {
     const search = document.getElementById('custSearchInput').value;
-    const type = document.getElementById('custFilterType').value;
     const status = document.getElementById('custFilterStatus').value;
     const dateFrom = document.getElementById('custFilterDateFrom').value;
     const dateTo = document.getElementById('custFilterDateTo').value;
@@ -1262,13 +1258,13 @@ function loadCustomerList() {
     const params = new URLSearchParams({
         action: 'list',
         search: search,
-        type: type,
+        type: 'registered',
         status: status,
         date_from: dateFrom,
         date_to: dateTo
     });
     
-    fetch(`staff_customer_operations.php?${params}`)
+    return fetch(`staff_customer_operations.php?${params}`)
         .then(res => res.json())
         .then(data => {
             if (data.success) {
@@ -1288,8 +1284,8 @@ function loadCustomerList() {
 function updateCustomerStats(stats) {
     document.getElementById('totalCustomersCount').textContent = formatNumber(stats.total || 0);
     document.getElementById('newCustomersCount').textContent = formatNumber(stats.new_today || 0);
-    document.getElementById('regularCustomersCount').textContent = formatNumber(stats.regular || 0);
-    document.getElementById('fleetAccountsCount').textContent = formatNumber(stats.fleet || 0);
+    document.getElementById('regularCustomersCount').textContent = formatNumber(stats.registered || stats.total || 0);
+    document.getElementById('fleetAccountsCount').textContent = formatNumber(stats.active || 0);
 }
 
 function renderCustomerTable(customers) {
@@ -1312,7 +1308,7 @@ function renderCustomerTable(customers) {
                     <th>Customer ID</th>
                     <th>Customer Name</th>
                     <th>Contact Number</th>
-                    <th>Customer Type</th>
+                    <th>Registration</th>
                     <th>Total Transactions</th>
                     <th>Last Transaction</th>
                     <th>Status</th>
@@ -1323,11 +1319,11 @@ function renderCustomerTable(customers) {
     `;
     
     customers.forEach(c => {
-        const fullName = [c.first_name, c.middle_name, c.last_name].filter(Boolean).join(' ');
-        const typeClass = c.customer_type === 'walk-in' ? 'walkin' : (c.customer_type === 'regular' ? 'regular' : 'fleet');
+        const fullName = [c.first_name, c.middle_name, c.last_name].filter(Boolean).join(' ') || c.display_name || c.name || 'Unknown Customer';
+        const typeClass = 'regular';
         const statusClass = c.status === 'active' ? 'active' : 'inactive';
         const lastTxDate = c.last_transaction ? formatDate(c.last_transaction) : 'Never';
-        const typeLabel = c.customer_type === 'fleet' ? 'Fleet' : capitalize(c.customer_type);
+        const typeLabel = 'Registered';
         
         html += `
             <tr>
@@ -1370,20 +1366,10 @@ function closeCustomerModal(id) {
     document.getElementById(id).classList.remove('active');
 }
 
-// Select Customer Type in Modal
-function selectCustomerType(mode, value) {
-    const container = document.getElementById(`${mode}TypeSelector`);
-    container.querySelectorAll('.type-option').forEach(opt => {
-        if (opt.dataset.value === value) opt.classList.add('selected');
-        else opt.classList.remove('selected');
-    });
-    document.getElementById(`${mode}CustomerType`).value = value;
-}
-
 // Open Add Customer Modal
 function openCustomerAddModal() {
     document.getElementById('addForm').reset();
-    selectCustomerType('add', 'walk-in');
+    document.getElementById('addCustomerType').value = 'regular';
     document.getElementById('addSuccess').classList.remove('show');
     document.getElementById('addError').classList.remove('show');
     openCustomerModal('addCustomerModal');
@@ -1423,28 +1409,45 @@ function submitCustomerAdd() {
     .catch(() => {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-save"></i> Save Customer';
+        document.getElementById('addError').textContent = 'Network error while saving customer.';
+        document.getElementById('addError').classList.add('show');
     });
 }
 
 // Open Edit Customer Modal
 function openCustomerEditModal(id) {
-    const c = currentCustomers.find(item => item.id === id);
-    if (!c) return;
-    
-    document.getElementById('editCustomerId').value = c.id;
-    document.getElementById('editCustIdDisplay').textContent = c.customer_id;
-    document.getElementById('editRegDateDisplay').textContent = formatDate(c.registered_at);
-    document.getElementById('editFirstName').value = c.first_name;
-    document.getElementById('editMiddleName').value = c.middle_name;
-    document.getElementById('editLastName').value = c.last_name;
-    document.getElementById('editContact').value = c.contact_number;
-    document.getElementById('editAddress').value = c.address || '';
-    
-    selectCustomerType('edit', c.customer_type);
-    
+    document.getElementById('editForm').reset();
+    document.getElementById('editCustomerType').value = 'regular';
+    document.getElementById('editCustIdDisplay').textContent = 'Loading...';
+    document.getElementById('editRegDateDisplay').textContent = 'Loading...';
     document.getElementById('editSuccess').classList.remove('show');
     document.getElementById('editError').classList.remove('show');
     openCustomerModal('editCustomerModal');
+
+    fetch(`staff_customer_operations.php?action=view&id=${id}`)
+        .then(res => res.json())
+        .then(data => {
+            if (!data.success) {
+                document.getElementById('editError').textContent = data.error || 'Unable to load customer details.';
+                document.getElementById('editError').classList.add('show');
+                return;
+            }
+
+            const c = data.customer;
+            document.getElementById('editCustomerId').value = c.id;
+            document.getElementById('editCustIdDisplay').textContent = c.customer_id || 'N/A';
+            document.getElementById('editRegDateDisplay').textContent = formatDate(c.registered_at);
+            document.getElementById('editFirstName').value = c.first_name || '';
+            document.getElementById('editMiddleName').value = c.middle_name || '';
+            document.getElementById('editLastName').value = c.last_name || '';
+            document.getElementById('editContact').value = c.contact_number || '';
+            document.getElementById('editAddress').value = c.address || '';
+            document.getElementById('editCustomerType').value = 'regular';
+        })
+        .catch(() => {
+            document.getElementById('editError').textContent = 'Network error while loading customer details.';
+            document.getElementById('editError').classList.add('show');
+        });
 }
 
 function submitCustomerEdit() {
@@ -1481,6 +1484,8 @@ function submitCustomerEdit() {
     .catch(() => {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-save"></i> Update Customer';
+        document.getElementById('editError').textContent = 'Network error while updating customer.';
+        document.getElementById('editError').classList.add('show');
     });
 }
 
@@ -1506,7 +1511,7 @@ function viewCustomerDetail(id) {
                 const c = data.customer;
                 const tx = data.transactions;
                 
-                const fullName = [c.first_name, c.middle_name, c.last_name].filter(Boolean).join(' ');
+                const fullName = [c.first_name, c.middle_name, c.last_name].filter(Boolean).join(' ') || c.display_name || c.name || 'Unknown Customer';
                 
                 // Set text fields
                 document.getElementById('profFullName').textContent = fullName;
@@ -1515,11 +1520,11 @@ function viewCustomerDetail(id) {
                 document.getElementById('profLastDate').textContent = tx.last_transaction ? formatDate(tx.last_transaction) : 'Never';
                 
                 // Badges
-                const typeClass = c.customer_type === 'walk-in' ? 'badge-walkin' : (c.customer_type === 'regular' ? 'badge-regular' : 'badge-fleet');
+                const typeClass = 'badge-regular';
                 const statusClass = c.status === 'active' ? 'badge-active' : 'badge-inactive';
                 
                 document.getElementById('profTypeBadge').className = 'badge ' + typeClass;
-                document.getElementById('profTypeBadge').textContent = c.customer_type === 'fleet' ? 'Fleet' : capitalize(c.customer_type);
+                document.getElementById('profTypeBadge').textContent = 'Registered';
                 
                 document.getElementById('profStatusBadge').className = 'badge ' + statusClass;
                 document.getElementById('profStatusBadge').textContent = capitalize(c.status);
@@ -1529,7 +1534,7 @@ function viewCustomerDetail(id) {
                 document.getElementById('valFullName').textContent = fullName;
                 document.getElementById('valContact').textContent = c.contact_number || '—';
                 document.getElementById('valAddress').textContent = c.address || '—';
-                document.getElementById('valType').textContent = c.customer_type === 'fleet' ? 'Fleet' : capitalize(c.customer_type);
+                document.getElementById('valType').textContent = 'Registered';
                 document.getElementById('valStatus').textContent = capitalize(c.status);
                 
                 // Stats summary
@@ -1547,7 +1552,14 @@ function viewCustomerDetail(id) {
                 
                 document.getElementById('viewModalLoader').style.display = 'none';
                 document.getElementById('viewModalContent').style.display = 'block';
+            } else {
+                closeCustomerModal('viewCustomerModal');
+                showCustomerError(data.error || 'Unable to load customer profile.');
             }
+        })
+        .catch(() => {
+            closeCustomerModal('viewCustomerModal');
+            showCustomerError('Network error while loading customer profile.');
         });
 }
 
@@ -1691,7 +1703,7 @@ function printCustomerProfile(id) {
                 const tx = data.transactions;
                 const rec = data.all_transactions || [];
                 
-                const fullName = [c.first_name, c.middle_name, c.last_name].filter(Boolean).join(' ');
+                const fullName = [c.first_name, c.middle_name, c.last_name].filter(Boolean).join(' ') || c.display_name || c.name || 'Unknown Customer';
                 
                 let txHtml = '';
                 if (rec.length > 0) {
@@ -1754,7 +1766,7 @@ function printCustomerProfile(id) {
                             <div class="section-title">Customer Information</div>
                             <div class="info-grid">
                                 <div class="info-item"><span class="info-label">Customer Name:</span><span>${escapeHtml(fullName)}</span></div>
-                                <div class="info-item"><span class="info-label">Customer Type:</span><span>${capitalize(c.customer_type)}</span></div>
+                                <div class="info-item"><span class="info-label">Registration:</span><span>Registered</span></div>
                                 <div class="info-item"><span class="info-label">Contact Number:</span><span>${escapeHtml(c.contact_number)}</span></div>
                                 <div class="info-item"><span class="info-label">Status:</span><span>${capitalize(c.status)}</span></div>
                                 <div class="info-item" style="grid-column: span 2;"><span class="info-label">Address:</span><span>${escapeHtml(c.address)}</span></div>
@@ -1818,7 +1830,6 @@ function printCustomerProfileFromModal() {
 // Reset filters
 function resetCustomerFilters() {
     document.getElementById('custSearchInput').value = '';
-    document.getElementById('custFilterType').value = '';
     document.getElementById('custFilterStatus').value = 'active';
     document.getElementById('custFilterDateFrom').value = '';
     document.getElementById('custFilterDateTo').value = '';
@@ -1828,7 +1839,6 @@ function resetCustomerFilters() {
 // Export redirect to server-side script
 function exportCustomerData(format) {
     const search = document.getElementById('custSearchInput').value;
-    const type = document.getElementById('custFilterType').value;
     const status = document.getElementById('custFilterStatus').value;
     const dateFrom = document.getElementById('custFilterDateFrom').value;
     const dateTo = document.getElementById('custFilterDateTo').value;
@@ -1836,7 +1846,7 @@ function exportCustomerData(format) {
     const params = new URLSearchParams({
         format: format,
         search: search,
-        type: type,
+        type: 'registered',
         status: status,
         date_from: dateFrom,
         date_to: dateTo

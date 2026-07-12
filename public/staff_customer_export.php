@@ -7,17 +7,20 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
+require_once __DIR__ . '/../backend/customer_module_helpers.php';
 require_login();
 
 $me = current_user();
 $role = role_key($me['role'] ?? 'staff');
-$station_id = user_station_id();
+$station_id = (int)user_station_id();
+
+customer_ensure_optional_columns($pdo);
 
 if (!in_array($role, ['staff', 'superadmin', 'developer'])) {
     die('Unauthorized access');
 }
 
-if (!$station_id) {
+if (!customer_can_view_all_stations($role) && !$station_id) {
     die('Error: You are not assigned to a station.');
 }
 
@@ -30,70 +33,77 @@ $dateTo   = trim($_GET['date_to'] ?? '');
 $format   = strtolower(trim($_GET['format'] ?? 'excel'));
 
 // 2. Build where clause
-$where = ['c.station_id = ?'];
-$params = [$station_id];
+$where = [];
+$params = [];
+customer_apply_station_scope($where, $params, 'c', $role, $station_id);
+
+$customerIdExpr = customer_id_expr($pdo, 'c');
+$displayNameExpr = customer_display_name_expr($pdo, 'c');
+$firstNameExpr = customer_first_name_expr($pdo, 'c');
+$middleNameExpr = customer_middle_name_expr($pdo, 'c');
+$lastNameExpr = customer_last_name_expr($pdo, 'c');
+$contactExpr = customer_contact_expr($pdo, 'c');
+$typeExpr = customer_type_expr($pdo, 'c');
+$statusExpr = customer_status_expr($pdo, 'c');
+$registeredExpr = customer_registered_at_expr($pdo, 'c');
 
 if ($search !== '') {
-    $where[] = "(c.customer_id LIKE ? OR CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,'')) LIKE ? OR c.contact_number LIKE ?)";
+    $where[] = "($customerIdExpr LIKE ? OR $displayNameExpr LIKE ? OR $contactExpr LIKE ?)";
     $s = "%$search%";
     array_push($params, $s, $s, $s);
 }
-if ($type !== '') {
-    $where[] = "c.customer_type = ?";
-    $params[] = $type;
-}
+if ($type !== '' && $type !== 'registered') { $type = ''; }
 if ($status !== '') {
-    $where[] = "c.status = ?";
+    $where[] = "$statusExpr = ?";
     $params[] = $status;
 }
 if ($dateFrom !== '') {
-    $where[] = "DATE(c.registered_at) >= ?";
+    $where[] = "DATE($registeredExpr) >= ?";
     $params[] = $dateFrom;
 }
 if ($dateTo !== '') {
-    $where[] = "DATE(c.registered_at) <= ?";
+    $where[] = "DATE($registeredExpr) <= ?";
     $params[] = $dateTo;
 }
 
-$wc = implode(' AND ', $where);
+$wc = $where ? implode(' AND ', $where) : '1=1';
 
 // 3. Fetch customers with transaction stats
 $stmt = $pdo->prepare("
     SELECT 
         c.id,
-        COALESCE(c.customer_id, CAST(c.id AS CHAR)) AS customer_id,
-        COALESCE(c.first_name,'') AS first_name,
-        COALESCE(c.middle_name,'') AS middle_name,
-        COALESCE(c.last_name,'') AS last_name,
-        COALESCE(c.contact_number,'') AS contact_number,
-        COALESCE(c.customer_type,'walk-in') AS customer_type,
-        COALESCE(c.status,'active') AS status,
-        COALESCE(c.registered_at, c.created_at) AS registered_at,
-        COALESCE(txn_stats.total_transactions, 0) AS total_transactions,
-        txn_stats.last_transaction
+        $customerIdExpr AS customer_id,
+        $firstNameExpr AS first_name,
+        $middleNameExpr AS middle_name,
+        $lastNameExpr AS last_name,
+        $contactExpr AS contact_number,
+        $typeExpr AS customer_type,
+        $statusExpr AS status,
+        $registeredExpr AS registered_at,
+        (
+            (SELECT COUNT(*) FROM merchandise_transactions mt WHERE mt.customer_id = c.id AND mt.station_id = c.station_id) +
+            (SELECT COUNT(*) FROM job_orders jo WHERE jo.customer_id = c.id AND jo.station_id = c.station_id) +
+            (SELECT COUNT(*) FROM fuel_transactions ft WHERE ft.customer_id = c.id AND ft.station_id = c.station_id)
+        ) AS total_transactions,
+        NULLIF(GREATEST(
+            COALESCE((SELECT MAX(COALESCE(transaction_date,created_at)) FROM merchandise_transactions WHERE customer_id=c.id AND station_id=c.station_id),'2000-01-01'),
+            COALESCE((SELECT MAX(created_at) FROM job_orders WHERE customer_id=c.id AND station_id=c.station_id),'2000-01-01'),
+            COALESCE((SELECT MAX(COALESCE(transaction_date,created_at)) FROM fuel_transactions WHERE customer_id=c.id AND station_id=c.station_id),'2000-01-01')
+        ),'2000-01-01') AS last_transaction
     FROM customers c
-    LEFT JOIN (
-        SELECT 
-            customer_id,
-            COUNT(*) AS total_transactions,
-            MAX(txn_date) AS last_transaction
-        FROM (
-            SELECT customer_id, COALESCE(transaction_date, created_at) AS txn_date FROM merchandise_transactions WHERE station_id = ?
-            UNION ALL
-            SELECT customer_id, created_at AS txn_date FROM job_orders WHERE station_id = ?
-            UNION ALL
-            SELECT customer_id, COALESCE(transaction_date, created_at) AS txn_date FROM fuel_transactions WHERE station_id = ?
-        ) all_txns
-        GROUP BY customer_id
-    ) txn_stats ON txn_stats.customer_id = c.id
     WHERE $wc
-    ORDER BY c.registered_at DESC, c.id DESC
+    ORDER BY $registeredExpr DESC, c.id DESC
 ");
-
-// Add station_id three times at the beginning for the subquery
-array_unshift($params, $station_id, $station_id, $station_id);
 $stmt->execute($params);
 $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+function staff_export_customer_name(array $customer): string {
+    return trim(implode(' ', array_filter([
+        $customer['first_name'] ?? '',
+        $customer['middle_name'] ?? '',
+        $customer['last_name'] ?? '',
+    ], fn($part) => trim((string)$part) !== '')));
+}
 
 // 4. Get Station Info
 $station_name = 'Petron Station';
@@ -118,14 +128,14 @@ if ($format === 'csv') {
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     $output = fopen('php://output', 'w');
     fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM for Excel UTF-8
-    fputcsv($output, ['Customer ID', 'Customer Name', 'Contact Number', 'Customer Type', 'Total Transactions', 'Last Transaction', 'Status', 'Date Registered']);
+    fputcsv($output, ['Customer ID', 'Customer Name', 'Contact Number', 'Registration', 'Total Transactions', 'Last Transaction', 'Status', 'Date Registered']);
     foreach ($customers as $c) {
-        $fullName = trim($c['first_name'] . ' ' . $c['middle_name'] . ' ' . $c['last_name']);
+        $fullName = staff_export_customer_name($c);
         fputcsv($output, [
             $c['customer_id'],
             $fullName,
             $c['contact_number'],
-            ucfirst($c['customer_type']),
+            'Registered',
             $c['total_transactions'],
             $c['last_transaction'] ? date('Y-m-d H:i', strtotime($c['last_transaction'])) : 'Never',
             ucfirst($c['status']),
@@ -156,15 +166,15 @@ if ($format === 'excel') {
     echo '<strong>Exported By:</strong> ' . htmlspecialchars($generated_by) . '</p>';
     
     echo '<table><thead><tr>';
-    echo '<th>Customer ID</th><th>Customer Name</th><th>Contact Number</th><th>Customer Type</th><th>Total Transactions</th><th>Last Transaction</th><th>Status</th><th>Date Registered</th>';
+    echo '<th>Customer ID</th><th>Customer Name</th><th>Contact Number</th><th>Registration</th><th>Total Transactions</th><th>Last Transaction</th><th>Status</th><th>Date Registered</th>';
     echo '</tr></thead><tbody>';
     foreach ($customers as $c) {
-        $fullName = trim($c['first_name'] . ' ' . $c['middle_name'] . ' ' . $c['last_name']);
+        $fullName = staff_export_customer_name($c);
         echo '<tr>';
         echo '<td>' . htmlspecialchars($c['customer_id']) . '</td>';
         echo '<td>' . htmlspecialchars($fullName) . '</td>';
         echo '<td>' . htmlspecialchars($c['contact_number']) . '</td>';
-        echo '<td>' . htmlspecialchars(ucfirst($c['customer_type'])) . '</td>';
+        echo '<td>Registered</td>';
         echo '<td>' . htmlspecialchars($c['total_transactions']) . '</td>';
         echo '<td>' . ($c['last_transaction'] ? htmlspecialchars(date('Y-m-d H:i', strtotime($c['last_transaction']))) : 'Never') . '</td>';
         echo '<td>' . htmlspecialchars(ucfirst($c['status'])) . '</td>';
@@ -182,7 +192,7 @@ if ($format === 'pdf') {
     // Build filter summary text
     $filterSummary = [];
     if ($search !== '') $filterSummary[] = "Search: \"$search\"";
-    if ($type !== '') $filterSummary[] = "Customer Type: " . ucfirst($type);
+    if ($type !== '') $filterSummary[] = "Registration: Registered";
     if ($status !== '') $filterSummary[] = "Status: " . ucfirst($status);
     if ($dateFrom !== '' && $dateTo !== '') {
         $filterSummary[] = "Date Registered: " . date('M d, Y', strtotime($dateFrom)) . " to " . date('M d, Y', strtotime($dateTo));
@@ -436,7 +446,7 @@ if ($format === 'pdf') {
                     <th style="width: 10%;">Customer ID</th>
                     <th style="width: 20%;">Customer Name</th>
                     <th style="width: 12%;">Contact No.</th>
-                    <th style="width: 12%;">Customer Type</th>
+                    <th style="width: 12%;">Registration</th>
                     <th style="width: 12%;">Total Transactions</th>
                     <th style="width: 15%;">Last Transaction</th>
                     <th style="width: 10%;">Status</th>
@@ -447,13 +457,13 @@ if ($format === 'pdf') {
                     <tr><td colspan="7" style="text-align: center; color: #888; padding: 20px;">No customers found matching the filter criteria.</td></tr>
                 <?php else: ?>
                     <?php foreach ($customers as $c): 
-                        $fullName = trim($c['first_name'] . ' ' . $c['middle_name'] . ' ' . $c['last_name']);
+                        $fullName = staff_export_customer_name($c);
                         ?>
                         <tr>
                             <td><strong><?= htmlspecialchars($c['customer_id']) ?></strong></td>
                             <td><?= htmlspecialchars($fullName) ?></td>
                             <td><?= htmlspecialchars($c['contact_number']) ?></td>
-                            <td><?= ucfirst(htmlspecialchars($c['customer_type'])) ?></td>
+                            <td>Registered</td>
                             <td style="text-align: center;"><?= $c['total_transactions'] ?></td>
                             <td><?= $c['last_transaction'] ? date('M d, Y h:i A', strtotime($c['last_transaction'])) : 'Never' ?></td>
                             <td><?= ucfirst(htmlspecialchars($c['status'])) ?></td>

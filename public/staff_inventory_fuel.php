@@ -401,8 +401,9 @@ body, html { overflow-x: hidden !important; }
 .sr-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:10000; display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; transition:opacity .2s ease-in-out; }
 .sr-modal-overlay.open { opacity:1; pointer-events:auto; }
 .sr-modal-box { background:#fff; border-radius:12px; width:100%; max-width:540px; box-shadow:0 10px 25px rgba(0,0,0,.2); display:flex; flex-direction:column; max-height:90vh; overflow:hidden; pointer-events:auto !important; position:relative; z-index:10001; }
-.sr-modal-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e2e8f0; }
+.sr-modal-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e2e8f0; flex-shrink:0; background:#fff; z-index:1; }
 .sr-modal-title { font-size:16px; font-weight:700; color:#002F70; }
+.sr-modal-body { overflow-y:auto; flex:1; min-height:0; padding:16px; }
 .sr-modal-close { background:none !important; background-color:transparent !important; border:none !important; font-size:24px; color:#64748b !important; cursor:pointer !important; box-shadow:none !important; pointer-events:auto !important; }
 .sr-modal-close:hover { color:#1e293b !important; }
 
@@ -436,7 +437,7 @@ body, html { overflow-x: hidden !important; }
 .fsr-item-info { flex:1; pointer-events:none; }
 .fsr-item-name { font-weight:700; font-size:14px; color:#1e293b; }
 .fsr-item-meta { font-size:12px; color:#64748b; margin-top:3px; display:flex; align-items:center; flex-wrap:wrap; gap:4px; }
-.sr-modal-footer { display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:16px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; pointer-events:auto !important; }
+.sr-modal-footer { display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:16px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; flex-shrink:0; z-index:2; pointer-events:auto !important; }
 .sr-modal-footer button { pointer-events:auto !important; cursor:pointer !important; }
 
 /* Petron-clean flt-btn Styles */
@@ -604,7 +605,7 @@ body, html { overflow-x: hidden !important; }
     <div style="background:#fff; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
         <div>
             <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Fuel Available</div>
-            <div style="font-size:24px; font-weight:800; color:#0284c7; margin-top:4px;"><?= number_format($total_fuel_available, 2) ?> L</div>
+            <div style="font-size:24px; font-weight:800; color:#0284c7; margin-top:4px;"><?= number_format($total_fuel_available, 2) ?> Liters (L)</div>
         </div>
         <div style="background:#e0f2fe; color:#0284c7; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-gas-pump"></i></div>
     </div>
@@ -685,9 +686,9 @@ body, html { overflow-x: hidden !important; }
                     <tr>
                         <th>UGT No.</th>
                         <th>Fuel Type</th>
-                        <th>Capacity (L)</th>
-                        <th>Reorder Level (L)</th>
-                        <th>Current Level (L)</th>
+                        <th>Capacity (Liters (L))</th>
+                        <th>Reorder Level (Liters (L))</th>
+                        <th>Current Level (Liters (L))</th>
                         <th>Available %</th>
                         <th>Status</th>
                         <th>Last Updated</th>
@@ -716,9 +717,9 @@ body, html { overflow-x: hidden !important; }
                         data-date="<?= $row_date ?>">
                         <td style="font-weight:700;color:#002F70;"><?= $r['tanker_num'] ?></td>
                         <td style="font-weight:700;"><?= htmlspecialchars($r['fuel_type']) ?></td>
-                        <td><?= number_format($r['capacity'], 0) ?></td>
-                        <td style="font-weight:600;color:#64748b;"><?= number_format($r['reorder_level'], 0) ?> L</td>
-                        <td style="font-weight:700;color:#002F70;"><?= number_format($fl, 2) ?> L</td>
+                        <td><?= number_format($r['capacity'], 0) ?> Liters (L)</td>
+                        <td style="font-weight:600;color:#64748b;"><?= number_format($r['reorder_level'], 0) ?> Liters (L)</td>
+                        <td style="font-weight:700;color:#002F70;"><?= number_format($fl, 2) ?> Liters (L)</td>
                         <td><?= $fill ?>%</td>
                         <td>
                             <span class="status-pill" style="background:<?= $r['status_color'] ?>18;color:<?= $r['status_color'] ?>;border:1px solid <?= $r['status_color'] ?>40;">
@@ -791,7 +792,7 @@ body, html { overflow-x: hidden !important; }
                                 <th>Date</th>
                                 <th>Invoice No.</th>
                                 <th>Supplier</th>
-                                <th style="text-align:right;">Liters</th>
+                                <th style="text-align:right;">Liters (L)</th>
                                 <th>Status</th>
                             </tr>
                         </thead>
@@ -805,7 +806,7 @@ body, html { overflow-x: hidden !important; }
                             <tr>
                                 <th>Date</th>
                                 <th>Shift Period</th>
-                                <th style="text-align:right;">Liters Sold</th>
+                                <th style="text-align:right;">Liters Sold (L)</th>
                                 <th style="text-align:right;">Total Amount</th>
                                 <th>Status</th>
                             </tr>
@@ -823,31 +824,56 @@ body, html { overflow-x: hidden !important; }
 
 <!-- ══ FUEL STOCK REQUEST MODAL ══ -->
 <div class="sr-modal-overlay" id="fuelSrModal">
-    <div class="sr-modal-box">
+    <div class="sr-modal-box" style="max-width:860px;">
         <div class="sr-modal-head">
             <div class="sr-modal-title">
                 Fuel Stock Request
             </div>
-            <button class="sr-modal-close" id="fuelSrClose">&times;</button>
         </div>
 
-        <div class="sr-info-box">
-            <strong>Select the fuel types you want to request, then click Submit.</strong><br>
-            &bull; Volume/Liters will be determined exclusively by Management during review<br>
-            &bull; Fuel inventory is NOT updated until Manager processes the delivery
+        <div class="sr-modal-body">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+                <!-- LEFT COLUMN: Request Information -->
+                <div>
+                    <div style="background:#f8fafc; padding:16px; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:16px;">
+                        <h4 style="margin:0 0 12px; font-size:14px; font-weight:700; color:#002F70; text-transform:uppercase; border-bottom:1px solid #cbd5e1; padding-bottom:6px;">
+                            <i class="fas fa-file-alt"></i> Request Information
+                        </h4>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12.5px;">
+                            <span style="color:#64748b; font-weight:600;">Request No:</span>
+                            <span style="font-weight:700; color:#1e293b;">Auto-Assigned</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12.5px;">
+                            <span style="color:#64748b; font-weight:600;">Request Date:</span>
+                            <span style="font-weight:700; color:#1e293b;"><?= date('M d, Y') ?></span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12.5px;">
+                            <span style="color:#64748b; font-weight:600;">Requested By:</span>
+                            <span style="font-weight:700; color:#1e293b;"><?= htmlspecialchars($me['name'] ?? $me['username'] ?? 'Staff') ?></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RIGHT COLUMN: Fuel Selection -->
+                <div style="display:flex; flex-direction:column;">
+                    <label style="display:block;font-size:12.5px;font-weight:700;color:#374151;margin-bottom:8px;">
+                        <i class="fas fa-gas-pump" style="color:#eab308;margin-right:4px;"></i> Fuel Types <span style="color:#dc2626;">*</span>
+                    </label>
+                    
+                    <!-- Select-all bar -->
+                    <div class="fsr-select-bar" style="margin-bottom:8px;">
+                        <input type="checkbox" id="fsrSelectAll">
+                        <label for="fsrSelectAll" style="cursor:pointer;margin:0;margin-left:8px;">Select All</label>
+                        <span id="fsrSelectedCount" style="margin-left:auto;color:#002F70;"></span>
+                    </div>
+
+                    <!-- Fuel list with checkboxes -->
+                    <div id="fsrCheckList"></div>
+                </div>
+            </div>
+
+            <div id="fsrError" style="display:none;background:#fee2e2;color:#dc3545;padding:10px 14px;border-radius:6px;margin-top:12px;font-size:13px;"></div>
         </div>
-
-        <!-- Select-all bar -->
-        <div class="fsr-select-bar">
-            <input type="checkbox" id="fsrSelectAll">
-            <label for="fsrSelectAll" style="cursor:pointer;margin:0;margin-left:8px;">Select All</label>
-            <span id="fsrSelectedCount" style="margin-left:auto;color:#002F70;"></span>
-        </div>
-
-        <!-- Fuel list with checkboxes -->
-        <div id="fsrCheckList"></div>
-
-        <div id="fsrError" style="display:none;background:#fee2e2;color:#dc3545;padding:10px 14px;border-radius:6px;margin-bottom:12px;font-size:13px;"></div>
 
         <div class="sr-modal-footer">
             <button type="button" id="fsrCancelBtn" class="txn-btn secondary">
@@ -915,8 +941,8 @@ function renderFsrCheckList() {
             '<div class="fsr-item-info">' +
                 '<div class="fsr-item-name">' + esc(displayName) + '</div>' +
                 '<div class="fsr-item-meta">' +
-                    it.level.toLocaleString('en-PH',{minimumFractionDigits:2}) + ' L / ' +
-                    it.capacity.toLocaleString('en-PH',{minimumFractionDigits:2}) + ' L ' +
+                    it.level.toLocaleString('en-PH',{minimumFractionDigits:2}) + ' Liters (L) / ' +
+                    it.capacity.toLocaleString('en-PH',{minimumFractionDigits:2}) + ' Liters (L) ' +
                     bar + it.pct + '% &bull; ' + badge +
                 '</div>' +
             '</div>' +
@@ -1089,11 +1115,11 @@ function viewTankDetails(r) {
     document.getElementById('detTankId').textContent = r.tanker_num;
     document.getElementById('detTankName').textContent = r.label;
     document.getElementById('detFuelType').textContent = r.fuel_type;
-    document.getElementById('detCapacity').textContent = Number(r.capacity).toLocaleString() + ' L';
-    document.getElementById('detReorderLevel').textContent = Number(r.reorder_level).toLocaleString() + ' L';
-    document.getElementById('detCalibration').textContent = Number(r.calibration).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
-    document.getElementById('detTotalDispensed').textContent = Number(r.total_dispensed).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
-    document.getElementById('detVolume').textContent = Number(r.current_level).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
+    document.getElementById('detCapacity').textContent = Number(r.capacity).toLocaleString() + ' Liters (L)';
+    document.getElementById('detReorderLevel').textContent = Number(r.reorder_level).toLocaleString() + ' Liters (L)';
+    document.getElementById('detCalibration').textContent = Number(r.calibration).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' Liters (L)';
+    document.getElementById('detTotalDispensed').textContent = Number(r.total_dispensed).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' Liters (L)';
+    document.getElementById('detVolume').textContent = Number(r.current_level).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' Liters (L)';
     
     var fill = Math.min(100, Math.max(0, Math.round(r.fill_pct, 1)));
     var statusSpan = '<span class="status-pill" style="background:' + r.status_color + '18; color:' + r.status_color + '; border:1px solid ' + r.status_color + '40;">' + r.status + ' (' + fill + '%)</span>';
@@ -1144,7 +1170,7 @@ function viewFuelMovement(fuelType, tankName) {
                     '<td>' + dateStr + '</td>' +
                     '<td><code>' + esc(d.invoice_no || '—') + '</code></td>' +
                     '<td>' + esc(d.supplier || '—') + '</td>' +
-                    '<td style="text-align:right; font-weight:700; color:#002F70;">' + Number(d.delivery_liters).toLocaleString() + ' L</td>' +
+                    '<td style="text-align:right; font-weight:700; color:#002F70;">' + Number(d.delivery_liters).toLocaleString() + ' Liters (L)</td>' +
                     '<td><span style="font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px;' + statusCls + '">' + esc(d.status) + '</span></td>' +
                     '</tr>';
             });
@@ -1162,7 +1188,7 @@ function viewFuelMovement(fuelType, tankName) {
                 salesHtml += '<tr>' +
                     '<td>' + dateStr + '</td>' +
                     '<td>' + esc(t.shift_period || '—') + '</td>' +
-                    '<td style="text-align:right; font-weight:700; color:#002F70;">' + Number(t.liters_sold).toLocaleString() + ' L</td>' +
+                    '<td style="text-align:right; font-weight:700; color:#002F70;">' + Number(t.liters_sold).toLocaleString() + ' Liters (L)</td>' +
                     '<td style="text-align:right; font-weight:600;">₱' + Number(t.total_amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</td>' +
                     '<td><span style="font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px;' + statusCls + '">' + esc(t.status) + '</span></td>' +
                     '</tr>';

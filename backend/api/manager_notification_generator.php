@@ -61,6 +61,15 @@ try {
 
 $generated = 0;
 
+// Keep older unread notifications aligned with current sidebar routes.
+try {
+    $pdo->prepare(
+        "UPDATE notifications
+         SET redirect_url='manager_stock_request_review.php?tab=pending_requests'
+         WHERE user_id=? AND redirect_url='manager_inventory_stock_requests.php'"
+    )->execute([$user_id]);
+} catch (Exception $e) {}
+
 function mgr_push(
     PDO    $pdo,
     int    $user_id,
@@ -288,7 +297,7 @@ try {
         $generated += mgr_push($pdo, $user_id, 'warning', 'inventory', 'medium',
             "Stock Request Pending: {$r['item_name']}",
             "Staff {$staff} has a pending stock request for {$r['item_name']} (Request #{$r['id']}).",
-            $key, 'manager_inventory_stock_requests.php'
+            $key, 'manager_stock_request_review.php?tab=pending_requests'
         );
     }
 } catch (Exception $e) {}

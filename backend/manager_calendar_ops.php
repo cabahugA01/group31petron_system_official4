@@ -1,191 +1,224 @@
 <?php
 /**
  * Manager Calendar Operations
- * Assign shifts, color-code, sync with logs/transactions
  */
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 require_once __DIR__ . '/lib.php';
+require_once __DIR__ . '/../public/db_connect.php';
+require_once __DIR__ . '/calendar_module_helpers.php';
 
-class ManagerCalendarOps {
-    private $pdo;
-    private $user;
-    private $station_id;
+class ManagerCalendarOps
+{
+    private PDO $pdo;
+    private array $user;
+    private int $station_id;
 
-    public function __construct($pdo, $user, $station_id) {
+    public function __construct(PDO $pdo, array $user, int $station_id)
+    {
+        $role = role_key($user['role'] ?? '');
+        if (!in_array($role, ['manager', 'admin', 'superadmin'], true)) {
+            throw new RuntimeException('Manager or admin access is required.');
+        }
+
         $this->pdo = $pdo;
         $this->user = $user;
         $this->station_id = $station_id;
-        require_permission('assign_shifts');
     }
 
-    /**
-     * Get calendar data (shifts + synced events from logs)
-     */
-    public function get_calendar_data($start_date, $end_date) {
+    public function get_calendar_data(string $start_date, string $end_date): array
+    {
+        $start = calendar_normalize_date($start_date) ?: date('Y-m-01');
+        $end = calendar_normalize_date($end_date) ?: date('Y-m-t');
+        $events = [];
+
         $stmt = $this->pdo->prepare("
-            SELECT 
-                ss.id, ss.staff_id, ss.shift_date, ss.shift_type, ss.color_code,
-                ss.status, ss.notes,
-                CONCAT(u.name, ' - ', ss.shift_type) as title,
-                CASE ss.shift_type
-                    WHEN 'Morning' THEN CONCAT(ss.shift_date, ' 06:00:00')
-                    WHEN 'Afternoon' THEN CONCAT(ss.shift_date, ' 14:00:00')
-                    WHEN 'Evening' THEN CONCAT(ss.shift_date, ' 22:00:00')
-                END as start_time,
-                CONCAT(ss.shift_date, ' 14:00:00') as end_time, -- 8hr shifts
-                ss.color_code,
-                'shift' as type
-            FROM staff_shifts ss
-            JOIN users u ON ss.staff_id = u.id
-            WHERE ss.station_id = ? AND ss.shift_date BETWEEN ? AND ?
-            UNION ALL
-            -- Sync transactions/readings as events
-            SELECT 
-                NULL as id, fdr.user_id, fdr.reading_date, fdr.shift,
-                '#9b59b6' as color_code, 'verified' as status, fdr.notes,
-                CONCAT('Fuel Reading - ', ft.name) as title,
-                fdr.reading_date as start_time, DATE_ADD(fdr.reading_date, INTERVAL 1 HOUR) as end_time,
-                '#9b59b6' as color, 'reading' as type
-            FROM fuel_daily_readings fdr
-            JOIN fuel_pumps fp ON fdr.pump_id = fp.id
-            JOIN fuel_types ft ON fp.fuel_type_id = ft.id
-            WHERE fdr.station_id = ? AND fdr.reading_date BETWEEN ? AND ? AND fdr.status = 'Verified'
-            UNION ALL
-            SELECT 
-                jo.id, jo.assigned_mechanic_id, jo.created_at, 'Day',
-                CASE jo.status WHEN 'Completed' THEN '#27ae60' ELSE '#f39c12' END,
-                jo.status, jo.notes,
-                CONCAT('JO #', LEFT(jo.job_order_number, 10)) as title,
-                jo.created_at as start_time, 
-                CASE WHEN jo.completed_at IS NOT NULL THEN jo.completed_at ELSE DATE_ADD(jo.created_at, INTERVAL 4 HOUR) END as end_time,
-                CASE jo.status WHEN 'Completed' THEN '#27ae60' ELSE '#f39c12' END, 'job_order' as type
+            SELECT ss.id, ss.user_id AS staff_id, ss.scheduled_date, ss.shift AS shift_type,
+                   ss.status, u.name AS staff_name, s.start_time, s.end_time
+            FROM staff_schedules ss
+            JOIN users u ON ss.user_id = u.id
+            LEFT JOIN shifts s ON ss.shift = s.name
+            WHERE u.station_id = ? AND ss.scheduled_date BETWEEN ? AND ?
+            ORDER BY ss.scheduled_date, s.start_time
+        ");
+        $stmt->execute([$this->station_id, $start, $end]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $shiftStart = $row['start_time'] ?: '00:00:00';
+            $shiftEnd = $row['end_time'] ?: $shiftStart;
+            $events[] = [
+                'id' => 'shift_' . $row['id'],
+                'staff_id' => (int)$row['staff_id'],
+                'shift_date' => $row['scheduled_date'],
+                'shift_type' => $row['shift_type'],
+                'status' => strtolower($row['status'] ?? 'scheduled'),
+                'title' => trim(($row['staff_name'] ?? 'Staff') . ' - ' . $row['shift_type']),
+                'start_time' => $row['scheduled_date'] . ' ' . $shiftStart,
+                'end_time' => $row['scheduled_date'] . ' ' . $shiftEnd,
+                'color_code' => '#3498db',
+                'type' => 'shift',
+            ];
+        }
+
+        $stmt = $this->pdo->prepare("
+            SELECT d.id, d.encoded_by AS staff_id, DATE(d.delivery_date) AS event_date,
+                   d.supplier, d.product, d.status, u.name AS staff_name
+            FROM deliveries_oversight d
+            LEFT JOIN users u ON d.encoded_by = u.id
+            WHERE d.station_id = ? AND DATE(d.delivery_date) BETWEEN ? AND ?
+            ORDER BY d.delivery_date
+        ");
+        $stmt->execute([$this->station_id, $start, $end]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $events[] = [
+                'id' => 'delivery_' . $row['id'],
+                'staff_id' => (int)$row['staff_id'],
+                'shift_date' => $row['event_date'],
+                'shift_type' => 'Delivery',
+                'status' => strtolower($row['status'] ?? 'pending'),
+                'title' => 'Delivery - ' . trim(($row['supplier'] ?? '') . ' ' . ($row['product'] ?? '')),
+                'start_time' => $row['event_date'] . ' 00:00:00',
+                'end_time' => $row['event_date'] . ' 00:00:00',
+                'color_code' => '#8e24aa',
+                'type' => 'delivery',
+            ];
+        }
+
+        $stmt = $this->pdo->prepare("
+            SELECT jo.id, jo.created_by AS staff_id, DATE(jo.created_at) AS event_date,
+                   jo.job_order_number, jo.service_type, jo.customer_name, jo.status, u.name AS staff_name
             FROM job_orders jo
-            WHERE jo.station_id = ? AND jo.created_at BETWEEN ? AND DATE_ADD(?, INTERVAL 1 DAY)
-            ORDER BY start_time
+            LEFT JOIN users u ON jo.created_by = u.id
+            WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ?
+            ORDER BY jo.created_at
         ");
+        $stmt->execute([$this->station_id, $start, $end]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $events[] = [
+                'id' => 'job_order_' . $row['id'],
+                'staff_id' => (int)$row['staff_id'],
+                'shift_date' => $row['event_date'],
+                'shift_type' => 'Job Order',
+                'status' => strtolower($row['status'] ?? 'pending'),
+                'title' => 'JO ' . ($row['job_order_number'] ?: $row['id']) . ' - ' . ($row['customer_name'] ?? 'Customer'),
+                'start_time' => $row['event_date'] . ' 00:00:00',
+                'end_time' => $row['event_date'] . ' 00:00:00',
+                'color_code' => '#f39c12',
+                'type' => 'job_order',
+            ];
+        }
 
-        $stmt->execute([
-            $this->station_id, $start_date, $end_date,
-            $this->station_id, $start_date, $end_date,
-            $this->station_id, $start_date, $end_date
-        ]);
-
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $events;
     }
 
-    /**
-     * Assign shift to staff
-     */
-    public function assign_shift($staff_id, $shift_date, $shift_type, $color = '#3498db', $notes = '') {
-        $stmt = $this->pdo->prepare("
-            INSERT INTO staff_shifts (station_id, staff_id, shift_date, shift_type, color_code, assigned_by, notes, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled')
-            ON DUPLICATE KEY UPDATE 
-                color_code = VALUES(color_code), notes = VALUES(notes), 
-                assigned_by = ?, status = 'scheduled', updated_at = NOW()
-        ");
+    public function assign_shift(int $staff_id, string $shift_date, string $shift_type, string $color = '#3498db', string $notes = ''): array
+    {
+        $date = calendar_normalize_date($shift_date);
+        $shift = calendar_clean_text($shift_type);
+        if (!$staff_id || !$date || !$shift) {
+            return ['success' => false, 'message' => 'Staff, date, and shift are required.'];
+        }
 
-        $stmt->execute([
-            $this->station_id, $staff_id, $shift_date, $shift_type, $color, $notes, $this->user['id']
-        ]);
+        if (!$this->staffBelongsToStation($staff_id)) {
+            return ['success' => false, 'message' => 'Selected staff is not assigned to this station.'];
+        }
 
-        // Log activity
-        log_activity($this->pdo, $this->user['id'], 'Shift Assigned', 
-            "Assigned $shift_type shift on $shift_date to staff #$staff_id: $notes");
+        $check = $this->pdo->prepare("SELECT id FROM staff_schedules WHERE user_id = ? AND scheduled_date = ? LIMIT 1");
+        $check->execute([$staff_id, $date]);
+        $existingId = (int)$check->fetchColumn();
 
+        if ($existingId) {
+            $stmt = $this->pdo->prepare("UPDATE staff_schedules SET shift = ?, status = 'scheduled', updated_at = NOW() WHERE id = ?");
+            $stmt->execute([$shift, $existingId]);
+        } else {
+            $stmt = $this->pdo->prepare("INSERT INTO staff_schedules (user_id, shift, scheduled_date, status) VALUES (?, ?, ?, 'scheduled')");
+            $stmt->execute([$staff_id, $shift, $date]);
+        }
+
+        log_activity($this->pdo, (int)$this->user['id'], 'Shift Assigned', "Assigned $shift shift on $date to staff #$staff_id. $notes");
         return ['success' => true, 'message' => 'Shift assigned'];
     }
 
-    /**
-     * Get staff dropdown for calendar (active at station)
-     */
-    public function get_assignable_staff() {
+    public function get_assignable_staff(): array
+    {
         $stmt = $this->pdo->prepare("
-            SELECT `user_id`, name, username 
-            FROM users 
-            WHERE station_id = ? AND role IN ('staff', 'manager') AND status = 'Active'
+            SELECT id, name, username
+            FROM users
+            WHERE station_id = ? AND role = 'staff' AND status = 'Active'
             ORDER BY name
         ");
         $stmt->execute([$this->station_id]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    /**
-     * Sync shift with transaction logs (mark completed if readings/JO done)
-     */
-    public function sync_shift_status($shift_id) {
+    public function sync_shift_status(int $shift_id): array
+    {
         $stmt = $this->pdo->prepare("
-            SELECT ss.id,
-                COUNT(fdr.id) > 0 as has_readings,
-                COUNT(jo.id) > 0 as has_jo,
-                MAX(CASE fdr.status WHEN 'Verified' THEN 1 ELSE 0 END) as readings_verified,
-                MAX(CASE jo.status WHEN 'Completed' THEN 1 ELSE 0 END) as jo_completed
-            FROM staff_shifts ss
-            LEFT JOIN fuel_daily_readings fdr ON fdr.user_id = ss.staff_id 
-                AND fdr.shift = ss.shift_type AND fdr.reading_date = ss.shift_date
-            LEFT JOIN job_orders jo ON jo.assigned_mechanic_id = ss.staff_id 
-                AND DATE(jo.created_at) = ss.shift_date
-            WHERE ss.id = ?
-            GROUP BY ss.id
+            SELECT ss.id, ss.user_id, ss.scheduled_date,
+                   COUNT(jo.id) AS job_orders,
+                   SUM(CASE WHEN jo.status IN ('Completed', 'Verified', 'finalized') THEN 1 ELSE 0 END) AS completed_jobs
+            FROM staff_schedules ss
+            LEFT JOIN job_orders jo ON jo.assigned_mechanic_id = ss.user_id AND DATE(jo.created_at) = ss.scheduled_date
+            JOIN users u ON ss.user_id = u.id
+            WHERE ss.id = ? AND u.station_id = ?
+            GROUP BY ss.id, ss.user_id, ss.scheduled_date
         ");
-        $stmt->execute([$shift_id]);
+        $stmt->execute([$shift_id, $this->station_id]);
         $data = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        $status = 'scheduled';
-        if ($data['has_readings'] && $data['readings_verified']) {
-            $status = $data['has_jo'] && $data['jo_completed'] ? 'completed' : 'active';
+        if (!$data) {
+            return ['success' => false, 'message' => 'Shift not found.'];
         }
 
-        $update = $this->pdo->prepare("UPDATE staff_shifts SET status = ? WHERE id = ?");
+        $status = ((int)$data['job_orders'] > 0 && (int)$data['job_orders'] === (int)$data['completed_jobs']) ? 'completed' : 'scheduled';
+        $update = $this->pdo->prepare("UPDATE staff_schedules SET status = ? WHERE id = ?");
         $update->execute([$status, $shift_id]);
-
         return ['success' => true, 'status' => $status];
+    }
+
+    private function staffBelongsToStation(int $staff_id): bool
+    {
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM users WHERE id = ? AND station_id = ?");
+        $stmt->execute([$staff_id, $this->station_id]);
+        return (int)$stmt->fetchColumn() > 0;
     }
 }
 
-// AJAX Handler
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_login();
-    header('Content-Type: application/json');
-
-    $action = $_POST['action'] ?? '';
-    $pdo = get_db_connection(); // Assume helper exists or use global
-    $user = current_user();
-    $station_id = user_station_id();
-
-    $ops = new ManagerCalendarOps($pdo, $user, $station_id);
+    header('Content-Type: application/json; charset=utf-8');
 
     try {
+        calendar_ensure_schema($pdo);
+        $ops = new ManagerCalendarOps($pdo, current_user(), (int)user_station_id());
+        $action = $_POST['action'] ?? '';
+
         switch ($action) {
             case 'get_data':
-                $result = $ops->get_calendar_data($_POST['start'] ?? '', $_POST['end'] ?? '');
-                echo json_encode(['success' => true, 'events' => $result]);
+                echo json_encode(['success' => true, 'events' => $ops->get_calendar_data($_POST['start'] ?? '', $_POST['end'] ?? '')]);
                 break;
             case 'assign_shift':
-                $result = $ops->assign_shift(
-                    (int)$_POST['staff_id'],
-                    $_POST['shift_date'],
-                    $_POST['shift_type'],
+                echo json_encode($ops->assign_shift(
+                    (int)($_POST['staff_id'] ?? 0),
+                    $_POST['shift_date'] ?? '',
+                    $_POST['shift_type'] ?? '',
                     $_POST['color'] ?? '#3498db',
                     $_POST['notes'] ?? ''
-                );
-                echo json_encode($result);
+                ));
                 break;
             case 'get_staff':
-                $result = $ops->get_assignable_staff();
-                echo json_encode(['success' => true, 'staff' => $result]);
+                echo json_encode(['success' => true, 'staff' => $ops->get_assignable_staff()]);
                 break;
             case 'sync_status':
-                $result = $ops->sync_shift_status((int)$_POST['shift_id']);
-                echo json_encode($result);
+                echo json_encode($ops->sync_shift_status((int)($_POST['shift_id'] ?? 0)));
                 break;
             default:
-                throw new Exception('Invalid action');
+                echo json_encode(['success' => false, 'message' => 'Invalid action']);
         }
-    } catch (Exception $e) {
-        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
     }
     exit;
 }
-?>
-

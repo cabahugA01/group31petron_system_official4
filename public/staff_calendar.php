@@ -1,9 +1,11 @@
-﻿<?php
+<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'calendar';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
+require_once __DIR__ . '/../backend/calendar_module_helpers.php';
 require_login();
+calendar_ensure_schema($pdo);
 
 $me = current_user();
 $rk = role_key($me['role'] ?? '');
@@ -18,12 +20,22 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_event') {
     
     try {
         $event_id = $_POST['event_id'] ?? '';
-        $event_date = $_POST['event_date'] ?? '';
-        $event_type = $_POST['event_type'] ?? '';
-        $work_description = $_POST['work_description'] ?? '';
-        $start_time = $_POST['start_time'] ?? null;
-        $end_time = $_POST['end_time'] ?? null;
-        $status = $_POST['status'] ?? 'pending';
+        $event_date = calendar_normalize_date($_POST['event_date'] ?? '');
+        $event_type = calendar_normalize_event_type($_POST['event_type'] ?? '');
+        $work_description = calendar_clean_text($_POST['work_description'] ?? '');
+        $start_time = calendar_normalize_time($_POST['start_time'] ?? '');
+        $end_time = calendar_normalize_time($_POST['end_time'] ?? '', $start_time);
+        $status = calendar_normalize_status($_POST['status'] ?? 'pending');
+
+        if ($event_date === '' || $event_type === '' || $work_description === '') {
+            echo json_encode(['success' => false, 'message' => 'Please complete the date, type, and description.']);
+            exit;
+        }
+
+        if ($start_time !== '00:00:00' && $end_time !== '00:00:00' && $end_time < $start_time) {
+            echo json_encode(['success' => false, 'message' => 'End time must be later than start time.']);
+            exit;
+        }
         
         // Collect all dynamic fields into metadata JSON
         $metadata = [];
@@ -73,7 +85,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_event') {
         $metadata_json = json_encode($metadata);
         
         // Check for schedule conflicts before saving
-        if ($start_time && $end_time && $status !== 'cancelled') {
+        if (calendar_has_time_range($start_time, $end_time) && $status !== 'cancelled' && empty($_POST['force_save'])) {
             $conflict_check = $pdo->prepare("SELECT COUNT(*) FROM staff_calendar_events 
                 WHERE staff_encoder_id = ? 
                 AND event_date = ? 
@@ -107,17 +119,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_event') {
         }
         
         // Get or create event_type_id
-        $type_stmt = $pdo->prepare("SELECT id FROM staff_event_types WHERE type_key = ? LIMIT 1");
-        $type_stmt->execute([$event_type]);
-        $event_type_row = $type_stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$event_type_row) {
-            $insert_type = $pdo->prepare("INSERT INTO staff_event_types (type_key, type_name, icon_class) VALUES (?, ?, ?)");
-            $insert_type->execute([$event_type, ucwords(str_replace('_', ' ', $event_type)), 'fas fa-calendar']);
-            $event_type_id = $pdo->lastInsertId();
-        } else {
-            $event_type_id = $event_type_row['id'];
-        }
+        $event_type_id = calendar_event_type_id($pdo, $event_type);
         
         // Check if metadata column exists, if not add it
         try {
@@ -211,8 +213,9 @@ try {
     $upcoming_end = date('Y-m-d', strtotime('+3 days'));
     
     // Today's events count
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM staff_calendar_events WHERE station_id = ? AND event_date = ?");
-    $stmt->execute([$station_id, $today_date]);
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM staff_calendar_events
+        WHERE station_id = ? AND event_date = ? AND (staff_encoder_id = ? OR manager_assigned_id = ?)");
+    $stmt->execute([$station_id, $today_date, $user_id, $user_id]);
     $summary_stats['today_events'] = $stmt->fetchColumn();
     
     // Today's shifts
@@ -231,21 +234,21 @@ try {
     $summary_stats['today_job_orders'] = $stmt->fetchColumn();
     
     // Week status counts
-    $stmt = $pdo->prepare("SELECT status, COUNT(*) as cnt FROM staff_calendar_events 
-        WHERE station_id = ? AND event_date BETWEEN ? AND ? 
+    $stmt = $pdo->prepare("SELECT status, COUNT(*) as cnt FROM staff_calendar_events
+        WHERE station_id = ? AND (staff_encoder_id = ? OR manager_assigned_id = ?) AND event_date BETWEEN ? AND ?
         GROUP BY status");
-    $stmt->execute([$station_id, $week_start, $week_end]);
+    $stmt->execute([$station_id, $user_id, $user_id, $week_start, $week_end]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $status = strtolower($row['status']);
         if ($status === 'pending') $summary_stats['week_pending'] = $row['cnt'];
-        if ($status === 'in_progress') $summary_stats['week_in_progress'] = $row['cnt'];
+        if ($status === 'approved' || $status === 'in_progress') $summary_stats['week_in_progress'] += $row['cnt'];
         if ($status === 'completed') $summary_stats['week_completed'] = $row['cnt'];
     }
     
     // Upcoming events (next 3 days)
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM staff_calendar_events 
-        WHERE station_id = ? AND event_date BETWEEN ? AND ?");
-    $stmt->execute([$station_id, $today_date, $upcoming_end]);
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM staff_calendar_events
+        WHERE station_id = ? AND (staff_encoder_id = ? OR manager_assigned_id = ?) AND event_date BETWEEN ? AND ?");
+    $stmt->execute([$station_id, $user_id, $user_id, $today_date, $upcoming_end]);
     $summary_stats['upcoming_count'] = $stmt->fetchColumn();
     
     // Check for schedule conflicts (overlapping events for same user on same day)
@@ -629,7 +632,7 @@ i.fas, i.far, i.fab, i.fa, i[class*="fa-"] {
                     <span style="font-size: 11px; font-weight: 600; color: #f9ab00;"><?= $summary_stats['week_pending'] ?></span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                    <span style="font-size: 11px; color: #5f6368;">In Progress</span>
+                    <span style="font-size: 11px; color: #5f6368;">Approved</span>
                     <span style="font-size: 11px; font-weight: 600; color: #1a73e8;"><?= $summary_stats['week_in_progress'] ?></span>
                 </div>
                 <div style="display: flex; justify-content: space-between;">
@@ -1612,7 +1615,7 @@ function handleEventTypeChange() {
                 <label style="display: block; margin-bottom: 8px; font-size: 14px; color: #3c4043; font-weight: 500;">Status</label>
                 <select id="eventStatus" name="status" style="width: 100%; padding: 10px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px;">
                     <option value="pending">Pending</option>
-                    <option value="in_progress">In Progress</option>
+                    <option value="approved">Approved</option>
                     <option value="completed">Completed</option>
                     <option value="cancelled">Cancelled</option>
                 </select>

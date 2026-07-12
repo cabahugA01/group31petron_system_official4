@@ -624,7 +624,7 @@ require_once __DIR__ . '/../partials/header.php';
     }
     
     .content {
-        padding: 15px 20px;
+        padding: 0;
     }
     
     .section-title {
@@ -680,11 +680,15 @@ require_once __DIR__ . '/../partials/header.php';
     .text-center { text-align: center; }
     .font-bold { font-weight: 700; }
     
-    .shift-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0; }
-    .shift-box { background: #fff; padding: 15px; border: 1px solid #000; }
+    .shift-summary { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin: 0; }
+    .shift-box { background: #fff; padding: 15px; border: 1px solid #000; height: 100%; }
     .shift-box h3 { font-size: 14px; color: #000; margin: 0 0 10px 0; font-weight: 700; border-bottom: 1px solid #000; padding-bottom: 8px; text-transform: uppercase; }
     .shift-box table { font-size: 11px; }
     .shift-box td { padding: 6px 4px; border: none; border-bottom: 1px solid #ddd; }
+    
+    .summary-grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 0; }
+    .summary-grid-container > div { display: flex; flex-direction: column; }
+    .summary-grid-container .shift-box { flex: 1; }
     
     @media print {
         @page { size: legal portrait; margin: 0.5in 0.4in; }
@@ -873,56 +877,62 @@ require_once __DIR__ . '/../partials/header.php';
                 </table>
             </div>
             
-            <div class="section-title">SHIFT SUMMARY</div>
-            <div class="shift-summary">
-                <?php if ($user_shift_number !== 2): // Hide Shift 1 summary for Shift 2 staff ?>
-                <div class="shift-box">
-                    <h3>SHIFT 1 (6AM - 2PM)</h3>
-                    <table>
-                        <tbody>
-                            <tr><td><strong>Cash:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_cash, 2) ?></td></tr>
-                            <tr><td><strong>Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_card, 2) ?></td></tr>
-                            <tr><td><strong>E-Wallet:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_ewallet, 2) ?></td></tr>
-                            <tr><td><strong>E-Fuel Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_efuel, 2) ?></td></tr>
-                            <tr><td><strong>Fleet Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_fleet, 2) ?></td></tr>
-                            <tr><td colspan="2" style="height: 5px;"></td></tr>
-                            <tr><td class="font-bold">TOTAL:</td><td class="text-right font-bold">₱<?= number_format($shift1_total, 2) ?></td></tr>
-                        </tbody>
-                    </table>
+            <div class="summary-grid-container">
+                <div>
+                    <div class="section-title">SHIFT SUMMARY</div>
+                    <div style="display: flex; flex-direction: column; gap: 15px; height: 100%;">
+                        <?php if ($user_shift_number !== 2): // Hide Shift 1 summary for Shift 2 staff ?>
+                        <div class="shift-box">
+                            <h3>SHIFT 1 (6AM - 2PM)</h3>
+                            <table>
+                                <tbody>
+                                    <tr><td><strong>Cash:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_cash, 2) ?></td></tr>
+                                    <tr><td><strong>Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_card, 2) ?></td></tr>
+                                    <tr><td><strong>E-Wallet:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_ewallet, 2) ?></td></tr>
+                                    <tr><td><strong>E-Fuel Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_efuel, 2) ?></td></tr>
+                                    <tr><td><strong>Fleet Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_fleet, 2) ?></td></tr>
+                                    <tr><td colspan="2" style="height: 5px;"></td></tr>
+                                    <tr><td class="font-bold">TOTAL:</td><td class="text-right font-bold">₱<?= number_format($shift1_total, 2) ?></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <?php endif; ?>
+                        
+                        <?php if ($user_shift_number !== 1): // Hide Shift 2 summary for Shift 1 staff ?>
+                        <div class="shift-box">
+                            <h3>SHIFT 2 (2PM - 10PM)</h3>
+                            <table>
+                                <tbody>
+                                    <tr><td><strong>Cash:</strong></td><td class="text-right font-bold">₱<?= number_format($shift2_cash, 2) ?></td></tr>
+                                    <tr><td><strong>Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift2_card, 2) ?></td></tr>
+                                    <tr><td><strong>E-Wallet:</strong></td><td class="text-right font-bold">₱<?= number_format($shift2_ewallet, 2) ?></td></tr>
+                                    <tr><td><strong>E-Fuel Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift2_efuel, 2) ?></td></tr>
+                                    <tr><td><strong>Fleet Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift2_fleet, 2) ?></td></tr>
+                                    <tr><td colspan="2" style="height: 5px;"></td></tr>
+                                    <tr><td class="font-bold">TOTAL:</td><td class="text-right font-bold">₱<?= number_format($shift2_total, 2) ?></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <?php endif; ?>
+                    </div>
                 </div>
-                <?php endif; ?>
                 
-                <?php if ($user_shift_number !== 1): // Hide Shift 2 summary for Shift 1 staff ?>
-                <div class="shift-box">
-                    <h3>SHIFT 2 (2PM - 10PM)</h3>
-                    <table>
-                        <tbody>
-                            <tr><td><strong>Cash:</strong></td><td class="text-right font-bold">₱<?= number_format($shift2_cash, 2) ?></td></tr>
-                            <tr><td><strong>Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift2_card, 2) ?></td></tr>
-                            <tr><td><strong>E-Wallet:</strong></td><td class="text-right font-bold">₱<?= number_format($shift2_ewallet, 2) ?></td></tr>
-                            <tr><td><strong>E-Fuel Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift2_efuel, 2) ?></td></tr>
-                            <tr><td><strong>Fleet Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift2_fleet, 2) ?></td></tr>
-                            <tr><td colspan="2" style="height: 5px;"></td></tr>
-                            <tr><td class="font-bold">TOTAL:</td><td class="text-right font-bold">₱<?= number_format($shift2_total, 2) ?></td></tr>
-                        </tbody>
-                    </table>
+                <div>
+                    <div class="section-title">OVERALL DAILY SUMMARY</div>
+                    <div class="shift-box" style="height: calc(100% - 50px);">
+                        <table>
+                            <tbody>
+                                <tr><td><strong>Total Cash:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_cash + $shift2_cash, 2) ?></td></tr>
+                                <tr><td><strong>Total Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_card + $shift2_card, 2) ?></td></tr>
+                                <tr><td><strong>Total E-Wallet:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_ewallet + $shift2_ewallet, 2) ?></td></tr>
+                                <tr><td><strong>Total E-Fuel Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_efuel + $shift2_efuel, 2) ?></td></tr>
+                                <tr><td><strong>Total Fleet Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_fleet + $shift2_fleet, 2) ?></td></tr>
+                                <tr><td colspan="2" style="height: 5px;"></td></tr>
+                                <tr><td class="font-bold">GRAND TOTAL:</td><td class="text-right font-bold" style="font-size: 14px;">₱<?= number_format($overall_total, 2) ?></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-                <?php endif; ?>
-            </div>
-            
-            <div class="section-title">OVERALL DAILY SUMMARY</div>
-            <div class="shift-box" style="max-width: 600px; margin: 0 auto;">
-                <table>
-                    <tbody>
-                        <tr><td><strong>Total Cash:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_cash + $shift2_cash, 2) ?></td></tr>
-                        <tr><td><strong>Total Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_card + $shift2_card, 2) ?></td></tr>
-                        <tr><td><strong>Total E-Wallet:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_ewallet + $shift2_ewallet, 2) ?></td></tr>
-                        <tr><td><strong>Total E-Fuel Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_efuel + $shift2_efuel, 2) ?></td></tr>
-                        <tr><td><strong>Total Fleet Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_fleet + $shift2_fleet, 2) ?></td></tr>
-                        <tr><td colspan="2" style="height: 10px;"></td></tr>
-                        <tr><td class="font-bold" style="font-size: 14px;">GRAND TOTAL:</td><td class="text-right font-bold" style="font-size: 18px;">₱<?= number_format($overall_total, 2) ?></td></tr>
-                    </tbody>
-                </table>
             </div>
         </div>
     </div>

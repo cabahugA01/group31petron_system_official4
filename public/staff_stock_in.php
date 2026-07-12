@@ -203,9 +203,11 @@ try {
             u.name AS encoded_by_name,
             NULL AS fuel_type,
             NULL AS level_before,
-            NULL AS level_after
+            NULL AS level_after,
+            COALESCE(ip.size, 'Piece') AS unit
         FROM merchandise_stock_in msi
         LEFT JOIN users u ON msi.encoded_by = u.id
+        LEFT JOIN inventory_products ip ON msi.product_id = ip.id
         WHERE msi.station_id = ? AND DATE(msi.encoded_at) BETWEEN ? AND ?
         
         UNION ALL
@@ -229,7 +231,8 @@ try {
             u.name AS encoded_by_name,
             fsi.fuel_type,
             fsi.level_before,
-            fsi.level_after
+            fsi.level_after,
+            'L' AS unit
         FROM fuel_stock_in fsi
         LEFT JOIN users u ON fsi.encoded_by = u.id
         WHERE fsi.station_id = ? AND DATE(fsi.encoded_at) BETWEEN ? AND ?
@@ -488,6 +491,7 @@ include __DIR__ . '/../partials/header.php';
       $actual_qty  = (int)((float)$po['actual_quantity'] ?: $qty_ordered);
       $unit_cost   = (float)($po['unit_price'] ?: $po['unit_cost'] ?: 0);
       $cur_stock   = (int)($po['current_stock'] ?? 0);
+      $unit        = format_merch_unit($po['unit'] ?? 'pcs');
       
       // Determine discrepancy badge
       $disc_type = $po['discrepancy_type'] ?? '';
@@ -509,9 +513,9 @@ include __DIR__ . '/../partials/header.php';
       <div class="po-meta">
         <?php if ($po['sku']): ?><span><i class="fas fa-barcode"></i> SKU: <?= htmlspecialchars($po['sku']) ?></span><?php endif; ?>
         <?php if ($po['category']): ?><span><i class="fas fa-tag"></i> <?= htmlspecialchars($po['category']) ?></span><?php endif; ?>
-        <span><i class="fas fa-boxes"></i> Current Stock: <strong><?= $cur_stock ?></strong></span>
-        <span><i class="fas fa-shopping-cart"></i> Expected: <strong><?= $qty_ordered ?></strong></span>
-        <span><i class="fas fa-clipboard-check"></i> Admin Actual Qty: <strong><?= $actual_qty ?></strong></span>
+        <span><i class="fas fa-boxes"></i> Current Stock: <strong><?= number_format($cur_stock) ?> <?= htmlspecialchars($unit) ?></strong></span>
+        <span><i class="fas fa-shopping-cart"></i> Expected: <strong><?= number_format($qty_ordered) ?> <?= htmlspecialchars($unit) ?></strong></span>
+        <span><i class="fas fa-clipboard-check"></i> Admin Actual Qty: <strong><?= number_format($actual_qty) ?> <?= htmlspecialchars($unit) ?></strong></span>
         <?php if (!empty($po['unit_price'])): ?><span><i class="fas fa-money-bill-wave"></i> Unit Price: <strong>₱<?= number_format((float)$po['unit_price'], 2) ?></strong></span><?php endif; ?>
         <?php if ($po['encoded_by_name']): ?><span><i class="fas fa-user-edit"></i> Encoded by: <?= htmlspecialchars($po['encoded_by_name']) ?></span><?php endif; ?>
         <?php if ($po['admin_name']): ?><span><i class="fas fa-user-shield"></i> Admin: <?= htmlspecialchars($po['admin_name']) ?></span><?php endif; ?>
@@ -534,7 +538,7 @@ include __DIR__ . '/../partials/header.php';
       <?php endif; ?>
       <div class="info-box">
         <i class="fas fa-info-circle"></i>
-        <strong>Manual Encode Required:</strong> Enter the <em>actual</em> quantity received. Admin validated quantity: <strong><?= $actual_qty ?></strong>. Capture shortages, damages, or excess accurately.
+        <strong>Manual Encode Required:</strong> Enter the <em>actual</em> quantity received. Admin validated quantity: <strong><?= number_format($actual_qty) ?> <?= htmlspecialchars($unit) ?></strong>. Capture shortages, damages, or excess accurately.
       </div>
       <!-- Batch ID display / override -->
       <div style="background:#e8f4fd;border-left:4px solid #002F70;border-radius:6px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
@@ -552,22 +556,22 @@ include __DIR__ . '/../partials/header.php';
         <table class="si-table">
           <thead>
             <tr>
-              <th>Product</th><th>SKU</th><th>Expected</th>
-              <th>Actual Received *</th><th>Condition *</th>
-              <th>Unit Cost</th><th>Variance</th><th>Remarks</th>
+              <th>Product</th><th>SKU</th><th>Expected (<?= htmlspecialchars($unit) ?>)</th>
+              <th>Actual Received (<?= htmlspecialchars($unit) ?>) *</th><th>Condition *</th>
+              <th>Unit Cost</th><th>Variance (<?= htmlspecialchars($unit) ?>)</th><th>Remarks</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td><strong><?= htmlspecialchars($po['product'] ?? $po['product_name'] ?? '') ?></strong></td>
               <td><code style="font-size:11px;"><?= htmlspecialchars($po['sku'] ?? '') ?></code></td>
-              <td style="text-align:center;font-weight:700;"><?= $qty_ordered ?></td>
+              <td style="text-align:center;font-weight:700;"><?= number_format($qty_ordered) ?></td>
               <td>
                 <input type="number" id="qty-<?= $delivery_id ?>" min="0" value="<?= $actual_qty ?>"
-                       oninput="updateVariance(<?= $delivery_id ?>, <?= $qty_ordered ?>)">
+                       oninput="updateVariance(<?= $delivery_id ?>, <?= $qty_ordered ?>, '<?= $unit ?>')">
               </td>
               <td>
-                <select id="cond-<?= $delivery_id ?>" onchange="updateVariance(<?= $delivery_id ?>, <?= $qty_ordered ?>)">
+                <select id="cond-<?= $delivery_id ?>" onchange="updateVariance(<?= $delivery_id ?>, <?= $qty_ordered ?>, '<?= $unit ?>')">
                   <option value="Good">Good</option>
                   <option value="Damaged">Damaged</option>
                   <option value="Short">Short</option>
@@ -575,7 +579,7 @@ include __DIR__ . '/../partials/header.php';
                 </select>
               </td>
               <td>&#8369;<?= number_format($unit_cost, 2) ?></td>
-              <td id="var-<?= $delivery_id ?>" class="variance-zero">0</td>
+              <td id="var-<?= $delivery_id ?>" class="variance-zero">0 <?= htmlspecialchars($unit) ?></td>
               <td><input type="text" id="rem-<?= $delivery_id ?>" placeholder="Optional notes..."></td>
             </tr>
           </tbody>
@@ -657,6 +661,7 @@ include __DIR__ . '/../partials/header.php';
               $cf = strtolower($r['condition_flag'] ?? 'good');
               $type_badge = $is_fuel ? 'badge-pending' : 'badge-done';
               $type_icon = $is_fuel ? 'fas fa-gas-pump' : 'fas fa-boxes';
+              $hist_unit = $is_fuel ? 'Liters (L)' : format_merch_unit($r['unit'] ?? 'Piece');
             ?>
             <tr>
               <td>
@@ -678,38 +683,38 @@ include __DIR__ . '/../partials/header.php';
               </td>
               <td>
                 <?php if ($is_fuel): ?>
-                  <?= number_format($r['qty_expected'], 2) ?> L
+                  <?= number_format($r['qty_expected'], 2) ?> <?= $hist_unit ?>
                 <?php else: ?>
-                  <?= (int)$r['qty_expected'] ?>
+                  <?= number_format($r['qty_expected']) ?> <?= $hist_unit ?>
                 <?php endif; ?>
               </td>
               <td style="font-weight:700;">
                 <?php if ($is_fuel): ?>
-                  <?= number_format($r['qty_received'], 2) ?> L
+                  <?= number_format($r['qty_received'], 2) ?> <?= $hist_unit ?>
                 <?php else: ?>
-                  <?= (int)$r['qty_received'] ?>
+                  <?= number_format($r['qty_received']) ?> <?= $hist_unit ?>
                 <?php endif; ?>
               </td>
               <td class="<?= $vc ?>">
                 <?php if ($is_fuel): ?>
-                  <?= ($v >= 0 ? '+' : '') . number_format($v, 2) ?> L
+                  <?= ($v >= 0 ? '+' : '') . number_format($v, 2) ?> <?= $hist_unit ?>
                 <?php else: ?>
-                  <?= ($v >= 0 ? '+' : '') . $v ?>
+                  <?= ($v >= 0 ? '+' : '') . number_format($v) ?> <?= $hist_unit ?>
                 <?php endif; ?>
               </td>
               <td><span class="badge badge-<?= $cf ?>"><?= htmlspecialchars($r['condition_flag'] ?? '') ?></span></td>
               <td style="font-weight:600;">
                 <?php if ($is_fuel): ?>
-                  <?= number_format($r['level_before'] ?? 0, 2) ?> L
+                  <?= number_format($r['level_before'] ?? 0, 2) ?> <?= $hist_unit ?>
                 <?php else: ?>
-                  <?= (int)($r['stock_before'] ?? 0) ?>
+                  <?= number_format($r['stock_before'] ?? 0) ?> <?= $hist_unit ?>
                 <?php endif; ?>
               </td>
               <td style="font-weight:700;color:#28a745;">
                 <?php if ($is_fuel): ?>
-                  <?= number_format($r['level_after'] ?? 0, 2) ?> L
+                  <?= number_format($r['level_after'] ?? 0, 2) ?> <?= $hist_unit ?>
                 <?php else: ?>
-                  <?= (int)($r['stock_after'] ?? 0) ?>
+                  <?= number_format($r['stock_after'] ?? 0) ?> <?= $hist_unit ?>
                 <?php endif; ?>
               </td>
               <td><?= htmlspecialchars($r['encoded_by_name'] ?? '') ?></td>
@@ -733,11 +738,12 @@ include __DIR__ . '/../partials/header.php';
 <div id="flashMsg" style="display:none;position:fixed;top:24px;right:24px;padding:13px 20px;border-radius:8px;color:#fff;font-weight:600;font-size:13px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.2);max-width:340px;"></div>
 
 <script>
-function updateVariance(poId, qtyOrdered) {
+function updateVariance(poId, qtyOrdered, unit) {
     var qty = parseInt(document.getElementById('qty-' + poId).value) || 0;
     var v = qty - qtyOrdered;
     var el = document.getElementById('var-' + poId);
-    el.textContent = (v >= 0 ? '+' : '') + v;
+    var unitLabel = unit ? ' ' + unit : '';
+    el.textContent = (v >= 0 ? '+' : '') + v + unitLabel;
     el.className = v > 0 ? 'variance-pos' : (v < 0 ? 'variance-neg' : 'variance-zero');
 }
 

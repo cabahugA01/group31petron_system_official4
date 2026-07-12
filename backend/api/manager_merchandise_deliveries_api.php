@@ -1274,6 +1274,30 @@ try {
                 $notes,
                 $me['id']
             ]);
+            $po_id = $pdo->lastInsertId();
+
+            // Find product_id from inventory_products by name
+            $stmt_pid = $pdo->prepare("SELECT id FROM inventory_products WHERE product_name = ? LIMIT 1");
+            $stmt_pid->execute([$item_name]);
+            $product_id = $stmt_pid->fetchColumn() ?: 0;
+
+            // Get standard price/cost if available
+            $stmt_price = $pdo->prepare("SELECT unit_price FROM inventory_products WHERE id = ?");
+            $stmt_price->execute([$product_id]);
+            $unit_price = (float)($stmt_price->fetchColumn() ?: 0);
+            $total_price = $quantity * $unit_price;
+
+            // Also update total_amount on the purchase_orders record
+            $pdo->prepare("UPDATE purchase_orders SET total_amount = ? WHERE id = ?")->execute([$total_price, $po_id]);
+
+            // Insert into purchase_order_items for data integrity
+            $pdo->prepare("
+                INSERT INTO purchase_order_items
+                    (po_id, product_id, item_name, quantity, quantity_ordered, unit_price, total_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ")->execute([
+                $po_id, $product_id, $item_name, $quantity, $quantity, $unit_price, $total_price
+            ]);
 
             try_log_merch($pdo, $me['id'], 'Create PO', "Created Merchandise PO #$po_number for item: $item_name (Batch: $batch_id)");
 

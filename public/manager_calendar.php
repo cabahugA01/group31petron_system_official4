@@ -3,7 +3,9 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'calendar';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
+require_once __DIR__ . '/../backend/calendar_module_helpers.php';
 require_login();
+calendar_ensure_schema($pdo);
 
 $me = current_user();
 $rk = role_key($me['role'] ?? '');
@@ -18,12 +20,22 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_event') {
     
     try {
         $event_id = $_POST['event_id'] ?? '';
-        $event_date = $_POST['event_date'] ?? '';
-        $event_type = $_POST['event_type'] ?? '';
-        $work_description = $_POST['work_description'] ?? '';
-        $start_time = $_POST['start_time'] ?? null;
-        $end_time = $_POST['end_time'] ?? null;
-        $status = $_POST['status'] ?? 'pending';
+        $event_date = calendar_normalize_date($_POST['event_date'] ?? '');
+        $event_type = calendar_normalize_event_type($_POST['event_type'] ?? '');
+        $work_description = calendar_clean_text($_POST['work_description'] ?? '');
+        $start_time = calendar_normalize_time($_POST['start_time'] ?? '');
+        $end_time = calendar_normalize_time($_POST['end_time'] ?? '', $start_time);
+        $status = calendar_normalize_status($_POST['status'] ?? 'pending');
+
+        if ($event_date === '' || $event_type === '' || $work_description === '') {
+            echo json_encode(['success' => false, 'message' => 'Please complete the date, type, and description.']);
+            exit;
+        }
+
+        if ($start_time !== '00:00:00' && $end_time !== '00:00:00' && $end_time < $start_time) {
+            echo json_encode(['success' => false, 'message' => 'End time must be later than start time.']);
+            exit;
+        }
         
         // Collect all dynamic fields into metadata JSON
         $metadata = [];
@@ -73,7 +85,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_event') {
         $metadata_json = json_encode($metadata);
         
         // Check for schedule conflicts before saving
-        if ($start_time && $end_time && $status !== 'cancelled') {
+        if (calendar_has_time_range($start_time, $end_time) && $status !== 'cancelled' && empty($_POST['force_save'])) {
             $conflict_check = $pdo->prepare("SELECT COUNT(*) FROM staff_calendar_events 
                 WHERE staff_encoder_id = ? 
                 AND event_date = ? 
@@ -107,17 +119,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_event') {
         }
         
         // Get or create event_type_id
-        $type_stmt = $pdo->prepare("SELECT id FROM staff_event_types WHERE type_key = ? LIMIT 1");
-        $type_stmt->execute([$event_type]);
-        $event_type_row = $type_stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$event_type_row) {
-            $insert_type = $pdo->prepare("INSERT INTO staff_event_types (type_key, type_name, icon_class) VALUES (?, ?, ?)");
-            $insert_type->execute([$event_type, ucwords(str_replace('_', ' ', $event_type)), 'fas fa-calendar']);
-            $event_type_id = $pdo->lastInsertId();
-        } else {
-            $event_type_id = $event_type_row['id'];
-        }
+        $event_type_id = calendar_event_type_id($pdo, $event_type);
         
         // Check if metadata column exists, if not add it
         try {
@@ -309,7 +311,7 @@ try {
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $status = strtolower($row['status']);
         if ($status === 'pending') $summary_stats['week_pending'] = $row['cnt'];
-        if ($status === 'in_progress') $summary_stats['week_in_progress'] = $row['cnt'];
+        if ($status === 'approved' || $status === 'in_progress') $summary_stats['week_in_progress'] += $row['cnt'];
         if ($status === 'completed') $summary_stats['week_completed'] = $row['cnt'];
     }
     
@@ -325,7 +327,7 @@ try {
         $stmt->execute([$station_id]);
         $summary_stats['pending_validations'] += $stmt->fetchColumn();
         
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id = ? AND (status = 'pending' OR manager_id IS NULL)");
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id = ? AND (LOWER(status) LIKE '%pending%' OR manager_id IS NULL)");
         $stmt->execute([$station_id]);
         $summary_stats['pending_validations'] += $stmt->fetchColumn();
 
@@ -336,7 +338,9 @@ try {
     
     // MANAGER SPECIFIC: Overdue payments count
     try {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM credit_customers WHERE station_id = ? AND balance_due > 0 AND due_date < CURDATE() AND status = 'Active'");
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions
+            WHERE station_id = ? AND COALESCE(balance_due, 0) > 0 AND due_date < CURDATE()
+            AND LOWER(COALESCE(payment_status, '')) <> 'paid'");
         $stmt->execute([$station_id]);
         $summary_stats['overdue_payments'] = $stmt->fetchColumn();
     } catch (Exception $e) {}
@@ -562,7 +566,7 @@ try {
     // MANAGER CALENDAR ENHANCEMENTS: Validation Scheduling
     // Auto-sync pending transactions awaiting validation
     try {
-        $pending_tx = $pdo->prepare("SELECT t.id, t.transaction_date, t.customer_name, t.total_amount, t.payment_status, 
+        $pending_tx = $pdo->prepare("SELECT t.id, DATE(t.transaction_date) AS event_date, t.customer_name, t.total_amount, t.payment_status, 
             t.staff_id, u.name AS staff_name
             FROM merchandise_transactions t
             JOIN users u ON t.staff_id = u.id
@@ -572,14 +576,14 @@ try {
         $pending_tx->execute([$station_id, $view_start, $view_end]);
         
         foreach ($pending_tx->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $month_events[$r['transaction_date']][] = [
+            $month_events[$r['event_date']][] = [
                 'id' => 'validation_tx_'.$r['id'],
                 'type_name' => 'Validation Required',
                 'type_key' => 'validation_task',
                 'icon_class' => 'fas fa-clipboard-check',
                 'staff_name' => $r['staff_name'],
-                'staff_encoder_id' => $r['encoded_by'],
-                'work_description' => '⚠ Validate: ' . $r['customer_name'] . ' - ₱' . number_format($r['total_amount'], 2),
+                'staff_encoder_id' => $r['staff_id'],
+                'work_description' => 'Validate: ' . $r['customer_name'] . ' - ₱' . number_format($r['total_amount'], 2),
                 'status' => 'pending',
                 'color' => '#ea8600', // Orange for validation tasks
                 'auto_synced' => true,
@@ -594,7 +598,7 @@ try {
             d.expected_quantity, d.actual_quantity, d.encoded_by, u.name AS staff_name
             FROM deliveries_oversight d
             JOIN users u ON d.encoded_by = u.id
-            WHERE d.station_id = ? AND (d.status = 'pending' OR d.validated_by IS NULL)
+            WHERE d.station_id = ? AND (LOWER(d.status) LIKE '%pending%' OR d.manager_id IS NULL)
             AND DATE(d.delivery_date) BETWEEN ? AND ?");
         $pending_del->execute([$station_id, $view_start, $view_end]);
         
@@ -609,7 +613,7 @@ try {
                 'icon_class' => 'fas fa-truck',
                 'staff_name' => $r['staff_name'],
                 'staff_encoder_id' => $r['encoded_by'],
-                'work_description' => ($has_variance ? '⚠ ' : '') . 'Validate: ' . $r['supplier'] . ' - ' . $r['product'],
+                'work_description' => ($has_variance ? '[!] ' : '') . 'Validate: ' . $r['supplier'] . ' - ' . $r['product'],
                 'status' => 'pending',
                 'color' => $has_variance ? '#d93025' : '#ea8600', // Red if variance, orange otherwise
                 'auto_synced' => true,
@@ -654,12 +658,12 @@ try {
     
     // Auto-sync overdue customer payments (collection reminders)
     try {
-        $overdue_payments = $pdo->prepare("SELECT c.id, c.customer_name, c.balance_due, c.due_date,
-            DATEDIFF(CURDATE(), c.due_date) AS days_overdue
-            FROM credit_customers c
-            WHERE c.station_id = ? AND c.balance_due > 0 AND c.due_date < CURDATE()
-            AND c.status = 'Active'
-            ORDER BY c.due_date ASC
+        $overdue_payments = $pdo->prepare("SELECT t.id, t.customer_name, t.balance_due, t.due_date,
+            DATEDIFF(CURDATE(), t.due_date) AS days_overdue
+            FROM merchandise_transactions t
+            WHERE t.station_id = ? AND COALESCE(t.balance_due, 0) > 0 AND t.due_date < CURDATE()
+            AND LOWER(COALESCE(t.payment_status, '')) <> 'paid'
+            ORDER BY t.due_date ASC
             LIMIT 15");
         $overdue_payments->execute([$station_id]);
         
@@ -754,7 +758,7 @@ include __DIR__ . '/../partials/header.php';
 .cal-calendar-item { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 8px; cursor: pointer; font-size: 14px; color: #3c4043; }
 .cal-calendar-item:hover { background: #f1f3f4; }
 .cal-calendar-checkbox { width: 20px; height: 20px; border-radius: 3px; border: 2px solid; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; }
-.cal-calendar-checkbox.checked::before { content: '✓'; }
+.cal-calendar-checkbox.checked::before { content: '\2713'; }
 
 /* Main content */
 .cal-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
@@ -764,8 +768,8 @@ include __DIR__ . '/../partials/header.php';
 .cal-menu-btn:hover { background: #f1f3f4; }
 .cal-month-title { font-size: 22px; font-weight: 400; color: #3c4043; }
 .cal-header-right { display: flex; align-items: center; gap: 8px; }
-.cal-view-btn { background: none; border: 1px solid #dadce0; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; color: #3c4043; display: flex; align-items: center; gap: 6px; position: relative; }
-.cal-view-btn:hover { background: #f1f3f4; }
+.cal-view-btn { background: #fff !important; border: 1px solid #dadce0; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; color: #3c4043 !important; display: flex; align-items: center; gap: 6px; position: relative; text-decoration: none; }
+.cal-view-btn:hover { background: #f1f3f4 !important; }
 
 /* View dropdown */
 .cal-view-dropdown { position: absolute; top: 100%; right: 0; margin-top: 4px; background: #fff; border: 1px solid #dadce0; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.2); z-index: 100; display: none; }
@@ -814,7 +818,7 @@ include __DIR__ . '/../partials/header.php';
         <div style="padding: 0 12px 20px; border-bottom: 1px solid #dadce0;">
             <!-- Manager Validation Tasks -->
             <div style="background: #fef7e0; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                <div style="font-size: 12px; color: #ea8600; font-weight: 600; margin-bottom: 8px;">⚠ VALIDATION TASKS</div>
+                <div style="font-size: 12px; color: #ea8600; font-weight: 600; margin-bottom: 8px;"><i class="fas fa-exclamation-triangle"></i> VALIDATION TASKS</div>
                 <div style="font-size: 24px; font-weight: 600; color: #ea8600;"><?= $summary_stats['pending_validations'] ?></div>
                 <div style="font-size: 10px; color: #5f6368;">awaiting your review</div>
                 <?php if ($summary_stats['pending_validations'] > 0): ?>
@@ -826,7 +830,7 @@ include __DIR__ . '/../partials/header.php';
             
             <!-- Manager Action Items -->
             <div style="background: #fce8e6; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                <div style="font-size: 12px; color: #d93025; font-weight: 600; margin-bottom: 8px;">🔴 ACTION REQUIRED</div>
+                <div style="font-size: 12px; color: #d93025; font-weight: 600; margin-bottom: 8px;"><i class="fas fa-circle"></i> ACTION REQUIRED</div>
                 <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
                     <div style="text-align: center;">
                         <div style="font-size: 18px; font-weight: 600; color: #d93025;"><?= $summary_stats['overdue_payments'] ?></div>
@@ -865,7 +869,7 @@ include __DIR__ . '/../partials/header.php';
             <!-- Staff Workload Today -->
             <?php if (!empty($summary_stats['staff_workload'])): ?>
             <div style="background: #f1f3f4; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                <div style="font-size: 12px; color: #5f6368; font-weight: 600; margin-bottom: 8px;">👥 STAFF WORKLOAD (TODAY)</div>
+                <div style="font-size: 12px; color: #5f6368; font-weight: 600; margin-bottom: 8px;"><i class="fas fa-users"></i> STAFF WORKLOAD (TODAY)</div>
                 <div style="max-height: 150px; overflow-y: auto;">
                     <?php foreach(array_slice($summary_stats['staff_workload'], 0, 5) as $staff_work): ?>
                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid #e0e0e0;">
@@ -889,7 +893,7 @@ include __DIR__ . '/../partials/header.php';
                     <span style="font-size: 11px; font-weight: 600; color: #f9ab00;"><?= $summary_stats['week_pending'] ?></span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                    <span style="font-size: 11px; color: #5f6368;">In Progress</span>
+                    <span style="font-size: 11px; color: #5f6368;">Approved</span>
                     <span style="font-size: 11px; font-weight: 600; color: #1a73e8;"><?= $summary_stats['week_in_progress'] ?></span>
                 </div>
                 <div style="display: flex; justify-content: space-between;">
@@ -1541,7 +1545,7 @@ function submitManagerAction(evtType, numericId, subAction) {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            alert('✓ ' + data.message);
+            alert('SUCCESS: ' + data.message);
             location.reload();
         } else {
             alert('Error: ' + data.message);
@@ -1572,7 +1576,7 @@ function submitManagerReassign(evtType, numericId) {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            alert('✓ ' + data.message);
+            alert('SUCCESS: ' + data.message);
             location.reload();
         } else {
             alert('Error: ' + data.message);
@@ -1615,11 +1619,11 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
-                    alert('✓ Event saved successfully!');
+                    alert('SUCCESS: Event saved successfully!');
                     location.reload();
                 } else if (data.conflict) {
                     // Show conflict warning
-                    if (confirm('⚠ ' + data.message + '\n\nDo you want to save anyway? (Not recommended)')) {
+                    if (confirm('WARNING: ' + data.message + '\n\nDo you want to save anyway? (Not recommended)')) {
                         formData.append('force_save', '1');
                         // Retry with force flag
                         fetch('manager_calendar.php', {
@@ -1629,10 +1633,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         .then(r => r.json())
                         .then(data2 => {
                             if (data2.success) {
-                                alert('✓ Event saved with conflict warning!');
+                                alert('SUCCESS: Event saved with conflict warning!');
                                 location.reload();
                             } else {
-                                alert('✗ Error: ' + (data2.message || 'Failed to save event'));
+                                alert('ERROR: ' + (data2.message || 'Failed to save event'));
                             }
                         });
                     } else {
@@ -1640,7 +1644,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         submitBtn.disabled = false;
                     }
                 } else {
-                    alert('✗ Error: ' + (data.message || 'Failed to save event'));
+                    alert('ERROR: ' + (data.message || 'Failed to save event'));
                     submitBtn.textContent = originalText;
                     submitBtn.disabled = false;
                 }
@@ -1951,7 +1955,7 @@ function handleEventTypeChange() {
                 <label style="display: block; margin-bottom: 8px; font-size: 14px; color: #3c4043; font-weight: 500;">Status</label>
                 <select id="eventStatus" name="status" style="width: 100%; padding: 10px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px;">
                     <option value="pending">Pending</option>
-                    <option value="in_progress">In Progress</option>
+                    <option value="approved">Approved</option>
                     <option value="completed">Completed</option>
                     <option value="cancelled">Cancelled</option>
                 </select>

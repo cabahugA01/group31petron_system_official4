@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'manager_deliveries_management';
 require_once __DIR__ . '/../backend/rbac.php';
 require_once __DIR__ . '/../backend/lib.php';
@@ -63,9 +63,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $stmt = $pdo->prepare("
                         INSERT INTO purchase_orders 
                         (po_number, station_id, product_name, quantity, unit_price, total_amount, supplier_id, expected_delivery_date, status, created_by, type, remarks)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending Admin Validation', ?, 'merchandise', ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending Admin Validation', ?, 'merch', ?)
                     ");
                     $stmt->execute([$po_number, $station_id, $product, $quantity, 0, 0, $supplier_id, $expected_date, $me['id'], $notes]);
+                    $po_id = $pdo->lastInsertId();
+
+                    // Find product_id from inventory_products by name
+                    $stmt_pid = $pdo->prepare("SELECT id, unit_price FROM inventory_products WHERE product_name = ? LIMIT 1");
+                    $stmt_pid->execute([$product]);
+                    $prod_info = $stmt_pid->fetch(PDO::FETCH_ASSOC);
+                    $product_id = $prod_info['id'] ?? 0;
+                    $unit_price = (float)($prod_info['unit_price'] ?? 0);
+                    $total_amount = $quantity * $unit_price;
+
+                    // Update total_amount on the purchase_orders record
+                    $pdo->prepare("UPDATE purchase_orders SET total_amount = ? WHERE id = ?")->execute([$total_amount, $po_id]);
+
+                    // Insert into purchase_order_items for data integrity
+                    $pdo->prepare("
+                        INSERT INTO purchase_order_items
+                            (po_id, product_id, item_name, quantity, quantity_ordered, unit_price, total_price)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ")->execute([
+                        $po_id, $product_id, $product, $quantity, $quantity, $unit_price, $total_amount
+                    ]);
                 }
                 
                 log_activity($pdo, $me['id'], 'Create PO', 

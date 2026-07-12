@@ -498,14 +498,14 @@ require_once __DIR__ . '/../partials/header.php';
                 <div class="summary-icon-box" style="background:#0284c7;"><i class="fas fa-user-check"></i></div>
                 <div class="summary-text-box">
                     <h4 id="sum-regular">0</h4>
-                    <p>Regular Accounts</p>
+                    <p>Registered Customers</p>
                 </div>
             </div>
             <div class="summary-card-premium">
                 <div class="summary-icon-box" style="background:#7c3aed;"><i class="fas fa-building"></i></div>
                 <div class="summary-text-box">
                     <h4 id="sum-fleet">0</h4>
-                    <p>Fleet Accounts</p>
+                    <p>Verified Customers</p>
                 </div>
             </div>
             <div class="summary-card-premium">
@@ -570,15 +570,6 @@ require_once __DIR__ . '/../partials/header.php';
                 <div class="filter-item">
                     <label>Contact Number</label>
                     <input type="text" id="flt-contact" placeholder="Number...">
-                </div>
-                <div class="filter-item">
-                    <label>Customer Type</label>
-                    <select id="flt-ctype">
-                        <option value="">All</option>
-                        <option value="walk-in">Walk-in</option>
-                        <option value="regular">Regular</option>
-                        <option value="fleet">Fleet / Company</option>
-                    </select>
                 </div>
                 <div class="filter-item">
                     <label>Status</label>
@@ -663,7 +654,7 @@ require_once __DIR__ . '/../partials/header.php';
                         <tr>
                             <th>Customer ID</th>
                             <th>Customer Name</th>
-                            <th>Customer Type</th>
+                            <th>Registration</th>
                             <th>Contact No.</th>
                             <th>Registered By</th>
                             <th>Verified By</th>
@@ -703,7 +694,7 @@ require_once __DIR__ . '/../partials/header.php';
                         <div class="detail-row"><span class="lbl">Full Name</span><span class="val" id="det-fullname">-</span></div>
                         <div class="detail-row"><span class="lbl">Contact Number</span><span class="val" id="det-contact">-</span></div>
                         <div class="detail-row"><span class="lbl">Address</span><span class="val" id="det-address">-</span></div>
-                        <div class="detail-row"><span class="lbl">Customer Type</span><span class="val" id="det-type">-</span></div>
+                        <div class="detail-row"><span class="lbl">Registration</span><span class="val" id="det-type">-</span></div>
                         <div class="detail-row"><span class="lbl">Registration Date</span><span class="val" id="det-reg-date">-</span></div>
                         <div class="detail-row"><span class="lbl">Registered By</span><span class="val" id="det-reg-by">-</span></div>
                         <div class="detail-row"><span class="lbl">Status</span><span class="val" id="det-status">-</span></div>
@@ -711,7 +702,7 @@ require_once __DIR__ . '/../partials/header.php';
 
                     <!-- Fleet Information Card -->
                     <div class="profile-section-card" id="card-fleet-info">
-                        <h3><i class="fas fa-building"></i> Fleet / Company Information</h3>
+                        <h3><i class="fas fa-building"></i> Company Information</h3>
                         <div class="detail-row"><span class="lbl">Company Name</span><span class="val" id="det-company-name">-</span></div>
                         <div class="detail-row"><span class="lbl">Company Address</span><span class="val" id="det-company-address">-</span></div>
                         <div class="detail-row"><span class="lbl">Contact Person</span><span class="val" id="det-contact-person">-</span></div>
@@ -889,7 +880,7 @@ require_once __DIR__ . '/../partials/header.php';
                 <div class="summary-icon-box" style="background:#7c3aed;"><i class="fas fa-building"></i></div>
                 <div class="summary-text-box">
                     <h4 id="an-fleet-spend">&#x20B1;0.00</h4>
-                    <p>Fleet Account Spending</p>
+                    <p>Registered Customer Spending</p>
                 </div>
             </div>
         </div>
@@ -902,7 +893,7 @@ require_once __DIR__ . '/../partials/header.php';
                 </div>
             </div>
             <div class="chart-container-card">
-                <h4 style="margin-top:0; font-size:12px; text-transform:uppercase; color:var(--petron-blue);"><i class="fas fa-chart-pie"></i> Customer Type Distribution (Fleet vs Regular)</h4>
+                <h4 style="margin-top:0; font-size:12px; text-transform:uppercase; color:var(--petron-blue);"><i class="fas fa-chart-pie"></i> Registration Overview</h4>
                 <div style="position:relative; height:260px;">
                     <canvas id="chart-distribution"></canvas>
                 </div>
@@ -971,6 +962,14 @@ require_once __DIR__ . '/../partials/header.php';
         return new Date(d).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     };
 
+    function showAdminNotice(message, type = 'error') {
+        const note = document.createElement('div');
+        note.textContent = message;
+        note.style.cssText = `position:fixed;top:18px;right:18px;z-index:10050;padding:12px 16px;border-radius:8px;color:#fff;font-size:13px;font-weight:700;box-shadow:0 10px 24px rgba(15,23,42,.18);background:${type === 'success' ? '#16a34a' : '#dc2626'};`;
+        document.body.appendChild(note);
+        setTimeout(() => note.remove(), 3800);
+    }
+
     // Navigation between Directory & Analytics tabs
     function switchMainTab(tab) {
         document.getElementById('tab-dir-btn').classList.toggle('active', tab === 'directory');
@@ -991,7 +990,6 @@ require_once __DIR__ . '/../partials/header.php';
         document.getElementById('flt-customer-id').value = '';
         document.getElementById('flt-cname').value = '';
         document.getElementById('flt-contact').value = '';
-        document.getElementById('flt-ctype').value = '';
         document.getElementById('flt-status').value = '';
         document.getElementById('flt-verif').value = '';
         document.getElementById('flt-reg-by').value = '';
@@ -1015,7 +1013,7 @@ require_once __DIR__ . '/../partials/header.php';
             customer_id: document.getElementById('flt-customer-id').value,
             cname: document.getElementById('flt-cname').value,
             contact: document.getElementById('flt-contact').value,
-            ctype: document.getElementById('flt-ctype').value,
+            ctype: 'registered',
             status: document.getElementById('flt-status').value,
             verif: document.getElementById('flt-verif').value,
             reg_by: document.getElementById('flt-reg-by').value,
@@ -1038,8 +1036,8 @@ require_once __DIR__ . '/../partials/header.php';
                 // Update 10 summary cards
                 document.getElementById('sum-total').textContent = data.stats.total;
                 document.getElementById('sum-new').textContent = data.stats.new_today;
-                document.getElementById('sum-regular').textContent = data.stats.regular;
-                document.getElementById('sum-fleet').textContent = data.stats.fleet;
+                document.getElementById('sum-regular').textContent = data.stats.registered || data.stats.total;
+                document.getElementById('sum-fleet').textContent = data.stats.verified || 0;
                 document.getElementById('sum-active').textContent = data.stats.active;
                 document.getElementById('sum-inactive').textContent = data.stats.inactive;
                 document.getElementById('sum-verified').textContent = data.stats.verified;
@@ -1055,16 +1053,16 @@ require_once __DIR__ . '/../partials/header.php';
                 }
 
                 tbody.innerHTML = data.customers.map(c => {
-                    const ctypeBadge = c.ctype === 'fleet' ? 'badge-fleet' : (c.ctype === 'regular' ? 'badge-regular' : 'badge-walk-in');
+                    const ctypeBadge = 'badge-regular';
                     const statusBadge = c.status === 'active' ? 'badge-active' : 'badge-inactive';
                     return `
                         <tr>
                             <td><strong>${esc(c.customer_id_display)}</strong></td>
                             <td><strong>${esc(c.name)}</strong></td>
-                            <td><span class="badge-pill ${ctypeBadge}">${esc(c.ctype)}</span></td>
+                            <td><span class="badge-pill ${ctypeBadge}">Registered</span></td>
                             <td>${esc(c.contact_number)}</td>
                             <td>${esc(c.registered_by_name || 'System')}</td>
-                            <td>${esc(c.verified_by_name || 'System')}</td>
+                            <td>${esc(c.verified_by_name || 'Not verified')}</td>
                             <td style="font-weight:700;">${fmtMoney(c.outstanding_balance)}</td>
                             <td>${c.last_transaction ? fmtDate(c.last_transaction) : '<span style="color:#94a3b8;">None</span>'}</td>
                             <td><span class="badge-pill ${statusBadge}">${esc(c.status)}</span></td>
@@ -1089,7 +1087,7 @@ require_once __DIR__ . '/../partials/header.php';
         const params = new URLSearchParams({
             format: format,
             search: document.getElementById('flt-search').value,
-            type: document.getElementById('flt-ctype').value,
+            type: 'registered',
             status: document.getElementById('flt-status').value,
             registered_by: document.getElementById('flt-reg-by').value,
             date_reg_from: document.getElementById('flt-reg-from').value,
@@ -1117,7 +1115,7 @@ require_once __DIR__ . '/../partials/header.php';
             .then(res => res.json())
             .then(data => {
                 if (!data.success) {
-                    alert('Error: ' + data.error);
+                    showAdminNotice(data.error || 'Unable to load customer profile.');
                     closeFullProfile();
                     return;
                 }
@@ -1126,29 +1124,21 @@ require_once __DIR__ . '/../partials/header.php';
                 const s = data.summary;
 
                 document.getElementById('prof-cust-name').textContent = c.name;
-                document.getElementById('prof-cust-id-label').textContent = `${c.customer_id_display} — ${c.customer_type ? c.customer_type.toUpperCase() : 'WALK-IN'} ACCOUNT`;
+                document.getElementById('prof-cust-id-label').textContent = `${c.customer_id_display} — REGISTERED ACCOUNT`;
 
                 // Information bind
                 document.getElementById('det-cid').textContent = c.customer_id_display;
                 document.getElementById('det-fullname').textContent = c.name;
                 document.getElementById('det-contact').textContent = c.contact_number || c.phone || 'N/A';
                 document.getElementById('det-address').textContent = c.address || 'N/A';
-                document.getElementById('det-type').textContent = c.customer_type ? c.customer_type.toUpperCase() : 'WALK-IN';
+                document.getElementById('det-type').textContent = 'REGISTERED';
                 document.getElementById('det-reg-date').textContent = fmtDate(c.registered_at || c.created_at);
                 document.getElementById('det-reg-by').textContent = c.registered_by_name || 'System';
                 document.getElementById('det-status').innerHTML = `<span class="badge-pill ${c.status === 'active' ? 'badge-active' : 'badge-inactive'}">${c.status}</span>`;
 
                 // Fleet Info Visibility
                 const fleetCard = document.getElementById('card-fleet-info');
-                if (c.customer_type === 'fleet') {
-                    fleetCard.style.display = 'block';
-                    document.getElementById('det-company-name').textContent = c.company_name || '—';
-                    document.getElementById('det-company-address').textContent = c.company_address || '—';
-                    document.getElementById('det-contact-person').textContent = c.contact_person || '—';
-                    document.getElementById('det-company-number').textContent = c.phone || '—';
-                } else {
-                    fleetCard.style.display = 'none';
-                }
+                fleetCard.style.display = 'none';
 
                 // Financial summary bind
                 document.getElementById('det-outstanding').innerHTML = fmtMoney(c.outstanding_balance);
@@ -1168,7 +1158,7 @@ require_once __DIR__ . '/../partials/header.php';
                 document.getElementById('det-purchased-items').textContent = s.total_count;
 
                 // Verification Documents bind
-                document.getElementById('det-gov-id-type').textContent = c.id_type || '—';
+                document.getElementById('det-gov-id-type').textContent = c.gov_id_type || c.id_type || '—';
                 document.getElementById('det-cr-doc').textContent = c.cr_document ? 'Registered Document' : '—';
                 document.getElementById('det-ver-status').innerHTML = `<span class="badge-pill badge-pending">${esc(c.verification_status)}</span>`;
                 document.getElementById('det-verified-by').textContent = c.verified_by_name || '—';
@@ -1404,16 +1394,7 @@ require_once __DIR__ . '/../partials/header.php';
                 }
                 document.getElementById('an-top-spend').innerHTML = `${highestSpender} (${fmtMoney(highestSpendVal)})`;
 
-                // Calculate fleet spending total
-                let fleetTotal = 0;
-                if (data.type_dist) {
-                    const fleetItem = data.type_dist.find(item => item.ctype === 'fleet');
-                    if (fleetItem) {
-                        // Estimate spending or map from total top spending
-                        fleetTotal = fleetItem.cnt * 25000; // placeholder estimate of activity multiplier
-                    }
-                }
-                document.getElementById('an-fleet-spend').innerHTML = fmtMoney(fleetTotal || 128500);
+                document.getElementById('an-fleet-spend').innerHTML = fmtMoney(k.registered_spend || 0);
 
                 // Render Chart 1: Customer Growth
                 if (growthChart) growthChart.destroy();

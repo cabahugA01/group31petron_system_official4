@@ -715,6 +715,131 @@ try {
             echo json_encode(['success' => true, 'message' => 'Service deactivated successfully']);
             break;
             
+        // ══════════════════════════════════════════════════════════════════════
+        // ACTIVATE FUEL
+        // ══════════════════════════════════════════════════════════════════════
+        case 'activate_fuel':
+            $id = (int)($_POST['id'] ?? 0);
+            
+            if ($id <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Invalid ID']);
+                exit;
+            }
+            
+            // Verify fuel belongs to manager's station
+            $stmt = $pdo->prepare("
+                SELECT fuel_type 
+                FROM fuel_inventory 
+                WHERE id = ? AND station_id = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$id, $station_id]);
+            $fuel = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$fuel) {
+                echo json_encode(['success' => false, 'message' => 'Fuel product not found']);
+                exit;
+            }
+            
+            // Update status to active
+            $stmt = $pdo->prepare("
+                UPDATE fuel_inventory 
+                SET status = 'active',
+                    updated_by = ?,
+                    last_updated = NOW()
+                WHERE id = ? AND station_id = ?
+            ");
+            $stmt->execute([$me['id'], $id, $station_id]);
+            
+            // Log activity
+            log_activity($pdo, $me['id'], 'Activate Fuel Product',
+                "Manager activated fuel product: {$fuel['fuel_type']}");
+            
+            echo json_encode(['success' => true, 'message' => 'Fuel product activated successfully']);
+            break;
+            
+        // ══════════════════════════════════════════════════════════════════════
+        // ACTIVATE MERCHANDISE
+        // ══════════════════════════════════════════════════════════════════════
+        case 'activate_merchandise':
+            $id = (int)($_POST['id'] ?? 0);
+            
+            if ($id <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Invalid ID']);
+                exit;
+            }
+            
+            // Get merchandise name
+            $stmt = $pdo->prepare("
+                SELECT product_name 
+                FROM inventory_products 
+                WHERE id = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$id]);
+            $merch = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$merch) {
+                echo json_encode(['success' => false, 'message' => 'Merchandise not found']);
+                exit;
+            }
+            
+            // Update status to active
+            $stmt = $pdo->prepare("
+                UPDATE inventory_products 
+                SET status = 'active'
+                WHERE id = ?
+            ");
+            $stmt->execute([$id]);
+            
+            // Log activity
+            log_activity($pdo, $me['id'], 'Activate Merchandise',
+                "Manager activated merchandise: {$merch['product_name']}");
+            
+            echo json_encode(['success' => true, 'message' => 'Merchandise activated successfully']);
+            break;
+            
+        // ══════════════════════════════════════════════════════════════════════
+        // ACTIVATE SERVICE
+        // ══════════════════════════════════════════════════════════════════════
+        case 'activate_service':
+            $id = (int)($_POST['id'] ?? 0);
+            
+            if ($id <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Invalid ID']);
+                exit;
+            }
+            
+            // Get service name
+            $stmt = $pdo->prepare("
+                SELECT service_name 
+                FROM job_order_service_types 
+                WHERE id = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$id]);
+            $service = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$service) {
+                echo json_encode(['success' => false, 'message' => 'Service not found']);
+                exit;
+            }
+            
+            // Update status to active
+            $stmt = $pdo->prepare("
+                UPDATE job_order_service_types 
+                SET active = 1, status = 'active'
+                WHERE id = ?
+            ");
+            $stmt->execute([$id]);
+            
+            // Log activity
+            log_activity($pdo, $me['id'], 'Activate Service',
+                "Manager activated service type: {$service['service_name']}");
+            
+            echo json_encode(['success' => true, 'message' => 'Service activated successfully']);
+            break;
+            
         default:
             echo json_encode(['success' => false, 'message' => 'Invalid action']);
             break;

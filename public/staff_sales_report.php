@@ -753,6 +753,25 @@ require_once __DIR__ . '/../partials/header.php';
         .remarks-section h3 { font-size: 8px !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px 0 !important; }
         .remarks-list li { font-size: 7px !important; padding: 2px !important; }
         .status-badge { font-size: 5px !important; padding: 1px 2px !important; border: 1px solid #000 !important; }
+        
+        /* Hide all watermarks and background elements */
+        body::before, body::after, html::before, html::after {
+            content: none !important;
+            display: none !important;
+        }
+        
+        /* Hide fixed position elements outside print area */
+        body > *:not(.print-area) {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+        }
+        
+        /* Remove background images */
+        * {
+            background-image: none !important;
+            box-shadow: none !important;
+        }
     }
 </style>
 

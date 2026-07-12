@@ -24,19 +24,7 @@ function getStaffSidebar($current_page = 'dashboard') {
         'fuel' => [
             'icon'  => 'fas fa-gas-pump',
             'title' => 'Fuel Management',
-            'url'   => '#',
-            'submenu' => [
-                'staff_fuel_deliveries_sub' => [
-                    'icon'  => 'fas fa-truck',
-                    'title' => 'Fuel Deliveries',
-                    'url'   => 'staff_fuel_deliveries.php',
-                ],
-                'staff_fuel_transactions' => [
-                    'icon'  => 'fas fa-tachometer-alt',
-                    'title' => 'Meter Readings',
-                    'url'   => 'staff_transactions_hub.php?section=fuel',
-                ],
-            ],
+            'url'   => 'staff_transactions_hub.php?section=fuel',
         ],
         'inventory' => [
             'icon'  => 'fas fa-warehouse',
@@ -53,15 +41,10 @@ function getStaffSidebar($current_page = 'dashboard') {
                     'title' => 'Fuel Inventory',
                     'url'   => 'staff_inventory_fuel.php',
                 ],
-                'inv_stock_request' => [
-                    'icon'  => 'fas fa-clipboard-list',
-                    'title' => 'Stock Request',
-                    'url'   => 'staff_stock_requests.php',
-                ],
-                'staff_stock_in' => [
-                    'icon'  => 'fas fa-dolly',
-                    'title' => 'Stock-In',
-                    'url'   => 'staff_stock_in.php',
+                'inv_record_delivery' => [
+                    'icon'  => 'fas fa-truck-loading',
+                    'title' => 'Record Delivery',
+                    'url'   => 'staff_record_delivery.php',
                 ],
                 'inv_history' => [
                     'icon'  => 'fas fa-history',
@@ -70,23 +53,7 @@ function getStaffSidebar($current_page = 'dashboard') {
                 ],
             ],
         ],
-        'staff_deliveries' => [
-            'icon'  => 'fas fa-boxes',
-            'title' => 'Merchandise Deliveries',
-            'url'   => '#',
-            'submenu' => [
-                'staff_record_del' => [
-                    'icon'  => 'fas fa-plus-circle',
-                    'title' => 'Record Merchandise Delivery',
-                    'url'   => 'staff_record_delivery.php',
-                ],
-                'staff_del_manage' => [
-                    'icon'  => 'fas fa-history',
-                    'title' => 'Merchandise Delivery History',
-                    'url'   => 'staff_delivery_history.php',
-                ],
-            ],
-        ],
+
         'calendar' => [
             'icon'  => 'fas fa-calendar-alt',
             'title' => 'Calendar',

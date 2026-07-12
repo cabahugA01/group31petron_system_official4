@@ -3,7 +3,9 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'calendar';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
+require_once __DIR__ . '/../backend/calendar_module_helpers.php';
 require_login();
+calendar_ensure_schema($pdo);
 
 $me = current_user();
 $rk = role_key($me['role'] ?? '');
@@ -21,12 +23,28 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_event') {
     
     try {
         $event_id = $_POST['event_id'] ?? '';
-        $event_date = $_POST['event_date'] ?? '';
-        $event_type = $_POST['event_type'] ?? '';
-        $work_description = $_POST['work_description'] ?? '';
-        $start_time = $_POST['start_time'] ?? null;
-        $end_time = $_POST['end_time'] ?? null;
-        $status = $_POST['status'] ?? 'pending';
+        $event_date = calendar_normalize_date($_POST['event_date'] ?? '');
+        $event_type = calendar_normalize_event_type($_POST['event_type'] ?? '');
+        $work_description = calendar_clean_text($_POST['work_description'] ?? '');
+        $start_time = calendar_normalize_time($_POST['start_time'] ?? '');
+        $end_time = calendar_normalize_time($_POST['end_time'] ?? '', $start_time);
+        $status = calendar_normalize_status($_POST['status'] ?? 'pending');
+        $event_station_id = $filter_station > 0 ? $filter_station : $station_id;
+
+        if ($event_date === '' || $event_type === '' || $work_description === '') {
+            echo json_encode(['success' => false, 'message' => 'Please complete the date, type, and description.']);
+            exit;
+        }
+
+        if (!$event_station_id) {
+            echo json_encode(['success' => false, 'message' => 'Please select a station before saving this event.']);
+            exit;
+        }
+
+        if ($start_time !== '00:00:00' && $end_time !== '00:00:00' && $end_time < $start_time) {
+            echo json_encode(['success' => false, 'message' => 'End time must be later than start time.']);
+            exit;
+        }
         
         // Collect all dynamic fields into metadata JSON
         $metadata = [];
@@ -76,7 +94,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_event') {
         $metadata_json = json_encode($metadata);
         
         // Check for schedule conflicts before saving
-        if ($start_time && $end_time && $status !== 'cancelled') {
+        if (calendar_has_time_range($start_time, $end_time) && $status !== 'cancelled' && empty($_POST['force_save'])) {
             $conflict_check = $pdo->prepare("SELECT COUNT(*) FROM staff_calendar_events 
                 WHERE staff_encoder_id = ? 
                 AND event_date = ? 
@@ -110,17 +128,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_event') {
         }
         
         // Get or create event_type_id
-        $type_stmt = $pdo->prepare("SELECT id FROM staff_event_types WHERE type_key = ? LIMIT 1");
-        $type_stmt->execute([$event_type]);
-        $event_type_row = $type_stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$event_type_row) {
-            $insert_type = $pdo->prepare("INSERT INTO staff_event_types (type_key, type_name, icon_class) VALUES (?, ?, ?)");
-            $insert_type->execute([$event_type, ucwords(str_replace('_', ' ', $event_type)), 'fas fa-calendar']);
-            $event_type_id = $pdo->lastInsertId();
-        } else {
-            $event_type_id = $event_type_row['id'];
-        }
+        $event_type_id = calendar_event_type_id($pdo, $event_type);
         
         // Check if metadata column exists, if not add it
         try {
@@ -152,7 +160,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_event') {
                 start_time, end_time, status, metadata, created_at) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
             $insert_stmt->execute([
-                $station_id, $user_id, $event_type_id, $event_date, $work_description, 
+                $event_station_id, $user_id, $event_type_id, $event_date, $work_description, 
                 $start_time, $end_time, $status, $metadata_json
             ]);
             
@@ -413,7 +421,7 @@ try {
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $status = strtolower($row['status']);
         if ($status === 'pending') $summary_stats['week_pending'] = $row['cnt'];
-        if ($status === 'in_progress') $summary_stats['week_in_progress'] = $row['cnt'];
+        if ($status === 'approved' || $status === 'in_progress') $summary_stats['week_in_progress'] += $row['cnt'];
         if ($status === 'completed') $summary_stats['week_completed'] = $row['cnt'];
     }
     
@@ -431,8 +439,8 @@ try {
         $stmt->execute($station_params);
         $summary_stats['pending_validations'] += $stmt->fetchColumn();
         
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight $station_where " . 
-            ($filter_station > 0 ? "AND" : "WHERE") . " (status = 'pending' OR validated_by IS NULL)");
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight $station_where " .
+            ($filter_station > 0 ? "AND" : "WHERE") . " (LOWER(status) LIKE '%pending%' OR admin_id IS NULL)");
         $stmt->execute($station_params);
         $summary_stats['pending_validations'] += $stmt->fetchColumn();
     } catch (Exception $e) {}
@@ -458,8 +466,12 @@ try {
     
     // ADMIN SPECIFIC: Critical stock alerts
     try {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory_products ip " . 
-            ($filter_station > 0 ? "WHERE ip.station_id = ? AND" : "WHERE") . " ip.current_stock <= (ip.minimum_stock * 0.5) AND ip.status = 'Active'");
+        $stmt = $pdo->prepare("SELECT COUNT(*)
+            FROM inventory_products ip
+            LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ip.station_id " .
+            ($filter_station > 0 ? "WHERE ip.station_id = ? AND" : "WHERE") . "
+            COALESCE(si.stock_level, ip.stock_quantity, ip.stock, 0) <= (COALESCE(si.reorder_level, ip.min_stock, 0) * 0.5)
+            AND LOWER(ip.status) = 'active'");
         $stmt->execute($station_params);
         $summary_stats['critical_stock'] = $stmt->fetchColumn();
     } catch (Exception $e) {}
@@ -480,7 +492,7 @@ try {
                 COUNT(DISTINCT ss.id) as shifts_today
                 FROM stations s
                 LEFT JOIN staff_calendar_events sce ON s.id = sce.station_id AND sce.event_date = ?
-                LEFT JOIN staff_schedules ss ON s.id IN (SELECT station_id FROM users WHERE user_id = ss.user_id) AND ss.scheduled_date = ?
+                LEFT JOIN staff_schedules ss ON EXISTS (SELECT 1 FROM users u WHERE u.station_id = s.id AND u.id = ss.user_id) AND ss.scheduled_date = ?
                 WHERE s.status = 'Active'
                 GROUP BY s.id, s.name
                 ORDER BY events_today DESC, shifts_today DESC
@@ -790,7 +802,7 @@ try {
     
     // Auto-sync ALL pending validations across stations (admin oversight)
     try {
-        $validation_query = "SELECT t.id, t.transaction_date, t.customer_name, t.total_amount, 
+        $validation_query = "SELECT t.id, DATE(t.transaction_date) AS event_date, t.customer_name, t.total_amount, 
             t.station_id, s.name as station_name, u.name as staff_name
             FROM merchandise_transactions t
             JOIN stations s ON t.station_id = s.id
@@ -808,7 +820,7 @@ try {
         $pending_validations->execute($validation_params);
         
         foreach ($pending_validations->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $month_events[$r['transaction_date']][] = [
+            $month_events[$r['event_date']][] = [
                 'id' => 'admin_validation_'.$r['id'],
                 'type_name' => 'Oversight: Validation',
                 'type_key' => 'admin_validation',
@@ -861,11 +873,15 @@ try {
     
     // Auto-sync system-wide inventory alerts
     try {
-        $critical_stock_query = "SELECT ip.id, ip.product_name, ip.current_stock, ip.minimum_stock, 
+        $critical_stock_query = "SELECT ip.id, ip.product_name,
+            COALESCE(si.stock_level, ip.stock_quantity, ip.stock, 0) AS current_stock,
+            COALESCE(si.reorder_level, ip.min_stock, 0) AS minimum_stock,
             ip.station_id, s.name as station_name
             FROM inventory_products ip
             JOIN stations s ON ip.station_id = s.id
-            WHERE ip.current_stock <= (ip.minimum_stock * 0.5) AND ip.status = 'Active'";
+            LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ip.station_id
+            WHERE COALESCE(si.stock_level, ip.stock_quantity, ip.stock, 0) <= (COALESCE(si.reorder_level, ip.min_stock, 0) * 0.5)
+            AND LOWER(ip.status) = 'active'";
         
         if ($filter_station > 0) {
             $critical_stock_query .= " AND ip.station_id = ?";
@@ -896,7 +912,7 @@ try {
     // Auto-sync operational & financial events integration
     try {
         // High-value transactions for admin oversight
-        $high_value_query = "SELECT t.id, t.transaction_date, t.customer_name, t.total_amount,
+        $high_value_query = "SELECT t.id, DATE(t.transaction_date) AS event_date, t.customer_name, t.total_amount,
             t.payment_method, s.name as station_name, u.name as staff_name
             FROM merchandise_transactions t
             JOIN stations s ON t.station_id = s.id
@@ -914,7 +930,7 @@ try {
         $high_value_tx->execute($high_value_params);
         
         foreach ($high_value_tx->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $month_events[$r['transaction_date']][] = [
+            $month_events[$r['event_date']][] = [
                 'id' => 'high_value_'.$r['id'],
                 'type_name' => 'High-Value Transaction',
                 'type_key' => 'financial_event',
@@ -990,7 +1006,7 @@ include __DIR__ . '/../partials/header.php';
 .cal-menu-btn:hover { background: #f1f3f4; }
 .cal-month-title { font-size: 22px; font-weight: 400; color: #3c4043; }
 .cal-header-right { display: flex; align-items: center; gap: 8px; }
-.cal-view-btn { background: none; border: 1px solid #dadce0; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; color: #3c4043; display: flex; align-items: center; gap: 6px; position: relative; }
+.cal-view-btn { background: #fff; border: 1px solid #dadce0; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; color: #3c4043; display: flex; align-items: center; gap: 6px; position: relative; text-decoration: none; }
 .cal-view-btn:hover { background: #f1f3f4; }
 
 /* View dropdown */
@@ -998,7 +1014,7 @@ include __DIR__ . '/../partials/header.php';
 .cal-view-dropdown.show { display: block; }
 .cal-view-option { padding: 12px 16px; cursor: pointer; font-size: 14px; color: #3c4043; display: flex; align-items: center; justify-content: space-between; }
 .cal-view-option:hover { background: #f1f3f4; }
-.cal-view-option.active { background: #e8f0fe; }
+.cal-view-option.active { background: #e8f0fe; color: #1a73e8; }
 .cal-view-option .shortcut { font-size: 12px; color: #5f6368; }
 .cal-icon-btn { background: none; border: none; padding: 12px; border-radius: 50%; cursor: pointer; color: #5f6368; font-size: 18px; }
 .cal-icon-btn:hover { background: #f1f3f4; }
@@ -1069,7 +1085,7 @@ include __DIR__ . '/../partials/header.php';
                     <span style="font-size: 11px; font-weight: 600; color: #f9ab00;"><?= $summary_stats['week_pending'] ?></span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                    <span style="font-size: 11px; color: #5f6368;">In Progress</span>
+                    <span style="font-size: 11px; color: #5f6368;">Approved</span>
                     <span style="font-size: 11px; font-weight: 600; color: #1a73e8;"><?= $summary_stats['week_in_progress'] ?></span>
                 </div>
                 <div style="display: flex; justify-content: space-between;">
@@ -1176,9 +1192,6 @@ include __DIR__ . '/../partials/header.php';
                     <i class="fas fa-chevron-left"></i>
                 </a>
                 <a href="admin_calendar.php?view=<?= $current_view ?>&month_offset=0<?= $filter_station > 0 ? '&station='.$filter_station : '' ?>" class="cal-view-btn">Today</a>
-                <a href="admin_calendar.php?action=export_csv&view=<?= $current_view ?>&month_offset=<?= $month_offset ?><?= $filter_station > 0 ? '&station='.$filter_station : '' ?>" class="cal-view-btn" style="background: #188038; color: #fff; border-color: #188038;" title="Export CSV Report">
-                    <i class="fas fa-file-excel"></i> Export CSV
-                </a>
                 <a href="admin_calendar.php?view=<?= $current_view ?>&month_offset=<?= $next_offset ?><?= $filter_station > 0 ? '&station='.$filter_station : '' ?>" class="cal-icon-btn" title="Next">
                     <i class="fas fa-chevron-right"></i>
                 </a>
@@ -1699,7 +1712,7 @@ function closeDetailsModal() {
 
 function editManualEvent(eventId) {
     closeDetailsModal();
-    fetch('staff_calendar.php?action=get_event&event_id=' + eventId)
+    fetch('admin_calendar.php?action=get_event&event_id=' + eventId)
         .then(r => r.json())
         .then(data => {
             if (data.success) {
@@ -1733,7 +1746,7 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.textContent = 'Saving...';
             submitBtn.disabled = true;
             
-            fetch('staff_calendar.php', {
+            fetch('admin_calendar.php', {
                 method: 'POST',
                 body: formData
             })
@@ -1747,7 +1760,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (confirm('⚠ ' + data.message + '\n\nDo you want to save anyway? (Not recommended)')) {
                         formData.append('force_save', '1');
                         // Retry with force flag
-                        fetch('staff_calendar.php', {
+                        fetch('admin_calendar.php', {
                             method: 'POST',
                             body: formData
                         })
@@ -1919,7 +1932,8 @@ function applyCalendarFilters() {
 function navigateMiniMonth(offset) {
     // For now, just navigate main calendar
     const currentOffset = <?= $month_offset ?>;
-    window.location.href = 'staff_calendar.php?month_offset=' + (currentOffset + offset);
+    const stationParam = <?= $filter_station > 0 ? json_encode('&station=' . $filter_station) : json_encode('') ?>;
+    window.location.href = 'admin_calendar.php?month_offset=' + (currentOffset + offset) + stationParam;
 }
 
 // Show conflicts modal
@@ -2199,7 +2213,7 @@ function handleEventTypeChange() {
                 <label style="display: block; margin-bottom: 8px; font-size: 14px; color: #3c4043; font-weight: 500;">Status</label>
                 <select id="eventStatus" name="status" style="width: 100%; padding: 10px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px;">
                     <option value="pending">Pending</option>
-                    <option value="in_progress">In Progress</option>
+                    <option value="approved">Approved</option>
                     <option value="completed">Completed</option>
                     <option value="cancelled">Cancelled</option>
                 </select>
