@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' && isset($_GET['resend']) && $_GET['re
                 // Send new OTP via email with extended timeout
                 $resend_sent = false;
                 if (function_exists('sendPasswordResetOTP')) {
-                    @set_time_limit(60);
+                    @set_time_limit(20);
                     $resend_sent = (bool) sendPasswordResetOTP($user['email'], $otp_code);
                     if (!$resend_sent) {
                         error_log("OTP resend email FAILED for user_id={$user['user_id']} email={$user['email']}");

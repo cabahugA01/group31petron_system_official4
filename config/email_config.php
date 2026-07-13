@@ -100,55 +100,48 @@ function sendPasswordResetOTP($to_email, $otp) {
 
     $altBody = "Password Reset OTP - Petron Management System\n\nYour OTP code is: {$otp}\n\nThis OTP will expire in 5 minutes.\n\nIf you did not request this, please ignore this email.\n\n-- Petron Station Management System";
 
-    // Try PHPMailer with retries and alternate SMTP variants
-    $maxRetries = 3;
+    // Try PHPMailer — single attempt with short timeout to avoid PHP execution limit
     $lastException = null;
-    $smtpCandidates = getOtpSmtpCandidates($email_config);
-    for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
-        foreach ($smtpCandidates as $smtpCandidate) {
-            try {
-                $mail = new PHPMailer(true);
-                $mail->SMTPDebug = 0;
-                $mail->isSMTP();
-                $mail->Host = $smtpCandidate['host'];
-                $mail->SMTPAuth = true;
-                $mail->Username = $email_config['username'];
-                $mail->Password = $email_config['password_hash'];
-                $mail->SMTPSecure = $smtpCandidate['encryption'];
-                $mail->Port = $smtpCandidate['port'];
-                $mail->Timeout = 60;
-                $mail->SMTPKeepAlive = false;
-                $mail->CharSet = 'UTF-8';
-                $mail->Encoding = 'base64';
-                $mail->SMTPAutoTLS = true;
-                $mail->SMTPOptions = array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
+    @set_time_limit(30); // Allow up to 30s for this single attempt
+    try {
+        $mail = new PHPMailer(true);
+        $mail->SMTPDebug = 0;
+        $mail->isSMTP();
+        $mail->Host       = $email_config['host'];           // smtp.gmail.com
+        $mail->SMTPAuth   = true;
+        $mail->Username   = $email_config['username'];
+        $mail->Password   = $email_config['password_hash'];
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;  // TLS
+        $mail->Port       = 587;
+        $mail->Timeout    = 8;   // Hard 8-second connection timeout — fast fail
+        $mail->SMTPKeepAlive = false;
+        $mail->CharSet    = 'UTF-8';
+        $mail->Encoding   = 'base64';
+        $mail->SMTPAutoTLS = true;
+        $mail->SMTPOptions = ['ssl' => ['verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true]];
 
-                $mail->setFrom($email_config['from_email'], $email_config['from_name']);
-                $mail->addAddress($to_email);
-                $mail->addReplyTo($email_config['from_email'], $email_config['from_name']);
-                if (file_exists($logo_path)) $mail->AddEmbeddedImage($logo_path, 'petron_logo_otp', 'Petron Logo.png');
+        $mail->setFrom($email_config['from_email'], $email_config['from_name']);
+        $mail->addAddress($to_email);
+        $mail->addReplyTo($email_config['from_email'], $email_config['from_name']);
+        if (file_exists($logo_path)) $mail->AddEmbeddedImage($logo_path, 'petron_logo_otp', 'Petron Logo.png');
 
-                $mail->addCustomHeader('X-Mailer', 'Petron-System-Mailer/2.0');
-                $mail->addCustomHeader('X-Priority', '1');
-                $mail->MessageID = '<otp-' . time() . '-' . md5($to_email . $attempt . $smtpCandidate['label']) . '@petron-system.local>';
+        $mail->addCustomHeader('X-Mailer', 'Petron-System-Mailer/2.0');
+        $mail->addCustomHeader('X-Priority', '1');
+        $mail->MessageID = '<otp-' . time() . '-' . md5($to_email) . '@petron-system.local>';
 
-                $mail->isHTML(true);
-                $mail->Subject = 'Your Petron System OTP Code: ' . $otp;
-                $mail->Body = $htmlBody;
-                $mail->AltBody = $altBody;
+        $mail->isHTML(true);
+        $mail->Subject = 'Your Petron System OTP Code: ' . $otp;
+        $mail->Body    = $htmlBody;
+        $mail->AltBody = $altBody;
 
-                $sent = $mail->send();
-                $entry['attempts'][] = ['method' => 'phpmailer', 'attempt' => $attempt, 'transport' => $smtpCandidate['label'], 'success' => $sent, 'info' => $mail->ErrorInfo ?? ''];
-                logEmailAttempt($entry);
-                if ($sent) return true;
-            } catch (Exception $e) {
-                $lastException = $e;
-                $entry['attempts'][] = ['method' => 'phpmailer', 'attempt' => $attempt, 'transport' => $smtpCandidate['label'], 'success' => false, 'error' => $e->getMessage()];
-                logEmailAttempt($entry);
-            }
-        }
-
-        sleep(1 * $attempt);
+        $sent = $mail->send();
+        $entry['attempts'][] = ['method' => 'phpmailer', 'attempt' => 1, 'transport' => 'smtp-tls-587', 'success' => $sent, 'info' => $mail->ErrorInfo ?? ''];
+        logEmailAttempt($entry);
+        if ($sent) return true;
+    } catch (Exception $e) {
+        $lastException = $e;
+        $entry['attempts'][] = ['method' => 'phpmailer', 'attempt' => 1, 'transport' => 'smtp-tls-587', 'success' => false, 'error' => $e->getMessage()];
+        logEmailAttempt($entry);
     }
 
     // PHPMailer failed — attempt secondary SMTP (if configured) before PHP mail() fallback
