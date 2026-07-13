@@ -131,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $po_date = $_POST['po_date'] ?? '';
 
     if ($action === 'finalize_batch') {
-        $batch_id              = trim($_POST['batch_id_override'] ?? '');
+        $pr_number             = trim($_POST['pr_number'] ?? '');
         $submit_action         = trim($_POST['submit_action'] ?? 'finalize_po');
         $exp_date              = trim($_POST['expected_delivery_date'] ?? '');
         $exp_time              = trim($_POST['expected_delivery_time'] ?? '');
@@ -141,8 +141,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $remarks               = trim($_POST['remarks'] ?? '');
         $items_input           = $_POST['items'] ?? []; // Array of [id => [qty, price]]
 
-        if (empty($batch_id)) {
-            $_SESSION['err'] = 'Batch ID / PO Number is required.';
+        if (empty($pr_number)) {
+            $_SESSION['err'] = 'PR Number is required.';
             header('Location: admin_purchase_orders.php');
             exit;
         }
@@ -156,230 +156,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                           . "Instructions: " . $delivery_instructions . "\n"
                           . "Remarks: " . $remarks;
 
-        $db_status       = ($po_type === 'fuel') ? 'Approved PO' : 'Admin Finalized';
-        $admin_finalized = 1;
-
         try {
             $pdo->beginTransaction();
+
             $sup_id = $pdo->query("SELECT id FROM suppliers WHERE name LIKE '%Petron%' LIMIT 1")->fetchColumn() ?: 0;
             if (!$sup_id) {
                 $pdo->exec("INSERT INTO suppliers (name) VALUES ('Petron Corporation')");
                 $sup_id = $pdo->lastInsertId();
             }
 
-            // Clear old values to avoid unique conflict
-            if ($po_type === 'merch') {
-                $target_po_ids = [];
-                foreach ($items_input as $item_key => $data) {
-                    if (strpos($item_key, 'poi_') === 0) {
-                        $poi_id = (int)substr($item_key, 4);
-                        $stmt_po_id = $pdo->prepare("SELECT po_id FROM purchase_order_items WHERE id = ?");
-                        $stmt_po_id->execute([$poi_id]);
-                        $pid = $stmt_po_id->fetchColumn();
-                        if ($pid) $target_po_ids[] = (int)$pid;
-                    } else if (strpos($item_key, 'po_') === 0) {
-                        $target_po_ids[] = (int)substr($item_key, 3);
-                    } else {
-                        $target_po_ids[] = (int)$item_key;
-                    }
-                }
-                $target_po_ids = array_unique($target_po_ids);
-                if (!empty($target_po_ids)) {
-                    $placeholders = implode(',', array_fill(0, count($target_po_ids), '?'));
-                    $pdo->prepare("UPDATE purchase_orders SET po_number = NULL, batch_id = NULL WHERE id IN ($placeholders)")->execute($target_po_ids);
-                }
-            } else if ($po_type === 'fuel') {
-                $item_ids = array_keys($items_input);
-                if (!empty($item_ids)) {
-                    $placeholders = implode(',', array_fill(0, count($item_ids), '?'));
-                    $pdo->prepare("UPDATE fuel_purchase_orders SET po_number = NULL, batch_id = NULL WHERE id IN ($placeholders)")->execute($item_ids);
-                }
+            // Generate next PO Number sequentially (PO-YYYY-XXXX)
+            $year = date('Y');
+            $prefix = 'PO';
+            $pattern = $prefix . '-' . $year . '-%';
+
+            $stmt1 = $pdo->prepare("SELECT batch_id FROM purchase_orders WHERE batch_id LIKE ? ORDER BY batch_id DESC LIMIT 1");
+            $stmt1->execute([$pattern]);
+            $last1 = $stmt1->fetchColumn();
+
+            $stmt2 = $pdo->prepare("SELECT po_number FROM fuel_purchase_orders WHERE po_number LIKE ? ORDER BY po_number DESC LIMIT 1");
+            $stmt2->execute([$pattern]);
+            $last2 = $stmt2->fetchColumn();
+
+            $num1 = 0;
+            if ($last1) {
+                $parts = explode('-', $last1);
+                $num1 = (int)end($parts);
+            }
+            $num2 = 0;
+            if ($last2) {
+                $parts = explode('-', $last2);
+                $num2 = (int)end($parts);
             }
 
-            // Clear old deliveries oversight matching batch_id
-            $pdo->prepare("DELETE FROM deliveries_oversight WHERE batch_id = ? AND station_id = ?")->execute([$batch_id, $station_id]);
+            $next_num = max($num1, $num2) + 1;
+            $po_number = $prefix . '-' . $year . '-' . str_pad($next_num, 4, '0', STR_PAD_LEFT);
 
-            foreach ($items_input as $item_id => $data) {
-                $qty = (float)($data['qty'] ?? 0);
-                $price = (float)($data['price'] ?? 0);
-                $total = round($qty * $price, 2);
+            $inserted_items = 0;
 
-                if ($qty <= 0) {
-                    throw new Exception("Quantity must be greater than zero for all items.");
-                }
+            if ($po_type === 'merch') {
+                foreach ($items_input as $req_id => $data) {
+                    $qty = (float)($data['qty'] ?? 0);
+                    $price = (float)($data['price'] ?? 0);
+                    $total = round($qty * $price, 2);
 
-                if ($po_type === 'merch') {
-                    if (strpos($item_id, 'poi_') === 0) {
-                        $poi_id = (int)substr($item_id, 4);
-                        
-                        $stmt_item = $pdo->prepare("SELECT * FROM purchase_order_items WHERE id = ?");
-                        $stmt_item->execute([$poi_id]);
-                        $poi_rec = $stmt_item->fetch(PDO::FETCH_ASSOC);
-                        if (!$poi_rec) {
-                            throw new Exception("Merchandise request item #{$poi_id} not found.");
-                        }
-                        
-                        $parent_po_id = $poi_rec['po_id'];
-                        
-                        $stmt_fetch = $pdo->prepare("SELECT * FROM purchase_orders WHERE id=? AND station_id=?");
-                        $stmt_fetch->execute([$parent_po_id, $station_id]);
-                        $po_rec = $stmt_fetch->fetch(PDO::FETCH_ASSOC);
-                        if (!$po_rec) {
-                            throw new Exception("Purchase order #{$parent_po_id} not found.");
-                        }
-
-                        $pdo->prepare("
-                            UPDATE purchase_order_items
-                            SET quantity = ?, quantity_ordered = ?, unit_price = ?, total_price = ?
-                            WHERE id = ?
-                        ")->execute([$qty, $qty, $price, $total, $poi_id]);
-
-                        $pdo->prepare("
-                            UPDATE purchase_orders
-                            SET admin_finalized = ?,
-                                admin_id = ?,
-                                approved_by = ?,
-                                admin_notes = ?,
-                                expected_delivery_date = ?,
-                                admin_finalized_at = NOW(),
-                                batch_id = ?,
-                                po_number = ?,
-                                supplier_id = ?,
-                                status = ?,
-                                updated_at = NOW()
-                            WHERE id = ?
-                        ")->execute([$admin_finalized, $me['id'], $me['id'], $structured_notes, $db_exp_date, $batch_id, $batch_id, $sup_id, $db_status, $parent_po_id]);
-
-                        // Update the total_amount of the parent PO to the sum of all its items in purchase_order_items
-                        $pdo->prepare("
-                            UPDATE purchase_orders
-                            SET total_amount = (SELECT SUM(total_price) FROM purchase_order_items WHERE po_id = ?)
-                            WHERE id = ?
-                        ")->execute([$parent_po_id, $parent_po_id]);
-
-                        $delivery_ref_prefix = 'MDR-' . date('Ymd') . '-';
-                        $stmt_max = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(delivery_ref, '-', -1) AS UNSIGNED)) FROM deliveries_oversight WHERE delivery_ref LIKE ?");
-                        $stmt_max->execute([$delivery_ref_prefix . '%']);
-                        $max_num = (int)$stmt_max->fetchColumn();
-                        $delivery_ref = $delivery_ref_prefix . str_pad($max_num + 1, 4, '0', STR_PAD_LEFT);
-
-                        $pdo->prepare("
-                            INSERT INTO deliveries_oversight (
-                                delivery_type, delivery_ref, batch_id, supplier, product, quantity, unit,
-                                delivery_date, station_id, status, source_ref, remarks, unit_price, expected_quantity,
-                                created_at, updated_at
-                            ) VALUES (
-                                'merchandise', ?, ?, 'Petron Corporation', ?, ?, 'pcs',
-                                ?, ?, 'Expected Delivery', ?, ?, ?, ?, NOW(), NOW()
-                            )
-                        ")->execute([
-                            $delivery_ref,
-                            $batch_id,
-                            $poi_rec['item_name'],
-                            $qty,
-                            $db_exp_date,
-                            $po_rec['station_id'],
-                            $batch_id,
-                            $structured_notes,
-                            $price,
-                            $qty
-                        ]);
-                    } else {
-                        if (strpos($item_id, 'po_') === 0) {
-                            $parent_po_id = (int)substr($item_id, 3);
-                        } else {
-                            $parent_po_id = (int)$item_id;
-                        }
-
-                        $stmt_fetch = $pdo->prepare("SELECT * FROM purchase_orders WHERE id=? AND station_id=?");
-                        $stmt_fetch->execute([$parent_po_id, $station_id]);
-                        $po_rec = $stmt_fetch->fetch(PDO::FETCH_ASSOC);
-                        if (!$po_rec) {
-                            throw new Exception("Merchandise request item #{$parent_po_id} not found.");
-                        }
-
-                        $delivery_ref_prefix = 'MDR-' . date('Ymd') . '-';
-                        $stmt_max = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(delivery_ref, '-', -1) AS UNSIGNED)) FROM deliveries_oversight WHERE delivery_ref LIKE ?");
-                        $stmt_max->execute([$delivery_ref_prefix . '%']);
-                        $max_num = (int)$stmt_max->fetchColumn();
-                        $delivery_ref = $delivery_ref_prefix . str_pad($max_num + 1, 4, '0', STR_PAD_LEFT);
-
-                        $pdo->prepare("
-                            UPDATE purchase_orders
-                            SET quantity = ?,
-                                unit_price = ?,
-                                total_amount = ?,
-                                admin_finalized = ?,
-                                admin_id = ?,
-                                approved_by = ?,
-                                admin_notes = ?,
-                                expected_delivery_date = ?,
-                                admin_finalized_at = NOW(),
-                                batch_id = ?,
-                                po_number = ?,
-                                supplier_id = ?,
-                                status = ?,
-                                updated_at = NOW()
-                            WHERE id = ?
-                        ")->execute([$qty, $price, $total, $admin_finalized, $me['id'], $me['id'], $structured_notes, $db_exp_date, $batch_id, $batch_id, $sup_id, $db_status, $parent_po_id]);
-
-                        $pdo->prepare("
-                            INSERT INTO deliveries_oversight (
-                                delivery_type, delivery_ref, batch_id, supplier, product, quantity, unit,
-                                delivery_date, station_id, status, source_ref, remarks, unit_price, expected_quantity,
-                                created_at, updated_at
-                            ) VALUES (
-                                'merchandise', ?, ?, 'Petron Corporation', ?, ?, 'pcs',
-                                ?, ?, 'Expected Delivery', ?, ?, ?, ?, NOW(), NOW()
-                            )
-                        ")->execute([
-                            $delivery_ref,
-                            $batch_id,
-                            $po_rec['product_name'],
-                            $qty,
-                            $db_exp_date,
-                            $po_rec['station_id'],
-                            $batch_id,
-                            $structured_notes,
-                            $price,
-                            $qty
-                        ]);
+                    if ($qty <= 0) {
+                        throw new Exception("Quantity must be greater than zero.");
                     }
-                } else if ($po_type === 'fuel') {
-                    $stmt_fetch = $pdo->prepare("
-                        SELECT fpo.*, ft.name AS fuel_name
-                        FROM fuel_purchase_orders fpo
-                        LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id
-                        WHERE fpo.id=? AND fpo.station_id=?
+
+                    // Fetch the original request
+                    $stmt_req = $pdo->prepare("SELECT * FROM stock_requests WHERE id = ? AND station_id = ?");
+                    $stmt_req->execute([(int)$req_id, $station_id]);
+                    $req_rec = $stmt_req->fetch(PDO::FETCH_ASSOC);
+                    if (!$req_rec) {
+                        throw new Exception("Stock Request ID #{$req_id} not found.");
+                    }
+
+                    // Insert into purchase_orders
+                    $stmt_ins = $pdo->prepare("
+                        INSERT INTO purchase_orders (
+                            request_id, product_name, quantity, unit_price, total_amount, type, po_number, batch_id,
+                            station_id, supplier_id, created_by, status, expected_delivery_date, remarks, admin_finalized,
+                            admin_finalized_at, admin_id, approved_by, approved_at, created_at, updated_at
+                        ) VALUES (
+                            ?, ?, ?, ?, ?, 'merch', ?, ?,
+                            ?, ?, ?, 'Admin Finalized', ?, ?, 1,
+                            NOW(), ?, ?, NOW(), NOW(), NOW()
+                        )
                     ");
-                    $stmt_fetch->execute([$item_id, $station_id]);
-                    $po_rec = $stmt_fetch->fetch(PDO::FETCH_ASSOC);
-                    if (!$po_rec) {
-                        throw new Exception("Fuel request item #{$item_id} not found.");
-                    }
+                    $stmt_ins->execute([
+                        $req_rec['id'], $req_rec['item_name'], $qty, $price, $total, $po_number, $po_number,
+                        $station_id, $sup_id, $me['id'], $db_exp_date, $structured_notes, $me['id'], $me['id']
+                    ]);
 
-                    $fuel_delivery_ref_prefix = 'FDR-' . date('Ymd') . '-';
-                    $stmt_max_fuel = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(delivery_ref, '-', -1) AS UNSIGNED)) FROM deliveries_oversight WHERE delivery_ref LIKE ?");
-                    $stmt_max_fuel->execute([$fuel_delivery_ref_prefix . '%']);
-                    $max_num_fuel = (int)$stmt_max_fuel->fetchColumn();
-                    $fuel_delivery_ref = $fuel_delivery_ref_prefix . str_pad($max_num_fuel + 1, 4, '0', STR_PAD_LEFT);
-
-                    $pdo->prepare("
-                        UPDATE fuel_purchase_orders
-                        SET volume = ?,
-                            unit_price = ?,
-                            total_amount = ?,
-                            status = ?,
-                            approved_by = ?,
-                            approved_at = NOW(),
-                            batch_id = ?,
-                            po_number = ?,
-                            supplier_id = ?,
-                            notes = ?,
-                            expected_delivery_date = ?,
-                            updated_at = NOW()
-                        WHERE id = ?
-                    ")->execute([$qty, $price, $total, $db_status, $me['id'], $batch_id, $batch_id, $sup_id, $structured_notes, $db_exp_date, $item_id]);
+                    // Insert into deliveries_oversight
+                    $delivery_ref_prefix = 'MDR-' . date('Ymd') . '-';
+                    $stmt_max = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(delivery_ref, '-', -1) AS UNSIGNED)) FROM deliveries_oversight WHERE delivery_ref LIKE ?");
+                    $stmt_max->execute([$delivery_ref_prefix . '%']);
+                    $max_num = (int)$stmt_max->fetchColumn();
+                    $delivery_ref = $delivery_ref_prefix . str_pad($max_num + 1, 4, '0', STR_PAD_LEFT);
 
                     $pdo->prepare("
                         INSERT INTO deliveries_oversight (
@@ -387,30 +242,121 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             delivery_date, station_id, status, source_ref, remarks, unit_price, expected_quantity,
                             created_at, updated_at
                         ) VALUES (
-                            'fuel', ?, ?, 'Petron Corporation', ?, ?, 'L',
+                            'merchandise', ?, ?, 'Petron Corporation', ?, ?, ?,
                             ?, ?, 'Expected Delivery', ?, ?, ?, ?, NOW(), NOW()
                         )
                     ")->execute([
-                        $fuel_delivery_ref,
-                        $batch_id,
-                        $po_rec['fuel_name'],
-                        $qty,
-                        $db_exp_date,
-                        $po_rec['station_id'],
-                        $batch_id,
-                        $structured_notes,
-                        $price,
-                        $qty
+                        $delivery_ref, $po_number, $req_rec['item_name'], $qty, ($req_rec['item_sku'] ?: 'pcs'),
+                        $db_exp_date, $station_id, $po_number, $structured_notes, $price, $qty
                     ]);
+
+                    // Update original request
+                    $pdo->prepare("
+                        UPDATE stock_requests
+                        SET status = 'Purchase Order Generated', approved_quantity = ?, approved_price = ?, updated_at = NOW()
+                        WHERE id = ? AND station_id = ?
+                    ")->execute([$qty, $price, $req_rec['id'], $station_id]);
+
+                    // Audit Log
+                    $pdo->prepare("
+                        INSERT INTO stock_request_audit
+                            (stock_request_id, action_type, performed_by, performed_by_role, old_status, new_status, notes)
+                        VALUES (?, 'PO Generated', ?, ?, 'Waiting for Purchase Order', 'Purchase Order Generated', ?)
+                    ")->execute([
+                        $req_rec['id'], $me['id'], $role, "PO Generated: $po_number"
+                    ]);
+
+                    $inserted_items++;
+                }
+            } else if ($po_type === 'fuel') {
+                foreach ($items_input as $req_id => $data) {
+                    $qty = (float)($data['qty'] ?? 0);
+                    $price = (float)($data['price'] ?? 0);
+                    $total = round($qty * $price, 2);
+
+                    if ($qty <= 0) {
+                        throw new Exception("Liters must be greater than zero.");
+                    }
+
+                    // Fetch the original request
+                    $stmt_req = $pdo->prepare("SELECT * FROM fuel_stock_requests WHERE id = ? AND station_id = ?");
+                    $stmt_req->execute([(int)$req_id, $station_id]);
+                    $req_rec = $stmt_req->fetch(PDO::FETCH_ASSOC);
+                    if (!$req_rec) {
+                        throw new Exception("Fuel Request ID #{$req_id} not found.");
+                    }
+
+                    // Look up fuel_type_id
+                    $fuel_type_id = $pdo->prepare("SELECT fuel_type_id FROM fuel_inventory WHERE LOWER(fuel_type) = LOWER(?) AND station_id = ? LIMIT 1");
+                    $fuel_type_id->execute([$req_rec['fuel_type'], $station_id]);
+                    $f_type_id = $fuel_type_id->fetchColumn() ?: 1;
+
+                    // Insert into fuel_purchase_orders
+                    $stmt_ins = $pdo->prepare("
+                        INSERT INTO fuel_purchase_orders (
+                            po_number, batch_id, station_id, fuel_type_id, volume, unit_price, total_amount, supplier_id,
+                            expected_delivery_date, status, created_by, approved_by, approved_at, notes, created_at, updated_at
+                        ) VALUES (
+                            ?, ?, ?, ?, ?, ?, ?, ?,
+                            ?, 'Approved PO', ?, ?, NOW(), ?, NOW(), NOW()
+                        )
+                    ");
+                    $stmt_ins->execute([
+                        $po_number, $po_number, $station_id, $f_type_id, $qty, $price, $total, $sup_id,
+                        $db_exp_date, $me['id'], $me['id'], $structured_notes
+                    ]);
+
+                    // Insert into deliveries_oversight
+                    $fuel_delivery_ref_prefix = 'FDR-' . date('Ymd') . '-';
+                    $stmt_max_fuel = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(delivery_ref, '-', -1) AS UNSIGNED)) FROM deliveries_oversight WHERE delivery_ref LIKE ?");
+                    $stmt_max_fuel->execute([$fuel_delivery_ref_prefix . '%']);
+                    $max_num_fuel = (int)$stmt_max_fuel->fetchColumn();
+                    $fuel_delivery_ref = $fuel_delivery_ref_prefix . str_pad($max_num_fuel + 1, 4, '0', STR_PAD_LEFT);
+
+                    $pdo->prepare("
+                        INSERT INTO deliveries_oversight (
+                            delivery_type, delivery_ref, batch_id, supplier, product, quantity, unit,
+                            delivery_date, station_id, status, source_ref, remarks, unit_price, expected_quantity,
+                            created_at, updated_at
+                        ) VALUES (
+                            'fuel', ?, ?, 'Petron Corporation', ?, 'L',
+                            ?, ?, 'Expected Delivery', ?, ?, ?, ?, NOW(), NOW()
+                        )
+                    ")->execute([
+                        $fuel_delivery_ref, $po_number, $req_rec['fuel_type'], $qty,
+                        $db_exp_date, $station_id, $po_number, $structured_notes, $price, $qty
+                    ]);
+
+                    // Update original request
+                    $pdo->prepare("
+                        UPDATE fuel_stock_requests
+                        SET status = 'Purchase Order Generated', approved_liters = ?, updated_at = NOW()
+                        WHERE id = ? AND station_id = ?
+                    ")->execute([$qty, $req_rec['id'], $station_id]);
+
+                    // Audit Log
+                    $pdo->prepare("
+                        INSERT INTO fuel_stock_request_audit
+                            (request_id, action_type, performed_by, performed_by_role, old_status, new_status, notes)
+                        VALUES (?, 'PO Generated', ?, ?, 'Waiting for Purchase Order', 'Purchase Order Generated', ?)
+                    ")->execute([
+                        $req_rec['id'], $me['id'], $role, "PO Generated: $po_number"
+                    ]);
+
+                    $inserted_items++;
                 }
             }
 
-            log_activity($pdo, $me['id'], 'Admin Finalize PO Batch', "Grouped PO processed as batch {$batch_id}.");
+            if ($inserted_items === 0) {
+                throw new Exception("No items processed.");
+            }
+
+            log_activity($pdo, $me['id'], 'Admin Generate PO', "PO {$po_number} generated from PR {$pr_number}.");
             $pdo->commit();
-            
-            $_SESSION['ok'] = "Batch {$batch_id} finalized and synced with deliveries.";
+
+            $_SESSION['ok'] = "Purchase Order {$po_number} has been generated successfully.";
             if ($submit_action === 'print_po') {
-                header("Location: print_po_new.php?batch_id=" . urlencode($batch_id) . "&type=" . urlencode($po_type) . "&print=1");
+                header("Location: print_po_new.php?batch_id=" . urlencode($po_number) . "&type=" . urlencode($po_type) . "&print=1");
                 exit;
             }
         } catch (Exception $e) {
@@ -422,9 +368,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'reject_batch') {
-        $reason = trim($_POST['reject_reason'] ?? '');
+        $reason     = trim($_POST['reject_reason'] ?? '');
+        $pr_number  = trim($_POST['pr_number'] ?? '');
+
         if (empty($reason)) {
             $_SESSION['err'] = 'Rejection reason is required.';
+            header('Location: admin_purchase_orders.php');
+            exit;
+        }
+        if (empty($pr_number)) {
+            $_SESSION['err'] = 'PR Number is required.';
             header('Location: admin_purchase_orders.php');
             exit;
         }
@@ -432,15 +385,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $pdo->beginTransaction();
             if ($po_type === 'merch') {
-                $pdo->prepare("UPDATE purchase_orders SET status='Rejected by Admin', admin_notes=?, admin_id=?, updated_at=NOW() WHERE station_id=? AND type='merch' AND DATE(created_at)=? AND status='Pending Admin Validation'")
-                    ->execute([$reason, $me['id'], $station_id, $po_date]);
+                // Get all matching stock_requests to log audit
+                $stmt_get = $pdo->prepare("SELECT id FROM stock_requests WHERE request_no = ? AND station_id = ?");
+                $stmt_get->execute([$pr_number, $station_id]);
+                $ids = $stmt_get->fetchAll(PDO::FETCH_COLUMN);
+
+                $pdo->prepare("UPDATE stock_requests SET status='Rejected by Admin', manager_notes=? WHERE request_no=? AND station_id=?")
+                    ->execute(["Rejected: " . $reason, $pr_number, $station_id]);
+
+                foreach ($ids as $req_id) {
+                    $pdo->prepare("
+                        INSERT INTO stock_request_audit
+                            (stock_request_id, action_type, performed_by, performed_by_role, old_status, new_status, notes)
+                        VALUES (?, 'Rejected by Admin', ?, ?, 'Waiting for Purchase Order', 'Rejected by Admin', ?)
+                    ")->execute([
+                        $req_id, $me['id'], $role, $reason
+                    ]);
+                }
             } else if ($po_type === 'fuel') {
-                $pdo->prepare("UPDATE fuel_purchase_orders SET status='Rejected', notes=?, approved_by=?, updated_at=NOW() WHERE station_id=? AND DATE(created_at)=? AND status IN ('Pending Admin Validation', 'Pending')")
-                    ->execute([$reason, $me['id'], $station_id, $po_date]);
+                $stmt_get = $pdo->prepare("SELECT id FROM fuel_stock_requests WHERE request_no = ? AND station_id = ?");
+                $stmt_get->execute([$pr_number, $station_id]);
+                $ids = $stmt_get->fetchAll(PDO::FETCH_COLUMN);
+
+                $pdo->prepare("UPDATE fuel_stock_requests SET status='Rejected by Admin', remarks=? WHERE request_no=? AND station_id=?")
+                    ->execute(["Rejected: " . $reason, $pr_number, $station_id]);
+
+                foreach ($ids as $req_id) {
+                    $pdo->prepare("
+                        INSERT INTO fuel_stock_request_audit
+                            (request_id, action_type, performed_by, performed_by_role, old_status, new_status, notes)
+                        VALUES (?, 'Rejected by Admin', ?, ?, 'Waiting for Purchase Order', 'Rejected by Admin', ?)
+                    ")->execute([
+                        $req_id, $me['id'], $role, $reason
+                    ]);
+                }
             }
-            log_activity($pdo, $me['id'], 'Admin Reject PO Batch', "Date group {$po_date} rejected: {$reason}");
+
+            log_activity($pdo, $me['id'], 'Admin Reject PR', "PR {$pr_number} rejected: {$reason}");
             $pdo->commit();
-            $_SESSION['ok'] = "Requests rejected.";
+            $_SESSION['ok'] = "Request {$pr_number} has been rejected.";
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['err'] = $e->getMessage();
@@ -452,74 +435,104 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ── DATA EXTRACTION & TAB-WISE BATCHING ──────────────────────────────────────
 
-// Tab 1: Pending Purchase Requests (Grouped by Date & Type)
+// Tab 1: Pending Purchase Requests — from stock_requests with 'Waiting for Purchase Order'
 $pending_requests = [];
 
-// Merchandise Pendings
+// Merchandise Pendings (from stock_requests)
 try {
     $stmt = $pdo->prepare("
-        SELECT po.id, DATE(po.created_at) AS date_only, po.created_at, po.quantity, po.unit_price, po.total_amount, po.product_name,
-               COALESCE(u.username, 'Manager') AS requested_by
-        FROM purchase_orders po
-        LEFT JOIN users u ON po.created_by = u.id
-        WHERE po.station_id = ? AND po.type = 'merch' AND po.status = 'Pending Admin Validation' AND po.admin_finalized = 0
-        ORDER BY po.created_at ASC
+        SELECT sr.id, sr.request_no, sr.item_name AS product_name, sr.approved_quantity AS quantity,
+               COALESCE(si.unit, ip.size, 'pcs') AS unit,
+               COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
+               COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
+               COALESCE(ip.cost_price, 0) AS cost_price,
+               sr.manager_notes AS remarks, sr.processed_at AS created_at, sr.updated_at,
+               u.name AS requested_by, m.name AS manager_name
+        FROM stock_requests sr
+        LEFT JOIN users u ON sr.staff_id = u.id
+        LEFT JOIN users m ON sr.manager_id = m.id
+        LEFT JOIN inventory_products ip ON sr.item_id = ip.id
+        LEFT JOIN station_inventory si ON sr.item_id = si.product_id AND si.station_id = sr.station_id
+        WHERE sr.station_id = ? AND sr.status = 'Waiting for Purchase Order'
+          AND LOWER(COALESCE(sr.item_category,'')) != 'fuel'
+        ORDER BY sr.request_no ASC, sr.updated_at DESC
     ");
     $stmt->execute([$station_id]);
-    $merch_p = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    $merch_groups = [];
-    foreach ($merch_p as $p) {
-        $merch_groups[$p['date_only']][] = $p;
+    $merch_wfpo = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $merch_pr_groups = [];
+    foreach ($merch_wfpo as $r) {
+        $prKey = $r['request_no'] ?: ('REQ-' . str_pad($r['id'], 5, '0', STR_PAD_LEFT));
+        if (!isset($merch_pr_groups[$prKey])) {
+            $merch_pr_groups[$prKey] = [
+                'pr_no'        => $prKey,
+                'type'         => 'Merchandise',
+                'po_type'      => 'merch',
+                'requested_by' => $r['requested_by'] ?: 'Staff',
+                'manager_name' => $r['manager_name'] ?: 'Manager',
+                'supplier'     => 'Petron Corporation',
+                'date'         => substr($r['updated_at'], 0, 10),
+                'total_items'  => 0,
+                'status'       => 'Waiting for Purchase Order',
+                'items'        => [],
+            ];
+        }
+        $merch_pr_groups[$prKey]['items'][] = $r;
+        $merch_pr_groups[$prKey]['total_items']++;
     }
-    foreach ($merch_groups as $dt => $items) {
-        $pending_requests[] = [
-            'pr_no' => 'PR-MERCH-' . str_replace('-', '', $dt),
-            'type' => 'Merchandise',
-            'po_type' => 'merch',
-            'requested_by' => $items[0]['requested_by'],
-            'supplier' => 'Petron Corporation',
-            'date' => $dt,
-            'total_items' => count($items),
-            'status' => 'Pending Admin Validation'
-        ];
+    foreach ($merch_pr_groups as $pr) {
+        $pending_requests[] = $pr;
     }
 } catch (Exception $e) {}
 
-// Fuel Pendings
+// Fuel Pendings (from fuel_stock_requests)
 try {
     $stmt = $pdo->prepare("
-        SELECT fpo.id, DATE(fpo.created_at) AS date_only, fpo.created_at, fpo.volume AS quantity, fpo.unit_price, fpo.total_amount, ft.name AS fuel_name,
-               COALESCE(u.username, 'Manager') AS requested_by
-        FROM fuel_purchase_orders fpo
-        LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id
-        LEFT JOIN users u ON fpo.created_by = u.id
-        WHERE fpo.station_id = ? AND fpo.status IN ('Pending Admin Validation', 'Pending')
-        ORDER BY fpo.created_at ASC
+        SELECT fsr.id, fsr.request_no, fsr.fuel_type AS product_name, fsr.approved_liters AS quantity,
+               'L' AS unit, fsr.current_level AS current_stock,
+               COALESCE(fi.reorder_level, 5000) AS reorder_level,
+               COALESCE((SELECT fp.price_per_liter FROM fuel_pricing fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fsr.station_id AND fp.is_active = 1 ORDER BY fp.effective_date DESC LIMIT 1), 0) AS cost_price,
+               fsr.processed_at AS created_at, fsr.updated_at,
+               u.name AS requested_by, m.name AS manager_name,
+               fi.fuel_type_id
+        FROM fuel_stock_requests fsr
+        LEFT JOIN users u ON fsr.staff_id = u.id
+        LEFT JOIN users m ON fsr.manager_id = m.id
+        LEFT JOIN fuel_inventory fi ON LOWER(fsr.fuel_type) = LOWER(fi.fuel_type) AND fi.station_id = fsr.station_id
+        WHERE fsr.station_id = ? AND fsr.status = 'Waiting for Purchase Order'
+        ORDER BY fsr.request_no ASC, fsr.updated_at DESC
     ");
     $stmt->execute([$station_id]);
-    $fuel_p = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    $fuel_groups = [];
-    foreach ($fuel_p as $p) {
-        $fuel_groups[$p['date_only']][] = $p;
+    $fuel_wfpo = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $fuel_pr_groups = [];
+    foreach ($fuel_wfpo as $r) {
+        $prKey = $r['request_no'] ?: ('FSR-' . str_pad($r['id'], 5, '0', STR_PAD_LEFT));
+        if (!isset($fuel_pr_groups[$prKey])) {
+            $fuel_pr_groups[$prKey] = [
+                'pr_no'        => $prKey,
+                'type'         => 'Fuel',
+                'po_type'      => 'fuel',
+                'requested_by' => $r['requested_by'] ?: 'Staff',
+                'manager_name' => $r['manager_name'] ?: 'Manager',
+                'supplier'     => 'Petron Corporation',
+                'date'         => substr($r['updated_at'], 0, 10),
+                'total_items'  => 0,
+                'status'       => 'Waiting for Purchase Order',
+                'items'        => [],
+            ];
+        }
+        $fuel_pr_groups[$prKey]['items'][] = $r;
+        $fuel_pr_groups[$prKey]['total_items']++;
     }
-    foreach ($fuel_groups as $dt => $items) {
-        $pending_requests[] = [
-            'pr_no' => 'PR-FUEL-' . str_replace('-', '', $dt),
-            'type' => 'Fuel',
-            'po_type' => 'fuel',
-            'requested_by' => $items[0]['requested_by'],
-            'supplier' => 'Petron Corporation',
-            'date' => $dt,
-            'total_items' => count($items),
-            'status' => 'Pending Admin Validation'
-        ];
+    foreach ($fuel_pr_groups as $pr) {
+        $pending_requests[] = $pr;
     }
 } catch (Exception $e) {}
 
 // Sort pending requests by date desc
 usort($pending_requests, fn($a, $b) => strcmp($b['date'], $a['date']));
+
 
 // Tab 2: Generated Purchase Orders (Batches created, waiting for delivery update or verified POs)
 $generated_pos = [];
@@ -733,14 +746,14 @@ include __DIR__ . '/../partials/header.php';
     <table class="po-table" id="pendingTable">
       <thead>
         <tr>
-          <th>PR No.</th>
-          <th>Type</th>
-          <th>Requested By</th>
-          <th>Supplier</th>
-          <th>Date</th>
-          <th style="text-align:center;">Total Items</th>
-          <th>Status</th>
-          <th style="width:250px; text-align:center;">Action</th>
+          <th style="width:18%;">PR Number</th>
+          <th style="width:10%;">Type</th>
+          <th style="width:14%;">Requested By</th>
+          <th style="width:14%;">Approved By</th>
+          <th style="width:12%;">Date</th>
+          <th style="width:8%; text-align:center;">Items</th>
+          <th style="width:12%;">Status</th>
+          <th style="width:12%; text-align:center;">Action</th>
         </tr>
       </thead>
       <tbody>
@@ -749,18 +762,17 @@ include __DIR__ . '/../partials/header.php';
         <?php else: ?>
           <?php foreach ($pending_requests as $pr): ?>
             <tr>
-              <td><code><?= htmlspecialchars($pr['pr_no']) ?></code></td>
-              <td style="font-weight:700;"><?= htmlspecialchars($pr['type']) ?></td>
+              <td><code style="color:#002F6C; font-weight:700;"><?= htmlspecialchars($pr['pr_no']) ?></code></td>
+              <td style="font-weight:700; color:<?= $pr['po_type'] === 'fuel' ? '#0284c7' : '#002F6C' ?>;"><?= htmlspecialchars($pr['type']) ?></td>
               <td><?= htmlspecialchars($pr['requested_by']) ?></td>
-              <td><?= htmlspecialchars($pr['supplier']) ?></td>
+              <td><?= htmlspecialchars($pr['manager_name']) ?></td>
               <td><?= date('M d, Y', strtotime($pr['date'])) ?></td>
               <td style="text-align:center; font-weight:700;"><?= $pr['total_items'] ?></td>
-              <td><span class="po-badge po-badge-pending">Pending Admin Approval</span></td>
+              <td><span class="po-badge po-badge-pending">Waiting for PO</span></td>
               <td style="text-align:center;">
                 <div style="display:flex; flex-direction:column; gap:5px; align-items:center;">
-                  <button class="btn-cancel" style="height:28px; font-size:11px; min-width:120px;" onclick="viewPendingDetails('<?= $pr['po_type'] ?>', '<?= $pr['date'] ?>', '<?= htmlspecialchars($pr['pr_no']) ?>')"><i class="fas fa-eye"></i> View</button>
-                  <button class="btn-save" style="height:28px; font-size:11px; min-width:120px;" onclick="openFinalizeModal('<?= $pr['po_type'] ?>', '<?= $pr['date'] ?>', '<?= htmlspecialchars($pr['pr_no']) ?>')"><i class="fas fa-file-signature"></i> Generate PO</button>
-                  <button class="btn-rej" style="height:28px; font-size:11px; min-width:120px;" onclick="openRejectModal('<?= $pr['po_type'] ?>', '<?= $pr['date'] ?>')"><i class="fas fa-times"></i> Reject</button>
+                  <button class="btn-save" style="height:28px; font-size:11px; min-width:120px;" onclick="openAdminFinalizeModal(<?= htmlspecialchars(json_encode($pr)) ?>)"><i class="fas fa-file-signature"></i> Generate PO</button>
+                  <button class="btn-rej" style="height:28px; font-size:11px; min-width:120px;" onclick="openRejectPrModal('<?= $pr['po_type'] ?>', '<?= htmlspecialchars($pr['pr_no']) ?>')"><i class="fas fa-times"></i> Reject</button>
                 </div>
               </td>
             </tr>
@@ -770,6 +782,7 @@ include __DIR__ . '/../partials/header.php';
     </table>
   </div>
 </div>
+
 
 <!-- Tab 2: Generated Purchase Orders -->
 <div id="pane-generated" style="display: <?= $active_tab === 'generated' ? 'block' : 'none' ?>;">
@@ -927,13 +940,14 @@ include __DIR__ . '/../partials/header.php';
       <input type="hidden" name="action" value="finalize_batch">
       <input type="hidden" id="modalPoType" name="po_type" value="">
       <input type="hidden" id="modalPoDate" name="po_date" value="">
+      <input type="hidden" id="modalPrNumber" name="pr_number" value="">
       
       <div class="modal-body" style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
         <!-- Left Side: Scheduling & Terms -->
         <div>
           <div class="po-form-grp">
-            <label>PO Number / Batch ID <span style="color:#dc2626;">*</span></label>
-            <input type="text" id="modalBatchId" name="batch_id_override" required style="font-family:monospace; font-weight:700;">
+            <label>PO Number / Batch ID (Auto-Generated)</label>
+            <input type="text" id="modalBatchId" name="batch_id_override" readonly style="font-family:monospace; font-weight:700; background:#f1f5f9; cursor:not-allowed;">
           </div>
           <div class="po-form-grp">
             <label>Expected Delivery Date <span style="color:#dc2626;">*</span></label>
@@ -1013,8 +1027,9 @@ include __DIR__ . '/../partials/header.php';
       <input type="hidden" name="action" value="reject_batch">
       <input type="hidden" id="rejectPoType" name="po_type" value="">
       <input type="hidden" id="rejectPoDate" name="po_date" value="">
+      <input type="hidden" id="rejectPrNumber" name="pr_number" value="">
       <div class="modal-body">
-        <p style="font-size:13px; color:#475569; margin-bottom:15px;">Are you sure you want to reject all items requested on this date?</p>
+        <p style="font-size:13px; color:#475569; margin-bottom:15px;">Are you sure you want to reject this purchase request?</p>
         <div class="po-form-grp">
           <label>Reason for Rejection <span style="color:#dc2626;">*</span></label>
           <textarea name="reject_reason" required rows="3" placeholder="Enter reason..."></textarea>
@@ -1122,17 +1137,14 @@ function viewPendingDetails(type, date, prNo) {
     document.getElementById('viewModal').classList.add('open');
 }
 
-function openFinalizeModal(type, date, prNo) {
-    document.getElementById('modalPoType').value = type;
-    document.getElementById('modalPoDate').value = date;
+function openAdminFinalizeModal(pr) {
+    document.getElementById('modalPoType').value = pr.po_type;
+    document.getElementById('modalPoDate').value = pr.date;
+    document.getElementById('modalPrNumber').value = pr.pr_no;
+    document.getElementById('finModalTitle').innerHTML = 'Finalize Purchase Order &mdash; ' + pr.pr_no;
     
-    // Auto-generate PO Number / Batch ID
-    var today = new Date();
-    var ddStr = String(today.getFullYear()) +
-                String(today.getMonth()+1).padStart(2,'0') +
-                String(today.getDate()).padStart(2,'0');
-    var prefix = (type === 'fuel') ? 'POF-' : 'POM-';
-    document.getElementById('modalBatchId').value = prefix + ddStr + '-001';
+    // Auto-generate PO Number is done on server, so display read-only indicator
+    document.getElementById('modalBatchId').value = '[Auto-Generated]';
     
     // Pre-set expected delivery date to 3 days from now
     var expDate = new Date();
@@ -1143,36 +1155,24 @@ function openFinalizeModal(type, date, prNo) {
     document.querySelector('[name="expected_delivery_date"]').value = yyyy + '-' + mm + '-' + dd;
     
     var tbody = document.getElementById('modalItemsBody');
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:15px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+    var html = '';
     
-    fetch('admin_purchase_orders.php?ajax=1&action=get_pending_items&type=' + type + '&date=' + date)
-    .then(r => r.json())
-    .then(res => {
-        if (!res.success || res.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:15px;">No items found.</td></tr>';
-            return;
-        }
-        var html = '';
-        res.items.forEach(item => {
-            var qty = parseFloat(item.quantity);
-            var price = parseFloat(item.unit_price);
-            var total = qty * price;
-            html += '<tr>' +
-                '<td style="padding:8px; font-weight:600;">' + item.product_name + '</td>' +
-                '<td style="padding:8px; text-align:center;">' +
-                    '<input type="number" step="any" name="items['+item.id+'][qty]" value="'+qty+'" required style="width:70px; text-align:center; padding:4px;" oninput="recalcRowTotal('+item.id+')">' +
-                '</td>' +
-                '<td style="padding:8px; text-align:right;">' +
-                    '<input type="number" step="0.01" name="items['+item.id+'][price]" value="'+price+'" required style="width:90px; text-align:right; padding:4px;" oninput="recalcRowTotal('+item.id+')">' +
-                '</td>' +
-                '<td style="padding:8px; text-align:right; font-weight:700;" id="rt-'+item.id+'">₱' + total.toFixed(2) + '</td>' +
-                '</tr>';
-        });
-        tbody.innerHTML = html;
-    })
-    .catch(() => {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#dc3545;">Error.</td></tr>';
+    pr.items.forEach(item => {
+        var qty = parseFloat(item.quantity) || 0;
+        var cost = parseFloat(item.cost_price) || 0;
+        var total = qty * cost;
+        html += '<tr>' +
+            '<td style="padding:8px; font-weight:600;">' + item.product_name + '</td>' +
+            '<td style="padding:8px; text-align:center;">' +
+                '<input type="number" step="any" name="items['+item.id+'][qty]" value="'+qty+'" required style="width:70px; text-align:center; padding:4px;" oninput="recalcRowTotal('+item.id+')">' +
+            '</td>' +
+            '<td style="padding:8px; text-align:right;">' +
+                '<input type="number" step="0.01" name="items['+item.id+'][price]" value="'+cost+'" required style="width:90px; text-align:right; padding:4px;" oninput="recalcRowTotal('+item.id+')">' +
+            '</td>' +
+            '<td style="padding:8px; text-align:right; font-weight:700;" id="rt-'+item.id+'">₱' + total.toFixed(2) + '</td>' +
+            '</tr>';
     });
+    tbody.innerHTML = html;
     
     document.getElementById('finalizeModal').classList.add('open');
 }
@@ -1183,9 +1183,9 @@ function recalcRowTotal(id) {
     document.getElementById('rt-'+id).textContent = '₱' + (q*p).toFixed(2);
 }
 
-function openRejectModal(type, date) {
+function openRejectPrModal(type, prNo) {
     document.getElementById('rejectPoType').value = type;
-    document.getElementById('rejectPoDate').value = date;
+    document.getElementById('rejectPrNumber').value = prNo;
     document.getElementById('rejectModal').classList.add('open');
 }
 

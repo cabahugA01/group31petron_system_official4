@@ -39,30 +39,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         try {
             $pdo->beginTransaction();
-            $total_amount = 0;
             $items_to_insert = [];
 
             foreach ($quantities as $prod_id => $qty) {
                 $qty = (int)$qty;
                 if ($qty <= 0) continue;
 
-                $p_stmt = $pdo->prepare("SELECT product_name, unit_cost, unit_price FROM inventory_products WHERE id = ?");
+                $p_stmt = $pdo->prepare("SELECT product_name, sku, category, unit_cost, unit_price FROM inventory_products WHERE id = ?");
                 $p_stmt->execute([$prod_id]);
                 $prod = $p_stmt->fetch(PDO::FETCH_ASSOC);
                 if (!$prod) continue;
-
-                $unit_cost = (float)($prod['unit_cost'] ?: ($prod['unit_price'] * 0.8) ?: 145.00);
-                $subtotal = $qty * $unit_cost;
-                $total_amount += $subtotal;
 
                 $unit = isset($units[$prod_id]) ? trim($units[$prod_id]) : '';
 
                 $items_to_insert[] = [
                     'product_id' => $prod_id,
+                    'sku' => $prod['sku'],
                     'product_name' => $prod['product_name'],
+                    'category' => $prod['category'],
                     'quantity' => $qty,
-                    'unit_price' => $unit_cost,
-                    'total_price' => $subtotal,
                     'unit' => $unit,
                     'stock_req_id' => isset($stock_req_ids[$prod_id]) ? (int)$stock_req_ids[$prod_id] : null
                 ];
@@ -72,37 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception("Please specify quantity for at least one item.");
             }
 
-            $supplier_id = $pdo->query("SELECT id FROM suppliers WHERE name LIKE '%Petron%' OR id = 1 LIMIT 1")->fetchColumn() ?: 1;
-            
-            $first_req_id = null;
             foreach ($items_to_insert as $item) {
-                if ($item['stock_req_id']) {
-                    $first_req_id = $item['stock_req_id'];
-                    break;
-                }
-            }
-
-            // Insert into purchase_orders (Status: Approved for staff record delivery)
-            $po_stmt = $pdo->prepare("
-                INSERT INTO purchase_orders 
-                    (po_number, station_id, supplier_id, created_by, status, expected_delivery_date, remarks, type, total_amount, request_id, created_at, updated_at, admin_finalized)
-                VALUES (?, ?, ?, ?, 'Approved', ?, ?, 'merch', ?, ?, NOW(), NOW(), 1)
-            ");
-            $po_stmt->execute([
-                $pr_number, $station_id, $supplier_id, $me['id'], $expected_delivery ?: null, $remarks, $total_amount, $first_req_id
-            ]);
-            $po_id = $pdo->lastInsertId();
-
-            foreach ($items_to_insert as $item) {
-                $item_stmt = $pdo->prepare("
-                    INSERT INTO purchase_order_items 
-                        (po_id, product_id, item_name, quantity, quantity_ordered, unit_price, total_price)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ");
-                $item_stmt->execute([
-                    $po_id, $item['product_id'], $item['product_name'], $item['quantity'], $item['quantity'], $item['unit_price'], $item['total_price']
-                ]);
-
                 // Update unit of measure in station_inventory and inventory_products
                 if (!empty($item['unit'])) {
                     $upd_unit_stmt = $pdo->prepare("UPDATE station_inventory SET unit = ? WHERE product_id = ? AND station_id = ?");
@@ -115,27 +80,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($item['stock_req_id']) {
                     $sr_stmt = $pdo->prepare("
                         UPDATE stock_requests 
-                        SET status = 'Approved', approved_quantity = ?, manager_id = ?, manager_notes = ?, processed_at = NOW(), updated_at = NOW()
+                        SET status = 'Waiting for Purchase Order', approved_quantity = ?, manager_id = ?, manager_notes = ?, request_no = ?, processed_at = NOW(), updated_at = NOW()
                         WHERE id = ? AND station_id = ?
                     ");
                     $sr_stmt->execute([
-                        $item['quantity'], $me['id'], $remarks, $item['stock_req_id'], $station_id
+                        $item['quantity'], $me['id'], $remarks, $pr_number, $item['stock_req_id'], $station_id
                     ]);
-
-                    $audit_stmt = $pdo->prepare("
-                        INSERT INTO stock_request_audit
-                            (stock_request_id, action_type, performed_by, performed_by_role, old_status, new_status, notes)
-                        VALUES (?, 'Approved', ?, ?, 'Pending', 'Approved', ?)
+                    $req_id = $item['stock_req_id'];
+                } else {
+                    // Manual addition
+                    $stock_lvl = (int)($pdo->query("SELECT stock_level FROM station_inventory WHERE product_id = {$item['product_id']} AND station_id = {$station_id}")->fetchColumn() ?: 0);
+                    $ins_sr = $pdo->prepare("
+                        INSERT INTO stock_requests 
+                            (request_no, staff_id, station_id, item_id, item_sku, item_name, item_category, current_stock, requested_quantity, approved_quantity, remarks, status, manager_id, manager_notes, processed_at, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'Manual addition by Manager', 'Waiting for Purchase Order', ?, ?, NOW(), NOW(), NOW())
                     ");
-                    $audit_stmt->execute([
-                        $item['stock_req_id'], $me['id'], $role, "Approved by Manager. PR: $pr_number"
+                    $ins_sr->execute([
+                        $pr_number, $me['id'], $station_id, $item['product_id'], $item['sku'], $item['product_name'], $item['category'], $stock_lvl, $item['quantity'], $me['id'], $remarks
                     ]);
+                    $req_id = $pdo->lastInsertId();
                 }
+
+                $audit_stmt = $pdo->prepare("
+                    INSERT INTO stock_request_audit
+                        (stock_request_id, action_type, performed_by, performed_by_role, old_status, new_status, notes)
+                    VALUES (?, 'Forwarded to Admin', ?, ?, 'Pending', 'Waiting for Purchase Order', ?)
+                ");
+                $audit_stmt->execute([
+                    $req_id, $me['id'], $role, "Forwarded to Admin. PR: $pr_number"
+                ]);
             }
 
-            log_activity($pdo, $me['id'], 'Generate Purchase Request', "Generated Merchandise PR: $pr_number");
+            // Send notification to Admin
+            $notify_stmt = $pdo->prepare("
+                INSERT INTO notifications (user_id, type, title, message, event_type, severity, redirect_url, created_at)
+                VALUES (?, 'info', 'PR Waiting for PO', ?, 'stock_request', 'high', 'admin_purchase_orders.php?tab=pending', NOW())
+            ");
+            $admins = $pdo->query("SELECT id FROM users WHERE role IN ('admin', 'superadmin')")->fetchAll(PDO::FETCH_COLUMN);
+            foreach ($admins as $admin_id) {
+                $notify_stmt->execute([$admin_id, "Purchase Request {$pr_number} has been approved by Manager and is waiting for PO generation."]);
+            }
+
+            log_activity($pdo, $me['id'], 'Forward Purchase Request', "Forwarded Merchandise PR to Admin: $pr_number");
             $pdo->commit();
-            $_SESSION['success'] = "Merchandise Purchase Request <strong>$pr_number</strong> generated successfully.";
+            $_SESSION['success'] = "Merchandise Purchase Request <strong>$pr_number</strong> forwarded to Admin successfully.";
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = "Error: " . $e->getMessage();
@@ -153,45 +141,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $fuel_req_ids    = $_POST['fuel_req_ids'] ?? [];     // fuel_type_id => fuel_stock_request_id
 
         if (empty($pr_number)) {
-            $pr_number = 'FPR-' . date('Ymd') . '-' . str_pad(rand(1,9999), 4, '0', STR_PAD_LEFT);
+            $pr_number = 'PR-' . date('Ymd') . '-' . str_pad(rand(1,9999), 4, '0', STR_PAD_LEFT);
         }
         try {
             $pdo->beginTransaction();
-            $supplier_id = (int)($pdo->query("SELECT id FROM suppliers LIMIT 1")->fetchColumn() ?: 1);
             $inserted = 0;
             
             foreach ($fuel_quantities as $fuel_type_id => $liters) {
                 $liters = (float)$liters;
                 if ($liters <= 0) continue;
                 
-                $fp = $pdo->prepare("SELECT price_per_liter FROM fuel_inventory WHERE fuel_type_id = ? AND station_id = ? LIMIT 1");
-                $fp->execute([$fuel_type_id, $station_id]);
-                $price = (float)($fp->fetchColumn() ?: 60.00);
-                
+                // Fetch fuel details
+                $ft_stmt = $pdo->prepare("SELECT fuel_type FROM fuel_inventory WHERE fuel_type_id = ? AND station_id = ? LIMIT 1");
+                $ft_stmt->execute([$fuel_type_id, $station_id]);
+                $fuel_type_name = $ft_stmt->fetchColumn() ?: 'Diesel';
+
                 $linked_req_id = isset($fuel_req_ids[$fuel_type_id]) ? (int)$fuel_req_ids[$fuel_type_id] : null;
-                $note_text = ($linked_req_id ? "[FSR:{$linked_req_id}] " : '') . $remarks;
                 
+                if ($linked_req_id) {
+                    $pdo->prepare("
+                        UPDATE fuel_stock_requests 
+                        SET status='Waiting for Purchase Order', approved_liters=?, manager_id=?, processed_at=NOW(), request_no=?, updated_at=NOW() 
+                        WHERE id=? AND station_id=?
+                    ")->execute([$liters, $me['id'], $pr_number, $linked_req_id, $station_id]);
+                    $req_id = $linked_req_id;
+                } else {
+                    // Manual addition
+                    $f_inv = $pdo->prepare("SELECT current_level, capacity, reorder_level FROM fuel_inventory WHERE fuel_type_id = ? AND station_id = ? LIMIT 1");
+                    $f_inv->execute([$fuel_type_id, $station_id]);
+                    $inv = $f_inv->fetch(PDO::FETCH_ASSOC);
+                    $curr = $inv ? $inv['current_level'] : 0;
+                    $cap = $inv ? $inv['capacity'] : 10000;
+
+                    $ins_f = $pdo->prepare("
+                        INSERT INTO fuel_stock_requests
+                            (request_no, staff_id, station_id, fuel_type, current_level, capacity, stock_status, requested_liters, approved_liters, remarks, status, manager_id, processed_at, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, 'LOW', 0, ?, 'Manual addition by Manager', 'Waiting for Purchase Order', ?, NOW(), NOW(), NOW())
+                    ");
+                    $ins_f->execute([
+                        $pr_number, $me['id'], $station_id, $fuel_type_name, $curr, $cap, $liters, $me['id']
+                    ]);
+                    $req_id = $pdo->lastInsertId();
+                }
+
+                // Audit log
                 $pdo->prepare("
-                    INSERT INTO fuel_purchase_orders
-                        (po_number, station_id, fuel_type_id, volume, unit_price, total_amount,
-                         supplier_id, expected_delivery_date, status, created_by, notes, batch_id, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Approved PO', ?, ?, ?, NOW(), NOW())
+                    INSERT INTO fuel_stock_request_audit
+                        (request_id, action_type, performed_by, performed_by_role, old_status, new_status, notes)
+                    VALUES (?, 'Forwarded to Admin', ?, ?, 'Pending', 'Waiting for Purchase Order', ?)
                 ")->execute([
-                    $pr_number, $station_id, $fuel_type_id, $liters, $price, $liters * $price,
-                    $supplier_id, $expected_delivery ?: null, $me['id'], $note_text, $pr_number
+                    $req_id, $me['id'], $role, "Forwarded to Admin. PR: $pr_number"
                 ]);
 
-                if ($linked_req_id) {
-                    $pdo->prepare("UPDATE fuel_stock_requests SET status='Approved', manager_id=?, processed_at=NOW() WHERE id=? AND station_id=?")
-                        ->execute([$me['id'], $linked_req_id, $station_id]);
-                }
                 $inserted++;
             }
             
             if ($inserted === 0) throw new Exception('Enter liters for at least one fuel type.');
-            log_activity($pdo, $me['id'], 'Generate Fuel PR', "Generated Fuel PR: $pr_number");
+            
+            // Send notification to Admin
+            $notify_stmt = $pdo->prepare("
+                INSERT INTO notifications (user_id, type, title, message, event_type, severity, redirect_url, created_at)
+                VALUES (?, 'info', 'PR Waiting for PO', ?, 'stock_request', 'high', 'admin_purchase_orders.php?tab=pending', NOW())
+            ");
+            $admins = $pdo->query("SELECT id FROM users WHERE role IN ('admin', 'superadmin')")->fetchAll(PDO::FETCH_COLUMN);
+            foreach ($admins as $admin_id) {
+                $notify_stmt->execute([$admin_id, "Purchase Request {$pr_number} has been approved by Manager and is waiting for PO generation."]);
+            }
+
+            log_activity($pdo, $me['id'], 'Forward Fuel Purchase Request', "Forwarded Fuel PR to Admin: $pr_number");
             $pdo->commit();
-            $_SESSION['success'] = "Fuel Purchase Request <strong>$pr_number</strong> generated successfully.";
+            $_SESSION['success'] = "Fuel Purchase Request <strong>$pr_number</strong> forwarded to Admin successfully.";
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $_SESSION['error'] = 'Error: ' . $e->getMessage();
@@ -611,7 +630,7 @@ if ($active_tab === 'pending_requests') {
                u.name AS staff_name, COALESCE(si.unit, ip.size, 'pcs') AS unit,
                COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
                COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
-               sr.item_id AS product_id
+               sr.item_id AS product_id, sr.request_no, ip.sku AS item_sku
         FROM stock_requests sr
         LEFT JOIN users u ON sr.staff_id = u.id
         LEFT JOIN inventory_products ip ON sr.item_id = ip.id
@@ -627,7 +646,7 @@ if ($active_tab === 'pending_requests') {
                u.name AS staff_name, 'L' AS unit,
                COALESCE(fi.current_level, 0) AS current_stock,
                COALESCE(fi.reorder_level, 5000) AS reorder_level,
-               fi.fuel_type_id AS product_id
+               fi.fuel_type_id AS product_id, fsr.request_no
         FROM fuel_stock_requests fsr
         LEFT JOIN users u ON fsr.staff_id = u.id
         LEFT JOIN fuel_inventory fi ON LOWER(fsr.fuel_type) = LOWER(fi.fuel_type) AND fi.station_id = fsr.station_id
@@ -1297,46 +1316,43 @@ body .main {
 
         <!-- Merchandise Section -->
         <div id="pendingMerchSection" class="procurement-section" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <h4 style="margin: 0; color: #002F6C; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px;"><i class="fas fa-boxes"></i> Merchandise Pending Requests</h4>
-                <button type="button" class="btn-pr btn-primary-pr" onclick="loadPendingMerchRequests()" style="padding: 8px 16px; font-size: 13px; display: flex; align-items: center; gap: 6px;"><i class="fas fa-boxes"></i> Generate Merchandise PO</button>
-            </div>
+            <h4 style="margin: 0 0 16px 0; color: #002F6C; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px;"><i class="fas fa-boxes"></i> Merchandise Pending Requests</h4>
+            <?php
+            // Group merch_reqs by request_no
+            $merch_grouped_pr = [];
+            foreach ($merch_reqs as $r) {
+                $prKey = !empty($r['request_no']) ? $r['request_no'] : ('REQ-' . str_pad($r['id'], 5, '0', STR_PAD_LEFT));
+                if (!isset($merch_grouped_pr[$prKey])) {
+                    $merch_grouped_pr[$prKey] = ['items' => [], 'staff' => $r['staff_name'], 'date' => $r['created_at'], 'status' => 'Pending Manager Review'];
+                }
+                $merch_grouped_pr[$prKey]['items'][] = $r;
+            }
+            ?>
             <div class="table-wrap-pr">
                 <table class="table-pr">
                     <thead>
                         <tr>
-                            <th>Request Ref</th>
-                            <th>Product Name</th>
-                            <th>Current Stock</th>
-                            <th>Reorder Level</th>
-                            <th>Requested Qty</th>
-                            <th>Requested By</th>
-                            <th>Date</th>
+                            <th style="width:22%;">PR Number</th>
+                            <th style="width:25%;">Requested By</th>
+                            <th style="width:23%;">Date</th>
+                            <th style="width:15%; text-align:center;">Items</th>
+                            <th style="width:15%; text-align:center;">Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php if (empty($merch_reqs)): ?>
+                        <?php if (empty($merch_grouped_pr)): ?>
+                            <tr><td colspan="5" style="text-align:center; padding:36px; color:#64748b;"><i class="fas fa-inbox" style="font-size:30px; color:#cbd5e1; display:block; margin-bottom:8px;"></i>No pending merchandise stock requests found.</td></tr>
+                        <?php else: foreach ($merch_grouped_pr as $prNo => $grp): ?>
                             <tr>
-                                <td colspan="7" style="text-align: center; padding: 36px; color: #64748b;">
-                                    <i class="fas fa-inbox" style="font-size: 30px; color: #cbd5e1; display: block; margin-bottom: 8px;"></i>
-                                    No pending merchandise stock requests found.
+                                <td><strong style="color:#002F6C; font-family:monospace;"><?= htmlspecialchars($prNo) ?></strong></td>
+                                <td><?= htmlspecialchars($grp['staff'] ?: 'Staff') ?></td>
+                                <td><?= date('M d, Y h:i A', strtotime($grp['date'])) ?></td>
+                                <td style="text-align:center;"><span class="status-badge" style="background:#eff6ff; color:#1d4ed8;"><?= count($grp['items']) ?> item(s)</span></td>
+                                <td style="text-align:center;">
+                                    <button type="button" class="btn-pr btn-primary-pr" style="padding:6px 14px; font-size:12px;" onclick="openApprovePrModal('merch', <?= htmlspecialchars(json_encode($grp['items'])) ?>, '<?= htmlspecialchars($prNo) ?>')"><i class="fas fa-file-signature"></i> Review & Forward</button>
                                 </td>
                             </tr>
-                        <?php else: ?>
-                            <?php foreach ($merch_reqs as $sr): 
-                                $ref = 'REQ-' . str_pad($sr['id'], 5, '0', STR_PAD_LEFT);
-                            ?>
-                                <tr>
-                                    <td><strong><?= htmlspecialchars($ref) ?></strong></td>
-                                    <td><strong><?= htmlspecialchars($sr['item_title']) ?></strong></td>
-                                    <td><?= number_format($sr['current_stock']) ?> <?= htmlspecialchars($sr['unit']) ?></td>
-                                    <td><?= number_format($sr['reorder_level']) ?> <?= htmlspecialchars($sr['unit']) ?></td>
-                                    <td><strong style="color: #002F6C;"><?= number_format($sr['requested_qty']) ?> <?= htmlspecialchars($sr['unit']) ?></strong></td>
-                                    <td><?= htmlspecialchars($sr['staff_name'] ?: 'Staff') ?></td>
-                                    <td><?= date('M d, Y h:i A', strtotime($sr['created_at'])) ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
+                        <?php endforeach; endif; ?>
                     </tbody>
                 </table>
             </div>
@@ -1344,135 +1360,90 @@ body .main {
 
         <!-- Fuel Section -->
         <div id="pendingFuelSection" class="procurement-section" style="display: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <h4 style="margin: 0; color: #0284c7; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px;"><i class="fas fa-gas-pump"></i> Fuel Pending Requests</h4>
-                <button type="button" class="btn-pr btn-primary-pr" onclick="loadPendingFuelRequests()" style="padding: 8px 16px; font-size: 13px; background: #0284c7; display: flex; align-items: center; gap: 6px;"><i class="fas fa-gas-pump"></i> Generate Fuel PO</button>
-            </div>
+            <h4 style="margin: 0 0 16px 0; color: #0284c7; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px;"><i class="fas fa-gas-pump"></i> Fuel Pending Requests</h4>
+            <?php
+            $fuel_grouped_pr = [];
+            foreach ($fuel_reqs as $r) {
+                $prKey = !empty($r['request_no']) ? $r['request_no'] : ('FSR-' . str_pad($r['id'], 5, '0', STR_PAD_LEFT));
+                if (!isset($fuel_grouped_pr[$prKey])) {
+                    $fuel_grouped_pr[$prKey] = ['items' => [], 'staff' => $r['staff_name'], 'date' => $r['created_at']];
+                }
+                $fuel_grouped_pr[$prKey]['items'][] = $r;
+            }
+            ?>
             <div class="table-wrap-pr">
                 <table class="table-pr">
                     <thead>
                         <tr>
-                            <th>Request Ref</th>
-                            <th>Fuel Type</th>
-                            <th>Current Liters</th>
-                            <th>Reorder Level</th>
-                            <th>Requested Liters</th>
-                            <th>Requested By</th>
-                            <th>Date</th>
+                            <th style="width:22%;">PR Number</th>
+                            <th style="width:25%;">Requested By</th>
+                            <th style="width:23%;">Date</th>
+                            <th style="width:15%; text-align:center;">Fuel Types</th>
+                            <th style="width:15%; text-align:center;">Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php if (empty($fuel_reqs)): ?>
+                        <?php if (empty($fuel_grouped_pr)): ?>
+                            <tr><td colspan="5" style="text-align:center; padding:36px; color:#64748b;"><i class="fas fa-gas-pump" style="font-size:30px; color:#cbd5e1; display:block; margin-bottom:8px;"></i>No pending fuel stock requests found.</td></tr>
+                        <?php else: foreach ($fuel_grouped_pr as $prNo => $grp): ?>
                             <tr>
-                                <td colspan="7" style="text-align: center; padding: 36px; color: #64748b;">
-                                    <i class="fas fa-gas-pump" style="font-size: 30px; color: #cbd5e1; display: block; margin-bottom: 8px;"></i>
-                                    No pending fuel stock requests found.
+                                <td><strong style="color:#0284c7; font-family:monospace;"><?= htmlspecialchars($prNo) ?></strong></td>
+                                <td><?= htmlspecialchars($grp['staff'] ?: 'Staff') ?></td>
+                                <td><?= date('M d, Y h:i A', strtotime($grp['date'])) ?></td>
+                                <td style="text-align:center;"><span class="status-badge" style="background:#e0f2fe; color:#0369a1;"><?= count($grp['items']) ?> type(s)</span></td>
+                                <td style="text-align:center;">
+                                    <button type="button" class="btn-pr" style="padding:6px 14px; font-size:12px; background:#0284c7; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="openApprovePrModal('fuel', <?= htmlspecialchars(json_encode($grp['items'])) ?>, '<?= htmlspecialchars($prNo) ?>')"><i class="fas fa-file-signature"></i> Review & Forward</button>
                                 </td>
                             </tr>
-                        <?php else: ?>
-                            <?php foreach ($fuel_reqs as $sr): 
-                                $ref = 'FSR-' . str_pad($sr['id'], 5, '0', STR_PAD_LEFT);
-                            ?>
-                                <tr>
-                                    <td><strong><?= htmlspecialchars($ref) ?></strong></td>
-                                    <td><strong><?= htmlspecialchars($sr['item_title']) ?></strong></td>
-                                    <td><?= number_format($sr['current_stock']) ?> L</td>
-                                    <td><?= number_format($sr['reorder_level']) ?> L</td>
-                                    <td><strong style="color: #0284c7;"><?= number_format($sr['requested_qty']) ?> L</strong></td>
-                                    <td><?= htmlspecialchars($sr['staff_name'] ?: 'Staff') ?></td>
-                                    <td><?= date('M d, Y h:i A', strtotime($sr['created_at'])) ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
+                        <?php endforeach; endif; ?>
                     </tbody>
                 </table>
             </div>
         </div>
-        <!-- Merchandise PR Generation Section (Hidden by Default) -->
-        <div id="merchPrFormContainer" style="display: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); margin-bottom: 60px;">
-            <h3 style="color: #002F6C; margin-top: 0; margin-bottom: 20px; display: flex; align-items: center; gap: 8px;"><i class="fas fa-boxes"></i> Generate Merchandise Purchase Request</h3>
-            <form action="" method="POST">
-                <input type="hidden" name="action" value="generate_merch_pr">
-                <div class="field-grid">
-                    <div class="field-group">
-                        <label>PR Number (Auto-Gen)</label>
-                        <input type="text" name="pr_number" placeholder="PR-YYYYMMDD-XXXX" readonly value="PR-<?= date('Ymd') ?>-<?= str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT) ?>">
+        <!-- ══ Approve PR Modal ══ -->
+        <div class="modal-overlay" id="approvePrModal" style="z-index: 10020;">
+            <div class="modal-box" style="max-width: 900px; width: 95%;">
+                <div class="modal-header" id="approvePrModalHeader" style="background: #002F6C;">
+                    <h3 class="modal-title" style="color:#fff !important;"><i class="fas fa-file-signature"></i> <span id="approvePrModalTitle">Review Purchase Request</span></h3>
+                </div>
+                <form id="approvePrForm" method="POST" action="">
+                    <input type="hidden" name="action" id="approvePrAction" value="generate_merch_pr">
+                    <input type="hidden" name="pr_number" id="approvePrNumber" value="">
+                    <div class="modal-body" style="padding: 24px; max-height: calc(100vh - 220px); overflow-y: auto;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 16px; font-size: 13.5px;">
+                            <div>
+                                <p style="margin: 4px 0;"><strong>PR Number:</strong> <span id="lblApprovePrNo" style="font-weight:700; color:#002F6C; font-family:monospace;"></span></p>
+                                <p style="margin: 4px 0;"><strong>Requested By:</strong> <span id="lblApprovePrStaff"></span></p>
+                            </div>
+                            <div>
+                                <label style="font-size:12px; font-weight:700; color:#475569; display:block; margin-bottom:4px;">Expected Delivery Date <span style="color:#dc2626;">*</span></label>
+                                <input type="date" name="expected_delivery" id="approvePrDelivery" min="<?= date('Y-m-d') ?>" required style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+                            </div>
+                        </div>
+
+                        <div style="overflow-x: auto; margin-bottom: 20px;">
+                            <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:13px;">
+                                <thead id="approvePrTableHead" style="background:#f1f5f9;"></thead>
+                                <tbody id="approvePrTableBody"></tbody>
+                            </table>
+                        </div>
+
+                        <div class="field-group" style="margin-bottom: 0;">
+                            <label style="font-weight:700; font-size:12px; color:#475569; display:block; margin-bottom:6px;">Remarks / Notes</label>
+                            <textarea name="remarks" rows="2" placeholder="Optional notes for Admin or Supplier..." style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px; resize:none;"></textarea>
+                        </div>
                     </div>
-                    <div class="field-group">
-                        <label>Expected Delivery Date</label>
-                        <input type="date" name="expected_delivery" min="<?= date('Y-m-d') ?>" required>
+                    <div class="modal-footer" style="background:#f8fafc; border-top:1px solid #e2e8f0; padding:12px 24px; text-align:right;">
+                        <button type="button" class="btn-pr btn-outline-pr" onclick="closeModal('approvePrModal')">Cancel</button>
+                        <button type="submit" class="btn-pr btn-primary-pr" id="btnApprovePrSubmit"><i class="fas fa-check-circle"></i> Forward to Admin</button>
                     </div>
-                </div>
-
-                <table class="table-inner" style="margin-bottom: 20px;">
-                    <thead>
-                        <tr>
-                            <th>Product</th>
-                            <th>Current Stock</th>
-                            <th>Reorder Level</th>
-                            <th>Requested Qty</th>
-                            <th style="width: 150px;">Unit of Measure (UOM)</th>
-                            <th style="width: 150px;">Quantity to Order</th>
-                            <th style="text-align: center; width: 60px;">Remove</th>
-                        </tr>
-                    </thead>
-                    <tbody id="merchPrItemsBody">
-                        <!-- Populated by JS -->
-                    </tbody>
-                </table>
-
-                <div class="field-group" style="margin-bottom: 20px;">
-                    <label>Remarks / Notes</label>
-                    <textarea name="remarks" rows="2" placeholder="Optional notes for Supplier or Admin..."></textarea>
-                </div>
-
-                <div style="text-align: right;">
-                    <button type="submit" class="btn-pr btn-primary-pr"><i class="fas fa-file-invoice"></i> Generate Purchase Request</button>
-                </div>
-            </form>
+                </form>
+            </div>
         </div>
 
-        <!-- Fuel PR Generation Section (Hidden by Default) -->
-        <div id="fuelPrFormContainer" style="display: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); margin-bottom: 60px;">
-            <h3 style="color: #002F6C; margin-top: 0; margin-bottom: 20px; display: flex; align-items: center; gap: 8px;"><i class="fas fa-gas-pump"></i> Generate Fuel Purchase Request</h3>
-            <form action="" method="POST">
-                <input type="hidden" name="action" value="generate_fuel_pr">
-                <div class="field-grid">
-                    <div class="field-group">
-                        <label>PR Number (Auto-Gen)</label>
-                        <input type="text" name="pr_number" placeholder="FPR-YYYYMMDD-XXXX" readonly value="FPR-<?= date('Ymd') ?>-<?= str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT) ?>">
-                    </div>
-                    <div class="field-group">
-                        <label>Expected Delivery Date</label>
-                        <input type="date" name="expected_delivery" min="<?= date('Y-m-d') ?>" required>
-                    </div>
-                </div>
-
-                <table class="table-inner" style="margin-bottom: 20px;">
-                    <thead>
-                        <tr>
-                            <th>Fuel Type</th>
-                            <th>Current Liters</th>
-                            <th>Reorder Level</th>
-                            <th>Requested Liters</th>
-                            <th style="width: 200px;">Liters to Order</th>
-                        </tr>
-                    </thead>
-                    <tbody id="fuelPrItemsBody">
-                        <!-- Populated by JS or pre-rendered list -->
-                    </tbody>
-                </table>
-
-                <div class="field-group" style="margin-bottom: 20px;">
-                    <label>Remarks / Notes</label>
-                    <textarea name="remarks" rows="2" placeholder="Optional tanker instructions..."></textarea>
-                </div>
-
-                <div style="text-align: right;">
-                    <button type="submit" class="btn-pr btn-primary-pr"><i class="fas fa-file-invoice"></i> Generate Purchase Request</button>
-                </div>
-            </form>
-        </div>
+        <!-- Legacy hidden form containers (kept for JS compatibility) -->
+        <div id="merchPrFormContainer" style="display:none;"><form><input type="hidden"><tbody id="merchPrItemsBody"></tbody></form></div>
+        <div id="fuelPrFormContainer" style="display:none;"><form><input type="hidden"><tbody id="fuelPrItemsBody"></tbody></form></div>
 
     <!-- ==================== TAB 2: WAITING DELIVERY ==================== -->
     <?php elseif ($active_tab === 'waiting_delivery'): ?>
@@ -2101,75 +2072,87 @@ function switchCompletedSubTab(type) {
     }
 }
 
-// Load all pending Merchandise Stock Requests into form
-function loadPendingMerchRequests() {
-    var tbody = document.getElementById('merchPrItemsBody');
-    tbody.innerHTML = '';
-    
-    if (pendingMerchRequests.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #64748b;">No pending merchandise stock requests found. You can add items manually below.</td></tr>';
-    } else {
-        pendingMerchRequests.forEach(function(req) {
-            var tr = document.createElement('tr');
-            tr.id = 'merch_row_' + req.product_id;
-            tr.innerHTML = 
-                '<td>' +
-                    '<strong>' + escHtml(req.item_title) + '</strong>' +
-                    '<input type="hidden" name="stock_req_ids[' + req.product_id + ']" value="' + req.id + '">' +
+// ── New: Open Approve PR Modal ──────────────────────────────────────────────
+function openApprovePrModal(type, items, prNo) {
+    var isMerch = (type === 'merch');
+
+    // Set header colour
+    document.getElementById('approvePrModalHeader').style.background = isMerch ? '#002F6C' : '#0284c7';
+
+    // Set metadata
+    document.getElementById('approvePrModalTitle').textContent = (isMerch ? 'Merchandise' : 'Fuel') + ' Purchase Request — ' + prNo;
+    document.getElementById('lblApprovePrNo').textContent = prNo;
+    document.getElementById('lblApprovePrStaff').textContent = (items[0] && items[0].staff_name) ? items[0].staff_name : 'Staff';
+    document.getElementById('approvePrAction').value = isMerch ? 'generate_merch_pr' : 'generate_fuel_pr';
+    document.getElementById('approvePrNumber').value = prNo;
+
+    // Build table
+    var thead = document.getElementById('approvePrTableHead');
+    var tbody = document.getElementById('approvePrTableBody');
+
+    if (isMerch) {
+        thead.innerHTML =
+            '<tr style="background:#002F6C; color:#fff;">' +
+            '<th style="padding:10px 12px; text-align:left; width:28%;">Product</th>' +
+            '<th style="padding:10px 12px; text-align:center; width:13%;">Current Stock</th>' +
+            '<th style="padding:10px 12px; text-align:center; width:13%;">Reorder Level</th>' +
+            '<th style="padding:10px 12px; text-align:center; width:13%;">Requested Qty</th>' +
+            '<th style="padding:10px 12px; text-align:center; width:14%;">UOM</th>' +
+            '<th style="padding:10px 12px; text-align:center; width:19%;">Qty to Order <span style="color:#fca5a5;">*</span></th>' +
+            '</tr>';
+        var html = '';
+        items.forEach(function(item) {
+            html += '<tr style="border-bottom:1px solid #f1f5f9;">' +
+                '<td style="padding:10px 12px;">' +
+                    '<strong>' + escHtml(item.item_title || item.item_name || '') + '</strong>' +
+                    '<input type="hidden" name="stock_req_ids[' + item.product_id + ']" value="' + item.id + '">' +
                 '</td>' +
-                '<td>' + numberFormat(req.current_stock) + '</td>' +
-                '<td>' + numberFormat(req.reorder_level) + '</td>' +
-                '<td style="color: #64748b; font-size: 12px;">' + numberFormat(req.requested_qty) + ' ' + escHtml(req.unit) + '</td>' +
-                '<td>' +
-                    '<input type="text" name="units[' + req.product_id + ']" value="' + escHtml(req.unit) + '" placeholder="e.g. bottles" style="width: 100px; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px;" required>' +
+                '<td style="padding:10px 12px; text-align:center;">' + numberFormat(item.current_stock) + ' ' + escHtml(item.unit || '') + '</td>' +
+                '<td style="padding:10px 12px; text-align:center;">' + numberFormat(item.reorder_level) + ' ' + escHtml(item.unit || '') + '</td>' +
+                '<td style="padding:10px 12px; text-align:center; color:#002F6C; font-weight:700;">' + numberFormat(item.requested_qty) + ' ' + escHtml(item.unit || '') + '</td>' +
+                '<td style="padding:10px 12px; text-align:center;">' +
+                    '<input type="text" name="units[' + item.product_id + ']" value="' + escHtml(item.unit || 'pcs') + '" required style="width:80px; padding:6px; border:1px solid #cbd5e1; border-radius:4px; text-align:center;">' +
                 '</td>' +
-                '<td>' +
-                    '<input type="number" name="quantities[' + req.product_id + ']" min="1" value="" placeholder="Qty to order" style="width: 110px; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px;" required>' +
+                '<td style="padding:10px 12px; text-align:center;">' +
+                    '<input type="number" name="quantities[' + item.product_id + ']" min="1" required placeholder="Enter qty" style="width:100px; padding:6px; border:1px solid #cbd5e1; border-radius:4px; text-align:center;">' +
                 '</td>' +
-                '<td style="text-align: center;">' +
-                    '<button type="button" onclick="removePrRow(' + req.product_id + ', \'merch\')" style="background:none; border:none; color:#b91c1c; cursor:pointer;"><i class="fas fa-trash"></i></button>' +
-                '</td>';
-            tbody.appendChild(tr);
+                '</tr>';
         });
+        tbody.innerHTML = html;
+    } else {
+        thead.innerHTML =
+            '<tr style="background:#0284c7; color:#fff;">' +
+            '<th style="padding:10px 12px; text-align:left; width:30%;">Fuel Type</th>' +
+            '<th style="padding:10px 12px; text-align:center; width:18%;">Current Level</th>' +
+            '<th style="padding:10px 12px; text-align:center; width:18%;">Reorder Level</th>' +
+            '<th style="padding:10px 12px; text-align:center; width:17%;">Requested (L)</th>' +
+            '<th style="padding:10px 12px; text-align:center; width:17%;">Liters to Order <span style="color:#fca5a5;">*</span></th>' +
+            '</tr>';
+        var html = '';
+        items.forEach(function(item) {
+            html += '<tr style="border-bottom:1px solid #f1f5f9;">' +
+                '<td style="padding:10px 12px;">' +
+                    '<strong>' + escHtml(item.item_title || '') + '</strong>' +
+                    '<input type="hidden" name="fuel_req_ids[' + item.product_id + ']" value="' + item.id + '">' +
+                '</td>' +
+                '<td style="padding:10px 12px; text-align:center;">' + numberFormat(item.current_stock) + ' L</td>' +
+                '<td style="padding:10px 12px; text-align:center;">' + numberFormat(item.reorder_level) + ' L</td>' +
+                '<td style="padding:10px 12px; text-align:center; color:#0284c7; font-weight:700;">' + numberFormat(item.requested_qty) + ' L</td>' +
+                '<td style="padding:10px 12px; text-align:center;">' +
+                    '<input type="number" name="fuel_quantities[' + item.product_id + ']" min="1" step="any" required placeholder="Enter liters" style="width:110px; padding:6px; border:1px solid #cbd5e1; border-radius:4px; text-align:center;">' +
+                '</td>' +
+                '</tr>';
+        });
+        tbody.innerHTML = html;
     }
-    
-    document.getElementById('merchPrFormContainer').style.display = 'block';
-    document.getElementById('fuelPrFormContainer').style.display = 'none';
-    document.getElementById('merchPrFormContainer').scrollIntoView({ behavior: 'smooth' });
+
+    openModal('approvePrModal');
 }
 
-// Load all pending Fuel Stock Requests into form
-function loadPendingFuelRequests() {
-    var tbody = document.getElementById('fuelPrItemsBody');
-    tbody.innerHTML = '';
-    
-    fuelInventoryList.forEach(function(f) {
-        var matchingReq = pendingFuelRequests.find(function(req) {
-            return req.product_id == f.fuel_type_id;
-        });
-        
-        var reqLabel = matchingReq ? (numberFormat(matchingReq.requested_qty) + ' L') : '—';
-        var reqHiddenInput = matchingReq ? '<input type="hidden" name="fuel_req_ids[' + f.fuel_type_id + ']" value="' + matchingReq.id + '">' : '';
-        
-        var tr = document.createElement('tr');
-        tr.innerHTML = 
-            '<td>' +
-                '<strong>' + escHtml(f.fuel_type) + '</strong>' +
-                reqHiddenInput +
-            '</td>' +
-            '<td>' + numberFormat(f.current_level) + ' L</td>' +
-            '<td>' + numberFormat(f.reorder_level) + ' L</td>' +
-            '<td style="color: #64748b; font-size: 12px;">' + reqLabel + '</td>' +
-            '<td>' +
-                '<input type="number" name="fuel_quantities[' + f.fuel_type_id + ']" min="0" value="" placeholder="Liters to order" style="width: 100%; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px;">' +
-            '</td>';
-        tbody.appendChild(tr);
-    });
-    
-    document.getElementById('fuelPrFormContainer').style.display = 'block';
-    document.getElementById('merchPrFormContainer').style.display = 'none';
-    document.getElementById('fuelPrFormContainer').scrollIntoView({ behavior: 'smooth' });
-}
+// Legacy stubs (kept for compatibility — no longer used directly)
+function loadPendingMerchRequests() {}
+function loadPendingFuelRequests() {}
+
 
 function addManualProductRow() {
     var sel = document.getElementById('manualMerchDropdown');

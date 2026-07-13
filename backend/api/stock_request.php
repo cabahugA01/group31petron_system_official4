@@ -140,7 +140,7 @@ function handle_create($pdo, $me, $role, $station_id) {
         echo json_encode(['success' => false, 'message' => 'No items specified']); return;
     }
 
-    $request_no = get_next_request_no($pdo, 'stock_requests', 'SR');
+    $request_no = get_next_request_no($pdo, 'stock_requests', 'PR');
 
     $pdo->beginTransaction();
     try {
