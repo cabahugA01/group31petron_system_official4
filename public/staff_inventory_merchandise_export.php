@@ -48,7 +48,7 @@ try {
                ip.unit_price   AS price,
                ip.sku,
                ip.status,
-               COALESCE(si.unit, ip.size, 'pcs')     AS unit,
+               COALESCE(si.unit, 'pcs')     AS unit,
                COALESCE(si.stock_level, ip.stock, 0) AS stock_level,
                COALESCE(si.capacity, 0)              AS capacity,
                COALESCE(si.reorder_level, 10)        AS reorder_level,
@@ -80,6 +80,7 @@ $low_stock_items = [];
 $critical_items = [];
 
 foreach ($merch_inventory as &$item) {
+    $item['unit'] = format_merch_unit($item['unit'] ?? 'pcs');
     $stock = (float)($item['stock_level'] ?? 0);
     $reorder = (float)($item['reorder_level'] ?? 10);
     
@@ -423,7 +424,7 @@ header('Content-Type: text/html; charset=utf-8');
                 <th>SKU</th>
                 <th>Product</th>
                 <th>Category</th>
-                <th>Unit</th>
+                <th>UOM</th>
                 <th class="center">Current Stock</th>
                 <th class="center">Reorder Level</th>
                 <th class="center">Status</th>

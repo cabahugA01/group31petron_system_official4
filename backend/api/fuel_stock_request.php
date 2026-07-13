@@ -115,6 +115,7 @@ function ensure_fuel_stock_requests_table($pdo) {
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS fuel_stock_requests (
             id               INT AUTO_INCREMENT PRIMARY KEY,
+            request_no       VARCHAR(50) NULL DEFAULT NULL,
             staff_id         INT NOT NULL,
             station_id       INT NOT NULL,
             fuel_type        VARCHAR(100) NOT NULL,
@@ -123,7 +124,7 @@ function ensure_fuel_stock_requests_table($pdo) {
             stock_status     VARCHAR(30)  NOT NULL DEFAULT 'LOW',
             requested_liters DECIMAL(12,2) NOT NULL,
             remarks          TEXT,
-            status           ENUM('Pending','Approved','Rejected') DEFAULT 'Pending',
+            status           VARCHAR(50) DEFAULT 'Pending Manager Review',
             approved_liters  DECIMAL(12,2) NULL,
             manager_id       INT NULL,
             manager_notes    TEXT NULL,
@@ -132,6 +133,7 @@ function ensure_fuel_stock_requests_table($pdo) {
             updated_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             INDEX idx_staff_id   (staff_id),
             INDEX idx_station_id (station_id),
+            INDEX idx_manager_id (manager_id),
             INDEX idx_status     (status),
             INDEX idx_created_at (created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
@@ -159,7 +161,6 @@ function ensure_fuel_stock_requests_table($pdo) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function handle_get_low_stock($pdo, $station_id) {
-    // Return all fuel types with their current status for this station
     $stmt = $pdo->prepare("
         SELECT
             ip.product_name                                          AS fuel_type,
@@ -202,78 +203,144 @@ function handle_get_low_stock($pdo, $station_id) {
     echo json_encode(['success' => true, 'fuels' => $result]);
 }
 
+function get_next_request_no($pdo, $table, $prefix = 'SR') {
+    $year = date('Y');
+    $stmt = $pdo->prepare("SELECT request_no FROM {$table} WHERE request_no LIKE ? ORDER BY request_no DESC LIMIT 1");
+    $stmt->execute(["{$prefix}-{$year}-%"]);
+    $last = $stmt->fetchColumn();
+    if ($last) {
+        $parts = explode('-', $last);
+        $seq = (int)end($parts) + 1;
+    } else {
+        $seq = 1;
+    }
+    return sprintf("%s-%s-%04d", $prefix, $year, $seq);
+}
+
 function handle_create($pdo, $me, $role, $station_id) {
     $input = json_decode(file_get_contents('php://input'), true);
     if (!$input) {
         echo json_encode(['success' => false, 'message' => 'Invalid JSON input']); return;
     }
 
-    $fuel_type        = trim($input['fuel_type']        ?? '');
-    $current_level    = (float)($input['current_level']    ?? 0);
-    $capacity         = (float)($input['capacity']         ?? 0);
-    $stock_status     = trim($input['stock_status']     ?? 'LOW');
-    $requested_liters = (float)($input['requested_liters'] ?? 0);
-    $remarks          = trim($input['remarks']          ?? '');
-
-    // Staff cannot specify liters, force to 0
-    if (in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
-        $requested_liters = 0.0;
+    $remarks = trim($input['remarks'] ?? '');
+    $items = [];
+    if (isset($input['items']) && is_array($input['items'])) {
+        $items = $input['items'];
+    } else {
+        $items[] = [
+            'fuel_type'        => trim($input['fuel_type']        ?? ''),
+            'current_level'    => (float)($input['current_level']    ?? 0),
+            'capacity'         => (float)($input['capacity']         ?? 0),
+            'stock_status'     => trim($input['stock_status']     ?? 'LOW'),
+            'requested_liters' => (float)($input['requested_liters'] ?? 0),
+        ];
     }
 
-    if (empty($fuel_type)) {
-        echo json_encode(['success' => false, 'message' => 'Fuel type is required']); return;
+    if (empty($items)) {
+        echo json_encode(['success' => false, 'message' => 'No items specified']); return;
     }
 
-    // Check for duplicate pending request for same fuel type
-    $dup = $pdo->prepare("
-        SELECT COUNT(*) FROM fuel_stock_requests
-        WHERE staff_id = ? AND station_id = ? AND fuel_type = ? AND status = 'Pending'
-    ");
-    $dup->execute([$me['id'], $station_id, $fuel_type]);
-    if ((int)$dup->fetchColumn() > 0) {
-        echo json_encode(['success' => false, 'message' => "You already have a pending request for {$fuel_type}"]); return;
-    }
+    $request_no = get_next_request_no($pdo, 'fuel_stock_requests', 'SR');
 
     $pdo->beginTransaction();
     try {
-        $stmt = $pdo->prepare("
-            INSERT INTO fuel_stock_requests
-                (staff_id, station_id, fuel_type, current_level, capacity,
-                 stock_status, requested_liters, remarks, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending', NOW())
+        $inserted_ids = [];
+        $skipped_items = [];
+
+        foreach ($items as $item) {
+            $fuel_type        = trim($item['fuel_type']        ?? '');
+            $current_level    = (float)($item['current_level']    ?? 0);
+            $capacity         = (float)($item['capacity']         ?? 0);
+            $stock_status     = trim($item['stock_status']     ?? 'LOW');
+            $requested_liters = (float)($item['requested_liters'] ?? 0);
+
+            if (in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+                $requested_liters = 0.0;
+            }
+
+            if (empty($fuel_type)) {
+                continue;
+            }
+
+            $dup = $pdo->prepare("
+                SELECT COUNT(*) FROM fuel_stock_requests
+                WHERE staff_id = ? AND station_id = ? AND fuel_type = ? AND status IN ('Pending', 'Pending Manager Review')
+            ");
+            $dup->execute([$me['id'], $station_id, $fuel_type]);
+            if ((int)$dup->fetchColumn() > 0) {
+                $skipped_items[] = $fuel_type;
+                continue;
+            }
+
+            $stmt = $pdo->prepare("
+                INSERT INTO fuel_stock_requests
+                    (request_no, staff_id, station_id, fuel_type, current_level, capacity,
+                     stock_status, requested_liters, remarks, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Manager Review', NOW())
+            ");
+            $stmt->execute([
+                $request_no, $me['id'], $station_id, $fuel_type,
+                $current_level, $capacity, $stock_status,
+                $requested_liters, $remarks
+            ]);
+            $request_id = $pdo->lastInsertId();
+            $inserted_ids[] = $request_id;
+
+            $pdo->prepare("
+                INSERT INTO fuel_stock_request_audit
+                    (request_id, action_type, performed_by, performed_by_role,
+                     old_status, new_status, notes)
+                VALUES (?, 'Created', ?, ?, NULL, 'Pending Manager Review', ?)
+            ")->execute([
+                $request_id, $me['id'], $role,
+                "Staff {$me['name']} requested {$fuel_type} (Status: {$stock_status}) under request no {$request_no} — qty to be set by manager"
+            ]);
+
+            if (function_exists('log_activity')) {
+                log_activity($pdo, $me['id'], 'Create Fuel Stock Request',
+                    "Request #{$request_id} | {$fuel_type} | By: {$me['name']} — qty to be set by manager");
+            }
+        }
+
+        if (empty($inserted_ids)) {
+            $pdo->rollBack();
+            $msg = 'No fuel types were requested.';
+            if (!empty($skipped_items)) {
+                $msg .= ' The following fuel types already have pending requests: ' . implode(', ', $skipped_items);
+            }
+            echo json_encode(['success' => false, 'message' => $msg]);
+            return;
+        }
+
+        $managers = [];
+        try {
+            $m_stmt = $pdo->prepare("SELECT id FROM users WHERE role = 'manager' AND station_id = ? AND status = 'Active'");
+            $m_stmt->execute([$station_id]);
+            $managers = $m_stmt->fetchAll(PDO::FETCH_COLUMN);
+        } catch (Exception $e) {}
+
+        $notif_stmt = $pdo->prepare("
+            INSERT INTO notifications (user_id, type, title, message, event_type, severity, redirect_url, created_at)
+            VALUES (?, 'info', 'New Bulk Fuel Stock Request', ?, 'stock_request', 'medium', 'manager_stock_request_review.php?tab=pending_requests', NOW())
         ");
-        $stmt->execute([
-            $me['id'], $station_id, $fuel_type,
-            $current_level, $capacity, $stock_status,
-            $requested_liters, $remarks
-        ]);
-        $request_id = $pdo->lastInsertId();
-
-        // Audit trail
-        $pdo->prepare("
-            INSERT INTO fuel_stock_request_audit
-                (request_id, action_type, performed_by, performed_by_role,
-                 old_status, new_status, notes)
-            VALUES (?, 'Created', ?, ?, NULL, 'Pending', ?)
-        ")->execute([
-            $request_id, $me['id'], $role,
-            "Staff {$me['name']} requested {$fuel_type} (Status: {$stock_status}) — qty to be set by manager"
-        ]);
-
-        // General activity log
-        if (function_exists('log_activity')) {
-            log_activity($pdo, $me['id'], 'Create Fuel Stock Request',
-                "Request #{$request_id} | {$fuel_type} | By: {$me['name']} — qty to be set by manager");
+        foreach ($managers as $mgr_id) {
+            $notif_stmt->execute([$mgr_id, "New fuel stock request {$request_no} submitted by {$me['name']}. Manager review required."]);
         }
 
         $pdo->commit();
+        
+        $msg = 'Fuel stock request submitted successfully.';
+        if (!empty($skipped_items)) {
+            $msg .= ' Note: Some fuel types (' . implode(', ', $skipped_items) . ') were skipped because they already have pending requests.';
+        }
+
         echo json_encode([
             'success'          => true,
-            'message'          => 'Fuel stock request submitted successfully',
-            'request_id'       => $request_id,
-            'fuel_type'        => $fuel_type,
-            'requested_liters' => $requested_liters,
-            'status'           => 'Pending'
+            'message'          => $msg,
+            'request_no'       => $request_no,
+            'inserted_count'   => count($inserted_ids),
+            'status'           => 'Pending Manager Review'
         ]);
     } catch (Exception $e) {
         $pdo->rollBack();
@@ -354,7 +421,7 @@ function handle_approve($pdo, $me, $role, $station_id) {
     if (!$req) {
         echo json_encode(['success' => false, 'message' => 'Request not found']); return;
     }
-    if (strtolower($req['status']) !== 'pending') {
+    if (!in_array(strtolower($req['status']), ['pending', 'pending manager review'])) {
         echo json_encode(['success' => false, 'message' => 'Request is not pending']); return;
     }
 
@@ -441,7 +508,7 @@ function handle_reject($pdo, $me, $role, $station_id) {
     if (!$req) {
         echo json_encode(['success' => false, 'message' => 'Request not found']); return;
     }
-    if (strtolower($req['status']) !== 'pending') {
+    if (!in_array(strtolower($req['status']), ['pending', 'pending manager review'])) {
         echo json_encode(['success' => false, 'message' => 'Request is not pending']); return;
     }
 

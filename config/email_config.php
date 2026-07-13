@@ -125,9 +125,6 @@ function sendPasswordResetOTP($to_email, $otp) {
         $mail->addReplyTo($email_config['from_email'], $email_config['from_name']);
         if (file_exists($logo_path)) $mail->AddEmbeddedImage($logo_path, 'petron_logo_otp', 'Petron Logo.png');
 
-        $mail->addCustomHeader('X-Mailer', 'Petron-System-Mailer/2.0');
-        $mail->addCustomHeader('X-Priority', '1');
-        $mail->MessageID = '<otp-' . time() . '-' . md5($to_email) . '@petron-system.local>';
 
         $mail->isHTML(true);
         $mail->Subject = 'Your Petron System OTP Code: ' . $otp;

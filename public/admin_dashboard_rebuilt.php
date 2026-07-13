@@ -104,13 +104,13 @@ $total_active_users = $active_admins + $active_managers + $active_staff;
 
 // 4. Pending Approvals
 try {
-    $stock_req = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE station_id = ? AND status = 'Pending'");
+    $stock_req = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE station_id = ? AND status IN ('Pending', 'Pending Manager Review')");
     $stock_req->execute([$station_id]);
     $pending_stock_requests = (int)$stock_req->fetchColumn();
 } catch (Exception $e) { $pending_stock_requests = 0; }
 
 try {
-    $fuel_req = $pdo->prepare("SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id = ? AND status = 'Pending'");
+    $fuel_req = $pdo->prepare("SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id = ? AND status IN ('Pending', 'Pending Manager Review')");
     $fuel_req->execute([$station_id]);
     $pending_fuel_requests = (int)$fuel_req->fetchColumn();
 } catch (Exception $e) { $pending_fuel_requests = 0; }

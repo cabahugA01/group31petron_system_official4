@@ -184,12 +184,12 @@ try {
                 } elseif ($role === 'manager') {
                     // Pending merch stock requests
                     $action_count += $safe_count(
-                        "SELECT COUNT(*) FROM stock_requests WHERE {$station_where}status='Pending'",
+                        "SELECT COUNT(*) FROM stock_requests WHERE {$station_where}status IN ('Pending', 'Pending Manager Review')",
                         $station_param
                     );
                     // Pending fuel stock requests
                     $action_count += $safe_count(
-                        "SELECT COUNT(*) FROM fuel_stock_requests WHERE {$station_where}status='Pending'",
+                        "SELECT COUNT(*) FROM fuel_stock_requests WHERE {$station_where}status IN ('Pending', 'Pending Manager Review')",
                         $station_param
                     );
                     // Pending deliveries
@@ -219,9 +219,13 @@ try {
                         "SELECT COUNT(*) FROM deliveries_oversight WHERE {$station_where}status='Ready for Stock-In'",
                         $station_param
                     );
-                    // Own pending stock requests
+                    // Own pending stock requests (merchandise + fuel)
                     $action_count += $safe_count(
-                        "SELECT COUNT(*) FROM stock_requests WHERE staff_id=? AND status='Pending'",
+                        "SELECT COUNT(*) FROM stock_requests WHERE staff_id=? AND status IN ('Pending', 'Pending Manager Review')",
+                        [$user_id]
+                    );
+                    $action_count += $safe_count(
+                        "SELECT COUNT(*) FROM fuel_stock_requests WHERE staff_id=? AND status IN ('Pending', 'Pending Manager Review')",
                         [$user_id]
                     );
                 }

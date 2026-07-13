@@ -101,97 +101,162 @@ try {
 // HANDLERS
 // ─────────────────────────────────────────────────────────────────────────────
 
+function get_next_request_no($pdo, $table, $prefix = 'SR') {
+    $year = date('Y');
+    $stmt = $pdo->prepare("SELECT request_no FROM {$table} WHERE request_no LIKE ? ORDER BY request_no DESC LIMIT 1");
+    $stmt->execute(["{$prefix}-{$year}-%"]);
+    $last = $stmt->fetchColumn();
+    if ($last) {
+        $parts = explode('-', $last);
+        $seq = (int)end($parts) + 1;
+    } else {
+        $seq = 1;
+    }
+    return sprintf("%s-%s-%04d", $prefix, $year, $seq);
+}
+
 function handle_create($pdo, $me, $role, $station_id) {
     $input = json_decode(file_get_contents('php://input'), true);
     if (!$input) {
         echo json_encode(['success' => false, 'message' => 'Invalid JSON input']); return;
     }
 
-    $item_id            = (int)($input['item_id'] ?? 0);
-    $sku                = trim($input['sku'] ?? '');
-    $item_name          = trim($input['item_name'] ?? '');
-    $item_category      = trim($input['item_category'] ?? '');
-    $current_stock      = (int)($input['current_stock'] ?? 0);
-    $requested_quantity = (int)($input['requested_quantity'] ?? 0);
-    $remarks            = trim($input['remarks'] ?? '');
-
-    // Staff cannot specify quantity, force to 0
-    if (in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
-        $requested_quantity = 0;
+    $remarks = trim($input['remarks'] ?? '');
+    $items = [];
+    if (isset($input['items']) && is_array($input['items'])) {
+        $items = $input['items'];
+    } else {
+        $items[] = [
+            'item_id'            => (int)($input['item_id'] ?? 0),
+            'sku'                => trim($input['sku'] ?? ''),
+            'item_name'          => trim($input['item_name'] ?? ''),
+            'item_category'      => trim($input['item_category'] ?? ''),
+            'current_stock'      => (int)($input['current_stock'] ?? 0),
+            'requested_quantity' => (int)($input['requested_quantity'] ?? 0),
+        ];
     }
 
-    if ($item_id <= 0 || empty($item_name)) {
-        echo json_encode(['success' => false, 'message' => 'Item is required']); return;
+    if (empty($items)) {
+        echo json_encode(['success' => false, 'message' => 'No items specified']); return;
     }
 
-    // Verify item exists
-    $stmt = $pdo->prepare("SELECT id, product_name, category FROM inventory_products WHERE id = ? AND category != 'Fuel'");
-    $stmt->execute([$item_id]);
-    $item = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$item) {
-        echo json_encode(['success' => false, 'message' => 'Item not found in inventory']); return;
-    }
-    if (empty($item_category)) {
-        $item_category = $item['category'] ?? '';
-    }
-
-    // Check for duplicate pending request
-    $dup = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE staff_id = ? AND item_id = ? AND status = 'Pending'");
-    $dup->execute([$me['id'], $item_id]);
-    if ((int)$dup->fetchColumn() > 0) {
-        echo json_encode(['success' => false, 'message' => 'You already have a pending request for this item']); return;
-    }
+    $request_no = get_next_request_no($pdo, 'stock_requests', 'SR');
 
     $pdo->beginTransaction();
     try {
-        $stmt = $pdo->prepare("
-            INSERT INTO stock_requests
-                (staff_id, station_id, item_id, item_sku, item_name, item_category,
-                 current_stock, requested_quantity, remarks, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', NOW())
+        $inserted_ids = [];
+        $skipped_items = [];
+
+        foreach ($items as $item) {
+            $item_id            = (int)($item['item_id'] ?? 0);
+            $sku                = trim($item['sku'] ?? '');
+            $item_name          = trim($item['item_name'] ?? '');
+            $item_category      = trim($item['item_category'] ?? '');
+            $current_stock      = (int)($item['current_stock'] ?? 0);
+            $requested_quantity = (int)($item['requested_quantity'] ?? 0);
+
+            if (in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+                $requested_quantity = 0;
+            }
+
+            if ($item_id <= 0 || empty($item_name)) {
+                continue;
+            }
+
+            $stmt = $pdo->prepare("SELECT id, product_name, category FROM inventory_products WHERE id = ? AND category != 'Fuel'");
+            $stmt->execute([$item_id]);
+            $db_item = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$db_item) {
+                continue;
+            }
+            if (empty($item_category)) {
+                $item_category = $db_item['category'] ?? '';
+            }
+
+            $dup = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE staff_id = ? AND item_id = ? AND status IN ('Pending', 'Pending Manager Review')");
+            $dup->execute([$me['id'], $item_id]);
+            if ((int)$dup->fetchColumn() > 0) {
+                $skipped_items[] = $item_name;
+                continue;
+            }
+
+            $stmt = $pdo->prepare("
+                INSERT INTO stock_requests
+                    (request_no, staff_id, station_id, item_id, item_sku, item_name, item_category,
+                     current_stock, requested_quantity, remarks, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Manager Review', NOW())
+            ");
+            $stmt->execute([
+                $request_no, $me['id'], $station_id, $item_id, $sku,
+                $item_name, $item_category, $current_stock,
+                $requested_quantity, $remarks
+            ]);
+            $request_id = $pdo->lastInsertId();
+            $inserted_ids[] = $request_id;
+
+            $pdo->prepare("
+                INSERT INTO stock_request_audit
+                    (stock_request_id, action_type, performed_by, performed_by_role,
+                     old_status, new_status, notes)
+                VALUES (?, 'Created', ?, ?, NULL, 'Pending Manager Review', ?)
+            ")->execute([
+                $request_id, $me['id'], $role,
+                "Staff {$me['name']} requested {$item_name} (SKU: {$sku}) under request no {$request_no} — qty to be set by manager"
+            ]);
+
+            if (function_exists('log_activity')) {
+                log_activity($pdo, $me['id'], 'Create Stock Request',
+                    "Request #{$request_id} | {$item_name} | By: {$me['name']} — qty to be set by manager");
+            }
+
+            try {
+                $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                $detail = "Stock request created | Request No: {$request_no} | Item: {$item_name} (SKU: {$sku}) | Category: {$item_category} | Current stock: {$current_stock} | Requested qty: {$requested_quantity}" . ($remarks ? " | Remarks: {$remarks}" : '');
+                $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'inventory', 'Create', ?, 'stock_requests', ?, 'Success', ?, ?, NOW())")
+                    ->execute([$me['id'], $detail, $request_id, $ip, $ua]);
+            } catch (Exception $e) {}
+        }
+
+        if (empty($inserted_ids)) {
+            $pdo->rollBack();
+            $msg = 'No items were requested.';
+            if (!empty($skipped_items)) {
+                $msg .= ' The following items already have pending requests: ' . implode(', ', $skipped_items);
+            }
+            echo json_encode(['success' => false, 'message' => $msg]);
+            return;
+        }
+
+        $managers = [];
+        try {
+            $m_stmt = $pdo->prepare("SELECT id FROM users WHERE role = 'manager' AND station_id = ? AND status = 'Active'");
+            $m_stmt->execute([$station_id]);
+            $managers = $m_stmt->fetchAll(PDO::FETCH_COLUMN);
+        } catch (Exception $e) {}
+
+        $notif_stmt = $pdo->prepare("
+            INSERT INTO notifications (user_id, type, title, message, event_type, severity, redirect_url, created_at)
+            VALUES (?, 'info', 'New Bulk Stock Request', ?, 'stock_request', 'medium', 'manager_stock_request_review.php?tab=pending_requests', NOW())
         ");
-        $stmt->execute([
-            $me['id'], $station_id, $item_id, $sku,
-            $item_name, $item_category, $current_stock,
-            $requested_quantity, $remarks
-        ]);
-        $request_id = $pdo->lastInsertId();
-
-        // Audit trail
-        $pdo->prepare("
-            INSERT INTO stock_request_audit
-                (stock_request_id, action_type, performed_by, performed_by_role,
-                 old_status, new_status, notes)
-            VALUES (?, 'Created', ?, ?, NULL, 'Pending', ?)
-        ")->execute([
-            $request_id, $me['id'], $role,
-            "Staff {$me['name']} requested {$item_name} (SKU: {$sku}) — qty to be set by manager"
-        ]);
-
-        // Activity log
-        if (function_exists('log_activity')) {
-            log_activity($pdo, $me['id'], 'Create Stock Request',
-                "Request #{$request_id} | {$item_name} | By: {$me['name']} — qty to be set by manager");
+        foreach ($managers as $mgr_id) {
+            $notif_stmt->execute([$mgr_id, "New stock request {$request_no} submitted by {$me['name']}. Manager review required."]);
         }
 
         $pdo->commit();
+        
+        $msg = 'Stock request submitted successfully.';
+        if (!empty($skipped_items)) {
+            $msg .= ' Note: Some items (' . implode(', ', $skipped_items) . ') were skipped because they already have pending requests.';
+        }
+        
         echo json_encode([
             'success'            => true,
-            'message'            => 'Stock request submitted successfully',
-            'request_id'         => $request_id,
-            'item_name'          => $item_name,
-            'requested_quantity' => $requested_quantity,
-            'status'             => 'Pending'
+            'message'            => $msg,
+            'request_no'         => $request_no,
+            'inserted_count'     => count($inserted_ids),
+            'status'             => 'Pending Manager Review'
         ]);
-
-        // ── Audit log ──
-        try {
-            $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-            $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-            $detail = "Stock request created | Item: {$item_name} (SKU: {$sku}) | Category: {$item_category} | Current stock: {$current_stock} | Requested qty: {$requested_quantity}" . ($remarks ? " | Remarks: {$remarks}" : '');
-            $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'inventory', 'Create', ?, 'stock_requests', ?, 'Success', ?, ?, NOW())")
-                ->execute([$me['id'], $detail, $request_id, $ip, $ua]);
-        } catch (Exception $e) {}
     } catch (Exception $e) {
         $pdo->rollBack();
         throw $e;
@@ -409,7 +474,7 @@ function handle_approve($pdo, $me, $role, $station_id) {
     if (!$req) {
         echo json_encode(['success' => false, 'message' => 'Request not found']); return;
     }
-    if (strtolower($req['status']) !== 'pending') {
+    if (!in_array(strtolower($req['status']), ['pending', 'pending manager review'])) {
         echo json_encode(['success' => false, 'message' => 'Request is not pending']); return;
     }
 
@@ -570,7 +635,7 @@ function handle_reject($pdo, $me, $role, $station_id) {
     if (!$req) {
         echo json_encode(['success' => false, 'message' => 'Request not found']); return;
     }
-    if (strtolower($req['status']) !== 'pending') {
+    if (!in_array(strtolower($req['status']), ['pending', 'pending manager review'])) {
         echo json_encode(['success' => false, 'message' => 'Request is not pending']); return;
     }
 

@@ -289,7 +289,7 @@ try {
 
 $pending_fuel_sr = 0;
 try {
-    $s = $pdo->prepare("SELECT COUNT(*) FROM fuel_stock_requests WHERE staff_id=? AND status='Pending'");
+    $s = $pdo->prepare("SELECT COUNT(*) FROM fuel_stock_requests WHERE staff_id=? AND status IN ('Pending', 'Pending Manager Review')");
     $s->execute([$me['id']]);
     $pending_fuel_sr = (int)$s->fetchColumn();
 } catch (Exception $e) {}
@@ -887,10 +887,11 @@ body, html { overflow-x: hidden !important; }
 <!-- ══ FUEL STOCK REQUEST MODAL ══ -->
 <div class="sr-modal-overlay" id="fuelSrModal">
     <div class="sr-modal-box" style="max-width:860px;">
-        <div class="sr-modal-head">
+        <div class="sr-modal-head" style="display:flex; justify-content:space-between; align-items:center;">
             <div class="sr-modal-title">
-                Fuel Stock Request
+                <i class="fas fa-gas-pump"></i> Fuel Stock Request
             </div>
+            <button class="sr-modal-close" id="fuelSrClose" style="background:none; border:none; font-size:22px; cursor:pointer; color:#64748b;">&times;</button>
         </div>
 
         <div class="sr-modal-body">
@@ -913,6 +914,11 @@ body, html { overflow-x: hidden !important; }
                             <span style="color:#64748b; font-weight:600;">Requested By:</span>
                             <span style="font-weight:700; color:#1e293b;"><?= htmlspecialchars($me['name'] ?? $me['username'] ?? 'Staff') ?></span>
                         </div>
+                    </div>
+
+                    <div style="margin-top:14px;">
+                        <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px;">Remarks / Notes</label>
+                        <textarea id="fsrRemarks" rows="4" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#334155;resize:vertical;box-sizing:border-box;outline:none;" placeholder="Optional remarks..."></textarea>
                     </div>
                 </div>
 
@@ -969,6 +975,8 @@ function openFuelSrModal() {
     renderFsrCheckList();
     syncFsrSelectAll();
     document.getElementById('fsrError').style.display = 'none';
+    var rem = document.getElementById('fsrRemarks');
+    if (rem) rem.value = '';
     var sb = document.getElementById('fsrSubmitBtn');
     if (sb) { sb.disabled = false; sb.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request'; }
     document.getElementById('fuelSrModal').classList.add('open');
@@ -1060,60 +1068,72 @@ function closeFuelSrModal() {
 // ── Submit stock request ────────────────────────────────────────────────────────────────────
 function submitFuelStockRequest() {
     var checked = document.querySelectorAll('.fsr-item-cb:checked');
+    var errEl = document.getElementById('fsrError');
     if (checked.length === 0) {
-        var el = document.getElementById('fsrError');
-        el.textContent = 'Please select at least one fuel type.';
-        el.style.display = 'block';
+        errEl.textContent = 'Please select at least one fuel type.';
+        errEl.style.display = 'block';
         return;
     }
 
     var btn = document.getElementById('fsrSubmitBtn');
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
-    document.getElementById('fsrError').style.display = 'none';
+    errEl.style.display = 'none';
 
-    var queue = [];
-    checked.forEach(function(cb) { queue.push(allFuelData[parseInt(cb.dataset.idx)]); });
+    var remarks = ((document.getElementById('fsrRemarks') || {}).value || '').trim() || 'Bulk fuel stock request';
 
-    var results = { ok: 0, fail: 0, errors: [] };
-
-    function submitNext() {
-        if (queue.length === 0) {
-            closeFuelSrModal();
-            var msg = results.ok + ' fuel request' + (results.ok !== 1 ? 's' : '') + ' submitted successfully.';
-            if (results.fail > 0) msg += ' ' + results.fail + ' failed: ' + results.errors.join('; ');
-            document.getElementById('fsrSuccessMsg').innerHTML = msg;
-            document.getElementById('fsrSuccessPopup').style.display  = 'block';
-            document.getElementById('fsrSuccessOverlay').style.display = 'block';
-            setTimeout(closeFsrSuccess, 6000);
-            return;
-        }
-        var it = queue.shift();
-        fetch('../backend/api/fuel_stock_request.php?action=create', {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({
+    var items = [];
+    checked.forEach(function(cb) {
+        var it = allFuelData[parseInt(cb.dataset.idx)];
+        if (it) {
+            items.push({
                 fuel_type:        it.name,
                 current_level:    it.level,
                 capacity:         it.capacity,
                 stock_status:     it.status,
-                requested_liters: 0,
-                remarks:          ''
-            })
+                requested_liters: 0
+            });
+        }
+    });
+
+    fetch('../backend/api/fuel_stock_request.php?action=create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            items: items,
+            remarks: remarks
         })
-        .then(function(r) { return r.json(); })
-        .then(function(res) {
-            if (res.success) results.ok++;
-            else { results.fail++; results.errors.push(it.name + ': ' + (res.message || 'error')); }
-            submitNext();
-        })
-        .catch(function() {
-            results.fail++;
-            results.errors.push(it.name + ': network error');
-            submitNext();
-        });
-    }
-    submitNext();
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request';
+        closeFuelSrModal();
+
+        if (res.success) {
+            var srNo = res.request_no || '';
+            var cnt  = res.inserted_count || items.length;
+            var msg  = 'Successfully submitted stock requests for <strong>' + cnt + '</strong> fuel type' + (cnt !== 1 ? 's' : '') + '.';
+            if (srNo) msg += '<br><span style="font-size:12px;color:#64748b;">Request No: <strong>' + esc(srNo) + '</strong></span>';
+            if (res.message && res.message.indexOf('skipped') !== -1) {
+                msg += '<br><small style="color:#d97706;">' + esc(res.message.split('Note:')[1] || '') + '</small>';
+            }
+            document.getElementById('fsrSuccessMsg').innerHTML = msg;
+        } else {
+            document.getElementById('fsrSuccessMsg').innerHTML =
+                '<span style="color:#dc2626;">' + esc(res.message || 'Submission failed. Please try again.') + '</span>';
+        }
+
+        document.getElementById('fsrSuccessPopup').style.display = 'block';
+        document.getElementById('fsrSuccessOverlay').style.display = 'block';
+        setTimeout(closeFsrSuccess, 7000);
+    })
+    .catch(function() {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request';
+        errEl.textContent = 'Network error. Please check your connection and try again.';
+        errEl.style.display = 'block';
+    });
 }
 
 function closeFsrSuccess() {

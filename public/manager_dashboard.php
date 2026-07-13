@@ -274,11 +274,11 @@ $total_fuel_liters = mgr_table_exists($pdo, 'fuel_transactions')
     : 0.0;
 
 $pending_merch_stock = mgr_table_exists($pdo, 'stock_requests')
-    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM stock_requests WHERE {$station_sql} AND LOWER(status) = 'pending'", $station_params)
+    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM stock_requests WHERE {$station_sql} AND LOWER(status) IN ('pending', 'pending manager review')", $station_params)
     : 0;
 
 $pending_fuel_stock = mgr_table_exists($pdo, 'fuel_stock_requests')
-    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM fuel_stock_requests WHERE {$station_sql} AND LOWER(status) = 'pending'", $station_params)
+    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM fuel_stock_requests WHERE {$station_sql} AND LOWER(status) IN ('pending', 'pending manager review')", $station_params)
     : 0;
 
 $pending_customer_requests = mgr_table_exists($pdo, 'customers')
@@ -599,7 +599,7 @@ if (mgr_table_exists($pdo, 'stock_requests')) {
          FROM stock_requests sr
          LEFT JOIN users u ON u.id = sr.staff_id
          WHERE " . mgr_station_clause($station_id, 'sr') . "
-           AND LOWER(sr.status) = 'pending'
+           AND LOWER(sr.status) IN ('pending', 'pending manager review')
          ORDER BY sr.created_at DESC
          LIMIT 8",
         $station_params
@@ -621,7 +621,7 @@ if (mgr_table_exists($pdo, 'fuel_stock_requests')) {
          FROM fuel_stock_requests fsr
          LEFT JOIN users u ON u.id = fsr.staff_id
          WHERE " . mgr_station_clause($station_id, 'fsr') . "
-           AND LOWER(fsr.status) = 'pending'
+           AND LOWER(fsr.status) IN ('pending', 'pending manager review')
          ORDER BY fsr.created_at DESC
          LIMIT 8",
         $station_params

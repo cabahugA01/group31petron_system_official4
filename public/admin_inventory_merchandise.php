@@ -300,7 +300,7 @@ try {
                ip.unit_price   AS price,
                ip.unit_cost    AS cost,
                ip.sku,
-               COALESCE(si.unit, ip.size, 'pcs')       AS unit,
+               COALESCE(si.unit, 'pcs')       AS unit,
                COALESCE(si.status, 'active')          AS status,
                COALESCE(si.stock_level, ip.stock, 0)  AS stock_level,
                COALESCE(si.capacity, ip.max_stock, 100) AS capacity,
@@ -331,7 +331,8 @@ foreach ($all_items as &$item) {
     if (!in_array($item['brand'], $all_brands)) $all_brands[] = $item['brand'];
     if (!empty($item['supplier']) && !in_array($item['supplier'], $all_suppliers)) $all_suppliers[] = $item['supplier'];
     
-    $u = $item['unit'];
+    $u = format_merch_unit($item['unit']);
+    $item['unit'] = $u;
     if (!empty($u) && !in_array($u, $all_units)) $all_units[] = $u;
 }
 unset($item);
@@ -887,9 +888,9 @@ require_once __DIR__ . '/../partials/header.php';
     </div>
 
     <div class="afto-fg" style="flex: 1; min-width: 100px;">
-        <label for="unit">Unit</label>
+        <label for="unit">UOM</label>
         <select name="unit" id="unit">
-            <option value="all">All Units</option>
+            <option value="all">All UOMs</option>
             <?php foreach ($all_units as $u): ?>
                 <option value="<?= htmlspecialchars($u) ?>" <?= $unit_filter === $u ? 'selected' : '' ?>><?= htmlspecialchars($u) ?></option>
             <?php endforeach; ?>
@@ -939,7 +940,7 @@ require_once __DIR__ . '/../partials/header.php';
                     <th>Brand</th>
                     <th>Supplier</th>
                     <th style="width: 90px; text-align:right;">Current Stock</th>
-                    <th style="width: 60px;">Unit</th>
+                    <th style="width: 60px;">UOM</th>
                     <th style="width: 90px; text-align:right;">Reorder Level</th>
                     <th style="width: 90px; text-align:right;">Unit Cost</th>
                     <th style="width: 90px; text-align:right;">Selling Price</th>

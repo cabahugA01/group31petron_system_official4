@@ -4,15 +4,11 @@ require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
 
-// ── ACCESS DISABLED: Stock Requests page removed from Staff access ──
-header("Location: staff_dashboard.php");
-exit;
-
 $me = current_user();
 $role = role_key($me['role'] ?? '');
 $station_id = user_station_id();
 
-if ($role !== 'staff') {
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
     header("Location: dashboard.php");
     exit;
 }
@@ -27,7 +23,7 @@ if (isset($_GET['cancel_id']) && isset($_GET['type'])) {
     
     if ($type === 'fuel') {
         // Verify it is pending and belongs to this staff
-        $stmt = $pdo->prepare("SELECT id FROM fuel_stock_requests WHERE id = ? AND staff_id = ? AND status = 'Pending'");
+        $stmt = $pdo->prepare("SELECT id FROM fuel_stock_requests WHERE id = ? AND staff_id = ? AND status IN ('Pending', 'Pending Manager Review')");
         $stmt->execute([$cancel_id, $me['id']]);
         if ($stmt->fetch()) {
             $upd = $pdo->prepare("DELETE FROM fuel_stock_requests WHERE id = ?");
@@ -38,7 +34,7 @@ if (isset($_GET['cancel_id']) && isset($_GET['type'])) {
         }
     } else {
         // Verify it is pending and belongs to this staff
-        $stmt = $pdo->prepare("SELECT id, item_name FROM stock_requests WHERE id = ? AND staff_id = ? AND status = 'Pending'");
+        $stmt = $pdo->prepare("SELECT id, item_name FROM stock_requests WHERE id = ? AND staff_id = ? AND status IN ('Pending', 'Pending Manager Review')");
         $stmt->execute([$cancel_id, $me['id']]);
         $req = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($req) {
@@ -234,14 +230,14 @@ $merch_stats = ['total'=>0,'pending'=>0,'approved'=>0,'rejected'=>0];
 foreach ($fuel_requests as $r) {
     $st = strtolower($r['status'] ?? 'pending');
     $fuel_stats['total']++;
-    if ($st === 'pending') $fuel_stats['pending']++;
+    if (in_array($st, ['pending', 'pending manager review'])) $fuel_stats['pending']++;
     elseif (in_array($st, ['approved','validated','completed'])) $fuel_stats['approved']++;
     elseif ($st === 'rejected') $fuel_stats['rejected']++;
 }
 foreach ($merch_requests as $r) {
     $st = strtolower($r['status'] ?? 'pending');
     $merch_stats['total']++;
-    if ($st === 'pending') $merch_stats['pending']++;
+    if (in_array($st, ['pending', 'pending manager review'])) $merch_stats['pending']++;
     elseif (in_array($st, ['approved','validated','forwarded to admin','completed'])) $merch_stats['approved']++;
     elseif ($st === 'rejected') $merch_stats['rejected']++;
 }
@@ -310,7 +306,7 @@ include __DIR__ . '/../partials/header.php';
 
 /* Status Badges */
 .sbadge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; white-space:nowrap; border:1px solid transparent; text-transform:uppercase; text-align:center; }
-.sbadge-pending            { background:#fffbeb; color:#b45309; border-color:#fde68a; }
+.sbadge-pending, .sbadge-pending-manager-review { background:#fffbeb; color:#b45309; border-color:#fde68a; }
 .sbadge-approved           { background:#ecfdf5; color:#047857; border-color:#a7f3d0; }
 .sbadge-validated          { background:#ecfdf5; color:#047857; border-color:#a7f3d0; }
 .sbadge-rejected           { background:#fef2f2; color:#b91c1c; border-color:#fecaca; }
@@ -965,7 +961,7 @@ function applyFuelFilters() {
         var rdate = row.dataset.date;
         
         var matchQuery = !query || product.indexOf(query) !== -1;
-        var matchStatus = !status || rstatus === status;
+        var matchStatus = !status || rstatus === status || (status === 'Pending' && rstatus === 'Pending Manager Review');
         var matchDate = !date || rdate === date;
         
         if (matchQuery && matchStatus && matchDate) {
@@ -989,7 +985,7 @@ function applyMerchFilters() {
         var rdate = row.dataset.date;
         
         var matchQuery = !query || product.indexOf(query) !== -1;
-        var matchStatus = !status || rstatus === status;
+        var matchStatus = !status || rstatus === status || (status === 'Pending' && rstatus === 'Pending Manager Review');
         var matchDate = !date || rdate === date;
         
         if (matchQuery && matchStatus && matchDate) {

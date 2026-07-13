@@ -1055,7 +1055,7 @@ include __DIR__ . '/../partials/header.php';
                     <th>SKU</th>
                     <th>Product Name</th>
                     <th style="text-align:center;">Category</th>
-                    <th>Unit</th>
+                    <th>UOM</th>
                     <th style="text-align:center;">Capacity</th>
                     <th>Current Stock / Reorder</th>
                     <th style="text-align:right;">Physical Count</th>

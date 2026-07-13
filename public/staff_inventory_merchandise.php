@@ -569,7 +569,7 @@ body.modal-open .main {
                 <thead>
                     <tr>
                         <th>SKU</th><th>Product Name</th><th style="text-align:center;">Category</th>
-                        <th>Unit</th><th>Capacity</th><th>Current Stock / Reorder</th>
+                        <th>UOM</th><th>Capacity</th><th>Current Stock / Reorder</th>
                         <th>Status</th><th>Last Movement</th><th>Updated</th><th>Action</th>
                     </tr>
                 </thead>
@@ -1042,67 +1042,56 @@ function srHandleSubmit(btn) {
 
     var items = checked.map(function(cb) {
         var id = parseInt(cb.value);
-        return allMerchData.find(function(x) { return x.id === id; });
+        var it = allMerchData.find(function(x) { return x.id === id; });
+        if (!it) return null;
+        return {
+            item_id:            it.id,
+            sku:                it.sku,
+            item_name:          it.name,
+            item_category:      it.category,
+            current_stock:      it.stock,
+            requested_quantity: 0
+        };
     }).filter(Boolean);
 
-    var results = { ok: 0, fail: 0, errors: [] };
-    var currentIndex = 0;
+    fetch('../backend/api/stock_request.php?action=create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            items:   items,
+            remarks: reason || 'Bulk stock request — low/critical stock'
+        })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request';
+        closeSrModal();
 
-    function submitNext() {
-        if (currentIndex >= items.length) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request';
-            closeSrModal();
-
-            if (results.fail === 0) {
-                document.getElementById('srSuccessMsg').innerHTML =
-                    'Successfully submitted stock requests for <strong>' + results.ok + '</strong> items.';
-            } else {
-                document.getElementById('srSuccessMsg').innerHTML =
-                    'Submitted: <strong>' + results.ok + '</strong> succeeded, <strong>' + results.fail + '</strong> failed.<br>' +
-                    '<small style="color:#dc2626;">Errors: ' + escHtml(results.errors.join(', ')) + '</small>';
+        if (res.success) {
+            var srNo = res.request_no || '';
+            var cnt  = res.inserted_count || items.length;
+            var msg  = 'Successfully submitted stock requests for <strong>' + cnt + '</strong> item' + (cnt !== 1 ? 's' : '') + '.';
+            if (srNo) msg += '<br><span style="font-size:12px;color:#64748b;">Request No: <strong>' + escHtml(srNo) + '</strong></span>';
+            if (res.message && res.message.indexOf('skipped') !== -1) {
+                msg += '<br><small style="color:#d97706;">' + escHtml(res.message.split('Note:')[1] || '') + '</small>';
             }
-
-            document.getElementById('srSuccessPopup').style.display = 'block';
-            document.getElementById('srSuccessOverlay').style.display = 'block';
-            setTimeout(closeSrSuccess, 6000);
-            return;
+            document.getElementById('srSuccessMsg').innerHTML = msg;
+        } else {
+            document.getElementById('srSuccessMsg').innerHTML =
+                '<span style="color:#dc2626;">' + escHtml(res.message || 'Submission failed. Please try again.') + '</span>';
         }
 
-        var it = items[currentIndex];
-        currentIndex++;
-
-        fetch('../backend/api/stock_request.php?action=create', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                item_id: it.id,
-                sku: it.sku,
-                item_name: it.name,
-                item_category: it.category,
-                current_stock: it.stock,
-                requested_quantity: 0,
-                remarks: reason || 'Low stock automatic request'
-            })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(res) {
-            if (res.success) {
-                results.ok++;
-            } else {
-                results.fail++;
-                results.errors.push(it.name + ': ' + (res.message || 'error'));
-            }
-            submitNext();
-        })
-        .catch(function() {
-            results.fail++;
-            results.errors.push(it.name + ': network error');
-            submitNext();
-        });
-    }
-
-    submitNext();
+        document.getElementById('srSuccessPopup').style.display = 'block';
+        document.getElementById('srSuccessOverlay').style.display = 'block';
+        setTimeout(closeSrSuccess, 7000);
+    })
+    .catch(function() {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request';
+        errEl.textContent = 'Network error. Please check your connection and try again.';
+        errEl.style.display = 'block';
+    });
 }
 
 // Legacy addEventListener for Submit (safety net — onclick on button is the primary handler)

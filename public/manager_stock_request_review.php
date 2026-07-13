@@ -216,7 +216,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $pdo->prepare("
                             UPDATE stock_requests sr
                             JOIN purchase_order_items poi ON poi.product_id = sr.item_id AND sr.status = 'Approved'
-                            SET sr.status = 'Pending', sr.approved_quantity = NULL, sr.processed_at = NULL 
+                            SET sr.status = 'Pending Manager Review', sr.approved_quantity = NULL, sr.processed_at = NULL 
                             WHERE poi.po_id = ? AND sr.station_id = ?
                         ")->execute([$po_id, $station_id]);
                     }
@@ -244,13 +244,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $chk->execute([$batch_id, $station_id]);
                 $fst = $chk->fetchColumn();
                 if (in_array($fst, ['Pending', 'Approved PO', 'Approved', 'Draft'])) {
+                    $pdo->beginTransaction();
+
+                    // Find all fuel purchase orders for this batch to extract linked FSR IDs from notes
+                    $orders_stmt = $pdo->prepare("SELECT notes FROM fuel_purchase_orders WHERE batch_id=? AND station_id=?");
+                    $orders_stmt->execute([$batch_id, $station_id]);
+                    $orders = $orders_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                    foreach ($orders as $order) {
+                        if (!empty($order['notes']) && preg_match('/\[FSR:(\d+)\]/', $order['notes'], $matches)) {
+                            $fsr_id = (int)$matches[1];
+                            $pdo->prepare("UPDATE fuel_stock_requests SET status='Pending Manager Review', manager_id=NULL, processed_at=NULL WHERE id=? AND station_id=?")
+                                ->execute([$fsr_id, $station_id]);
+                        }
+                    }
+
                     $pdo->prepare("UPDATE fuel_purchase_orders SET status='Cancelled' WHERE batch_id=? AND station_id=?")
                         ->execute([$batch_id, $station_id]);
+
+                    $pdo->commit();
                     $_SESSION['success'] = "Fuel PR <strong>$batch_id</strong> cancelled.";
                 } else {
                     throw new Exception('Cannot cancel a request with status: ' . $fst);
                 }
             } catch (Exception $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
                 $_SESSION['error'] = 'Error: ' . $e->getMessage();
             }
         }
@@ -562,8 +580,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ── Fetch Summary Metrics ───────────────────────────────────────────────────
-$cnt_pending_sr_merch = (int)$pdo->query("SELECT COUNT(*) FROM stock_requests WHERE station_id = $station_id AND status = 'Pending' AND LOWER(COALESCE(item_category, '')) != 'fuel'")->fetchColumn();
-$cnt_pending_sr_fuel = (int)$pdo->query("SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id = $station_id AND status = 'Pending'")->fetchColumn();
+$cnt_pending_sr_merch = (int)$pdo->query("SELECT COUNT(*) FROM stock_requests WHERE station_id = $station_id AND status IN ('Pending', 'Pending Manager Review') AND LOWER(COALESCE(item_category, '')) != 'fuel'")->fetchColumn();
+$cnt_pending_sr_fuel = (int)$pdo->query("SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id = $station_id AND status IN ('Pending', 'Pending Manager Review')")->fetchColumn();
 $total_pending_requests = $cnt_pending_sr_merch + $cnt_pending_sr_fuel;
 
 $cnt_waiting_merch = (int)$pdo->query("SELECT COUNT(DISTINCT po_number) FROM purchase_orders WHERE station_id = $station_id AND type = 'merch' AND status IN ('Approved', 'Approved PO', 'Admin Finalized', 'Pending', 'Pending Admin Validation') AND id NOT IN (SELECT DISTINCT po_id FROM merchandise_stock_in WHERE station_id = $station_id)")->fetchColumn();
@@ -598,7 +616,7 @@ if ($active_tab === 'pending_requests') {
         LEFT JOIN users u ON sr.staff_id = u.id
         LEFT JOIN inventory_products ip ON sr.item_id = ip.id
         LEFT JOIN station_inventory si ON sr.item_id = si.product_id AND si.station_id = sr.station_id
-        WHERE sr.station_id = ? AND sr.status = 'Pending' AND LOWER(COALESCE(sr.item_category, '')) != 'fuel'
+        WHERE sr.station_id = ? AND sr.status IN ('Pending', 'Pending Manager Review') AND LOWER(COALESCE(sr.item_category, '')) != 'fuel'
     ");
     $stmt1->execute([$station_id]);
     $merch_reqs = $stmt1->fetchAll(PDO::FETCH_ASSOC);
@@ -613,7 +631,7 @@ if ($active_tab === 'pending_requests') {
         FROM fuel_stock_requests fsr
         LEFT JOIN users u ON fsr.staff_id = u.id
         LEFT JOIN fuel_inventory fi ON LOWER(fsr.fuel_type) = LOWER(fi.fuel_type) AND fi.station_id = fsr.station_id
-        WHERE fsr.station_id = ? AND fsr.status = 'Pending'
+        WHERE fsr.station_id = ? AND fsr.status IN ('Pending', 'Pending Manager Review')
     ");
     $stmt2->execute([$station_id]);
     $fuel_reqs = $stmt2->fetchAll(PDO::FETCH_ASSOC);

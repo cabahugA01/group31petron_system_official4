@@ -78,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' && isset($_GET['resend']) && $_GET['re
                     $success = "A new OTP has been sent to your email. Please check your inbox.";
                 } else {
                     $email_failed = true;
-                    $error = "Could not send email. Use the OTP shown below.";
+                    $error = "Could not send the email. Please check your connection and try again.";
                 }
             }
         } else {

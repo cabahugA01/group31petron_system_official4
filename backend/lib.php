@@ -727,46 +727,54 @@ function user_station_name(): string {
 }
 
 /**
- * Format merchandise unit of measure to follow official nomenclature:
- * Piece, Bottle, Gallon, Pack, Box, Case, Can, Roll, etc.
+ * Format merchandise unit of measure to official standardized labels.
+ * Standard UOM list:
+ *   Piece (pc), Bottle, Can, Tube, Pack, Box, Roll, Set, Gallon,
+ *   Liter, Milliliter (mL), Kilogram (kg), Gram (g),
+ *   Drum, Pail, Sack, Carton, Case, Pair
  */
 function format_merch_unit($unit) {
     $u = strtolower(trim((string)$unit));
-    // Pieces
-    if (in_array($u, ['pcs','pc','piece','pieces'])) return 'Pieces';
-    // Bottles
-    if (in_array($u, ['bot','btl','bottle','bottles'])) return 'Bottles';
-    // Gallons
-    if (in_array($u, ['gal','gallon','gallons'])) return 'Gallons';
-    // Boxes
-    if (in_array($u, ['box','bx','boxes'])) return 'Boxes';
-    // Packs / Packages
-    if (in_array($u, ['pack','packs','pkg','pkgs','packet','packets'])) return 'Packs';
-    // Cases / Cartons
-    if (in_array($u, ['case','cases','ctn','carton','cartons'])) return 'Cases';
-    // Cans
-    if (in_array($u, ['can','cnt','cans'])) return 'Cans';
-    // Rolls
-    if (in_array($u, ['roll','rolls','rll'])) return 'Rolls';
-    // Sets
-    if (in_array($u, ['set','sets'])) return 'Sets';
-    // Pairs
-    if (in_array($u, ['pair','pairs','pr'])) return 'Pairs';
-    // Tubs / Jars
-    if (in_array($u, ['tub','tubs'])) return 'Tubs';
-    if (in_array($u, ['jar','jars'])) return 'Jars';
-    // Bags / Sachets
-    if (in_array($u, ['bag','bags'])) return 'Bags';
-    if (in_array($u, ['sachet','sachets','sct'])) return 'Sachets';
-    // Sheets / Pads
-    if (in_array($u, ['sheet','sheets','sht'])) return 'Sheets';
-    if (in_array($u, ['pad','pads'])) return 'Pads';
-    // Tubes
-    if (in_array($u, ['tube','tubes','tbe'])) return 'Tubes';
-    // Liters (fuel-side should not appear in merch, but safe fallback)
-    if (in_array($u, ['ltr','litre','litres','liter','liters','l'])) return 'Liters';
-    // Empty → default to Pieces
-    if ($u === '') return 'Pieces';
+    // Piece
+    if (in_array($u, ['pcs','pc','piece','pieces'])) return 'Piece (pc)';
+    // Bottle
+    if (in_array($u, ['bot','btl','bottle','bottles','jar','jars'])) return 'Bottle';
+    // Can
+    if (in_array($u, ['can','cnt','cans'])) return 'Can';
+    // Tube
+    if (in_array($u, ['tube','tubes','tbe'])) return 'Tube';
+    // Pack
+    if (in_array($u, ['pack','packs','pkg','pkgs','packet','packets','sachet','sachets','sct','bag','bags'])) return 'Pack';
+    // Box
+    if (in_array($u, ['box','bx','boxes'])) return 'Box';
+    // Roll
+    if (in_array($u, ['roll','rolls','rll'])) return 'Roll';
+    // Set
+    if (in_array($u, ['set','sets'])) return 'Set';
+    // Gallon
+    if (in_array($u, ['gal','gallon','gallons'])) return 'Gallon';
+    // Liter
+    if (in_array($u, ['ltr','litre','litres','liter','liters','l'])) return 'Liter';
+    // Milliliter
+    if (in_array($u, ['ml','milliliter','milliliters','millilitre','millilitres'])) return 'Milliliter (mL)';
+    // Kilogram
+    if (in_array($u, ['kg','kilogram','kilograms'])) return 'Kilogram (kg)';
+    // Gram
+    if (in_array($u, ['g','gram','grams'])) return 'Gram (g)';
+    // Drum
+    if (in_array($u, ['drum','drums'])) return 'Drum';
+    // Pail
+    if (in_array($u, ['pail','pails','tub','tubs'])) return 'Pail';
+    // Sack
+    if (in_array($u, ['sack','sacks'])) return 'Sack';
+    // Carton
+    if (in_array($u, ['carton','cartons','ctn'])) return 'Carton';
+    // Case
+    if (in_array($u, ['case','cases'])) return 'Case';
+    // Pair
+    if (in_array($u, ['pair','pairs','pr'])) return 'Pair';
+    // Empty → default to Piece
+    if ($u === '') return 'Piece (pc)';
     // Fallback: capitalize first letter
     return ucfirst($unit);
 }

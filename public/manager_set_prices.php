@@ -217,12 +217,17 @@ try {
     // Try manager's station first
     $sid_merch = $station_id;
     $stmt = $pdo->prepare("
-        SELECT i.id, i.category, i.product_name, i.sku, i.size, i.unit_cost, i.supplier,
+        SELECT i.id, i.category, i.product_name, i.sku, i.size,
+               COALESCE(si.unit, 'pcs') AS unit,
+               i.unit_cost, i.supplier,
                i.unit_price, i.stock_quantity, i.stock, i.created_at,
                p.new_value  AS pending_price,
                p.status     AS approval_status,
                p.id         AS approval_id
         FROM inventory_products i
+        LEFT JOIN station_inventory si
+               ON si.product_id = i.id
+              AND si.station_id = ?
         LEFT JOIN pending_price_approvals p
                ON p.product_id = i.id
               AND p.product_type = 'merchandise'
@@ -232,13 +237,13 @@ try {
           AND LOWER(COALESCE(i.status,'active')) != 'inactive'
         ORDER BY i.category, i.product_name
     ");
-    $stmt->execute([$sid_merch]);
+    $stmt->execute([$sid_merch, $sid_merch]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // If empty, try station 1
     if (empty($rows)) {
         $sid_merch = 1;
-        $stmt->execute([$sid_merch]);
+        $stmt->execute([$sid_merch, $sid_merch]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
@@ -720,7 +725,7 @@ include __DIR__ . '/../partials/header.php';
                         <th>Product Name</th>
                         <th>SKU</th>
                         <th>Category</th>
-                        <th>Size</th>
+                        <th>UOM</th>
                         <th>Cost (&#8369;)</th>
                         <th>Price (&#8369;)</th>
                         <th>Stock</th>
@@ -766,7 +771,7 @@ include __DIR__ . '/../partials/header.php';
                         </td>
                         <td class="muted"><?php echo htmlspecialchars($item['sku'] ?? '&mdash;'); ?></td>
                         <td><?php echo htmlspecialchars($cat_label); ?></td>
-                        <td class="muted"><?php echo htmlspecialchars($item['size'] ?? '&mdash;'); ?></td>
+                        <td class="muted"><?php echo htmlspecialchars(format_merch_unit($item['unit'] ?? 'pcs')); ?></td>
                         <td style="color:#64748b;">&#8369;<?php echo number_format($cost, 2); ?></td>
                         <td>
                             <?php if ($no_price): ?>
