@@ -365,8 +365,8 @@ body.modal-open .main {
 .int-btn-outline:hover{background:#00264D !important;color:#fff !important;border-color:#00264D !important;}
 
 /* ── SR Modal 2-col grid and wide box ── */
-.mi-box.wide{width:860px;max-width:calc(100vw - 32px);}
-.sr-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.mi-box.wide{width:900px;max-width:calc(100vw - 32px);}
+.sr-grid{display:grid;grid-template-columns:240px 1fr;gap:20px;}
 .sr-grid > div{min-width:0;}
 @media(max-width:680px){.sr-grid{grid-template-columns:1fr;}.mi-box.wide{width:100%;}}
 
@@ -374,16 +374,21 @@ body.modal-open .main {
 .sr-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 11.5px;
+    font-size: 11px;
     table-layout: fixed;
 }
 .sr-table th, .sr-table td {
-    padding: 8px 6px;
+    padding: 7px 5px;
     vertical-align: middle;
     box-sizing: border-box;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+/* Status cell — let badge display fully */
+.sr-table td.sr-td-status {
+    overflow: visible;
+    text-align: center;
 }
 .sr-tbl-row {
     border-bottom: 1px solid #e2e8f0;
@@ -666,24 +671,24 @@ body.modal-open .main {
             <div class="sr-grid">
                 <!-- Left Column: Request Info -->
                 <div>
-                    <div style="background:#f8fafc; padding:16px; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:16px;">
-                        <h4 style="margin:0 0 12px; font-size:14px; font-weight:700; color:#002F70; text-transform:uppercase; border-bottom:1px solid #cbd5e1; padding-bottom:6px;"><i class="fas fa-file-alt"></i> Request Information</h4>
-                        <div class="sr-info-row" style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12.5px;">
-                            <span style="color:#64748b; font-weight:600;">Request No:</span>
-                            <span style="font-weight:700; color:#1e293b;">Auto-Assigned</span>
+                    <div style="background:#f8fafc; padding:12px; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:12px;">
+                        <h4 style="margin:0 0 10px; font-size:12px; font-weight:700; color:#002F70; text-transform:uppercase; border-bottom:1px solid #cbd5e1; padding-bottom:5px;"><i class="fas fa-file-alt"></i> Request Info</h4>
+                        <div style="margin-bottom:7px; font-size:11.5px;">
+                            <div style="color:#64748b; font-weight:600; margin-bottom:2px;">Request No:</div>
+                            <div style="font-weight:700; color:#1e293b;">Auto-Assigned</div>
                         </div>
-                        <div class="sr-info-row" style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12.5px;">
-                            <span style="color:#64748b; font-weight:600;">Request Date:</span>
-                            <span style="font-weight:700; color:#1e293b;"><?= date('M d, Y') ?></span>
+                        <div style="margin-bottom:7px; font-size:11.5px;">
+                            <div style="color:#64748b; font-weight:600; margin-bottom:2px;">Request Date:</div>
+                            <div style="font-weight:700; color:#1e293b;"><?= date('M d, Y') ?></div>
                         </div>
-                        <div class="sr-info-row" style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12.5px;">
-                            <span style="color:#64748b; font-weight:600;">Requested By:</span>
-                            <span style="font-weight:700; color:#1e293b;"><?= htmlspecialchars($me['name'] ?? $me['username'] ?? 'Staff') ?></span>
+                        <div style="font-size:11.5px;">
+                            <div style="color:#64748b; font-weight:600; margin-bottom:2px;">Requested By:</div>
+                            <div style="font-weight:700; color:#1e293b;"><?= htmlspecialchars($me['name'] ?? $me['username'] ?? 'Staff') ?></div>
                         </div>
                     </div>
                     <div class="sr-field">
-                        <label for="srReason"><i class="fas fa-comment-alt"></i> Remarks / Reason</label>
-                        <textarea id="srReason" placeholder="e.g. Running low, expected high demand this weekend..."></textarea>
+                        <label for="srReason" style="font-size:11.5px;"><i class="fas fa-comment-alt"></i> Remarks / Reason</label>
+                        <textarea id="srReason" style="min-height:90px; font-size:12px;" placeholder="e.g. Running low, expected high demand this weekend..."></textarea>
                     </div>
                 </div>
                 
@@ -700,12 +705,12 @@ body.modal-open .main {
                         <table class="sr-table">
                             <thead>
                                 <tr style="background:#002F70; color:#fff; position:sticky; top:0; z-index:10;">
-                                    <th style="width:32px; text-align:center;">✓</th>
-                                    <th style="width:130px; text-align:left;">Product Code</th>
-                                    <th style="width:auto; text-align:left;">Product Name</th>
-                                    <th style="width:75px; text-align:center;">Current Stock</th>
-                                    <th style="width:65px; text-align:center;">Unit</th>
-                                    <th style="width:85px; text-align:center;">Status</th>
+                                    <th style="width:6%; text-align:center;">✓</th>
+                                    <th style="width:24%; text-align:left;">Product Code</th>
+                                    <th style="width:26%; text-align:left;">Product Name</th>
+                                    <th style="width:10%; text-align:center;">Stock</th>
+                                    <th style="width:18%; text-align:center;">UOM</th>
+                                    <th style="width:16%; text-align:center;">Status</th>
                                 </tr>
                             </thead>
                             <tbody id="srProductsList">
@@ -982,11 +987,11 @@ function openSrModal(preselect) {
             tr.className = 'sr-tbl-row';
             tr.innerHTML = 
                 '<td style="text-align:center;"><input type="checkbox" class="sr-cb" value="' + it.id + '" ' + isChecked + ' onclick="event.stopPropagation(); toggleSrRowClass(this);"></td>' +
-                '<td style="font-family:monospace; font-weight:600;">' + escHtml(it.sku || '—') + '</td>' +
-                '<td style="font-weight:700;" title="' + escHtml(it.name) + '">' + escHtml(it.name) + '</td>' +
-                '<td style="text-align:center; font-weight:600;">' + it.stock + '</td>' +
-                '<td style="text-align:center; color:#64748b;">' + escHtml(it.unit) + '</td>' +
-                '<td style="text-align:center;"><span class="status-badge" style="background:' + it.color + '20; color:' + it.color + '; border:1px solid ' + it.color + '40;">' + escHtml(it.status) + '</span></td>';
+                '<td style="font-family:monospace; font-weight:600;" title="' + escHtml(it.sku || '') + '">' + escHtml(it.sku || '—') + '</td>' +
+                '<td style="font-weight:600;" title="' + escHtml(it.name) + '">' + escHtml(it.name) + '</td>' +
+                '<td style="text-align:center; font-weight:700;">' + it.stock + '</td>' +
+                '<td style="text-align:center; color:#334155; font-size:10.5px;">' + escHtml(it.unit) + '</td>' +
+                '<td class="sr-td-status"><span style="display:inline-block; padding:1px 7px; border-radius:10px; font-size:9.5px; font-weight:700; white-space:nowrap; background:' + it.color + '20; color:' + it.color + '; border:1px solid ' + it.color + '40;">' + escHtml(it.status) + '</span></td>';
             
             tr.addEventListener('click', function() {
                 var cb = this.querySelector('.sr-cb');
