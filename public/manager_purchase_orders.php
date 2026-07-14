@@ -497,6 +497,7 @@ include __DIR__ . '/../partials/header.php';
                     <th>Expected Delivery</th>
                     <th>Status</th>
                     <th>Created</th>
+                    <th style="width:10%;">Action</th>
                 </tr>
             </thead>
             <tbody>
@@ -573,6 +574,13 @@ include __DIR__ . '/../partials/header.php';
                     <td><?php echo $exp_delivery_display; ?></td>
                     <td><span class="status-badge <?php echo $badge_class; ?>"><?php echo htmlspecialchars($display_status); ?></span></td>
                     <td><?php echo $created_display; ?></td>
+                    <td style="text-align: center; padding: 6px 10px;">
+                        <a href="print_po_new.php?batch_id=<?php echo urlencode($po['po_number']); ?>&type=<?php echo $po['po_type'] === 'fuel' ? 'fuel' : 'merch'; ?>&print=1" 
+                           target="_blank" 
+                           style="background: #fff !important; color: #333 !important; border: 1px solid #ccc !important; padding: 4px 8px; border-radius: 4px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500;">
+                            <i class="fas fa-print"></i> Print
+                        </a>
+                    </td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -599,7 +607,10 @@ include __DIR__ . '/../partials/header.php';
         <div class="modal-body" id="viewModalBody">
             <!-- Populated by JS -->
         </div>
-        <div class="modal-footer">
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px;">
+            <a id="modalPrintBtn" href="#" target="_blank" style="background: #fff !important; color: #333 !important; border: 1px solid #ccc !important; padding: 9px 20px; border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-size: 0.9rem; font-weight: 600;">
+                <i class="fas fa-print"></i> Print PO
+            </a>
             <button type="button" class="btn-cancel-modal" onclick="closeModal('viewModal')">Close</button>
         </div>
     </div>
@@ -659,6 +670,9 @@ function openViewModal(data) {
     var html = rows.map(function(r) {
         return '<div class="detail-row"><span class="detail-label">' + r[0] + '</span><span class="detail-value">' + escHtml(String(r[1])) + '</span></div>';
     }).join('');
+
+    var printUrl = 'print_po_new.php?batch_id=' + encodeURIComponent(data.po_number) + '&type=' + (data.po_type.toLowerCase() === 'fuel' ? 'fuel' : 'merch') + '&print=1';
+    document.getElementById('modalPrintBtn').setAttribute('href', printUrl);
 
     document.getElementById('viewModalBody').innerHTML = html;
     document.getElementById('viewModal').classList.add('active');

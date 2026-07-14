@@ -157,7 +157,7 @@ try {
                     $low_merch_params = $myStationId ? [$myStationId] : [];
                     $low_merch_where  = $myStationId ? "si.station_id=? AND " : "";
                     $action_count += $safe_count(
-                        "SELECT COUNT(*) FROM station_inventory si INNER JOIN inventory_products ip ON ip.id=si.product_id WHERE {$low_merch_where}COALESCE(si.stock_level,0) <= COALESCE(si.reorder_level, ip.min_stock, 10) AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels')",
+                        "SELECT COUNT(*) FROM station_inventory si INNER JOIN inventory_products ip ON ip.id=si.product_id WHERE {$low_merch_where}COALESCE(si.stock_level,0) <= COALESCE(si.reorder_level, ip.min_stock, 24) AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels')",
                         $low_merch_params
                     );
                     // Pending customers

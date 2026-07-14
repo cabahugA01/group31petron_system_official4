@@ -77,6 +77,15 @@ try {
                 break;
             }
             
+            // Use session-based batch PR number so items submitted in one session share the same PR
+            if (empty($_SESSION['current_batch_pr']) || (time() - ($_SESSION['batch_pr_time'] ?? 0)) > 3600) {
+                $stmt_max = $pdo->query("SELECT MAX(CAST(REGEXP_SUBSTR(request_no, '[0-9]+$') AS UNSIGNED)) FROM stock_requests WHERE station_id = $station_id AND request_no IS NOT NULL AND request_no != ''");
+                $max_num = (int)($stmt_max->fetchColumn() ?: 0);
+                $_SESSION['current_batch_pr'] = 'PR-' . date('Y') . '-' . str_pad($max_num + 1, 4, '0', STR_PAD_LEFT);
+                $_SESSION['batch_pr_time'] = time();
+            }
+            $batch_pr = $_SESSION['current_batch_pr'];
+            
             // Get current stock
             $stmt = $pdo->prepare("
                 SELECT stock_level FROM station_inventory 
@@ -94,15 +103,16 @@ try {
             $item_info = $stmt->fetch(PDO::FETCH_ASSOC);
             $item_sku = $item_info ? $item_info['sku'] : 'N/A';
             
-            // Insert stock request
+            // Insert stock request WITH shared batch request_no
             $stmt = $pdo->prepare("
                 INSERT INTO stock_requests (
-                    staff_id, station_id, item_id, item_sku, item_name, 
+                    request_no, staff_id, station_id, item_id, item_sku, item_name, 
                     item_category, current_stock, requested_quantity, 
                     remarks, status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')
             ");
             $stmt->execute([
+                $batch_pr,
                 $user_id, $station_id, $item_id, $item_sku, $item_name,
                 $item_category, $current_stock, $requested_quantity, $remarks
             ]);
@@ -111,12 +121,13 @@ try {
             
             // Log activity
             log_activity($pdo, $user_id, 'Create Stock Request', 
-                "Stock Request #$request_id | Item: $item_name | Qty: $requested_quantity");
+                "Stock Request #$request_id | Item: $item_name | Qty: $requested_quantity | PR: $batch_pr");
             
             echo json_encode([
                 'success' => true,
                 'message' => 'Stock request submitted successfully',
-                'request_id' => $request_id
+                'request_id' => $request_id,
+                'pr_number' => $batch_pr
             ]);
             break;
             

@@ -38,8 +38,9 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_product_details') {
                 COALESCE(ip.min_stock, 0)                    AS min_stock,
                 COALESCE(ip.max_stock, 0)                    AS max_stock,
                 COALESCE(si.stock_level, ip.stock, 0)        AS stock_level,
-                COALESCE(si.capacity, ip.max_stock, 0)       AS capacity,
-                COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
+                COALESCE(si.capacity, ip.max_stock, 480)       AS capacity,
+                COALESCE(si.reorder_level, ip.min_stock, 24) AS reorder_level,
+                COALESCE(si.critical_level, 10)              AS critical_level,
                 COALESCE(si.unit, ip.size, 'pcs')            AS unit,
                 si.physical_count,
                 si.variance,
@@ -59,19 +60,8 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_product_details') {
 
         // Apply capacity fallbacks
         $capacity = (float)($prod['capacity'] ?? 0);
-        $cat = strtoupper(trim($prod['category_name'] ?? ''));
         if ($capacity <= 0) {
-            if      (strpos($cat,'OIL')!==false&&strpos($cat,'ENGINE')!==false)    $capacity=100;
-            elseif  (strpos($cat,'COOLANT')!==false||strpos($cat,'FLUID')!==false) $capacity=strpos($cat,'BRAKE')!==false?50:80;
-            elseif  (strpos($cat,'GREASE')!==false||strpos($cat,'LUBE')!==false)   $capacity=100;
-            elseif  (strpos($cat,'FILTER')!==false)                                 $capacity=150;
-            elseif  (strpos($cat,'ACCESSORI')!==false||strpos($cat,'TIRE')!==false||strpos($cat,'WAX')!==false) $capacity=200;
-            elseif  (strpos($cat,'FRESHENER')!==false)                              $capacity=250;
-            elseif  (strpos($cat,'BEVERAGE')!==false||strpos($cat,'DRINK')!==false) $capacity=500;
-            elseif  (strpos($cat,'SNACK')!==false||strpos($cat,'CHIP')!==false||strpos($cat,'BISCUIT')!==false||strpos($cat,'NOODLE')!==false) $capacity=500;
-            elseif  (strpos($cat,'CHOCOLATE')!==false||strpos($cat,'CANDY')!==false) $capacity=400;
-            elseif  (strpos($cat,'CHEMICAL')!==false||strpos($cat,'ADDITIVE')!==false) $capacity=80;
-            else    $capacity=100;
+            $capacity = 480;
         }
         $prod['capacity'] = $capacity;
 
@@ -407,6 +397,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $prod_id = (int)($_POST['product_id'] ?? 0);
         $qty = (int)($_POST['requested_quantity'] ?? 0);
         $remarks = trim($_POST['remarks'] ?? '');
+        // Use session-based batch PR number so multiple items submitted in one session share the same PR
+        if (empty($_SESSION['current_batch_pr']) || (time() - ($_SESSION['batch_pr_time'] ?? 0)) > 3600) {
+            // Generate a new sequential PR number based on the highest existing one
+            $stmt_max = $pdo->query("SELECT MAX(CAST(REGEXP_SUBSTR(request_no, '[0-9]+\$') AS UNSIGNED)) FROM stock_requests WHERE station_id = $station_id AND request_no IS NOT NULL AND request_no != ''");
+            $max_num = (int)($stmt_max->fetchColumn() ?: 0);
+            $_SESSION['current_batch_pr'] = 'PR-' . date('Y') . '-' . str_pad($max_num + 1, 4, '0', STR_PAD_LEFT);
+            $_SESSION['batch_pr_time'] = time();
+        }
+        $batch_pr = $_SESSION['current_batch_pr'];
 
         if ($prod_id > 0 && $qty > 0) {
             try {
@@ -422,15 +421,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if (!$prod) throw new Exception("Product not found.");
 
-                // Insert into stock_requests
+                // Insert into stock_requests WITH the shared batch request_no
                 $stmt = $pdo->prepare("
                     INSERT INTO stock_requests (
-                        staff_id, station_id, item_id, item_sku, item_name, 
+                        request_no, staff_id, station_id, item_id, item_sku, item_name, 
                         item_category, current_stock, requested_quantity, 
                         remarks, status, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', NOW(), NOW())
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', NOW(), NOW())
                 ");
                 $stmt->execute([
+                    $batch_pr,
                     $me['id'],
                     $station_id,
                     $prod_id,
@@ -443,9 +443,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
 
                 $request_id = $pdo->lastInsertId();
-                log_activity($pdo, $me['id'], 'Create Stock Request', "Manager submitted Stock Request #$request_id for {$prod['product_name']} | Qty: $qty");
+                log_activity($pdo, $me['id'], 'Create Stock Request', "Stock Request #$request_id for {$prod['product_name']} | Qty: $qty | PR: $batch_pr");
 
-                $_SESSION['success'] = "Stock request for '{$prod['product_name']}' created successfully (ID: #$request_id).";
+                $_SESSION['success'] = "Stock request for '{$prod['product_name']}' added to <strong>{$batch_pr}</strong> (ID: #$request_id).";
             } catch (Exception $e) {
                 $_SESSION['error'] = 'Error: ' . $e->getMessage();
             }
@@ -489,8 +489,9 @@ try {
             COALESCE(ip.min_stock, 0)                    AS min_stock,
             COALESCE(ip.max_stock, 0)                    AS max_stock,
             COALESCE(si.stock_level, ip.stock, 0)        AS stock_level,
-            COALESCE(si.capacity, ip.max_stock, 100)     AS capacity,
-            COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
+            COALESCE(si.capacity, ip.max_stock, 480)     AS capacity,
+            COALESCE(si.reorder_level, ip.min_stock, 24) AS reorder_level,
+            COALESCE(si.critical_level, 10)              AS critical_level,
             COALESCE(si.unit, ip.size, 'pcs')            AS unit,
             si.last_updated                              AS last_updated,
             si.physical_count,
@@ -564,7 +565,8 @@ $summary_alert_low      = 0; // Low Stock only (stock > reorder/2 && <= reorder)
 $summary_alert_critical = 0; // Critical Stock (stock > 0 && <= reorder/2)
 foreach ($merch_inventory as $item) {
     $stock = (float)($item['stock_level'] ?? 0);
-    $reorder = (float)($item['reorder_level'] ?? 10);
+    $reorder = (float)($item['reorder_level'] ?? 24);
+    $critical = (float)($item['critical_level'] ?? 10);
     $variance = $item['variance'];
     
     if ($variance !== null && (float)$variance != 0) {
@@ -573,13 +575,12 @@ foreach ($merch_inventory as $item) {
     
     if ($stock <= 0) {
         $summary_out++;
-    } elseif ($stock <= $reorder) {
+    } elseif ($stock <= $critical) {
+        $summary_alert_critical++;
         $summary_low++;
-        if ($stock <= $reorder / 2) {
-            $summary_alert_critical++;
-        } else {
-            $summary_alert_low++;
-        }
+    } elseif ($stock <= $reorder) {
+        $summary_alert_low++;
+        $summary_low++;
     } else {
         $summary_available++;
     }
@@ -599,7 +600,8 @@ $req_staff_users = [];
 try {
     $stmt = $pdo->prepare("
         SELECT sr.*, u.name AS staff_name, 
-               COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
+               COALESCE(si.reorder_level, ip.min_stock, 24) AS reorder_level,
+               COALESCE(si.critical_level, 10)              AS critical_level,
                COALESCE(si.unit, ip.size, 'pcs') AS unit,
                ip.sku AS prod_sku
         FROM stock_requests sr 
@@ -1072,36 +1074,25 @@ include __DIR__ . '/../partials/header.php';
             ?>
                 <tr class="cat-header no-paginate"><td colspan="12"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                 <?php foreach ($items as $item):
-                    $stock    = (float)($item['stock_level'] ?? 0);
-                    $reorder  = (float)($item['reorder_level'] ?? 10);
-                    $capacity = (float)($item['capacity']    ?? 0);
+                    $reorder  = (float)($item['reorder_level'] ?? 24);
+                    $critical = (float)($item['critical_level'] ?? 10);
+                    $capacity = (float)($item['capacity']    ?? 480);
                     $unit     = htmlspecialchars(format_merch_unit($item['unit'] ?? 'pcs'));
                     $variance = $item['variance'];
                     $has_variance = ($variance !== null && (float)$variance != 0);
 
                     // Dynamic capacity fallbacks
-                    $cat_upper = strtoupper(trim($item['category_name'] ?? ''));
                     if ($capacity <= 0) {
-                        if      (strpos($cat_upper,'OIL')!==false&&strpos($cat_upper,'ENGINE')!==false)    $capacity=100;
-                        elseif  (strpos($cat_upper,'COOLANT')!==false||strpos($cat_upper,'FLUID')!==false) $capacity=strpos($cat_upper,'BRAKE')!==false?50:80;
-                        elseif  (strpos($cat_upper,'GREASE')!==false||strpos($cat_upper,'LUBE')!==false)   $capacity=100;
-                        elseif  (strpos($cat_upper,'FILTER')!==false)                                 $capacity=150;
-                        elseif  (strpos($cat_upper,'ACCESSORI')!==false||strpos($cat_upper,'TIRE')!==false||strpos($cat_upper,'WAX')!==false) $capacity=200;
-                        elseif  (strpos($cat_upper,'FRESHENER')!==false)                              $capacity=250;
-                        elseif  (strpos($cat_upper,'BEVERAGE')!==false||strpos($cat_upper,'DRINK')!==false) $capacity=500;
-                        elseif  (strpos($cat_upper,'SNACK')!==false||strpos($cat_upper,'CHIP')!==false||strpos($cat_upper,'BISCUIT')!==false||strpos($cat_upper,'NOODLE')!==false) $capacity=500;
-                        elseif  (strpos($cat_upper,'CHOCOLATE')!==false||strpos($cat_upper,'CANDY')!==false) $capacity=400;
-                        elseif  (strpos($cat_upper,'CHEMICAL')!==false||strpos($cat_upper,'ADDITIVE')!==false) $capacity=80;
-                        else    $capacity=100;
+                        $capacity = 480;
                     }
 
                     $fill_pct = $capacity > 0 ? ($stock / $capacity) * 100 : 0;
 
                     if ($stock <= 0) {
                         $st = 'OUT OF STOCK'; $sc = '#dc3545'; $si_cls = 'out of stock';
-                    } elseif ($fill_pct <= 10) {
-                        $st = 'CRITICAL'; $sc = '#dc3545'; $si_cls = 'critical';
-                    } elseif ($stock <= $reorder || $fill_pct <= 25) {
+                    } elseif ($stock <= $critical) {
+                        $st = 'CRITICAL STOCK'; $sc = '#dc3545'; $si_cls = 'critical';
+                    } elseif ($stock <= $reorder) {
                         $st = 'LOW STOCK'; $sc = '#fd7e14'; $si_cls = 'low';
                     } else {
                         $st = 'AVAILABLE'; $sc = '#28a745'; $si_cls = 'available';
@@ -1267,7 +1258,8 @@ include __DIR__ . '/../partials/header.php';
                 $cat_alerts = [];
                 foreach ($items as $item) {
                     $stock   = (float)($item['stock_level'] ?? 0);
-                    $reorder = (float)($item['reorder_level'] ?? 10);
+                    $reorder = (float)($item['reorder_level'] ?? 24);
+                    $critical = (float)($item['critical_level'] ?? 10);
                     $var     = $item['variance'];
                     $has_var = ($var !== null && (float)$var != 0);
                     if ($stock <= $reorder || $has_var) { $cat_alerts[] = $item; }
@@ -1278,7 +1270,8 @@ include __DIR__ . '/../partials/header.php';
                 <?php foreach ($cat_alerts as $item):
                     $alert_count++;
                     $stock    = (float)($item['stock_level'] ?? 0);
-                    $reorder  = (float)($item['reorder_level'] ?? 10);
+                    $reorder  = (float)($item['reorder_level'] ?? 24);
+                    $critical = (float)($item['critical_level'] ?? 10);
                     $unit     = htmlspecialchars($item['unit'] ?? 'pcs');
                     $variance = $item['variance'];
                     $has_variance = ($variance !== null && (float)$variance != 0);
@@ -1290,7 +1283,7 @@ include __DIR__ . '/../partials/header.php';
                         $st='Out of Stock'; $sc='#343a40'; $icon='fa-times-circle';
                         $recommended='Immediate Restock Required';
                         $rec_icon='fa-exclamation-circle'; $rec_color='#dc3545'; $alert_type_cls='out of stock';
-                    } elseif ($stock <= $reorder / 2) {
+                    } elseif ($stock <= $critical) {
                         $st='Critical Stock'; $sc='#dc3545'; $icon='fa-fire';
                         $recommended='Urgent: Create Stock Request';
                         $rec_icon='fa-bolt'; $rec_color='#dc3545'; $alert_type_cls='critical stock';
@@ -2525,11 +2518,13 @@ function printProductRecord(productId) {
 
         var stock = parseFloat(p.stock_level) || 0;
         var reorder = parseFloat(p.reorder_level) || 0;
+        var critical = parseFloat(p.critical_level) || 10;
         var status = stock <= 0 ? 'Out of Stock'
-                   : stock <= reorder / 2 ? 'Critical Stock'
-                   : stock <= reorder     ? 'Low Stock'
+                   : stock <= critical ? 'Critical Stock'
+                   : stock <= reorder  ? 'Low Stock'
                    : 'Available';
         var statusColor = stock <= 0 ? '#dc3545'
+                        : stock <= critical ? '#dc3545'
                         : stock <= reorder ? '#fd7e14'
                         : '#28a745';
 

@@ -1253,11 +1253,11 @@ if (empty($merch_low_stock_table)) {
 // Table 5: Pending Stock Requests
 $requester_name = html_entity_decode($display_name, ENT_QUOTES | ENT_HTML5);
 $pending_requests_table = dashboard_fetch_all($pdo, "
-    SELECT CONCAT('SR-', id) AS request_no, item_category AS type, ? AS requested_by, status 
+    SELECT COALESCE(request_no, CONCAT('PR-', id)) AS request_no, item_category AS type, ? AS requested_by, status 
     FROM stock_requests 
     WHERE staff_id = ? AND status IN ('Pending', 'Pending Manager Review')
     UNION ALL
-    SELECT CONCAT('FSR-', id) AS request_no, 'Fuel' AS type, ? AS requested_by, status 
+    SELECT COALESCE(request_no, CONCAT('PR-', id)) AS request_no, 'Fuel' AS type, ? AS requested_by, status 
     FROM fuel_stock_requests 
     WHERE staff_id = ? AND status IN ('Pending', 'Pending Manager Review')
     ORDER BY request_no DESC

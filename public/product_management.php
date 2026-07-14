@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'product_management';
 // Detect active tab from URL param or POST for sidebar active state
@@ -309,6 +309,8 @@ try {
             COALESCE(si.price, ip.unit_price, ip.unit_cost, 0)  AS unit_price,
             COALESCE(si.stock_level, ip.stock, 0)               AS quantity,
             COALESCE(si.status, 'active')                       AS status,
+            COALESCE(si.reorder_level, 24)                      AS reorder_level,
+            COALESCE(si.critical_level, 10)                     AS critical_level,
             CASE WHEN si.id IS NOT NULL THEN 1 ELSE 0 END       AS in_station
         FROM inventory_products ip
         LEFT JOIN station_inventory si
@@ -352,6 +354,8 @@ try {
                    COALESCE(si.price, ip.unit_price, ip.unit_cost, 0) AS unit_price,
                    COALESCE(si.stock_level, ip.stock, 0) AS quantity,
                    COALESCE(si.status,'active') AS status,
+                   COALESCE(si.reorder_level, 24)  AS reorder_level,
+                   COALESCE(si.critical_level, 10) AS critical_level,
                    CASE WHEN si.id IS NOT NULL THEN 1 ELSE 0 END AS in_station
             FROM inventory_products ip
             LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
@@ -616,7 +620,13 @@ Fuel Products
                                 $price   = (float)($product['unit_price'] ?? $cost);
                                 $profit  = $price - $cost;
                                 $qty     = (int)($product['quantity'] ?? 0);
-                                $qcolor  = $qty <= 0 ? '#dc3545' : ($qty <= 10 ? '#ff9500' : '#28a745');
+                                $reorder = (int)($product['reorder_level']  ?? 24);
+                                $critical= (int)($product['critical_level'] ?? 10);
+                                // Colour coding: red=critical/out, orange=low, green=available
+                                if ($qty <= 0)        $qcolor = '#dc3545';      // Out of Stock
+                                elseif ($qty <= $critical) $qcolor = '#dc3545'; // Critical Stock
+                                elseif ($qty <= $reorder)  $qcolor = '#ff9500'; // Low Stock
+                                else                  $qcolor = '#28a745';      // Available
                                 $pid     = (int)$product['id'];
                                 $batches = $merch_batches_by_product[$pid] ?? [];
                                 $batch_count = count($batches);

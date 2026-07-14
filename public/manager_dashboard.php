@@ -588,7 +588,7 @@ if (mgr_table_exists($pdo, 'stock_requests')) {
     $rows = mgr_rows(
         $pdo,
         "SELECT sr.id,
-                CONCAT('SR-', LPAD(sr.id, 4, '0')) AS request_no,
+                COALESCE(sr.request_no, CONCAT('PR-', LPAD(sr.id, 4, '0'))) AS request_no,
                 'Merchandise' AS request_type,
                 sr.item_name AS item_name,
                 sr.requested_quantity AS requested_qty,
@@ -610,7 +610,7 @@ if (mgr_table_exists($pdo, 'fuel_stock_requests')) {
     $rows = mgr_rows(
         $pdo,
         "SELECT fsr.id,
-                CONCAT('FSR-', LPAD(fsr.id, 4, '0')) AS request_no,
+                COALESCE(fsr.request_no, CONCAT('PR-', LPAD(fsr.id, 4, '0'))) AS request_no,
                 'Fuel' AS request_type,
                 fsr.fuel_type AS item_name,
                 fsr.requested_liters AS requested_qty,

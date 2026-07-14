@@ -1,0 +1,4 @@
+{"time":"2026-07-14T08:01:26+02:00","to":"amda.cabahug.coc@phinmaed.com","otp":"924451","attempts":[{"method":"phpmailer","attempt":1,"transport":"smtp-tls-587","success":true,"info":""}]}
+{"time":"2026-07-14T08:02:31+02:00","to":"cabahug.amiedamas@gmail.com","otp":"122610","attempts":[{"method":"phpmailer","attempt":1,"transport":"smtp-tls-587","success":true,"info":""}]}
+{"time":"2026-07-14T08:04:32+02:00","to":"cabahug.amiedamas@gmail.com","otp":"120064","attempts":[{"method":"phpmailer","attempt":1,"transport":"smtp-tls-587","success":true,"info":""}]}
+{"time":"2026-07-14T08:05:15+02:00","to":"amiecabahug2020@gmail.com","otp":"602516","attempts":[{"method":"phpmailer","attempt":1,"transport":"smtp-tls-587","success":true,"info":""}]}

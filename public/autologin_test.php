@@ -15,7 +15,11 @@ if ($user) {
     $_SESSION['username'] = $user['username'];
     $_SESSION['role'] = $user['role'];
     $_SESSION['station_id'] = $user['station_id'];
-    header("Location: staff_dashboard.php");
+    if ($user['role'] === 'admin') {
+        header("Location: admin_purchase_orders.php");
+    } else {
+        header("Location: staff_dashboard.php");
+    }
     exit;
 } else {
     echo "User not found";

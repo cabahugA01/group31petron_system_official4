@@ -221,6 +221,8 @@ try {
                COALESCE(si.unit, 'pcs') AS unit,
                i.unit_cost, i.supplier,
                i.unit_price, i.stock_quantity, i.stock, i.created_at,
+               COALESCE(si.reorder_level, 24)   AS reorder_level,
+               COALESCE(si.critical_level, 10)  AS critical_level,
                p.new_value  AS pending_price,
                p.status     AS approval_status,
                p.id         AS approval_id
@@ -700,6 +702,7 @@ include __DIR__ . '/../partials/header.php';
             <option value="">All Statuses</option>
             <option value="available">Available</option>
             <option value="low">Low Stock</option>
+            <option value="critical">Critical Stock</option>
             <option value="out">Out of Stock</option>
             <option value="noprice">No Price Set</option>
             <option value="belowcost">Price Below Cost</option>
@@ -743,16 +746,19 @@ include __DIR__ . '/../partials/header.php';
                         </td>
                     </tr>
                     <?php foreach ($items as $item):
-                        $cost   = $item['_cost'];
-                        $price  = $item['_price'];
-                        $stock  = $item['_stock'];
+                        $cost          = $item['_cost'];
+                        $price         = $item['_price'];
+                        $stock         = $item['_stock'];
+                        $reorder_level = (int)($item['reorder_level']  ?? 24);
+                        $critical_lvl  = (int)($item['critical_level'] ?? 10);
 
                         $below_cost = ($price > 0 && $price < $cost);
                         $no_price   = ($price <= 0);
 
-                        if ($stock <= 0)       { $st_label = 'Out of Stock'; $st_class = 'badge-out';       $st_key = 'out'; }
-                        elseif ($stock <= 10)  { $st_label = 'Low Stock';    $st_class = 'badge-low';       $st_key = 'low'; }
-                        else                   { $st_label = 'Available';    $st_class = 'badge-available'; $st_key = 'available'; }
+                        if ($stock <= 0)               { $st_label = 'Out of Stock';   $st_class = 'badge-out';      $st_key = 'out'; }
+                        elseif ($stock <= $critical_lvl){ $st_label = 'Critical Stock'; $st_class = 'badge-critical'; $st_key = 'critical'; }
+                        elseif ($stock <= $reorder_level){ $st_label = 'Low Stock';     $st_class = 'badge-low';      $st_key = 'low'; }
+                        else                            { $st_label = 'Available';      $st_class = 'badge-available';$st_key = 'available'; }
 
                         $row_class = $below_cost ? 'row-below-cost' : '';
                     ?>
@@ -959,9 +965,10 @@ function filterTable() {
         var matchQ   = !q || name.indexOf(q) !== -1 || sku.indexOf(q) !== -1;
         var matchCat = !catFilter || cat === catFilter;
         var matchSt  = true;
-        if (stFilter === 'available') matchSt = status === 'available';
-        else if (stFilter === 'low')  matchSt = status === 'low';
-        else if (stFilter === 'out')  matchSt = status === 'out';
+        if (stFilter === 'available')  matchSt = status === 'available';
+        else if (stFilter === 'low')   matchSt = status === 'low';
+        else if (stFilter === 'critical') matchSt = status === 'critical';
+        else if (stFilter === 'out')   matchSt = status === 'out';
         else if (stFilter === 'noprice')   matchSt = noprice;
         else if (stFilter === 'belowcost') matchSt = belowcost;
 

@@ -34,40 +34,50 @@ if (empty($_raw_addr) && !empty($_raw_loc) && $_raw_loc !== 'CDO') {
 }
 $station_address = $_raw_addr;
 
-// ── AJAX Handler for Details & Finalization List ──────────────────────
+
+
+// AJAX for Pending items by PR number (used in new simple modal)
 if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_pending_items') {
     header('Content-Type: application/json');
-    $po_type = $_GET['type'] ?? 'merch';
-    $date    = $_GET['date'] ?? '';
-    
+    $po_type   = $_GET['type']      ?? 'merch';
+    $pr_number = $_GET['pr_number'] ?? '';
+
     $items = [];
     if ($po_type === 'fuel') {
+        // Fuel pending: read from fuel_stock_requests grouped by request_no
         $stmt = $pdo->prepare("
-            SELECT fpo.id,
-                   COALESCE(ft.name,'Fuel') AS product_name,
-                   fpo.volume    AS quantity,
-                   fpo.unit_price,
-                   fpo.total_amount
-            FROM fuel_purchase_orders fpo
-            LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id
-            WHERE fpo.station_id = ?
-              AND DATE(fpo.created_at) = ?
-              AND fpo.status IN ('Pending Admin Validation','Pending')
-            ORDER BY fpo.id ASC
+            SELECT fsr.id, COALESCE(fsr.fuel_type,'Fuel') AS product_name,
+                   fsr.requested_liters AS quantity,
+                   '' AS product_code, 'Fuel' AS category, 'Liter' AS unit,
+                   COALESCE((SELECT fp.price_per_liter FROM fuel_pricing fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fsr.station_id AND fp.is_active = 1 ORDER BY fp.effective_date DESC LIMIT 1), 0) AS unit_price,
+                   (fsr.requested_liters * COALESCE((SELECT fp.price_per_liter FROM fuel_pricing fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fsr.station_id AND fp.is_active = 1 ORDER BY fp.effective_date DESC LIMIT 1), 0)) AS total_amount
+            FROM fuel_stock_requests fsr
+            LEFT JOIN fuel_inventory fi ON LOWER(fsr.fuel_type) = LOWER(fi.fuel_type) AND fi.station_id = fsr.station_id
+            WHERE fsr.station_id = ? AND fsr.request_no = ?
+              AND fsr.status = 'Waiting for Purchase Order'
+            ORDER BY fsr.id ASC
         ");
-        $stmt->execute([$station_id, $date]);
+        $stmt->execute([$station_id, $pr_number]);
     } else {
+        // Merch pending: read from stock_requests by request_no
         $stmt = $pdo->prepare("
-            SELECT po.id, po.product_name, po.quantity, po.unit_price, po.total_amount
-            FROM purchase_orders po
-            WHERE po.station_id = ?
-              AND DATE(po.created_at) = ?
-              AND po.type = 'merch'
-              AND po.status = 'Pending Admin Validation'
-              AND po.admin_finalized = 0
-            ORDER BY po.id ASC
+            SELECT sr.id,
+                   sr.item_name AS product_name,
+                   COALESCE(sr.approved_quantity, sr.requested_quantity) AS quantity,
+                   COALESCE(sr.item_sku, ip.sku, '') AS product_code,
+                   COALESCE(sr.item_category, ip.category, '-') AS category,
+                   COALESCE(si.unit, ip.size, 'pcs') AS unit,
+                   COALESCE(sr.approved_price, ip.unit_cost, 0) AS unit_price,
+                   COALESCE(sr.approved_quantity, sr.requested_quantity, 0)
+                     * COALESCE(sr.approved_price, ip.unit_cost, 0) AS total_amount
+            FROM stock_requests sr
+            LEFT JOIN inventory_products ip ON sr.item_id = ip.id
+            LEFT JOIN station_inventory si  ON sr.item_id = si.product_id AND si.station_id = sr.station_id
+            WHERE sr.station_id = ? AND sr.request_no = ?
+              AND sr.status = 'Waiting for Purchase Order'
+            ORDER BY sr.id ASC
         ");
-        $stmt->execute([$station_id, $date]);
+        $stmt->execute([$station_id, $pr_number]);
     }
     $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
     echo json_encode(['success' => true, 'items' => $items]);
@@ -92,8 +102,14 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_generated_items') {
         $stmt->execute([$batch_id, $station_id]);
     } else {
         $stmt = $pdo->prepare("
-            SELECT po.id, po.product_name, po.quantity, po.unit_price, po.total_amount
+            SELECT po.id, po.product_name, po.quantity, po.unit_price, po.total_amount,
+                   COALESCE(sr.item_sku, ip.sku) AS product_code,
+                   COALESCE(sr.item_category, ip.category) AS category,
+                   COALESCE(si.unit, sr.item_sku, ip.size, 'pcs') AS unit
             FROM purchase_orders po
+            LEFT JOIN stock_requests sr ON po.request_id = sr.id
+            LEFT JOIN inventory_products ip ON sr.item_id = ip.id OR po.product_name = ip.product_name
+            LEFT JOIN station_inventory si ON (sr.item_id = si.product_id OR ip.id = si.product_id) AND si.station_id = po.station_id
             WHERE po.batch_id = ? AND po.station_id = ?
             ORDER BY po.id ASC
         ");
@@ -110,10 +126,13 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_delivery_details') 
     $batch_id = $_GET['batch_id'] ?? '';
     
     $stmt = $pdo->prepare("
-        SELECT id, product AS product_name, quantity, unit_price, (quantity * unit_price) AS total_amount, remarks, delivery_date
-        FROM deliveries_oversight
-        WHERE batch_id = ? AND station_id = ?
-        ORDER BY id ASC
+        SELECT do.id, do.product AS product_name, do.quantity, do.unit_price, (do.quantity * do.unit_price) AS total_amount,
+               do.remarks, do.delivery_date, do.unit, do.category,
+               COALESCE(ip.sku, '') AS product_code
+        FROM deliveries_oversight do
+        LEFT JOIN inventory_products ip ON do.product = ip.product_name
+        WHERE do.batch_id = ? AND do.station_id = ?
+        ORDER BY do.id ASC
     ");
     $stmt->execute([$batch_id, $station_id]);
     $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -266,6 +285,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $req_rec['id'], $me['id'], $role, "PO Generated: $po_number"
                     ]);
 
+                    // Notify Manager and Staff
+                    $notify_stmt = $pdo->prepare("
+                        INSERT INTO notifications (user_id, type, title, message, event_type, severity, redirect_url, created_at)
+                        VALUES (?, 'info', 'Purchase Order Approved', ?, 'stock_request', 'medium', ?, NOW())
+                    ");
+                    if (!empty($req_rec['manager_id'])) {
+                        $notify_stmt->execute([
+                            $req_rec['manager_id'],
+                            "Purchase Order {$po_number} has been approved and generated by Admin.",
+                            "manager_purchase_orders.php?tab=generated"
+                        ]);
+                    }
+                    if (!empty($req_rec['staff_id'])) {
+                        $notify_stmt->execute([
+                            $req_rec['staff_id'],
+                            "Purchase Order {$po_number} for your request has been generated.",
+                            "staff_delivery_history.php"
+                        ]);
+                    }
+
                     $inserted_items++;
                 }
             } else if ($po_type === 'fuel') {
@@ -342,6 +381,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ")->execute([
                         $req_rec['id'], $me['id'], $role, "PO Generated: $po_number"
                     ]);
+
+                    // Notify Manager and Staff
+                    $notify_stmt = $pdo->prepare("
+                        INSERT INTO notifications (user_id, type, title, message, event_type, severity, redirect_url, created_at)
+                        VALUES (?, 'info', 'Purchase Order Approved', ?, 'stock_request', 'medium', ?, NOW())
+                    ");
+                    if (!empty($req_rec['manager_id'])) {
+                        $notify_stmt->execute([
+                            $req_rec['manager_id'],
+                            "Purchase Order {$po_number} has been approved and generated by Admin.",
+                            "manager_purchase_orders.php?tab=generated"
+                        ]);
+                    }
+                    if (!empty($req_rec['staff_id'])) {
+                        $notify_stmt->execute([
+                            $req_rec['staff_id'],
+                            "Purchase Order {$po_number} for your request has been generated.",
+                            "staff_fuel_deliveries_history.php"
+                        ]);
+                    }
 
                     $inserted_items++;
                 }
@@ -438,14 +497,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Tab 1: Pending Purchase Requests — from stock_requests with 'Waiting for Purchase Order'
 $pending_requests = [];
 
-// Merchandise Pendings (from stock_requests)
 try {
     $stmt = $pdo->prepare("
         SELECT sr.id, sr.request_no, sr.item_name AS product_name, sr.approved_quantity AS quantity,
+               sr.item_sku AS product_code, sr.item_category AS category,
                COALESCE(si.unit, ip.size, 'pcs') AS unit,
                COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
                COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
-               COALESCE(ip.cost_price, 0) AS cost_price,
+               COALESCE(si.cost, ip.unit_cost, 0) AS cost_price,
                sr.manager_notes AS remarks, sr.processed_at AS created_at, sr.updated_at,
                u.name AS requested_by, m.name AS manager_name
         FROM stock_requests sr
@@ -507,7 +566,7 @@ try {
 
     $fuel_pr_groups = [];
     foreach ($fuel_wfpo as $r) {
-        $prKey = $r['request_no'] ?: ('FSR-' . str_pad($r['id'], 5, '0', STR_PAD_LEFT));
+        $prKey = $r['request_no'] ?: ('PR-' . str_pad($r['id'], 5, '0', STR_PAD_LEFT));
         if (!isset($fuel_pr_groups[$prKey])) {
             $fuel_pr_groups[$prKey] = [
                 'pr_no'        => $prKey,
@@ -541,9 +600,11 @@ $generated_pos = [];
 try {
     $stmt = $pdo->prepare("
         SELECT po.batch_id, DATE(po.admin_finalized_at) AS date_only, po.admin_finalized_at, SUM(po.total_amount) AS total,
-               COALESCE(u.username, 'Admin') AS generated_by, po.status
+               COALESCE(u.username, 'Admin') AS generated_by, po.status, MIN(sr.request_no) AS pr_no,
+               MIN(po.expected_delivery_date) AS expected_delivery_date, MIN(po.remarks) AS remarks
         FROM purchase_orders po
         LEFT JOIN users u ON po.admin_id = u.id
+        LEFT JOIN stock_requests sr ON po.request_id = sr.id
         WHERE po.station_id = ? AND po.type = 'merch' AND po.admin_finalized = 1 AND po.status NOT IN ('Delivered', 'Received', 'Completed')
         GROUP BY po.batch_id
         ORDER BY po.admin_finalized_at DESC
@@ -553,12 +614,15 @@ try {
         if (empty($r['batch_id'])) continue;
         $generated_pos[] = [
             'po_no' => $r['batch_id'],
+            'pr_no' => $r['pr_no'],
             'po_type' => 'merch',
             'type' => 'Merchandise',
             'supplier' => 'Petron Corporation',
             'date' => $r['date_only'],
             'generated_by' => $r['generated_by'],
-            'status' => $r['status']
+            'status' => $r['status'],
+            'expected_delivery_date' => $r['expected_delivery_date'],
+            'remarks' => $r['remarks']
         ];
     }
 } catch (Exception $e) {}
@@ -567,7 +631,12 @@ try {
 try {
     $stmt = $pdo->prepare("
         SELECT fpo.batch_id, DATE(fpo.approved_at) AS date_only, fpo.approved_at, SUM(fpo.total_amount) AS total,
-               COALESCE(u.username, 'Admin') AS generated_by, fpo.status
+               COALESCE(u.username, 'Admin') AS generated_by, fpo.status,
+               (SELECT MIN(fsr.request_no) 
+                FROM fuel_stock_requests fsr
+                JOIN fuel_stock_request_audit fsra ON fsra.request_id = fsr.id
+                WHERE fsra.notes = CONCAT('PO Generated: ', fpo.batch_id)) AS pr_no,
+               MIN(fpo.expected_delivery_date) AS expected_delivery_date, MIN(fpo.notes) AS remarks
         FROM fuel_purchase_orders fpo
         LEFT JOIN users u ON fpo.approved_by = u.id
         WHERE fpo.station_id = ? AND fpo.status NOT IN ('Pending Admin Validation', 'Pending', 'Delivered', 'Received', 'Completed')
@@ -579,12 +648,15 @@ try {
         if (empty($r['batch_id'])) continue;
         $generated_pos[] = [
             'po_no' => $r['batch_id'],
+            'pr_no' => $r['pr_no'] ?: $r['batch_id'],
             'po_type' => 'fuel',
             'type' => 'Fuel',
             'supplier' => 'Petron Corporation',
             'date' => $r['date_only'],
             'generated_by' => $r['generated_by'],
-            'status' => $r['status']
+            'status' => $r['status'],
+            'expected_delivery_date' => $r['expected_delivery_date'],
+            'remarks' => $r['remarks']
         ];
     }
 } catch (Exception $e) {}
@@ -594,7 +666,12 @@ usort($generated_pos, fn($a, $b) => strcmp($b['date'], $a['date']));
 $waiting_deliveries = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT batch_id AS po_no, supplier, delivery_date, status, delivery_type
+        SELECT batch_id AS po_no, supplier, delivery_date AS date, status, delivery_type,
+               MIN(remarks) AS remarks, MIN(delivery_date) AS expected_delivery_date,
+               COALESCE(
+                 (SELECT MIN(sr.request_no) FROM purchase_orders po JOIN stock_requests sr ON po.request_id = sr.id WHERE po.batch_id = deliveries_oversight.batch_id),
+                 (SELECT MIN(fsr.request_no) FROM fuel_stock_requests fsr JOIN fuel_stock_request_audit fsra ON fsra.request_id = fsr.id WHERE fsra.notes = CONCAT('PO Generated: ', deliveries_oversight.batch_id))
+               ) AS pr_no
         FROM deliveries_oversight
         WHERE station_id = ? AND status IN ('Expected Delivery', 'Pending Delivery', 'In Transit')
         GROUP BY batch_id
@@ -608,7 +685,12 @@ try {
 $completed_pos = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT batch_id AS po_no, supplier, delivery_date, updated_at AS stock_in_date, status, delivery_type
+        SELECT batch_id AS po_no, supplier, delivery_date AS date, updated_at AS stock_in_date, status, delivery_type,
+               MIN(remarks) AS remarks, MIN(delivery_date) AS expected_delivery_date,
+               COALESCE(
+                 (SELECT MIN(sr.request_no) FROM purchase_orders po JOIN stock_requests sr ON po.request_id = sr.id WHERE po.batch_id = deliveries_oversight.batch_id),
+                 (SELECT MIN(fsr.request_no) FROM fuel_stock_requests fsr JOIN fuel_stock_request_audit fsra ON fsra.request_id = fsr.id WHERE fsra.notes = CONCAT('PO Generated: ', deliveries_oversight.batch_id))
+               ) AS pr_no
         FROM deliveries_oversight
         WHERE station_id = ? AND status IN ('Delivered', 'Received', 'Completed')
         GROUP BY batch_id
@@ -618,781 +700,19 @@ try {
     $completed_pos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// Summary card numbers
-$cnt_pending = count($pending_requests);
-$cnt_generated = count($generated_pos);
-$cnt_waiting = count($waiting_deliveries);
+// Split by type
+$merch_pending = array_values(array_filter($pending_requests, fn($r) => $r['po_type'] === 'merch'));
+$fuel_pending  = array_values(array_filter($pending_requests, fn($r) => $r['po_type'] === 'fuel'));
+$merch_pos     = array_values(array_filter($generated_pos,    fn($r) => $r['po_type'] === 'merch'));
+$fuel_pos      = array_values(array_filter($generated_pos,    fn($r) => $r['po_type'] === 'fuel'));
+
+$cnt_pending   = count($pending_requests);
+$cnt_approved  = count($generated_pos);
+$cnt_total     = $cnt_pending + $cnt_approved;
+$cnt_waiting   = count($waiting_deliveries);
 $cnt_completed = count($completed_pos);
 
-$active_tab = $_GET['tab'] ?? 'pending';
+$active_type = $_GET['type'] ?? 'merch';
+$active_tab  = $_GET['tab']  ?? 'pending';
 
-include __DIR__ . '/../partials/header.php';
-?>
-
-<style>
-/* Page header */
-.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:-12px !important; }
-.int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
-.int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
-
-/* Cards grid */
-.po-sum-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:24px; }
-.po-sum-card { background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; }
-.po-sum-label { font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px; }
-.po-sum-val { font-size:24px; font-weight:800; margin-top:4px; }
-.po-sum-icon { width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px; }
-
-/* Tabs navigation */
-.po-tabs-nav { display:flex; border-bottom:1px solid #cbd5e1; margin-bottom:20px; gap:8px; }
-.po-tab-btn { border:none; background:#fff; padding:10px 16px; font-weight:700; font-size:13px; text-transform:uppercase; cursor:pointer; color:#64748b; border:1px solid #e2e8f0; border-bottom:2px solid transparent; display:flex; align-items:center; gap:6px; transition:all 0.15s; border-radius:6px 6px 0 0; }
-.po-tab-btn:hover { color:#002F6C; background:#f8fafc; }
-.po-tab-btn.active { color:#ffffff; background:#002F6C; border-color:#002F6C; }
-.po-tab-badge { background:#cbd5e1; color:#1e293b; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px; }
-.po-tab-btn.active .po-tab-badge { background:#ffffff; color:#002F6C; }
-
-/* Table styling */
-.po-table-wrap { background:#fff; border:1px solid #e2e8f0; border-radius:11px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.05); margin-bottom:20px; }
-.po-table { width:100%; border-collapse:collapse; font-size:12px; }
-.po-table thead tr { background:#002F70; }
-.po-table thead th { padding:10px 12px; text-align:left; font-size:11px; font-weight:700; color:#fff; text-transform:uppercase; border:none; }
-.po-table tbody tr { border-bottom:1px solid #f1f5f9; transition:background .1s; }
-.po-table tbody tr:hover { background:#f8fafc; }
-.po-table tbody td { padding:10px 12px; color:#1e293b; vertical-align:middle; }
-
-/* Modal overlay & centering */
-.modal-overlay { display:none; position:fixed; inset:0; background:rgba(15, 23, 42, 0.6); z-index:9999; align-items:center; justify-content:center; padding:20px; }
-.modal-overlay.open { display:flex; }
-.modal-box { background:#fff; border-radius:12px; width:700px; max-width:100%; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1); border:1px solid #e2e8f0; overflow:hidden; display:flex; flex-direction:column; max-height:90vh; }
-.modal-header { padding:16px 20px; border-bottom:1px solid #e2e8f0; background:#00264D; display:flex; align-items:center; justify-content:space-between; }
-.modal-header h3 { margin:0; font-size:15px; font-weight:700; color:#fff !important; text-transform:uppercase; }
-.modal-body { padding:20px; overflow-y:auto; flex:1; }
-.modal-footer { padding:12px 20px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:8px; background:#f8fafc; }
-
-.po-form-grp { margin-bottom:12px; text-align:left; }
-.po-form-grp label { display:block; font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; margin-bottom:4px; }
-.po-form-grp input, .po-form-grp select, .po-form-grp textarea { width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#1e293b; background:#fff; outline:none; box-sizing:border-box; }
-
-.po-badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700; text-transform:uppercase; }
-.po-badge-pending { background:#fef3c7; color:#b45309; border:1px solid #fde68a; }
-.po-badge-approved { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
-.po-badge-delivered { background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; }
-
-.btn-cancel { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:0 16px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid #6b7280; background:white !important; color:#475569 !important; height:32px; transition:all .15s; }
-.btn-cancel:hover { background:#6b7280 !important; color:#fff !important; }
-.btn-save { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:0 16px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid #16a34a; background:white !important; color:#16a34a !important; height:32px; transition:all .15s; }
-.btn-save:hover { background:#16a34a !important; color:#fff !important; }
-.btn-rej { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:0 16px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid #dc3545; background:white !important; color:#dc3545 !important; height:32px; transition:all .15s; }
-.btn-rej:hover { background:#dc3545 !important; color:#fff !important; }
-</style>
-
-<div class="int-head">
-  <div>
-    <h1><i class="fas fa-file-invoice"></i> Purchase Order Management</h1>
-    <div class="sub">Monitor and finalize all procurement operations &middot; Today: <?= date('F d, Y') ?></div>
-  </div>
-</div>
-
-<!-- Summary Cards -->
-<div class="po-sum-grid">
-  <div class="po-sum-card">
-    <div>
-      <div class="po-sum-label">Pending PR Requests</div>
-      <div class="po-sum-val" style="color:#fd7e14;"><?= $cnt_pending ?></div>
-    </div>
-    <div class="po-sum-icon" style="background:#fff3cd; color:#fd7e14;"><i class="fas fa-hourglass-half"></i></div>
-  </div>
-  <div class="po-sum-card">
-    <div>
-      <div class="po-sum-label">Generated Purchase Order</div>
-      <div class="po-sum-val" style="color:#002F6C;"><?= $cnt_generated ?></div>
-    </div>
-    <div class="po-sum-icon" style="background:#e8f0fb; color:#002F6C;"><i class="fas fa-file-signature"></i></div>
-  </div>
-  <div class="po-sum-card">
-    <div>
-      <div class="po-sum-label">Waiting Deliveries</div>
-      <div class="po-sum-val" style="color:#17a2b8;"><?= $cnt_waiting ?></div>
-    </div>
-    <div class="po-sum-icon" style="background:#e0f2fe; color:#17a2b8;"><i class="fas fa-shipping-fast"></i></div>
-  </div>
-  <div class="po-sum-card">
-    <div>
-      <div class="po-sum-label">Completed Orders</div>
-      <div class="po-sum-val" style="color:#16a34a;"><?= $cnt_completed ?></div>
-    </div>
-    <div class="po-sum-icon" style="background:#dcfce7; color:#16a34a;"><i class="fas fa-check-circle"></i></div>
-  </div>
-</div>
-
-<!-- Tab Navigation -->
-<div class="po-tabs-nav">
-  <button class="po-tab-btn <?= $active_tab === 'pending' ? 'active' : '' ?>" onclick="switchTab('pending')">
-    <i class="fas fa-hourglass-half"></i> Pending Requests <span class="po-tab-badge"><?= $cnt_pending ?></span>
-  </button>
-  <button class="po-tab-btn <?= $active_tab === 'generated' ? 'active' : '' ?>" onclick="switchTab('generated')">
-    <i class="fas fa-file-invoice"></i> Generated Purchase Order <span class="po-tab-badge"><?= $cnt_generated ?></span>
-  </button>
-  <button class="po-tab-btn <?= $active_tab === 'waiting' ? 'active' : '' ?>" onclick="switchTab('waiting')">
-    <i class="fas fa-shipping-fast"></i> Waiting Deliveries <span class="po-tab-badge"><?= $cnt_waiting ?></span>
-  </button>
-  <button class="po-tab-btn <?= $active_tab === 'completed' ? 'active' : '' ?>" onclick="switchTab('completed')">
-    <i class="fas fa-check-circle"></i> Completed POs <span class="po-tab-badge"><?= $cnt_completed ?></span>
-  </button>
-</div>
-
-<!-- Tab 1: Pending Purchase Requests -->
-<div id="pane-pending" style="display: <?= $active_tab === 'pending' ? 'block' : 'none' ?>;">
-  <div class="po-table-wrap">
-    <table class="po-table" id="pendingTable">
-      <thead>
-        <tr>
-          <th style="width:18%;">PR Number</th>
-          <th style="width:10%;">Type</th>
-          <th style="width:14%;">Requested By</th>
-          <th style="width:14%;">Approved By</th>
-          <th style="width:12%;">Date</th>
-          <th style="width:8%; text-align:center;">Items</th>
-          <th style="width:12%;">Status</th>
-          <th style="width:12%; text-align:center;">Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        <?php if (empty($pending_requests)): ?>
-          <tr><td colspan="8" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-folder-open" style="font-size:20px; display:block; margin-bottom:8px;"></i> No pending purchase requests.</td></tr>
-        <?php else: ?>
-          <?php foreach ($pending_requests as $pr): ?>
-            <tr>
-              <td><code style="color:#002F6C; font-weight:700;"><?= htmlspecialchars($pr['pr_no']) ?></code></td>
-              <td style="font-weight:700; color:<?= $pr['po_type'] === 'fuel' ? '#0284c7' : '#002F6C' ?>;"><?= htmlspecialchars($pr['type']) ?></td>
-              <td><?= htmlspecialchars($pr['requested_by']) ?></td>
-              <td><?= htmlspecialchars($pr['manager_name']) ?></td>
-              <td><?= date('M d, Y', strtotime($pr['date'])) ?></td>
-              <td style="text-align:center; font-weight:700;"><?= $pr['total_items'] ?></td>
-              <td><span class="po-badge po-badge-pending">Waiting for PO</span></td>
-              <td style="text-align:center;">
-                <div style="display:flex; flex-direction:column; gap:5px; align-items:center;">
-                  <button class="btn-save" style="height:28px; font-size:11px; min-width:120px;" onclick="openAdminFinalizeModal(<?= htmlspecialchars(json_encode($pr)) ?>)"><i class="fas fa-file-signature"></i> Generate PO</button>
-                  <button class="btn-rej" style="height:28px; font-size:11px; min-width:120px;" onclick="openRejectPrModal('<?= $pr['po_type'] ?>', '<?= htmlspecialchars($pr['pr_no']) ?>')"><i class="fas fa-times"></i> Reject</button>
-                </div>
-              </td>
-            </tr>
-          <?php endforeach; ?>
-        <?php endif; ?>
-      </tbody>
-    </table>
-  </div>
-</div>
-
-
-<!-- Tab 2: Generated Purchase Orders -->
-<div id="pane-generated" style="display: <?= $active_tab === 'generated' ? 'block' : 'none' ?>;">
-  <div class="po-table-wrap">
-    <table class="po-table" id="generatedTable">
-      <thead>
-        <tr>
-          <th>PO No.</th>
-          <th>Supplier</th>
-          <th>Type</th>
-          <th>Date</th>
-          <th>Generated By</th>
-          <th>Status</th>
-          <th style="width:250px; text-align:center;">Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        <?php if (empty($generated_pos)): ?>
-          <tr><td colspan="7" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-folder-open" style="font-size:20px; display:block; margin-bottom:8px;"></i> No generated purchase orders.</td></tr>
-        <?php else: ?>
-          <?php foreach ($generated_pos as $po): 
-              $print_url = "print_po_new.php?batch_id=" . urlencode($po['po_no']) . "&type=" . urlencode($po['po_type']) . "&print=1";
-          ?>
-            <tr>
-              <td><code><?= htmlspecialchars($po['po_no']) ?></code></td>
-              <td><?= htmlspecialchars($po['supplier']) ?></td>
-              <td style="font-weight:700;"><?= htmlspecialchars($po['type']) ?></td>
-              <td><?= date('M d, Y', strtotime($po['date'])) ?></td>
-              <td><?= htmlspecialchars($po['generated_by']) ?></td>
-              <td><span class="po-badge po-badge-approved"><?= htmlspecialchars($po['status']) ?></span></td>
-              <td style="text-align:center;">
-                <div style="display:flex; flex-direction:column; gap:5px; align-items:center;">
-                  <button class="btn-cancel" style="height:28px; font-size:11px; min-width:100px;" onclick="viewGeneratedDetails('<?= $po['po_type'] ?>', '<?= htmlspecialchars($po['po_no']) ?>')"><i class="fas fa-eye"></i> View</button>
-                  <button class="btn-save" style="height:28px; font-size:11px; min-width:100px;" onclick="openEditPOModal('<?= htmlspecialchars($po['po_no']) ?>', '<?= $po['po_type'] ?>')"><i class="fas fa-edit"></i> Edit</button>
-                  <a href="<?= $print_url ?>" target="_blank" class="btn-cancel" style="height:28px; font-size:11px; text-decoration:none; line-height:26px; border-color:#0284c7; color:#0284c7 !important; min-width:100px;"><i class="fas fa-print"></i> Print</a>
-                </div>
-              </td>
-            </tr>
-          <?php endforeach; ?>
-        <?php endif; ?>
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<!-- Tab 3: Waiting Deliveries -->
-<div id="pane-waiting" style="display: <?= $active_tab === 'waiting' ? 'block' : 'none' ?>;">
-  <div class="po-table-wrap">
-    <table class="po-table" id="waitingTable">
-      <thead>
-        <tr>
-          <th>PO No.</th>
-          <th>Supplier</th>
-          <th>Expected Delivery</th>
-          <th>Status</th>
-          <th style="width:100px; text-align:center;">Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        <?php if (empty($waiting_deliveries)): ?>
-          <tr><td colspan="5" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-truck-loading" style="font-size:20px; display:block; margin-bottom:8px;"></i> No waiting deliveries.</td></tr>
-        <?php else: ?>
-          <?php foreach ($waiting_deliveries as $wd): ?>
-            <tr>
-              <td><code><?= htmlspecialchars($wd['po_no']) ?></code></td>
-              <td><?= htmlspecialchars($wd['supplier']) ?></td>
-              <td style="font-weight:700; color:#002F70;"><?= date('M d, Y', strtotime($wd['delivery_date'])) ?></td>
-              <td><span class="po-badge po-badge-pending"><?= htmlspecialchars($wd['status']) ?></span></td>
-              <td style="text-align:center;">
-                <div style="display:flex; flex-direction:column; gap:5px; align-items:center;">
-                  <button class="btn-cancel" style="height:28px; font-size:11px; min-width:100px;" onclick="viewDeliveryDetails('<?= htmlspecialchars($wd['po_no']) ?>')"><i class="fas fa-eye"></i> View</button>
-                </div>
-              </td>
-            </tr>
-          <?php endforeach; ?>
-        <?php endif; ?>
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<!-- Tab 4: Completed Purchase Orders -->
-<div id="pane-completed" style="display: <?= $active_tab === 'completed' ? 'block' : 'none' ?>;">
-  <div class="po-table-wrap">
-    <table class="po-table" id="completedTable">
-      <thead>
-        <tr>
-          <th>PO No.</th>
-          <th>Supplier</th>
-          <th>Delivery Date</th>
-          <th>Stock-In Date</th>
-          <th>Status</th>
-          <th style="width:100px; text-align:center;">Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        <?php if (empty($completed_pos)): ?>
-          <tr><td colspan="6" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-check-double" style="font-size:20px; display:block; margin-bottom:8px;"></i> No completed purchase orders.</td></tr>
-        <?php else: ?>
-          <?php foreach ($completed_pos as $cp): ?>
-            <tr>
-              <td><code><?= htmlspecialchars($cp['po_no']) ?></code></td>
-              <td><?= htmlspecialchars($cp['supplier']) ?></td>
-              <td><?= date('M d, Y', strtotime($cp['delivery_date'])) ?></td>
-              <td style="font-weight:700; color:#16a34a;"><?= date('M d, Y h:i A', strtotime($cp['stock_in_date'])) ?></td>
-              <td><span class="po-badge po-badge-delivered"><?= htmlspecialchars($cp['status']) ?></span></td>
-              <td style="text-align:center;">
-                <div style="display:flex; flex-direction:column; gap:5px; align-items:center;">
-                  <button class="btn-cancel" style="height:28px; font-size:11px; min-width:100px;" onclick="viewDeliveryDetails('<?= htmlspecialchars($cp['po_no']) ?>')"><i class="fas fa-eye"></i> View</button>
-                </div>
-              </td>
-            </tr>
-          <?php endforeach; ?>
-        <?php endif; ?>
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<!-- ══ Modal 1: View Details Modal ══ -->
-<div class="modal-overlay" id="viewModal">
-  <div class="modal-box" style="width:650px;">
-    <div class="modal-header">
-      <h3 id="viewModalTitle">Request Details</h3>
-    </div>
-    <div class="modal-body">
-      <div id="viewModalInfo" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:15px; margin-bottom:15px; font-size:13px; line-height:1.6; text-align:left;"></div>
-      <table style="width:100%; border-collapse:collapse; font-size:12px;">
-        <thead style="background:#f1f5f9;">
-          <tr>
-            <th style="padding:8px; text-align:left; border-bottom:1px solid #e2e8f0;">Product Name</th>
-            <th style="padding:8px; text-align:center; border-bottom:1px solid #e2e8f0; width:100px;">Quantity</th>
-            <th style="padding:8px; text-align:right; border-bottom:1px solid #e2e8f0; width:120px;">Unit Price</th>
-            <th style="padding:8px; text-align:right; border-bottom:1px solid #e2e8f0; width:120px;">Total Price</th>
-          </tr>
-        </thead>
-        <tbody id="viewModalItemsBody">
-          <!-- Loaded dynamically -->
-        </tbody>
-      </table>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-cancel" onclick="closeModal('viewModal')">Close</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══ Modal 2: Finalize Purchase Order Modal ══ -->
-<div class="modal-overlay" id="finalizeModal">
-  <div class="modal-box" style="width:800px;">
-    <div class="modal-header">
-      <h3 id="finModalTitle">Finalize Purchase Order</h3>
-    </div>
-    <form method="POST">
-      <input type="hidden" name="action" value="finalize_batch">
-      <input type="hidden" id="modalPoType" name="po_type" value="">
-      <input type="hidden" id="modalPoDate" name="po_date" value="">
-      <input type="hidden" id="modalPrNumber" name="pr_number" value="">
-      
-      <div class="modal-body" style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
-        <!-- Left Side: Scheduling & Terms -->
-        <div>
-          <div class="po-form-grp">
-            <label>PO Number / Batch ID (Auto-Generated)</label>
-            <input type="text" id="modalBatchId" name="batch_id_override" readonly style="font-family:monospace; font-weight:700; background:#f1f5f9; cursor:not-allowed;">
-          </div>
-          <div class="po-form-grp">
-            <label>Expected Delivery Date <span style="color:#dc2626;">*</span></label>
-            <input type="date" name="expected_delivery_date" required min="<?= date('Y-m-d') ?>">
-          </div>
-          <div class="po-form-grp">
-            <label>Expected Delivery Time <span style="color:#dc2626;">*</span></label>
-            <select name="expected_delivery_time" required>
-              <option value="09:00">09:00 AM</option>
-              <option value="14:00">02:00 PM</option>
-            </select>
-          </div>
-          <div class="po-form-grp">
-            <label>Payment Terms</label>
-            <select name="payment_terms">
-              <option value="30 Days">30 Days (Net 30)</option>
-              <option value="Cash">Cash</option>
-              <option value="Credit">Credit</option>
-              <option value="COD">COD</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Right Side: Logistics & Instructions -->
-        <div>
-          <div class="po-form-grp">
-            <label>Delivery Destination (Read-Only)</label>
-            <textarea readonly style="background:#e2e8f0; font-family:monospace; resize:none;" rows="3"><?= htmlspecialchars($station_name . "\n" . $station_address) ?></textarea>
-          </div>
-          <div class="po-form-grp">
-            <label>Receiving Personnel</label>
-            <input type="text" name="receiving_personnel" value="Any Assigned Staff" required>
-          </div>
-          <div class="po-form-grp">
-            <label>Delivery Instructions</label>
-            <textarea name="delivery_instructions" rows="2" placeholder="e.g. Handle with care..."></textarea>
-          </div>
-          <div class="po-form-grp">
-            <label>Remarks / Notes</label>
-            <textarea name="remarks" rows="2" placeholder="Optional notes..."></textarea>
-          </div>
-        </div>
-
-        <!-- Table of Products spanning full width -->
-        <div style="grid-column: span 2; max-height:200px; overflow-y:auto; border:1px solid #cbd5e1; border-radius:6px;">
-          <table style="width:100%; border-collapse:collapse; font-size:12px;">
-            <thead style="background:#f1f5f9; position:sticky; top:0;">
-              <tr>
-                <th style="padding:8px; text-align:left;">Product Name</th>
-                <th style="padding:8px; text-align:center; width:100px;">Quantity</th>
-                <th style="padding:8px; text-align:right; width:120px;">Unit Cost (₱)</th>
-                <th style="padding:8px; text-align:right; width:120px;">Total (₱)</th>
-              </tr>
-            </thead>
-            <tbody id="modalItemsBody">
-              <!-- Loaded dynamically -->
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <input type="hidden" id="submitActionInput" name="submit_action" value="finalize_po">
-        <button type="button" class="btn-cancel" onclick="closeModal('finalizeModal')">Cancel</button>
-        <button type="submit" class="btn-save" onclick="document.getElementById('submitActionInput').value = 'finalize_po'"><i class="fas fa-check-circle"></i> Finalize &amp; Forward</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- ══ Modal 3: Reject Modal ══ -->
-<div class="modal-overlay" id="rejectModal">
-  <div class="modal-box" style="width:450px;">
-    <div class="modal-header">
-      <h3 style="color:#fff !important;">Reject Purchase Request</h3>
-    </div>
-    <form method="POST">
-      <input type="hidden" name="action" value="reject_batch">
-      <input type="hidden" id="rejectPoType" name="po_type" value="">
-      <input type="hidden" id="rejectPoDate" name="po_date" value="">
-      <input type="hidden" id="rejectPrNumber" name="pr_number" value="">
-      <div class="modal-body">
-        <p style="font-size:13px; color:#475569; margin-bottom:15px;">Are you sure you want to reject this purchase request?</p>
-        <div class="po-form-grp">
-          <label>Reason for Rejection <span style="color:#dc2626;">*</span></label>
-          <textarea name="reject_reason" required rows="3" placeholder="Enter reason..."></textarea>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn-cancel" onclick="closeModal('rejectModal')">Cancel</button>
-        <button type="submit" class="btn-rej">Confirm Rejection</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- ══ Modal 4: Edit PO Modal ══ -->
-<div class="modal-overlay" id="editPOModal">
-  <div class="modal-box" style="width:800px; max-width:95%;">
-    <div class="modal-header">
-      <h3 style="color:#fff !important;">Edit Purchase Order</h3>
-    </div>
-    <form id="editPOForm" onsubmit="submitEditPO(event)">
-      <input type="hidden" name="action" value="edit_po">
-      <input type="hidden" id="editPoNo" name="po_no" value="">
-      <input type="hidden" id="editPoType" name="po_type" value="">
-      <div class="modal-body" id="editPOModalBody" style="max-height:60vh; overflow-y:auto;">
-        <p style="text-align:center; color:#64748b; padding:20px;">Loading...</p>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn-cancel" onclick="closeModal('editPOModal')">Cancel</button>
-        <button type="submit" class="btn-save" id="editPOSubmitBtn"><i class="fas fa-save"></i> Save Changes</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<script>
-function switchTab(tab) {
-    // Hide all panes
-    document.getElementById('pane-pending').style.display = 'none';
-    document.getElementById('pane-generated').style.display = 'none';
-    document.getElementById('pane-waiting').style.display = 'none';
-    document.getElementById('pane-completed').style.display = 'none';
-    
-    // Show active pane
-    document.getElementById('pane-' + tab).style.display = 'block';
-    
-    // Update tab button classes
-    document.querySelectorAll('.po-tab-btn').forEach(function(btn) {
-        btn.classList.remove('active');
-    });
-    event.currentTarget.classList.add('active');
-    
-    // Update URL parameter without reload
-    var url = new URL(window.location.href);
-    url.searchParams.set('tab', tab);
-    history.replaceState(null, '', url.toString());
-}
-
-function closeModal(id) {
-    document.getElementById(id).classList.remove('open');
-}
-
-function viewPendingDetails(type, date, prNo) {
-    var title = document.getElementById('viewModalTitle');
-    title.innerHTML = 'Pending Request Details &mdash; ' + prNo;
-    
-    var info = document.getElementById('viewModalInfo');
-    info.innerHTML = '<strong>Request Date:</strong> ' + new Date(date).toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'}) + '<br>' +
-                     '<strong>Supplier:</strong> Petron Corporation<br>' +
-                     '<strong>Type:</strong> ' + (type === 'fuel' ? 'Fuel Procurement' : 'Merchandise Inventory');
-                     
-    var tbody = document.getElementById('viewModalItemsBody');
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:15px;"><i class="fas fa-spinner fa-spin"></i> Loading items...</td></tr>';
-    
-    fetch('admin_purchase_orders.php?ajax=1&action=get_pending_items&type=' + type + '&date=' + date)
-    .then(r => r.json())
-    .then(res => {
-        if (!res.success || res.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:15px; color:#64748b;">No items found.</td></tr>';
-            return;
-        }
-        var html = '';
-        var grandTotal = 0;
-        res.items.forEach(item => {
-            var qty = parseFloat(item.quantity);
-            var price = parseFloat(item.unit_price);
-            var total = qty * price;
-            grandTotal += total;
-            html += '<tr>' +
-                '<td style="padding:8px;">' + item.product_name + '</td>' +
-                '<td style="padding:8px; text-align:center;">' + qty.toLocaleString() + '</td>' +
-                '<td style="padding:8px; text-align:right;">₱' + price.toFixed(2) + '</td>' +
-                '<td style="padding:8px; text-align:right; font-weight:700;">₱' + total.toFixed(2) + '</td>' +
-                '</tr>';
-        });
-        html += '<tr style="background:#f8fafc; font-weight:700; border-top:2px solid #cbd5e1;">' +
-            '<td colspan="3" style="padding:8px; text-align:right;">Grand Total:</td>' +
-            '<td style="padding:8px; text-align:right; color:#16a34a;">₱' + grandTotal.toFixed(2) + '</td>' +
-            '</tr>';
-        tbody.innerHTML = html;
-    })
-    .catch(() => {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#dc3545;">Error loading request.</td></tr>';
-    });
-    
-    document.getElementById('viewModal').classList.add('open');
-}
-
-function openAdminFinalizeModal(pr) {
-    document.getElementById('modalPoType').value = pr.po_type;
-    document.getElementById('modalPoDate').value = pr.date;
-    document.getElementById('modalPrNumber').value = pr.pr_no;
-    document.getElementById('finModalTitle').innerHTML = 'Finalize Purchase Order &mdash; ' + pr.pr_no;
-    
-    // Auto-generate PO Number is done on server, so display read-only indicator
-    document.getElementById('modalBatchId').value = '[Auto-Generated]';
-    
-    // Pre-set expected delivery date to 3 days from now
-    var expDate = new Date();
-    expDate.setDate(expDate.getDate() + 3);
-    var yyyy = expDate.getFullYear();
-    var mm = String(expDate.getMonth() + 1).padStart(2, '0');
-    var dd = String(expDate.getDate()).padStart(2, '0');
-    document.querySelector('[name="expected_delivery_date"]').value = yyyy + '-' + mm + '-' + dd;
-    
-    var tbody = document.getElementById('modalItemsBody');
-    var html = '';
-    
-    pr.items.forEach(item => {
-        var qty = parseFloat(item.quantity) || 0;
-        var cost = parseFloat(item.cost_price) || 0;
-        var total = qty * cost;
-        html += '<tr>' +
-            '<td style="padding:8px; font-weight:600;">' + item.product_name + '</td>' +
-            '<td style="padding:8px; text-align:center;">' +
-                '<input type="number" step="any" name="items['+item.id+'][qty]" value="'+qty+'" required style="width:70px; text-align:center; padding:4px;" oninput="recalcRowTotal('+item.id+')">' +
-            '</td>' +
-            '<td style="padding:8px; text-align:right;">' +
-                '<input type="number" step="0.01" name="items['+item.id+'][price]" value="'+cost+'" required style="width:90px; text-align:right; padding:4px;" oninput="recalcRowTotal('+item.id+')">' +
-            '</td>' +
-            '<td style="padding:8px; text-align:right; font-weight:700;" id="rt-'+item.id+'">₱' + total.toFixed(2) + '</td>' +
-            '</tr>';
-    });
-    tbody.innerHTML = html;
-    
-    document.getElementById('finalizeModal').classList.add('open');
-}
-
-function recalcRowTotal(id) {
-    var q = parseFloat(document.querySelector('[name="items['+id+'][qty]"]').value) || 0;
-    var p = parseFloat(document.querySelector('[name="items['+id+'][price]"]').value) || 0;
-    document.getElementById('rt-'+id).textContent = '₱' + (q*p).toFixed(2);
-}
-
-function openRejectPrModal(type, prNo) {
-    document.getElementById('rejectPoType').value = type;
-    document.getElementById('rejectPrNumber').value = prNo;
-    document.getElementById('rejectModal').classList.add('open');
-}
-
-function openEditPOModal(poNo, poType) {
-    document.getElementById('editPoNo').value = poNo;
-    document.getElementById('editPoType').value = poType;
-    
-    var modalBody = document.getElementById('editPOModalBody');
-    modalBody.innerHTML = '<p style="text-align:center; color:#64748b; padding:20px;"><i class="fas fa-spinner fa-spin"></i> Loading PO details...</p>';
-    
-    // Fetch PO details
-    fetch('admin_purchase_orders_handler.php?action=get_po_details&po_no=' + encodeURIComponent(poNo) + '&po_type=' + encodeURIComponent(poType))
-        .then(r => r.json())
-        .then(data => {
-            if (!data.success) {
-                modalBody.innerHTML = '<p style="text-align:center; color:#dc2626; padding:20px;">Error: ' + (data.message || 'Failed to load PO') + '</p>';
-                return;
-            }
-            
-            var po = data.po;
-            var html = '<div style="margin-bottom:20px;">';
-            html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:20px;">';
-            html += '<div><label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:5px;">PO Number</label>';
-            html += '<input type="text" value="' + po.po_no + '" disabled style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc;"></div>';
-            html += '<div><label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:5px;">Supplier</label>';
-            html += '<input type="text" name="supplier" value="' + (po.supplier || '') + '" required style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;"></div>';
-            html += '</div>';
-            
-            html += '<label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:8px;">Items</label>';
-            html += '<table style="width:100%; border-collapse:collapse; margin-bottom:15px;">';
-            html += '<thead><tr style="background:#f8fafc;">';
-            html += '<th style="padding:8px; text-align:left; font-size:11px; font-weight:700; color:#475569; border:1px solid #e2e8f0;">Product</th>';
-            html += '<th style="padding:8px; text-align:center; font-size:11px; font-weight:700; color:#475569; border:1px solid #e2e8f0; width:100px;">Quantity</th>';
-            html += '<th style="padding:8px; text-align:right; font-size:11px; font-weight:700; color:#475569; border:1px solid #e2e8f0; width:120px;">Unit Price</th>';
-            html += '<th style="padding:8px; text-align:right; font-size:11px; font-weight:700; color:#475569; border:1px solid #e2e8f0; width:120px;">Total</th>';
-            html += '</tr></thead><tbody>';
-            
-            data.items.forEach((item, idx) => {
-                var qty = parseFloat(item.quantity || 0);
-                var price = parseFloat(item.unit_price || 0);
-                var total = qty * price;
-                html += '<tr>';
-                html += '<td style="padding:8px; border:1px solid #e2e8f0;">' + item.product_name + '<input type="hidden" name="items[' + idx + '][id]" value="' + item.id + '"></td>';
-                html += '<td style="padding:8px; text-align:center; border:1px solid #e2e8f0;"><input type="number" step="any" name="items[' + idx + '][qty]" value="' + qty + '" required style="width:80px; text-align:center; padding:6px; border:1px solid #cbd5e1; border-radius:4px;" oninput="recalcEditRowTotal(' + idx + ')"></td>';
-                html += '<td style="padding:8px; text-align:right; border:1px solid #e2e8f0;"><input type="number" step="0.01" name="items[' + idx + '][price]" value="' + price + '" required style="width:100px; text-align:right; padding:6px; border:1px solid #cbd5e1; border-radius:4px;" oninput="recalcEditRowTotal(' + idx + ')"></td>';
-                html += '<td style="padding:8px; text-align:right; border:1px solid #e2e8f0; font-weight:700;" id="edit-rt-' + idx + '">₱' + total.toFixed(2) + '</td>';
-                html += '</tr>';
-            });
-            
-            html += '</tbody></table></div>';
-            modalBody.innerHTML = html;
-        })
-        .catch(err => {
-            modalBody.innerHTML = '<p style="text-align:center; color:#dc2626; padding:20px;">Network error loading PO</p>';
-        });
-    
-    document.getElementById('editPOModal').classList.add('open');
-}
-
-function recalcEditRowTotal(idx) {
-    var q = parseFloat(document.querySelector('[name="items[' + idx + '][qty]"]').value) || 0;
-    var p = parseFloat(document.querySelector('[name="items[' + idx + '][price]"]').value) || 0;
-    var cell = document.getElementById('edit-rt-' + idx);
-    if (cell) {
-        cell.textContent = '₱' + (q * p).toFixed(2);
-    }
-}
-
-function submitEditPO(event) {
-    event.preventDefault();
-    
-    var submitBtn = document.getElementById('editPOSubmitBtn');
-    var originalText = submitBtn.innerHTML;
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
-    
-    var formData = new FormData(document.getElementById('editPOForm'));
-    
-    fetch('admin_purchase_orders_handler.php', {
-        method: 'POST',
-        body: formData
-    })
-    .then(r => r.json())
-    .then(data => {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = originalText;
-        
-        if (data.success) {
-            alert('SUCCESS: Purchase Order updated successfully!');
-            closeModal('editPOModal');
-            location.reload();
-        } else {
-            alert('ERROR: ' + (data.message || 'Failed to update PO'));
-        }
-    })
-    .catch(err => {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = originalText;
-        alert('ERROR: Network error updating PO');
-    });
-}
-
-function viewGeneratedDetails(type, batchId) {
-    var title = document.getElementById('viewModalTitle');
-    title.innerHTML = 'Purchase Order Details &mdash; ' + batchId;
-    
-    var info = document.getElementById('viewModalInfo');
-    info.innerHTML = '<strong>PO Number:</strong> ' + batchId + '<br>' +
-                     '<strong>Supplier:</strong> Petron Corporation<br>' +
-                     '<strong>Type:</strong> ' + (type === 'fuel' ? 'Fuel Procurement' : 'Merchandise Inventory');
-                     
-    var tbody = document.getElementById('viewModalItemsBody');
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:15px;"><i class="fas fa-spinner fa-spin"></i> Loading items...</td></tr>';
-    
-    fetch('admin_purchase_orders.php?ajax=1&action=get_generated_items&type=' + type + '&batch_id=' + encodeURIComponent(batchId))
-    .then(r => r.json())
-    .then(res => {
-        if (!res.success || res.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:15px; color:#64748b;">No items found.</td></tr>';
-            return;
-        }
-        var html = '';
-        var grandTotal = 0;
-        res.items.forEach(item => {
-            var qty = parseFloat(item.quantity);
-            var price = parseFloat(item.unit_price);
-            var total = qty * price;
-            grandTotal += total;
-            html += '<tr>' +
-                '<td style="padding:8px;">' + item.product_name + '</td>' +
-                '<td style="padding:8px; text-align:center;">' + qty.toLocaleString() + '</td>' +
-                '<td style="padding:8px; text-align:right;">₱' + price.toFixed(2) + '</td>' +
-                '<td style="padding:8px; text-align:right; font-weight:700;">₱' + total.toFixed(2) + '</td>' +
-                '</tr>';
-        });
-        html += '<tr style="background:#f8fafc; font-weight:700; border-top:2px solid #cbd5e1;">' +
-            '<td colspan="3" style="padding:8px; text-align:right;">Grand Total:</td>' +
-            '<td style="padding:8px; text-align:right; color:#16a34a;">₱' + grandTotal.toFixed(2) + '</td>' +
-            '</tr>';
-        tbody.innerHTML = html;
-    })
-    .catch(() => {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#dc3545;">Error.</td></tr>';
-    });
-    
-    document.getElementById('viewModal').classList.add('open');
-}
-
-function viewDeliveryDetails(batchId) {
-    var title = document.getElementById('viewModalTitle');
-    title.innerHTML = 'Delivery Details &mdash; ' + batchId;
-    
-    var info = document.getElementById('viewModalInfo');
-    info.innerHTML = '<strong>PO Number:</strong> ' + batchId + '<br>' +
-                     '<strong>Supplier:</strong> Petron Corporation';
-                     
-    var tbody = document.getElementById('viewModalItemsBody');
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:15px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
-    
-    fetch('admin_purchase_orders.php?ajax=1&action=get_delivery_details&batch_id=' + encodeURIComponent(batchId))
-    .then(r => r.json())
-    .then(res => {
-        if (!res.success || res.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:15px; color:#64748b;">No delivery records.</td></tr>';
-            return;
-        }
-        var html = '';
-        var grandTotal = 0;
-        res.items.forEach(item => {
-            var qty = parseFloat(item.quantity);
-            var price = parseFloat(item.unit_price);
-            var total = qty * price;
-            grandTotal += total;
-            html += '<tr>' +
-                '<td style="padding:8px;">' + item.product_name + '</td>' +
-                '<td style="padding:8px; text-align:center;">' + qty.toLocaleString() + '</td>' +
-                '<td style="padding:8px; text-align:right;">₱' + price.toFixed(2) + '</td>' +
-                '<td style="padding:8px; text-align:right; font-weight:700;">₱' + total.toFixed(2) + '</td>' +
-                '</tr>';
-        });
-        html += '<tr style="background:#f8fafc; font-weight:700; border-top:2px solid #cbd5e1;">' +
-            '<td colspan="3" style="padding:8px; text-align:right;">Grand Total:</td>' +
-            '<td style="padding:8px; text-align:right; color:#16a34a;">₱' + grandTotal.toFixed(2) + '</td>' +
-            '</tr>';
-        tbody.innerHTML = html;
-    })
-    .catch(() => {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#dc3545;">Error.</td></tr>';
-    });
-    
-    document.getElementById('viewModal').classList.add('open');
-}
-
-function exportPOtoPDF(batchId) {
-    if (typeof exportTableToPDF === 'function') {
-        // Fetch generated items first or render details print friendly
-        var printUrl = "print_po_new.php?batch_id=" + encodeURIComponent(batchId) + "&print=1";
-        window.open(printUrl, '_blank');
-    }
-}
-
-// Modal dismissal on click outside
-document.querySelectorAll('.modal-overlay').forEach(function(modal) {
-    modal.addEventListener('click', function(e) {
-        if (e.target === this) this.classList.remove('open');
-    });
-});
-</script>
-
-<?php include __DIR__ . '/../partials/footer.php'; ?>
+include __DIR__ . '/admin_purchase_orders_view.php';

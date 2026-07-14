@@ -627,7 +627,7 @@ body, html { overflow-x:hidden !important; }
     <table class="aif-tbl" id="adminFuelInvTable">
       <thead>
         <tr>
-          <th style="width:70px; text-align:center;">Tank No.</th>
+          <th style="width:70px; text-align:center;">UGT No.</th>
           <th>Fuel Type</th>
           <th style="text-align:right;">Capacity</th>
           <th style="text-align:right;">Current Liters</th>
@@ -665,7 +665,7 @@ body, html { overflow-x:hidden !important; }
           <td style="color:#64748b; font-size:11px;"><?= $ts_str ?></td>
           <td style="text-align:center;">
             <button class="int-btn-outline" onclick="viewTankDetails(<?= htmlspecialchars(json_encode($r)) ?>)" title="View Details" style="padding:6px 12px;">
-              <i class="fas fa-eye"></i> View
+               <i class="fas fa-eye"></i> View
             </button>
           </td>
         </tr>
@@ -690,7 +690,7 @@ body, html { overflow-x:hidden !important; }
                 <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:15px;">
                     <h4 style="margin:0 0 10px; color:#00264D; font-size:12px; text-transform:uppercase; border-bottom:1px solid #e2e8f0; padding-bottom:6px;"><i class="fas fa-info-circle"></i> Tank Information</h4>
                     <table style="width:100%; font-size:13px;">
-                        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; color:#64748b; font-weight:600; width:55%;">Tank Number:</td><td id="detTankId" style="font-weight:700; color:#0f172a;"></td></tr>
+                        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; color:#64748b; font-weight:600; width:55%;">UGT Number:</td><td id="detTankId" style="font-weight:700; color:#0f172a;"></td></tr>
                         <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; color:#64748b; font-weight:600;">Fuel Type:</td><td id="detFuelType" style="font-weight:700; color:#0f172a;"></td></tr>
                         <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; color:#64748b; font-weight:600;">Tank Capacity:</td><td id="detCapacity" style="font-weight:600; color:#475569;"></td></tr>
                         <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; color:#64748b; font-weight:600;">Current Liters:</td><td id="detVolume" style="font-weight:700; color:#002F70;"></td></tr>

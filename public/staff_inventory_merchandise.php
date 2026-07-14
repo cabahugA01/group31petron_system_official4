@@ -34,8 +34,9 @@ try {
                ip.status,
                COALESCE(si.unit, ip.size, 'pcs')     AS unit,
                COALESCE(si.stock_level, ip.stock, 0) AS stock_level,
-               COALESCE(si.capacity, 0)              AS capacity,
-               COALESCE(si.reorder_level, 10)        AS reorder_level,
+               COALESCE(si.capacity, 480)            AS capacity,
+               COALESCE(si.reorder_level, 24)         AS reorder_level,
+               COALESCE(si.critical_level, 10)         AS critical_level,
                si.last_updated AS last_updated
         FROM inventory_products ip
         LEFT JOIN station_inventory si
@@ -120,28 +121,15 @@ foreach ($merch_inventory as $item) {
 
     $stock    = (float)($item['stock_level'] ?? 0);
     $capacity = (float)($item['capacity'] ?? 0);
-    $reorder  = (float)($item['reorder_level'] ?? 10);
-    $cat      = strtoupper(trim($item['category_name'] ?? ''));
-
-    if ($capacity <= 0) {
-        if      (strpos($cat,'OIL')!==false&&strpos($cat,'ENGINE')!==false)    $capacity=100;
-        elseif  (strpos($cat,'COOLANT')!==false||strpos($cat,'FLUID')!==false) $capacity=strpos($cat,'BRAKE')!==false?50:80;
-        elseif  (strpos($cat,'GREASE')!==false||strpos($cat,'LUBE')!==false)   $capacity=100;
-        elseif  (strpos($cat,'FILTER')!==false)                                 $capacity=150;
-        elseif  (strpos($cat,'ACCESSORI')!==false||strpos($cat,'TIRE')!==false||strpos($cat,'WAX')!==false) $capacity=200;
-        elseif  (strpos($cat,'FRESHENER')!==false)                              $capacity=250;
-        elseif  (strpos($cat,'BEVERAGE')!==false||strpos($cat,'DRINK')!==false) $capacity=500;
-        elseif  (strpos($cat,'SNACK')!==false||strpos($cat,'CHIP')!==false||strpos($cat,'BISCUIT')!==false||strpos($cat,'NOODLE')!==false) $capacity=500;
-        elseif  (strpos($cat,'CHOCOLATE')!==false||strpos($cat,'CANDY')!==false) $capacity=400;
-        elseif  (strpos($cat,'CHEMICAL')!==false||strpos($cat,'ADDITIVE')!==false) $capacity=80;
-        else    $capacity=100;
-    }
+    $reorder  = (float)($item['reorder_level'] ?? 24);
+    $critical = (float)($item['critical_level'] ?? 10);
 
     $fill_pct = $capacity > 0 ? ($stock/$capacity)*100 : 0;
-    if      ($stock<=0)                               { $st='OUT OF STOCK'; $sc='#dc3545'; $st_cls='out'; }
-    elseif  ($fill_pct<=10)                           { $st='CRITICAL';     $sc='#dc3545'; $st_cls='critical'; }
-    elseif  ($stock<=$reorder||$fill_pct<=25)         { $st='LOW STOCK';   $sc='#fd7e14'; $st_cls='low'; }
-    else                                              { $st='AVAILABLE';   $sc='#28a745'; $st_cls='ok'; }
+    // Status driven by DB thresholds — no hardcoded numbers
+    if      ($stock <= 0)         { $st='OUT OF STOCK'; $sc='#dc3545'; $st_cls='out'; }
+    elseif  ($stock <= $critical) { $st='CRITICAL';     $sc='#dc3545'; $st_cls='critical'; }
+    elseif  ($stock <= $reorder)  { $st='LOW STOCK';    $sc='#fd7e14'; $st_cls='low'; }
+    else                          { $st='AVAILABLE';    $sc='#28a745'; $st_cls='ok'; }
 
     $stats['total']++;
     if ($st_cls==='ok') $stats['available']++;
@@ -171,6 +159,7 @@ foreach ($merch_inventory as $item) {
         'stock'      => (int)$stock,
         'capacity'   => (int)$capacity,
         'reorder'    => (int)$reorder,
+        'critical'   => (int)$critical,
         'fill_pct'   => round($fill_pct, 1),
         'status'     => $st,
         'status_key' => $st_cls,

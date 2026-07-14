@@ -25,16 +25,16 @@
 .po-ctrl-btn{
     display:inline-flex;
     align-items:center;
-    gap:6px;
-    padding:6px 12px;
-    border-radius:5px;
-    font-size:12px;
+    gap:7px;
+    padding:8px 16px;
+    border-radius:7px;
+    font-size:12.5px;
     font-weight:600;
     cursor:pointer;
     border:1px solid transparent;
     text-decoration:none;
     white-space:nowrap;
-    transition:all .15s;
+    transition:all .18s;
     line-height:1.2;
 }
 
@@ -66,6 +66,34 @@
     background:#002F70 !important;
     background-color:#002F70 !important;
     color:#fff !important;
+}
+
+/* Reject / Danger Button */
+.po-btn-rej {
+    background: #fff !important;
+    color: #dc2626 !important;
+    border: 1.5px solid #fca5a5 !important;
+    font-weight: 600;
+    padding: 9px 18px;
+}
+.po-btn-rej:hover {
+    background: #fef2f2 !important;
+    border-color: #ef4444 !important;
+    color: #b91c1c !important;
+}
+
+/* Approve / Print Button */
+.po-btn-approve {
+    background: #16a34a !important;
+    color: #fff !important;
+    border: 1.5px solid #16a34a !important;
+    padding: 9px 20px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+}
+.po-btn-approve:hover {
+    background: #15803d !important;
+    border-color: #15803d !important;
 }
 
 .po-table-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;}
@@ -178,4 +206,130 @@
 }
 .po-tab-pane { display: none; }
 .po-tab-pane.active { display: block; }
+
+/* ── Inline PO Details Card ──────────────────────────────── */
+.po-details-card {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+    width: 100%;
+    max-width: 100%;
+    box-shadow: none;
+    box-sizing: border-box;
+}
+.po-card-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #002F6C;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 8px;
+    margin: 0 0 14px 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+.po-card-section-title + .po-card-section-title,
+.po-card-section-title:not(:first-child) {
+    margin-top: 20px;
+}
+.po-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 32px;
+    margin-bottom: 16px;
+}
+.po-info-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    padding: 7px 0;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 12px;
+}
+.po-info-row:last-child { border-bottom: none; }
+.po-info-label {
+    width: 160px;
+    flex-shrink: 0;
+    font-weight: 700;
+    color: #475569;
+    padding-top: 2px;
+    line-height: 1.4;
+}
+.po-info-value {
+    color: #0f172a;
+    font-weight: 600;
+    flex: 1;
+    line-height: 1.4;
+}
+.po-info-input {
+    padding: 5px 9px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 12px;
+    flex: 1;
+    max-width: 280px;
+    box-sizing: border-box;
+}
+.po-info-select {
+    padding: 5px 9px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 12px;
+    flex: 1;
+    max-width: 280px;
+    background: #fff;
+    box-sizing: border-box;
+}
+.po-addr-box {
+    font-size: 11px;
+    color: #334155;
+    background: #f8fafc;
+    padding: 8px 11px;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    line-height: 1.5;
+    font-weight: 600;
+}
+.po-textarea {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 12px;
+    resize: none;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+/* Products table inside card */
+.po-products-wrap { overflow-x: auto; margin-top: 4px; }
+.po-products-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.po-products-table th {
+    background: #002F6C;
+    color: #fff;
+    padding: 8px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    white-space: nowrap;
+    text-align: left;
+}
+.po-products-table th.right, .po-products-table td.right { text-align: right; }
+.po-products-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+    color: #334155;
+}
+.po-products-table tbody tr:last-child td { border-bottom: none; }
+.po-products-table tbody tr:hover { background: #f8fafc; }
+.po-cost-input {
+    width: 100px;
+    padding: 4px 7px;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    font-size: 12px;
+    text-align: right;
+}
 </style>

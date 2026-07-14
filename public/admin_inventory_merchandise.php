@@ -89,8 +89,9 @@ if (isset($_GET['print_id'])) {
                COALESCE(si.unit, ip.size, 'pcs')       AS unit,
                COALESCE(si.status, 'active')          AS status,
                COALESCE(si.stock_level, ip.stock, 0)  AS stock_level,
-               COALESCE(si.capacity, ip.max_stock, 100) AS capacity,
-               COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
+               COALESCE(si.capacity, ip.max_stock, 480) AS capacity,
+               COALESCE(si.reorder_level, ip.min_stock, 24) AS reorder_level,
+               COALESCE(si.critical_level, 10)              AS critical_level,
                COALESCE(si.variance, 0.00)            AS variance,
                COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated,
                ip.supplier
@@ -303,8 +304,9 @@ try {
                COALESCE(si.unit, 'pcs')       AS unit,
                COALESCE(si.status, 'active')          AS status,
                COALESCE(si.stock_level, ip.stock, 0)  AS stock_level,
-               COALESCE(si.capacity, ip.max_stock, 100) AS capacity,
-               COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
+               COALESCE(si.capacity, ip.max_stock, 480) AS capacity,
+               COALESCE(si.reorder_level, ip.min_stock, 24) AS reorder_level,
+               COALESCE(si.critical_level, 10)              AS critical_level,
                COALESCE(si.variance, 0.00)            AS variance,
                COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated,
                ip.supplier
@@ -354,14 +356,15 @@ foreach ($all_items as $item) {
     $stock     = (float)$item['stock_level'];
     $capacity  = (float)$item['capacity'];
     $reorder   = (float)$item['reorder_level'];
+    $critical  = (float)$item['critical_level'];
     $price     = (float)$item['price'];
     $variance  = (float)$item['variance'];
     $item_status = strtolower(trim($item['status'] ?? 'active'));
     
-    // Status computation
+    // Status computation — driven entirely by DB thresholds
     if ($stock <= 0) {
         $computed_status = 'out';
-    } elseif ($stock <= $reorder / 2) {
+    } elseif ($stock <= $critical) {
         $computed_status = 'critical';
     } elseif ($stock <= $reorder) {
         $computed_status = 'low';
@@ -1089,9 +1092,10 @@ function viewDetails(item) {
     var stock = parseFloat(item.stock_level);
     document.getElementById('detStock').textContent = stock.toLocaleString(undefined, {minimumFractionDigits: 2}) + ' ' + (item.unit || 'pcs');
     
-    var reorder = parseFloat(item.reorder_level);
-    document.getElementById('detReorder').textContent = reorder.toLocaleString(undefined, {minimumFractionDigits: 2}) + ' ' + (item.unit || 'pcs');
-    document.getElementById('detCritical').textContent = (reorder / 2).toLocaleString(undefined, {minimumFractionDigits: 2}) + ' ' + (item.unit || 'pcs');
+    var reorder  = parseFloat(item.reorder_level);
+    var critical = parseFloat(item.critical_level) || (reorder / 2);
+    document.getElementById('detReorder').textContent  = reorder.toLocaleString(undefined, {minimumFractionDigits: 2}) + ' ' + (item.unit || 'pcs');
+    document.getElementById('detCritical').textContent = critical.toLocaleString(undefined, {minimumFractionDigits: 2}) + ' ' + (item.unit || 'pcs');
     
     var value = stock * price;
     document.getElementById('detValue').innerHTML = '₱' + value.toLocaleString(undefined, {minimumFractionDigits: 2});

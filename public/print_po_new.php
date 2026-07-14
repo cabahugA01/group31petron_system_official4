@@ -10,9 +10,9 @@ require_login();
 $me   = current_user();
 $role = role_key($me['role'] ?? 'staff');
 
-if (!in_array($role, ['admin', 'superadmin'])) {
+if (!in_array($role, ['admin', 'superadmin', 'manager'])) {
     http_response_code(403);
-    die('<p style="font-family:Arial;padding:40px;color:#721c24;">Access denied. Admin privileges required.</p>');
+    die('<p style="font-family:Arial;padding:40px;color:#721c24;">Access denied. Manager or Admin privileges required.</p>');
 }
 
 $po_id    = (int)($_GET['id'] ?? 0);
@@ -102,6 +102,72 @@ try {
             $stmt->execute([$batch_id]);
         }
         $po_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Fallback to stock_requests / fuel_stock_requests if no purchase_orders exist yet
+        if (empty($po_items)) {
+            if ($po_type === 'fuel') {
+                $stmt = $pdo->prepare("
+                    SELECT fsr.id,
+                           fsr.request_no AS po_number,
+                           fsr.fuel_type AS product_name,
+                           'Fuel' AS product_category,
+                           fsr.approved_liters AS quantity,
+                           0 AS unit_price,
+                           0 AS total_amount,
+                           fsr.created_at AS created_at,
+                           fsr.processed_at AS approved_at,
+                           fsr.remarks AS remarks,
+                           fsr.status AS status,
+                           u_staff.name AS staff_name,
+                           u_mgr.name AS approved_by_name,
+                           st.name AS station_name,
+                           st.location AS station_location,
+                           st.address AS station_address,
+                           st.vat_tin AS station_vat_tin,
+                           NULL AS station_contact,
+                           'Petron Corporation' AS supplier_name
+                    FROM fuel_stock_requests fsr
+                    LEFT JOIN stations st ON fsr.station_id = st.id
+                    LEFT JOIN users u_staff ON fsr.staff_id = u_staff.id
+                    LEFT JOIN users u_mgr ON fsr.manager_id = u_mgr.id
+                    WHERE fsr.request_no = ? AND fsr.station_id = ?
+                ");
+                $stmt->execute([$batch_id, $station_id]);
+                $po_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            } else {
+                $stmt = $pdo->prepare("
+                    SELECT sr.id,
+                           sr.request_no AS po_number,
+                           sr.item_name AS product_name,
+                           COALESCE(ip.category, 'Lubricant') AS product_category,
+                           sr.approved_quantity AS quantity,
+                           COALESCE(ip.unit_cost, 0) AS unit_price,
+                           (sr.approved_quantity * COALESCE(ip.unit_cost, 0)) AS total_amount,
+                           sr.created_at AS created_at,
+                           sr.processed_at AS approved_at,
+                           sr.manager_notes AS remarks,
+                           sr.status AS status,
+                           sr.item_sku,
+                           u_staff.name AS staff_name,
+                           u_mgr.name AS approved_by_name,
+                           st.name AS station_name,
+                           st.location AS station_location,
+                           st.address AS station_address,
+                           st.vat_tin AS station_vat_tin,
+                           NULL AS station_contact,
+                           'Petron Corporation' AS supplier_name
+                    FROM stock_requests sr
+                    LEFT JOIN stations st ON sr.station_id = st.id
+                    LEFT JOIN users u_staff ON sr.staff_id = u_staff.id
+                    LEFT JOIN users u_mgr ON sr.manager_id = u_mgr.id
+                    LEFT JOIN inventory_products ip ON sr.item_sku = ip.sku
+                    WHERE sr.request_no = ? AND sr.station_id = ?
+                ");
+                $stmt->execute([$batch_id, $station_id]);
+                $po_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+        }
+
         $po = $po_items[0] ?? false;
         if ($po) { $po['po_number'] = $batch_id; }
     }
