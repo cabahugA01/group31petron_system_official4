@@ -3934,7 +3934,7 @@ require_once __DIR__ . '/rbac_menu.php';
         gap: 10px;
         padding: 13px 18px;
         border-radius: 8px;
-        margin: 14px 0 6px 0;
+        margin: 14px 18px 6px 18px;
         font-size: 14px;
         font-weight: 500;
         line-height: 1.5;

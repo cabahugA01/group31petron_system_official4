@@ -16,7 +16,7 @@ header("Cache-Control: post-check=0, pre-check=0", false);
 header("Pragma: no-cache");
 
 // EMAIL ONLY - No phone support
-$email = trim($_GET['email'] ?? $_POST['email'] ?? $_SESSION['reset_email'] ?? '');
+$email = normalizePasswordResetEmail($_GET['email'] ?? $_POST['email'] ?? $_SESSION['reset_email'] ?? '');
 $email_failed = isset($_GET['email_failed']) && $_GET['email_failed'] === '1';
 
 // Store email in session for resend functionality
@@ -27,16 +27,15 @@ if (!empty($email)) {
 // Handle RESEND OTP request
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' && isset($_GET['resend']) && $_GET['resend'] === '1' && !empty($email)) {
     try {
-        $uid_col = 'id';
-        // Include superadmin so developer/superadmin accounts can resend/verify OTPs
-        $role_filter_sql = "AND LOWER(TRIM(role)) IN ('staff','manager','admin','developer','superadmin')";
+        ensurePasswordResetTokensTable($pdo);
+        try { cleanPasswordResetEmails($pdo); } catch(Exception $ce) {}
 
-        // Find user by email
-        $stmt = $pdo->prepare("SELECT `{$uid_col}` AS user_id, username, TRIM(email) AS email, role FROM users WHERE LOWER(TRIM(email)) = LOWER(?) AND LOWER(TRIM(status)) = 'active' {$role_filter_sql} LIMIT 1");
-        $stmt->execute([$email]);
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        $user = findActivePasswordResetUserByEmail($pdo, $email);
 
         if ($user) {
+            if (!filter_var($user['email'], FILTER_VALIDATE_EMAIL)) {
+                $error = "This account has an invalid registered email address. Please contact the administrator.";
+            } else {
             // ============================================================
             // EMAIL WHITELIST SECURITY CHECK (same as forgot_password.php)
             // Only allow OTP resend for whitelisted email addresses
@@ -81,6 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' && isset($_GET['resend']) && $_GET['re
                     $error = "Could not send the email. Please check your connection and try again.";
                 }
             }
+            }
         } else {
             $error = "Unable to resend OTP. Please start the password reset process again.";
         }
@@ -100,10 +100,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['otp'])) {
         $error = "Please enter a valid 6-digit OTP.";
     } else {
         try {
-            // Auto-detect column names
-            $cols = array_column($pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_ASSOC), 'Field');
+            ensurePasswordResetTokensTable($pdo);
             $uid_col = 'id';
-            $status_active = in_array('Active', $pdo->query("SELECT DISTINCT status FROM users")->fetchAll(PDO::FETCH_COLUMN)) ? 'Active' : 'active';
 
             // Verify OTP via EMAIL only
             if (!empty($email)) {
@@ -116,8 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['otp'])) {
                     WHERE  prt.token      = ?
                       AND  prt.token_type = 'reset'
                       AND  LOWER(TRIM(u.status)) = 'active'
-                      AND  LOWER(TRIM(u.role)) IN ('staff','manager','admin','developer','superadmin')
-                      AND  LOWER(TRIM(u.email)) = LOWER(?)
+                      AND  LOWER(TRIM(REPLACE(REPLACE(u.email, CHAR(13), ''), CHAR(10), ''))) = LOWER(?)
                     ORDER BY prt.id DESC
                     LIMIT  1
                 ");

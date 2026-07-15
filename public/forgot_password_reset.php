@@ -5,6 +5,7 @@ session_start();
 // Include database connection
 require_once __DIR__ . '/../public/db_connect.php';
 require_once __DIR__ . '/../backend/lib.php';
+require_once __DIR__ . '/../config/password_reset_whitelist.php';
 
 $message = '';
 $message_type = '';
@@ -19,7 +20,7 @@ header("Pragma: no-cache");
 
 // Get token and email from URL (email-only flow)
 $token = trim($_GET['token'] ?? '');
-$email = trim($_GET['email'] ?? '');
+$email = normalizePasswordResetEmail($_GET['email'] ?? '');
 
 if (empty($token) || empty($email)) {
     $error = "Invalid reset request. Please request a new password reset.";
@@ -29,7 +30,7 @@ if (empty($token) || empty($email)) {
         $cols     = array_column($pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_ASSOC), 'Field');
         $uid_col  = 'id';
         $pass_col = in_array('password_hash', $cols) ? 'password_hash' : 'password_hash';
-        $status_active = in_array('Active', $pdo->query("SELECT DISTINCT status FROM users LIMIT 10")->fetchAll(PDO::FETCH_COLUMN)) ? 'Active' : 'active';
+        ensurePasswordResetTokensTable($pdo);
 
         // ── Email path: validate via password_reset_tokens table ─────
         $stmt = $pdo->prepare("
@@ -40,7 +41,7 @@ if (empty($token) || empty($email)) {
             FROM   password_reset_tokens prt
             JOIN   users u ON prt.user_id = u.`{$uid_col}`
             WHERE  prt.token      = ?
-              AND  LOWER(TRIM(u.email))  = LOWER(?)
+              AND  LOWER(TRIM(REPLACE(REPLACE(u.email, CHAR(13), ''), CHAR(10), '')))  = LOWER(?)
               AND  prt.token_type = 'reset'
               AND  LOWER(TRIM(u.status)) = 'active'
             ORDER BY prt.id DESC
@@ -53,7 +54,7 @@ if (empty($token) || empty($email)) {
             $error = "Invalid or expired reset link. Please request a new password reset.";
         } elseif (!$token_data['is_valid_time']) {
             $error = "Reset link has expired. Please request a new password reset.";
-        } elseif ($token_data['is_used'] == 1 && $token_data['used_at'] !== null) {
+        } elseif ((int)$token_data['is_used'] === 1 || $token_data['used_at'] !== null) {
             $error = "Reset link has already been used. Please request a new password reset.";
         } else {
             $token_valid = true;
@@ -102,15 +103,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
                 ->execute([$hashed, $user_data['user_id']]);
 
             // ── Mark OTP / token as used ────────────────────────────────
-            if (!empty($phone)) {
-                // Phone path: mark password_resets row as used
-                $pdo->prepare("UPDATE password_resets SET status = 'used' WHERE id = ?")
-                    ->execute([$user_data['reset_id']]);
-            } else {
-                // Email path: mark password_reset_tokens row as used
-                $pdo->prepare("UPDATE password_reset_tokens SET is_used = 1, used_at = NOW() WHERE token = ?")
-                    ->execute([$token]);
-            }
+            $pdo->prepare("UPDATE password_reset_tokens SET is_used = 1, used_at = NOW() WHERE user_id = ? AND token = ? AND token_type = 'reset'")
+                ->execute([$user_data['user_id'], $token]);
 
             // ── Audit log ───────────────────────────────────────────────
             $pdo->prepare(

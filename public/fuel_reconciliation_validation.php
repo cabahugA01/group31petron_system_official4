@@ -159,7 +159,7 @@ include __DIR__ . '/../partials/header.php';
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #f8fafc; }
   
-  .fr-wrapper { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .fr-wrapper { width: 100%; padding: 20px; box-sizing: border-box; }
   
   .fr-header { 
     background: linear-gradient(135deg, #003d7a 0%, #002d5c 100%); 

@@ -369,13 +369,15 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
 /* Override default .main padding to fit screen from left to right */
-body .main {
+body .main,
+.main,
+.main-content {
     padding: 0 !important;
 }
 
 /* Modern premium styling */
 .pr-container {
-    padding: 24px 32px 80px 32px;
+    padding: 20px 20px 60px 20px;
     font-family: 'Outfit', 'Inter', sans-serif;
     color: #1e293b;
     background: #f8fafc;
@@ -997,16 +999,16 @@ body .main {
                                         </div>
                                     </div>
                                     
-                                    <div style="overflow-x: auto; border: 1px solid #dbeafe; border-radius: 10px; margin-bottom: 16px; background: #fff;">
+                                    <div style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 16px; background: #fff;">
                                         <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
                                             <thead>
-                                                <tr style="background: #eff6ff; border-bottom: 1.5px solid #bfdbfe;">
-                                                    <th style="padding: 10px 12px; text-align: left; font-size: 10.5px; font-weight: 700; color: #1e3a8a; text-transform: uppercase;">Product ID</th>
-                                                    <th style="padding: 10px 12px; text-align: left; font-size: 10.5px; font-weight: 700; color: #1e3a8a; text-transform: uppercase;">Product Code</th>
-                                                    <th style="padding: 10px 12px; text-align: left; font-size: 10.5px; font-weight: 700; color: #1e3a8a; text-transform: uppercase;">Product Name</th>
-                                                    <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #1e3a8a; text-transform: uppercase;">Current Stock</th>
-                                                    <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #1e3a8a; text-transform: uppercase;">Reorder Level</th>
-                                                    <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #1e3a8a; text-transform: uppercase; width: 130px;">Qty to Order <span style="color: #dc2626;">*</span></th>
+                                                <tr style="background: #002F6C; border-bottom: 2px solid #001F4D;">
+                                                    <th style="padding: 10px 12px; text-align: left; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Product ID</th>
+                                                    <th style="padding: 10px 12px; text-align: left; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Product Code</th>
+                                                    <th style="padding: 10px 12px; text-align: left; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Product Name</th>
+                                                    <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Current Stock</th>
+                                                    <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Reorder Level</th>
+                                                    <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase; width: 130px;">Qty to Order <span style="color: #ff8a8a;">*</span></th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -1149,10 +1151,10 @@ body .main {
                     
                     <tr id="detail_<?= $safe_key ?>" class="pr-inline-detail">
                         <td colspan="6">
-                            <div class="pr-inline-panel" style="padding: 0; background: #f0f9ff; border-top: 2px solid #bae6fd; border-bottom: 1px solid #e2e8f0;">
+                            <div class="pr-inline-panel" style="padding: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
 
                                 <!-- PR Header Bar -->
-                                <div style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); padding: 16px 24px; display: flex; align-items: center; gap: 10px;">
+                                <div style="background: #002F6C; padding: 16px 24px; display: flex; align-items: center; gap: 10px;">
                                     <i class="fas fa-gas-pump" style="color: #fff; font-size: 18px;"></i>
                                     <span style="font-size: 14px; font-weight: 800; color: #fff; letter-spacing: 0.3px;">Purchase Request Details &mdash; <?= htmlspecialchars($group['pr_number']) ?></span>
                                 </div>
@@ -1160,12 +1162,12 @@ body .main {
                                 <div style="padding: 20px 24px;">
 
                                     <!-- Purchase Request Information -->
-                                    <div style="background: #fff; border: 1px solid #bae6fd; border-radius: 10px; padding: 16px 20px; margin-bottom: 16px;">
-                                        <div style="font-size: 10.5px; font-weight: 800; color: #0369a1; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 12px;"><i class="fas fa-clipboard-list" style="margin-right: 5px;"></i> Purchase Request Information</div>
+                                    <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; margin-bottom: 16px;">
+                                        <div style="font-size: 10.5px; font-weight: 800; color: #002F6C; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 12px;"><i class="fas fa-clipboard-list" style="margin-right: 5px;"></i> Purchase Request Information</div>
                                         <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;">
                                             <div>
                                                 <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px;">Purchase Request No.</div>
-                                                <div style="font-size: 13px; font-weight: 800; color: #0284c7; font-family: monospace;"><?= htmlspecialchars($group['pr_number']) ?></div>
+                                                <div style="font-size: 13px; font-weight: 800; color: #002F6C; font-family: monospace;"><?= htmlspecialchars($group['pr_number']) ?></div>
                                             </div>
                                             <div>
                                                 <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px;">Requested By</div>
@@ -1188,9 +1190,9 @@ body .main {
                                         }
                                         ?>
                                         <?php if ($pr_remarks): ?>
-                                        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e0f2fe;">
+                                        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e2e8f0;">
                                             <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 4px;">Remarks</div>
-                                            <div style="font-size: 12.5px; color: #475569; background: #f0f9ff; border-left: 3px solid #0284c7; padding: 8px 12px; border-radius: 4px;"><?= htmlspecialchars($pr_remarks) ?></div>
+                                            <div style="font-size: 12.5px; color: #475569; background: #f8fafc; border-left: 3px solid #002F6C; padding: 8px 12px; border-radius: 4px;"><?= htmlspecialchars($pr_remarks) ?></div>
                                         </div>
                                         <?php endif; ?>
                                     </div>
@@ -1203,27 +1205,27 @@ body .main {
                                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
                                             <div style="display: flex; flex-direction: column; gap: 4px;">
                                                 <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Expected Delivery Date <span style="color: #dc2626;">*</span></label>
-                                                <input type="date" name="expected_delivery" min="<?= date('Y-m-d') ?>" required style="padding: 9px 12px; border: 1.5px solid #7dd3fc; border-radius: 8px; font-size: 13px; font-family: inherit;">
+                                                <input type="date" name="expected_delivery" min="<?= date('Y-m-d') ?>" required style="padding: 9px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; font-family: inherit;">
                                             </div>
                                             <div style="display: flex; flex-direction: column; gap: 4px;">
                                                 <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Remarks / Notes for Admin</label>
-                                                <input type="text" name="remarks" placeholder="Optional notes for Admin or Supplier..." style="padding: 9px 12px; border: 1.5px solid #7dd3fc; border-radius: 8px; font-size: 13px; font-family: inherit;">
+                                                <input type="text" name="remarks" placeholder="Optional notes for Admin or Supplier..." style="padding: 9px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; font-family: inherit;">
                                             </div>
                                         </div>
 
                                         <!-- Requested Fuel Table -->
-                                        <div style="margin-bottom: 6px; font-size: 10.5px; font-weight: 800; color: #0369a1; text-transform: uppercase; letter-spacing: .5px;"><i class="fas fa-gas-pump" style="margin-right: 5px;"></i> Requested Fuel</div>
-                                        <div style="overflow-x: auto; border: 1px solid #bae6fd; border-radius: 10px; margin-bottom: 16px; background: #fff;">
+                                        <div style="margin-bottom: 6px; font-size: 10.5px; font-weight: 800; color: #002F6C; text-transform: uppercase; letter-spacing: .5px;"><i class="fas fa-gas-pump" style="margin-right: 5px;"></i> Requested Fuel</div>
+                                        <div style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 16px; background: #fff;">
                                             <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
                                                 <thead>
-                                                    <tr style="background: #e0f2fe; border-bottom: 2px solid #7dd3fc;">
-                                                        <th style="padding: 10px 12px; text-align: left; font-size: 10.5px; font-weight: 700; color: #0369a1; text-transform: uppercase;">Fuel ID</th>
-                                                        <th style="padding: 10px 12px; text-align: left; font-size: 10.5px; font-weight: 700; color: #0369a1; text-transform: uppercase;">Fuel Type</th>
-                                                        <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #0369a1; text-transform: uppercase;">UGT No.</th>
-                                                        <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #0369a1; text-transform: uppercase;">Tank Capacity</th>
-                                                        <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #0369a1; text-transform: uppercase;">Current Liters</th>
-                                                        <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #0369a1; text-transform: uppercase;">Reorder Level</th>
-                                                        <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #0369a1; text-transform: uppercase; width: 140px;">Liters to Order <span style="color: #dc2626;">*</span></th>
+                                                    <tr style="background: #002F6C; border-bottom: 2px solid #001F4D;">
+                                                        <th style="padding: 10px 12px; text-align: left; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Fuel ID</th>
+                                                        <th style="padding: 10px 12px; text-align: left; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Fuel Type</th>
+                                                        <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">UGT No.</th>
+                                                        <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Tank Capacity</th>
+                                                        <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Current Liters</th>
+                                                        <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Reorder Level</th>
+                                                        <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase; width: 140px;">Liters to Order <span style="color: #ff8a8a;">*</span></th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -1238,9 +1240,9 @@ body .main {
                                                         $sr_id           = $fitem['id'];
                                                         $is_below        = ((float)($fitem['current_stock'] ?? 0)) < ((float)($fitem['reorder_level'] ?? 0));
                                                     ?>
-                                                    <tr style="border-bottom: 1px solid #e0f2fe;">
+                                                    <tr style="border-bottom: 1px solid #f1f5f9;">
                                                         <input type="hidden" name="fuel_req_ids[<?= $prod_id ?>]" value="<?= $sr_id ?>">
-                                                        <td style="padding: 11px 12px; font-weight: 700; color: #0369a1; font-family: monospace; font-size: 12.5px;"><?= htmlspecialchars($formatted_fid) ?></td>
+                                                        <td style="padding: 11px 12px; font-weight: 700; color: #64748b; font-family: monospace; font-size: 12.5px;"><?= htmlspecialchars($formatted_fid) ?></td>
                                                         <td style="padding: 11px 12px; font-weight: 700; color: #1e293b;"><?= htmlspecialchars($fuel_type_name) ?></td>
                                                         <td style="padding: 11px 12px; text-align: center;">
                                                             <span style="background: #dbeafe; color: #1d4ed8; font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 20px; font-family: monospace;"><?= htmlspecialchars($ugt_no) ?></span>
@@ -1256,7 +1258,7 @@ body .main {
                                                         <td style="padding: 11px 12px; text-align: center;">
                                                             <input type="number" name="fuel_quantities[<?= $prod_id ?>]" min="1" step="any" placeholder="—"
                                                                 class="fuel-qty-input" data-key="<?= $safe_key ?>"
-                                                                style="width: 110px; padding: 6px 8px; border: 1.5px solid #7dd3fc; border-radius: 6px; text-align: center; font-weight: 700; font-family: inherit; font-size: 13px;"
+                                                                style="width: 110px; padding: 6px 8px; border: 1.5px solid #cbd5e1; border-radius: 6px; text-align: center; font-weight: 700; font-family: inherit; font-size: 13px;"
                                                                 oninput="updateFuelSummary('<?= $safe_key ?>')"
                                                             >
                                                             <div style="font-size: 9.5px; color: #94a3b8; margin-top: 2px;">Liters (L)</div>

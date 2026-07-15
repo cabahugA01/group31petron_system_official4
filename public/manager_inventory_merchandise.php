@@ -138,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: manager_inventory_merchandise.php?tab=inventory'); exit;
     }
 
-    // 2. Approve Stock Request
+    // 2. Approve Stock Request (Forward to Admin as PR)
     if ($action === 'approve_request') {
         $req_id = (int)($_POST['request_id'] ?? 0);
         $approved_qty = (int)($_POST['approved_quantity'] ?? 0);
@@ -155,58 +155,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 if (!$req) throw new Exception("Stock request not found or already processed.");
                 
-                // Fetch unit price/cost from product
-                $stmt = $pdo->prepare("SELECT unit_price FROM inventory_products WHERE id = ?");
-                $stmt->execute([$req['item_id']]);
-                $unit_price = (float)($stmt->fetchColumn() ?: 0);
-                $total_amount = $approved_qty * $unit_price;
-                
-                // Generate PO
-                $po_number = "PO-" . strtoupper(uniqid());
-                
-                // Insert PO
-                $stmt_insert_po = $pdo->prepare("
-                    INSERT INTO purchase_orders 
-                        (request_id, product_name, quantity, unit_price, total_amount, type, po_number, station_id, created_by, status, remarks, created_at, updated_at, admin_finalized)
-                    VALUES (?, ?, ?, ?, ?, 'merch', ?, ?, ?, 'Pending Admin Validation', ?, NOW(), NOW(), 0)
-                ");
-                $stmt_insert_po->execute([
-                    $req_id, $req['item_name'], $approved_qty, $unit_price, $total_amount, $po_number, $station_id, $me['id'], $notes
-                ]);
-                $po_id = $pdo->lastInsertId();
-
-                // Insert into purchase_order_items for data integrity
-                $pdo->prepare("
-                    INSERT INTO purchase_order_items
-                        (po_id, product_id, item_name, quantity, quantity_ordered, unit_price, total_price)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ")->execute([
-                    $po_id, $req['item_id'], $req['item_name'], $approved_qty, $approved_qty, $unit_price, $total_amount
-                ]);
+                // Generate sequential PR number
+                $stmt_max = $pdo->query("SELECT MAX(CAST(REGEXP_SUBSTR(request_no, '[0-9]+$') AS UNSIGNED)) FROM stock_requests WHERE station_id = $station_id AND request_no IS NOT NULL AND request_no != ''");
+                $max_num = (int)($stmt_max->fetchColumn() ?: 0);
+                $pr_number = 'PR-' . date('Y') . '-' . str_pad($max_num + 1, 4, '0', STR_PAD_LEFT);
                 
                 // Update Stock Request
                 $pdo->prepare("
                     UPDATE stock_requests 
-                    SET status = 'Approved', approved_quantity = ?, manager_id = ?, manager_notes = ?, processed_at = NOW(), updated_at = NOW()
+                    SET status = 'Waiting for Purchase Order', approved_quantity = ?, manager_id = ?, manager_notes = ?, request_no = ?, processed_at = NOW(), updated_at = NOW()
                     WHERE id = ?
                 ")->execute([
-                    $approved_qty, $me['id'], $notes, $req_id
+                    $approved_qty, $me['id'], $notes, $pr_number, $req_id
                 ]);
                 
                 // Audit log & Activity log
-                $audit_note = "Manager approved qty={$approved_qty}. PO: {$po_number}. Forwarded to Admin.";
+                $audit_note = "Forwarded to Admin. PR: $pr_number";
                 if ($notes) $audit_note .= " Notes: {$notes}";
                 
                 $pdo->prepare("
                     INSERT INTO stock_request_audit
                         (stock_request_id, action_type, performed_by, performed_by_role, old_status, new_status, notes)
-                    VALUES (?, 'Forwarded to Admin', ?, ?, 'Pending', 'Forwarded to Admin', ?)
+                    VALUES (?, 'Forwarded to Admin', ?, ?, 'Pending', 'Waiting for Purchase Order', ?)
                 ")->execute([$req_id, $me['id'], $role, $audit_note]);
                 
-                log_activity($pdo, $me['id'], 'Approve Stock Request', "Request #{$req_id} | {$req['item_name']} | Qty: {$approved_qty} approved by {$me['name']}");
+                // Send notification to Admin
+                $notify_stmt = $pdo->prepare("
+                    INSERT INTO notifications (user_id, type, title, message, event_type, severity, redirect_url, created_at)
+                    VALUES (?, 'info', 'PR Waiting for PO', ?, 'stock_request', 'high', 'admin_purchase_orders.php?tab=pending', NOW())
+                ");
+                $admins = $pdo->query("SELECT id FROM users WHERE role IN ('admin', 'superadmin')")->fetchAll(PDO::FETCH_COLUMN);
+                foreach ($admins as $admin_id) {
+                    $notify_stmt->execute([$admin_id, "Purchase Request {$pr_number} has been approved by Manager and is waiting for PO generation."]);
+                }
+                
+                log_activity($pdo, $me['id'], 'Approve Stock Request', "Request #{$req_id} | {$req['item_name']} | Qty: {$approved_qty} forwarded to Admin under PR {$pr_number}");
                 
                 $pdo->commit();
-                $_SESSION['success'] = "Stock request #{$req_id} approved. PO {$po_number} generated.";
+                $_SESSION['success'] = "Stock request #{$req_id} approved and forwarded to Admin (PR: {$pr_number}).";
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
                 $_SESSION['error'] = 'Error: ' . $e->getMessage();
@@ -619,7 +605,7 @@ try {
         $status_lc = strtolower($req['status'] ?? 'pending');
         if ($status_lc === 'pending') {
             $summary_req_pending++;
-        } elseif ($status_lc === 'approved' || $status_lc === 'validated') {
+        } elseif ($status_lc === 'approved' || $status_lc === 'validated' || $status_lc === 'waiting for purchase order' || $status_lc === 'purchase order generated') {
             $summary_req_approved++;
         } elseif ($status_lc === 'rejected') {
             $summary_req_rejected++;
@@ -1562,7 +1548,9 @@ include __DIR__ . '/../partials/header.php';
             <select id="reqStatusFilter" onchange="filterRequestsTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
                 <option value="">All Statuses</option>
                 <option value="pending">Pending</option>
-                <option value="approved">Approved</option>
+                <option value="waiting for purchase order">Waiting for PO</option>
+                <option value="purchase order generated">PO Generated</option>
+                <option value="approved">Approved (Legacy)</option>
                 <option value="validated">Validated</option>
                 <option value="rejected">Rejected</option>
             </select>
@@ -1608,7 +1596,7 @@ include __DIR__ . '/../partials/header.php';
                 <?php else: ?>
                     <?php foreach ($stock_requests as $req): 
                         $status_lc = strtolower($req['status'] ?? 'pending');
-                        $badge_cls = $status_lc === 'pending' ? 'badge-pending' : ($status_lc === 'approved' ? 'badge-approved' : ($status_lc === 'rejected' ? 'badge-rejected' : 'badge-other'));
+                        $badge_cls = $status_lc === 'pending' ? 'badge-pending' : (($status_lc === 'approved' || $status_lc === 'waiting for purchase order' || $status_lc === 'purchase order generated' || $status_lc === 'validated') ? 'badge-approved' : ($status_lc === 'rejected' ? 'badge-rejected' : 'badge-other'));
                         
                         // Prepare JSON data for modal view
                         $req_json = $req;
@@ -2737,7 +2725,14 @@ function filterRequestsTable() {
 
         var matchesSrch = !srch || rItem.includes(srch) || rId.includes(srch) || ('sr-' + rId.padStart(4, '0')).includes(srch);
         var matchesCat = !cat || rCat === cat;
-        var matchesStatus = !status || rStatus === status;
+        var matchesStatus = false;
+        if (!status) {
+            matchesStatus = true;
+        } else if (status === 'approved') {
+            matchesStatus = (rStatus === 'approved' || rStatus === 'waiting for purchase order' || rStatus === 'purchase order generated' || rStatus === 'validated');
+        } else {
+            matchesStatus = rStatus === status;
+        }
         var matchesUser = !user || rUser === user;
         
         var matchesDate = true;

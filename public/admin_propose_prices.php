@@ -93,7 +93,7 @@ include __DIR__ . '/../partials/header.php';
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #f8fafc; }
   
-  .pp-wrapper { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .pp-wrapper { width: 100%; padding: 20px; box-sizing: border-box; }
   
   .pp-header { 
     background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%); 

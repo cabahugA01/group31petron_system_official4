@@ -918,7 +918,7 @@ function adjustColor($hex,$pct) {
 ?>
 <style>
 /* -- MANAGER FUEL MANAGEMENT ENHANCED STYLES -- */
-.mfm-wrap { max-width:1400px; margin:0 auto; padding:10px; padding-bottom:120px; }
+.mfm-wrap { width:100%; padding:10px 20px 120px 20px; box-sizing:border-box; }
 
 /* Page Header - matches transaction module standard */
 .page-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; }

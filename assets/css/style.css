@@ -38,9 +38,51 @@ a {
 }
 /* === END CLICKABILITY FIX === */
 
-/* Prevent any container from exceeding viewport width */
-.main, .content, .container, .wrapper, 
-table, .table, .table-responsive, 
+/* ═══════════════════════════════════════════════════
+   GLOBAL FULL-WIDTH SYSTEM OVERRIDE
+   Forces all page wrappers to stretch edge-to-edge.
+   Covers all roles: admin, manager, staff, developer, superadmin.
+   Modals (.modal-card, .modal-box, .modal-dialog) are excluded.
+   ═══════════════════════════════════════════════════ */
+
+/* Main content area — no side gaps */
+.main, .main-content {
+    padding: 0 0 60px 0 !important;
+}
+
+/* All common outer page wrapper patterns — remove max-width centering */
+.aa-wrapper,
+.pp-wrapper,
+.ff-wrapper,
+.fr-wrapper,
+.ph-wrap,
+.mfm-wrap,
+.po-container,
+.pr-container,
+.dashboard-container,
+.page-wrapper,
+.page-container,
+.content-wrapper,
+.content-container,
+.module-wrapper,
+.module-container,
+.inner-wrapper,
+.report-wrapper,
+.section-wrapper,
+.data-section,
+.list-container,
+[class$="-wrapper"]:not(.modal-card):not(.modal-box),
+[class$="-container"]:not(.modal-card):not(.chart-container):not(.petron-toast) {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    box-sizing: border-box !important;
+}
+
+/* General table/card/panel width control */
+.main, .content, .wrapper,
+table, .table, .table-responsive,
 .card, .section, .panel {
     max-width: 100% !important;
     overflow-x: auto !important;
@@ -134,7 +176,7 @@ table {
 .user-role{color:var(--muted);font-size:12px}
 .logout{display:flex;justify-content:center;padding:10px;border-radius:12px;border:1px solid var(--line);color:#344054;background:#fff}
 
-.main, .main-content{flex:1;min-width:0;width:auto;height:100%;overflow-y:auto;overflow-x:hidden;padding:22px 26px 60px 26px;position:relative}
+.main, .main-content{flex:1;min-width:0;width:auto;height:100%;overflow-y:auto;overflow-x:hidden;padding:0 0 60px 0;position:relative}
 
 .notif-btn {
   position: absolute;

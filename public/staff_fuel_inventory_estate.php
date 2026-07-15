@@ -178,7 +178,7 @@ foreach ($TANK_CONFIG_17 as $tank) {
 </div>
 
 <!-- Main Content Area -->
-<div style="max-width:1800px;margin:0 auto;padding:24px;">
+<div style="padding:24px;">
 
 <style>
 .estate-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:20px; flex-wrap:wrap; }

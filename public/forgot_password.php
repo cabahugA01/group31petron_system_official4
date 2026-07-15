@@ -23,65 +23,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Please enter your Email or Username.";
     } else {
         try {
-            // Auto-detect column names
-            $uid_col = 'id';
-
-            // Auto-create password_reset_tokens if missing
-            $pdo->exec("
-                CREATE TABLE IF NOT EXISTS `password_reset_tokens` (
-                    `id`         INT(11)     NOT NULL AUTO_INCREMENT,
-                    `user_id`    INT(11)     NOT NULL,
-                    `token`      VARCHAR(10) NOT NULL,
-                    `token_type` VARCHAR(20) NOT NULL DEFAULT 'reset',
-                    `expires_at` DATETIME    NOT NULL,
-                    `used_at`    DATETIME    DEFAULT NULL,
-                    `ip_address` VARCHAR(45) DEFAULT NULL,
-                    `is_used`    TINYINT(1)  NOT NULL DEFAULT 0,
-                    `created_at` TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (`id`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-            ");
+            ensurePasswordResetTokensTable($pdo);
 
             // Clean any stray whitespace/CR/LF from email column in DB
-            try { $pdo->exec("UPDATE users SET email = TRIM(REPLACE(REPLACE(email, CHAR(13), ''), CHAR(10), ''))"); } catch(Exception $ce) {}
+            try { cleanPasswordResetEmails($pdo); } catch(Exception $ce) {}
 
-            $input = trim($recovery_id);
-            $user = null;
-            // Include superadmin so developer/superadmin accounts can request password reset
-            $allowed_roles_sql = "AND LOWER(TRIM(role)) IN ('staff','manager','admin','developer','superadmin')";
-
-            // --- Strategy 1: If input looks like an email, try email match first ---
-            if (strpos($input, '@') !== false) {
-                $stmt = $pdo->prepare("
-                    SELECT `{$uid_col}` AS user_id, username, TRIM(email) AS email, role
-                    FROM users
-                    WHERE LOWER(TRIM(email)) = LOWER(?)
-                      AND LOWER(TRIM(status)) = 'active'
-                      {$allowed_roles_sql}
-                    LIMIT 1
-                ");
-                $stmt->execute([$input]);
-                $user = $stmt->fetch(PDO::FETCH_ASSOC);
-            }
-
-            // --- Strategy 2: Try username match (or email match if Strategy 1 missed) ---
-            if (!$user) {
-                $stmt = $pdo->prepare("
-                    SELECT `{$uid_col}` AS user_id, username, TRIM(email) AS email, role
-                    FROM users
-                    WHERE (LOWER(TRIM(username)) = LOWER(?) OR LOWER(TRIM(email)) = LOWER(?))
-                      AND LOWER(TRIM(status)) = 'active'
-                      {$allowed_roles_sql}
-                    LIMIT 1
-                ");
-                $stmt->execute([$input, $input]);
-                $user = $stmt->fetch(PDO::FETCH_ASSOC);
-            }
-
-            // Strip any remaining whitespace/CR/LF from fetched email
-            if ($user && !empty($user['email'])) {
-                $user['email'] = trim(preg_replace('/[\r\n\t ]+/', '', $user['email']));
-            }
+            $input = normalizePasswordResetIdentifier($recovery_id);
+            $user = findActivePasswordResetUser($pdo, $input);
 
             // Log attempt
             try {
@@ -92,6 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($user) {
                 if (empty($user['email'])) {
                     $error = "This account has no registered email address. Please contact the administrator to update your profile.";
+                } elseif (!filter_var($user['email'], FILTER_VALIDATE_EMAIL)) {
+                    $error = "This account has an invalid registered email address. Please contact the administrator to update your profile.";
                 } else {
                     // ============================================================
                     // EMAIL WHITELIST SECURITY CHECK
@@ -109,8 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         // Generate OTP
                         $otp_code = sprintf("%06d", random_int(100000, 999999));
 
-                        // Store OTP in DB — delete old ones first
-                        $pdo->prepare("DELETE FROM password_reset_tokens WHERE user_id = ?")->execute([$user['user_id']]);
+                        // Store OTP in DB and replace only old reset OTPs for this user
+                        $pdo->prepare("DELETE FROM password_reset_tokens WHERE user_id = ? AND token_type = 'reset'")->execute([$user['user_id']]);
                         $pdo->prepare("INSERT INTO password_reset_tokens (user_id, token, token_type, expires_at, ip_address) VALUES (?, ?, 'reset', DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)")
                             ->execute([$user['user_id'], $otp_code, $_SERVER['REMOTE_ADDR']]);
 

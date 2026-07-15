@@ -177,7 +177,7 @@ include __DIR__ . '/../partials/header.php';
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #f8fafc; }
   
-  .ff-wrapper { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .ff-wrapper { width: 100%; padding: 20px; box-sizing: border-box; }
   
   .ff-header { 
     background: linear-gradient(135deg, #c026d3 0%, #a21caf 100%); 

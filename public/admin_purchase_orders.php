@@ -50,7 +50,10 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_pending_items') {
                    fsr.requested_liters AS quantity,
                    '' AS product_code, 'Fuel' AS category, 'Liter' AS unit,
                    COALESCE((SELECT fp.price_per_liter FROM fuel_pricing fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fsr.station_id AND fp.is_active = 1 ORDER BY fp.effective_date DESC LIMIT 1), 0) AS unit_price,
-                   (fsr.requested_liters * COALESCE((SELECT fp.price_per_liter FROM fuel_pricing fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fsr.station_id AND fp.is_active = 1 ORDER BY fp.effective_date DESC LIMIT 1), 0)) AS total_amount
+                   (fsr.requested_liters * COALESCE((SELECT fp.price_per_liter FROM fuel_pricing fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fsr.station_id AND fp.is_active = 1 ORDER BY fp.effective_date DESC LIMIT 1), 0)) AS total_amount,
+                   fi.id AS fi_id,
+                   COALESCE(fi.tank_number, '') AS ugt_no,
+                   COALESCE(fi.capacity, 0) AS tank_capacity
             FROM fuel_stock_requests fsr
             LEFT JOIN fuel_inventory fi ON LOWER(fsr.fuel_type) = LOWER(fi.fuel_type) AND fi.station_id = fsr.station_id
             WHERE fsr.station_id = ? AND fsr.request_no = ?
@@ -93,9 +96,14 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_generated_items') {
     $items = [];
     if ($po_type === 'fuel') {
         $stmt = $pdo->prepare("
-            SELECT fpo.id, ft.name AS product_name, fpo.volume AS quantity, fpo.unit_price, fpo.total_amount
+            SELECT fpo.id, ft.name AS product_name, fpo.volume AS quantity, fpo.unit_price, fpo.total_amount,
+                   fi.id AS fi_id,
+                   COALESCE(fi.tank_number, '') AS ugt_no,
+                   COALESCE(fi.capacity, 0) AS tank_capacity,
+                   COALESCE(ft.name, '') AS fuel_type_name
             FROM fuel_purchase_orders fpo
             LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id
+            LEFT JOIN fuel_inventory fi ON fi.fuel_type_id = fpo.fuel_type_id AND fi.station_id = fpo.station_id
             WHERE fpo.batch_id = ? AND fpo.station_id = ?
             ORDER BY fpo.id ASC
         ");

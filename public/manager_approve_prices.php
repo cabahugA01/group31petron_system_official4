@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'mgr_prod_prices';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -14,14 +14,14 @@ if (!in_array($role, ['manager', 'superadmin'])) {
     exit;
 }
 
-// ── Fetch approved price history from pending_price_approvals ──────────────────
+// -- Fetch approved price history from pending_price_approvals ------------------
 // Show all approved price changes from Admin
 $fuel_history = [];
 $merch_history = [];
 $service_history = [];
 
 try {
-    // ── Fuel Price History ──────────────────────────────────────────────────────
+    // -- Fuel Price History ------------------------------------------------------
     $stmt_fuel = $pdo->query("
         SELECT 
             p.id,
@@ -46,7 +46,7 @@ try {
     ");
     $fuel_history = $stmt_fuel->fetchAll(PDO::FETCH_ASSOC);
     
-    // ── Merchandise Price History ───────────────────────────────────────────────
+    // -- Merchandise Price History -----------------------------------------------
     $stmt_merch = $pdo->query("
         SELECT 
             p.id,
@@ -72,7 +72,7 @@ try {
     ");
     $merch_history = $stmt_merch->fetchAll(PDO::FETCH_ASSOC);
     
-    // ── Service Type Price History ──────────────────────────────────────────────
+    // -- Service Type Price History ----------------------------------------------
     $stmt_services = $pdo->query("
         SELECT 
             p.id,
@@ -108,8 +108,8 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-/* === Price History — Read-Only View === */
-.ph-wrap { max-width:1200px; margin:0 auto; padding:0 4px 32px; }
+/* === Price History � Read-Only View === */
+.ph-wrap { width:100%; padding:0 20px 32px; box-sizing:border-box; }
 
 .page-head-box { margin-bottom:24px; }
 .page-head-box h1 { font-size:1.5rem; font-weight:800; color:#002F70; display:flex; align-items:center; gap:10px; margin:0 0 4px; }
@@ -205,14 +205,14 @@ include __DIR__ . '/../partials/header.php';
     <!-- Page Header -->
     <div class="page-head-box">
         <h1><i class="fas fa-history" style="color:#059669;"></i> Price History</h1>
-        <div class="sub">Manager — Approved price changes from Admin's Product &amp; Pricing Overview</div>
+        <div class="sub">Manager � Approved price changes from Admin's Product &amp; Pricing Overview</div>
     </div>
 
     <!-- Info Banner -->
     <div class="info-banner">
         <i class="fas fa-info-circle"></i>
         <div>
-            This page shows <strong>all price proposals submitted by the Admin</strong> — including cost and selling price changes for both fuel and merchandise products.
+            This page shows <strong>all price proposals submitted by the Admin</strong> � including cost and selling price changes for both fuel and merchandise products.
             These are <strong>read-only</strong>. Price approvals are finalized by Admin in the <em>Product &amp; Pricing Overview</em>.
         </div>
     </div>
@@ -272,15 +272,15 @@ include __DIR__ . '/../partials/header.php';
                             
                             $date_display = !empty($h['updated_at'])
                                 ? date('M j, Y g:i A', strtotime($h['updated_at']))
-                                : '—';
+                                : '�';
                         ?>
                         <tr>
                             <td><strong><?php echo htmlspecialchars($h['product_name']); ?></strong></td>
-                            <td><span class="price-old">₱<?php echo number_format($old_price, 2); ?></span></td>
-                            <td><span class="price-new<?php echo $price_higher ? ' higher' : ''; ?>">₱<?php echo number_format($new_price, 2); ?></span></td>
+                            <td><span class="price-old">?<?php echo number_format($old_price, 2); ?></span></td>
+                            <td><span class="price-new<?php echo $price_higher ? ' higher' : ''; ?>">?<?php echo number_format($new_price, 2); ?></span></td>
                             <td>
                                 <div style="color:<?php echo $price_higher ? '#b45309' : '#059669'; ?>;font-weight:700;">
-                                    <?php echo $price_higher ? '+' : ''; ?>₱<?php echo number_format(abs($price_diff), 2); ?>
+                                    <?php echo $price_higher ? '+' : ''; ?>?<?php echo number_format(abs($price_diff), 2); ?>
                                 </div>
                                 <div style="font-size:10px;color:<?php echo $price_higher ? '#b45309' : '#059669'; ?>;">
                                     (<?php echo number_format(abs($price_diff_pct), 1); ?>%)
@@ -344,15 +344,15 @@ include __DIR__ . '/../partials/header.php';
                             
                             $date_display = !empty($h['updated_at'])
                                 ? date('M j, Y g:i A', strtotime($h['updated_at']))
-                                : '—';
+                                : '�';
                         ?>
                         <tr>
                             <td><strong><?php echo htmlspecialchars($h['product_name']); ?></strong></td>
-                            <td style="font-family:monospace;font-size:12px;color:#6c757d;"><?php echo htmlspecialchars($h['sku'] ?? '—'); ?></td>
-                            <td><span class="price-old">₱<?php echo number_format($old_cost, 2); ?></span></td>
-                            <td><span class="price-new<?php echo $cost_higher ? ' higher' : ''; ?>">₱<?php echo number_format($new_cost, 2); ?></span></td>
-                            <td><span class="price-old">₱<?php echo number_format($old_price, 2); ?></span></td>
-                            <td><span class="price-new<?php echo $price_higher ? ' higher' : ''; ?>">₱<?php echo number_format($new_price, 2); ?></span></td>
+                            <td style="font-family:monospace;font-size:12px;color:#6c757d;"><?php echo htmlspecialchars($h['sku'] ?? '�'); ?></td>
+                            <td><span class="price-old">?<?php echo number_format($old_cost, 2); ?></span></td>
+                            <td><span class="price-new<?php echo $cost_higher ? ' higher' : ''; ?>">?<?php echo number_format($new_cost, 2); ?></span></td>
+                            <td><span class="price-old">?<?php echo number_format($old_price, 2); ?></span></td>
+                            <td><span class="price-new<?php echo $price_higher ? ' higher' : ''; ?>">?<?php echo number_format($new_price, 2); ?></span></td>
                             <td style="font-size:12px;color:#374151;"><?php echo htmlspecialchars($h['proposed_by']); ?></td>
                             <td style="font-size:12px;color:#059669;font-weight:600;"><?php echo htmlspecialchars($h['approved_by']); ?></td>
                             <td class="date-col"><?php echo $date_display; ?></td>
@@ -406,9 +406,9 @@ include __DIR__ . '/../partials/header.php';
                             $price_higher = $new_price > $old_price;
                             
                             $price_html = '<div class="price-change">'
-                                . '<span class="price-old">₱' . number_format($old_price, 2) . '</span>'
-                                . '<span class="price-arrow">→</span>'
-                                . '<span class="price-new' . ($price_higher ? ' higher' : '') . '">₱' . number_format($new_price, 2) . '</span>'
+                                . '<span class="price-old">?' . number_format($old_price, 2) . '</span>'
+                                . '<span class="price-arrow">?</span>'
+                                . '<span class="price-new' . ($price_higher ? ' higher' : '') . '">?' . number_format($new_price, 2) . '</span>'
                                 . '</div>';
                             
                             $price_diff = $new_price - $old_price;
@@ -416,7 +416,7 @@ include __DIR__ . '/../partials/header.php';
                             
                             $date_display = !empty($h['updated_at'])
                                 ? date('M j, Y g:i A', strtotime($h['updated_at']))
-                                : '—';
+                                : '�';
                         ?>
                         <tr>
                             <td><strong><?php echo htmlspecialchars($h['service_name']); ?></strong></td>
@@ -424,11 +424,11 @@ include __DIR__ . '/../partials/header.php';
                             <td>
                                 <?php echo $price_html; ?>
                                 <div style="font-size:10px;color:<?php echo $price_higher ? '#b45309' : '#059669'; ?>;margin-top:2px;">
-                                    <?php echo $price_higher ? '+' : ''; ?>₱<?php echo number_format(abs($price_diff), 2); ?>
+                                    <?php echo $price_higher ? '+' : ''; ?>?<?php echo number_format(abs($price_diff), 2); ?>
                                     (<?php echo number_format(abs($price_diff_pct), 1); ?>%)
                                 </div>
                             </td>
-                            <td><span class="price-same">₱<?php echo number_format($current_price, 2); ?></span></td>
+                            <td><span class="price-same">?<?php echo number_format($current_price, 2); ?></span></td>
                             <td style="font-size:12px;color:#374151;"><?php echo htmlspecialchars($h['proposed_by'] ?? 'Manager'); ?></td>
                             <td style="font-size:12px;color:#059669;font-weight:600;"><?php echo htmlspecialchars($h['approved_by'] ?? 'Admin'); ?></td>
                             <td class="date-col"><?php echo $date_display; ?></td>

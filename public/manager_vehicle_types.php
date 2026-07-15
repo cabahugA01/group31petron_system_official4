@@ -1,6 +1,6 @@
-﻿<?php
+<?php
 /**
- * Manager / Admin — Vehicle Types Validation
+ * Manager / Admin � Vehicle Types Validation
  * Approve or reject vehicle types submitted by staff.
  */
 $page_id = 'master_data';
@@ -21,7 +21,7 @@ $station_id = user_station_id();
 $flash_success = '';
 $flash_error   = '';
 
-// ── Handle POST actions (approve / reject / delete) ──────────────────────────
+// -- Handle POST actions (approve / reject / delete) --------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $id     = (int)($_POST['id'] ?? 0);
@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
-// ── Ensure table exists ───────────────────────────────────────────────────────
+// -- Ensure table exists -------------------------------------------------------
 try {
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS vehicle_types (
@@ -69,7 +69,7 @@ try {
     ");
 } catch (Exception $e) { /* ignore */ }
 
-// ── Fetch all vehicle types ───────────────────────────────────────────────────
+// -- Fetch all vehicle types ---------------------------------------------------
 $filter = $_GET['filter'] ?? 'pending';
 if (!in_array($filter, ['pending', 'approved', 'rejected', 'all'])) $filter = 'pending';
 
@@ -118,7 +118,7 @@ include __DIR__ . '/../partials/header.php';
 .btn-delete:hover  { background:#e2e8f0; }
 </style>
 
-<div class="txn-content" style="max-width:1100px;margin:0 auto;padding:24px 20px;">
+<div class="txn-content" style="padding:24px 20px;">
 
     <!-- Header -->
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px;flex-wrap:wrap;">
@@ -199,10 +199,10 @@ include __DIR__ . '/../partials/header.php';
                         <?= ucfirst($row['status']) ?>
                     </span>
                 </td>
-                <td style="font-size:12px;color:#475569;"><?= htmlspecialchars($row['submitted_by_name'] ?? '—') ?></td>
-                <td style="font-size:12px;color:#475569;"><?= htmlspecialchars($row['reviewed_by_name'] ?? '—') ?></td>
+                <td style="font-size:12px;color:#475569;"><?= htmlspecialchars($row['submitted_by_name'] ?? '�') ?></td>
+                <td style="font-size:12px;color:#475569;"><?= htmlspecialchars($row['reviewed_by_name'] ?? '�') ?></td>
                 <td style="font-size:11px;color:#64748b;max-width:160px;">
-                    <?= $row['review_note'] ? htmlspecialchars($row['review_note']) : '<span style="color:#cbd5e1;">—</span>' ?>
+                    <?= $row['review_note'] ? htmlspecialchars($row['review_note']) : '<span style="color:#cbd5e1;">�</span>' ?>
                 </td>
                 <td style="font-size:11px;color:#64748b;white-space:nowrap;">
                     <?= date('M j, Y', strtotime($row['created_at'])) ?>
@@ -271,7 +271,7 @@ include __DIR__ . '/../partials/header.php';
         <textarea id="rejectNote" rows="3"
                   style="width:100%;border:1.5px solid #e2e8f0;border-radius:8px;padding:9px 12px;
                          font-size:13px;resize:vertical;box-sizing:border-box;"
-                  placeholder="e.g. Duplicate entry, incorrect spelling…"></textarea>
+                  placeholder="e.g. Duplicate entry, incorrect spelling�"></textarea>
         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
             <button type="button" onclick="closeRejectModal()"
                     style="padding:8px 16px;border:1px solid #e2e8f0;background:#f8fafc;

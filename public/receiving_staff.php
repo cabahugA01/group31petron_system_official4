@@ -177,7 +177,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 include __DIR__ . '/../partials/header.php';
 ?>
 
-<div style="max-width: 1400px; margin: 0 auto; padding: 24px;">
+<div style="padding: 24px;">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
         <div>
             <h1 style="font-size: 32px; font-weight: 700; color: var(--petron-blue); margin: 0;">
