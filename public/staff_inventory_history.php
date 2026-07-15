@@ -120,7 +120,7 @@ foreach (TANK_CONFIG_17 as $tc) {
 
 include __DIR__ . '/../partials/header.php';
 ?>
-
+<div class="stock-page">
 <style>
 /* Summary Cards */
 .summary-grid {
@@ -475,5 +475,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
-
+</div> <!-- /stock-page -->
 <?php include __DIR__ . '/../partials/footer.php'; ?>
+

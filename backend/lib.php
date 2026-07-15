@@ -172,7 +172,7 @@ define('MODULE_MENU_MAP', [
     ],
     'inventory'             => [
         'inventory', 'admin_inventory', 'inv_merch', 'inv_fuel',
-        'inv_stock_request', 'staff_stock_in', 'inv_history', 'mgr_prod_merchandise',
+        'inv_stock_request', 'staff_stock_in', 'mgr_stock_in', 'inv_history', 'mgr_prod_merchandise',
         'mgr_prod_prices', 'mgr_inv_merch', 'mgr_inv_fuel', 'mgr_inv_stock_request',
         'mgr_inv_po_gen', 'mgr_del_validate', 'admin_inventory_merchandise', 'admin_purchase_orders',
         'admin_stock_requests_monitor', 'admin_stock_in_oversight', 'admin_inventory_history',

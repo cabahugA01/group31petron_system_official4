@@ -47,13 +47,13 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_pending_items') {
         // Fuel pending: read from fuel_stock_requests grouped by request_no
         $stmt = $pdo->prepare("
             SELECT fsr.id, COALESCE(fsr.fuel_type,'Fuel') AS product_name,
-                   fsr.requested_liters AS quantity,
+                   COALESCE(NULLIF(fsr.approved_liters, 0), fsr.requested_liters, 0) AS quantity,
                    '' AS product_code, 'Fuel' AS category, 'Liter' AS unit,
                    COALESCE((SELECT fp.price_per_liter FROM fuel_pricing fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fsr.station_id AND fp.is_active = 1 ORDER BY fp.effective_date DESC LIMIT 1), 0) AS unit_price,
-                   (fsr.requested_liters * COALESCE((SELECT fp.price_per_liter FROM fuel_pricing fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fsr.station_id AND fp.is_active = 1 ORDER BY fp.effective_date DESC LIMIT 1), 0)) AS total_amount,
+                   (COALESCE(NULLIF(fsr.approved_liters, 0), fsr.requested_liters, 0) * COALESCE((SELECT fp.price_per_liter FROM fuel_pricing fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fsr.station_id AND fp.is_active = 1 ORDER BY fp.effective_date DESC LIMIT 1), 0)) AS total_amount,
                    fi.id AS fi_id,
-                   COALESCE(fi.tank_number, '') AS ugt_no,
-                   COALESCE(fi.capacity, 0) AS tank_capacity
+                   COALESCE(fi.ugt_no, '') AS ugt_no,
+                   COALESCE(fi.capacity, fsr.capacity, 0) AS tank_capacity
             FROM fuel_stock_requests fsr
             LEFT JOIN fuel_inventory fi ON LOWER(fsr.fuel_type) = LOWER(fi.fuel_type) AND fi.station_id = fsr.station_id
             WHERE fsr.station_id = ? AND fsr.request_no = ?
@@ -555,7 +555,7 @@ try {
 // Fuel Pendings (from fuel_stock_requests)
 try {
     $stmt = $pdo->prepare("
-        SELECT fsr.id, fsr.request_no, fsr.fuel_type AS product_name, fsr.approved_liters AS quantity,
+        SELECT fsr.id, fsr.request_no, fsr.fuel_type AS product_name, COALESCE(NULLIF(fsr.approved_liters, 0), fsr.requested_liters, 0) AS quantity,
                'L' AS unit, fsr.current_level AS current_stock,
                COALESCE(fi.reorder_level, 5000) AS reorder_level,
                COALESCE((SELECT fp.price_per_liter FROM fuel_pricing fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fsr.station_id AND fp.is_active = 1 ORDER BY fp.effective_date DESC LIMIT 1), 0) AS cost_price,

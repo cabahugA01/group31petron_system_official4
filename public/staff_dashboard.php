@@ -1271,6 +1271,29 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
     /* Rebuilt Premium Petron CSS styling */
+    body[data-page="staff_dashboard"] .main {
+        padding: 12px 24px 60px !important;
+        background: #f6f8fb;
+        box-sizing: border-box;
+    }
+    .staff-dashboard {
+        width: 100%;
+        max-width: none;
+        margin: 0;
+        padding: 0 0 72px;
+        min-height: calc(100vh - 110px);
+        background: #f6f8fb;
+        color: #0f172a;
+        box-sizing: border-box;
+    }
+    .staff-dashboard * {
+        box-sizing: border-box;
+    }
+    @media (max-width: 991px) {
+        body[data-page="staff_dashboard"] .main {
+            padding: 20px 16px 60px !important;
+        }
+    }
     .dashboard-header-container {
         display: flex;
         justify-content: space-between;
@@ -1635,6 +1658,7 @@ include __DIR__ . '/../partials/header.php';
     }
 </style>
 
+<section class="staff-dashboard">
 <!-- Welcome / Filter Banner -->
 <div class="dashboard-header-container">
     <div class="welcome-meta">
@@ -2087,6 +2111,8 @@ include __DIR__ . '/../partials/header.php';
         </a>
     </div>
 </div>
+
+</section>
 
 <!-- Chart Script Logic -->
 <script>

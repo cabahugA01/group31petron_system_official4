@@ -573,7 +573,7 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:11px;
                     <th>Product Name</th>
                     <th style="width:15%;">Category</th>
                     <th class="r" style="width:10%;">Quantity</th>
-                    <th style="width:8%;">Unit</th>
+                    <th style="width:8%;">UOM</th>
                     <th class="r" style="width:14%;">Unit Price</th>
                     <th class="r" style="width:16%;">Total Amount</th>
                 </tr>

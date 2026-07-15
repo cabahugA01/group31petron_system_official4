@@ -953,7 +953,7 @@ body .main,
                         <td style="padding: 13px 14px; color: #64748b; white-space: nowrap;"><?= date('M d, Y', strtotime($group['created_at'])) ?></td>
                         <td style="padding: 13px 14px; text-align: center; font-weight: 700; color: #002F6C;"><?= $item_count ?> Product<?= $item_count !== 1 ? 's' : '' ?></td>
                         <td style="padding: 13px 14px; text-align: center;">
-                            <span class="status-badge status-pending"><?= htmlspecialchars($group['status']) ?></span>
+                            <span class="status-badge status-pending"><?= htmlspecialchars(str_ireplace('Manager Review', '', $group['status'])) ?></span>
                         </td>
                     </tr>
                     
@@ -962,7 +962,7 @@ body .main,
                             <div class="pr-inline-panel" style="padding: 24px 28px; background: #f8fafc; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
                                 <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
                                     <i class="fas fa-boxes" style="color: #002F6C; font-size: 18px;"></i>
-                                    <span style="font-size: 15px; font-weight: 800; color: #002F6C;">Purchase Request Details &mdash; <?= htmlspecialchars($group['pr_number']) ?></span>
+                                    <span style="font-size: 15px; font-weight: 800; color: #002F6C;">Purchase Request Details</span>
                                 </div>
                                 
                                 <div class="pr-panel-meta">
@@ -1145,7 +1145,7 @@ body .main,
                         <td style="padding: 13px 14px; color: #64748b; white-space: nowrap;"><?= date('M d, Y', strtotime($group['created_at'])) ?></td>
                         <td style="padding: 13px 14px; text-align: center; font-weight: 700; color: #0284c7;"><?= $item_count ?> Fuel Type<?= $item_count !== 1 ? 's' : '' ?></td>
                         <td style="padding: 13px 14px; text-align: center;">
-                            <span class="status-badge status-pending" style="background: #f0f9ff; color: #0284c7; border-color: #bae6fd;"><?= htmlspecialchars($group['status']) ?></span>
+                            <span class="status-badge status-pending" style="background: #f0f9ff; color: #0284c7; border-color: #bae6fd;"><?= htmlspecialchars(str_ireplace('Manager Review', '', $group['status'])) ?></span>
                         </td>
                     </tr>
                     
@@ -1156,7 +1156,7 @@ body .main,
                                 <!-- PR Header Bar -->
                                 <div style="background: #002F6C; padding: 16px 24px; display: flex; align-items: center; gap: 10px;">
                                     <i class="fas fa-gas-pump" style="color: #fff; font-size: 18px;"></i>
-                                    <span style="font-size: 14px; font-weight: 800; color: #fff; letter-spacing: 0.3px;">Purchase Request Details &mdash; <?= htmlspecialchars($group['pr_number']) ?></span>
+                                    <span style="font-size: 14px; font-weight: 800; color: #fff; letter-spacing: 0.3px;">Purchase Request Details</span>
                                 </div>
 
                                 <div style="padding: 20px 24px;">

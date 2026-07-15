@@ -666,7 +666,7 @@ if (mgr_table_exists($pdo, 'purchase_orders')) {
                 'Purchase Order' AS delivery_type,
                 'manager_delivery_validation.php' AS receive_url,
                 'manager_delivery_validation.php' AS view_url,
-                'staff_stock_in.php' AS stock_url
+                'manager_stock_in.php' AS stock_url
          FROM purchase_orders po
          LEFT JOIN suppliers s ON s.id = po.supplier_id
          WHERE " . mgr_station_clause($station_id, 'po') . "
@@ -689,7 +689,7 @@ if (mgr_table_exists($pdo, 'deliveries_oversight')) {
                 delivery_type,
                 'manager_merchandise_deliveries.php' AS receive_url,
                 'manager_merchandise_deliveries.php' AS view_url,
-                'staff_stock_in.php' AS stock_url
+                'manager_stock_in.php' AS stock_url
          FROM deliveries_oversight
          WHERE {$station_sql}
            AND LOWER(status) IN ('pending manager approval', 'pending validation', 'pending verification', 'pending manager confirmation', 'approved - ready for stock-in', 'adjusted - ready for stock-in')

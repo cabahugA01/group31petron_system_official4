@@ -602,7 +602,7 @@ async function loadStockInTracker(){
         <div style="font-size:12px;font-weight:700;color:#002F70;">${esc(d.po_number||'Manual')}</div>
         <div style="font-size:13px;font-weight:700;color:#222;margin:3px 0;">${esc(d.product_name||'')}</div>
         <div style="font-size:11px;color:#6c757d;">Qty: <strong>${d.qty_ordered}</strong> &nbsp;|&nbsp; Finalized by: ${esc(d.admin_name||'—')}</div>
-        <a href="staff_stock_in.php" style="display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:5px 12px;background:#002F70;color:#fff;border-radius:5px;font-size:12px;font-weight:600;text-decoration:none;">
+        <a href="manager_stock_in.php" style="display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:5px 12px;background:#002F70;color:#fff;border-radius:5px;font-size:12px;font-weight:600;text-decoration:none;">
           <i class="fas fa-dolly"></i> Go to Stock-In
         </a>
       </div>`;

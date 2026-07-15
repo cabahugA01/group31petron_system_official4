@@ -22,6 +22,10 @@ if (in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
 if (!in_array($role, ['manager', 'admin', 'superadmin', 'developer'])) {
     header('Location: dashboard.php'); exit;
 }
+if (empty($_GET['legacy'])) {
+    header('Location: manager_stock_in.php');
+    exit;
+}
 
 // Ensure required columns exist
 foreach ([
@@ -251,6 +255,7 @@ $flash_err = $_SESSION['si_err'] ?? null; unset($_SESSION['si_err']);
 
 include __DIR__ . '/../partials/header.php';
 ?>
+<div class="stock-page">
 <style>
 :root{--blue:#002F70;--green:#28a745;--red:#dc3545;--orange:#fd7e14;--gray:#6c757d;}
 .si-card{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07);border:1px solid #e9ecef;margin-bottom:20px;overflow:hidden;}
@@ -891,5 +896,5 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
-
+</div> <!-- /stock-page -->
 <?php include __DIR__ . '/../partials/footer.php'; ?>

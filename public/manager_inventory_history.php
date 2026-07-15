@@ -481,7 +481,7 @@ if ($active_tab === 'requests') {
         JOIN inventory_products ip ON il.product_id = ip.id
         LEFT JOIN station_inventory si ON il.product_id = si.product_id AND si.station_id = il.station_id
         LEFT JOIN users u ON il.user_id = u.id
-        WHERE il.action = 'delivery'
+        WHERE il.action IN ('delivery', 'stock_in')
 
         UNION ALL
 

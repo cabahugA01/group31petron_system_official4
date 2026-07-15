@@ -21,6 +21,10 @@ include __DIR__ . '/admin_po_css.php';
 .main, .main-content {
   padding: 0 !important;
 }
+body[data-page="admin_purchase_orders"] .main {
+  padding: 0 0 130px 0 !important;
+  scroll-padding-bottom: 130px;
+}
 
 /* Premium Layout & Typography */
 body {
@@ -31,7 +35,7 @@ body {
 
 .po-container {
   width: 100%;
-  padding: 20px 20px 40px 20px;
+  padding: 20px 20px 130px 20px;
   box-sizing: border-box;
 }
 
@@ -484,6 +488,42 @@ body {
   justify-content: flex-end;
   gap: 12px;
   margin-top: 20px;
+}
+
+.po-inline-scroll {
+  max-height: min(720px, calc(100vh - 300px)) !important;
+  overflow-y: auto !important;
+  padding: 20px 24px 32px !important;
+  scroll-padding-bottom: 90px;
+  overscroll-behavior: contain;
+}
+
+.po-inline-action-bar {
+  position: static !important;
+  bottom: auto !important;
+  z-index: 1;
+  background: #ffffff !important;
+  padding: 16px 24px !important;
+  border-top: 2px solid #e2e8f0 !important;
+  display: flex !important;
+  justify-content: flex-end !important;
+  gap: 10px !important;
+  margin: 18px -24px 0 !important;
+  box-shadow: none;
+}
+
+@media (max-width: 700px) {
+  .po-inline-scroll {
+    max-height: calc(100vh - 260px) !important;
+    padding: 16px 16px 36px !important;
+  }
+  .po-inline-action-bar {
+    flex-direction: column;
+    margin: 18px -16px 0 !important;
+  }
+  .po-inline-action-bar .po-ctrl-btn {
+    width: 100%;
+  }
 }
 
 /* Flat Premium Outline Button style */
@@ -979,7 +1019,7 @@ function renderTable(data) {
     groups[d].push(r);
   });
 
-  let badgeClass = 'badge-pending', statusText = 'Pending Admin Review';
+  let badgeClass = 'badge-pending', statusText = 'Pending';
   if (activeStatusTab === 'approved')  { badgeClass = 'badge-approved';  statusText = 'Approved'; }
   else if (activeStatusTab === 'waiting')   { badgeClass = 'badge-printed';   statusText = 'Printed / Waiting Delivery'; }
   else if (activeStatusTab === 'completed') { badgeClass = 'badge-completed'; statusText = 'Completed'; }
@@ -1157,7 +1197,7 @@ function toggleRowDetails(key) {
                 <tr>
                   ${activeSubTab === 'fuel'
                     ? '<th>Fuel ID</th><th>Fuel Type</th><th>UGT No.</th><th class="right">Tank Capacity</th><th class="right">Liters Ordered</th><th class="right">Cost per Liter</th><th class="right">Total Amount</th>'
-                    : '<th>Product ID</th><th>Product Code</th><th>Product Name</th><th>Category</th><th class="right">Qty</th><th>Unit</th><th class="right">Unit Cost</th><th class="right">Total Amount</th>'}
+                    : '<th>Product ID</th><th>Product Code</th><th>Product Name</th><th>Category</th><th class="right">Qty</th><th>UOM</th><th class="right">Unit Cost</th><th class="right">Total Amount</th>'}
                 </tr>
               </thead>
               <tbody id="prod-body-${key}">
@@ -1180,17 +1220,16 @@ function toggleRowDetails(key) {
               <span id="grand-total-${key}" style="font-size:18px; font-weight:800; color:#16a34a;">&mdash;</span>
             </div>
           </div>
-
-          <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:18px;">
-            <button type="button" class="po-ctrl-btn po-btn-rej" onclick="openRejectModal('${escHtml(r.po_type||'merch')}','${escHtml(prForForm)}')">
-              <i class="fas fa-times-circle"></i> Reject Request
-            </button>
-            <button type="submit" class="po-ctrl-btn po-btn-approve">
-              <i class="fas fa-print"></i> Print &amp; Approve Purchase Order
-            </button>
-          </div>
         </div>
-      </form>`;
+      </form>
+      <div class="po-inline-action-bar">
+        <button type="button" class="po-ctrl-btn po-btn-rej" onclick="openRejectModal('${escHtml(r.po_type||'merch')}','${escHtml(prForForm)}')">
+          <i class="fas fa-times-circle"></i> Reject Request
+        </button>
+        <button type="submit" form="poForm-${key}" class="po-ctrl-btn po-btn-approve">
+          <i class="fas fa-print"></i> Print &amp; Approve Purchase Order
+        </button>
+      </div>`;
   } else {
     const batchId = r.po_no || r.pr_no || '';
     const printUrl = `print_po_new.php?batch_id=${encodeURIComponent(batchId)}&type=${encodeURIComponent(r.po_type||'merch')}&print=1`;
@@ -1260,7 +1299,7 @@ function toggleRowDetails(key) {
               <tr>
                 ${activeSubTab === 'fuel'
                   ? '<th>Fuel ID</th><th>Fuel Type</th><th>UGT No.</th><th class="right">Tank Capacity</th><th class="right">Liters Ordered</th><th class="right">Cost per Liter</th><th class="right">Total Amount</th>'
-                  : '<th>Product ID</th><th>Product Code</th><th>Product Name</th><th>Category</th><th class="right">Qty</th><th>Unit</th><th class="right">Unit Cost</th><th class="right">Total Amount</th>'}
+                  : '<th>Product ID</th><th>Product Code</th><th>Product Name</th><th>Category</th><th class="right">Qty</th><th>UOM</th><th class="right">Unit Cost</th><th class="right">Total Amount</th>'}
               </tr>
             </thead>
             <tbody id="prod-body-${key}">
@@ -1296,7 +1335,12 @@ function toggleRowDetails(key) {
   const detailsRow = document.createElement('tr');
   detailsRow.id = 'details-' + key;
   detailsRow.className = 'details-row';
-  detailsRow.innerHTML = `<td colspan="7" style="padding: 20px 24px; background: #f8fafc; border-bottom: 2px solid #cbd5e1;">${detailsHtml}</td>`;
+  detailsRow.innerHTML = `
+    <td colspan="7" style="padding: 0; background: #f8fafc; border-bottom: 2px solid #cbd5e1;">
+      <div class="po-inline-scroll" style="max-height: 70vh; overflow-y: auto; padding: 20px 24px;">
+        ${detailsHtml}
+      </div>
+    </td>`;
   mainRow.parentNode.insertBefore(detailsRow, mainRow.nextSibling);
 
   fetchPOItemsInline(key, r, isPending);

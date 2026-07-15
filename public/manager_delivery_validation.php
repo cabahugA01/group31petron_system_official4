@@ -272,7 +272,7 @@ include __DIR__ . "/../partials/header.php";
                 <?php if ($po['stock_in_done']): ?>
                   <span class="status-badge badge-approved"><i class="fas fa-check"></i> Done</span>
                 <?php else: ?>
-                  <a href="staff_stock_in.php" class="status-badge badge-other" style="text-decoration:none;"><i class="fas fa-arrow-right"></i> Stock-In</a>
+                  <a href="manager_stock_in.php" class="status-badge badge-other" style="text-decoration:none;"><i class="fas fa-arrow-right"></i> Stock-In</a>
                 <?php endif; ?>
               </td>
             </tr>

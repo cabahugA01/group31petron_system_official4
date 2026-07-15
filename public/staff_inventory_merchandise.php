@@ -180,6 +180,7 @@ include __DIR__ . '/../partials/header.php';
 $inv_notice = $_SESSION['inv_notice'] ?? null;
 unset($_SESSION['inv_notice']);
 ?>
+<div class="stock-page">
 <?php if ($inv_notice): ?>
 <div style="background:#e8f4fd; border-left:4px solid #002F70; border-radius:8px; padding:13px 18px; margin-bottom:18px; display:flex; align-items:flex-start; gap:12px; font-size:13px; color:#002F70; line-height:1.5;">
     <i class="fas fa-info-circle" style="font-size:18px; margin-top:1px; flex-shrink:0;"></i>
@@ -1118,5 +1119,6 @@ document.addEventListener('DOMContentLoaded', function() {
     applyFilters();
 });
 </script>
-
+</div> <!-- /stock-page -->
 <?php include __DIR__ . '/../partials/footer.php'; ?>
+

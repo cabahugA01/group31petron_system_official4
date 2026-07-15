@@ -333,6 +333,7 @@ $total_critical_fuel_tanks = count(array_filter($rows, fn($r) => in_array($r['st
 
 include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
+<div class="stock-page">
 <style>
 .inv-card { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #e9ecef; margin-bottom:20px; }
 .inv-card-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e9ecef; flex-wrap:wrap; gap:8px; }
@@ -1433,5 +1434,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ── Initialize page ──
 </script>
-
+</div> <!-- /stock-page -->
 <?php include __DIR__ . '/../partials/footer.php'; ?>
+

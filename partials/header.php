@@ -2977,7 +2977,7 @@ require_once __DIR__ . '/rbac_menu.php';
                WHERE station_id=? AND status='Pending Stock-In'",
               [$myStationId]
           );
-          $__badge_add('mgr_stock_review', $__pending_stock_in);
+          $__badge_add('mgr_stock_in', $__pending_stock_in);
 
           $__low_merch = $__badge_count(
               "SELECT COUNT(*) FROM station_inventory si

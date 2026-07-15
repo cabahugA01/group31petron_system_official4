@@ -1883,3 +1883,41 @@ table thead th {
 .txn-subtab-btn.darkblue.inactive i {
     color: #003d7a !important;
 }
+
+/* Standardized Stock/Inventory Page Wrapper */
+.stock-page {
+    padding: 20px 24px 56px !important;
+    color: #1e293b;
+    background: #f8fafc;
+    min-height: calc(100vh - 70px);
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+.stock-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+}
+.stock-title {
+    font-size: 26px;
+    font-weight: 800;
+    color: #002F70;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-transform: uppercase;
+}
+.stock-sub {
+    font-size: 13px;
+    color: #64748b;
+    margin-top: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+}
+
