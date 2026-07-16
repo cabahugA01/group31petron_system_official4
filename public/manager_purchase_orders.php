@@ -544,6 +544,7 @@ include __DIR__ . '/../partials/header.php';
                         <a href="#" style="font-weight:700; text-decoration:none; color:#002F70;" onclick="openViewModal(<?php
                             echo htmlspecialchars(json_encode([
                                 'po_number'        => $po['po_number'] ?? '',
+                                'batch_id'         => $po['batch_id'] ?? '',
                                 'po_type'          => ucfirst($po['po_type']),
                                 'product_name'     => $po['product_name'] ?? '',
                                 'supplier_name'    => $po['supplier_name'] ?? '',
@@ -575,8 +576,13 @@ include __DIR__ . '/../partials/header.php';
                     <td><span class="status-badge <?php echo $badge_class; ?>"><?php echo htmlspecialchars($display_status); ?></span></td>
                     <td><?php echo $created_display; ?></td>
                     <td style="text-align: center; padding: 6px 10px;">
-                        <a href="print_po_new.php?batch_id=<?php echo urlencode($po['po_number']); ?>&type=<?php echo $po['po_type'] === 'fuel' ? 'fuel' : 'merch'; ?>&print=1" 
-                           target="_blank" 
+                        <?php
+                            // Use actual batch_id if set, otherwise use po_number as the lookup key
+                            $print_key = !empty($po['batch_id']) ? $po['batch_id'] : ($po['po_number'] ?? '');
+                            $print_type = $po['po_type'] === 'fuel' ? 'fuel' : 'merch';
+                        ?>
+                        <a href="print_po_new.php?batch_id=<?= urlencode($print_key) ?>&type=<?= $print_type ?>&print=1"
+                           target="_blank"
                            style="background: #fff !important; color: #333 !important; border: 1px solid #ccc !important; padding: 4px 8px; border-radius: 4px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500;">
                             <i class="fas fa-print"></i> Print
                         </a>
@@ -671,7 +677,9 @@ function openViewModal(data) {
         return '<div class="detail-row"><span class="detail-label">' + r[0] + '</span><span class="detail-value">' + escHtml(String(r[1])) + '</span></div>';
     }).join('');
 
-    var printUrl = 'print_po_new.php?batch_id=' + encodeURIComponent(data.po_number) + '&type=' + (data.po_type.toLowerCase() === 'fuel' ? 'fuel' : 'merch') + '&print=1';
+    // Use actual batch_id if present, otherwise use po_number as the lookup key
+    var printKey = (data.batch_id && data.batch_id.trim()) ? data.batch_id : data.po_number;
+    var printUrl = 'print_po_new.php?batch_id=' + encodeURIComponent(printKey) + '&type=' + (data.po_type.toLowerCase() === 'fuel' ? 'fuel' : 'merch') + '&print=1';
     document.getElementById('modalPrintBtn').setAttribute('href', printUrl);
 
     document.getElementById('viewModalBody').innerHTML = html;

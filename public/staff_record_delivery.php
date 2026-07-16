@@ -1357,8 +1357,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     </tr>
                     <!-- Inline delivery form -->
                     <tr id="detail_<?= $safe_key ?>" style="display:none;">
-                        <td colspan="7" style="padding:0; background:#f8fafc; border-top:1px solid #e2e8f0; border-bottom:none !important;">
-                            <div class="delivery-detail-shell" style="position:relative;">
+                        <td colspan="7" style="padding:0; background:#f8fafc; border:none !important;">
+                            <div style="position:relative;">
                                 <!-- Scrollable Content Area -->
                                 <div class="delivery-detail-scroll" style="max-height:calc(100vh - 180px); overflow-y:auto;">
                                     <!-- Header bar -->
@@ -1590,7 +1590,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     </tr>
                     <!-- Inline fuel delivery form -->
                     <tr id="detail_<?= $safe_fkey ?>" style="display:none;">
-                        <td colspan="10" style="padding:0; background:#f8fafc; border-top:1px solid #e2e8f0; border-bottom:none !important;">
+                        <td colspan="10" style="padding:0; background:#f8fafc; border:none !important;">
                             <div style="position:relative;">
                                 <!-- Scrollable Content Area -->
                                 <div class="delivery-detail-scroll" style="max-height:calc(100vh - 180px); overflow-y:auto;">

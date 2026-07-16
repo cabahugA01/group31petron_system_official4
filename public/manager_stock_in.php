@@ -258,6 +258,10 @@ function si_tab_url(string $type, array $filters): string
     return 'manager_stock_in.php?' . http_build_query($params);
 }
 
+// Compute absolute base URL to avoid Edge trailing-slash relative path issues
+$_si_base = rtrim(dirname(dirname($_SERVER['SCRIPT_NAME'])), '/\\');
+if ($_si_base === '' || $_si_base === '.') $_si_base = '';
+
 include __DIR__ . '/../partials/header.php';
 ?>
 
@@ -316,7 +320,7 @@ include __DIR__ . '/../partials/header.php';
 .summary-inline strong{color:#002F70;font-size:14px;}
 .empty-state{text-align:center;padding:70px 20px;color:#64748b;}
 .empty-state i{font-size:42px;color:#16a34a;display:block;margin-bottom:12px;}
-.toast{display:none;position:fixed;right:24px;top:24px;z-index:20000;border-radius:8px;padding:13px 16px;color:#fff;font-size:13px;font-weight:800;box-shadow:0 10px 24px rgba(15,23,42,.18);max-width:360px;}
+.toast{display:none;position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:20000;border-radius:8px;padding:14px 22px;color:#fff;font-size:14px;font-weight:800;box-shadow:0 10px 24px rgba(15,23,42,.25);min-width:280px;text-align:center;}
 @media(max-width:900px){
     .stock-page{padding:16px 12px 48px;}
     .filter-grid{grid-template-columns:1fr;}
@@ -374,7 +378,7 @@ include __DIR__ . '/../partials/header.php';
         </a>
     </div>
 
-    <form class="filter-panel" method="get" action="manager_stock_in.php">
+    <form class="filter-panel" method="get" action="<?= htmlspecialchars($_si_base . '/public/manager_stock_in.php') ?>">
         <input type="hidden" name="type" value="<?= si_h($active_type) ?>">
         <div class="filter-grid">
             <div class="field">
@@ -405,7 +409,7 @@ include __DIR__ . '/../partials/header.php';
             </div>
             <div class="filter-actions">
                 <button class="si-btn primary" type="submit"><i class="fas fa-filter"></i> Filter</button>
-                <a class="si-btn outline" href="manager_stock_in.php?type=<?= si_h($active_type) ?>"><i class="fas fa-undo"></i> Reset</a>
+                <a class="si-btn outline" href="<?= htmlspecialchars($_si_base . '/public/manager_stock_in.php') ?>?type=<?= si_h($active_type) ?>"><i class="fas fa-undo"></i> Reset</a>
             </div>
         </div>
     </form>
@@ -498,8 +502,9 @@ include __DIR__ . '/../partials/header.php';
                                                     </td>
                                                     <td><span class="readonly-money"><?= si_money($item['cost_price']) ?></span></td>
                                                     <td>
-                                                        <input class="price-input price-field" type="number" step="0.01" min="0.01"
-                                                               placeholder="<?= (float)$item['current_selling_price'] > 0 ? 'Current ' . strip_tags(si_money($item['current_selling_price'])) : '0.00' ?>">
+                                                         <input class="price-input price-field" type="number" step="0.01" min="0.01"
+                                                                value="<?= (float)$item['current_selling_price'] > 0 ? si_h($item['current_selling_price']) : '' ?>"
+                                                                placeholder="<?= (float)$item['current_selling_price'] > 0 ? 'Current ' . strip_tags(si_money($item['current_selling_price'])) : 'Enter selling price/L' ?>">
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -538,8 +543,9 @@ include __DIR__ . '/../partials/header.php';
                                                     <td><?= si_h($item['unit_display'] ?: $item['unit'] ?: 'Piece') ?></td>
                                                     <td><span class="readonly-money"><?= si_money($item['cost_price']) ?></span></td>
                                                     <td>
-                                                        <input class="price-input price-field" type="number" min="0.01" step="0.01"
-                                                               placeholder="<?= (float)$item['current_selling_price'] > 0 ? 'Current ' . strip_tags(si_money($item['current_selling_price'])) : '0.00' ?>">
+                                                         <input class="price-input price-field" type="number" min="0.01" step="0.01"
+                                                                value="<?= (float)$item['current_selling_price'] > 0 ? si_h($item['current_selling_price']) : '' ?>"
+                                                                placeholder="<?= (float)$item['current_selling_price'] > 0 ? 'Current ' . strip_tags(si_money($item['current_selling_price'])) : 'Enter selling price' ?>">
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -568,10 +574,23 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
+<!-- Toast -->
 <div class="toast" id="stockToast"></div>
 
+<!-- Custom Confirm Modal (replaces window.confirm which Edge may block) -->
+<div id="siConfirmOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99998;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:12px;padding:28px 32px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+        <div style="font-size:16px;font-weight:800;color:#002F70;margin-bottom:10px;"><i class="fas fa-check-circle" style="color:#16a34a;margin-right:8px;"></i>Confirm Stock-In Approval</div>
+        <div id="siConfirmMsg" style="font-size:13.5px;color:#374151;line-height:1.6;margin-bottom:22px;"></div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+            <button type="button" onclick="siConfirmCancel()" style="padding:9px 20px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#475569;font-weight:700;font-size:13px;cursor:pointer;">Cancel</button>
+            <button type="button" id="siConfirmOkBtn" style="padding:9px 20px;border:none;border-radius:7px;background:#16a34a;color:#fff;font-weight:800;font-size:13px;cursor:pointer;"><i class="fas fa-check"></i> Yes, Approve</button>
+        </div>
+    </div>
+</div>
+
 <script>
-const stockEndpoint = '../backend/api/manager_stock_in.php';
+const stockEndpoint = '<?= htmlspecialchars($_si_base) ?>/backend/api/manager_stock_in.php';
 
 function toggleStockDetail(groupId) {
     const row = document.getElementById('detail-' + groupId);
@@ -595,27 +614,54 @@ function recalcStockGroup(groupId, isFuel) {
     }
 }
 
-function approveStockIn(type, groupId, poKey) {
-    const rows = stockRows(groupId);
-    if (!rows.length) return;
+var _siConfirmCallback = null;
 
-    const items = [];
-    for (const row of rows) {
-        const qtyInput = row.querySelector('.qty-field');
-        const priceInput = row.querySelector('.price-field');
-        const qty = parseFloat(qtyInput.value);
-        const price = parseFloat(priceInput.value);
+function siConfirm(message, onYes) {
+    document.getElementById('siConfirmMsg').textContent = message;
+    var overlay = document.getElementById('siConfirmOverlay');
+    overlay.style.display = 'flex';
+    document.getElementById('siConfirmOkBtn').onclick = function() {
+        overlay.style.display = 'none';
+        onYes();
+    };
+}
+
+function siConfirmCancel() {
+    document.getElementById('siConfirmOverlay').style.display = 'none';
+}
+
+function approveStockIn(type, groupId, poKey) {
+    var rows = stockRows(groupId);
+    if (!rows.length) {
+        showStockToast('No items found in this group. Please refresh the page.', 'err');
+        return;
+    }
+
+    var items = [];
+    var hasError = false;
+    for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        var qtyInput = row.querySelector('.qty-field');
+        var priceInput = row.querySelector('.price-field');
+        var qty = parseFloat(qtyInput.value);
+        var price = parseFloat(priceInput.value);
 
         if (!Number.isFinite(qty) || qty < 0) {
             showStockToast('Received quantity cannot be negative.', 'err');
+            qtyInput.style.borderColor = '#dc2626';
             qtyInput.focus();
-            return;
+            hasError = true;
+            break;
         }
         if (!Number.isFinite(price) || price <= 0) {
-            showStockToast('Please enter the selling price for every item.', 'err');
+            showStockToast('Enter the selling price for all items before approving.', 'err');
+            priceInput.style.borderColor = '#dc2626';
             priceInput.focus();
-            return;
+            hasError = true;
+            break;
         }
+        qtyInput.style.borderColor = '';
+        priceInput.style.borderColor = '';
 
         items.push({
             delivery_id: parseInt(row.getAttribute('data-delivery-id'), 10),
@@ -623,44 +669,51 @@ function approveStockIn(type, groupId, poKey) {
             selling_price: price
         });
     }
+    if (hasError) return;
 
-    const label = type === 'fuel' ? 'fuel' : 'merchandise';
-    if (!confirm('Approve stock-in for ' + poKey + '? This will update inventory, prices, history, movements, PO status, and notifications.')) {
-        return;
-    }
-
-    const button = document.querySelector('#detail-' + groupId + ' .approve-btn');
-    if (button) {
-        button.disabled = true;
-        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Approving...';
-    }
-
-    const action = type === 'fuel' ? 'approve_fuel_stock_in' : 'approve_merchandise_stock_in';
-    fetch(stockEndpoint + '?action=' + action, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({po_key: poKey, items: items})
-    })
-    .then(function(response) { return response.json(); })
-    .then(function(data) {
-        if (data.success) {
-            showStockToast(data.message || ('Approved ' + label + ' stock-in.'), 'ok');
-            setTimeout(function() { window.location.reload(); }, 1200);
-        } else {
-            showStockToast(data.message || 'Unable to approve stock-in.', 'err');
+    var label = type === 'fuel' ? 'fuel' : 'merchandise';
+    siConfirm(
+        'Approve stock-in for ' + poKey + '? This will update inventory, prices, history, and PO status.',
+        function() {
+            var button = document.querySelector('#detail-' + groupId + ' .approve-btn');
             if (button) {
-                button.disabled = false;
-                button.innerHTML = '<i class="fas fa-check-circle"></i> Approve Stock-In';
+                button.disabled = true;
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Approving...';
             }
+
+            var action = type === 'fuel' ? 'approve_fuel_stock_in' : 'approve_merchandise_stock_in';
+            fetch(stockEndpoint + '?action=' + action, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({po_key: poKey, items: items})
+            })
+            .then(function(response) {
+                if (!response.ok) {
+                    return response.text().then(function(t) { throw new Error('Server error ' + response.status + ': ' + t.substring(0, 200)); });
+                }
+                return response.json();
+            })
+            .then(function(data) {
+                if (data.success) {
+                    showStockToast(data.message || ('Approved ' + label + ' stock-in!'), 'ok');
+                    setTimeout(function() { window.location.reload(); }, 1600);
+                } else {
+                    showStockToast(data.message || 'Unable to approve stock-in.', 'err');
+                    if (button) {
+                        button.disabled = false;
+                        button.innerHTML = '<i class="fas fa-check-circle"></i> Approve Stock-In';
+                    }
+                }
+            })
+            .catch(function(err) {
+                showStockToast('Error: ' + (err.message || 'Connection error. Check server logs.'), 'err');
+                if (button) {
+                    button.disabled = false;
+                    button.innerHTML = '<i class="fas fa-check-circle"></i> Approve Stock-In';
+                }
+            });
         }
-    })
-    .catch(function() {
-        showStockToast('Connection error while approving stock-in.', 'err');
-        if (button) {
-            button.disabled = false;
-            button.innerHTML = '<i class="fas fa-check-circle"></i> Approve Stock-In';
-        }
-    });
+    );
 }
 
 function showStockToast(message, type) {

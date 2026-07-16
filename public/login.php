@@ -367,13 +367,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 ?>
+<?php
+// Detect web root base path for absolute asset URLs (fixes Edge trailing-slash issue)
+$_login_base = rtrim(dirname(dirname($_SERVER['SCRIPT_NAME'])), '/\\');
+if ($_login_base === '' || $_login_base === '.') $_login_base = '';
+$_asset_base = $_login_base . '/assets';
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login | Petron Management System</title>
-    <link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="<?= htmlspecialchars($_asset_base) ?>/vendor/fontawesome/css/all.min.css">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -398,7 +404,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             justify-content: center;
             position: relative;
             overflow: hidden;
-            background: transparent;
+            /* Absolute path so Edge trailing-slash URLs don't break the background */
+            background: url('<?= htmlspecialchars($_asset_base) ?>/img/background.jpg') center center / cover no-repeat;
         }
 
         /* 4D Animated Background Layers */
@@ -410,7 +417,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         /* Base image layer — real Petron station photo, no grid */
         .bg-image {
-            background: url('../assets/img/background.jpg') center center / cover no-repeat;
+            background: url('<?= htmlspecialchars($_asset_base) ?>/img/background.jpg') center center / cover no-repeat;
             z-index: 1;
         }
 
@@ -475,8 +482,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 rgba(0, 100, 255, 0) 100%
             );
             border-radius: 50%;
+            -webkit-filter: blur(8px);
+            -moz-filter: blur(8px);
+            -ms-filter: blur(8px);
             filter: blur(8px);
             animation: sideGlowBlue 3s ease-in-out infinite alternate;
+            -webkit-animation: sideGlowBlue 3s ease-in-out infinite alternate;
             z-index: 2;
         }
 
@@ -496,8 +507,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 rgba(227, 6, 19, 0) 100%
             );
             border-radius: 50%;
+            -webkit-filter: blur(8px);
+            -moz-filter: blur(8px);
+            -ms-filter: blur(8px);
             filter: blur(8px);
             animation: sideGlowRed 3s ease-in-out infinite alternate;
+            -webkit-animation: sideGlowRed 3s ease-in-out infinite alternate;
             z-index: 2;
         }
 
@@ -1106,7 +1121,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <!-- Branding -->
         <div class="brand">
-            <img src="<?php echo '../' . get_system_logo_url(isset($station_id) ? (int)$station_id : (isset($user['station_id']) ? (int)$user['station_id'] : 0)); ?>" alt="Petron" class="brand-logo">
+            <?php
+                // Build absolute logo URL (avoids Edge trailing-slash relative path issues)
+                $logo_rel = get_system_logo_url(isset($station_id) ? (int)$station_id : (isset($user['station_id']) ? (int)$user['station_id'] : 0));
+                // Encode each segment to handle spaces in filenames
+                $logo_segs = explode('/', ltrim($logo_rel, '/'));
+                $logo_abs  = $_login_base . '/' . implode('/', array_map('rawurlencode', $logo_segs));
+                $logo_fallback = $_asset_base . '/img/Petron%20Logo.png';
+            ?>
+            <img src="<?= htmlspecialchars($logo_abs) ?>" alt="Petron" class="brand-logo"
+                 onerror="this.onerror=null;this.src='<?= htmlspecialchars($logo_fallback) ?>'">
             <span class="brand-tagline">Station Management System</span>
         </div>
 
@@ -1119,7 +1143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
 
         <!-- Login Form -->
-        <form method="POST" action="" id="loginForm" novalidate>
+        <form method="POST" action="<?= htmlspecialchars($_login_base . '/public/login.php') ?>" id="loginForm" novalidate>
 
             <!-- Account ID -->
             <div class="form-group">
@@ -1198,7 +1222,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </form>
 
         <div class="login-footer">
-            <a href="forgot_password.php">
+            <a href="<?= htmlspecialchars($_login_base . '/public/forgot_password.php') ?>">
                 <i class="fas fa-key" style="margin-right:5px;font-size:11px;opacity:.7;"></i>Forgot Password?
             </a>
         </div>
@@ -1297,7 +1321,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         // Send AJAX request to refresh CAPTCHA
         var xhr = new XMLHttpRequest();
-        xhr.open('POST', 'refresh_captcha.php', true);
+        xhr.open('POST', '<?= htmlspecialchars($_login_base) ?>/public/refresh_captcha.php', true);
         xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
         
         xhr.onload = function () {

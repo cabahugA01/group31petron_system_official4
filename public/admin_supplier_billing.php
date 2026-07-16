@@ -564,7 +564,7 @@ function sb_badge_class(string $status): string
 .sb-table th{background:#f8fafc;color:#475569;font-size:11px;text-transform:uppercase;letter-spacing:.35px;padding:12px;text-align:left;border-bottom:2px solid var(--line)}
 .sb-table td{padding:12px;border-bottom:1px solid #eef2f7;vertical-align:middle}
 .sb-table tbody tr.summary-row:hover td{background:#f8fafc}
-.sb-link{appearance:none!important;-webkit-appearance:none!important;background:transparent!important;border:0!important;color:#002F70!important;font-weight:900;font-family:monospace;text-decoration:none;cursor:pointer;padding:0!important;font-size:13px;line-height:1.3;display:inline-flex;align-items:center;gap:6px;box-shadow:none!important;min-width:0!important}
+.sb-link{appearance:none!important;-webkit-appearance:none!important;background:transparent!important;border:0!important;color:#002F70!important;font-weight:900;font-family:monospace;text-decoration:none;cursor:pointer;padding:0!important;font-size:13px;line-height:1.3;display:inline-flex;align-items:center;gap:6px;box-shadow:none!important;min-width:0!important;outline:none!important;text-align:left!important}
 .sb-link:hover{text-decoration:underline;background:transparent!important}
 .sb-status{display:inline-flex;align-items:center;gap:6px;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:900;border:1px solid transparent}
 .sb-status.pending{background:#fffbeb;color:#b45309;border-color:#fde68a}
@@ -658,6 +658,7 @@ $is_fuel = $active_tab === 'fuel';
                         <th>Delivery Date</th>
                         <th style="text-align:right">Total Amount</th>
                         <th style="text-align:center">Payment Status</th>
+                        <th style="text-align:center;width:56px">Receipt</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -672,9 +673,10 @@ $is_fuel = $active_tab === 'fuel';
                         <td><?= sb_date($invoice['delivery_date']) ?></td>
                         <td style="text-align:right;font-weight:900"><?= sb_money($invoice['total_amount']) ?></td>
                         <td style="text-align:center"><span class="sb-status <?= sb_badge_class($status) ?>"><i class="fas fa-circle" style="font-size:6px"></i><?= htmlspecialchars($status) ?></span></td>
+                        <td style="text-align:center"><a href="print_supplier_receipt.php?invoice_no=<?= urlencode($invoice['invoice_no']) ?>&po_number=<?= urlencode($invoice['po_number']) ?>&type=<?= urlencode($invoice['type']) ?>" target="_blank" title="Print Receipt" style="color:#002F70;font-size:15px"><i class="fas fa-print"></i></a></td>
                     </tr>
                     <tr id="detail_<?= htmlspecialchars($row_id) ?>" style="display:none">
-                        <td colspan="6" class="sb-detail-cell">
+                        <td colspan="7" class="sb-detail-cell">
                             <div class="sb-detail">
                                 <div class="sb-detail-head"><i class="fas fa-file-invoice-dollar"></i><?= htmlspecialchars($invoice['invoice_no']) ?></div>
                                 <div class="sb-detail-body">
@@ -738,6 +740,9 @@ $is_fuel = $active_tab === 'fuel';
 
                                     <div class="sb-actions">
                                         <button type="button" class="sb-btn secondary" onclick="toggleSupplierInvoice('<?= htmlspecialchars($row_id) ?>')">Close</button>
+                                        <a href="print_supplier_receipt.php?invoice_no=<?= urlencode($invoice['invoice_no']) ?>&po_number=<?= urlencode($invoice['po_number']) ?>&type=<?= urlencode($invoice['type']) ?>" target="_blank" class="sb-btn secondary" style="border-color:#002F70!important;color:#002F70!important">
+                                            <i class="fas fa-print"></i> Print Receipt
+                                        </a>
                                         <form method="POST" style="margin:0">
                                             <input type="hidden" name="action" value="approve_supplier_payment">
                                             <input type="hidden" name="invoice_type" value="<?= htmlspecialchars($invoice['type']) ?>">

@@ -69,10 +69,10 @@ try {
                 LEFT JOIN suppliers sup ON fpo.supplier_id = sup.id
                 LEFT JOIN users u ON fpo.created_by = u.id
                 LEFT JOIN users ab ON fpo.approved_by = ab.id
-                WHERE fpo.batch_id = ?
+                WHERE (fpo.batch_id = ? OR fpo.po_number = ?)
                 ORDER BY fpo.id ASC
             ");
-            $stmt->execute([$batch_id]);
+            $stmt->execute([$batch_id, $batch_id]);
         } else {
             $stmt = $pdo->prepare("
                 SELECT po.*,
@@ -96,10 +96,10 @@ try {
                 LEFT JOIN users staff_u ON sr.staff_id = staff_u.id
                 LEFT JOIN users mgr_u ON sr.manager_id = mgr_u.id
                 LEFT JOIN inventory_products ip ON (sr.item_sku = ip.sku OR po.product_name = ip.product_name)
-                WHERE po.batch_id = ?
+                WHERE (po.batch_id = ? OR po.po_number = ?)
                 ORDER BY po.id ASC
             ");
-            $stmt->execute([$batch_id]);
+            $stmt->execute([$batch_id, $batch_id]);
         }
         $po_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
 

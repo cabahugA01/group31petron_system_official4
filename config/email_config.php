@@ -8,11 +8,13 @@ $email_config = [
     'from_email' => 'christianval0813@gmail.com',
     'from_name' => 'Petron Management System',
     'encryption' => 'tls',
-    // Send OTP through every configured Gmail transport because some local SMTP
-    // sessions are accepted but still do not appear in recipient inboxes.
-    'send_all_smtp_candidates' => true,
+    // Try the next SMTP transport only when the current one fails.
+    // Sending duplicate accepted messages can make Gmail hide or suppress OTPs.
+    'send_all_smtp_candidates' => false,
     // Same-mailbox Gmail aliases for recipients that do not receive the exact address.
     'recipient_aliases' => [
+        'cabahug.amiedamas@gmail.com' => ['cabahug.amiedamas+petronotp@gmail.com'],
+        'yangc.developer@gmail.com' => ['yangc.developer+petronotp@gmail.com'],
         'yyangcabahug@gmail.com' => ['yyangcabahug+petronotp@gmail.com']
     ]
 ];
@@ -74,7 +76,10 @@ function getOtpSmtpCandidates($email_config) {
 
 function getOtpRecipientAddresses($to_email, $email_config) {
     $primary = preg_replace('/\s+/', '', strtolower(trim((string)$to_email)));
-    $addresses = [$primary];
+    $addresses = [];
+    if ($primary !== '' && filter_var($primary, FILTER_VALIDATE_EMAIL)) {
+        $addresses[] = $primary;
+    }
     $aliases = $email_config['recipient_aliases'][$primary] ?? [];
 
     foreach ($aliases as $alias) {
@@ -85,6 +90,46 @@ function getOtpRecipientAddresses($to_email, $email_config) {
     }
 
     return $addresses;
+}
+
+function buildOtpMailer($email_config, $candidate, $subject, $htmlBody, $altBody, $logo_path) {
+    $mail = new PHPMailer(true);
+    $mail->SMTPDebug = 0;
+    $mail->isSMTP();
+    $mail->Host       = $candidate['host'];
+    $mail->SMTPAuth   = true;
+    $mail->Username   = $email_config['username'];
+    $mail->Password   = $email_config['password_hash'];
+    $mail->Port       = (int)$candidate['port'];
+    $mail->Timeout    = 15;
+    $mail->SMTPKeepAlive = false;
+    $mail->CharSet    = 'UTF-8';
+    $mail->Encoding   = 'base64';
+
+    $encryption = strtolower($candidate['encryption'] ?? '');
+    if ($encryption === 'ssl' || $encryption === 'smtps') {
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+        $mail->SMTPAutoTLS = false;
+    } elseif ($encryption === 'tls' || $encryption === 'starttls') {
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->SMTPAutoTLS = true;
+    } else {
+        $mail->SMTPSecure = '';
+        $mail->SMTPAutoTLS = false;
+    }
+
+    $mail->SMTPOptions = ['ssl' => ['verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true]];
+    $mail->setFrom($email_config['from_email'], $email_config['from_name']);
+    $mail->Sender = $email_config['from_email'];
+    $mail->addReplyTo($email_config['from_email'], $email_config['from_name']);
+    if (file_exists($logo_path)) $mail->AddEmbeddedImage($logo_path, 'petron_logo_otp', 'Petron Logo.png');
+
+    $mail->isHTML(true);
+    $mail->Subject = $subject;
+    $mail->Body    = $htmlBody;
+    $mail->AltBody = $altBody;
+
+    return $mail;
 }
 
 function sendPasswordResetOTP($to_email, $otp) {
@@ -119,12 +164,12 @@ function sendPasswordResetOTP($to_email, $otp) {
         ? "<img src='{$logo_src}' alt='Petron' style='height:72px;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto;' />"
         : "<div style='font-size:32px;font-weight:900;color:#fff;margin-bottom:8px;'>PETRON</div>";
 
-    $subject = 'Your Petron System OTP Code: ' . $otp;
+    $subject = 'Your Petron OTP: ' . $otp;
     $htmlBody = "<div style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #dee2e6;border-radius:4px;overflow:hidden;'>"
         ."<div style='background:linear-gradient(135deg,#002F6C 0%,#004a9e 100%);color:white;padding:36px 20px 28px;text-align:center;'>{$logo_img}<h1 style='margin:0;font-size:22px;font-weight:700;letter-spacing:0.5px;opacity:0.95;'>Station Management System</h1></div>"
-        ."<div style='padding:40px 30px;background-color:#ffffff;'><h2 style='color:#002F6C;margin-top:0;font-size:22px;font-weight:700;'>Password Reset Request</h2><p style='color:#333;line-height:1.7;'>Hello,</p><p style='color:#333;line-height:1.7;'>You requested to reset your password for the <strong>Petron Station Management System</strong>.</p><p style='color:#333;line-height:1.7;'>Use the following 6-digit OTP to reset your password:</p><div style='background:linear-gradient(135deg,#f8f9fa 0%,#e9ecef 100%);padding:28px;border-radius:8px;margin:28px 0;border-left:5px solid #002F6C;text-align:center;box-shadow:0 2px 4px rgba(0,0,0,0.08);'><span style='font-size:40px;font-weight:800;letter-spacing:10px;color:#002F6C;font-family:monospace;'>{$otp}</span></div><div style='background-color:#fff3cd;border-left:4px solid #ffc107;padding:14px 16px;border-radius:5px;margin:20px 0;'><p style='margin:0;color:#856404;font-weight:700;'>This OTP will expire in <strong>5 minutes</strong>.</p></div><p style='color:#6c757d;font-size:13px;line-height:1.6;'>If you did not request this, please ignore this email. Your password will remain unchanged.</p></div><div style='background-color:#002F6C;color:rgba(255,255,255,0.85);padding:22px 20px;text-align:center;font-size:12px;'><p style='margin:0 0 6px;'>This is an automated message. Please do not reply.</p><p style='margin:0;font-weight:700;color:#fff;'>&copy; 2026 Petron Station &amp; Service Center Management System</p></div></div>";
+        ."<div style='padding:40px 30px;background-color:#ffffff;'><h2 style='color:#002F6C;margin-top:0;font-size:22px;font-weight:700;'>Password Reset Request</h2><p style='color:#002F6C;font-size:18px;line-height:1.6;font-weight:800;margin:0 0 18px;'>Your OTP code is: <span style='font-family:monospace;letter-spacing:4px;'>{$otp}</span></p><p style='color:#333;line-height:1.7;'>Hello,</p><p style='color:#333;line-height:1.7;'>You requested to reset your password for the <strong>Petron Station Management System</strong>.</p><p style='color:#333;line-height:1.7;'>Use the following 6-digit OTP to reset your password:</p><div style='background:#f8f9fa;padding:28px;border-radius:8px;margin:28px 0;border-left:5px solid #002F6C;text-align:center;box-shadow:0 2px 4px rgba(0,0,0,0.08);'><div style='color:#002F6C;font-size:13px;font-weight:700;margin-bottom:10px;text-transform:uppercase;'>One-Time Password</div><span style='font-size:42px;font-weight:800;letter-spacing:10px;color:#002F6C;font-family:monospace;'>{$otp}</span></div><div style='background-color:#fff3cd;border-left:4px solid #ffc107;padding:14px 16px;border-radius:5px;margin:20px 0;'><p style='margin:0;color:#856404;font-weight:700;'>This OTP will expire in <strong>5 minutes</strong>.</p></div><p style='color:#6c757d;font-size:13px;line-height:1.6;'>If you did not request this, please ignore this email. Your password will remain unchanged.</p></div><div style='background-color:#002F6C;color:rgba(255,255,255,0.85);padding:22px 20px;text-align:center;font-size:12px;'><p style='margin:0 0 6px;'>This is an automated message. Please do not reply.</p><p style='margin:0;font-weight:700;color:#fff;'>&copy; 2026 Petron Station &amp; Service Center Management System</p></div></div>";
 
-    $altBody = "Password Reset OTP - Petron Management System\n\nYour OTP code is: {$otp}\n\nThis OTP will expire in 5 minutes.\n\nIf you did not request this, please ignore this email.\n\n-- Petron Station Management System";
+    $altBody = "Your Petron OTP is: {$otp}\n\nPassword Reset OTP - Petron Management System\n\nThis OTP will expire in 5 minutes.\n\nIf you did not request this, please ignore this email.\n\n-- Petron Station Management System";
 
     // Try configured SMTP transports before PHP mail() fallback
     $lastException = null;
@@ -135,76 +180,46 @@ function sendPasswordResetOTP($to_email, $otp) {
 
     foreach (getOtpSmtpCandidates($email_config) as $candidate) {
         $attemptNo++;
+        $candidateAccepted = false;
 
-        try {
-            $mail = new PHPMailer(true);
-            $mail->SMTPDebug = 0;
-            $mail->isSMTP();
-            $mail->Host       = $candidate['host'];
-            $mail->SMTPAuth   = true;
-            $mail->Username   = $email_config['username'];
-            $mail->Password   = $email_config['password_hash'];
-            $mail->Port       = (int)$candidate['port'];
-            $mail->Timeout    = 15;
-            $mail->SMTPKeepAlive = false;
-            $mail->CharSet    = 'UTF-8';
-            $mail->Encoding   = 'base64';
-
-            $encryption = strtolower($candidate['encryption'] ?? '');
-            if ($encryption === 'ssl' || $encryption === 'smtps') {
-                $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
-                $mail->SMTPAutoTLS = false;
-            } elseif ($encryption === 'tls' || $encryption === 'starttls') {
-                $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-                $mail->SMTPAutoTLS = true;
-            } else {
-                $mail->SMTPSecure = '';
-                $mail->SMTPAutoTLS = false;
-            }
-
-            $mail->SMTPOptions = ['ssl' => ['verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true]];
-
-            $mail->setFrom($email_config['from_email'], $email_config['from_name']);
-            $mail->Sender = $email_config['from_email'];
-            foreach ($recipientAddresses as $recipientAddress) {
+        foreach ($recipientAddresses as $recipientAddress) {
+            try {
+                $mail = buildOtpMailer($email_config, $candidate, $subject, $htmlBody, $altBody, $logo_path);
                 $mail->addAddress($recipientAddress);
-            }
-            $mail->addReplyTo($email_config['from_email'], $email_config['from_name']);
-            if (file_exists($logo_path)) $mail->AddEmbeddedImage($logo_path, 'petron_logo_otp', 'Petron Logo.png');
 
-            $mail->isHTML(true);
-            $mail->Subject = $subject;
-            $mail->Body    = $htmlBody;
-            $mail->AltBody = $altBody;
+                $sent = $mail->send();
+                $smtpReply = '';
+                try { $smtpReply = trim($mail->getSMTPInstance()->getLastReply()); } catch (Exception $ignore) {}
+                $entry['attempts'][] = [
+                    'method' => 'phpmailer',
+                    'attempt' => $attemptNo,
+                    'transport' => ($candidate['label'] ?? 'smtp') . '-' . $candidate['encryption'] . '-' . $candidate['port'],
+                    'recipient' => $recipientAddress,
+                    'success' => $sent,
+                    'info' => $mail->ErrorInfo ?? '',
+                    'smtp_reply' => $smtpReply
+                ];
 
-            $sent = $mail->send();
-            $smtpReply = '';
-            try { $smtpReply = trim($mail->getSMTPInstance()->getLastReply()); } catch (Exception $ignore) {}
-            $entry['attempts'][] = [
-                'method' => 'phpmailer',
-                'attempt' => $attemptNo,
-                'transport' => ($candidate['label'] ?? 'smtp') . '-' . $candidate['encryption'] . '-' . $candidate['port'],
-                'success' => $sent,
-                'info' => $mail->ErrorInfo ?? '',
-                'smtp_reply' => $smtpReply
-            ];
-
-            if ($sent) {
-                $smtpAccepted = true;
-                if (!$sendAllCandidates) {
-                    logEmailAttempt($entry);
-                    return true;
+                if ($sent) {
+                    $smtpAccepted = true;
+                    $candidateAccepted = true;
                 }
+            } catch (Exception $e) {
+                $lastException = $e;
+                $entry['attempts'][] = [
+                    'method' => 'phpmailer',
+                    'attempt' => $attemptNo,
+                    'transport' => ($candidate['label'] ?? 'smtp') . '-' . ($candidate['encryption'] ?? '') . '-' . ($candidate['port'] ?? ''),
+                    'recipient' => $recipientAddress,
+                    'success' => false,
+                    'error' => $e->getMessage()
+                ];
             }
-        } catch (Exception $e) {
-            $lastException = $e;
-            $entry['attempts'][] = [
-                'method' => 'phpmailer',
-                'attempt' => $attemptNo,
-                'transport' => ($candidate['label'] ?? 'smtp') . '-' . ($candidate['encryption'] ?? '') . '-' . ($candidate['port'] ?? ''),
-                'success' => false,
-                'error' => $e->getMessage()
-            ];
+        }
+
+        if ($candidateAccepted && !$sendAllCandidates) {
+            logEmailAttempt($entry);
+            return true;
         }
     }
 
@@ -218,46 +233,33 @@ function sendPasswordResetOTP($to_email, $otp) {
     if ($secondary && ($secondary['enabled'] ?? false)) {
         $secMaxRetries = 2;
         for ($satt = 1; $satt <= $secMaxRetries; $satt++) {
-            try {
-                $mail = new PHPMailer(true);
-                $mail->SMTPDebug = 0;
-                $mail->isSMTP();
-                $mail->Host = $secondary['host'];
-                $mail->SMTPAuth = true;
-                $mail->Username = $secondary['username'];
-                $mail->Password = $secondary['password_hash'];
-                $mail->SMTPSecure = $secondary['encryption'];
-                $mail->Port = $secondary['port'];
-                $mail->Timeout = 30;
-                $mail->SMTPKeepAlive = false;
-                $mail->CharSet = 'UTF-8';
-                $mail->Encoding = 'base64';
-                $mail->SMTPOptions = array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
+            foreach ($recipientAddresses as $recipientAddress) {
+                try {
+                    $secondary_config = $email_config;
+                    $secondary_config['username'] = $secondary['username'];
+                    $secondary_config['password_hash'] = $secondary['password_hash'];
+                    $secondary_candidate = [
+                        'host' => $secondary['host'],
+                        'port' => $secondary['port'],
+                        'encryption' => $secondary['encryption'],
+                        'label' => 'secondary'
+                    ];
 
-                $mail->setFrom($email_config['from_email'], $email_config['from_name']);
-                $mail->Sender = $email_config['from_email'];
-                foreach ($recipientAddresses as $recipientAddress) {
+                    $mail = buildOtpMailer($secondary_config, $secondary_candidate, $subject, $htmlBody, $altBody, $logo_path);
                     $mail->addAddress($recipientAddress);
+
+                    $sentSec = $mail->send();
+                    $smtpReply = '';
+                    try { $smtpReply = trim($mail->getSMTPInstance()->getLastReply()); } catch (Exception $ignore) {}
+                    $entry['attempts'][] = ['method' => 'phpmailer_secondary', 'attempt' => $satt, 'recipient' => $recipientAddress, 'success' => $sentSec, 'info' => $mail->ErrorInfo ?? '', 'smtp_reply' => $smtpReply];
+                    logEmailAttempt($entry);
+                    if ($sentSec) return true;
+                } catch (Exception $e) {
+                    $entry['attempts'][] = ['method' => 'phpmailer_secondary', 'attempt' => $satt, 'recipient' => $recipientAddress, 'success' => false, 'error' => $e->getMessage()];
+                    logEmailAttempt($entry);
+                    sleep(1 * $satt);
+                    continue;
                 }
-                $mail->addReplyTo($email_config['from_email'], $email_config['from_name']);
-                if (file_exists($logo_path)) $mail->AddEmbeddedImage($logo_path, 'petron_logo_otp', 'Petron Logo.png');
-
-                $mail->isHTML(true);
-                $mail->Subject = $subject;
-                $mail->Body = $htmlBody;
-                $mail->AltBody = $altBody;
-
-                $sentSec = $mail->send();
-                $smtpReply = '';
-                try { $smtpReply = trim($mail->getSMTPInstance()->getLastReply()); } catch (Exception $ignore) {}
-                $entry['attempts'][] = ['method' => 'phpmailer_secondary', 'attempt' => $satt, 'success' => $sentSec, 'info' => $mail->ErrorInfo ?? '', 'smtp_reply' => $smtpReply];
-                logEmailAttempt($entry);
-                if ($sentSec) return true;
-            } catch (Exception $e) {
-                $entry['attempts'][] = ['method' => 'phpmailer_secondary', 'attempt' => $satt, 'success' => false, 'error' => $e->getMessage()];
-                logEmailAttempt($entry);
-                sleep(1 * $satt);
-                continue;
             }
         }
     }
