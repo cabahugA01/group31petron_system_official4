@@ -381,6 +381,7 @@ include __DIR__ . '/../partials/header.php';
 }
 </style>
 
+<div class="stock-page">
 <div class="merch-transaction-container">
     <!-- Transaction Form Section -->
     <div class="form-section">
@@ -607,6 +608,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
 </div>
+</div><!-- end stock-page -->
 
 <script>
 // Global variables

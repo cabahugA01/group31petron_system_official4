@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'staff_management';
 require_once __DIR__ . '/../backend/lib.php';
@@ -71,6 +71,7 @@ $stmt->execute([$station_id]);
 $staff = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
+<div class="stock-page">
 <div class="page-head">
     <div>
         <h1 class="h1">Staff Management</h1>
@@ -500,4 +501,5 @@ $staff = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 </style>
 
+</div>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

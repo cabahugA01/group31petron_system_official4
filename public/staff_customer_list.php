@@ -831,6 +831,7 @@ include __DIR__ . '/../partials/header.php';
 
 </style>
 
+<div class="stock-page">
 <div class="int-head" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 2px solid #e9ecef;">
     <div>
         <h1 class="h1"><i class="fas fa-users"></i> CUSTOMERS</h1>
@@ -1893,4 +1894,5 @@ document.addEventListener('keydown', (e) => {
 });
 </script>
 
+</div>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

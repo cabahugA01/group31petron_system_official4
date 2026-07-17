@@ -256,7 +256,7 @@ function get_fuel_tank_label($fuel_type) {
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
-.ssr-wrap { width: 100%; margin: 0; padding: 0; }
+.ssr-wrap { width: 100%; margin: 0; padding: 20px 24px 56px; box-sizing: border-box; }
 
 /* Header standardization */
 .int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:0px !important; }
@@ -425,6 +425,7 @@ include __DIR__ . '/../partials/header.php';
 }
 </style>
 
+<div class="stock-page">
 <div class="ssr-wrap">
 
     <!-- Header -->
@@ -1062,4 +1063,5 @@ document.querySelectorAll('.ssr-overlay').forEach(function(overlay) {
 });
 </script>
 
+</div>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

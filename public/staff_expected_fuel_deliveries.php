@@ -117,6 +117,7 @@ include __DIR__ . '/../partials/header.php';
 .btn-back:hover { background: #5a6268; }
 </style>
 
+<div class="stock-page">
 <div class="page-head">
     <div>
         <h1 class="h1"><i class="fas fa-gas-pump"></i> Expected Fuel Deliveries</h1>
@@ -190,4 +191,5 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
+</div>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

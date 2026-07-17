@@ -426,6 +426,7 @@ body{overflow-x:hidden;max-width:100vw}
 .selected-tag{font-size:10px;font-weight:700;color:#0284c7;background:#e0f2fe;padding:4px 8px;border-radius:5px;border:1px solid #bae6fd;display:flex;align-items:center;gap:4px}
 </style>
 
+<div class="stock-page">
 <div class="fde-head">
     <div>
         <h1><i class="fas fa-truck-loading"></i> Record Fuel Delivery</h1>
@@ -884,4 +885,5 @@ document.getElementById('delDate').addEventListener('change', function() {
 });
 </script>
 
+</div>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

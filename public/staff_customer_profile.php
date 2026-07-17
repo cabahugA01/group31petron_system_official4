@@ -106,6 +106,7 @@ include __DIR__ . '/../partials/header.php';
 .action-buttons{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;}
 </style>
 
+<div class="stock-page">
 <div class="page-head">
     <div>
         <h1 class="h1"><i class="fas fa-user"></i> Customer Profile</h1>
@@ -197,4 +198,5 @@ function editCustomer() {
 }
 </script>
 
+</div>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

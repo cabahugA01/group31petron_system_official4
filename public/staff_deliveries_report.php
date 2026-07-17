@@ -944,7 +944,7 @@ require_once __DIR__ . '/../partials/header.php';
 <!-- Module Page Header - matches Transaction module int-head standard -->
 
 <!-- Main Content Wrapper -->
-<div class="main-content">
+<div class="stock-page">
     <!-- Controls Section (Not Printed) -->
     <div class="controls">
         <div class="date-controls">
@@ -1264,6 +1264,6 @@ require_once __DIR__ . '/../partials/header.php';
             window.location.href = `?date_start=${dateStart}&date_end=${dateEnd}`;
         }
     </script>
-</div><!-- End main-content -->
+</div>
 
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

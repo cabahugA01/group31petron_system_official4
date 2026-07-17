@@ -439,6 +439,7 @@ let merchandiseProducts = <?php
 }
 </style>
 
+<div class="stock-page">
 <div class="page-head">
     <div>
         <h1 class="h1">Staff Transactions</h1>
@@ -1321,5 +1322,6 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 </script>
+</div>
 </body>
 </html><?php include __DIR__ . '/../partials/footer.php'; ?>

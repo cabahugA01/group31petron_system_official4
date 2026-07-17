@@ -347,26 +347,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                          delivery_date, delivery_time, dr_number, sales_invoice_no, encoded_by, station_id,
                          status, remarks, received_shift, received_by_name,
                          source_ref, batch_id, created_at, updated_at)
-                    VALUES ('fuel', ?, ?, ?, ?, 'L', ?, ?, 0, ?, ?, ?, ?, ?, 'Pending Stock-In', ?, ?, ?, ?, ?, NOW(), NOW())
+                    VALUES ('fuel', ?, ?, ?, ?, 'L', ?, ?, 0, ?, ?, ?, ?, ?, ?, 'Pending Stock-In', ?, ?, ?, ?, ?, NOW(), NOW())
                 ");
                 $stmt_ins->execute([
-                    $delivery_ref,
-                    $fpo_item['supplier_name'] ?? 'Unknown',
-                    $fpo_item['fuel_type'],
-                    $received_vol,
-                    $fpo_item['volume'], // expected_quantity
-                    $received_vol,       // actual_quantity
-                    $delivery_date,
-                    $delivery_time,
-                    $dr_number,
-                    $invoice_number,
-                    $me['id'],
-                    $station_id,
-                    $full_remarks,
-                    $received_shift,
-                    $received_by_staff,
-                    $po_number,
-                    $tanker_number
+                    $delivery_ref,             // delivery_ref
+                    $fpo_item['supplier_name'] ?? 'Unknown', // supplier
+                    $fpo_item['fuel_type'],    // product
+                    $received_vol,             // quantity
+                    $fpo_item['volume'],       // expected_quantity
+                    $received_vol,             // actual_quantity
+                    $delivery_date,            // delivery_date
+                    $delivery_time,            // delivery_time
+                    $dr_number,                // dr_number
+                    $invoice_number,           // sales_invoice_no
+                    $me['id'],                 // encoded_by
+                    $station_id,               // station_id
+                    $full_remarks,             // remarks
+                    $received_shift,           // received_shift
+                    $received_by_staff,        // received_by_name
+                    $po_number,                // source_ref
+                    $tanker_number             // batch_id
                 ]);
 
                 // Update specific fuel PO row status
@@ -1534,9 +1534,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     <tr>
                         <th style="text-align:left;">PO No.</th>
                         <th style="text-align:left;">Supplier</th>
-                        <th style="text-align:left;">Delivery Date</th>
-                        <th style="text-align:center; width:120px;">Fuel Types</th>
+                        <th style="text-align:center;">Fuel Types / Liters</th>
+                        <th style="text-align:left;">Expected Delivery</th>
                         <th style="text-align:center; width:140px;">Status</th>
+                        <th style="text-align:center; width:140px;">Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1574,12 +1575,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <?= htmlspecialchars($po['po_number']) ?>
                             </button>
                         </td>
-                        <td style="font-family:monospace; color:#64748b;"><?= htmlspecialchars($po['pr_number'] ?? '—') ?></td>
                         <td style="font-weight:600; color:#0f172a;"><?= htmlspecialchars($po['supplier_name']) ?></td>
-                        <td style="font-weight:600; color:#334155;"><?= $po['expected_delivery_date'] ? date('M d, Y', strtotime($po['expected_delivery_date'])) : '—' ?></td>
-                        <td style="text-align:center; font-weight:700; color:#002F70;"><?= count($po['items']) ?> Fuel Types</td>
-                        <td style="font-weight:700; color:#002F70;"><?= htmlspecialchars($fuel_types) ?></td>
-                        <td style="text-align:right; font-weight:800; font-family:monospace; color:#0f172a;"><?= number_format($total_liters) ?> L</td>
+                        <td style="text-align:center;">
+                            <div style="font-weight:700; color:#002F70; margin-bottom:2px;"><?= count($po['items']) ?> Type<?= count($po['items']) > 1 ? 's' : '' ?></div>
+                            <div style="font-weight:800; font-family:monospace; color:#0f172a; font-size:13px;"><?= number_format($total_liters) ?> L</div>
+                        </td>
                         <td style="font-weight:600; color:#334155;"><?= $po['expected_delivery_date'] ? date('M d, Y', strtotime($po['expected_delivery_date'])) : '—' ?></td>
                         <td style="text-align:center;">
                             <span class="status-badge status-waiting"><i class="fas fa-clock"></i> Waiting Delivery</span>
@@ -1593,7 +1593,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     </tr>
                     <!-- Inline fuel delivery form -->
                     <tr id="detail_<?= $safe_fkey ?>" style="display:none;">
-                        <td colspan="10" style="padding:0; background:#f8fafc; border:none !important;">
+                        <td colspan="6" style="padding:0; background:#f8fafc; border:none !important;">
                             <div style="position:relative;">
                                 <!-- Scrollable Content Area -->
                                 <div class="delivery-detail-scroll" style="max-height:calc(100vh - 180px); overflow-y:auto;">

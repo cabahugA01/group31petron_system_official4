@@ -2381,7 +2381,7 @@ require_once __DIR__ . '/../partials/header.php';
 }
 </style>
 
-<div class="page-content">
+<div class="stock-page">
     <div class="page-head">
         <h1 class="h1"><i class="fa-solid fa-chart-bar" style="color:var(--petron-red);margin-right:8px;"></i>STAFF REPORTS</h1>
         <div class="sub">Station: <?= htmlspecialchars($station_name) ?> | Role: <?= htmlspecialchars(ucfirst($role)) ?></div>

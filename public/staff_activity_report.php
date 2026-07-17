@@ -740,6 +740,7 @@ require_once __DIR__ . '/../partials/header.php';
     }
 </style>
 
+<div class="stock-page">
 <!-- CONTROLS -->
 <div class="controls">
     <div class="date-controls">
@@ -822,6 +823,7 @@ require_once __DIR__ . '/../partials/header.php';
             </div>
         </div>
     </div>
+</div>
 </div>
 
 <script>

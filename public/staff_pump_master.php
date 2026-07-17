@@ -233,6 +233,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 .empty-state p { font-size: 14px; }
 </style>
 
+<div class="stock-page">
 <div class="pump-page-header">
     <div class="pump-page-title">
         <div class="pump-page-icon"><i class="fas fa-gas-pump"></i></div>
@@ -316,4 +317,5 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 </div>
 <?php endif; ?>
 
+</div>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

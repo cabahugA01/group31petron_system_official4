@@ -287,6 +287,7 @@ include __DIR__ . '/../partials/header.php';
 .int-head .sub { font-size:13px; color:#64748b; margin-top:4px; }
 </style>
 
+<div class="stock-page">
 <div class="int-head">
     <div>
         <h1><i class="fas fa-history"></i> Merchandise Delivery History</h1>
@@ -673,4 +674,5 @@ document.querySelectorAll('.modal-overlay').forEach(function(el) {
 });
 </script>
 
+</div>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

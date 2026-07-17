@@ -327,6 +327,7 @@ require_once __DIR__ . '/../partials/header.php';
     }
 </style>
 
+<div class="stock-page">
 <div class="controls">
     <form method="GET" class="filter-controls" id="customerReportFilters">
         <div class="filter-group">
@@ -515,6 +516,7 @@ require_once __DIR__ . '/../partials/header.php';
             </div>
         </div>
     </div>
+</div>
 </div>
 
 <?php if (($_GET['print'] ?? '') === '1'): ?>

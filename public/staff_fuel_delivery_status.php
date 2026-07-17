@@ -233,6 +233,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
   display: flex; align-items: flex-start; gap: 10px; font-size: 13px; color: #721c24; }
 </style>
 
+<div class="stock-page">
 <div class="page-head">
     <div>
         <h1 class="h1"><i class="fas fa-history"></i> Fuel Deliveries History</h1>
@@ -544,4 +545,5 @@ document.querySelectorAll('.modal-overlay').forEach(function(el) {
 });
 </script>
 
+</div>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

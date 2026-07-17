@@ -2645,6 +2645,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     }
 </style>
 
+<div class="stock-page">
 <!-- CONTROLS - OUTSIDE PRINTABLE AREA -->
 <div class="controls">
     <div class="date-controls">
@@ -3177,6 +3178,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         </div><!-- end .container -->
     </div><!-- end #merchandise-tab -->
     <!-- END MERCHANDISE TAB -->
+</div>
 
     <script>
     function switchTab(tabName, event) {
