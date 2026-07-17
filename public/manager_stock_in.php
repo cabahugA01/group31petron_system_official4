@@ -293,25 +293,25 @@ include __DIR__ . '/../partials/header.php';
 .si-btn.outline{background:#fff!important;color:#475569!important;border-color:#cbd5e1!important;}
 .si-btn.success{background:#16a34a!important;color:#fff!important;border-color:#16a34a!important;}
 .si-btn:disabled{opacity:.55;cursor:not-allowed;}
-.table-card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.04);}
+.table-card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow-x:auto;overflow-y:hidden;box-shadow:0 2px 8px rgba(15,23,42,.04);}
 .table-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid #e2e8f0;}
 .table-title{font-size:15px;font-weight:850;color:#002F70;display:flex;align-items:center;gap:8px;}
-.stock-table{width:100%;border-collapse:collapse;font-size:12px;}
+.stock-table{width:100%;min-width:760px;border-collapse:collapse;font-size:12px;table-layout:fixed;}
 .stock-table th{background:#002F70;color:#fff;text-align:left;padding:11px 12px;text-transform:uppercase;letter-spacing:.45px;font-size:10px;}
-.stock-table td{padding:11px 12px;border-bottom:1px solid #eef2f7;vertical-align:middle;}
+.stock-table td{padding:11px 12px;border-bottom:1px solid #eef2f7;vertical-align:middle;overflow-wrap:anywhere;}
 .click-row{cursor:pointer;}
 .click-row:hover td{background:#eff6ff;}
 .po-link{font-family:Consolas,monospace;font-weight:850;color:#002F70;}
 .status-pill{display:inline-flex;align-items:center;gap:5px;color:#b45309;font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.35px;}
 .detail-row{display:none;background:#f8fafc;}
 .detail-row.open{display:table-row;}
-.detail-cell{padding:0!important;}
-.detail-panel{padding:18px;border-top:1px solid #dbeafe;}
+.detail-cell{padding:0!important;width:100%;}
+.detail-panel{padding:18px;border-top:1px solid #dbeafe;box-sizing:border-box;max-width:100%;overflow:hidden;}
 .info-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:16px;}
 .info-item{background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;}
 .info-item label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.45px;font-weight:850;color:#64748b;margin-bottom:3px;}
 .info-item span{font-size:13px;font-weight:750;color:#0f172a;}
-.verify-wrap{overflow-x:auto;border:1px solid #dbeafe;border-radius:8px;background:#fff;}
+.verify-wrap{max-width:100%;min-width:0;overflow-x:auto;border:1px solid #dbeafe;border-radius:8px;background:#fff;}
 .verify-table{width:100%;border-collapse:collapse;font-size:12px;min-width:920px;}
 .verify-table th{background:#eaf2ff;color:#002F70;text-align:left;padding:10px;font-size:10px;text-transform:uppercase;letter-spacing:.4px;}
 .verify-table td{padding:9px 10px;border-top:1px solid #eef2f7;}
@@ -322,15 +322,20 @@ include __DIR__ . '/../partials/header.php';
 .detail-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid #dbeafe;}
 .summary-inline{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:#475569;}
 .summary-inline strong{color:#002F70;font-size:14px;}
+.approve-btn{flex:0 0 auto;justify-content:center;}
 .empty-state{text-align:center;padding:70px 20px;color:#64748b;}
 .empty-state i{font-size:42px;color:#16a34a;display:block;margin-bottom:12px;}
-.toast{display:none;position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:20000;border-radius:8px;padding:14px 22px;color:#fff;font-size:14px;font-weight:800;box-shadow:0 10px 24px rgba(15,23,42,.25);min-width:280px;text-align:center;}
+#stockToast.stock-toast{display:none;position:fixed!important;top:82px!important;left:50%!important;right:auto!important;bottom:auto!important;transform:translateX(-50%) translateY(-8px)!important;z-index:2147483000!important;box-sizing:border-box!important;width:fit-content!important;min-width:260px!important;max-width:min(480px,calc(100vw - 32px))!important;height:auto!important;min-height:0!important;max-height:140px!important;overflow:auto!important;border-radius:8px!important;padding:12px 16px!important;color:#fff!important;font-size:13px!important;line-height:1.35!important;font-weight:800!important;text-align:left!important;white-space:normal!important;overflow-wrap:break-word!important;box-shadow:0 10px 24px rgba(15,23,42,.28)!important;opacity:0;pointer-events:none;transition:opacity .22s ease,transform .22s ease;}
+#stockToast.stock-toast.is-visible{display:block!important;opacity:1;transform:translateX(-50%) translateY(0)!important;}
+#stockToast.stock-toast.toast-ok{background:#16a34a!important;}
+#stockToast.stock-toast.toast-err{background:#dc2626!important;}
+@media print{#stockToast.stock-toast{display:none!important;}}
 @media(max-width:900px){
     .stock-page{padding:16px 12px 48px;}
     .filter-grid{grid-template-columns:1fr;}
     .filter-actions{justify-content:flex-start;}
-    .stock-table{min-width:760px;}
-    .table-card{overflow-x:auto;}
+    .detail-summary{align-items:stretch;justify-content:flex-start;}
+    .approve-btn{width:100%;}
 }
 </style>
 
@@ -506,9 +511,10 @@ include __DIR__ . '/../partials/header.php';
                                                     </td>
                                                     <td><span class="readonly-money"><?= si_money($item['cost_price']) ?></span></td>
                                                     <td>
-                                                         <input class="price-input price-field" type="number" step="0.01" min="0.01"
+                                                         <input class="price-input price-field" type="number" step="0.01" min="0.01" required
                                                                 value="<?= (float)$item['current_selling_price'] > 0 ? si_h($item['current_selling_price']) : '' ?>"
-                                                                placeholder="<?= (float)$item['current_selling_price'] > 0 ? 'Current ' . strip_tags(si_money($item['current_selling_price'])) : 'Enter selling price/L' ?>">
+                                                                placeholder="<?= (float)$item['current_selling_price'] > 0 ? 'Current ₱' . number_format($item['current_selling_price'], 2) . '/L' : 'Enter selling price/L (required)' ?>"
+                                                                style="border-color: <?= (float)$item['current_selling_price'] <= 0 ? '#f59e0b' : '#cbd5e1' ?>;">
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -547,9 +553,10 @@ include __DIR__ . '/../partials/header.php';
                                                     <td><?= si_h($item['unit_display'] ?: $item['unit'] ?: 'Piece') ?></td>
                                                     <td><span class="readonly-money"><?= si_money($item['cost_price']) ?></span></td>
                                                     <td>
-                                                         <input class="price-input price-field" type="number" min="0.01" step="0.01"
-                                                                value="<?= (float)$item['current_selling_price'] > 0 ? si_h($item['current_selling_price']) : '' ?>"
-                                                                placeholder="<?= (float)$item['current_selling_price'] > 0 ? 'Current ' . strip_tags(si_money($item['current_selling_price'])) : 'Enter selling price' ?>">
+                                                         <input class="price-input price-field" type="number" min="0.01" step="0.01" required
+                                                                value="<?= (float)$item['current_selling_price'] > 0 ? si_h($item['current_selling_price']) : (isset($item['suggested_price']) && (float)$item['suggested_price'] > 0 ? si_h($item['suggested_price']) : '') ?>"
+                                                                placeholder="<?= (float)$item['current_selling_price'] > 0 ? 'Current ₱' . number_format($item['current_selling_price'], 2) : 'Enter selling price (required)' ?>"
+                                                                style="border-color: <?= (float)$item['current_selling_price'] <= 0 ? '#f59e0b' : '#cbd5e1' ?>;">
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -564,7 +571,7 @@ include __DIR__ . '/../partials/header.php';
                                         <span><?= $active_type === 'fuel' ? 'Total Liters Received' : 'Total Quantity Received' ?>: <strong id="sum-<?= si_h($gid) ?>"><?= $active_type === 'fuel' ? si_qty($total_received_default, 2) . ' L' : si_qty($total_received_default) ?></strong></span>
                                     </div>
                                     <button type="button" class="si-btn success approve-btn"
-                                            onclick="approveStockIn('<?= si_h($active_type) ?>','<?= si_h($gid) ?>',<?= json_encode($group['po_no']) ?>)">
+                                            onclick="approveStockIn('<?= si_h($active_type) ?>','<?= si_h($gid) ?>','<?= si_h($group['po_no']) ?>')">
                                         <i class="fas fa-check-circle"></i> Approve Stock-In
                                     </button>
                                 </div>
@@ -579,7 +586,7 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <!-- Toast -->
-<div class="toast" id="stockToast"></div>
+<div class="stock-toast" id="stockToast" role="status" aria-live="polite"></div>
 
 <!-- Custom Confirm Modal (replaces window.confirm which Edge may block) -->
 <div id="siConfirmOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99998;align-items:center;justify-content:center;">
@@ -647,6 +654,13 @@ function approveStockIn(type, groupId, poKey) {
         var row = rows[i];
         var qtyInput = row.querySelector('.qty-field');
         var priceInput = row.querySelector('.price-field');
+        
+        if (!qtyInput || !priceInput) {
+            showStockToast('Invalid row structure. Please refresh the page.', 'err');
+            hasError = true;
+            break;
+        }
+        
         var qty = parseFloat(qtyInput.value);
         var price = parseFloat(priceInput.value);
 
@@ -667,12 +681,15 @@ function approveStockIn(type, groupId, poKey) {
         qtyInput.style.borderColor = '';
         priceInput.style.borderColor = '';
 
+        var deliveryId = parseInt(row.getAttribute('data-delivery-id'), 10);
+        
         items.push({
-            delivery_id: parseInt(row.getAttribute('data-delivery-id'), 10),
+            delivery_id: deliveryId,
             qty_received: qty,
             selling_price: price
         });
     }
+    
     if (hasError) return;
 
     var label = type === 'fuel' ? 'fuel' : 'merchandise';
@@ -680,22 +697,34 @@ function approveStockIn(type, groupId, poKey) {
         'Approve stock-in for ' + poKey + '? This will update inventory, prices, history, and PO status.',
         function() {
             var button = document.querySelector('#detail-' + groupId + ' .approve-btn');
+            
             if (button) {
                 button.disabled = true;
                 button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Approving...';
             }
 
             var action = type === 'fuel' ? 'approve_fuel_stock_in' : 'approve_merchandise_stock_in';
-            fetch(stockEndpoint + '?action=' + action, {
+            var url = stockEndpoint + '?action=' + action;
+            var payload = {po_key: poKey, items: items};
+            
+            fetch(url, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({po_key: poKey, items: items})
+                body: JSON.stringify(payload)
             })
             .then(function(response) {
-                if (!response.ok) {
-                    return response.text().then(function(t) { throw new Error('Server error ' + response.status + ': ' + t.substring(0, 200)); });
-                }
-                return response.json();
+                return response.text().then(function(text) {
+                    var data = {};
+                    try {
+                        data = text ? JSON.parse(text) : {};
+                    } catch (e) {
+                        data = {};
+                    }
+                    if (!response.ok) {
+                        throw new Error(data.message || ('Server error ' + response.status));
+                    }
+                    return data;
+                });
             })
             .then(function(data) {
                 if (data.success) {
@@ -722,13 +751,17 @@ function approveStockIn(type, groupId, poKey) {
 
 function showStockToast(message, type) {
     const toast = document.getElementById('stockToast');
+    if (!toast) return;
     toast.textContent = message;
-    toast.style.background = type === 'ok' ? '#16a34a' : '#dc2626';
-    toast.style.display = 'block';
+    toast.className = 'stock-toast ' + (type === 'ok' ? 'toast-ok' : 'toast-err') + ' is-visible';
     clearTimeout(window.stockToastTimer);
+    clearTimeout(window.stockToastHideTimer);
     window.stockToastTimer = setTimeout(function() {
-        toast.style.display = 'none';
-    }, type === 'ok' ? 4200 : 6500);
+        toast.classList.remove('is-visible');
+        window.stockToastHideTimer = setTimeout(function() {
+            toast.className = 'stock-toast';
+        }, 240);
+    }, type === 'ok' ? 3000 : 4500);
 }
 </script>
 

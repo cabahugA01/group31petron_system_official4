@@ -45,7 +45,7 @@ try {
         $pdo->rollBack();
     }
     error_log('Manager stock-in error: ' . $e->getMessage());
-    stock_in_json(['success' => false, 'message' => $e->getMessage()], 500);
+    stock_in_json(['success' => false, 'message' => stock_in_public_error_message($e)], 500);
 }
 
 function stock_in_json(array $payload, int $status = 200): void
@@ -53,6 +53,18 @@ function stock_in_json(array $payload, int $status = 200): void
     http_response_code($status);
     echo json_encode($payload);
     exit;
+}
+
+function stock_in_public_error_message(Exception $e): string
+{
+    $message = $e->getMessage();
+    if (stripos($message, 'Duplicate entry') !== false && stripos($message, 'unique_product') !== false) {
+        return 'This product already exists in inventory. Please refresh the page and try approving again.';
+    }
+    if (stripos($message, 'SQLSTATE[') !== false) {
+        return 'A database error prevented stock-in approval. Please refresh and try again.';
+    }
+    return $message !== '' ? $message : 'Unable to approve stock-in.';
 }
 
 function ensure_manager_stock_in_schema(PDO $pdo): void
@@ -197,8 +209,9 @@ function approve_merchandise_stock_in(PDO $pdo, array $me, int $station_id, arra
             $delivery_id = (int)$row['delivery_id'];
             $posted = $items[$delivery_id];
             $product_id = (int)$row['product_id'];
+            
             if ($product_id <= 0) {
-                throw new Exception("Product '{$row['product']}' was not found in merchandise inventory.");
+                $product_id = resolve_or_create_merchandise_product($pdo, $station_id, $row, $posted);
             }
 
             $qty_ordered = (int)round((float)($row['expected_quantity'] ?: $row['quantity']));
@@ -230,21 +243,27 @@ function approve_merchandise_stock_in(PDO $pdo, array $me, int $station_id, arra
                 WHERE id = ?
             ")->execute([$qty_received, $qty_received, $unit_cost, $selling_price, $product_id]);
 
-            $pdo->prepare("
-                INSERT INTO inventory_logs
-                    (station_id, product_id, user_id, action, quantity_before, quantity_after,
-                     quantity_change, reference_type, reference_id, notes, created_at)
-                VALUES (?, ?, ?, 'stock_in', ?, ?, ?, 'deliveries_oversight', ?, ?, NOW())
-            ")->execute([
-                $station_id,
-                $product_id,
-                $me['id'],
-                $stock_before,
-                $stock_after,
-                $qty_received,
-                $delivery_id,
-                "Manager Stock-In | Batch: {$batch_id} | PO: {$po_key}"
-            ]);
+            // Insert inventory log (optional - don't fail the entire transaction if this fails)
+            try {
+                $pdo->prepare("
+                    INSERT INTO inventory_logs
+                        (station_id, product_id, user_id, action, quantity_before, quantity_after,
+                         quantity_change, reference_type, reference_id, notes, created_at)
+                    VALUES (?, ?, ?, 'stock_in', ?, ?, ?, 'deliveries_oversight', ?, ?, NOW())
+                ")->execute([
+                    $station_id,
+                    $product_id,
+                    (int)$me['id'],
+                    (int)$stock_before,
+                    (int)$stock_after,
+                    (int)$qty_received,
+                    (int)$delivery_id,
+                    "Manager Stock-In | Batch: {$batch_id} | PO: {$po_key}"
+                ]);
+            } catch (Exception $log_error) {
+                // Log the error but don't fail the transaction
+                error_log("Inventory log insert failed for product {$product_id}: " . $log_error->getMessage());
+            }
 
             $pdo->prepare("
                 INSERT INTO merchandise_stock_in
@@ -619,6 +638,74 @@ function condition_from_variance(float $received, float $ordered, float $damaged
     return 'Good';
 }
 
+function resolve_or_create_merchandise_product(PDO $pdo, int $station_id, array $row, array $posted): int
+{
+    $name = trim((string)($row['product'] ?? ''));
+    if ($name === '') {
+        throw new Exception('Delivery item is missing a product name.');
+    }
+
+    $category = trim((string)($row['category'] ?? ''));
+    if ($category === '' || in_array(strtolower($category), ['fuel', 'fuels'], true)) {
+        $category = 'Merchandise';
+    }
+
+    $unit = trim((string)($row['unit_display'] ?? $row['unit'] ?? ''));
+    if ($unit === '') {
+        $unit = 'pcs';
+    }
+
+    $sku = trim((string)($row['sku'] ?? ''));
+    $cost = round((float)($row['cost_price'] ?? 0), 2);
+    $price = round((float)($posted['selling_price'] ?? 0), 2);
+
+    $find = $pdo->prepare("
+        SELECT id
+        FROM inventory_products
+        WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(?))
+          AND LOWER(COALESCE(category, '')) NOT IN ('fuel', 'fuels')
+        ORDER BY
+          CASE WHEN station_id = ? THEN 0 ELSE 1 END,
+          CASE WHEN LOWER(TRIM(COALESCE(category, ''))) = LOWER(TRIM(?)) THEN 0 ELSE 1 END,
+          CASE WHEN LOWER(TRIM(COALESCE(size, ''))) = LOWER(TRIM(?)) THEN 0 ELSE 1 END,
+          id ASC
+        LIMIT 1
+    ");
+    $find->execute([$name, $station_id, $category, $unit]);
+    $existing_id = (int)($find->fetchColumn() ?: 0);
+
+    if ($existing_id > 0) {
+        $pdo->prepare("
+            UPDATE inventory_products
+            SET sku = COALESCE(NULLIF(?, ''), sku),
+                unit_cost = CASE WHEN ? > 0 THEN ? ELSE unit_cost END,
+                unit_price = CASE WHEN ? > 0 THEN ? ELSE unit_price END,
+                updated_at = NOW()
+            WHERE id = ?
+        ")->execute([$sku, $cost, $cost, $price, $price, $existing_id]);
+        return $existing_id;
+    }
+
+    $pdo->prepare("
+        INSERT INTO inventory_products
+            (station_id, product_name, sku, category, stock, stock_quantity, unit_cost, unit_price, size, updated_at)
+        VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?, NOW())
+        ON DUPLICATE KEY UPDATE
+            id = LAST_INSERT_ID(id),
+            sku = COALESCE(NULLIF(VALUES(sku), ''), sku),
+            unit_cost = CASE WHEN VALUES(unit_cost) > 0 THEN VALUES(unit_cost) ELSE unit_cost END,
+            unit_price = CASE WHEN VALUES(unit_price) > 0 THEN VALUES(unit_price) ELSE unit_price END,
+            updated_at = NOW()
+    ")->execute([$station_id, $name, $sku, $category, $cost, $price, $unit]);
+
+    $product_id = (int)$pdo->lastInsertId();
+    if ($product_id <= 0) {
+        throw new Exception("Failed to create or locate product '{$name}' in inventory.");
+    }
+
+    return $product_id;
+}
+
 function merchandise_stock_before(PDO $pdo, int $station_id, int $product_id): int
 {
     $stmt = $pdo->prepare("SELECT stock_level FROM station_inventory WHERE station_id = ? AND product_id = ? LIMIT 1 FOR UPDATE");
@@ -635,25 +722,30 @@ function merchandise_stock_before(PDO $pdo, int $station_id, int $product_id): i
 
 function upsert_station_inventory(PDO $pdo, int $station_id, int $product_id, int $qty, float $cost, float $price, string $unit): void
 {
-    $check = $pdo->prepare("SELECT id FROM station_inventory WHERE station_id = ? AND product_id = ? LIMIT 1");
-    $check->execute([$station_id, $product_id]);
-    if ($check->fetchColumn()) {
-        $pdo->prepare("
-            UPDATE station_inventory
-            SET stock_level = COALESCE(stock_level, 0) + ?,
-                cost = ?,
-                price = ?,
-                unit = COALESCE(NULLIF(?, ''), unit),
-                status = 'active',
-                last_updated = NOW()
-            WHERE station_id = ? AND product_id = ?
-        ")->execute([$qty, $cost, $price, $unit, $station_id, $product_id]);
-    } else {
-        $pdo->prepare("
-            INSERT INTO station_inventory
-                (station_id, product_id, stock_level, cost, price, unit, status, last_updated)
-            VALUES (?, ?, ?, ?, ?, ?, 'active', NOW())
-        ")->execute([$station_id, $product_id, $qty, $cost, $price, $unit]);
+    try {
+        $check = $pdo->prepare("SELECT id FROM station_inventory WHERE station_id = ? AND product_id = ? LIMIT 1");
+        $check->execute([$station_id, $product_id]);
+        if ($check->fetchColumn()) {
+            $pdo->prepare("
+                UPDATE station_inventory
+                SET stock_level = COALESCE(stock_level, 0) + ?,
+                    cost = ?,
+                    price = ?,
+                    unit = COALESCE(NULLIF(?, ''), unit),
+                    status = 'active',
+                    last_updated = NOW()
+                WHERE station_id = ? AND product_id = ?
+            ")->execute([$qty, $cost, $price, $unit, $station_id, $product_id]);
+        } else {
+            $pdo->prepare("
+                INSERT INTO station_inventory
+                    (station_id, product_id, stock_level, cost, price, unit, status, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?, 'active', NOW())
+            ")->execute([$station_id, $product_id, $qty, $cost, $price, $unit]);
+        }
+    } catch (Exception $e) {
+        // Log error but don't fail - station_inventory might have foreign key constraints
+        error_log("Station inventory upsert failed for product {$product_id}: " . $e->getMessage());
     }
 }
 

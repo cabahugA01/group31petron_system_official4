@@ -231,6 +231,13 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                         'desc' => 'Payments, Suppliers, Financial Payables & Reconciliation.',
                     ],
                     [
+                        'id' => 'rpt_procurement',
+                        'label' => 'Procurement Reports',
+                        'href' => 'admin_procurement_reports.php',
+                        'permissions' => ['view_all_reports'],
+                        'desc' => 'Purchase orders, delivery receipts, PO vs delivery, and stock-in approvals.',
+                    ],
+                    [
                         'id' => 'rpt_compliance',
                         'label' => 'Compliance Reports',
                         'href' => 'admin_compliance_reports.php',
@@ -322,6 +329,14 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                         'ico'         => 'fas fa-file-invoice-dollar',
                         'permissions' => ['view_operational_reports', 'approve_transactions', 'manage_job_orders'],
                         'desc'        => 'Payments breakdown, Supplier deliveries & payables, Financial reconciliation with validation.'
+                    ],
+                    [
+                        'id'          => 'mgr_procurement_reports',
+                        'label'       => 'Procurement Reports',
+                        'href'        => 'manager_procurement_reports.php',
+                        'ico'         => 'fas fa-truck-loading',
+                        'permissions' => ['view_operational_reports', 'approve_transactions', 'manage_job_orders'],
+                        'desc'        => 'Delivery validation, PO vs received, stock-in approvals, and delivery variance.'
                     ],
                     [
                         'id'          => 'mgr_compliance_reports',

@@ -132,7 +132,8 @@ define('MODULE_PAGE_MAP', [
     'calendar'        => ['calendar', 'staff_calendar', 'admin_calendar'],
     'reports'         => ['reports', 'staff_reports', 'manager_reports', 'admin_reports',
                           'reports_audit_admin', 'report_job_orders', 'report_transactions',
-                          'report_customers', 'report_activity'],
+                          'report_customers', 'report_activity', 'admin_procurement_reports',
+                          'manager_procurement_reports'],
 ]);
 
 // Maps module_key → sidebar item IDs that belong to that module.
@@ -191,7 +192,8 @@ define('MODULE_MENU_MAP', [
     'reports'               => [
         'reports', 'admin_reports', 'manager_reports', 'report_daily_sales', 'report_deliveries',
         'report_payments', 'report_customers', 'report_activity', 'rpt_operations', 'rpt_finance',
-        'rpt_compliance', 'mgr_operations_reports', 'mgr_finance_reports', 'mgr_compliance_reports',
+        'rpt_procurement', 'rpt_compliance', 'mgr_operations_reports', 'mgr_finance_reports',
+        'mgr_procurement_reports', 'mgr_compliance_reports',
         'rpt_sales', 'rpt_balances', 'rpt_deliveries', 'rpt_staff', 'rpt_audit', 'mgr_report_sales',
         'mgr_report_balances', 'mgr_report_deliveries', 'mgr_report_staff', 'mgr_report_validation',
         'mgr_report_audit'

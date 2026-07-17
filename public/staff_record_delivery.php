@@ -145,27 +145,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                              delivery_date, delivery_time, dr_number, sales_invoice_no, encoded_by, station_id,
                              status, remarks, received_shift, received_by_name,
                              source_ref, batch_id, created_at, updated_at)
-                        VALUES ('merchandise', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Stock-In', ?, ?, ?, ?, ?, NOW(), NOW())
+                        VALUES ('merchandise', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Stock-In', ?, ?, ?, ?, ?, NOW(), NOW())
                     ")->execute([
-                        $delivery_ref,
-                        $po['supplier_name'] ?? 'Unknown',
-                        $item['item_name'],
-                        $received_qty,
-                        $prod_unit,
-                        $item['quantity'],
-                        $actual_qty,
-                        $damaged_qty,
-                        $delivery_date,
-                        $delivery_time,
-                        $dr_number,
-                        $invoice_number,
-                        $me['id'],
-                        $station_id,
-                        $full_remarks,
-                        $received_shift,
-                        $received_by_staff,
-                        $po['po_number'],
-                        $delivery_batch_no
+                        $delivery_ref,              // delivery_ref
+                        $po['supplier_name'] ?? 'Unknown', // supplier
+                        $item['item_name'],         // product
+                        $received_qty,              // quantity
+                        $prod_unit,                 // unit
+                        $item['quantity'],          // expected_quantity
+                        $actual_qty,                // actual_quantity
+                        $damaged_qty,               // damaged_quantity
+                        $delivery_date,             // delivery_date
+                        $delivery_time,             // delivery_time
+                        $dr_number,                 // dr_number
+                        $invoice_number,            // sales_invoice_no
+                        $me['id'],                  // encoded_by
+                        $station_id,                // station_id
+                        $full_remarks,              // remarks
+                        $received_shift,            // received_shift
+                        $received_by_staff,         // received_by_name
+                        $po['po_number'],           // source_ref
+                        $delivery_batch_no          // batch_id
                     ]);
 
                     $pdo->prepare("
@@ -219,27 +219,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                              delivery_date, delivery_time, dr_number, sales_invoice_no, encoded_by, station_id,
                              status, remarks, received_shift, received_by_name,
                              source_ref, batch_id, created_at, updated_at)
-                        VALUES ('merchandise', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Stock-In', ?, ?, ?, ?, ?, NOW(), NOW())
+                        VALUES ('merchandise', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Stock-In', ?, ?, ?, ?, ?, NOW(), NOW())
                     ")->execute([
-                        $delivery_ref,
-                        $po['supplier_name'] ?? 'Unknown',
-                        $leg_po['product_name'],
-                        $received_qty,
-                        $prod_unit,
-                        $leg_po['quantity'],
-                        $actual_qty,
-                        $damaged_qty,
-                        $delivery_date,
-                        $delivery_time,
-                        $dr_number,
-                        $invoice_number,
-                        $me['id'],
-                        $station_id,
-                        $full_remarks,
-                        $received_shift,
-                        $received_by_staff,
-                        $leg_po['po_number'],
-                        $delivery_batch_no
+                        $delivery_ref,              // delivery_ref
+                        $po['supplier_name'] ?? 'Unknown', // supplier
+                        $leg_po['product_name'],    // product
+                        $received_qty,              // quantity
+                        $prod_unit,                 // unit
+                        $leg_po['quantity'],        // expected_quantity
+                        $actual_qty,                // actual_quantity
+                        $damaged_qty,               // damaged_quantity
+                        $delivery_date,             // delivery_date
+                        $delivery_time,             // delivery_time
+                        $dr_number,                 // dr_number
+                        $invoice_number,            // sales_invoice_no
+                        $me['id'],                  // encoded_by
+                        $station_id,                // station_id
+                        $full_remarks,              // remarks
+                        $received_shift,            // received_shift
+                        $received_by_staff,         // received_by_name
+                        $leg_po['po_number'],       // source_ref
+                        $delivery_batch_no          // batch_id
                     ]);
 
                     // Update legacy PO status after delivery details are recorded.
