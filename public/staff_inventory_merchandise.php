@@ -260,6 +260,15 @@ body,html{overflow-x:hidden;max-width:100%;}
 }
 
 /* ── Modal base ── */
+#merchTable tbody tr.merch-row td:nth-child(7),
+#merchTable tbody tr.merch-row td:nth-child(n+9){display:none !important;}
+#merchTable th:nth-child(1),#merchTable tbody tr.merch-row td:nth-child(1){width:11% !important;display:table-cell !important;}
+#merchTable th:nth-child(2),#merchTable tbody tr.merch-row td:nth-child(2){width:16% !important;display:table-cell !important;}
+#merchTable th:nth-child(3),#merchTable tbody tr.merch-row td:nth-child(3){width:24% !important;display:table-cell !important;}
+#merchTable th:nth-child(4),#merchTable tbody tr.merch-row td:nth-child(4){width:16% !important;display:table-cell !important;text-align:center;}
+#merchTable th:nth-child(5),#merchTable tbody tr.merch-row td:nth-child(5){width:12% !important;display:table-cell !important;text-align:center;}
+#merchTable th:nth-child(6),#merchTable tbody tr.merch-row td:nth-child(6){width:12% !important;display:table-cell !important;text-align:center;}
+#merchTable th:nth-child(7),#merchTable tbody tr.merch-row td:nth-child(8){width:9% !important;display:table-cell !important;text-align:center;}
 .mi-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:13000;align-items:center;justify-content:center;padding:40px 16px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
 .mi-overlay.open{display:flex !important;}
 .mi-box{background:#fff;border-radius:14px;padding:0;width:600px;max-width:calc(100vw - 32px);display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.3);animation:miIn .2s ease;overflow:hidden;position:relative;max-height:90vh;}
@@ -557,20 +566,18 @@ body.modal-open .main {
         <div class="table-wrap">
             <table id="merchTable">
                 <colgroup>
-                    <col style="width:8%"><col style="width:18%"><col style="width:13%">
-                    <col style="width:6%"><col style="width:8%"><col style="width:15%">
-                    <col style="width:10%"><col style="width:10%"><col style="width:9%"><col style="width:9%">
+                    <col style="width:11%"><col style="width:16%"><col style="width:24%">
+                    <col style="width:16%"><col style="width:12%"><col style="width:12%"><col style="width:9%">
                 </colgroup>
                 <thead>
                     <tr>
-                        <th>SKU</th><th>Product Name</th><th style="text-align:center;">Category</th>
-                        <th>UOM</th><th>Capacity</th><th>Current Stock / Reorder</th>
-                        <th>Status</th><th>Last Movement</th><th>Updated</th><th>Action</th>
+                        <th>Product ID</th><th>Product Code</th><th>Product Name</th><th style="text-align:center;">Category</th>
+                        <th style="text-align:center;">Current Stock</th><th style="text-align:center;">Reorder Level</th><th>Status</th>
                     </tr>
                 </thead>
                 <tbody id="merchTableBody">
                 <?php if (empty($js_items)): ?>
-                    <tr><td colspan="10" style="text-align:center;padding:32px;color:#6c757d;">No merchandise data available.</td></tr>
+                    <tr><td colspan="7" style="text-align:center;padding:32px;color:#6c757d;">No merchandise data available.</td></tr>
                 <?php else: ?>
                     <?php
                     // Group by category from $js_items (already filtered to active only)
@@ -579,7 +586,7 @@ body.modal-open .main {
                     ksort($grouped);
                     foreach ($grouped as $cat_label => $items):
                     ?>
-                    <tr class="cat-header"><td colspan="10"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                    <tr class="cat-header"><td colspan="7"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                     <?php foreach ($items as $it):
                         $mv_class = $it['mv_sign']==='+'?'mv-pos':($it['mv_sign']==='-'?'mv-neg':'mv-none');
                         $ts = $it['last_updated'] ? (new DateTime($it['last_updated']))->format('M d, Y') : '—';
@@ -593,11 +600,12 @@ body.modal-open .main {
                         data-stock="<?php echo $it['stock']; ?>"
                         data-updated="<?php echo htmlspecialchars($it['last_updated']); ?>"
                         data-idx="<?php echo htmlspecialchars(json_encode($it)); ?>">
+                        <td><code style="font-size:11px;font-weight:700;"><?php echo 'P' . str_pad((string)$it['id'], 4, '0', STR_PAD_LEFT); ?></code></td>
                         <td><code style="font-size:11px;font-weight:600;"><?php echo htmlspecialchars($it['sku']); ?></code></td>
                         <td style="white-space:normal;"><strong><?php echo htmlspecialchars($it['name']); ?></strong></td>
                         <td style="text-align:center;"><?php echo htmlspecialchars($it['category']); ?></td>
-                        <td style="text-align:center;font-size:11px;color:#64748b;"><?php echo htmlspecialchars($it['unit']); ?></td>
-                        <td style="text-align:center;font-weight:600;color:#334155;"><?php echo number_format($it['capacity']); ?></td>
+                        <td style="text-align:center;font-weight:700;color:#334155;"><?php echo number_format($it['stock']); ?></td>
+                        <td style="text-align:center;font-weight:700;color:#64748b;"><?php echo number_format($it['reorder']); ?></td>
                         <td>
                             <div class="fill-bar-wrap">
                                 <div class="fill-bar-inner" style="width:<?php echo min(100,round($it['fill_pct'])); ?>%;background:<?php echo $it['color']; ?>;"></div>
@@ -695,11 +703,12 @@ body.modal-open .main {
                         <table class="sr-table">
                             <thead>
                                 <tr style="background:#002F70; color:#fff; position:sticky; top:0; z-index:10;">
-                                    <th style="width:6%; text-align:center;">✓</th>
-                                    <th style="width:24%; text-align:left;">Product Code</th>
-                                    <th style="width:26%; text-align:left;">Product Name</th>
-                                    <th style="width:10%; text-align:center;">Stock</th>
-                                    <th style="width:18%; text-align:center;">UOM</th>
+                                    <th style="width:6%; text-align:center;">Select</th>
+                                    <th style="width:12%; text-align:left;">Product ID</th>
+                                    <th style="width:15%; text-align:left;">Product Code</th>
+                                    <th style="width:25%; text-align:left;">Product Name</th>
+                                    <th style="width:13%; text-align:center;">Current Stock</th>
+                                    <th style="width:13%; text-align:center;">Reorder Level</th>
                                     <th style="width:16%; text-align:center;">Status</th>
                                 </tr>
                             </thead>
@@ -714,7 +723,7 @@ body.modal-open .main {
         </div>
         <div class="mi-foot">
             <button class="txn-btn secondary" id="srCancelBtn" onclick="closeSrModal()" type="button">Cancel</button>
-            <button class="txn-btn primary" id="srSubmitBtn" onclick="srHandleSubmit(this)" type="button"><i class="fas fa-paper-plane"></i> Submit Request</button>
+            <button class="txn-btn primary" id="srSubmitBtn" onclick="srHandleSubmit(this)" type="button"><i class="fas fa-paper-plane"></i> Submit Stock Request</button>
         </div>
     </div>
 </div>
@@ -958,7 +967,7 @@ function openSrModal(preselect) {
     document.getElementById('srReason').value = '';
     document.getElementById('srError').style.display = 'none';
     document.getElementById('srSubmitBtn').disabled = false;
-    document.getElementById('srSubmitBtn').innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request';
+    document.getElementById('srSubmitBtn').innerHTML = '<i class="fas fa-paper-plane"></i> Submit Stock Request';
 
     // Filter items that are low/critical/out of stock, or if preselected
     var needy = allMerchData.filter(function(it) {
@@ -966,7 +975,7 @@ function openSrModal(preselect) {
     });
 
     if (needy.length === 0) {
-        listEl.innerHTML = '<tr><td colspan="6" style="padding:16px;text-align:center;color:#64748b;font-size:13px;">' +
+        listEl.innerHTML = '<tr><td colspan="7" style="padding:16px;text-align:center;color:#64748b;font-size:13px;">' +
             '<i class="fas fa-check-circle" style="color:#16a34a;font-size:1.5em;display:block;margin-bottom:8px;"></i>' +
             'All products are currently at optimal stock levels. No low or critical items found.</td></tr>';
     } else {
@@ -977,10 +986,11 @@ function openSrModal(preselect) {
             tr.className = 'sr-tbl-row';
             tr.innerHTML = 
                 '<td style="text-align:center;"><input type="checkbox" class="sr-cb" value="' + it.id + '" ' + isChecked + ' onclick="event.stopPropagation(); toggleSrRowClass(this);"></td>' +
+                '<td style="font-family:monospace; font-weight:700;">P' + String(it.id).padStart(4, '0') + '</td>' +
                 '<td style="font-family:monospace; font-weight:600;" title="' + escHtml(it.sku || '') + '">' + escHtml(it.sku || '—') + '</td>' +
                 '<td style="font-weight:600;" title="' + escHtml(it.name) + '">' + escHtml(it.name) + '</td>' +
                 '<td style="text-align:center; font-weight:700;">' + it.stock + '</td>' +
-                '<td style="text-align:center; color:#334155; font-size:10.5px;">' + escHtml(it.unit) + '</td>' +
+                '<td style="text-align:center; color:#dc2626; font-weight:700;">' + it.reorder + '</td>' +
                 '<td class="sr-td-status"><span style="display:inline-block; padding:1px 7px; border-radius:10px; font-size:9.5px; font-weight:700; white-space:nowrap; background:' + it.color + '20; color:' + it.color + '; border:1px solid ' + it.color + '40;">' + escHtml(it.status) + '</span></td>';
             
             tr.addEventListener('click', function() {
@@ -1060,7 +1070,7 @@ function srHandleSubmit(btn) {
     .then(function(r) { return r.json(); })
     .then(function(res) {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request';
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Stock Request';
         closeSrModal();
 
         if (res.success) {

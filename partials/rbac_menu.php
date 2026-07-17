@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // RBAC-Based Menu Generation
 // Master menu array with all possible items and their permission requirements
 $master_menu = [
@@ -177,9 +177,6 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 'sub_items' => [
                     ['id' => 'admin_inventory_merchandise', 'label' => 'Merchandise Inventory', 'href' => 'admin_inventory_merchandise.php', 'ico' => 'fas fa-box', 'permissions' => ['view_all_reports'], 'desc' => 'Monitor merchandise stock, pricing, and stock alerts.'],
                     ['id' => 'admin_inventory_fuel', 'label' => 'Fuel Inventory', 'href' => 'admin_inventory_fuel.php', 'ico' => 'fas fa-gas-pump', 'permissions' => ['view_all_reports'], 'desc' => 'Monitor fuel levels and submit discrepancy corrections.'],
-                    ['id' => 'admin_purchase_orders', 'label' => 'Purchase Order Management', 'href' => 'admin_purchase_orders.php', 'ico' => 'fas fa-file-invoice-dollar', 'permissions' => ['view_all_reports', 'view_operational_reports'], 'desc' => 'Review, validate, approve/reject POs.'],
-                    ['id' => 'admin_supplier_billing', 'label' => 'Supplier Billing', 'href' => 'admin_supplier_billing.php', 'ico' => 'fas fa-file-invoice', 'permissions' => ['view_all_reports', 'view_operational_reports'], 'desc' => 'Review supplier invoices and approve payables from completed stock-in records.'],
-                    ['id' => 'admin_inventory_history', 'label' => 'Inventory History', 'href' => 'admin_inventory_history.php', 'ico' => 'fas fa-history', 'permissions' => ['view_all_reports'], 'desc' => 'Full audit log of all fuel and merchandise inventory movements.'],
                 ],
             ],
             // 7.5. Customers Oversight — Admin Oversight Module

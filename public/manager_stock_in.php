@@ -21,6 +21,10 @@ if (!in_array($active_type, ['merch', 'fuel'], true)) {
     $active_type = 'merch';
 }
 
+try {
+    $pdo->exec("ALTER TABLE fuel_purchase_orders ADD COLUMN IF NOT EXISTS batch_id VARCHAR(100) NULL DEFAULT NULL");
+} catch (Exception $ignored) {}
+
 $filters = [
     'search' => trim($_GET['search'] ?? ''),
     'supplier' => trim($_GET['supplier'] ?? ''),
@@ -114,7 +118,7 @@ function si_fetch_pending_rows(PDO $pdo, int $station_id, string $type, array $f
                     (SELECT fpo.unit_price FROM fuel_purchase_orders fpo
                      LEFT JOIN fuel_types ft ON ft.id = fpo.fuel_type_id
                      WHERE fpo.station_id = do2.station_id
-                       AND fpo.po_number = do2.source_ref
+                       AND (fpo.po_number = do2.source_ref OR fpo.batch_id = do2.source_ref)
                        AND LOWER(TRIM(COALESCE(ft.name, ''))) = LOWER(TRIM(do2.product))
                      ORDER BY fpo.id DESC LIMIT 1),
                     0

@@ -103,6 +103,52 @@ try {
         }
         $po_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        if ($po_type !== 'fuel' && !empty($po_items)) {
+            $parents_by_id = [];
+            $po_ids = [];
+            foreach ($po_items as $parent_row) {
+                $parent_id = (int)($parent_row['id'] ?? 0);
+                if ($parent_id > 0) {
+                    $parents_by_id[$parent_id] = $parent_row;
+                    $po_ids[] = $parent_id;
+                }
+            }
+
+            if (!empty($po_ids)) {
+                $ph = implode(',', array_fill(0, count($po_ids), '?'));
+                $line_stmt = $pdo->prepare("
+                    SELECT poi.po_id,
+                           poi.item_name AS line_product_name,
+                           COALESCE(poi.quantity_ordered, poi.quantity, 0) AS line_quantity,
+                           poi.unit_price AS line_unit_price,
+                           poi.total_price AS line_total_amount,
+                           COALESCE(ip.sku, '') AS line_sku,
+                           COALESCE(ip.category, 'Merchandise') AS line_category
+                    FROM purchase_order_items poi
+                    LEFT JOIN inventory_products ip ON poi.product_id = ip.id
+                    WHERE poi.po_id IN ($ph)
+                    ORDER BY poi.id ASC
+                ");
+                $line_stmt->execute($po_ids);
+                $line_rows = $line_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                if (!empty($line_rows)) {
+                    $expanded_items = [];
+                    foreach ($line_rows as $line) {
+                        $base = $parents_by_id[(int)$line['po_id']] ?? $po_items[0];
+                        $base['product_name'] = $line['line_product_name'];
+                        $base['quantity'] = $line['line_quantity'];
+                        $base['unit_price'] = $line['line_unit_price'];
+                        $base['total_amount'] = $line['line_total_amount'];
+                        $base['item_sku'] = $line['line_sku'] ?: ($base['item_sku'] ?? '');
+                        $base['product_category'] = $line['line_category'] ?: ($base['product_category'] ?? 'Merchandise');
+                        $expanded_items[] = $base;
+                    }
+                    $po_items = $expanded_items;
+                }
+            }
+        }
+
         // Fallback to stock_requests / fuel_stock_requests if no purchase_orders exist yet
         if (empty($po_items)) {
             if ($po_type === 'fuel') {
@@ -319,14 +365,14 @@ if ($po_id && !$batch_id && !$po_date && in_array($po['status'] ?? '', $blocked_
     die('<p style="font-family:Arial;padding:40px;color:#856404;">This PO has been rejected or cancelled and cannot be printed.</p>');
 }
 
-// Log print action
+// Log PO view only. Printing happens from the browser button.
 try {
     $po_label = $po_type === 'fuel' ? 'Fuel PO' : 'Purchase Order';
     log_activity(
         $pdo,
         $me['id'],
-        'Print Purchase Order',
-        "{$po_label} {$po['po_number']} printed by {$me['name']} (Admin)."
+        'View Purchase Order',
+        "{$po_label} {$po['po_number']} viewed by {$me['name']}."
     );
 } catch (Exception $e) {}
 
@@ -471,7 +517,7 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:11px;
 <body>
 
 <div class="btn-print-bar">
-    <button onclick="window.print()" class="btn-print">Print Purchase Order</button>
+    <button type="button" onclick="window.print()" class="btn-print">Print PDF</button>
 </div>
 
 <div class="po-document">
@@ -638,12 +684,5 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:11px;
     
 </div>
 
-<script>
-<?php if (isset($_GET['print']) && $_GET['print'] == '1'): ?>
-window.addEventListener('load', function () {
-    setTimeout(function () { window.print(); }, 500);
-});
-<?php endif; ?>
-</script>
 </body>
 </html>

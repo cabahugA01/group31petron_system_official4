@@ -27,6 +27,8 @@ try {
     $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN IF NOT EXISTS sales_invoice_no VARCHAR(100) NULL");
     $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN IF NOT EXISTS received_shift VARCHAR(50) NULL");
     $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN IF NOT EXISTS received_by_name VARCHAR(200) NULL");
+    $pdo->exec("ALTER TABLE fuel_purchase_orders ADD COLUMN IF NOT EXISTS batch_id VARCHAR(100) NULL DEFAULT NULL");
+    $pdo->exec("ALTER TABLE fuel_purchase_orders ADD COLUMN IF NOT EXISTS updated_at DATETIME NULL");
 } catch (Exception $ignored) {}
 
 $staff_profile = [
@@ -304,9 +306,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                 FROM fuel_purchase_orders fpo
                 LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id
                 LEFT JOIN suppliers s ON fpo.supplier_id = s.id
-                WHERE fpo.po_number = ? AND fpo.station_id = ? AND fpo.status IN ('Approved PO', 'Approved')
+                WHERE (fpo.po_number = ? OR fpo.batch_id = ?) AND fpo.station_id = ? AND fpo.status IN ('Approved PO', 'Approved')
             ");
-            $stmt->execute([$po_number, $station_id]);
+            $stmt->execute([$po_number, $po_number, $station_id]);
             $fpos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             if (empty($fpos)) {
@@ -539,7 +541,8 @@ try {
 
     // 2. Fuel POs
     $stmt = $pdo->prepare("
-        SELECT fpo.*, ft.name as fuel_type_name, s.name as supplier_name,
+        SELECT fpo.*, COALESCE(NULLIF(fpo.batch_id, ''), fpo.po_number) AS po_group_number,
+               ft.name as fuel_type_name, s.name as supplier_name,
                CONCAT(u_app.first_name, ' ', u_app.last_name) AS approved_by_name,
                COALESCE(fi.ugt_no, '') AS ugt_no,
                COALESCE((SELECT request_no FROM fuel_stock_requests WHERE station_id = fpo.station_id AND LOWER(fuel_type) = LOWER(ft.name) ORDER BY id DESC LIMIT 1), '') AS pr_number
@@ -556,7 +559,7 @@ try {
     $fuel_raw = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($fuel_raw as $row) {
-        $po_num = $row['po_number'];
+        $po_num = $row['po_group_number'] ?: $row['po_number'];
         if (!isset($grouped_fuel_pos[$po_num])) {
             $grouped_fuel_pos[$po_num] = [
                 'id'                     => $row['id'],

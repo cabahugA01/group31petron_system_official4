@@ -20,56 +20,257 @@ if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
     exit;
 }
 
+function manager_procurement_prepare_schema(PDO $pdo): void
+{
+    $statements = [
+        "ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS request_no VARCHAR(50) NULL DEFAULT NULL",
+        "ALTER TABLE stock_requests MODIFY COLUMN status VARCHAR(100) DEFAULT 'Pending Manager Review'",
+        "ALTER TABLE stock_requests ADD COLUMN IF NOT EXISTS approved_price DECIMAL(10,2) NULL DEFAULT NULL",
+        "ALTER TABLE fuel_stock_requests ADD COLUMN IF NOT EXISTS request_no VARCHAR(50) NULL DEFAULT NULL",
+        "ALTER TABLE fuel_stock_requests MODIFY COLUMN status VARCHAR(100) DEFAULT 'Pending Manager Review'",
+        "ALTER TABLE fuel_stock_requests ADD COLUMN IF NOT EXISTS manager_notes TEXT NULL",
+        "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS batch_id VARCHAR(100) NULL DEFAULT NULL",
+        "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS admin_finalized TINYINT(1) NOT NULL DEFAULT 0",
+        "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS admin_finalized_at DATETIME NULL",
+        "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS admin_id INT NULL",
+        "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS stock_in_done TINYINT(1) NOT NULL DEFAULT 0",
+        "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS stock_in_at DATETIME NULL",
+        "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS stock_in_by INT NULL",
+        "ALTER TABLE fuel_purchase_orders ADD COLUMN IF NOT EXISTS batch_id VARCHAR(100) NULL DEFAULT NULL",
+        "ALTER TABLE fuel_purchase_orders ADD COLUMN IF NOT EXISTS approved_by INT NULL",
+        "ALTER TABLE fuel_purchase_orders ADD COLUMN IF NOT EXISTS approved_at DATETIME NULL",
+        "ALTER TABLE fuel_purchase_orders ADD COLUMN IF NOT EXISTS updated_at DATETIME NULL",
+        "ALTER TABLE fuel_purchase_orders MODIFY COLUMN status VARCHAR(100) NOT NULL DEFAULT 'Approved PO'",
+    ];
+
+    foreach ($statements as $sql) {
+        try {
+            $pdo->exec($sql);
+        } catch (Exception $e) {
+            error_log('Manager procurement schema check skipped: ' . $e->getMessage());
+        }
+    }
+}
+
+function manager_petron_supplier_id(PDO $pdo): int
+{
+    $stmt = $pdo->query("
+        SELECT id
+        FROM suppliers
+        WHERE name LIKE '%Petron%'
+        ORDER BY CASE WHEN name = 'Petron Corporation' THEN 0 ELSE 1 END, id ASC
+        LIMIT 1
+    ");
+    $supplier_id = (int)($stmt->fetchColumn() ?: 0);
+    if ($supplier_id > 0) {
+        return $supplier_id;
+    }
+
+    $pdo->exec("
+        INSERT INTO suppliers (name, contact_person, phone, email, address)
+        VALUES ('Petron Corporation', 'Supply Department', '+63-2-8123-0000', 'supply@petron.ph', 'Petron Plaza, Makati City')
+    ");
+    return (int)$pdo->lastInsertId();
+}
+
+function manager_next_po_number(PDO $pdo): string
+{
+    $year = date('Y');
+    $pattern = 'PO-' . $year . '-%';
+    $max_num = 0;
+    $queries = [
+        "SELECT po_number FROM purchase_orders WHERE po_number LIKE ? ORDER BY po_number DESC LIMIT 1",
+        "SELECT batch_id FROM purchase_orders WHERE batch_id LIKE ? ORDER BY batch_id DESC LIMIT 1",
+        "SELECT po_number FROM fuel_purchase_orders WHERE po_number LIKE ? ORDER BY po_number DESC LIMIT 1",
+        "SELECT batch_id FROM fuel_purchase_orders WHERE batch_id LIKE ? ORDER BY batch_id DESC LIMIT 1",
+    ];
+
+    foreach ($queries as $sql) {
+        try {
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$pattern]);
+            $value = (string)($stmt->fetchColumn() ?: '');
+            if (preg_match('/^PO-\d{4}-(\d+)/', $value, $m)) {
+                $max_num = max($max_num, (int)$m[1]);
+            }
+        } catch (Exception $e) {
+            error_log('PO number lookup skipped: ' . $e->getMessage());
+        }
+    }
+
+    return 'PO-' . $year . '-' . str_pad($max_num + 1, 4, '0', STR_PAD_LEFT);
+}
+
+function manager_resolve_fuel_type_id(PDO $pdo, int $station_id, string $fuel_type, int $preferred_id = 0, float $price = 0.0): int
+{
+    if ($preferred_id > 0) {
+        $stmt = $pdo->prepare("SELECT id FROM fuel_types WHERE id = ? LIMIT 1");
+        $stmt->execute([$preferred_id]);
+        if ($stmt->fetchColumn()) {
+            return $preferred_id;
+        }
+    }
+
+    $stmt = $pdo->prepare("SELECT fuel_type_id FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) LIMIT 1");
+    $stmt->execute([$station_id, $fuel_type]);
+    $inventory_fuel_id = (int)($stmt->fetchColumn() ?: 0);
+    if ($inventory_fuel_id > 0) {
+        return $inventory_fuel_id;
+    }
+
+    $stmt = $pdo->prepare("SELECT id FROM fuel_types WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1");
+    $stmt->execute([$fuel_type]);
+    $fuel_type_id = (int)($stmt->fetchColumn() ?: 0);
+    if ($fuel_type_id > 0) {
+        return $fuel_type_id;
+    }
+
+    $stmt = $pdo->prepare("INSERT INTO fuel_types (name, description, price_per_liter) VALUES (?, 'Petron fuel', ?)");
+    $stmt->execute([$fuel_type, $price]);
+    return (int)$pdo->lastInsertId();
+}
+
+function manager_po_notes(string $pr_number, string $remarks): string
+{
+    return "Source PR: " . $pr_number . "\n"
+        . "Expected Time: 9:00 AM\n"
+        . "Receiving Personnel: Any Assigned Staff\n"
+        . "Payment Terms: 30 Days\n"
+        . "Instructions: Release this purchase order to Petron supplier for delivery.\n"
+        . "Remarks: " . ($remarks !== '' ? $remarks : 'None');
+}
+
+function manager_existing_user_ids(PDO $pdo, array $ids): array
+{
+    $ids = array_values(array_unique(array_filter(array_map('intval', $ids), fn($id) => $id > 0)));
+    if (empty($ids)) {
+        return [];
+    }
+
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $stmt = $pdo->prepare("SELECT id FROM users WHERE id IN ($placeholders)");
+    $stmt->execute($ids);
+    return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+}
+
+function manager_notify_users(PDO $pdo, array $user_ids, string $title, string $message, string $redirect_url, string $type = 'info', string $severity = 'medium'): void
+{
+    try {
+        $valid_ids = manager_existing_user_ids($pdo, $user_ids);
+        if (empty($valid_ids)) {
+            return;
+        }
+
+        $stmt = $pdo->prepare("
+            INSERT INTO notifications (user_id, type, title, message, event_type, severity, redirect_url, created_at)
+            VALUES (?, ?, ?, ?, 'stock_request', ?, ?, NOW())
+        ");
+        foreach ($valid_ids as $user_id) {
+            $stmt->execute([$user_id, $type, $title, $message, $severity, $redirect_url]);
+        }
+    } catch (Exception $e) {
+        error_log('Manager PR notification skipped: ' . $e->getMessage());
+    }
+}
+
+manager_procurement_prepare_schema($pdo);
+
 // â”€â”€ Handle POST Actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
-    // 1. Generate Merchandise Purchase Request
+    // 1. Generate approved Merchandise Purchase Order
     if ($action === 'generate_merch_pr') {
         $pr_number = trim($_POST['pr_number'] ?? '');
-        $expected_delivery = trim($_POST['expected_delivery'] ?? '');
+        $expected_delivery = trim($_POST['expected_delivery'] ?? '') ?: date('Y-m-d', strtotime('+3 days'));
         $remarks = trim($_POST['remarks'] ?? '');
-        $quantities = $_POST['quantities'] ?? []; // Array of product_id => qty
-        $stock_req_ids = $_POST['stock_req_ids'] ?? []; // Array of product_id => stock_request_id
-        $units = $_POST['units'] ?? []; // Array of product_id => unit
+        $quantities = $_POST['quantities'] ?? [];
+        $unit_costs = $_POST['unit_costs'] ?? [];
+        $stock_req_ids = $_POST['stock_req_ids'] ?? [];
+        $units = $_POST['units'] ?? [];
         
         if (empty($pr_number)) {
-            $pr_number = "PR-" . date('Ymd') . "-" . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
+            $pr_number = "PR-" . date('Y') . "-" . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
         }
 
         try {
             $pdo->beginTransaction();
             $items_to_insert = [];
 
-            foreach ($quantities as $prod_id => $qty) {
-                $qty = (int)$qty;
+            foreach ($quantities as $prod_id => $qty_raw) {
+                $qty = (int)$qty_raw;
                 if ($qty <= 0) continue;
 
-                $p_stmt = $pdo->prepare("SELECT product_name, sku, category, unit_cost, unit_price FROM inventory_products WHERE id = ?");
-                $p_stmt->execute([$prod_id]);
-                $prod = $p_stmt->fetch(PDO::FETCH_ASSOC);
-                if (!$prod) continue;
+                $unit_cost = (float)($unit_costs[$prod_id] ?? 0);
+                if ($unit_cost <= 0) {
+                    throw new Exception("Enter Unit Cost for every product with Qty to Order.");
+                }
 
+                $stock_req_id = isset($stock_req_ids[$prod_id]) ? (int)$stock_req_ids[$prod_id] : 0;
                 $unit = isset($units[$prod_id]) ? trim($units[$prod_id]) : '';
 
+                $stmt_req = $pdo->prepare("
+                    SELECT sr.*, ip.product_name, ip.sku, ip.category,
+                           COALESCE(si.stock_level, ip.stock, sr.current_stock, 0) AS current_stock_actual
+                    FROM stock_requests sr
+                    LEFT JOIN inventory_products ip ON sr.item_id = ip.id
+                    LEFT JOIN station_inventory si ON sr.item_id = si.product_id AND si.station_id = sr.station_id
+                    WHERE sr.id = ? AND sr.station_id = ?
+                      AND sr.status IN ('Pending', 'Pending Manager Review')
+                    LIMIT 1
+                ");
+                $stmt_req->execute([$stock_req_id, $station_id]);
+                $req = $stmt_req->fetch(PDO::FETCH_ASSOC);
+                if (!$req) {
+                    throw new Exception("One selected merchandise request is no longer pending.");
+                }
+
                 $items_to_insert[] = [
-                    'product_id' => $prod_id,
-                    'sku' => $prod['sku'],
-                    'product_name' => $prod['product_name'],
-                    'category' => $prod['category'],
+                    'request_id' => (int)$req['id'],
+                    'product_id' => !empty($req['item_id']) ? (int)$req['item_id'] : null,
+                    'sku' => $req['item_sku'] ?: ($req['sku'] ?? ''),
+                    'product_name' => $req['item_name'] ?: ($req['product_name'] ?? 'Merchandise Item'),
+                    'category' => $req['item_category'] ?: ($req['category'] ?? 'Merchandise'),
                     'quantity' => $qty,
+                    'unit_cost' => $unit_cost,
+                    'total' => round($qty * $unit_cost, 2),
                     'unit' => $unit,
-                    'stock_req_id' => isset($stock_req_ids[$prod_id]) ? (int)$stock_req_ids[$prod_id] : null
+                    'staff_id' => (int)$req['staff_id'],
+                    'old_status' => $req['status'] ?: 'Pending Manager Review',
                 ];
             }
 
             if (empty($items_to_insert)) {
-                throw new Exception("Please specify quantity for at least one item.");
+                throw new Exception("Please enter Qty to Order for at least one product.");
             }
 
+            $supplier_id = manager_petron_supplier_id($pdo);
+            $po_number = manager_next_po_number($pdo);
+            $po_notes = manager_po_notes($pr_number, $remarks);
+            $total_qty = array_sum(array_column($items_to_insert, 'quantity'));
+            $grand_total = array_sum(array_column($items_to_insert, 'total'));
+            $first_request_id = (int)$items_to_insert[0]['request_id'];
+
+            $stmt_po = $pdo->prepare("
+                INSERT INTO purchase_orders (
+                    request_id, product_name, quantity, unit_price, total_amount, type, po_number, batch_id,
+                    station_id, supplier_id, created_by, status, expected_delivery_date, remarks,
+                    admin_finalized, admin_finalized_at, admin_id, approved_by, approved_at, created_at, updated_at
+                ) VALUES (
+                    ?, 'Merchandise Purchase Order', ?, 0, ?, 'merch', ?, ?,
+                    ?, ?, ?, 'Approved', ?, ?,
+                    1, NOW(), ?, ?, NOW(), NOW(), NOW()
+                )
+            ");
+            $stmt_po->execute([
+                $first_request_id, $total_qty, $grand_total, $po_number, $po_number,
+                $station_id, $supplier_id, $me['id'], $expected_delivery, $po_notes,
+                $me['id'], $me['id']
+            ]);
+            $po_id = (int)$pdo->lastInsertId();
+
             foreach ($items_to_insert as $item) {
-                // Update unit of measure in station_inventory and inventory_products
-                if (!empty($item['unit'])) {
+                if (!empty($item['unit']) && !empty($item['product_id'])) {
                     $upd_unit_stmt = $pdo->prepare("UPDATE station_inventory SET unit = ? WHERE product_id = ? AND station_id = ?");
                     $upd_unit_stmt->execute([$item['unit'], $item['product_id'], $station_id]);
 
@@ -77,54 +278,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $upd_prod_stmt->execute([$item['unit'], $item['product_id']]);
                 }
 
-                if ($item['stock_req_id']) {
-                    $sr_stmt = $pdo->prepare("
-                        UPDATE stock_requests 
-                        SET status = 'Waiting for Purchase Order', approved_quantity = ?, manager_id = ?, manager_notes = ?, request_no = ?, processed_at = NOW(), updated_at = NOW()
-                        WHERE id = ? AND station_id = ?
-                    ");
-                    $sr_stmt->execute([
-                        $item['quantity'], $me['id'], $remarks, $pr_number, $item['stock_req_id'], $station_id
-                    ]);
-                    $req_id = $item['stock_req_id'];
-                } else {
-                    // Manual addition
-                    $stock_lvl = (int)($pdo->query("SELECT stock_level FROM station_inventory WHERE product_id = {$item['product_id']} AND station_id = {$station_id}")->fetchColumn() ?: 0);
-                    $ins_sr = $pdo->prepare("
-                        INSERT INTO stock_requests 
-                            (request_no, staff_id, station_id, item_id, item_sku, item_name, item_category, current_stock, requested_quantity, approved_quantity, remarks, status, manager_id, manager_notes, processed_at, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'Manual addition by Manager', 'Waiting for Purchase Order', ?, ?, NOW(), NOW(), NOW())
-                    ");
-                    $ins_sr->execute([
-                        $pr_number, $me['id'], $station_id, $item['product_id'], $item['sku'], $item['product_name'], $item['category'], $stock_lvl, $item['quantity'], $me['id'], $remarks
-                    ]);
-                    $req_id = $pdo->lastInsertId();
-                }
+                $stmt_item = $pdo->prepare("
+                    INSERT INTO purchase_order_items
+                        (po_id, product_id, item_name, quantity, quantity_ordered, unit_price, total_price)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ");
+                $stmt_item->execute([
+                    $po_id, $item['product_id'], $item['product_name'], $item['quantity'],
+                    $item['quantity'], $item['unit_cost'], $item['total']
+                ]);
+
+                $sr_stmt = $pdo->prepare("
+                    UPDATE stock_requests
+                    SET status = 'Purchase Order Generated',
+                        approved_quantity = ?,
+                        approved_price = ?,
+                        manager_id = ?,
+                        manager_notes = ?,
+                        request_no = ?,
+                        processed_at = NOW(),
+                        updated_at = NOW()
+                    WHERE id = ? AND station_id = ?
+                ");
+                $sr_stmt->execute([
+                    $item['quantity'], $item['unit_cost'], $me['id'], $remarks,
+                    $pr_number, $item['request_id'], $station_id
+                ]);
 
                 $audit_stmt = $pdo->prepare("
                     INSERT INTO stock_request_audit
                         (stock_request_id, action_type, performed_by, performed_by_role, old_status, new_status, notes)
-                    VALUES (?, 'Forwarded to Admin', ?, ?, 'Pending', 'Waiting for Purchase Order', ?)
+                    VALUES (?, 'PO Generated', ?, ?, ?, 'Purchase Order Generated', ?)
                 ");
                 $audit_stmt->execute([
-                    $req_id, $me['id'], $role, "Forwarded to Admin. PR: $pr_number"
+                    $item['request_id'], $me['id'], $role, $item['old_status'],
+                    "PO Generated: $po_number from PR $pr_number"
                 ]);
             }
 
-            // Send notification to Admin
-            $notify_stmt = $pdo->prepare("
-                INSERT INTO notifications (user_id, type, title, message, event_type, severity, redirect_url, created_at)
-                VALUES (?, 'info', 'PR Waiting for PO', ?, 'stock_request', 'high', 'admin_purchase_orders.php?tab=pending', NOW())
-            ");
-            $admins = $pdo->query("SELECT id FROM users WHERE role IN ('admin', 'superadmin')")->fetchAll(PDO::FETCH_COLUMN);
-            foreach ($admins as $admin_id) {
-                $notify_stmt->execute([$admin_id, "Purchase Request {$pr_number} has been approved by Manager and is waiting for PO generation."]);
-            }
+            manager_notify_users(
+                $pdo,
+                array_column($items_to_insert, 'staff_id'),
+                'Purchase Order Generated',
+                "Purchase Order {$po_number} has been generated for Purchase Request {$pr_number}.",
+                'staff_record_delivery.php'
+            );
 
-            log_activity($pdo, $me['id'], 'Forward Purchase Request', "Forwarded Merchandise PR to Admin: $pr_number");
+            log_activity($pdo, $me['id'], 'Generate Merchandise Purchase Order', "Generated PO {$po_number} from PR {$pr_number}.");
             $pdo->commit();
-            $_SESSION['success'] = "Merchandise Purchase Request <strong>$pr_number</strong> forwarded to Admin successfully.";
-            header("Location: print_po_new.php?batch_id=" . urlencode($pr_number) . "&type=merch&print=1");
+            $_SESSION['success'] = "Purchase Order <strong>$po_number</strong> generated and approved.";
+            header("Location: print_po_new.php?batch_id=" . urlencode($po_number) . "&type=merch&print=1");
             exit;
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
@@ -134,86 +337,132 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // 2. Generate Fuel Purchase Request
+    // 2. Generate approved Fuel Purchase Order
     if ($action === 'generate_fuel_pr') {
         $pr_number       = trim($_POST['pr_number'] ?? '');
-        $expected_delivery = trim($_POST['expected_delivery'] ?? '');
+        $expected_delivery = trim($_POST['expected_delivery'] ?? '') ?: date('Y-m-d', strtotime('+3 days'));
         $remarks         = trim($_POST['remarks'] ?? '');
-        $fuel_quantities = $_POST['fuel_quantities'] ?? [];  // fuel_type_id => liters
-        $fuel_req_ids    = $_POST['fuel_req_ids'] ?? [];     // fuel_type_id => fuel_stock_request_id
+        $fuel_quantities = $_POST['fuel_quantities'] ?? [];
+        $fuel_unit_costs = $_POST['fuel_unit_costs'] ?? [];
+        $fuel_req_ids    = $_POST['fuel_req_ids'] ?? [];
 
         if (empty($pr_number)) {
-            $pr_number = 'PR-' . date('Ymd') . '-' . str_pad(rand(1,9999), 4, '0', STR_PAD_LEFT);
+            $pr_number = 'PR-' . date('Y') . '-' . str_pad(rand(1,9999), 4, '0', STR_PAD_LEFT);
         }
+
         try {
             $pdo->beginTransaction();
-            $inserted = 0;
+            $items_to_insert = [];
             
-            foreach ($fuel_quantities as $fuel_type_id => $liters) {
-                $liters = (float)$liters;
+            foreach ($fuel_quantities as $fuel_type_id => $liters_raw) {
+                $liters = (float)$liters_raw;
                 if ($liters <= 0) continue;
-                
-                // Fetch fuel details
-                $ft_stmt = $pdo->prepare("SELECT fuel_type FROM fuel_inventory WHERE fuel_type_id = ? AND station_id = ? LIMIT 1");
-                $ft_stmt->execute([$fuel_type_id, $station_id]);
-                $fuel_type_name = $ft_stmt->fetchColumn() ?: 'Diesel';
 
-                $linked_req_id = isset($fuel_req_ids[$fuel_type_id]) ? (int)$fuel_req_ids[$fuel_type_id] : null;
-                
-                if ($linked_req_id) {
-                    $pdo->prepare("
-                        UPDATE fuel_stock_requests 
-                        SET status='Waiting for Purchase Order', approved_liters=?, manager_id=?, processed_at=NOW(), request_no=?, updated_at=NOW() 
-                        WHERE id=? AND station_id=?
-                    ")->execute([$liters, $me['id'], $pr_number, $linked_req_id, $station_id]);
-                    $req_id = $linked_req_id;
-                } else {
-                    // Manual addition
-                    $f_inv = $pdo->prepare("SELECT current_level, capacity, reorder_level FROM fuel_inventory WHERE fuel_type_id = ? AND station_id = ? LIMIT 1");
-                    $f_inv->execute([$fuel_type_id, $station_id]);
-                    $inv = $f_inv->fetch(PDO::FETCH_ASSOC);
-                    $curr = $inv ? $inv['current_level'] : 0;
-                    $cap = $inv ? $inv['capacity'] : 10000;
-
-                    $ins_f = $pdo->prepare("
-                        INSERT INTO fuel_stock_requests
-                            (request_no, staff_id, station_id, fuel_type, current_level, capacity, stock_status, requested_liters, approved_liters, remarks, status, manager_id, processed_at, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, 'LOW', 0, ?, 'Manual addition by Manager', 'Waiting for Purchase Order', ?, NOW(), NOW(), NOW())
-                    ");
-                    $ins_f->execute([
-                        $pr_number, $me['id'], $station_id, $fuel_type_name, $curr, $cap, $liters, $me['id']
-                    ]);
-                    $req_id = $pdo->lastInsertId();
+                $unit_cost = (float)($fuel_unit_costs[$fuel_type_id] ?? 0);
+                if ($unit_cost <= 0) {
+                    throw new Exception("Enter Cost per Liter for every fuel type with Liters to Order.");
                 }
 
-                // Audit log
+                $linked_req_id = isset($fuel_req_ids[$fuel_type_id]) ? (int)$fuel_req_ids[$fuel_type_id] : 0;
+                $stmt_req = $pdo->prepare("
+                    SELECT fsr.*, fi.fuel_type_id, COALESCE(fi.current_level, fsr.current_level, 0) AS current_stock_actual
+                    FROM fuel_stock_requests fsr
+                    LEFT JOIN fuel_inventory fi ON LOWER(fsr.fuel_type) = LOWER(fi.fuel_type) AND fi.station_id = fsr.station_id
+                    WHERE fsr.id = ? AND fsr.station_id = ?
+                      AND fsr.status IN ('Pending', 'Pending Manager Review')
+                    LIMIT 1
+                ");
+                $stmt_req->execute([$linked_req_id, $station_id]);
+                $req = $stmt_req->fetch(PDO::FETCH_ASSOC);
+                if (!$req) {
+                    throw new Exception("One selected fuel request is no longer pending.");
+                }
+
+                $fuel_name = $req['fuel_type'] ?: 'Fuel';
+                $resolved_fuel_type_id = manager_resolve_fuel_type_id($pdo, $station_id, $fuel_name, (int)($req['fuel_type_id'] ?? 0), $unit_cost);
+
+                $items_to_insert[] = [
+                    'request_id' => (int)$req['id'],
+                    'fuel_type_id' => $resolved_fuel_type_id,
+                    'fuel_type' => $fuel_name,
+                    'liters' => $liters,
+                    'unit_cost' => $unit_cost,
+                    'total' => round($liters * $unit_cost, 2),
+                    'staff_id' => (int)$req['staff_id'],
+                    'old_status' => $req['status'] ?: 'Pending Manager Review',
+                ];
+            }
+
+            if (empty($items_to_insert)) {
+                throw new Exception('Enter Liters to Order for at least one fuel type.');
+            }
+
+            $supplier_id = manager_petron_supplier_id($pdo);
+            $po_number = manager_next_po_number($pdo);
+            $po_notes = manager_po_notes($pr_number, $remarks);
+            $line_count = count($items_to_insert);
+            $line_index = 1;
+
+            foreach ($items_to_insert as $item) {
+                $line_po_number = $line_count > 1
+                    ? $po_number . '-' . str_pad($line_index, 2, '0', STR_PAD_LEFT)
+                    : $po_number;
+
+                $stmt_ins = $pdo->prepare("
+                    INSERT INTO fuel_purchase_orders (
+                        po_number, batch_id, station_id, fuel_type_id, volume, unit_price, total_amount,
+                        supplier_id, expected_delivery_date, status, created_by, approved_by, approved_at,
+                        notes, created_at, updated_at
+                    ) VALUES (
+                        ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?, 'Approved', ?, ?, NOW(),
+                        ?, NOW(), NOW()
+                    )
+                ");
+                $stmt_ins->execute([
+                    $line_po_number, $po_number, $station_id, $item['fuel_type_id'], $item['liters'],
+                    $item['unit_cost'], $item['total'], $supplier_id, $expected_delivery,
+                    $me['id'], $me['id'], $po_notes
+                ]);
+
+                $pdo->prepare("
+                    UPDATE fuel_stock_requests
+                    SET status = 'Purchase Order Generated',
+                        approved_liters = ?,
+                        manager_id = ?,
+                        manager_notes = ?,
+                        request_no = ?,
+                        processed_at = NOW(),
+                        updated_at = NOW()
+                    WHERE id = ? AND station_id = ?
+                ")->execute([
+                    $item['liters'], $me['id'], $remarks, $pr_number, $item['request_id'], $station_id
+                ]);
+
                 $pdo->prepare("
                     INSERT INTO fuel_stock_request_audit
                         (request_id, action_type, performed_by, performed_by_role, old_status, new_status, notes)
-                    VALUES (?, 'Forwarded to Admin', ?, ?, 'Pending', 'Waiting for Purchase Order', ?)
+                    VALUES (?, 'PO Generated', ?, ?, ?, 'Purchase Order Generated', ?)
                 ")->execute([
-                    $req_id, $me['id'], $role, "Forwarded to Admin. PR: $pr_number"
+                    $item['request_id'], $me['id'], $role, $item['old_status'],
+                    "PO Generated: $po_number from PR $pr_number"
                 ]);
 
-                $inserted++;
-            }
-            
-            if ($inserted === 0) throw new Exception('Enter liters for at least one fuel type.');
-            
-            // Send notification to Admin
-            $notify_stmt = $pdo->prepare("
-                INSERT INTO notifications (user_id, type, title, message, event_type, severity, redirect_url, created_at)
-                VALUES (?, 'info', 'PR Waiting for PO', ?, 'stock_request', 'high', 'admin_purchase_orders.php?tab=pending', NOW())
-            ");
-            $admins = $pdo->query("SELECT id FROM users WHERE role IN ('admin', 'superadmin')")->fetchAll(PDO::FETCH_COLUMN);
-            foreach ($admins as $admin_id) {
-                $notify_stmt->execute([$admin_id, "Purchase Request {$pr_number} has been approved by Manager and is waiting for PO generation."]);
+                $line_index++;
             }
 
-            log_activity($pdo, $me['id'], 'Forward Fuel Purchase Request', "Forwarded Fuel PR to Admin: $pr_number");
+            manager_notify_users(
+                $pdo,
+                array_column($items_to_insert, 'staff_id'),
+                'Purchase Order Generated',
+                "Purchase Order {$po_number} has been generated for Fuel Purchase Request {$pr_number}.",
+                'staff_record_delivery.php'
+            );
+
+            log_activity($pdo, $me['id'], 'Generate Fuel Purchase Order', "Generated fuel PO {$po_number} from PR {$pr_number}.");
             $pdo->commit();
-            $_SESSION['success'] = "Fuel Purchase Request <strong>$pr_number</strong> forwarded to Admin successfully.";
-            header("Location: print_po_new.php?batch_id=" . urlencode($pr_number) . "&type=fuel&print=1");
+            $_SESSION['success'] = "Fuel Purchase Order <strong>$po_number</strong> generated and approved.";
+            header("Location: print_po_new.php?batch_id=" . urlencode($po_number) . "&type=fuel&print=1");
             exit;
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
@@ -282,11 +531,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $staff_ids = $staff_ids_stmt->fetchAll(PDO::FETCH_COLUMN);
                 }
 
-                $notify = $pdo->prepare("INSERT INTO notifications (user_id, type, title, message, event_type, severity, redirect_url, created_at) VALUES (?, 'warning', 'PR Returned', ?, 'stock_request', 'warning', 'staff_stock_requests.php', NOW())");
                 $display_pr_name = $pr_num ?: 'Request Batch';
-                foreach ($staff_ids as $sid) {
-                    $notify->execute([$sid, "Purchase Request {$display_pr_name} was returned by the manager. Reason: {$reason}."]);
-                }
+                manager_notify_users(
+                    $pdo,
+                    $staff_ids,
+                    'PR Returned',
+                    "Purchase Request {$display_pr_name} was returned by the manager. Reason: {$reason}.",
+                    'staff_stock_requests.php',
+                    'warning',
+                    'warning'
+                );
                 log_activity($pdo, $me['id'], 'Return Purchase Request', "Returned PR {$display_pr_name} to staff. Reason: {$reason}");
                 $_SESSION['success'] = "Purchase Request <strong>{$display_pr_name}</strong> returned to staff for correction.";
             } catch (Exception $e) {
@@ -303,8 +557,8 @@ $cnt_pending_sr_merch = (int)$pdo->query("SELECT COUNT(*) FROM stock_requests WH
 $cnt_pending_sr_fuel  = (int)$pdo->query("SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id = $station_id AND status IN ('Pending', 'Pending Manager Review')")->fetchColumn();
 $cnt_pending_pr       = $cnt_pending_sr_merch + $cnt_pending_sr_fuel;
 
-$cnt_po_generated_merch = (int)$pdo->query("SELECT COUNT(DISTINCT request_no) FROM stock_requests WHERE station_id = $station_id AND status = 'Waiting for Purchase Order'")->fetchColumn();
-$cnt_po_generated_fuel  = (int)$pdo->query("SELECT COUNT(DISTINCT request_no) FROM fuel_stock_requests WHERE station_id = $station_id AND status = 'Waiting for Purchase Order'")->fetchColumn();
+$cnt_po_generated_merch = (int)$pdo->query("SELECT COUNT(DISTINCT COALESCE(NULLIF(batch_id, ''), po_number)) FROM purchase_orders WHERE station_id = $station_id AND type = 'merch' AND status IN ('Approved','Approved PO','Admin Finalized')")->fetchColumn();
+$cnt_po_generated_fuel  = (int)$pdo->query("SELECT COUNT(DISTINCT COALESCE(NULLIF(batch_id, ''), po_number)) FROM fuel_purchase_orders WHERE station_id = $station_id AND status IN ('Approved','Approved PO','Admin Finalized')")->fetchColumn();
 $cnt_po_generated       = $cnt_po_generated_merch + $cnt_po_generated_fuel;
 
 $cnt_pending_delivery = (int)$pdo->query("SELECT COUNT(DISTINCT po_number) FROM purchase_orders WHERE station_id = $station_id AND status IN ('Approved','Approved PO','Admin Finalized') AND id NOT IN (SELECT DISTINCT po_id FROM merchandise_stock_in WHERE station_id = $station_id AND po_id IS NOT NULL)")->fetchColumn()
@@ -320,7 +574,9 @@ $stmt1 = $pdo->prepare("
            COALESCE(si.unit, ip.size, 'pcs') AS unit,
            COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
            COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
-           sr.item_id AS product_id, sr.request_no, ip.sku AS item_sku
+           sr.item_id AS product_id, sr.request_no, ip.sku AS item_sku,
+           COALESCE(sr.approved_price, ip.unit_cost, 0) AS unit_cost,
+           sr.status
     FROM stock_requests sr
     LEFT JOIN users u ON sr.staff_id = u.id
     LEFT JOIN inventory_products ip ON sr.item_id = ip.id
@@ -339,10 +595,17 @@ $stmt2 = $pdo->prepare("
            COALESCE(fi.reorder_level, 5000) AS reorder_level,
            COALESCE(fi.capacity, 0) AS tank_capacity,
            COALESCE(fi.ugt_no, '') AS ugt_no,
-           fi.fuel_type_id AS product_id, fsr.request_no
+           COALESCE(fi.fuel_type_id, ft.id) AS product_id, fsr.request_no,
+           COALESCE(
+               (SELECT fp.price_per_liter FROM fuel_pricing fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fsr.station_id AND fp.is_active = 1 ORDER BY fp.effective_date DESC LIMIT 1),
+               ft.price_per_liter,
+               0
+           ) AS unit_cost,
+           fsr.status
     FROM fuel_stock_requests fsr
     LEFT JOIN users u ON fsr.staff_id = u.id
     LEFT JOIN fuel_inventory fi ON LOWER(fsr.fuel_type) = LOWER(fi.fuel_type) AND fi.station_id = fsr.station_id
+    LEFT JOIN fuel_types ft ON LOWER(fsr.fuel_type) = LOWER(ft.name)
     WHERE fsr.station_id = ? AND fsr.status IN ('Pending', 'Pending Manager Review')
     ORDER BY fsr.created_at DESC
 ");
@@ -809,7 +1072,7 @@ body .main,
             <i class="fas fa-clipboard-list" style="color: #002F6C;"></i> Purchase Requests
         </h1>
         <div class="pr-subtitle">
-            Review and forward pending stock requests from staff. Generate Purchase Orders for Admin processing.
+            Review staff purchase requests and generate approved purchase orders for supplier release.
         </div>
     </div>
 
@@ -887,7 +1150,7 @@ body .main,
                     'staff_name' => $r['staff_name'] ?: 'Staff',
                     'staff_id'   => $r['staff_id'],
                     'created_at' => $r['created_at'],
-                    'status'     => 'Pending',
+                    'status'     => $r['status'] ?: 'Pending Manager Review',
                     'items'      => []
                 ];
             }
@@ -995,7 +1258,7 @@ body .main,
                                         </div>
                                         <div style="display: flex; flex-direction: column; gap: 4px;">
                                             <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Remarks / Notes</label>
-                                            <input type="text" name="remarks" placeholder="Optional notes for Admin or Supplier..." style="padding: 9px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; font-family: inherit;">
+                                            <input type="text" name="remarks" placeholder="Optional notes for supplier..." style="padding: 9px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; font-family: inherit;">
                                         </div>
                                     </div>
                                     
@@ -1009,6 +1272,7 @@ body .main,
                                                     <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Current Stock</th>
                                                     <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Reorder Level</th>
                                                     <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase; width: 130px;">Qty to Order <span style="color: #ff8a8a;">*</span></th>
+                                                    <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase; width: 140px;">Unit Cost <span style="color: #ff8a8a;">*</span></th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -1021,6 +1285,7 @@ body .main,
                                                     $formatted_prod_id = 'P' . str_pad($prod_id, 4, '0', STR_PAD_LEFT);
                                                     $sr_id = $item['id'];
                                                     $is_below = ((float)($item['current_stock'] ?? 0)) < ((float)($item['reorder_level'] ?? 0));
+                                                    $suggested_cost = number_format((float)($item['unit_cost'] ?? 0), 2, '.', '');
                                                 ?>
                                                 <tr style="border-bottom: 1px solid #eff6ff;">
                                                     <input type="hidden" name="stock_req_ids[<?= $prod_id ?>]" value="<?= $sr_id ?>">
@@ -1032,13 +1297,29 @@ body .main,
                                                     <td style="padding: 10px 12px; text-align: center; font-weight: 600; color: <?= $is_below ? '#dc2626' : '#16a34a' ?>;"><?= $curr_stock ?></td>
                                                     <td style="padding: 10px 12px; text-align: center; color: #dc2626; font-weight: 600;"><?= $reorder_lvl ?></td>
                                                     <td style="padding: 10px 12px; text-align: center;">
-                                                        <input type="number" name="quantities[<?= $prod_id ?>]" min="1" step="1" placeholder="—" style="width: 80px; padding: 5px 8px; border: 1.5px solid #93c5fd; border-radius: 6px; text-align: center; font-weight: 700; font-family: inherit;">
+                                                        <input type="number" name="quantities[<?= $prod_id ?>]" min="1" step="1" placeholder="0"
+                                                            class="merch-qty-input" data-key="<?= $safe_key ?>"
+                                                            style="width: 80px; padding: 5px 8px; border: 1.5px solid #93c5fd; border-radius: 6px; text-align: center; font-weight: 700; font-family: inherit;"
+                                                            oninput="updateMerchSummary('<?= $safe_key ?>')">
                                                         <div style="font-size: 9px; color: #94a3b8; margin-top: 1px;"><?= htmlspecialchars($item_unit) ?></div>
+                                                    </td>
+                                                    <td style="padding: 10px 12px; text-align: center;">
+                                                        <input type="number" name="unit_costs[<?= $prod_id ?>]" min="0.01" step="0.01" value="" placeholder="0.00"
+                                                            class="merch-cost-input" data-key="<?= $safe_key ?>"
+                                                            style="width: 110px; padding: 5px 8px; border: 1.5px solid #cbd5e1; border-radius: 6px; text-align: right; font-weight: 700; font-family: inherit;"
+                                                            oninput="updateMerchSummary('<?= $safe_key ?>')">
                                                     </td>
                                                 </tr>
                                                 <?php endforeach; ?>
                                             </tbody>
                                         </table>
+                                    </div>
+
+                                    <div style="display: flex; justify-content: flex-end; margin-bottom: 16px;">
+                                        <div style="min-width: 280px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; font-size: 13px;">
+                                            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;"><span style="color: #64748b; font-weight: 700;">Total Products</span><span id="merch_count_<?= $safe_key ?>" style="font-weight: 800; color: #002F6C;"><?= $item_count ?></span></div>
+                                            <div style="display: flex; justify-content: space-between;"><span style="color: #64748b; font-weight: 700;">Grand Total Amount</span><span id="merch_total_<?= $safe_key ?>" style="font-weight: 900; color: #002F6C;">PHP 0.00</span></div>
+                                        </div>
                                     </div>
                                     
                                     <div class="pr-panel-actions">
@@ -1046,7 +1327,7 @@ body .main,
                                             <i class="fas fa-undo"></i> Return Request
                                         </button>
                                         <button type="submit" class="btn-forward">
-                                            <i class="fas fa-file-invoice"></i> Generate PO
+                                            <i class="fas fa-file-invoice"></i> Generate Purchase Order
                                         </button>
                                     </div>
                                 </form>
@@ -1079,7 +1360,7 @@ body .main,
                     'staff_name' => $r['staff_name'] ?: 'Staff',
                     'staff_id'   => $r['staff_id'],
                     'created_at' => $r['created_at'],
-                    'status'     => 'Pending Manager Review',
+                    'status'     => $r['status'] ?: 'Pending Manager Review',
                     'items'      => []
                 ];
             }
@@ -1208,8 +1489,8 @@ body .main,
                                                 <input type="date" name="expected_delivery" min="<?= date('Y-m-d') ?>" required style="padding: 9px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; font-family: inherit;">
                                             </div>
                                             <div style="display: flex; flex-direction: column; gap: 4px;">
-                                                <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Remarks / Notes for Admin</label>
-                                                <input type="text" name="remarks" placeholder="Optional notes for Admin or Supplier..." style="padding: 9px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; font-family: inherit;">
+                                                <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Remarks / Notes</label>
+                                                <input type="text" name="remarks" placeholder="Optional notes for supplier..." style="padding: 9px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; font-family: inherit;">
                                             </div>
                                         </div>
 
@@ -1226,6 +1507,7 @@ body .main,
                                                         <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Current Liters</th>
                                                         <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Reorder Level</th>
                                                         <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase; width: 140px;">Liters to Order <span style="color: #ff8a8a;">*</span></th>
+                                                        <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase; width: 140px;">Cost per Liter <span style="color: #ff8a8a;">*</span></th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -1239,6 +1521,7 @@ body .main,
                                                         $formatted_fid   = 'F' . str_pad($prod_id, 4, '0', STR_PAD_LEFT);
                                                         $sr_id           = $fitem['id'];
                                                         $is_below        = ((float)($fitem['current_stock'] ?? 0)) < ((float)($fitem['reorder_level'] ?? 0));
+                                                        $suggested_cost  = number_format((float)($fitem['unit_cost'] ?? 0), 2, '.', '');
                                                     ?>
                                                     <tr style="border-bottom: 1px solid #f1f5f9;">
                                                         <input type="hidden" name="fuel_req_ids[<?= $prod_id ?>]" value="<?= $sr_id ?>">
@@ -1256,12 +1539,19 @@ body .main,
                                                         </td>
                                                         <td style="padding: 11px 12px; text-align: center; color: #dc2626; font-weight: 700;"><?= $reorder_lvl ?> L</td>
                                                         <td style="padding: 11px 12px; text-align: center;">
-                                                            <input type="number" name="fuel_quantities[<?= $prod_id ?>]" min="1" step="any" placeholder="—"
+                                                            <input type="number" name="fuel_quantities[<?= $prod_id ?>]" min="1" step="any" placeholder="0"
                                                                 class="fuel-qty-input" data-key="<?= $safe_key ?>"
                                                                 style="width: 110px; padding: 6px 8px; border: 1.5px solid #cbd5e1; border-radius: 6px; text-align: center; font-weight: 700; font-family: inherit; font-size: 13px;"
                                                                 oninput="updateFuelSummary('<?= $safe_key ?>')"
                                                             >
                                                             <div style="font-size: 9.5px; color: #94a3b8; margin-top: 2px;">Liters (L)</div>
+                                                        </td>
+                                                        <td style="padding: 11px 12px; text-align: center;">
+                                                            <input type="number" name="fuel_unit_costs[<?= $prod_id ?>]" min="0.01" step="0.01" value="" placeholder="0.00"
+                                                                class="fuel-cost-input" data-key="<?= $safe_key ?>"
+                                                                style="width: 110px; padding: 6px 8px; border: 1.5px solid #cbd5e1; border-radius: 6px; text-align: right; font-weight: 700; font-family: inherit; font-size: 13px;"
+                                                                oninput="updateFuelSummary('<?= $safe_key ?>')"
+                                                            >
                                                         </td>
                                                     </tr>
                                                     <?php endforeach; ?>
@@ -1269,6 +1559,12 @@ body .main,
                                             </table>
                                         </div>
 
+                                        <div style="display: flex; justify-content: flex-end; margin-bottom: 16px;">
+                                            <div style="min-width: 300px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; font-size: 13px;">
+                                                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;"><span style="color: #64748b; font-weight: 700;">Total Fuel Types</span><span id="fuel_count_<?= $safe_key ?>" style="font-weight: 800; color: #0284c7;"><?= $item_count ?></span></div>
+                                                <div style="display: flex; justify-content: space-between;"><span style="color: #64748b; font-weight: 700;">Grand Total Amount</span><span id="fuel_total_<?= $safe_key ?>" style="font-weight: 900; color: #0284c7;">PHP 0.00</span></div>
+                                            </div>
+                                        </div>
 
                                         <!-- Actions -->
                                         <div class="pr-panel-actions">
@@ -1393,21 +1689,65 @@ function closeModal(id) {
     document.body.style.overflow = '';
 }
 
+function formatMoney(value) {
+    return 'PHP ' + Number(value || 0).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+}
+
+function updateMerchSummary(key) {
+    var form = document.getElementById('form_' + key);
+    if (!form) return;
+    var qtyInputs = form.querySelectorAll('.merch-qty-input');
+    var total = 0;
+    var selected = 0;
+    qtyInputs.forEach(function (qtyInput) {
+        var row = qtyInput.closest('tr');
+        var costInput = row ? row.querySelector('.merch-cost-input') : null;
+        var qty = parseFloat(qtyInput.value);
+        var cost = costInput ? parseFloat(costInput.value) : 0;
+        if (!isNaN(qty) && qty > 0) {
+            selected++;
+            if (!isNaN(cost) && cost > 0) {
+                total += qty * cost;
+            }
+        }
+    });
+    var countSpan = document.getElementById('merch_count_' + key);
+    var totalSpan = document.getElementById('merch_total_' + key);
+    if (countSpan) countSpan.textContent = selected || qtyInputs.length;
+    if (totalSpan) totalSpan.textContent = formatMoney(total);
+}
+
 function updateFuelSummary(key) {
     var form = document.getElementById('form_' + key);
     if (!form) return;
-    var inputs = form.querySelectorAll('.fuel-qty-input');
-    var total = 0;
-    inputs.forEach(function (inp) {
-        var val = parseFloat(inp.value);
-        if (!isNaN(val) && val > 0) {
-            total += val;
+    var qtyInputs = form.querySelectorAll('.fuel-qty-input');
+    var totalLiters = 0;
+    var totalAmount = 0;
+    var selected = 0;
+    qtyInputs.forEach(function (qtyInput) {
+        var row = qtyInput.closest('tr');
+        var costInput = row ? row.querySelector('.fuel-cost-input') : null;
+        var liters = parseFloat(qtyInput.value);
+        var cost = costInput ? parseFloat(costInput.value) : 0;
+        if (!isNaN(liters) && liters > 0) {
+            selected++;
+            totalLiters += liters;
+            if (!isNaN(cost) && cost > 0) {
+                totalAmount += liters * cost;
+            }
         }
     });
     var totalSpan = document.getElementById('total_liters_' + key);
     if (totalSpan) {
-        totalSpan.textContent = total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' L';
+        totalSpan.textContent = totalLiters.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' L';
     }
+    var countSpan = document.getElementById('fuel_count_' + key);
+    var amountSpan = document.getElementById('fuel_total_' + key);
+    if (countSpan) countSpan.textContent = selected || qtyInputs.length;
+    if (amountSpan) amountSpan.textContent = formatMoney(totalAmount);
 }
 
 // Validate that at least 1 qty is filled before submitting
@@ -1428,6 +1768,19 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!anyFilled) {
                 e.preventDefault();
                 alert('Please enter Qty to Order for at least one product before generating a PO.');
+                return;
+            }
+            var missingCost = Array.from(inputs).some(function (inp) {
+                var qty = parseFloat(inp.value);
+                if (isNaN(qty) || qty <= 0) return false;
+                var row = inp.closest('tr');
+                var costInput = row ? row.querySelector('.merch-cost-input') : null;
+                var cost = costInput ? parseFloat(costInput.value) : 0;
+                return isNaN(cost) || cost <= 0;
+            });
+            if (missingCost) {
+                e.preventDefault();
+                alert('Please enter Unit Cost for every product with Qty to Order.');
             }
         });
     });
@@ -1442,6 +1795,19 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!anyFilled) {
                 e.preventDefault();
                 alert('Please enter Liters to Order for at least one fuel type before generating a PO.');
+                return;
+            }
+            var missingCost = Array.from(inputs).some(function (inp) {
+                var liters = parseFloat(inp.value);
+                if (isNaN(liters) || liters <= 0) return false;
+                var row = inp.closest('tr');
+                var costInput = row ? row.querySelector('.fuel-cost-input') : null;
+                var cost = costInput ? parseFloat(costInput.value) : 0;
+                return isNaN(cost) || cost <= 0;
+            });
+            if (missingCost) {
+                e.preventDefault();
+                alert('Please enter Cost per Liter for every fuel type with Liters to Order.');
             }
         });
     });

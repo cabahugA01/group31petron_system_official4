@@ -317,6 +317,7 @@ foreach ($rows as $r) {
         'tanker_num'   => $r['tanker_num'] ?? 0,
         'level'        => $fl,
         'capacity'     => $cap,
+        'reorder_level'=> (float)($r['reorder_level'] ?? 0),
         'pct'          => round($pct, 1),
         'variance'     => $r['variance'],
         'status'       => $st,
@@ -419,6 +420,9 @@ body, html { overflow-x: hidden !important; }
     white-space: nowrap; 
     line-height: 1.4; 
 }
+.fuel-table tbody tr.fuel-row td:nth-child(6),
+.fuel-table tbody tr.fuel-row td:nth-child(n+8){display:none !important;}
+.fuel-table tbody tr.fuel-row td:nth-child(7){display:table-cell !important;}
 .fuel-table tbody td.bold { font-weight: 700; color: #002F70; }
 .status-pill {
     display: inline-block; 
@@ -730,33 +734,27 @@ body, html { overflow-x: hidden !important; }
         <div class="table-wrap">
             <table class="fuel-table" id="fuelTable">
                 <colgroup>
-                    <col style="width:5%">
-                    <col style="width:10%">
-                    <col style="width:9%">
-                    <col style="width:10%">
-                    <col style="width:11%">
-                    <col style="width:9%">
-                    <col style="width:8%">
-                    <col style="width:18%">
-                    <col style="width:20%">
+                    <col style="width:22%">
+                    <col style="width:14%">
+                    <col style="width:16%">
+                    <col style="width:16%">
+                    <col style="width:16%">
+                    <col style="width:16%">
                 </colgroup>
                 <thead>
                     <tr>
-                        <th>UGT No.</th>
                         <th>Fuel Type</th>
-                        <th>Capacity (Liters (L))</th>
-                        <th>Reorder Level (Liters (L))</th>
-                        <th>Current Level (Liters (L))</th>
-                        <th>Available %</th>
+                        <th>UGT No.</th>
+                        <th>Tank Capacity</th>
+                        <th>Current Liters</th>
+                        <th>Reorder Level</th>
                         <th>Status</th>
-                        <th>Last Updated</th>
-                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
                 <?php if (empty($rows)): ?>
                     <tr>
-                        <td colspan="9" style="text-align:center;padding:32px;color:#6c757d;font-size:14px;">
+                        <td colspan="6" style="text-align:center;padding:32px;color:#6c757d;font-size:14px;">
                             No fuel inventory data available.
                         </td>
                     </tr>
@@ -773,11 +771,11 @@ body, html { overflow-x: hidden !important; }
                         data-tank-ref="<?= htmlspecialchars(strtolower($r['label'])) ?>"
                         data-status="<?= htmlspecialchars(strtolower($r['status'])) ?>"
                         data-date="<?= $row_date ?>">
-                        <td style="font-weight:700;color:#002F70;"><?= $r['tanker_num'] ?></td>
                         <td style="font-weight:700;"><?= htmlspecialchars($r['fuel_type']) ?></td>
+                        <td style="font-weight:700;color:#002F70;"><?= $r['tanker_num'] ?></td>
                         <td><?= number_format($r['capacity'], 0) ?> Liters (L)</td>
-                        <td style="font-weight:600;color:#64748b;"><?= number_format($r['reorder_level'], 0) ?> Liters (L)</td>
                         <td style="font-weight:700;color:#002F70;"><?= number_format($fl, 2) ?> Liters (L)</td>
+                        <td style="font-weight:600;color:#64748b;"><?= number_format($r['reorder_level'], 0) ?> Liters (L)</td>
                         <td><?= $fill ?>%</td>
                         <td>
                             <span class="status-pill" style="background:<?= $r['status_color'] ?>18;color:<?= $r['status_color'] ?>;border:1px solid <?= $r['status_color'] ?>40;">
@@ -796,7 +794,7 @@ body, html { overflow-x: hidden !important; }
                     <?php endforeach; ?>
                 <?php endif; ?>
                     <tr id="fuelNoResultsRow" class="no-paginate" style="display:none;">
-                        <td colspan="9" style="text-align:center;padding:32px;color:#64748b;font-size:14px;">
+                        <td colspan="6" style="text-align:center;padding:32px;color:#64748b;font-size:14px;">
                             No fuel tanks match the selected filters.
                         </td>
                     </tr>
@@ -887,7 +885,7 @@ body, html { overflow-x: hidden !important; }
 
 <!-- ══ FUEL STOCK REQUEST MODAL ══ -->
 <div class="sr-modal-overlay" id="fuelSrModal">
-    <div class="sr-modal-box" style="max-width:860px;">
+    <div class="sr-modal-box" style="max-width:1100px;">
         <div class="sr-modal-head" style="display:flex; justify-content:space-between; align-items:center;">
             <div class="sr-modal-title">
                 <i class="fas fa-gas-pump"></i> Fuel Stock Request
@@ -896,7 +894,7 @@ body, html { overflow-x: hidden !important; }
         </div>
 
         <div class="sr-modal-body">
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+            <div style="display:grid; grid-template-columns:280px minmax(0,1fr); gap:20px;">
                 <!-- LEFT COLUMN: Request Information -->
                 <div>
                     <div style="background:#f8fafc; padding:16px; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:16px;">
@@ -949,7 +947,7 @@ body, html { overflow-x: hidden !important; }
                 <i class="fas fa-times"></i> Cancel
             </button>
             <button type="button" id="fsrSubmitBtn" class="txn-btn primary">
-                <i class="fas fa-paper-plane"></i> Submit Request
+                <i class="fas fa-paper-plane"></i> Submit Stock Request
             </button>
         </div>
     </div>
@@ -979,7 +977,7 @@ function openFuelSrModal() {
     var rem = document.getElementById('fsrRemarks');
     if (rem) rem.value = '';
     var sb = document.getElementById('fsrSubmitBtn');
-    if (sb) { sb.disabled = false; sb.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request'; }
+    if (sb) { sb.disabled = false; sb.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Stock Request'; }
     document.getElementById('fuelSrModal').classList.add('open');
 }
 
@@ -1001,24 +999,29 @@ function renderFsrCheckList() {
 
     document.getElementById('fsrSubmitBtn').disabled = false;
 
-    var html = needsRestock.map(function(it) {
+    var rows = needsRestock.map(function(it) {
         var idx = allFuelData.indexOf(it);
-        var bar = '<div style="background:#e9ecef;border-radius:3px;height:6px;width:70px;display:inline-block;vertical-align:middle;margin:0 5px;">' +
-                  '<div style="width:' + Math.min(100, it.pct) + '%;height:100%;background:' + it.color + ';border-radius:3px;"></div></div>';
         var badge = '<span style="background:' + it.color + '20;color:' + it.color + ';border:1px solid ' + it.color + '40;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;">' + esc(it.status) + '</span>';
-        var displayName = it.tanker_label ? it.tanker_label : it.name;
-        return '<label class="fsr-cb-row ' + it.statusCls + '" data-idx="' + idx + '" style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:8px;cursor:pointer;">' +
-            '<input type="checkbox" class="fsr-cb fsr-item-cb" data-idx="' + idx + '">' +
-            '<div class="fsr-item-info">' +
-                '<div class="fsr-item-name">' + esc(displayName) + '</div>' +
-                '<div class="fsr-item-meta">' +
-                    it.level.toLocaleString('en-PH',{minimumFractionDigits:2}) + ' Liters (L) / ' +
-                    it.capacity.toLocaleString('en-PH',{minimumFractionDigits:2}) + ' Liters (L) ' +
-                    bar + it.pct + '% &bull; ' + badge +
-                '</div>' +
-            '</div>' +
-        '</label>';
+        var ugtNo = it.tanker_num ? it.tanker_num : (it.tanker_label || '');
+        return '<tr class="fsr-cb-row ' + it.statusCls + '" data-idx="' + idx + '" style="cursor:pointer;">' +
+            '<td style="text-align:center;"><input type="checkbox" class="fsr-cb fsr-item-cb" data-idx="' + idx + '"></td>' +
+            '<td style="font-weight:700;color:#002F70;">' + esc(it.name) + '</td>' +
+            '<td style="font-family:monospace;font-weight:700;">' + esc(ugtNo) + '</td>' +
+            '<td style="text-align:right;font-weight:700;">' + it.level.toLocaleString('en-PH',{minimumFractionDigits:2}) + ' L</td>' +
+            '<td style="text-align:right;color:#dc2626;font-weight:700;">' + Number(it.reorder_level || 0).toLocaleString('en-PH',{minimumFractionDigits:0}) + ' L</td>' +
+            '<td style="text-align:center;">' + badge + '</td>' +
+        '</tr>';
     }).join('');
+    var html = '<div style="max-height:360px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;">' +
+        '<table class="sr-table" style="width:100%;border-collapse:collapse;font-size:12px;">' +
+            '<thead><tr style="background:#002F70;color:#fff;position:sticky;top:0;z-index:5;">' +
+                '<th style="width:7%;text-align:center;">Select</th>' +
+                '<th style="width:24%;text-align:left;">Fuel Type</th>' +
+                '<th style="width:16%;text-align:left;">UGT No.</th>' +
+                '<th style="width:19%;text-align:right;">Current Liters</th>' +
+                '<th style="width:18%;text-align:right;">Reorder Level</th>' +
+                '<th style="width:16%;text-align:center;">Status</th>' +
+            '</tr></thead><tbody>' + rows + '</tbody></table></div>';
     document.getElementById('fsrCheckList').innerHTML = html;
 
     // Highlight row when checkbox changes
@@ -1028,6 +1031,17 @@ function renderFsrCheckList() {
             if (row) {
                 row.classList.toggle('checked', this.checked);
             }
+            syncFsrSelectAll();
+        });
+    });
+
+    document.querySelectorAll('.fsr-cb-row').forEach(function(row) {
+        row.addEventListener('click', function(e) {
+            if (e.target && e.target.matches('input')) return;
+            var cb = this.querySelector('.fsr-item-cb');
+            if (!cb) return;
+            cb.checked = !cb.checked;
+            this.classList.toggle('checked', cb.checked);
             syncFsrSelectAll();
         });
     });
@@ -1108,7 +1122,7 @@ function submitFuelStockRequest() {
     .then(function(r) { return r.json(); })
     .then(function(res) {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request';
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Stock Request';
         closeFuelSrModal();
 
         if (res.success) {
