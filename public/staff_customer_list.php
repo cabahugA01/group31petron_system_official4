@@ -850,7 +850,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="header-actions" style="display: flex; gap: 10px; align-items: center;">
         <button onclick="exportCustomerData('excel')" class="btn-export-excel"><i class="fas fa-file-excel"></i> Excel</button>
         <button onclick="exportCustomerData('csv')" class="btn-export-csv"><i class="fas fa-file-csv"></i> CSV</button>
-        <button type="button" onclick="exportCustomerData('pdf')" class="btn-export-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
+        <button type="button" onclick="exportCustomerData('pdf')" class="btn-export-pdf"><i class="fas fa-file-pdf"></i> Export PDF</button>
         <button type="button" onclick="printReportArea()" class="btn-export-print"><i class="fas fa-print"></i> Print</button>
     </div>
 </div>

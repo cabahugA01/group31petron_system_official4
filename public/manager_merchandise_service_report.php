@@ -340,7 +340,7 @@ require_once __DIR__ . '/../partials/header.php';
             <button type="button" class="export-btn export-btn-pdf" onclick="exportPrintableAreaToPDF('.report-container', 'Manager Merchandise & Service Sales Report', 'manager_merch_service_report_<?= date('Ymd', strtotime($date_from)) ?>_<?= date('Ymd', strtotime($date_to)) ?>', this)">
                 <i class="fas fa-file-pdf"></i> Export PDF
             </button>
-            <button type="button" class="export-btn export-btn-print" onclick="window.print()">
+            <button type="button" class="export-btn export-btn-print" onclick="printReportArea('.report-container')">
                 <i class="fas fa-print"></i> Print
             </button>
         </div>

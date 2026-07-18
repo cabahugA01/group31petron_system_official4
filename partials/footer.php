@@ -304,6 +304,53 @@
         main {
             padding-bottom: 0 !important;
         }
+        body.report-printing > *:not(#report-print-root) {
+            display: none !important;
+        }
+        body.report-printing #report-print-root {
+            display: block !important;
+            visibility: visible !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+        }
+        body.report-printing #report-print-root * {
+            visibility: visible !important;
+        }
+        body.report-printing #report-print-root table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+        }
+        body.report-printing #report-print-root thead {
+            display: table-header-group !important;
+        }
+        body.report-printing #report-print-root tfoot {
+            display: table-footer-group !important;
+        }
+        body.report-printing #report-print-root tr {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+        }
+        body.report-printing #report-print-root .no-print,
+        body.report-printing #report-print-root .rpt-filter-bar,
+        body.report-printing #report-print-root .fr-filter-bar,
+        body.report-printing #report-print-root .cr-filter-bar,
+        body.report-printing #report-print-root .pr-filter-bar,
+        body.report-printing #report-print-root .mp-filter-bar,
+        body.report-printing #report-print-root .export-actions,
+        body.report-printing #report-print-root .rpt-export-actions,
+        body.report-printing #report-print-root .pr-export-actions,
+        body.report-printing #report-print-root .mp-export-actions,
+        body.report-printing #report-print-root .actions,
+        body.report-printing #report-print-root .modal,
+        body.report-printing #report-print-root .modal-overlay,
+        body.report-printing #report-print-root [class*="btn"],
+        body.report-printing #report-print-root [class*="actions"] {
+            display: none !important;
+        }
     }
 
     /* Clean Rows per page select dropdown */
@@ -790,8 +837,67 @@
         downloadReportPdf(collectReportPdfPayload(table, title || 'Report', filename || tableId + '_' + new Date().toISOString().slice(0, 10)), document.activeElement);
     }
 
-    function printReportArea() {
+    function resolveReportPrintRoot(rootSelector) {
+        if (rootSelector && rootSelector.nodeType === 1) return rootSelector;
+        if (typeof rootSelector === 'string' && rootSelector.trim()) {
+            var selected = document.querySelector(rootSelector);
+            if (selected) return selected;
+        }
+
+        var preferredSelectors = [
+            '.print-area',
+            '.rpt-printable .active',
+            '.rpt-printable',
+            '.mp-printable .active',
+            '.mp-printable',
+            '.pr-printable .active',
+            '.pr-printable',
+            '.report-container',
+            '.stock-page',
+            '.fuel-section.visible',
+            '.afdo-table-card',
+            '.afto-table-card',
+            '.mcr-table-card',
+            '.tbl-card',
+            '.table-card',
+            '.card-table-wrap',
+            '.po-table-wrap',
+            '.table-wrap',
+            'table'
+        ];
+
+        for (var i = 0; i < preferredSelectors.length; i++) {
+            var candidate = document.querySelector(preferredSelectors[i]);
+            if (candidate && reportPdfVisible(candidate)) return candidate;
+        }
+        return null;
+    }
+
+    function printReportArea(rootSelector) {
+        var root = resolveReportPrintRoot(rootSelector);
+        if (!root) {
+            window.print();
+            return;
+        }
+
+        var existing = document.getElementById('report-print-root');
+        if (existing) existing.remove();
+
+        var printRoot = document.createElement('div');
+        printRoot.id = 'report-print-root';
+        printRoot.appendChild(root.cloneNode(true));
+        document.body.appendChild(printRoot);
+        document.body.classList.add('report-printing');
+
+        var cleanup = function() {
+            document.body.classList.remove('report-printing');
+            var node = document.getElementById('report-print-root');
+            if (node) node.remove();
+            window.removeEventListener('afterprint', cleanup);
+        };
+        window.addEventListener('afterprint', cleanup);
         window.print();
+        setTimeout(cleanup, 1200);
     }
 
     function setupTablePagination(tableId, selectId, paginationContainerId, defaultRows) {

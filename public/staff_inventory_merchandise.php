@@ -421,7 +421,7 @@ body.modal-open .main {
         <button type="button" onclick="exportTableToPDF('merchTable', 'Merchandise Inventory Report', 'merch_inventory_<?= date('Ymd') ?>')"
                 title="Export PDF"
                 class="exp-btn exp-btn-pdf">
-            <i class="fas fa-file-pdf"></i> PDF
+            <i class="fas fa-file-pdf"></i> Export PDF
         </button>
 
         <button type="button" onclick="printReportArea()"

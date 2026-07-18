@@ -711,7 +711,8 @@ function mpExport(type) {
 }
 
 function mpPrint() {
-    window.print();
+    const active = document.querySelector('.mp-panel.active') || document.querySelector('.mp-printable');
+    printReportArea(active);
 }
 </script>
 

@@ -782,7 +782,9 @@ function frExport(type) {
 
 // ── Print ─────────────────────────────────────────────────────────────────────
 function frPrint() {
-    window.print();
+    const wrap = document.querySelector('.rpt-printable');
+    const activePanel = wrap?.querySelector('.fr-section-panel.active') || wrap;
+    printReportArea(activePanel);
 }
 
 // Payments chart

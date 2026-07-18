@@ -631,7 +631,9 @@ function autoWidth(ws, aoa) {
 }
 
 function printReport() {
-    window.print();
+    const wrap = document.querySelector('.rpt-printable');
+    const activePanel = wrap?.querySelector('.sr-section-panel.active') || wrap;
+    printReportArea(activePanel);
 }
 </script>
 

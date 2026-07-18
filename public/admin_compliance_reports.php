@@ -644,7 +644,9 @@ function crExport(type) {
 }
 
 function crPrint() {
-    window.print();
+    const wrap = document.querySelector('.rpt-printable');
+    const activePanel = wrap?.querySelector('.cr-panel.active') || wrap;
+    printReportArea(activePanel);
 }
 </script>
 

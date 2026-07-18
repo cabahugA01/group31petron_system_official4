@@ -2472,7 +2472,7 @@ require_once __DIR__ . '/../partials/header.php';
     $card_btns = '<div class="card-actions">
         <a href="'.$_exp_url.'" class="btn-act btn-act-excel" title="Export Excel"><i class="fa-solid fa-file-excel"></i> Excel</a>
         <a href="'.$_csv_url.'" class="btn-act btn-act-csv"   title="Export CSV"><i class="fa-solid fa-file-csv"></i> CSV</a>
-        <button type="button" onclick="exportPrintableAreaToPDF(\'.stock-page\', \''.$_pdf_title_js.'\', \''.$_pdf_file_js.'\', this)" class="btn-act btn-act-pdf" title="Export PDF"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+        <button type="button" onclick="exportPrintableAreaToPDF(\'.stock-page\', \''.$_pdf_title_js.'\', \''.$_pdf_file_js.'\', this)" class="btn-act btn-act-pdf" title="Export PDF"><i class="fa-solid fa-file-pdf"></i> Export PDF</button>
         <button type="button" onclick="printReportArea()" class="btn-act btn-act-print" title="Print report"><i class="fa-solid fa-print"></i> Print</button>
     </div>';
     ?>

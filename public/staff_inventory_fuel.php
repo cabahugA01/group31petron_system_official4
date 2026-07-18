@@ -620,7 +620,7 @@ body, html { overflow-x: hidden !important; }
         <!-- Export Buttons -->
         <button onclick="exportTableToExcel('fuelTable', 'fuel_inventory_' + new Date().toISOString().slice(0,10) + '.xls')" class="flt-btn flt-btn-excel" style="height:36px;"><i class="fas fa-file-excel"></i> Excel</button>
         <button onclick="exportTableToCSV('fuelTable', 'fuel_inventory_' + new Date().toISOString().slice(0,10) + '.csv')" class="flt-btn flt-btn-csv" style="height:36px;"><i class="fas fa-file-csv"></i> CSV</button>
-        <button type="button" onclick="exportTableToPDF('fuelTable', 'Fuel Inventory Report', 'fuel_inventory_' + new Date().toISOString().slice(0,10), this)" class="flt-btn flt-btn-pdf" style="height:36px;"><i class="fas fa-file-pdf"></i> PDF</button>
+        <button type="button" onclick="exportTableToPDF('fuelTable', 'Fuel Inventory Report', 'fuel_inventory_' + new Date().toISOString().slice(0,10), this)" class="flt-btn flt-btn-pdf" style="height:36px;"><i class="fas fa-file-pdf"></i> Export PDF</button>
         <button type="button" onclick="printReportArea()" class="flt-btn flt-btn-print" style="height:36px;"><i class="fas fa-print"></i> Print</button>
     </div>
 </div>

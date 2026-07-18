@@ -968,7 +968,7 @@ require_once __DIR__ . '/../partials/header.php';
             </button>
             <!-- PDF -->
             <button type="button" onclick="exportPrintableAreaToPDF('.print-area', 'Staff Deliveries Report', 'staff_deliveries_report_<?= date('Ymd', strtotime($date_start)) ?>_<?= date('Ymd', strtotime($date_end)) ?>', this)" class="flt-btn flt-btn-pdf" title="Export PDF">
-                <i class="fas fa-file-pdf"></i> PDF
+                <i class="fas fa-file-pdf"></i> Export PDF
             </button>
             <!-- Print -->
             <button type="button" onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print report">

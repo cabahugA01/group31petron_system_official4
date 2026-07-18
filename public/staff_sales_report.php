@@ -789,7 +789,7 @@ require_once __DIR__ . '/../partials/header.php';
         
         <div>
             <a href="?date_start=<?= urlencode($date_start) ?>&date_end=<?= urlencode($date_end) ?>&export=excel" class="btn">Export Excel</a>
-            <button type="button" class="btn" onclick="exportPrintableAreaToPDF('.print-area', 'Staff Sales Report', 'staff_sales_report_<?= date('Ymd', strtotime($date_start)) ?>_<?= date('Ymd', strtotime($date_end)) ?>', this)">PDF</button>
+            <button type="button" class="btn" onclick="exportPrintableAreaToPDF('.print-area', 'Staff Sales Report', 'staff_sales_report_<?= date('Ymd', strtotime($date_start)) ?>_<?= date('Ymd', strtotime($date_end)) ?>', this)">Export PDF</button>
             <button type="button" class="btn" onclick="printReportArea()">Print</button>
         </div>
     </div>

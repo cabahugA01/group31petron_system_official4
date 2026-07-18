@@ -779,7 +779,8 @@ function prExport(type) {
 }
 
 function prPrint() {
-    window.print();
+    const active = document.querySelector('.pr-panel.active') || document.querySelector('.pr-printable');
+    printReportArea(active);
 }
 </script>
 

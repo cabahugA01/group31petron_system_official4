@@ -846,7 +846,9 @@ function exportCSV(tables, filename) {
 }
 
 function printReport() {
-    window.print();
+    const wrap = document.querySelector('.rpt-printable');
+    const activePanel = wrap?.querySelector('.fr-section-panel.active') || wrap;
+    printReportArea(activePanel);
 }
 </script>
 

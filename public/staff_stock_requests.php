@@ -1035,7 +1035,7 @@ function updateExportButtons(tab) {
             <i class="fas fa-file-csv"></i> CSV
         </button>
         <button onclick="exportTableToPDF('${tableId}', '${title}', '${filename}', this)" class="exp-btn exp-btn-pdf" style="height:36px;">
-            <i class="fas fa-file-pdf"></i> PDF
+            <i class="fas fa-file-pdf"></i> Export PDF
         </button>
         <button onclick="printReportArea()" class="exp-btn exp-btn-print" style="height:36px;">
             <i class="fas fa-print"></i> Print

@@ -2676,7 +2676,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         </button>
         <!-- PDF -->
         <button type="button" onclick="exportPrintableAreaToPDF('.print-area', 'Staff Sales Report', 'staff_sales_report_<?= date('Ymd', strtotime($report_date)) ?>', this)" class="flt-btn flt-btn-pdf" title="Export PDF">
-            <i class="fas fa-file-pdf"></i> PDF
+            <i class="fas fa-file-pdf"></i> Export PDF
         </button>
         <!-- Print -->
         <button type="button" onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print report">

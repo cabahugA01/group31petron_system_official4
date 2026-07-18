@@ -805,7 +805,7 @@ require_once __DIR__ . '/../partials/header.php';
                         </div>
                         <div style="display:flex; gap:8px; margin-left:auto;">
                             <button class="btn-export-pdf" onclick="exportHistory('pdf')"><i class="fas fa-file-pdf"></i> Export PDF</button>
-                            <button class="btn-export-csv" onclick="printReportArea()"><i class="fas fa-print"></i> Print</button>
+                            <button class="btn-export-csv" onclick="printReportArea(document.getElementById('history-tbody')?.closest('table'))"><i class="fas fa-print"></i> Print</button>
                             <button class="btn-export-excel" onclick="exportHistory('excel')"><i class="fas fa-file-excel"></i> Excel</button>
                             <button class="btn-export-csv" onclick="exportHistory('csv')"><i class="fas fa-file-csv"></i> CSV</button>
                         </div>

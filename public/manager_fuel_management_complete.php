@@ -2099,7 +2099,8 @@ html, body {
         </div>
         <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
             <button onclick="exportCSV()" class="flt-btn flt-btn-excel" style="font-size:12px;"><i class="fas fa-file-csv"></i> CSV</button>
-            <button onclick="exportPDF()" class="flt-btn flt-btn-pdf" style="font-size:12px;"><i class="fas fa-file-pdf"></i> PDF</button>
+            <button onclick="exportPDF()" class="flt-btn flt-btn-pdf" style="font-size:12px;"><i class="fas fa-file-pdf"></i> Export PDF</button>
+            <button onclick="printReportArea()" class="flt-btn flt-btn-print" style="font-size:12px;"><i class="fas fa-print"></i> Print</button>
         </div>
     </div>
 
@@ -5179,9 +5180,15 @@ function exportCSV() {
     a.click();
 }
 
-// Simple PDF export (using print)
 function exportPDF() {
-    window.print();
+    const visibleSection = document.querySelector('.fuel-section.visible') || document.querySelector('#fuel-transactions');
+    const title = document.getElementById('mfm-page-title')?.innerText?.trim() || 'Fuel Management Report';
+    exportPrintableAreaToPDF(
+        visibleSection,
+        title,
+        'manager_fuel_management_' + new Date().toISOString().slice(0, 10),
+        document.activeElement
+    );
 }
 
 </script>
