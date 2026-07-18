@@ -627,11 +627,6 @@ include __DIR__ . '/../partials/header.php';
         <h1 class="h1"><i class="fas fa-check-double"></i> All Transactions</h1>
         <div class="sub">View and monitor all transactions encoded by staff across operational shifts.</div>
     </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <a href="?<?=http_build_query(array_merge($_GET,['export'=>'excel']))?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
-        <a href="?<?=http_build_query(array_merge($_GET,['export'=>'csv']))?>"   class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</a>
-        <a href="?<?=http_build_query(array_merge($_GET,['export'=>'pdf']))?>"   class="flt-btn flt-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
-    </div>
 </div>
 
 <?php

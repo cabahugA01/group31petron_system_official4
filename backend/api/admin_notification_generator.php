@@ -55,7 +55,7 @@ $generated = 0;
 try {
     $redirect_fixes = [
         '/public/admin_transactions_oversight.php' => '/public/admin_all_transactions.php',
-        '/public/purchase_orders.php'             => '/public/admin_purchase_orders.php',
+        '/public/purchase_orders.php'             => '/public/admin_procurement_reports.php?section=po',
         '/public/inventory.php'                   => '/public/admin_inventory_merchandise.php',
     ];
     $fix_stmt = $pdo->prepare("UPDATE notifications SET redirect_url=? WHERE user_id=? AND redirect_url=?");
@@ -185,7 +185,7 @@ if ($pending_po > 0) {
         'event_type'  => 'delivery',
         'severity'    => 'medium',
         'source_key'  => "pending_po_{$station_id}",
-        'redirect_url'=> '/public/admin_purchase_orders.php',
+        'redirect_url'=> '/public/admin_procurement_reports.php?section=po',
     ]);
 }
 

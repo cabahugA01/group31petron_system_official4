@@ -418,10 +418,16 @@ body.modal-open .main {
             <i class="fas fa-file-csv"></i> CSV
         </button>
         
-        <button onclick="window.open('staff_inventory_merchandise_export.php', '_blank')"
-                title="Export to PDF / Print"
+        <button type="button" onclick="exportTableToPDF('merchTable', 'Merchandise Inventory Report', 'merch_inventory_<?= date('Ymd') ?>')"
+                title="Export PDF"
                 class="exp-btn exp-btn-pdf">
             <i class="fas fa-file-pdf"></i> PDF
+        </button>
+
+        <button type="button" onclick="printReportArea()"
+                title="Print"
+                class="exp-btn exp-btn-print">
+            <i class="fas fa-print"></i> Print
         </button>
         
         <style>
@@ -464,6 +470,14 @@ body.modal-open .main {
         }
         .exp-btn-pdf:hover {
             background: #dc2626 !important;
+            color: #fff !important;
+        }
+        .exp-btn-print {
+            color: #002F70 !important;
+            border-color: #002F70 !important;
+        }
+        .exp-btn-print:hover {
+            background: #002F70 !important;
             color: #fff !important;
         }
         </style>

@@ -443,7 +443,7 @@ if (in_array($export, ['csv','excel','pdf'])) {
         td{padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:9px;}
         tr:nth-child(even) td{background:#f8fafc}
         </style></head><body>';
-        echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer">🖨 Print / Save PDF</button>
+        echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer">Print</button>
         <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none">← Back</a></div>';
         echo '<div class="hdr"><h1>Fuel Transaction Oversight</h1><p>Period: '.htmlspecialchars($date_from).' — '.htmlspecialchars($date_to).' | Station: '.htmlspecialchars($station_name).' | Records: '.count($transactions).'</p></div>';
         echo '<table><thead><tr>
@@ -475,6 +475,8 @@ require_once __DIR__ . '/../partials/header.php';
 .ato-btn-csv:hover    { background:#003d7a !important; color:#fff !important; }
 .ato-btn-pdf    { color:#dc2626 !important; border-color:#dc2626 !important; }
 .ato-btn-pdf:hover    { background:#dc2626 !important; color:#fff !important; }
+.ato-btn-print  { color:#334155 !important; border-color:#64748b !important; }
+.ato-btn-print:hover  { background:#64748b !important; color:#fff !important; }
 .ato-btn-back   { color:#4b5563 !important; border-color:#6b7280 !important; }
 .ato-btn-back:hover   { background:#6b7280 !important; color:#fff !important; }
 .ato-btn-filter { color:#002F70 !important; border-color:#002F70 !important; }
@@ -658,7 +660,8 @@ require_once __DIR__ . '/../partials/header.php';
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <button type="button" onclick="aftoExport('excel')" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
         <button type="button" onclick="aftoExport('csv')"   class="ato-btn ato-btn-csv"><i class="fas fa-file-csv"></i> CSV</button>
-        <button type="button" onclick="aftoExport('pdf')"   class="ato-btn ato-btn-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
+        <button type="button" onclick="aftoExport('pdf')"   class="ato-btn ato-btn-pdf"><i class="fas fa-file-pdf"></i> Export PDF</button>
+        <button type="button" onclick="printReportArea()" class="ato-btn ato-btn-print"><i class="fas fa-print"></i> Print</button>
     </div>
 </div>
 
@@ -1185,6 +1188,19 @@ function printSingleTxn(id) {
 })();
 
 function aftoExport(format) {
+    if (format === 'pdf') {
+        const rows = Array.from(document.querySelectorAll('.afto-tbl tbody tr'));
+        const originalDisplay = rows.map(row => row.style.display);
+        rows.forEach(row => { row.style.display = ''; });
+        exportPrintableAreaToPDF(
+            '.afto-table-card',
+            'Fuel Transaction Oversight',
+            'admin_fuel_transactions_<?= htmlspecialchars($date_from) ?>_to_<?= htmlspecialchars($date_to) ?>',
+            document.activeElement
+        );
+        rows.forEach((row, index) => { row.style.display = originalDisplay[index]; });
+        return;
+    }
     const params = new URLSearchParams(window.location.search);
     params.set('export', format);
     window.location.href = '?' + params.toString();

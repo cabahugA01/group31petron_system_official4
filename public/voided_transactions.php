@@ -308,11 +308,11 @@ require_once __DIR__ . '/../partials/header.php';
     margin-bottom: 18px;
 }
 .txn-kpi-card {
-    background: #fff;
+    background: transparent;
     border: 1px solid #e2e8f0;
     border-radius: 10px;
     padding: 14px 16px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, .05);
+    box-shadow: none;
     transition: transform .15s, box-shadow .15s;
 }
 .txn-kpi-card:hover {
@@ -339,14 +339,14 @@ require_once __DIR__ . '/../partials/header.php';
 
 /* Special Gradient Card for Total Amount */
 .txn-kpi-card.total-amount-card {
-    background: linear-gradient(135deg, #002F70 0%, #003d8a 100%);
-    border-left: none;
+    background: transparent;
+    border-left: 1px solid #e2e8f0;
 }
 .txn-kpi-card.total-amount-card .txn-kpi-lbl {
-    color: #93c5fd;
+    color: #64748b;
 }
 .txn-kpi-card.total-amount-card .txn-kpi-val {
-    color: #fff;
+    color: #002F70;
 }
 
 /* == FILTERS == */
@@ -463,10 +463,6 @@ require_once __DIR__ . '/../partials/header.php';
 <div class="card" style="margin-top:0;">
     <div class="card-head">
         <div class="card-title">Voided Transactions History (<?php echo count($voided); ?>)</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <a href="?export=excel&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
-            <a href="?export=csv&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>" class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</a>
-        </div>
     </div>
     <div style="width:100%;overflow:hidden;">
     <table class="void-table">

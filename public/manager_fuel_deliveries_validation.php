@@ -325,7 +325,7 @@ if (in_array($export, ['excel', 'pdf'])) {
         td{padding:5px;border-bottom:1px solid #e2e8f0;font-size:8px;}
         tr:nth-child(even) td{background:#f8fafc}
         </style></head><body>';
-        echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;font-weight:bold;">🖨 Print / Save PDF</button>
+        echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;font-weight:bold;">Print</button>
         <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none;font-weight:bold;">← Back</a></div>';
         echo '<div class="hdr"><div><h1>Petron Fuel Deliveries Oversight</h1><p style="margin:2px 0 0;color:#666;">Period: ' . htmlspecialchars($date_from) . ' — ' . htmlspecialchars($date_to) . ' | Station: ' . htmlspecialchars(user_station_name()) . '</p></div><div style="text-align:right;"><p style="margin:0;">Generated: ' . $generated . '</p></div></div>';
         echo '<table><thead><tr><th>Del ID</th><th>Date</th><th>Batch ID</th><th>DR Number</th><th>Tanker No</th><th>Fuel Type</th><th>Tank</th><th>Liters</th><th>Staff</th><th>Status</th><th>Val Date</th><th>Remarks</th></tr></thead>';
@@ -362,6 +362,8 @@ html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !impor
 .ato-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
 .ato-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
 .ato-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
+.ato-btn-print  { color: #334155 !important; border-color: #64748b !important; }
+.ato-btn-print:hover  { background: #64748b !important; color: #fff !important; }
 .ato-btn-back   { color: #4b5563 !important; border-color: #6b7280 !important; }
 .ato-btn-back:hover   { background: #6b7280 !important; color: #fff !important; }
 .ato-btn-filter { color: #002F70 !important; border-color: #002F70 !important; }
@@ -467,7 +469,8 @@ html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !impor
         </div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
             <button type="button" onclick="mftvExport('excel')" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
-            <button type="button" onclick="mftvExport('pdf')" class="ato-btn ato-btn-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
+            <button type="button" onclick="mftvExport('pdf')" class="ato-btn ato-btn-pdf"><i class="fas fa-file-pdf"></i> Export PDF</button>
+            <button type="button" onclick="printReportArea()" class="ato-btn ato-btn-print"><i class="fas fa-print"></i> Print</button>
         </div>
     </div>
 
@@ -913,6 +916,19 @@ window.onclick = function(event) {
 
 // Export Helper
 function mftvExport(format) {
+    if (format === 'pdf') {
+        const rows = Array.from(document.querySelectorAll('.afto-tbl tbody tr'));
+        const originalDisplay = rows.map(row => row.style.display);
+        rows.forEach(row => { row.style.display = ''; });
+        exportPrintableAreaToPDF(
+            '.afto-table-card',
+            'Manager Fuel Deliveries Validation',
+            'manager_fuel_deliveries_' + new Date().toISOString().slice(0, 10),
+            document.activeElement
+        );
+        rows.forEach((row, index) => { row.style.display = originalDisplay[index]; });
+        return;
+    }
     const params = new URLSearchParams(window.location.search);
     params.set('export', format);
     window.location.href = '?' + params.toString();

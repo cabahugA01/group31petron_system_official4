@@ -364,10 +364,11 @@ require_once __DIR__ . '/../partials/header.php';
 .mp-export-btn:nth-child(1){color:#16a34a !important;border-color:#16a34a !important;}
 .mp-export-btn:nth-child(2){color:#2563eb !important;border-color:#2563eb !important;}
 .mp-export-btn:nth-child(3){color:#dc2626 !important;border-color:#dc2626 !important;}
-.mp-tabs{display:flex;border-bottom:2px solid #e2e8f0;overflow-x:auto;background:#f8f9fa;}
-.mp-tab{padding:13px 18px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#64748b;background:#f8f9fa;border:none;border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;}
-.mp-tab:hover{background:#fff;color:#00264D;}
-.mp-tab.active{background:#fff;color:#00264D;border-bottom-color:#002F70;font-weight:800;}
+.mp-export-btn:nth-child(4){color:#002F70 !important;border-color:#002F70 !important;}
+.mp-tabs{display:flex;border-bottom:2px solid #e2e8f0;overflow-x:auto;background:#00264D;}
+.mp-tab{padding:13px 18px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#ffffff !important;background:transparent;border:none;border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;}
+.mp-tab:hover{background:rgba(255,255,255,0.15);color:#ffffff !important;}
+.mp-tab.active{background:#ffffff;color:#00264D !important;border-bottom-color:#002F70;font-weight:800;}
 .mp-content{padding:24px;}
 .mp-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:10px;margin-bottom:20px;}
 .mp-card{border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;padding:12px;}
@@ -455,7 +456,8 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="mp-export-actions">
             <button type="button" class="mp-export-btn" onclick="mpExport('excel')"><i class="fas fa-file-excel"></i> Excel</button>
             <button type="button" class="mp-export-btn" onclick="mpExport('csv')"><i class="fas fa-file-csv"></i> CSV</button>
-            <button type="button" class="mp-export-btn" onclick="mpPrint()"><i class="fas fa-file-pdf"></i> PDF</button>
+            <button type="button" class="mp-export-btn" onclick="mpExport('pdf')"><i class="fas fa-file-pdf"></i> Export PDF</button>
+            <button type="button" class="mp-export-btn" onclick="mpPrint()"><i class="fas fa-print"></i> Print</button>
         </div>
     </form>
 
@@ -657,10 +659,6 @@ function mpTableToAoA(table) {
 }
 
 function mpExport(type) {
-    if (typeof XLSX === 'undefined') {
-        alert('Export library not loaded. Please refresh the page and try again.');
-        return;
-    }
     const active = document.querySelector('.mp-panel.active');
     const table = active ? active.querySelector('table.mp-tbl') : null;
     if (!table) {
@@ -671,6 +669,17 @@ function mpExport(type) {
     const dateFrom = document.querySelector('input[name="date_from"]')?.value || '';
     const dateTo = document.querySelector('input[name="date_to"]')?.value || '';
     const filename = `Manager_Procurement_Report_${section}_${dateFrom}_${dateTo}`;
+
+    if (type === 'pdf') {
+        exportPrintableAreaToPDF(active, 'Manager Procurement Report', filename, document.activeElement);
+        return;
+    }
+
+    if (typeof XLSX === 'undefined') {
+        alert('Export library not loaded. Please refresh the page and try again.');
+        return;
+    }
+
     const aoa = mpTableToAoA(table);
 
     if (type === 'csv') {
@@ -702,54 +711,7 @@ function mpExport(type) {
 }
 
 function mpPrint() {
-    const active = document.querySelector('.mp-panel.active');
-    if (!active) {
-        window.print();
-        return;
-    }
-
-    const frame = document.createElement('iframe');
-    frame.style.position = 'fixed';
-    frame.style.right = '0';
-    frame.style.bottom = '0';
-    frame.style.width = '0';
-    frame.style.height = '0';
-    frame.style.border = '0';
-    frame.setAttribute('aria-hidden', 'true');
-    document.body.appendChild(frame);
-
-    const doc = frame.contentWindow.document;
-    doc.open();
-    doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Manager Procurement Report</title>
-    <style>
-        @page{size:legal landscape;margin:.3in .4in;}
-        *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
-        body{font-family:Arial,sans-serif;font-size:10px;color:#000;background:white;margin:0;padding:0;}
-        .mp-rpt-header{text-align:center;padding:12px 0 8px;border-bottom:2px solid #000;margin-bottom:12px;}
-        .rh-title{font-size:16px;font-weight:800;text-transform:uppercase;margin-bottom:3px;}
-        .rh-sub{font-size:12px;font-weight:700;text-transform:uppercase;margin-bottom:6px;}
-        .rh-station,.rh-date{font-size:10px;color:#444;}
-        .mp-table-wrap{overflow:visible;}
-        table{width:100%;border-collapse:collapse;table-layout:auto;font-size:8.6px;}
-        thead{display:table-header-group;}
-        tfoot{display:table-footer-group;}
-        thead tr{background:#f0f0f0 !important;border-top:2px solid #000;border-bottom:1px solid #999;}
-        th,td{padding:4px;text-align:left;white-space:normal;word-break:break-word;}
-        th{font-weight:700;text-transform:uppercase;}
-        tbody tr{border-bottom:1px solid #ddd;}
-        tfoot tr{border-top:2px solid #000;background:#f0f0f0 !important;font-weight:700;}
-        .mp-badge{padding:1px 5px;border-radius:3px;font-size:8px;font-weight:700;}
-        .mp-mono{font-family:Consolas,Monaco,monospace;font-weight:700;}
-    </style></head><body>${active.innerHTML}</body></html>`);
-    doc.close();
-
-    const cleanup = () => setTimeout(() => frame.remove(), 1000);
-    frame.contentWindow.onafterprint = cleanup;
-    setTimeout(() => {
-        frame.contentWindow.focus();
-        frame.contentWindow.print();
-        cleanup();
-    }, 300);
+    window.print();
 }
 </script>
 

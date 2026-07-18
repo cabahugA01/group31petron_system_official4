@@ -380,7 +380,7 @@ if (in_array($export, ['csv','excel','pdf'])) {
         td{padding:4px 6px;border-bottom:1px solid #e2e8f0;word-break:break-all}
         tr:nth-child(even) td{background:#f8fafc}
         </style></head><body>';
-        echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer">🖨 Print / Save PDF</button>
+        echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer">Print</button>
         <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none">← Back</a></div>';
         echo '<div class="hdr"><h1>Fuel Deliveries Oversight</h1><p>Period: '.htmlspecialchars($date_from).' — '.htmlspecialchars($date_to).' | Station: '.htmlspecialchars($station_name).' | Records: '.count($deliveries).'</p></div>';
         echo '<table><thead><tr><th>ID</th><th>Date</th><th>Batch ID</th><th>Station</th><th>Fuel Type</th><th>Tank</th><th>Supplier</th><th>DR #</th><th>Liters</th><th>Tanker #</th><th>Status</th><th>Receiver</th><th>Verifier</th><th>Verified At</th></tr></thead>';
@@ -410,6 +410,8 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 .ato-btn-csv:hover    { background:#003d7a !important; color:#fff !important; }
 .ato-btn-pdf    { color:#dc2626 !important; border-color:#dc2626 !important; }
 .ato-btn-pdf:hover    { background:#dc2626 !important; color:#fff !important; }
+.ato-btn-print  { color:#334155 !important; border-color:#64748b !important; }
+.ato-btn-print:hover  { background:#64748b !important; color:#fff !important; }
 .ato-btn-back   { color:#4b5563 !important; border-color:#6b7280 !important; }
 .ato-btn-back:hover   { background:#6b7280 !important; color:#fff !important; }
 .ato-btn-filter { color:#002F70 !important; border-color:#002F70 !important; }
@@ -494,7 +496,8 @@ html, body { max-width:100vw; overflow-x:hidden; }
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <a href="?<?= http_build_query(array_merge($_GET,['export'=>'excel'])) ?>" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
         <a href="?<?= http_build_query(array_merge($_GET,['export'=>'csv'])) ?>"   class="ato-btn ato-btn-csv"><i class="fas fa-file-csv"></i> CSV</a>
-        <a href="?<?= http_build_query(array_merge($_GET,['export'=>'pdf'])) ?>"   class="ato-btn ato-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
+        <button type="button" onclick="exportFuelDeliveriesPdf()" class="ato-btn ato-btn-pdf"><i class="fas fa-file-pdf"></i> Export PDF</button>
+        <button type="button" onclick="printReportArea()" class="ato-btn ato-btn-print"><i class="fas fa-print"></i> Print</button>
     </div>
 </div>
 
@@ -706,6 +709,19 @@ html, body { max-width:100vw; overflow-x:hidden; }
 </div>
 
 <script>
+function exportFuelDeliveriesPdf() {
+    const rows = Array.from(document.querySelectorAll('.afdo-tbl tbody tr'));
+    const originalDisplay = rows.map(row => row.style.display);
+    rows.forEach(row => { row.style.display = ''; });
+    exportPrintableAreaToPDF(
+        '.afdo-table-card',
+        'Fuel Deliveries Oversight',
+        'admin_fuel_deliveries_<?= htmlspecialchars($date_from) ?>_to_<?= htmlspecialchars($date_to) ?>',
+        document.activeElement
+    );
+    rows.forEach((row, index) => { row.style.display = originalDisplay[index]; });
+}
+
 // Pagination functionality
 (function() {
     const table = document.querySelector('.afdo-tbl tbody');

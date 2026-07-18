@@ -204,7 +204,8 @@ require_once __DIR__ . '/../partials/header.php';
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <a href="admin_all_transactions.php" class="flt-btn flt-btn-reset"><i class="fas fa-arrow-left"></i> Back</a>
         <a href="?<?=http_build_query(array_merge($_GET,['export'=>'excel']))?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
-        <button class="flt-btn flt-btn-pdf" onclick="window.print()"><i class="fas fa-file-pdf"></i> PDF</button>
+        <button class="flt-btn flt-btn-pdf" onclick="exportPrintableAreaToPDF('.card','Voided Transactions Oversight','voided_transactions_<?=htmlspecialchars($date_from ?: 'all')?>_to_<?=htmlspecialchars($date_to ?: 'all')?>',this)"><i class="fas fa-file-pdf"></i> Export PDF</button>
+        <button class="flt-btn flt-btn-print" onclick="printReportArea()"><i class="fas fa-print"></i> Print</button>
     </div>
 </div>
 

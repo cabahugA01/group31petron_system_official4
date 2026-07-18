@@ -208,7 +208,8 @@ require_once __DIR__ . '/../partials/header.php';
         <a href="admin_dashboard.php" class="flt-btn flt-btn-reset"><i class="fas fa-arrow-left"></i> Back</a>
         <a href="?date_from=<?=urlencode($date_from)?>&date_to=<?=urlencode($date_to)?>&export=excel" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
         <a href="?date_from=<?=urlencode($date_from)?>&date_to=<?=urlencode($date_to)?>&export=csv"   class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</a>
-        <button class="flt-btn flt-btn-pdf" onclick="window.print()"><i class="fas fa-file-pdf"></i> PDF</button>
+        <button class="flt-btn flt-btn-pdf" onclick="exportPrintableAreaToPDF('.card','Transaction Overview','transaction_overview_<?=htmlspecialchars($date_from)?>_to_<?=htmlspecialchars($date_to)?>',this)"><i class="fas fa-file-pdf"></i> Export PDF</button>
+        <button class="flt-btn flt-btn-print" onclick="printReportArea()"><i class="fas fa-print"></i> Print</button>
     </div>
 </div>
 

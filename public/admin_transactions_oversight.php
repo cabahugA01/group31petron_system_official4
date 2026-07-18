@@ -916,7 +916,7 @@ if ($export_type === 'pdf') {
     echo '</style></head><body>';
     echo '<div class="action-bar">';
     echo '  <h2>&#128438; Transactions Oversight Report</h2>';
-    echo '  <a href="javascript:window.print()" class="btn-print">&#128438; Print / Save as PDF</a>';
+    echo '  <a href="javascript:window.print()" class="btn-print">&#128438; Print</a>';
     echo '  <a href="javascript:void(0)" onclick="window.history.length>1?window.history.back():window.close()" class="btn-back">&#8592; Back</a>';
     echo '</div>';
     echo '<div class="report">';
@@ -987,7 +987,10 @@ include __DIR__ . '/../partials/header.php';
         </button>
         <!-- PDF -->
         <button type="button" onclick="atoExport('pdf')" class="ato-btn ato-btn-pdf">
-            <i class="fas fa-file-pdf"></i> PDF
+            <i class="fas fa-file-pdf"></i> Export PDF
+        </button>
+        <button type="button" onclick="printReportArea()" class="ato-btn ato-btn-print">
+            <i class="fas fa-print"></i> Print
         </button>
         <a href="<?= in_array($role, ['admin', 'superadmin']) ? 'admin_dashboard.php' : 'manager_dashboard.php'; ?>" class="ato-btn ato-btn-back">
             <i class="fas fa-arrow-left"></i> Back
@@ -1455,6 +1458,8 @@ include __DIR__ . '/../partials/header.php';
 .ato-btn-csv:hover    { background:#003d7a !important; color:#fff !important; }
 .ato-btn-pdf    { color:#dc2626 !important; border-color:#dc2626 !important; }
 .ato-btn-pdf:hover    { background:#dc2626 !important; color:#fff !important; }
+.ato-btn-print  { color:#334155 !important; border-color:#64748b !important; }
+.ato-btn-print:hover  { background:#64748b !important; color:#fff !important; }
 .ato-btn-back   { color:#4b5563 !important; border-color:#6b7280 !important; }
 .ato-btn-back:hover   { background:#6b7280 !important; color:#fff !important; }
 
@@ -1950,65 +1955,7 @@ function atoExport(format) {
         a.click();
         setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
     } else if (format === 'pdf') {
-        const logo_url  = '../assets/img/Petron%20Logo.png';
-        const generated = new Date().toLocaleString();
-        
-        // Construct printable HTML table
-        let tableHtml = table.outerHTML;
-        
-        let iframe = document.getElementById('print-iframe');
-        if (!iframe) {
-            iframe = document.createElement('iframe');
-            iframe.id = 'print-iframe';
-            iframe.style.position = 'fixed';
-            iframe.style.right = '0';
-            iframe.style.bottom = '0';
-            iframe.style.width = '0';
-            iframe.style.height = '0';
-            iframe.style.border = '0';
-            document.body.appendChild(iframe);
-        }
-
-        const doc = iframe.contentDocument || iframe.contentWindow.document;
-        doc.open();
-        doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Transactions Oversight Report</title>
-        <style>
-            @page{size:legal landscape;margin:.3in .4in;}
-            *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
-            body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:20px;}
-            .header-container{display:flex;align-items:center;gap:15px;border-bottom:2px solid #002F70;padding-bottom:12px;margin-bottom:15px;}
-            .header-container img{height:45px;}
-            .header-title h1{font-size:16px;margin:0;color:#002F70;text-transform:uppercase;}
-            .header-title p{font-size:10px;margin:3px 0 0;color:#666;}
-            .meta-info{margin-left:auto;text-align:right;font-size:10px;color:#444;}
-            table{width:100%;border-collapse:collapse;font-size:9.5px;}
-            thead tr{background:#f2f2f2 !important;border-top:2px solid #002F70;border-bottom:1px solid #999;}
-            thead th{padding:6px 5px;text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;color:#000;}
-            tbody tr{border-bottom:1px solid #ddd;}
-            tbody td{padding:5px;color:#333;}
-            .ato-badge, .badge, .status-badge{border:none;background:none;padding:0;font-weight:normal;}
-            tfoot tr{border-top:2px solid #002F70;background:#f2f2f2 !important;}
-            tfoot td{padding:6px 5px;font-weight:700;}
-        </style></head><body>
-            <div class="header-container">
-                <img src="${logo_url}" alt="Petron">
-                <div class="header-title">
-                    <h1>Petron Station Management System</h1>
-                    <p>Transactions Oversight Report</p>
-                </div>
-                <div class="meta-info">
-                    Date Range: ${dateFrom || 'All'} to ${dateTo || 'All'}<br>
-                    Generated: ${generated}
-                </div>
-            </div>
-            ${tableHtml}
-        </body></html>`);
-        doc.close();
-
-        setTimeout(() => {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-        }, 250);
+        exportPrintableAreaToPDF(table, 'Transactions Oversight Report', filename, document.activeElement);
     }
 }
 </script>

@@ -549,7 +549,7 @@ if (in_array($export, ['excel', 'pdf'])) {
         </head>
         <body onload="window.print()">
             <div class="no-print" style="margin-bottom: 15px; text-align: center;">
-                <button onclick="window.print()" style="padding: 6px 12px; cursor: pointer; font-weight: bold;">Print PDF</button>
+                <button onclick="window.print()" style="padding: 6px 12px; cursor: pointer; font-weight: bold;">Print</button>
                 <button onclick="window.close()" style="padding: 6px 12px; cursor: pointer; margin-left: 5px;">Close Window</button>
             </div>
             
@@ -760,6 +760,8 @@ include __DIR__ . '/../partials/header.php';
 .pmo-btn-export:hover { background: #16a34a !important; color: #ffffff !important; }
 .pmo-btn-pdf { color: #dc2626 !important; border-color: #dc2626 !important; }
 .pmo-btn-pdf:hover { background: #dc2626 !important; color: #ffffff !important; }
+.pmo-btn-print { color: #334155 !important; border-color: #64748b !important; }
+.pmo-btn-print:hover { background: #64748b !important; color: #ffffff !important; }
 .pmo-btn-reset { color: #4b5563 !important; border-color: #9ca3af !important; }
 .pmo-btn-reset:hover { background: #6b7280 !important; color: #ffffff !important; }
 
@@ -1024,12 +1026,8 @@ include __DIR__ . '/../partials/header.php';
             <?php endif; endforeach; ?>
             <button type="submit" name="export" value="excel" class="pmo-btn pmo-btn-export"><i class="fas fa-file-excel"></i> Excel</button>
         </form>
-        <form method="post" style="display: inline;">
-            <?php foreach ($_GET as $k => $v): if ($k !== 'export'): ?>
-                <input type="hidden" name="<?= htmlspecialchars($k) ?>" value="<?= htmlspecialchars($v) ?>">
-            <?php endif; endforeach; ?>
-            <button type="submit" name="export" value="pdf" class="pmo-btn pmo-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</button>
-        </form>
+        <button type="button" onclick="exportPrintableAreaToPDF('.tbl-card','Calibration Oversight','pump_calibration_<?= htmlspecialchars($date_from) ?>_to_<?= htmlspecialchars($date_to) ?>',this)" class="pmo-btn pmo-btn-pdf"><i class="fas fa-file-pdf"></i> Export PDF</button>
+        <button type="button" onclick="printReportArea()" class="pmo-btn pmo-btn-print"><i class="fas fa-print"></i> Print</button>
     </div>
 </div>
 

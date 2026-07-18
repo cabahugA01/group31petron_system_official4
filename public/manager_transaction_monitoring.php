@@ -663,10 +663,6 @@ require_once __DIR__ . '/../partials/header.php';
 <div id="tab_history" class="card" style="margin-top:20px;">
     <div class="card-head">
         <div class="card-title">Adjustment History (<?php echo count($adjustments); ?>)</div>
-        <div style="display:flex;gap:8px;">
-            <a href="?export=excel&table=adjustments&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>&type=<?php echo urlencode($filter_type); ?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
-            <a href="?export=csv&table=adjustments&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&staff=<?php echo urlencode($filter_staff); ?>&type=<?php echo urlencode($filter_type); ?>" class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</a>
-        </div>
     </div>
     <div class="card-table-wrap">
     <table class="t-compact">

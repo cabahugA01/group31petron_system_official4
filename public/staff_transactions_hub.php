@@ -1015,7 +1015,7 @@ if ($section === 'history' || $section === 'fuel_history') {
         echo '</style></head><body>';
         echo '<div class="action-bar">';
         echo '  <h2>Staff Transactions Report</h2>';
-        echo '  <button onclick="window.print()" class="btn-print">Print / Save as PDF</button>';
+        echo '  <button onclick="window.print()" class="btn-print">Print</button>';
         echo '  <button onclick="window.close()" class="btn-back">Close</button>';
         echo '</div>';
         echo '<div class="report">';
@@ -1141,7 +1141,7 @@ if ($section === 'history' || $section === 'fuel_history') {
         echo '</style></head><body>';
         echo '<div class="action-bar">';
         echo '  <h2>Staff Fuel Transactions Report</h2>';
-        echo '  <button onclick="window.print()" class="btn-print">Print / Save as PDF</button>';
+        echo '  <button onclick="window.print()" class="btn-print">Print</button>';
         echo '  <button onclick="window.close()" class="btn-back">Close</button>';
         echo '</div>';
         echo '<div class="report">';
@@ -4410,20 +4410,6 @@ input[list] {
             </button>
             <?php endforeach; ?>
 
-            <!-- Export buttons — right side of tab row -->
-            <div id="trackerExportButtons" style="display:<?= $active_tab === 'tracker' ? 'flex' : 'none' ?>;gap:8px;align-items:center;margin-left:auto;">
-                <a href="../backend/export_staff_transactions.php?type=job_orders&format=excel"
-                   class="txn-btn success"
-                   style="font-size:12px;padding:7px 14px;">
-                    <i class="fas fa-file-excel"></i> Excel
-                </a>
-                <a href="../backend/export_staff_transactions.php?type=job_orders&format=csv"
-                   class="txn-btn primary"
-                   style="font-size:12px;padding:7px 14px;">
-                    <i class="fas fa-file-csv"></i> CSV
-                </a>
-            </div>
-
         </div>
 
 
@@ -4780,18 +4766,6 @@ input[list] {
                             </button>
                         </div>
                         <div id="merchHistoryHeaderButtons" style="display: <?= $mh_open ? 'flex' : 'none' ?>; gap:8px; align-items:center; margin-left:auto;">
-                            <a href="../backend/export_staff_transactions.php?type=merchandise&format=excel"
-                               title="Export to Excel"
-                               class="txn-btn success"
-                               style="font-size:12px;padding:7px 14px;">
-                                <i class="fas fa-file-excel"></i> Excel
-                            </a>
-                            <a href="../backend/export_staff_transactions.php?type=merchandise&format=csv"
-                               title="Export to CSV"
-                               class="txn-btn primary"
-                               style="font-size:12px;padding:7px 14px;">
-                                <i class="fas fa-file-csv"></i> CSV
-                            </a>
                             <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise"
                                title="Back to Merchandise Form"
                                class="txn-btn secondary"
@@ -9916,7 +9890,8 @@ input[list] {
                 </button>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
                     <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'excel'])) ?>" class="txn-btn success" style="text-decoration:none;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-file-excel"></i> Excel</a>
-                    <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'pdf'])) ?>" target="_blank" class="txn-btn danger" style="text-decoration:none;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-file-pdf"></i> PDF</a>
+                    <button type="button" onclick="exportTableToPDF('fuelHistoryTable', 'Fuel Transaction History Report', 'fuel_transaction_history_<?= date('Ymd') ?>', this)" class="txn-btn danger" style="text-decoration:none;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-file-pdf"></i> PDF</button>
+                    <button type="button" onclick="printReportArea()" class="txn-btn primary" style="text-decoration:none;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-print"></i> Print</button>
                     <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'csv'])) ?>" class="txn-btn primary" style="text-decoration:none;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-file-csv"></i> CSV</a>
                 </div>
             </div>
@@ -9935,7 +9910,7 @@ input[list] {
                 </div>
                 <?php else: ?>
                 <div style="overflow-x:hidden;">
-                <table class="txn-table" style="width:100%; table-layout:fixed; word-wrap:break-word;">
+                <table class="txn-table" id="fuelHistoryTable" style="width:100%; table-layout:fixed; word-wrap:break-word;">
                     <thead>
                         <tr>
                             <th>Txn ID</th>

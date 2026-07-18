@@ -246,7 +246,7 @@ header('Content-Type: text/html; charset=utf-8');
 </head>
 <body onload="window.print()">
 <div class="no-print">
-    <button onclick="window.print()" class="btn">Print / Save as PDF</button>
+    <button onclick="window.print()" class="btn">Print</button>
     <button onclick="window.close()" class="btn" style="background:#64748b;margin-left:8px;">Close</button>
 </div>
 <div class="hdr">

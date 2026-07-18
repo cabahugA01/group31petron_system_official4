@@ -14,7 +14,7 @@ if (!$me) {
 }
 
 $role = role_key($me['role'] ?? '');
-if (!in_array($role, ['manager', 'admin', 'superadmin', 'developer'], true)) {
+if (!in_array($role, ['manager', 'superadmin', 'developer'], true)) {
     stock_in_json(['success' => false, 'message' => 'Access denied'], 403);
 }
 

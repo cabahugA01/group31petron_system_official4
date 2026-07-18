@@ -365,6 +365,8 @@ require_once __DIR__ . '/../partials/header.php';
 .fr-export-btn:nth-child(2):hover { background:#dbeafe !important; border-color:#1e3a8a !important; color:#1e40af !important; }
 .fr-export-btn:nth-child(3) { color:#dc2626 !important; border-color:#dc2626 !important; }
 .fr-export-btn:nth-child(3):hover { background:#fef2f2 !important; border-color:#b91c1c !important; color:#dc2626 !important; }
+.fr-export-btn:nth-child(4) { color:#334155 !important; border-color:#64748b !important; }
+.fr-export-btn:nth-child(4):hover { background:#f8fafc !important; border-color:#334155 !important; color:#334155 !important; }
 .fr-tabs { display:flex; border-bottom:2px solid #e2e8f0; overflow:hidden; }
 .fr-tab { padding:13px 20px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; color:#64748b; background:#f8f9fa; border:none; border-bottom:3px solid transparent; cursor:pointer; white-space:nowrap; transition:all .2s; }
 .fr-tab:hover { background:#fff; color:#00264D; }
@@ -453,8 +455,11 @@ require_once __DIR__ . '/../partials/header.php';
             <button type="button" class="fr-export-btn" onclick="frExport('csv')">
                 <i class="fas fa-file-csv"></i> CSV
             </button>
+            <button type="button" class="fr-export-btn" onclick="frExport('pdf')">
+                <i class="fas fa-file-pdf"></i> Export PDF
+            </button>
             <button type="button" class="fr-export-btn" onclick="frPrint()">
-                <i class="fas fa-file-pdf"></i> PDF
+                <i class="fas fa-print"></i> Print
             </button>
         </div>
     </form>
@@ -726,6 +731,16 @@ function frExport(type) {
     const dateTo   = document.querySelector('input[name="date_to"]')?.value || '';
     const filename = `Finance_Report_${section}_${dateFrom}_${dateTo}`;
 
+    if (type === 'pdf') {
+        exportPrintableAreaToPDF(activePanel, 'Admin Finance Report', filename, document.activeElement);
+        return;
+    }
+
+    if (type === 'excel' && typeof XLSX === 'undefined') {
+        alert('Export library not loaded. Please refresh the page and try again.');
+        return;
+    }
+
     const tables = activePanel.querySelectorAll('table.fr-tbl');
     if (!tables.length) { alert('No table data to export.'); return; }
 
@@ -767,41 +782,7 @@ function frExport(type) {
 
 // ── Print ─────────────────────────────────────────────────────────────────────
 function frPrint() {
-    const wrap   = document.querySelector('.rpt-printable');
-    const active = wrap?.querySelector('.fr-section-panel.active') || wrap;
-    if (!active) { window.print(); return; }
-    const w = window.open('', '_blank', 'width=900,height=700');
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Finance Report</title>
-    <style>
-        @page{size:legal portrait;margin:.3in .4in;}
-        *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
-        body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:0;}
-        .fr-tabs,.fr-filter-bar,.fr-export-actions,.fr-chart-wrap{display:none !important;}
-        .fr-section-panel{display:block !important;overflow:visible !important;}
-        .fr-rpt-header{text-align:center;padding:12px 0 8px;border-bottom:2px solid #000;margin-bottom:12px;}
-        .rh-title{font-size:16px;font-weight:800;text-transform:uppercase;margin-bottom:3px;}
-        .rh-sub{font-size:13px;font-weight:700;text-transform:uppercase;margin-bottom:6px;}
-        .rh-station,.rh-date{font-size:11px;color:#444;}
-        .fr-rpt-header,.fr-sub-heading{break-after:avoid;page-break-after:avoid;}
-        .fr-sub-heading{font-size:12px;font-weight:700;text-transform:uppercase;padding:6px 0;border-bottom:1px solid #ccc;margin:16px 0 8px;}
-        table{width:100%;max-width:100%;border-collapse:collapse;table-layout:auto;font-size:9.2px;break-inside:auto;page-break-inside:auto;}
-        thead{display:table-header-group;}
-        tfoot{display:table-footer-group;}
-        thead tr{background:#f0f0f0 !important;border-top:2px solid #000;border-bottom:1px solid #999;}
-        thead th{padding:5px;text-align:left;font-weight:700;font-size:8.6px;text-transform:uppercase;white-space:normal;word-break:break-word;}
-        tr{break-inside:avoid;page-break-inside:avoid;}
-        tbody tr{border-bottom:1px solid #ddd;}
-        tbody td{padding:5px;white-space:normal;word-break:break-word;}
-        tfoot tr{border-top:2px solid #000;background:#f0f0f0 !important;}
-        tfoot td{padding:6px 5px;font-weight:700;white-space:normal;word-break:break-word;}
-        .fr-empty{text-align:center;padding:12px;color:#888;font-style:italic;break-inside:avoid;page-break-inside:avoid;}
-        .fr-badge{padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700;}
-        .badge-paid{background:#dcfce7;color:#16a34a;}
-        .badge-unpaid{background:#fee2e2;color:#dc2626;}
-    </style></head><body>${active.innerHTML}</body></html>`);
-    w.document.close();
-    w.focus();
-    setTimeout(() => { w.print(); w.close(); }, 400);
+    window.print();
 }
 
 // Payments chart

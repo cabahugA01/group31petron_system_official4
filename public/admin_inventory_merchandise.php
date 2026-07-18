@@ -794,8 +794,11 @@ require_once __DIR__ . '/../partials/header.php';
         <button onclick="exportTableToCSV('adminMerchTable','admin_merch_inventory_<?= date('Ymd') ?>.csv')" class="flt-btn flt-btn-csv" title="Export to CSV">
             <i class="fas fa-file-csv"></i> CSV
         </button>
-        <button onclick="exportTableToPDF('adminMerchTable','Merchandise Inventory Oversight')" class="flt-btn flt-btn-pdf" title="Export to PDF">
-            <i class="fas fa-file-pdf"></i> PDF
+        <button onclick="exportTableToPDF('adminMerchTable','Merchandise Inventory Oversight','admin_merch_inventory_<?= date('Ymd') ?>')" class="flt-btn flt-btn-pdf" title="Export PDF">
+            <i class="fas fa-file-pdf"></i> Export PDF
+        </button>
+        <button onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print">
+            <i class="fas fa-print"></i> Print
         </button>
     </div>
 </div>

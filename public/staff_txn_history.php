@@ -52,7 +52,8 @@
     </button>
     <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
       <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'excel'])) ?>" class="txn-btn success" style="text-decoration:none; display:inline-flex; align-items:center; gap:5px;"><i class="fas fa-file-excel"></i> Excel</a>
-      <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'pdf'])) ?>" target="_blank" class="txn-btn danger" style="text-decoration:none; display:inline-flex; align-items:center; gap:5px;"><i class="fas fa-file-pdf"></i> PDF</a>
+      <button type="button" onclick="exportTableToPDF('histTbl', 'Transaction History Report', 'transaction_history_<?= date('Ymd') ?>', this)" class="txn-btn danger" style="text-decoration:none; display:inline-flex; align-items:center; gap:5px;"><i class="fas fa-file-pdf"></i> PDF</button>
+      <button type="button" onclick="printReportArea()" class="txn-btn primary" style="text-decoration:none; display:inline-flex; align-items:center; gap:5px;"><i class="fas fa-print"></i> Print</button>
       <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'csv'])) ?>" class="txn-btn primary" style="text-decoration:none; display:inline-flex; align-items:center; gap:5px;"><i class="fas fa-file-csv"></i> CSV</a>
     </div>
   </div>

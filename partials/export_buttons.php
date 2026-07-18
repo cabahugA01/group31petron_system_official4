@@ -95,9 +95,16 @@ $export_default_rows     = $export_default_rows     ?? 25;
 
   <!-- PDF -->
   <button onclick="exportTableToPDF('<?= htmlspecialchars($export_table_id) ?>','<?= htmlspecialchars($export_title) ?>')"
-          title="Export to PDF / Print"
+          title="Export PDF"
           class="exp-btn exp-btn-pdf">
-    <i class="fas fa-file-pdf"></i> PDF
+    <i class="fas fa-file-pdf"></i> Export PDF
+  </button>
+
+  <!-- Print -->
+  <button onclick="printReportArea()"
+          title="Print"
+          class="exp-btn exp-btn-print">
+    <i class="fas fa-print"></i> Print
   </button>
 
   <?php if ($export_back_url): ?>

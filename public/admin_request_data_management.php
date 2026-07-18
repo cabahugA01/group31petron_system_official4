@@ -211,8 +211,11 @@ require_once __DIR__ . '/../partials/header.php';
         <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'csv'])) ?>" class="flt-btn flt-btn-csv">
             <i class="fas fa-file-csv"></i> CSV
         </a>
-        <button onclick="window.print()" class="flt-btn flt-btn-pdf">
-            <i class="fas fa-file-pdf"></i> PDF
+        <button onclick="exportPrintableAreaToPDF('.t','Master Data Oversight','master_data_oversight_<?= htmlspecialchars($f_date_from ?: 'all') ?>_to_<?= htmlspecialchars($f_date_to ?: 'all') ?>',this)" class="flt-btn flt-btn-pdf">
+            <i class="fas fa-file-pdf"></i> Export PDF
+        </button>
+        <button onclick="printReportArea()" class="flt-btn flt-btn-print">
+            <i class="fas fa-print"></i> Print
         </button>
     </div>
 </div>

@@ -315,6 +315,21 @@
         outline: none !important;
         box-shadow: none !important;
     }
+
+    .flt-btn-print,
+    .exp-btn-print,
+    .btn-act-print {
+        color: #002F70 !important;
+        border-color: #002F70 !important;
+        background: #ffffff !important;
+    }
+
+    .flt-btn-print:hover,
+    .exp-btn-print:hover,
+    .btn-act-print:hover {
+        background: #002F70 !important;
+        color: #ffffff !important;
+    }
 </style>
 
   <!-- TOGGLE SCROLL BUTTON — injected into body by JS to avoid fixed-in-overflow-container bug -->
@@ -593,49 +608,190 @@
         document.body.removeChild(link);
     }
 
-    function exportTableToPDF(tableId, title) {
-        var table = document.getElementById(tableId);
-        if (!table) return;
-        
-        var win = window.open('', '', 'height=700,width=900');
-        win.document.write('<html><head><title>' + (title || 'Export') + '</title>');
-        win.document.write('<style>');
-        win.document.write('body { font-family: sans-serif; padding: 20px; color: #333; }');
-        win.document.write('h1 { color: #002F6C; font-size: 20px; margin-bottom: 20px; text-align: center; }');
-        win.document.write('table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }');
-        win.document.write('th { background-color: #002F6C; color: #fff; text-align: left; padding: 8px; font-weight: bold; text-transform: uppercase; }');
-        win.document.write('td { border-bottom: 1px solid #ddd; padding: 8px; }');
-        win.document.write('tr:nth-child(even) { background-color: #f9f9f9; }');
-        win.document.write('.badge, .sbadge { font-weight: bold; text-transform: uppercase; font-size: 9px; padding: 2px 6px; border-radius: 4px; display: inline-block; }');
-        win.document.write('.no-print { display: none !important; }');
-        win.document.write('</style></head><body>');
-        win.document.write('<h1>' + (title || 'Petron Inventory Report') + '</h1>');
-        win.document.write('<p style="text-align:center;font-size:11px;color:#666;">Generated on: ' + new Date().toLocaleString() + '</p>');
-        
-        var clone = table.cloneNode(true);
-        var headers = clone.querySelectorAll('thead th');
-        var skipIdx = -1;
-        headers.forEach(function(th, idx) {
-            if (th.textContent.trim().toLowerCase() === 'actions' || th.textContent.trim() === '') {
-                skipIdx = idx;
-                th.classList.add('no-print');
+    function reportPdfEndpoint() {
+        var path = window.location.pathname || '';
+        var base = path.substring(0, path.lastIndexOf('/') + 1);
+        if (/\/reports\/$/i.test(base)) {
+            base = base.replace(/\/reports\/$/i, '/');
+        }
+        return base + 'report_pdf_download.php';
+    }
+
+    function reportPdfText(node) {
+        if (!node) return '';
+        return (node.innerText || node.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function reportPdfFilename(value) {
+        var name = (value || 'report').toString().trim().replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
+        if (!name) name = 'report';
+        if (!/\.pdf$/i.test(name)) name += '.pdf';
+        return name;
+    }
+
+    function reportPdfVisible(el) {
+        if (!el) return false;
+        var current = el;
+        while (current && current.nodeType === 1) {
+            if (current.classList && (current.classList.contains('search-hidden') || current.classList.contains('no-print'))) return false;
+            var style = window.getComputedStyle ? window.getComputedStyle(current) : null;
+            if (style && (style.display === 'none' || style.visibility === 'hidden')) return false;
+            current = current.parentElement;
+        }
+        return true;
+    }
+
+    function reportPdfRowExportable(row) {
+        if (!row || !row.classList) return true;
+        if (row.classList.contains('search-hidden') || row.classList.contains('no-print') || row.classList.contains('no-export')) return false;
+        if (row.classList.contains('hist-expand-row') || row.classList.contains('detail-row')) return false;
+        return true;
+    }
+
+    function reportPdfSectionTitle(table, root, fallback) {
+        var current = table;
+        while (current && current !== root) {
+            var prev = current.previousElementSibling;
+            while (prev) {
+                if (prev.matches && prev.matches('.section-title,h1,h2,h3,h4')) {
+                    var direct = reportPdfText(prev);
+                    if (direct) return direct;
+                }
+                var nested = prev.querySelector ? prev.querySelector('.section-title,h1,h2,h3,h4') : null;
+                var nestedText = reportPdfText(nested);
+                if (nestedText) return nestedText;
+                prev = prev.previousElementSibling;
+            }
+            current = current.parentElement;
+        }
+        return fallback || 'Report Data';
+    }
+
+    function reportPdfTableSection(table, root, fallbackTitle) {
+        var headerCells = table.querySelectorAll('thead th');
+        if (!headerCells.length) {
+            headerCells = table.querySelectorAll('tr:first-child th, tr:first-child td');
+        }
+
+        var skip = {};
+        var headers = [];
+        Array.prototype.forEach.call(headerCells, function(cell, idx) {
+            var text = reportPdfText(cell);
+            if (!text || /^actions?$/i.test(text)) {
+                skip[idx] = true;
+                return;
+            }
+            headers.push(text);
+        });
+
+        var rows = [];
+        var rowNodes = table.querySelectorAll('tbody tr');
+        if (!rowNodes.length) rowNodes = table.querySelectorAll('tr');
+        Array.prototype.forEach.call(rowNodes, function(row, rowIndex) {
+            if (!reportPdfRowExportable(row)) return;
+            if (!table.querySelector('tbody') && rowIndex === 0 && headerCells.length) return;
+            var cells = row.querySelectorAll('td,th');
+            if (!cells.length) return;
+            var data = [];
+            Array.prototype.forEach.call(cells, function(cell, idx) {
+                if (skip[idx]) return;
+                var text = reportPdfText(cell);
+                if (text) data.push(text);
+            });
+            if (data.length) rows.push(data);
+        });
+
+        return {
+            title: reportPdfSectionTitle(table, root, fallbackTitle),
+            headers: headers,
+            rows: rows
+        };
+    }
+
+    function collectReportPdfPayload(rootSelector, title, filename) {
+        var root = typeof rootSelector === 'string' ? document.querySelector(rootSelector) : rootSelector;
+        if (!root) {
+            alert('No report content found to export.');
+            return null;
+        }
+
+        var reportTitle = title || reportPdfText(root.querySelector('h1')) || document.title || 'Report';
+        var meta = [];
+        Array.prototype.forEach.call(root.querySelectorAll('.header p, .report-meta, .summary-card, .summary-item'), function(node) {
+            var text = reportPdfText(node);
+            if (text && meta.indexOf(text) === -1) meta.push(text);
+        });
+
+        var tables = root.tagName && root.tagName.toLowerCase() === 'table' ? [root] : root.querySelectorAll('table');
+        var sections = [];
+        Array.prototype.forEach.call(tables, function(table) {
+            if (!reportPdfVisible(table)) return;
+            var section = reportPdfTableSection(table, root, reportTitle);
+            if ((section.headers && section.headers.length) || (section.rows && section.rows.length)) {
+                sections.push(section);
             }
         });
-        if (skipIdx !== -1) {
-            clone.querySelectorAll('tbody tr').forEach(function(tr) {
-                var tds = tr.querySelectorAll('td');
-                if (tds[skipIdx]) tds[skipIdx].classList.add('no-print');
-            });
+
+        return {
+            title: reportTitle,
+            filename: reportPdfFilename(filename || reportTitle + '_' + new Date().toISOString().slice(0, 10)),
+            meta: meta,
+            sections: sections
+        };
+    }
+
+    function downloadReportPdf(payload, trigger) {
+        if (!payload) return;
+        var btn = trigger && trigger.tagName ? trigger : null;
+        var original = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
         }
-        
-        win.document.write(clone.outerHTML);
-        win.document.write('</body></html>');
-        win.document.close();
-        
-        // Wait a tiny bit for the content to render in the popup window before printing
-        setTimeout(function() {
-            win.print();
-        }, 300);
+
+        fetch(reportPdfEndpoint(), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).then(function(response) {
+            if (!response.ok) {
+                return response.text().then(function(text) {
+                    throw new Error(text || 'PDF export failed.');
+                });
+            }
+            return response.blob();
+        }).then(function(blob) {
+            var url = URL.createObjectURL(blob);
+            var link = document.createElement('a');
+            link.href = url;
+            link.download = reportPdfFilename(payload.filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+        }).catch(function(error) {
+            alert('Unable to export PDF. Please try again.\n' + (error && error.message ? error.message : ''));
+        }).finally(function() {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
+        });
+    }
+
+    function exportPrintableAreaToPDF(rootSelector, title, filename, trigger) {
+        downloadReportPdf(collectReportPdfPayload(rootSelector, title, filename), trigger || document.activeElement);
+    }
+
+    function exportTableToPDF(tableId, title, filename) {
+        var table = document.getElementById(tableId);
+        if (!table) return;
+        downloadReportPdf(collectReportPdfPayload(table, title || 'Report', filename || tableId + '_' + new Date().toISOString().slice(0, 10)), document.activeElement);
+    }
+
+    function printReportArea() {
+        window.print();
     }
 
     function setupTablePagination(tableId, selectId, paginationContainerId, defaultRows) {

@@ -764,8 +764,12 @@ require_once __DIR__ . '/../partials/header.php';
             <i class="fas fa-file-csv"></i> CSV
         </a>
         <!-- PDF -->
-        <button onclick="window.print()" class="flt-btn flt-btn-pdf" title="Print / Export PDF">
+        <button type="button" onclick="exportPrintableAreaToPDF('.print-area', 'Staff Activity Report', 'staff_activity_report_<?= date('Ymd', strtotime($date_start)) ?>_<?= date('Ymd', strtotime($date_end)) ?>', this)" class="flt-btn flt-btn-pdf" title="Export PDF">
             <i class="fas fa-file-pdf"></i> PDF
+        </button>
+        <!-- Print -->
+        <button type="button" onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print report">
+            <i class="fas fa-print"></i> Print
         </button>
     </div>
 </div>

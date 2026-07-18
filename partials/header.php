@@ -2923,7 +2923,7 @@ require_once __DIR__ . '/rbac_menu.php';
               "SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id=? AND staff_id=? AND status='Pending'",
               [$myStationId, $__uid]
           );
-          $__badge_add('inv_history', $__staff_stock_requests);
+          $__badge_add('staff_stock_requests', $__staff_stock_requests);
 
           $__pending_customers = $__badge_count(
               "SELECT COUNT(*) FROM customers
@@ -3528,7 +3528,7 @@ require_once __DIR__ . '/rbac_menu.php';
   // live pending/action counts and stay visible until items are resolved.
   $badge_page_map = [
       // STAFF pages
-      'staff_stock_requests'                      => ['inv_stock_request'],
+      'staff_stock_requests'                      => ['staff_stock_requests'],
       'staff_fuel_deliveries_history'             => ['staff_fuel_del_history'],
       'staff_delivery_history'                    => ['staff_delivery_history'],
       'staff_transactions_hub'                    => ['staff_new_transaction'],
@@ -3580,7 +3580,7 @@ require_once __DIR__ . '/rbac_menu.php';
       // Map: filename base (without .php) → badge module keys to mark seen
       var navBadgeMap = {
           // Staff
-          'staff_stock_requests':               ['inv_stock_request'],
+          'staff_stock_requests':               ['staff_stock_requests'],
           'staff_fuel_deliveries_history':      ['staff_fuel_del_history'],
           'staff_delivery_history':             ['staff_delivery_history'],
           'staff_transactions_hub':             ['staff_new_transaction'],

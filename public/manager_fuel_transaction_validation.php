@@ -698,6 +698,8 @@ html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !impor
 .ato-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
 .ato-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
 .ato-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
+.ato-btn-print  { color: #334155 !important; border-color: #64748b !important; }
+.ato-btn-print:hover  { background: #64748b !important; color: #fff !important; }
 .ato-btn-back   { color: #4b5563 !important; border-color: #6b7280 !important; }
 .ato-btn-back:hover   { background: #6b7280 !important; color: #fff !important; }
 .ato-btn-filter { color: #002F70 !important; border-color: #002F70 !important; }
@@ -833,7 +835,8 @@ input[type="checkbox"]:indeterminate {
         </div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
             <button type="button" onclick="mftvExport('excel')" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
-            <button type="button" onclick="mftvExport('pdf')" class="ato-btn ato-btn-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
+            <button type="button" onclick="mftvExport('pdf')" class="ato-btn ato-btn-pdf"><i class="fas fa-file-pdf"></i> Export PDF</button>
+            <button type="button" onclick="printReportArea()" class="ato-btn ato-btn-print"><i class="fas fa-print"></i> Print</button>
         </div>
     </div>
 
@@ -1495,6 +1498,19 @@ window.onclick = function(event) {
 
 // Export Helper
 function mftvExport(format) {
+    if (format === 'pdf') {
+        const rows = Array.from(document.querySelectorAll('.afto-tbl tbody tr'));
+        const originalDisplay = rows.map(row => row.style.display);
+        rows.forEach(row => { row.style.display = ''; });
+        exportPrintableAreaToPDF(
+            '.afto-table-card',
+            'Manager Fuel Transaction Validation',
+            'manager_fuel_transactions_' + new Date().toISOString().slice(0, 10),
+            document.activeElement
+        );
+        rows.forEach((row, index) => { row.style.display = originalDisplay[index]; });
+        return;
+    }
     const params = new URLSearchParams(window.location.search);
     params.set('export', format);
     window.location.href = '?' + params.toString();

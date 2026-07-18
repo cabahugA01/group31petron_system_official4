@@ -603,7 +603,7 @@ if (in_array($export, ['excel', 'pdf'])) {
         td{padding:5px;border-bottom:1px solid #e2e8f0;font-size:8px;}
         tr:nth-child(even) td{background:#f8fafc}
         </style></head><body>';
-        echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;font-weight:bold;">🖨 Print / Save PDF</button>
+        echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;font-weight:bold;">Print</button>
         <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none;font-weight:bold;">← Back</a></div>';
         echo '<div class="hdr"><div><h1>Calibration Review</h1><p style="margin:2px 0 0;color:#666;">Date: ' . htmlspecialchars($date_filter) . ' | Station: ' . htmlspecialchars(user_station_name()) . '</p></div></div>';
         echo '<table><thead><tr>';
@@ -663,6 +663,8 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 .ato-btn-excel:hover { background: #1d6f42 !important; color: #fff !important; }
 .ato-btn-pdf { color: #dc2626 !important; border-color: #dc2626 !important; }
 .ato-btn-pdf:hover { background: #dc2626 !important; color: #fff !important; }
+.ato-btn-print { color: #334155 !important; border-color: #64748b !important; }
+.ato-btn-print:hover { background: #64748b !important; color: #fff !important; }
 .ato-btn-back { color: #4b5563 !important; border-color: #cbd5e1 !important; }
 .ato-btn-back:hover { background: #cbd5e1 !important; }
 .ato-btn-filter { color: #002F70 !important; border-color: #002F70 !important; }
@@ -727,7 +729,8 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
         </div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'excel'])) ?>" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
-            <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'pdf'])) ?>" class="ato-btn ato-btn-pdf" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
+            <button type="button" onclick="exportPrintableAreaToPDF('.mcr-table-card','Manager Calibration Review','manager_calibration_review_<?= htmlspecialchars($date_from) ?>_to_<?= htmlspecialchars($date_to) ?>',this)" class="ato-btn ato-btn-pdf"><i class="fas fa-file-pdf"></i> Export PDF</button>
+            <button type="button" onclick="printReportArea()" class="ato-btn ato-btn-print"><i class="fas fa-print"></i> Print</button>
         </div>
     </div>
 

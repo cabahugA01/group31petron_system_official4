@@ -14,7 +14,7 @@ $station_id = (int)user_station_id();
 $role       = role_key($me['role'] ?? '');
 
 // Access control
-if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
+if (!in_array($role, ['manager', 'superadmin', 'developer'], true)) {
     $_SESSION['error'] = 'Access denied. Manager access required.';
     header('Location: dashboard.php');
     exit;

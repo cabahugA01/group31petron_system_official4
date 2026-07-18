@@ -456,7 +456,7 @@ if ($format === 'pdf') {
     .empty{color:#9ca3af;font-style:italic;padding:12px;}
     @media print{body{margin:10px;} .no-print{display:none;}}
     </style></head><body onload="window.print()">';
-    echo '<div class="no-print" style="margin-bottom:16px;"><button onclick="window.print()" style="background:#00264D;color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:13px;">Print / Save as PDF</button>&nbsp;<a href="javascript:history.back()" style="color:#00264D;font-size:13px;">Back</a></div>';
+    echo '<div class="no-print" style="margin-bottom:16px;"><button onclick="window.print()" style="background:#00264D;color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:13px;">Print</button>&nbsp;<a href="javascript:history.back()" style="color:#00264D;font-size:13px;">Back</a></div>';
     echo '<h1>'.htmlspecialchars($section_label).'</h1>';
     echo '<div class="sub">'.htmlspecialchars($station_name).' &nbsp;|&nbsp; Period: '.$period_label.'</div>';
     foreach ($datasets as $ds) {

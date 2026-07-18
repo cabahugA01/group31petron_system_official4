@@ -8,12 +8,17 @@ $me         = current_user();
 $role       = role_key($me['role'] ?? '');
 $station_id = (int)user_station_id();
 
+if ($role === 'admin') {
+    header('Location: admin_procurement_reports.php?section=po');
+    exit;
+}
+
 // ── Module gate ───────────────────────────────────────────────
 if (!in_array($role, ['superadmin', 'developer']) && !is_module_enabled('inventory')) {
     render_module_disabled_page('Inventory');
 }
 
-if (!in_array($role, ['admin','superadmin'])) {
+if (!in_array($role, ['superadmin', 'developer'], true)) {
     header('Location: dashboard.php'); exit;
 }
 if ($station_id <= 0 && $role === 'admin') {

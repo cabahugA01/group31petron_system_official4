@@ -618,8 +618,11 @@ require_once __DIR__ . '/../partials/header.php';
         <a href="?export=excel&date_start=<?= urlencode($date_start) ?>&date_end=<?= urlencode($date_end) ?>" class="btn">
             Export Excel
         </a>
-        <button class="btn" onclick="window.print()">
-            Print Report
+        <button type="button" class="btn" onclick="exportPrintableAreaToPDF('.print-area', 'Staff Job Orders Report', 'staff_job_orders_report_<?= date('Ymd', strtotime($date_start)) ?>_<?= date('Ymd', strtotime($date_end)) ?>', this)">
+            PDF
+        </button>
+        <button type="button" class="btn" onclick="printReportArea()">
+            Print
         </button>
     </div>
 </div>

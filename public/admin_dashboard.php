@@ -464,7 +464,7 @@ if (adm_table_exists($pdo, 'purchase_orders')) {
                 COALESCE(status, 'Pending') AS status,
                 expected_delivery_date AS delivery_date,
                 created_at,
-                'admin_purchase_orders.php' AS action_url,
+                'admin_procurement_reports.php?section=po' AS action_url,
                 'purchase_order' AS source
          FROM purchase_orders
          WHERE {$station_sql}
@@ -794,7 +794,7 @@ if (adm_table_exists($pdo, 'purchase_orders')) {
                 po.status,
                 po.created_at,
                 'Merchandise' AS type,
-                'admin_purchase_orders.php' AS action_url
+                'admin_procurement_reports.php?section=po' AS action_url
          FROM purchase_orders po
          LEFT JOIN users u ON u.id = po.created_by
          WHERE " . adm_station_clause($station_id, 'po') . "
@@ -817,7 +817,7 @@ if (adm_table_exists($pdo, 'fuel_purchase_orders')) {
                 fpo.status,
                 fpo.created_at,
                 'Fuel' AS type,
-                'admin_purchase_orders.php' AS action_url
+                'admin_procurement_reports.php?section=po' AS action_url
          FROM fuel_purchase_orders fpo
          LEFT JOIN fuel_types ft ON ft.id = fpo.fuel_type_id
          LEFT JOIN users u ON u.id = fpo.created_by
@@ -883,7 +883,7 @@ if (adm_table_exists($pdo, 'purchase_orders')) {
                 COALESCE(product_name, 'Merchandise Products') AS product,
                 status,
                 created_at,
-                'admin_purchase_orders.php' AS action_url
+                'admin_procurement_reports.php?section=po' AS action_url
          FROM purchase_orders
          WHERE {$station_sql}
            AND (delivery_validated = 1 OR stock_in_done = 1 OR LOWER(COALESCE(status, '')) IN ('received', 'confirmed', 'admin finalized', 'approved po'))
@@ -1951,7 +1951,7 @@ include __DIR__ . '/../partials/header.php';
         <article class="admin-panel">
             <div class="panel-head">
                 <h3 class="panel-title"><i class="fas fa-clipboard-list"></i>Pending Inventory Adjustments</h3>
-                <a class="tiny-btn" href="admin_purchase_orders.php">Purchase Orders</a>
+                <a class="tiny-btn" href="admin_procurement_reports.php?section=po">Purchase Orders</a>
             </div>
             <div class="panel-body">
                 <?php if (!$pending_inventory_adjustments): ?>

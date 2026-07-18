@@ -828,8 +828,11 @@ include __DIR__ . '/../partials/header.php';
         <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'csv'])) ?>" class="flt-btn flt-btn-csv" title="Export to CSV">
             <i class="fas fa-file-csv"></i> CSV
         </a>
-        <button class="flt-btn flt-btn-pdf" onclick="printInventoryHistory()" title="Export to PDF">
-            <i class="fas fa-file-pdf"></i> PDF
+        <button class="flt-btn flt-btn-pdf" onclick="exportInventoryHistoryPdf()" title="Export PDF">
+            <i class="fas fa-file-pdf"></i> Export PDF
+        </button>
+        <button class="flt-btn flt-btn-print" onclick="printInventoryHistory()" title="Print">
+            <i class="fas fa-print"></i> Print
         </button>
     </div>
 </div>
@@ -1180,42 +1183,16 @@ function viewPO(poNo, type) {
         });
 }
 
-function printInventoryHistory() {
+function exportInventoryHistoryPdf() {
     const activeTab = '<?= $active_tab ?>';
     const startDate = '<?= htmlspecialchars($start_date) ?>';
     const endDate = '<?= htmlspecialchars($end_date) ?>';
-    const search = '<?= htmlspecialchars($search) ?>';
-    const refNo = '<?= htmlspecialchars($ref_no) ?>';
-    const status = '<?= htmlspecialchars($status) ?>';
-    
-    let url = 'admin_inventory_history.php?print=1&tab=' + activeTab;
-    url += '&start=' + encodeURIComponent(startDate);
-    url += '&end=' + encodeURIComponent(endDate);
-    if (search) url += '&search=' + encodeURIComponent(search);
-    if (refNo) url += '&ref_no=' + encodeURIComponent(refNo);
-    if (status) url += '&status=' + encodeURIComponent(status);
-    
-    let iframe = document.getElementById('printFrame');
-    if (!iframe) {
-        iframe = document.createElement('iframe');
-        iframe.id = 'printFrame';
-        iframe.style.position = 'absolute';
-        iframe.style.width = '0';
-        iframe.style.height = '0';
-        iframe.style.border = 'none';
-        iframe.style.visibility = 'hidden';
-        document.body.appendChild(iframe);
-    }
-    
-    iframe.onload = function() {
-        try {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-        } catch (e) {
-            window.open(url, '_blank');
-        }
-    };
-    iframe.src = url;
+    const filename = `admin_inventory_history_${activeTab}_${startDate}_to_${endDate}`;
+    exportPrintableAreaToPDF('.po-table-wrap', 'Inventory History Oversight', filename, document.activeElement);
+}
+
+function printInventoryHistory() {
+    window.print();
 }
 
 document.querySelectorAll('.modal-overlay').forEach(modal => {

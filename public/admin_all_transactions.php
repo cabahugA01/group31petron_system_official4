@@ -30,6 +30,9 @@ $mt_stat = aat_has($mt_cols,'validation_status') ? 'mt.validation_status' : "'Ap
 $mt_shift = "CASE WHEN LOWER(TRIM(COALESCE(mt.shift_period, mt.shift_name, u.assigned_shift, u.shift_assignment, ''))) IN ('first', 'shift 1', 'shift1') THEN 'Shift 1' WHEN LOWER(TRIM(COALESCE(mt.shift_period, mt.shift_name, u.assigned_shift, u.shift_assignment, ''))) IN ('second', 'shift 2', 'shift2') THEN 'Shift 2' ELSE COALESCE(NULLIF(TRIM(mt.shift_period),''), NULLIF(TRIM(mt.shift_name),''), NULLIF(TRIM(u.assigned_shift),''), NULLIF(TRIM(u.shift_assignment),''), 'N/A') END";
 $mt_pay   = aat_has($mt_cols,'payment_method') ? "COALESCE(mt.payment_method,'Cash')" : "'Cash'";
 $mt_pstat = aat_has($mt_cols,'payment_status') ? "COALESCE(mt.payment_status,'')" : "''";
+$void_reason_col = aat_has($mt_cols,'void_reason') ? 'mt.void_reason' : 'NULL';
+$adj_reason_col = aat_has($mt_cols,'adjustment_reason') ? 'mt.adjustment_reason' : 'NULL';
+$mgr_remarks_col = aat_has($mt_cols,'manager_remarks') ? 'mt.manager_remarks' : 'NULL';
 
 // ── Filters ───────────────────────────────────────────────────────────────────
 // DEFAULT: Show last 365 days (1 year) to ensure we catch all historical staff transactions
@@ -39,7 +42,7 @@ $f_shift    = trim($_GET['shift']           ?? '');
 $f_staff    = trim($_GET['staff']           ?? '');
 $f_type     = trim($_GET['type']            ?? '');
 $f_pay      = trim($_GET['payment_method']  ?? '');
-$f_pstatus  = trim($_GET['payment_status']  ?? '');
+$f_status   = trim($_GET['status']          ?? '');
 $search     = trim($_GET['search']          ?? '');
 
 // ── Fetch staff list ──────────────────────────────────────────────────────────
@@ -75,9 +78,16 @@ $shift_col = aat_has($mt_cols,'shift_period') ? 'mt.shift_period' : (aat_has($mt
 if($f_shift!=='' && $shift_col) { $where.=" AND COALESCE($shift_col,'')=?"; $params[]=$f_shift; }
 if($f_staff!=='') { $where.=" AND mt.staff_id=?"; $params[]=$f_staff; }
 if($f_type==='merchandise') { $where.=" AND COALESCE(mt.transaction_type,'merchandise')='merchandise'"; }
-elseif($f_type==='job_order') { $where.=" AND COALESCE(mt.transaction_type,'merchandise') IN ('job_order','combined')"; }
+elseif($f_type==='job_order') { $where.=" AND COALESCE(mt.transaction_type,'merchandise')='job_order'"; }
+elseif($f_type==='combined') { $where.=" AND COALESCE(mt.transaction_type,'merchandise')='combined'"; }
 if($f_pay!=='') { $where.=" AND LOWER(TRIM($mt_pay))=LOWER(?)"; $params[]=$f_pay; }
-if($f_pstatus!=='') { $where.=" AND LOWER(TRIM($mt_pstat))=LOWER(?)"; $params[]=$f_pstatus; }
+if($f_status==='Completed') {
+    $where.=" AND (COALESCE($mt_stat, '') NOT IN ('Voided', 'Adjusted'))";
+} elseif($f_status==='Voided') {
+    $where.=" AND ($mt_stat='Voided')";
+} elseif($f_status==='Adjusted') {
+    $where.=" AND ($mt_stat='Adjusted')";
+}
 
 // ── KPIs ──────────────────────────────────────────────────────────────────────
 $today = date('Y-m-d');
@@ -110,6 +120,10 @@ try {
         mt.total_amount as amount, $mt_pay as payment_method,
         $mt_shift as shift, $staff_col as staff_name,
         $mt_pstat as payment_status, $mt_date as txn_date,
+        $mt_stat as validation_status,
+        $void_reason_col as void_reason,
+        $adj_reason_col as adjustment_reason,
+        $mgr_remarks_col as manager_remarks,
         GROUP_CONCAT(CONCAT(mti.product_name, ' (x', mti.quantity, ')') ORDER BY mti.id SEPARATOR ', ') as items
         FROM merchandise_transactions mt
         LEFT JOIN users u ON u.id=mt.staff_id
@@ -127,7 +141,19 @@ if(in_array($export,['excel','csv'])) {
     else { header('Content-Type: text/csv; charset=utf-8'); header("Content-Disposition: attachment; filename=\"{$fn}.csv\""); }
     $out=fopen('php://output','w');
     fputcsv($out,['Transaction ID','Customer','Type','Items/Service','Vehicle','Amount','Payment Method','Shift','Staff Encoder','Status','Date']);
-    foreach($rows as $r) fputcsv($out,[$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['txn_type'])),$r['items']?:'—',$r['vehicle'],'₱'.number_format($r['amount'],2),$r['payment_method'],$r['shift'],$r['staff_name'],$r['payment_status']?:'N/A',date('M d, Y H:i',strtotime($r['txn_date']))]);
+    foreach($rows as $r) {
+        $t=strtolower($r['txn_type']??'');
+        if ($t === 'combined') {
+            $tLabel = 'Job Order + Merchandise';
+        } elseif ($t === 'job_order') {
+            $tLabel = 'Job Order Only';
+        } else {
+            $tLabel = 'Merchandise Only';
+        }
+        $vs=strtolower($r['validation_status']??'');
+        $statusLabel = ($vs === 'voided') ? 'Voided' : (($vs === 'adjusted') ? 'Adjusted' : 'Completed');
+        fputcsv($out,[$r['transaction_id'],$r['customer'],$tLabel,$r['items']?:'—',$r['vehicle'],'₱'.number_format($r['amount'],2),$r['payment_method'],$r['shift'],$r['staff_name'],$statusLabel,date('M d, Y H:i',strtotime($r['txn_date']))]);
+    }
     fclose($out); exit;
 }
 
@@ -222,8 +248,9 @@ try {
         <label>Type</label>
         <select name="type" class="inp">
             <option value="">All Types</option>
-            <option value="job_order"   <?=$f_type==='job_order'?'selected':''?>>Job Order</option>
-            <option value="merchandise" <?=$f_type==='merchandise'?'selected':''?>>Merchandise</option>
+            <option value="merchandise" <?=$f_type==='merchandise'?'selected':''?>>Merchandise Only</option>
+            <option value="job_order"   <?=$f_type==='job_order'?'selected':''?>>Job Order Only</option>
+            <option value="combined"    <?=$f_type==='combined'?'selected':''?>>Job Order + Merchandise</option>
         </select>
     </div>
     <div>
@@ -236,12 +263,12 @@ try {
         </select>
     </div>
     <div>
-        <label>Pay Status</label>
-        <select name="payment_status" class="inp">
-            <option value="">All</option>
-            <option value="Paid"    <?=$f_pstatus==='Paid'?'selected':''?>>Paid</option>
-            <option value="Partial" <?=$f_pstatus==='Partial'?'selected':''?>>Partial</option>
-            <option value="Unpaid"  <?=$f_pstatus==='Unpaid'?'selected':''?>>Unpaid</option>
+        <label>Status</label>
+        <select name="status" class="inp">
+            <option value="">All Statuses</option>
+            <option value="Completed" <?=$f_status==='Completed'?'selected':''?>>Completed</option>
+            <option value="Voided"    <?=$f_status==='Voided'?'selected':''?>>Voided</option>
+            <option value="Adjusted"  <?=$f_status==='Adjusted'?'selected':''?>>Adjusted</option>
         </select>
     </div>
     <div><label>Search</label><input type="text" name="search" value="<?=htmlspecialchars($search)?>" class="inp" placeholder="ID, Customer, Plate…"></div>
@@ -273,10 +300,27 @@ try {
         <?php foreach($rows as $r): ?>
         <?php
             $t=strtolower($r['txn_type']??'');
-            $tLabel=str_contains($t,'job')?'Job Order':(str_contains($t,'merch')?'Merchandise':ucwords(str_replace('_',' ',$r['txn_type'])));
-            $tBadge=str_contains($t,'job')?'badge-orange':'badge-blue';
-            $ps=strtolower($r['payment_status']??'');
-            $pBadge=$ps==='paid'?'badge-green':($ps==='partial'?'badge-orange':'badge-gray');
+            if ($t === 'combined') {
+                $tLabel = 'Job Order + Merchandise';
+                $tBadge = 'badge-blue';
+            } elseif ($t === 'job_order') {
+                $tLabel = 'Job Order Only';
+                $tBadge = 'badge-orange';
+            } else {
+                $tLabel = 'Merchandise Only';
+                $tBadge = 'badge-blue';
+            }
+            $vs=strtolower($r['validation_status']??'');
+            if ($vs === 'voided') {
+                $statusLabel = 'Voided';
+                $statusBadge = 'badge-red';
+            } elseif ($vs === 'adjusted') {
+                $statusLabel = 'Adjusted';
+                $statusBadge = 'badge-orange';
+            } else {
+                $statusLabel = 'Completed';
+                $statusBadge = 'badge-green';
+            }
         ?>
         <tr>
             <td><strong><?=htmlspecialchars($r['transaction_id'])?></strong></td>
@@ -288,7 +332,7 @@ try {
             <td><?=htmlspecialchars($r['payment_method'])?></td>
             <td><?=htmlspecialchars($r['shift'])?></td>
             <td><?=htmlspecialchars($r['staff_name'])?></td>
-            <td><?php if($r['payment_status']): ?><span class="badge <?=$pBadge?>"><?=htmlspecialchars($r['payment_status'])?></span><?php else: ?>—<?php endif; ?></td>
+            <td><span class="badge <?=$statusBadge?>"><?=htmlspecialchars($statusLabel)?></span></td>
             <td><?=date('M d, Y h:i A',strtotime($r['txn_date']))?></td>
             <td>
                 <button class="flt-btn flt-btn-search" style="height:26px;font-size:10px;padding:0 8px;"
@@ -302,8 +346,11 @@ try {
                         payment: '<?=addslashes(htmlspecialchars($r['payment_method']))?>' ,
                         shift:  '<?=addslashes(htmlspecialchars($r['shift']))?>' ,
                         staff:  '<?=addslashes(htmlspecialchars($r['staff_name']))?>' ,
-                        status: '<?=addslashes(htmlspecialchars($r['payment_status']))?:' — '?>' ,
-                        date:   '<?=date('M d, Y h:i A',strtotime($r['txn_date']))?>'
+                        status: '<?=addslashes(htmlspecialchars($statusLabel))?>' ,
+                        date:   '<?=date('M d, Y h:i A',strtotime($r['txn_date']))?>',
+                        void_reason: '<?=addslashes(htmlspecialchars($r['void_reason'] ?? ''))?>',
+                        adjustment_reason: '<?=addslashes(htmlspecialchars($r['adjustment_reason'] ?? ''))?>',
+                        manager_remarks: '<?=addslashes(htmlspecialchars($r['manager_remarks'] ?? ''))?>'
                     })"><i class="fas fa-eye"></i> View</button>
             </td>
         </tr>
@@ -354,9 +401,20 @@ function openTxnModal(d){
     ['Payment Method', d.payment],
     ['Shift',          d.shift||'—'],
     ['Staff Encoder',  d.staff],
-    ['Payment Status', d.status],
+    ['Status',         d.status],
     ['Date & Time',    d.date]
   ];
+  if (d.status === 'Voided' && d.void_reason) {
+    rows.push(['Void Reason', '<span style="color:#dc2626;font-weight:bold;">'+d.void_reason+'</span>']);
+    if (d.manager_remarks) {
+      rows.push(['Manager Remarks', d.manager_remarks]);
+    }
+  } else if (d.status === 'Adjusted' && d.adjustment_reason) {
+    rows.push(['Adjustment Reason', '<span style="color:#ea580c;font-weight:bold;">'+d.adjustment_reason+'</span>']);
+    if (d.manager_remarks) {
+      rows.push(['Manager Remarks', d.manager_remarks]);
+    }
+  }
   var html='';
   rows.forEach(function(r){ html+='<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>'; });
   document.getElementById('txnModalBody').innerHTML=html;

@@ -317,7 +317,7 @@ if (($_GET['export'] ?? '') === 'pdf') {
     echo '</style></head><body>';
     echo '<div class="action-bar">';
     echo '  <h2>Admin Audit Trail — Compliance Log</h2>';
-    echo '  <a href="javascript:window.print()" class="btn-print">Print / Save PDF</a>';
+    echo '  <a href="javascript:window.print()" class="btn-print">Print</a>';
     echo '  <a href="javascript:void(0)" onclick="window.history.length>1?window.history.back():window.close()" class="btn-back">Back</a>';
     echo '</div>';
     echo '<div class="report">';
@@ -423,10 +423,13 @@ include __DIR__ . '/../partials/header.php';
            class="aat-btn aat-btn-blue" title="Export to CSV">
             <i class="fas fa-file-csv"></i> CSV
         </a>
-        <a href="?<?= http_build_query(array_merge($_GET, ['export'=>'pdf'])) ?>"
-           target="_blank" class="aat-btn aat-btn-red" title="Print / Export to PDF">
-            <i class="fas fa-file-pdf"></i> PDF
-        </a>
+        <button type="button" onclick="exportPrintableAreaToPDF('.aat-table','Admin Audit Trail','admin_audit_trail_<?= htmlspecialchars($date_from) ?>_to_<?= htmlspecialchars($date_to) ?>',this)"
+           class="aat-btn aat-btn-red" title="Export PDF">
+            <i class="fas fa-file-pdf"></i> Export PDF
+        </button>
+        <button type="button" onclick="printReportArea()" class="aat-btn aat-btn-gray" title="Print">
+            <i class="fas fa-print"></i> Print
+        </button>
         <a href="admin_dashboard.php" class="aat-btn aat-btn-gray"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
 </div>

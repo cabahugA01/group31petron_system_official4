@@ -14,6 +14,7 @@ if (!in_array($role, ['superadmin', 'developer']) && !is_module_enabled('invento
 
 if (!in_array($role, ['admin','superadmin'])) { header('Location: dashboard.php'); exit; }
 if ($station_id <= 0 && $role === 'admin') { render_no_station_page('admin_dashboard.php'); }
+$can_correct_fuel = in_array($role, ['superadmin'], true);
 
 // ── AJAX Handler for Unified Recent Activity ──────────────────────────────
 if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
@@ -117,6 +118,11 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
 $flash_ok = $_SESSION['ok'] ?? null; unset($_SESSION['ok']);
 $flash_err = $_SESSION['err'] ?? null; unset($_SESSION['err']);
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_level') {
+    if (!$can_correct_fuel) {
+        $_SESSION['err'] = 'Admin inventory monitoring is read-only.';
+        header('Location: admin_inventory_fuel.php');
+        exit;
+    }
     $fid  = (int)($_POST['fuel_id'] ?? 0);
     $newL = (float)($_POST['new_level'] ?? 0);
     $note = trim($_POST['note'] ?? '');
@@ -544,8 +550,11 @@ body, html { overflow-x:hidden !important; }
     <button onclick="exportTableToCSV('adminFuelInvTable','admin_fuel_inventory_<?= date('Ymd') ?>.csv')" class="flt-btn flt-btn-csv" title="Export to CSV">
       <i class="fas fa-file-csv"></i> CSV
     </button>
-    <button onclick="exportTableToPDF('adminFuelInvTable','Fuel Inventory Oversight')" class="flt-btn flt-btn-pdf" title="Export to PDF">
-      <i class="fas fa-file-pdf"></i> PDF
+    <button onclick="exportTableToPDF('adminFuelInvTable','Fuel Inventory Oversight','admin_fuel_inventory_<?= date('Ymd') ?>')" class="flt-btn flt-btn-pdf" title="Export PDF">
+      <i class="fas fa-file-pdf"></i> Export PDF
+    </button>
+    <button onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print">
+      <i class="fas fa-print"></i> Print
     </button>
   </div>
 </div>
@@ -734,14 +743,17 @@ body, html { overflow-x:hidden !important; }
             </div>
         </div>
         <div class="modal-footer">
+            <?php if ($can_correct_fuel): ?>
             <button onclick="openEditFromDetails()" class="btn-save" style="height:32px; font-size:12px; padding:0 12px;">
                 <i class="fas fa-edit"></i> Correct Level
             </button>
+            <?php endif; ?>
             <button onclick="closeTankModal()" class="btn-cancel" style="height:32px; font-size:12px; padding:0 12px;">Close</button>
         </div>
     </div>
 </div>
 
+<?php if ($can_correct_fuel): ?>
 <!-- Edit Modal (Discrepancy Correction) -->
 <div class="modal-overlay" id="editModal">
   <div class="modal-box" style="width:460px;">
@@ -771,6 +783,7 @@ body, html { overflow-x:hidden !important; }
     </form>
   </div>
 </div>
+<?php endif; ?>
 
 <script>
 function filterFuelTable() {

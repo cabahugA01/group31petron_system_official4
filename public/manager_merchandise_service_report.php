@@ -174,6 +174,15 @@ require_once __DIR__ . '/../partials/header.php';
     color: #ffffff;
 }
 
+.export-btn-print {
+    color: #002F70;
+    border-color: #002F70;
+}
+.export-btn-print:hover {
+    background: #002F70;
+    color: #ffffff;
+}
+
 /* Section Styling */
 .report-section {
     margin-bottom: 32px;
@@ -328,8 +337,11 @@ require_once __DIR__ . '/../partials/header.php';
             <a href="#" class="export-btn export-btn-csv" onclick="exportToCSV(); return false;">
                 <i class="fas fa-file-csv"></i> CSV
             </a>
-            <button type="button" class="export-btn export-btn-pdf" onclick="window.print()">
-                <i class="fas fa-file-pdf"></i> PDF
+            <button type="button" class="export-btn export-btn-pdf" onclick="exportPrintableAreaToPDF('.report-container', 'Manager Merchandise & Service Sales Report', 'manager_merch_service_report_<?= date('Ymd', strtotime($date_from)) ?>_<?= date('Ymd', strtotime($date_to)) ?>', this)">
+                <i class="fas fa-file-pdf"></i> Export PDF
+            </button>
+            <button type="button" class="export-btn export-btn-print" onclick="window.print()">
+                <i class="fas fa-print"></i> Print
             </button>
         </div>
     </form>

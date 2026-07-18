@@ -339,7 +339,7 @@ header('Content-Type: text/html; charset=utf-8');
 <body>
     <!-- No Print Buttons -->
     <div class="no-print">
-        <button class="btn-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
+        <button class="btn-print" onclick="window.print()">Print</button>
         <button class="btn-close" onclick="window.close()">✖ Close Window</button>
     </div>
     

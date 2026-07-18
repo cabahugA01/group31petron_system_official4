@@ -2440,10 +2440,17 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     }
     
     .tab-btn.active {
-        background: #000;
-        color: #fff;
+        background: #000 !important;
+        color: #fff !important;
         border-bottom: 2px solid #000;
         margin-bottom: -2px;
+    }
+    
+    .tab-btn.active:hover,
+    .tab-btn.active:focus,
+    .tab-btn.active:active {
+        background: #000 !important;
+        color: #fff !important;
     }
     
     .tab-content {
@@ -2668,8 +2675,12 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             <i class="fas fa-file-csv"></i> CSV
         </button>
         <!-- PDF -->
-        <button onclick="window.print()" class="flt-btn flt-btn-pdf" title="Print / Export PDF">
+        <button type="button" onclick="exportPrintableAreaToPDF('.print-area', 'Staff Sales Report', 'staff_sales_report_<?= date('Ymd', strtotime($report_date)) ?>', this)" class="flt-btn flt-btn-pdf" title="Export PDF">
             <i class="fas fa-file-pdf"></i> PDF
+        </button>
+        <!-- Print -->
+        <button type="button" onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print report">
+            <i class="fas fa-print"></i> Print
         </button>
     </div>
 </div>

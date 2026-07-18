@@ -292,9 +292,12 @@ include __DIR__ . '/../partials/header.php';
             <a class="cust-btn flt-btn flt-btn-csv" href="manager_customer_export.php?format=csv" onclick="passFiltersToExport(this,'csv')" title="Export to CSV">
                 <i class="fas fa-file-csv"></i> CSV
             </a>
-            <a class="cust-btn flt-btn flt-btn-pdf" href="manager_customer_export.php?format=pdf" target="_blank" onclick="passFiltersToExport(this,'pdf')" title="Export to PDF">
-                <i class="fas fa-file-pdf"></i> PDF
-            </a>
+            <button type="button" class="cust-btn flt-btn flt-btn-pdf" onclick="exportTableToPDF('managerCustomerTable','Manager Customer Registry','manager_customers_' + new Date().toISOString().slice(0,10))" title="Export PDF">
+                <i class="fas fa-file-pdf"></i> Export PDF
+            </button>
+            <button type="button" class="cust-btn flt-btn flt-btn-print" onclick="printReportArea()" title="Print">
+                <i class="fas fa-print"></i> Print
+            </button>
         </div>
     </div>
 
@@ -388,7 +391,7 @@ include __DIR__ . '/../partials/header.php';
             </div>
         </div>
         <div style="overflow-x:auto;">
-            <table class="cust-table">
+            <table class="cust-table" id="managerCustomerTable">
                 <thead>
                     <tr>
                         <th>Customer ID</th>

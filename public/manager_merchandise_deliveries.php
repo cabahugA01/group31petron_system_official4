@@ -325,7 +325,10 @@ try {
                 <i class="fas fa-file-csv"></i> CSV
             </button>
             <button onclick="exportPDF()" class="flt-btn flt-btn-pdf" title="Export to PDF">
-                <i class="fas fa-file-pdf"></i> PDF
+                <i class="fas fa-file-pdf"></i> Export PDF
+            </button>
+            <button onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print">
+                <i class="fas fa-print"></i> Print
             </button>
         </div>
         <!-- Back button - shown on History tab -->
@@ -1427,9 +1430,8 @@ function exportCSV() {
     toast('Exporting to CSV...','success');
 }
 function exportPDF() {
-    var s=document.getElementById('f-status').value, sup=document.getElementById('f-supplier').value;
     var st=document.getElementById('f-start').value, en=document.getElementById('f-end').value;
-    window.open(API+'?action=export_pdf&start='+encodeURIComponent(st)+'&end='+encodeURIComponent(en)+'&status='+encodeURIComponent(s)+'&supplier='+encodeURIComponent(sup),'_blank');
+    exportPrintableAreaToPDF('.table-wrap', 'Manager Merchandise Deliveries Validation', 'manager_merch_deliveries_' + st + '_to_' + en, document.activeElement);
     toast('Exporting to PDF...','success');
 }
 

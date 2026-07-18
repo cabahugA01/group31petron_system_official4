@@ -248,6 +248,16 @@ require_once __DIR__ . '/../partials/header.php';
     border-color: #b91c1c !important;
 }
 
+/* Print Button - Blue Border */
+.rpt-export-btn:nth-child(4) {
+    color: #002F70 !important;
+    border-color: #002F70 !important;
+}
+.rpt-export-btn:nth-child(4):hover {
+    background: #eff6ff !important;
+    border-color: #002F70 !important;
+}
+
 .rpt-export-btn i {
     margin-right: 3px !important;
 }
@@ -472,8 +482,11 @@ require_once __DIR__ . '/../partials/header.php';
                 <button type="button" class="rpt-export-btn" onclick="exportReport('csv')">
                     <i class="fas fa-file-csv"></i> CSV
                 </button>
+                <button type="button" class="rpt-export-btn" onclick="exportReport('pdf', this)">
+                    <i class="fas fa-file-pdf"></i> Export PDF
+                </button>
                 <button type="button" class="rpt-export-btn" onclick="printReport()">
-                    <i class="fas fa-file-pdf"></i> PDF
+                    <i class="fas fa-print"></i> Print
                 </button>
             </div>
         </form>
@@ -489,16 +502,28 @@ require_once __DIR__ . '/../partials/header.php';
 <script src="../assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script>
 function exportReport(type) {
+    const wrap = document.querySelector('.rpt-printable');
+    if (!wrap) { alert('No report content found.'); return; }
+
+    const activePanel = wrap.querySelector('.sr-section-panel.active') || wrap;
+    const section  = document.getElementById('hiddenSectionInput')?.value
+                  || new URL(window.location).searchParams.get('section')
+                  || 'fuel_sales';
+    const dateFrom = document.querySelector('input[name="date_from"]')?.value || '';
+    const dateTo   = document.querySelector('input[name="date_to"]')?.value || '';
+    const filename = `Manager_Report_${section}_${dateFrom}_to_${dateTo}`;
+
+    if (type === 'pdf') {
+        exportPrintableAreaToPDF(activePanel, 'Manager Operations Report', filename, document.activeElement);
+        return;
+    }
+
     if (typeof XLSX === 'undefined') {
         alert('Export library not loaded. Please refresh the page and try again.');
         return;
     }
-    const wrap = document.querySelector('.rpt-printable');
-    if (!wrap) { alert('No report content found.'); return; }
 
     // Get active section panel
-    const activePanel = wrap.querySelector('.sr-section-panel.active') || wrap;
-
     // Temporarily make hidden shift blocks visible so innerText works
     const hiddenBlocks = Array.from(activePanel.querySelectorAll('.sr-shift-block.hidden'));
     hiddenBlocks.forEach(b => { b.style.display = 'block'; b.dataset.wasHidden = '1'; });
@@ -512,13 +537,6 @@ function exportReport(type) {
     hiddenBlocks.forEach(b => { b.style.display = 'none'; delete b.dataset.wasHidden; });
 
     if (!tables.length) { alert('No table data found to export.'); return; }
-
-    const section  = document.getElementById('hiddenSectionInput')?.value
-                  || new URL(window.location).searchParams.get('section')
-                  || 'fuel_sales';
-    const dateFrom = document.querySelector('input[name="date_from"]')?.value || '';
-    const dateTo   = document.querySelector('input[name="date_to"]')?.value || '';
-    const filename = `Manager_Report_${section}_${dateFrom}_to_${dateTo}`;
 
     if (type === 'csv') {
         exportCSV(tables, filename);
@@ -600,45 +618,7 @@ function exportCSV(tables, filename) {
 }
 
 function printReport() {
-    const wrap   = document.querySelector('.rpt-printable');
-    const active = wrap?.querySelector('.sr-section-panel.active') || wrap;
-    if (!active) { window.print(); return; }
-
-    // Reveal hidden shift blocks before printing
-    const hidden = active.querySelectorAll('.sr-shift-block.hidden');
-    hidden.forEach(b => b.style.display = 'block');
-
-    const w = window.open('', '_blank', 'width=900,height=700');
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Manager Report</title>
-    <style>
-        @page{size:legal portrait;margin:.3in .4in;}
-        *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
-        body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:0;}
-        .sr-section-tabs{display:none !important;}
-        .sr-section-panel{display:block !important;overflow:visible !important;}
-        .sr-shift-block{display:block !important;break-inside:auto;page-break-inside:auto;margin-bottom:14px;overflow:visible;}
-        .sr-shift-heading,h3,div[style*="font-size: 14px"]{break-after:avoid;page-break-after:avoid;}
-        .sr-shift-heading{font-size:12px;font-weight:700;text-transform:uppercase;padding:6px 0;border-bottom:1px solid #ccc;margin-bottom:8px;margin-top:16px;}
-        div[style*="text-align:center"]{text-align:center;padding:10px 0 8px;border-bottom:2px solid #000;margin-bottom:12px;}
-        table{width:100%;max-width:100%;border-collapse:collapse;table-layout:auto;font-size:9.2px;margin-bottom:8px;break-inside:auto;page-break-inside:auto;}
-        thead{display:table-header-group;}
-        tfoot{display:table-footer-group;}
-        thead tr{background:#f0f0f0 !important;border-top:2px solid #000;border-bottom:1px solid #999;}
-        thead th{padding:5px;text-align:left;font-weight:700;font-size:8.6px;text-transform:uppercase;white-space:normal;word-break:break-word;}
-        tr{break-inside:avoid;page-break-inside:avoid;}
-        tbody tr{border-bottom:1px solid #ddd;}
-        tbody td{padding:5px;white-space:normal;word-break:break-word;}
-        tfoot tr{border-top:2px solid #000;background:#f0f0f0 !important;}
-        tfoot td{padding:6px 5px;font-weight:700;white-space:normal;word-break:break-word;}
-        .sr-empty{text-align:center;padding:12px;color:#888;font-style:italic;break-inside:avoid;page-break-inside:avoid;}
-        .sr-status,.sr-badge,.cr-badge,.cr-status,.fr-badge{padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700;}
-    </style></head><body>${active.innerHTML}</body></html>`);
-    w.document.close();
-    w.focus();
-    setTimeout(() => { w.print(); w.close(); }, 500);
-
-    // Restore hidden blocks
-    hidden.forEach(b => b.style.display = 'none');
+    window.print();
 }
 </script>
 

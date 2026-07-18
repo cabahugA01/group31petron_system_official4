@@ -210,7 +210,8 @@ require_once __DIR__ . '/../partials/header.php';
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <button onclick="exportTableToExcel('smTbl','stock_monitoring_<?= date('Ymd') ?>')" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
         <button onclick="exportTableToCSV('smTbl','stock_monitoring_<?= date('Ymd') ?>.csv')" class="flt-btn flt-btn-csv"><i class="fas fa-file-csv"></i> CSV</button>
-        <button onclick="exportTableToPDF('smTbl','Stock Monitoring Report')" class="flt-btn flt-btn-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
+        <button onclick="exportTableToPDF('smTbl','Stock Monitoring Report','stock_monitoring_<?= date('Ymd') ?>')" class="flt-btn flt-btn-pdf"><i class="fas fa-file-pdf"></i> Export PDF</button>
+        <button onclick="printReportArea()" class="flt-btn flt-btn-print"><i class="fas fa-print"></i> Print</button>
         <a href="admin_dashboard.php" class="flt-btn flt-btn-reset"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
 </div>

@@ -465,7 +465,8 @@ require_once __DIR__ . '/../partials/header.php';
         <div style="display:flex; gap:10px;">
             <button class="btn-export-excel" onclick="exportDirectory('excel')"><i class="fas fa-file-excel"></i> Excel</button>
             <button class="btn-export-csv" onclick="exportDirectory('csv')"><i class="fas fa-file-csv"></i> CSV</button>
-            <button class="btn-export-pdf" onclick="exportDirectory('pdf')"><i class="fas fa-file-pdf"></i> PDF</button>
+            <button class="btn-export-pdf" onclick="exportDirectory('pdf')"><i class="fas fa-file-pdf"></i> Export PDF</button>
+            <button class="btn-export-csv" onclick="printReportArea()"><i class="fas fa-print"></i> Print</button>
         </div>
     </div>
 
@@ -803,7 +804,8 @@ require_once __DIR__ . '/../partials/header.php';
                             <button class="btn-action-outline" onclick="resetHistoryFilters()"><i class="fas fa-undo"></i> Clear</button>
                         </div>
                         <div style="display:flex; gap:8px; margin-left:auto;">
-                            <button class="btn-export-pdf" onclick="exportHistory('pdf')"><i class="fas fa-file-pdf"></i> Print Report</button>
+                            <button class="btn-export-pdf" onclick="exportHistory('pdf')"><i class="fas fa-file-pdf"></i> Export PDF</button>
+                            <button class="btn-export-csv" onclick="printReportArea()"><i class="fas fa-print"></i> Print</button>
                             <button class="btn-export-excel" onclick="exportHistory('excel')"><i class="fas fa-file-excel"></i> Excel</button>
                             <button class="btn-export-csv" onclick="exportHistory('csv')"><i class="fas fa-file-csv"></i> CSV</button>
                         </div>
@@ -1084,6 +1086,10 @@ require_once __DIR__ . '/../partials/header.php';
 
     // Export Directory Table
     function exportDirectory(format) {
+        if (format === 'pdf') {
+            exportTableToPDF('customer-main-table', 'Customer Registry Oversight Report', 'admin_customers_' + new Date().toISOString().slice(0, 10));
+            return;
+        }
         const params = new URLSearchParams({
             format: format,
             search: document.getElementById('flt-search').value,
@@ -1326,6 +1332,11 @@ require_once __DIR__ . '/../partials/header.php';
     // Export Specific Customer History
     function exportHistory(format) {
         if (!activeProfileId) return;
+        if (format === 'pdf') {
+            const table = document.getElementById('history-tbody')?.closest('table');
+            exportPrintableAreaToPDF(table, 'Customer Transaction History', 'customer_history_' + activeProfileId + '_' + new Date().toISOString().slice(0, 10), document.activeElement);
+            return;
+        }
         const params = new URLSearchParams({
             format: format,
             profile_id: activeProfileId,

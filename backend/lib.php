@@ -133,7 +133,8 @@ define('MODULE_PAGE_MAP', [
     'reports'         => ['reports', 'staff_reports', 'manager_reports', 'admin_reports',
                           'reports_audit_admin', 'report_job_orders', 'report_transactions',
                           'report_customers', 'report_activity', 'admin_procurement_reports',
-                          'manager_procurement_reports'],
+                          'manager_procurement_reports', 'admin_inventory_history',
+                          'admin_inventory_merch', 'admin_inventory_fuel'],
 ]);
 
 // Maps module_key → sidebar item IDs that belong to that module.
@@ -173,10 +174,11 @@ define('MODULE_MENU_MAP', [
     ],
     'inventory'             => [
         'inventory', 'admin_inventory', 'inv_merch', 'inv_fuel',
-        'inv_stock_request', 'staff_stock_in', 'mgr_stock_in', 'inv_history', 'mgr_prod_merchandise',
+        'staff_stock_requests', 'staff_record_delivery', 'inv_stock_request', 'staff_stock_in',
+        'mgr_stock_review', 'mgr_stock_in', 'inv_history', 'mgr_prod_merchandise',
         'mgr_prod_prices', 'mgr_inv_merch', 'mgr_inv_fuel', 'mgr_inv_stock_request',
         'mgr_inv_po_gen', 'mgr_del_validate', 'admin_inventory_merchandise', 'admin_purchase_orders',
-        'admin_stock_requests_monitor', 'admin_stock_in_oversight', 'admin_inventory_history',
+        'admin_stock_requests', 'admin_stock_requests_monitor', 'admin_stock_in', 'admin_stock_in_oversight', 'admin_inventory_history',
         'admin_product_pricing'
     ],
     'product_management'    => [
@@ -193,7 +195,8 @@ define('MODULE_MENU_MAP', [
         'reports', 'admin_reports', 'manager_reports', 'report_daily_sales', 'report_deliveries',
         'report_payments', 'report_customers', 'report_activity', 'rpt_operations', 'rpt_finance',
         'rpt_procurement', 'rpt_compliance', 'mgr_operations_reports', 'mgr_finance_reports',
-        'mgr_procurement_reports', 'mgr_compliance_reports',
+        'mgr_procurement_reports', 'mgr_compliance_reports', 'rpt_merch_inventory',
+        'rpt_fuel_inventory', 'rpt_delivery_reports', 'rpt_inventory_history', 'rpt_audit_trail',
         'rpt_sales', 'rpt_balances', 'rpt_deliveries', 'rpt_staff', 'rpt_audit', 'mgr_report_sales',
         'mgr_report_balances', 'mgr_report_deliveries', 'mgr_report_staff', 'mgr_report_validation',
         'mgr_report_audit'

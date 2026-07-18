@@ -658,7 +658,10 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
         </button>
         <button onclick="exportTableToPDF('mgrFuelTable','Fuel Inventory Monitoring')"
                 class="flt-btn flt-btn-pdf" title="Export to PDF">
-            <i class="fas fa-file-pdf"></i> PDF
+            <i class="fas fa-file-pdf"></i> Export PDF
+        </button>
+        <button onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print">
+            <i class="fas fa-print"></i> Print
         </button>
     </div>
     <?php elseif ($active_tab === 'alerts'): ?>

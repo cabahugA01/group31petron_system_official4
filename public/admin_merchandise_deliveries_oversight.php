@@ -523,7 +523,10 @@ table.dt tr:hover td { background: #f1f7ff; }
     </button>
     <!-- PDF -->
     <button onclick="exportReport('pdf')" class="flt-btn flt-btn-pdf" title="Export to PDF">
-      <i class="fas fa-file-pdf"></i> PDF
+      <i class="fas fa-file-pdf"></i> Export PDF
+    </button>
+    <button onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print">
+      <i class="fas fa-print"></i> Print
     </button>
   </div>
 </div>
@@ -1028,6 +1031,12 @@ function exportReport(format) {
     const supplier = document.getElementById('fSupplier').value;
     const category = document.getElementById('fCategory').value;
     const drNumber = document.getElementById('fDrNumber').value.trim();
+
+    if (format === 'pdf') {
+        const filename = `admin_merchandise_deliveries_${start}_to_${end}`;
+        exportPrintableAreaToPDF('.table-wrap', 'Merchandise Deliveries Oversight', filename, document.activeElement);
+        return;
+    }
     
     const url = `${API}?action=export_${format}&start=${start}&end=${end}&status=${encodeURIComponent(status)}&type=merchandise&supplier=${encodeURIComponent(supplier)}&category=${encodeURIComponent(category)}&dr_number=${encodeURIComponent(drNumber)}`;
     window.open(url, '_blank');

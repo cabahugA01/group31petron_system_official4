@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // RBAC-Based Menu Generation
 // Master menu array with all possible items and their permission requirements
 $master_menu = [
@@ -141,16 +141,10 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 'id'               => 'admin_transactions',
                 'label'            => 'Transactions',
                 'ico'              => 'fas fa-receipt',
-                'href'             => '#',
+                'href'             => 'admin_all_transactions.php',
                 'permissions'      => ['view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
-                'desc'             => 'Provide centralized oversight of transaction operations, ensuring transaction accuracy, compliance, and accountability throughout the system.',
-                'sub_items'        => [
-                    ['id' => 'admin_all_transactions',         'label' => 'All Transactions',         'href' => 'admin_all_transactions.php',             'ico' => 'fas fa-list-alt',       'permissions' => ['view_all_reports'], 'desc' => 'Monitor and review all transaction records from all operational shifts and staff accounts.'],
-                    ['id' => 'admin_transaction_adjustments',  'label' => 'Transaction Adjustments',  'href' => 'admin_transaction_adjustments.php',      'ico' => 'fas fa-sliders-h',      'permissions' => ['view_all_reports'], 'desc' => 'Review transaction modifications performed by managers and verify adjustment records.'],
-                    ['id' => 'admin_voided_transactions',      'label' => 'Voided Transactions',      'href' => 'admin_voided_transactions.php',          'ico' => 'fas fa-ban',            'permissions' => ['view_all_reports'], 'desc' => 'Review cancelled transactions and monitor void activities for compliance and operational control.'],
-                    ['id' => 'admin_request_data_management',  'label' => 'Request Data Management', 'href' => 'admin_request_data_management.php',      'ico' => 'fas fa-clipboard-check', 'permissions' => ['view_all_reports'], 'desc' => 'View-only oversight of all staff master data requests (products, services, vehicles) and manager review actions.'],
-                ],
+                'desc'             => 'Monitor and review all transaction records from all operational shifts and staff accounts.',
             ],
             // 5. Fuel Management — Admin Oversight Module
             [

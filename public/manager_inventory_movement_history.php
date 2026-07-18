@@ -483,7 +483,10 @@ include __DIR__ . '/../partials/header.php';
             <i class="fas fa-file-csv"></i> CSV
         </button>
         <button onclick="exportMovTablePDF()" class="flt-btn flt-btn-pdf" title="Export to PDF">
-            <i class="fas fa-file-pdf"></i> PDF
+            <i class="fas fa-file-pdf"></i> Export PDF
+        </button>
+        <button onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print">
+            <i class="fas fa-print"></i> Print
         </button>
         <?php else: ?>
         <button onclick="exportFuelTableExcel()" class="flt-btn flt-btn-excel" title="Export to Excel">
@@ -493,7 +496,10 @@ include __DIR__ . '/../partials/header.php';
             <i class="fas fa-file-csv"></i> CSV
         </button>
         <button onclick="exportFuelTablePDF()" class="flt-btn flt-btn-pdf" title="Export to PDF">
-            <i class="fas fa-file-pdf"></i> PDF
+            <i class="fas fa-file-pdf"></i> Export PDF
+        </button>
+        <button onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print">
+            <i class="fas fa-print"></i> Print
         </button>
         <?php endif; ?>
     </div>

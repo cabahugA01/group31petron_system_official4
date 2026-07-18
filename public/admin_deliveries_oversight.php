@@ -194,7 +194,8 @@ table.dt tr:hover td{background:#f8f9fa;}
       </div>
       <div style="margin-top:auto;margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-outline" onclick="exportReport('excel')"><i class="fas fa-file-excel"></i> Excel</button>
-        <button class="btn btn-outline" onclick="exportReport('pdf')"><i class="fas fa-file-pdf"></i> PDF</button>
+        <button class="btn btn-outline" onclick="exportReport('pdf')"><i class="fas fa-file-pdf"></i> Export PDF</button>
+        <button class="btn btn-outline" onclick="printReportArea()"><i class="fas fa-print"></i> Print</button>
       </div>
     </div>
 
@@ -602,8 +603,8 @@ async function loadStockInTracker(){
         <div style="font-size:12px;font-weight:700;color:#002F70;">${esc(d.po_number||'Manual')}</div>
         <div style="font-size:13px;font-weight:700;color:#222;margin:3px 0;">${esc(d.product_name||'')}</div>
         <div style="font-size:11px;color:#6c757d;">Qty: <strong>${d.qty_ordered}</strong> &nbsp;|&nbsp; Finalized by: ${esc(d.admin_name||'—')}</div>
-        <a href="manager_stock_in.php" style="display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:5px 12px;background:#002F70;color:#fff;border-radius:5px;font-size:12px;font-weight:600;text-decoration:none;">
-          <i class="fas fa-dolly"></i> Go to Stock-In
+        <a href="admin_procurement_reports.php?section=stockin" style="display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:5px 12px;background:#002F70;color:#fff;border-radius:5px;font-size:12px;font-weight:600;text-decoration:none;">
+          <i class="fas fa-dolly"></i> View Stock-In Report
         </a>
       </div>`;
     });
@@ -618,6 +619,11 @@ function exportReport(format){
   const start=document.getElementById('fStart').value;
   const end=document.getElementById('fEnd').value;
   const status=document.getElementById('fStatus').value;
+  if(format === 'pdf'){
+    const filename = `admin_deliveries_${start}_to_${end}`;
+    exportPrintableAreaToPDF('.table-wrap', 'Deliveries Oversight Report', filename, document.activeElement);
+    return;
+  }
   const url=`${API}?action=export_${format}&start=${start}&end=${end}&status=${encodeURIComponent(status)}`;
   window.open(url,'_blank');
 }

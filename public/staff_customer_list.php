@@ -161,7 +161,7 @@ include __DIR__ . '/../partials/header.php';
 .form-grid .btn,
 .action-btns .btn,
 .filters-bar button,
-.header-actions button:not(.btn-export-excel):not(.btn-export-csv):not(.btn-export-pdf) {
+.header-actions button:not(.btn-export-excel):not(.btn-export-csv):not(.btn-export-pdf):not(.btn-export-print) {
     background-color: #ffffff !important;
     background: #ffffff !important;
     color: #334155 !important;
@@ -187,7 +187,7 @@ include __DIR__ . '/../partials/header.php';
 .form-grid .btn:hover,
 .action-btns .btn:hover,
 .filters-bar button:hover,
-.header-actions button:not(.btn-export-excel):not(.btn-export-csv):not(.btn-export-pdf):hover {
+.header-actions button:not(.btn-export-excel):not(.btn-export-csv):not(.btn-export-pdf):not(.btn-export-print):hover {
     background-color: #f8fafc !important;
     background: #f8fafc !important;
     color: #1e293b !important;
@@ -651,6 +651,7 @@ include __DIR__ . '/../partials/header.php';
 .btn-export-pdf,
 .btn-export-excel,
 .btn-export-csv,
+.btn-export-print,
 .btn-modal-cancel,
 .btn-modal-print {
     background: #ffffff !important;
@@ -713,6 +714,15 @@ include __DIR__ . '/../partials/header.php';
 }
 .btn-export-pdf:hover {
     background: #dc2626 !important;
+    color: #ffffff !important;
+}
+
+.btn-export-print {
+    color: #002F70 !important;
+    border-color: #002F70 !important;
+}
+.btn-export-print:hover {
+    background: #002F70 !important;
     color: #ffffff !important;
 }
 
@@ -840,7 +850,8 @@ include __DIR__ . '/../partials/header.php';
     <div class="header-actions" style="display: flex; gap: 10px; align-items: center;">
         <button onclick="exportCustomerData('excel')" class="btn-export-excel"><i class="fas fa-file-excel"></i> Excel</button>
         <button onclick="exportCustomerData('csv')" class="btn-export-csv"><i class="fas fa-file-csv"></i> CSV</button>
-        <button onclick="exportCustomerData('pdf')" class="btn-export-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
+        <button type="button" onclick="exportCustomerData('pdf')" class="btn-export-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
+        <button type="button" onclick="printReportArea()" class="btn-export-print"><i class="fas fa-print"></i> Print</button>
     </div>
 </div>
 
@@ -1853,9 +1864,8 @@ function exportCustomerData(format) {
         date_to: dateTo
     });
     
-    // For PDF, open the print-optimized page
     if (format === 'pdf') {
-        window.open(`staff_customer_export.php?${params.toString()}&format=pdf`, '_blank');
+        exportPrintableAreaToPDF('.stock-page', 'Customer Directory Report', 'customer_directory_' + new Date().toISOString().slice(0, 10), document.activeElement);
         return;
     }
     

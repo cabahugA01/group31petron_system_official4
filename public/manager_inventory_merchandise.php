@@ -927,7 +927,10 @@ include __DIR__ . '/../partials/header.php';
         <!-- PDF -->
         <button onclick="exportTableToPDF('mgrMerchTable','Merchandise Inventory')"
                 class="flt-btn flt-btn-pdf" title="Export to PDF">
-            <i class="fas fa-file-pdf"></i> PDF
+            <i class="fas fa-file-pdf"></i> Export PDF
+        </button>
+        <button onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print">
+            <i class="fas fa-print"></i> Print
         </button>
     </div>
 </div>

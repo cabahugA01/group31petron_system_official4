@@ -303,6 +303,8 @@ html, body {
 .ato-btn-csv:hover { background:#003d7a !important; color:#fff !important; }
 .ato-btn-pdf { color:#dc2626 !important; border-color:#dc2626 !important; }
 .ato-btn-pdf:hover { background:#dc2626 !important; color:#fff !important; }
+.ato-btn-print { color:#334155 !important; border-color:#64748b !important; }
+.ato-btn-print:hover { background:#64748b !important; color:#fff !important; }
 .ato-btn-back { color:#4b5563 !important; border-color:#6b7280 !important; }
 .ato-btn-back:hover { background:#6b7280 !important; color:#fff !important; }
 .ato-btn-filter { color:#002F70 !important; border-color:#002F70 !important; }
@@ -511,10 +513,11 @@ html, body {
             </button>
             <!-- PDF -->
             <button type="button"
-                    onclick="window.open('?date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&export=pdf','_blank')"
+                    onclick="exportPrintableAreaToPDF('.table-card','Fuel Reconciliation Report','manager_fuel_reconciliation_<?= htmlspecialchars($date_from) ?>_to_<?= htmlspecialchars($date_to) ?>',this)"
                     class="ato-btn ato-btn-pdf">
-                <i class="fas fa-file-pdf"></i> PDF
+                <i class="fas fa-file-pdf"></i> Export PDF
             </button>
+            <button type="button" onclick="printReportArea()" class="ato-btn ato-btn-print"><i class="fas fa-print"></i> Print</button>
             <!-- Back -->
             <a href="manager_dashboard.php"
                class="ato-btn ato-btn-back">

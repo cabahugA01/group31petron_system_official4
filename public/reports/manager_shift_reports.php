@@ -86,6 +86,7 @@ ksort($shifts);
     border-bottom: 2px solid #e2e8f0;
     margin-bottom: 0;
     overflow-x: auto;
+    background: #00264D;
 }
 .sr-section-tab {
     padding: 12px 20px;
@@ -93,18 +94,18 @@ ksort($shifts);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.3px;
-    color: #64748b;
-    background: #f8f9fa;
+    color: #ffffff !important;
+    background: transparent;
     border: none;
     border-bottom: 3px solid transparent;
     cursor: pointer;
     white-space: nowrap;
     transition: all 0.2s;
 }
-.sr-section-tab:hover { background: #fff; color: #002F70; }
+.sr-section-tab:hover { background: rgba(255,255,255,0.15); color: #ffffff !important; }
 .sr-section-tab.active {
-    background: #fff;
-    color: #00264D;
+    background: #ffffff;
+    color: #00264D !important;
     border-bottom-color: #002F70;
     font-weight: 800;
 }

@@ -176,7 +176,8 @@ require_once __DIR__ . '/../partials/header.php';
         <a href="manager_voided_transactions.php" class="flt-btn flt-btn-search" title="View All Records"><i class="fas fa-list"></i> View All</a>
         <a href="?<?=http_build_query(array_merge($_GET,['export'=>'excel']))?>" class="flt-btn flt-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
         <a href="?<?=http_build_query(array_merge($_GET,['export'=>'csv']))?>"   class="flt-btn flt-btn-search"><i class="fas fa-file-csv"></i> CSV</a>
-        <button class="flt-btn flt-btn-pdf" onclick="window.print()"><i class="fas fa-file-pdf"></i> PDF</button>
+        <button class="flt-btn flt-btn-pdf" onclick="exportPrintableAreaToPDF('.card-table-wrap','Manager Voided Transactions','manager_voided_transactions_<?=htmlspecialchars($date_from ?: 'all')?>_to_<?=htmlspecialchars($date_to ?: 'all')?>',this)"><i class="fas fa-file-pdf"></i> Export PDF</button>
+        <button class="flt-btn flt-btn-print" onclick="printReportArea()"><i class="fas fa-print"></i> Print</button>
     </div>
 </div>
 
