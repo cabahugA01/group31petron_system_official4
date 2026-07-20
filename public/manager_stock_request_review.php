@@ -1017,6 +1017,7 @@ body .main,
     justify-content: flex-end;
     margin-top: 18px;
     padding-top: 16px;
+    padding-bottom: 8px;
     border-top: 1px solid #dbeafe;
     flex-wrap: wrap;
 }
@@ -1219,7 +1220,7 @@ body .main,
                     
                     <tr id="detail_<?= $safe_key ?>" class="pr-inline-detail">
                         <td colspan="6">
-                            <div class="pr-inline-panel" style="padding: 24px 28px; background: #f8fafc; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
+                            <div class="pr-inline-panel" style="padding: 24px 28px 32px 28px; background: #f8fafc; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
                                 <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
                                     <i class="fas fa-boxes" style="color: #002F6C; font-size: 18px;"></i>
                                     <span style="font-size: 15px; font-weight: 800; color: #002F6C;">Purchase Request Details</span>
@@ -1266,6 +1267,7 @@ body .main,
                                                     <th style="padding: 10px 12px; text-align: left; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Product ID</th>
                                                     <th style="padding: 10px 12px; text-align: left; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Product Code</th>
                                                     <th style="padding: 10px 12px; text-align: left; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Product Name</th>
+                                                    <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">UOM</th>
                                                     <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Current Stock</th>
                                                     <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase;">Reorder Level</th>
                                                     <th style="padding: 10px 12px; text-align: center; font-size: 10.5px; font-weight: 700; color: #fff; text-transform: uppercase; width: 130px;">Qty to Order <span style="color: #ff8a8a;">*</span></th>
@@ -1291,6 +1293,7 @@ body .main,
                                                     <td style="padding: 10px 12px; font-weight: 700; color: #64748b; font-family: monospace; font-size: 12.5px;"><?= htmlspecialchars($formatted_prod_id) ?></td>
                                                     <td style="padding: 10px 12px; font-family: monospace; font-size: 12px; color: #475569;"><?= htmlspecialchars($item_sku) ?></td>
                                                     <td style="padding: 10px 12px; font-weight: 600; color: #1e293b;"><?= htmlspecialchars($item['item_title']) ?></td>
+                                                    <td style="padding: 10px 12px; text-align: center; font-weight: 600; color: #475569;"><?= htmlspecialchars($item_unit) ?></td>
                                                     <td style="padding: 10px 12px; text-align: center; font-weight: 600; color: <?= $is_below ? '#dc2626' : '#16a34a' ?>;"><?= $curr_stock ?></td>
                                                     <td style="padding: 10px 12px; text-align: center; color: #dc2626; font-weight: 600;"><?= $reorder_lvl ?></td>
                                                     <td style="padding: 10px 12px; text-align: center;">
@@ -1298,7 +1301,6 @@ body .main,
                                                             class="merch-qty-input" data-key="<?= $safe_key ?>"
                                                             style="width: 80px; padding: 5px 8px; border: 1.5px solid #93c5fd; border-radius: 6px; text-align: center; font-weight: 700; font-family: inherit;"
                                                             oninput="updateMerchSummary('<?= $safe_key ?>')">
-                                                        <div style="font-size: 9px; color: #94a3b8; margin-top: 1px;"><?= htmlspecialchars($item_unit) ?></div>
                                                     </td>
                                                     <td style="padding: 10px 12px; text-align: center;">
                                                         <input type="number" name="unit_costs[<?= $prod_id ?>]" min="0.01" step="0.01" value="" placeholder="0.00"
@@ -1416,14 +1418,14 @@ body .main,
                         <td style="padding: 13px 14px; text-align: center;">
                             <span class="pr-expand-icon"><i class="fas fa-chevron-right"></i></span>
                         </td>
-                        <td style="padding: 13px 14px; font-weight: 700; color: #0284c7; font-family: monospace; font-size: 14px;">
+                        <td style="padding: 13px 14px; font-weight: 700; color: #002F6C; font-family: monospace; font-size: 14px;">
                             <?= htmlspecialchars($group['pr_number']) ?>
                         </td>
                         <td style="padding: 13px 14px; color: #475569;"><?= htmlspecialchars($group['staff_name']) ?></td>
                         <td style="padding: 13px 14px; color: #64748b; white-space: nowrap;"><?= date('M d, Y', strtotime($group['created_at'])) ?></td>
-                        <td style="padding: 13px 14px; text-align: center; font-weight: 700; color: #0284c7;"><?= $item_count ?> Fuel Type<?= $item_count !== 1 ? 's' : '' ?></td>
+                        <td style="padding: 13px 14px; text-align: center; font-weight: 700; color: #002F6C;"><?= $item_count ?> Fuel Type<?= $item_count !== 1 ? 's' : '' ?></td>
                         <td style="padding: 13px 14px; text-align: center;">
-                            <span class="status-badge status-pending" style="background: #f0f9ff; color: #0284c7; border-color: #bae6fd;"><?= htmlspecialchars(str_ireplace('Manager Review', '', $group['status'])) ?></span>
+                            <span class="status-badge status-pending" style="background: #f0f9ff; color: #002F6C; border-color: #bae6fd;"><?= htmlspecialchars(str_ireplace('Manager Review', '', $group['status'])) ?></span>
                         </td>
                     </tr>
                     
@@ -1437,7 +1439,7 @@ body .main,
                                     <span style="font-size: 14px; font-weight: 800; color: #fff; letter-spacing: 0.3px;">Purchase Request Details</span>
                                 </div>
 
-                                <div style="padding: 20px 24px;">
+                                <div style="padding: 20px 24px 28px 24px;">
 
                                     <!-- Purchase Request Information -->
                                     <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; margin-bottom: 16px;">
@@ -1558,17 +1560,17 @@ body .main,
 
                                         <div style="display: flex; justify-content: flex-end; margin-bottom: 16px;">
                                             <div style="min-width: 300px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; font-size: 13px;">
-                                                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;"><span style="color: #64748b; font-weight: 700;">Total Fuel Types</span><span id="fuel_count_<?= $safe_key ?>" style="font-weight: 800; color: #0284c7;"><?= $item_count ?></span></div>
-                                                <div style="display: flex; justify-content: space-between;"><span style="color: #64748b; font-weight: 700;">Grand Total Amount</span><span id="fuel_total_<?= $safe_key ?>" style="font-weight: 900; color: #0284c7;">PHP 0.00</span></div>
+                                                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;"><span style="color: #64748b; font-weight: 700;">Total Fuel Types</span><span id="fuel_count_<?= $safe_key ?>" style="font-weight: 800; color: #002F6C;"><?= $item_count ?></span></div>
+                                                <div style="display: flex; justify-content: space-between;"><span style="color: #64748b; font-weight: 700;">Grand Total Amount</span><span id="fuel_total_<?= $safe_key ?>" style="font-weight: 900; color: #002F6C;">PHP 0.00</span></div>
                                             </div>
                                         </div>
 
                                         <!-- Actions -->
-                                        <div class="pr-panel-actions">
+                                        <div class="pr-panel-actions" style="padding-bottom: 16px; margin-bottom: 8px;">
                                             <button type="button" class="btn-return-req" onclick="openReturnPrModal('<?= htmlspecialchars($group['pr_number'], ENT_QUOTES) ?>', 'fuel', '<?= $item_ids_str ?>')">
                                                 <i class="fas fa-undo"></i> Return Request
                                             </button>
-                                            <button type="submit" class="btn-forward" style="color: #0284c7 !important; border-color: #0284c7 !important; padding: 0 22px !important;">
+                                            <button type="submit" class="btn-forward" style="color: #002F6C !important; border-color: #002F6C !important; padding: 0 22px !important;">
                                                 <i class="fas fa-file-invoice"></i> Generate Purchase Order
                                             </button>
                                         </div>
@@ -1628,9 +1630,9 @@ function switchPendingSubTab(type) {
         if (merchSec) merchSec.style.display = 'block';
         if (fuelSec)  fuelSec.style.display  = 'none';
     } else {
-        fuelBtn.style.setProperty('color', '#0284c7', 'important');
-        fuelBtn.style.setProperty('background-color', '#f0f9ff', 'important');
-        fuelBtn.style.setProperty('border', '1.5px solid #0284c7', 'important');
+        fuelBtn.style.setProperty('color', '#002F6C', 'important');
+        fuelBtn.style.setProperty('background-color', '#eff6ff', 'important');
+        fuelBtn.style.setProperty('border', '1.5px solid #002F6C', 'important');
         merchBtn.style.setProperty('color', '#64748b', 'important');
         merchBtn.style.setProperty('background-color', '#fff', 'important');
         merchBtn.style.setProperty('border', '1.5px solid #e2e8f0', 'important');

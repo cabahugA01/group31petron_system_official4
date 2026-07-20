@@ -115,7 +115,7 @@ require_once __DIR__ . '/../partials/header.php';
 .t tbody td{padding:9px 12px;color:#334155;background:#fff;font-size:12px;vertical-align:middle;}
 .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;}
 .badge-up{background:#dcfce7;color:#166534;} .badge-dn{background:#fee2e2;color:#991b1b;} .badge-neutral{background:#f1f5f9;color:#475569;}
-.card-table-wrap { width: 100%; overflow: hidden; }
+.card-table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .t-compact { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .t-compact thead tr { background: #002F70; }
 .t-compact th { padding: 7px 4px !important; font-size: 10.5px !important; font-weight: 700 !important; color: #fff !important; text-transform: uppercase; letter-spacing: .2px; border: none; text-align: left; white-space: nowrap; line-height: 1.2; }

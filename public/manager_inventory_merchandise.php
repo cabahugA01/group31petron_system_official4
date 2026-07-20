@@ -709,6 +709,9 @@ include __DIR__ . '/../partials/header.php';
 ?>
 <style>
 /* Header standardization */
+body { overflow-x: hidden; }
+/* Prevent horizontal page scroll - tables clip to width */
+.table-wrap { overflow-x: hidden !important; }
 .int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; padding-top:16px; padding-bottom:16px; border-bottom:2px solid #e9ecef; }
 .int-head h1 { font-size:22px !important; font-weight:700 !important; color:#00264D !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
 .int-head .sub { font-size:13px; color:#64748b; margin-top:4px; }
@@ -746,12 +749,12 @@ include __DIR__ . '/../partials/header.php';
 .mv-none{color:#94a3b8;}
 
 .po-table-wrap { width:100%; overflow-x:auto; }
-.po-table { width:100%; border-collapse:collapse; font-size:11px; }
+.po-table { width:100%; border-collapse:collapse; font-size:11px; table-layout:auto; }
 .po-table thead tr { background:#002F70; }
 .po-table thead th { padding:9px 10px; text-align:left; font-size:11px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.4px; border-bottom:2px solid #001a3d; vertical-align:middle; white-space:nowrap; }
 .po-table tbody tr { border-bottom:1px solid #f1f5f9; transition:background .1s; }
 .po-table tbody tr:hover td { background:#eff6ff; }
-.po-table tbody td { padding:9px 10px; color:#334155; vertical-align:middle; white-space:nowrap; background:#fff; font-size:11px; }
+.po-table tbody td { padding:9px 10px; color:#334155; vertical-align:middle; white-space:normal; word-break:break-word; background:#fff; font-size:11px; }
 
 /* Modals */
 .modal-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.5); z-index:9999; align-items:center; justify-content:center; }

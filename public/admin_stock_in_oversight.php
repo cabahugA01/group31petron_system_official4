@@ -111,7 +111,7 @@ include __DIR__ . '/../partials/header.php';
 .filter-bar label{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;}
 .filter-bar input,.filter-bar select{height:36px;padding:0 10px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box;}
 .filter-bar input:focus,.filter-bar select:focus{border-color:#002F70;box-shadow:0 0 0 3px rgba(0,47,112,.1)}
-.table-wrap{overflow:hidden;}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
 /* == Table - SuperAdmin ato-table standard == */
 table.stockin{width:100%;border-collapse:collapse;font-size:11px;}
 table.stockin th{background:#002F70;color:#fff;padding:9px 10px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;border-bottom:2px solid #001a3d;}

@@ -59,7 +59,7 @@ include __DIR__ . '/../partials/header.php';
 .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;}
 .toolbar input,.toolbar select{padding:7px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;}
 .toolbar input:focus,.toolbar select:focus{border-color:var(--blue);outline:none;}
-.table-wrap{overflow-x:hidden;}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
 table.reqs{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;}
 table.reqs th{background:#002F70;color:#fff;padding:10px 11px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;}
 table.reqs td{padding:9px 11px;border-bottom:1px solid #f1f5f9;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;}

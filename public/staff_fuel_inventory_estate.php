@@ -191,7 +191,7 @@ foreach ($TANK_CONFIG_17 as $tank) {
 .estate-card { background:#fff; border:1px solid #e2e8f0; border-radius:11px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.04); width:100%; margin-bottom:20px; }
 .estate-card-hd { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid #f1f5f9; flex-wrap:wrap; gap:8px; }
 .estate-card-title { font-size:13px; font-weight:700; color:#00264D; text-transform:uppercase; letter-spacing:.3px; margin:0; }
-.estate-tbl-wrap { width:100%; overflow:hidden; }
+.estate-tbl-wrap { width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .estate-tbl { width:100%; table-layout:auto; border-collapse:collapse; font-size:11px; }
 .estate-tbl thead tr { background:#002F70; }
 .estate-tbl thead th { padding:10px 8px; text-align:left; font-size:10px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.3px; white-space:normal; line-height:1.3; vertical-align:top; }

@@ -336,6 +336,11 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 ?>
 <div class="stock-page">
 <style>
+.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; margin-top: 0 !important; padding-top: 0; padding-bottom: 10px; border-bottom: 2px solid #e9ecef; }
+.main, .main-content { padding-top: 0 !important; }
+.int-head h1 { font-size: 22px !important; font-weight: 700 !important; color: #00264D !important; margin: 0 !important; text-transform: uppercase !important; display: flex; align-items: center; gap: 8px; }
+.int-head .sub { font-size: 13px; color: #64748b; margin-top: 4px; text-transform: none !important; }
+
 .inv-card { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #e9ecef; margin-bottom:20px; }
 .inv-card-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e9ecef; flex-wrap:wrap; gap:8px; }
 .inv-card-title { font-size:1rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px; }
@@ -434,8 +439,8 @@ body, html { overflow-x: hidden !important; }
 .var-neg  { color: #dc3545; font-weight: 700; }
 
 /* ══ Modal Elements ══ */
-.sr-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:10000; display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; transition:opacity .2s ease-in-out; }
-.sr-modal-overlay.open { opacity:1; pointer-events:auto; }
+.sr-modal-overlay { position:fixed; top:0; right:0; bottom:0; left:250px; background:rgba(0,0,0,.5); z-index:10000; display:none !important; align-items:center; justify-content:center; opacity:0; pointer-events:none !important; transition:opacity .2s ease-in-out; }
+.sr-modal-overlay.open { display:flex !important; opacity:1; pointer-events:auto !important; }
 .sr-modal-box { background:#fff; border-radius:12px; width:100%; max-width:540px; box-shadow:0 10px 25px rgba(0,0,0,.2); display:flex; flex-direction:column; max-height:90vh; overflow:hidden; pointer-events:auto !important; position:relative; z-index:10001; }
 .sr-modal-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e2e8f0; flex-shrink:0; background:#fff; z-index:1; }
 .sr-modal-title { font-size:16px; font-weight:700; color:#002F70; }
@@ -466,9 +471,10 @@ body, html { overflow-x: hidden !important; }
 .fsr-select-bar input[type="checkbox"] { pointer-events:auto !important; cursor:pointer !important; }
 .fsr-select-bar label { pointer-events:auto !important; cursor:pointer !important; }
 #fsrCheckList { overflow-y:auto; flex:1; padding:8px 16px; pointer-events:auto !important; }
-.fsr-cb-row { display:flex; align-items:flex-start; gap:12px; padding:10px 12px; border-radius:8px; border:1px solid #e2e8f0; margin-bottom:8px; cursor:pointer !important; transition:all .15s ease; pointer-events:auto !important; }
-.fsr-cb-row:hover { background:#f8fafc; border-color:#cbd5e1; }
-.fsr-cb-row.checked { background:#f0fdf4; border-color:#86efac; }
+.fsr-cb-row { display:table-row; padding:0; border-radius:0; border:none; margin-bottom:0; cursor:pointer !important; transition:background .15s ease; pointer-events:auto !important; }
+.fsr-cb-row td { padding:10px 12px; border-bottom:1px solid #e2e8f0; vertical-align:middle; }
+.fsr-cb-row:hover td { background:#f8fafc; }
+.fsr-cb-row.checked td { background:#f0fdf4; }
 .fsr-cb-row input[type="checkbox"] { margin-top:3px; transform:scale(1.1); cursor:pointer !important; pointer-events:auto !important; }
 .fsr-item-info { flex:1; pointer-events:none; }
 .fsr-item-name { font-weight:700; font-size:14px; color:#1e293b; }
@@ -608,9 +614,9 @@ body, html { overflow-x: hidden !important; }
 .txn-btn.secondary:hover { background-color:#475569 !important; background:#475569 !important; color:#ffffff !important; }
 </style>
 
-<div class="mif-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap;padding-top:16px;padding-bottom:16px;border-bottom:2px solid #e9ecef;">
+<div class="int-head">
     <div>
-        <h1 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#00264D;text-transform:uppercase;">Fuel Inventory</h1>
+        <h1><i class="fas fa-gas-pump"></i> Fuel Inventory</h1>
     </div>
 </div>
 
@@ -816,7 +822,6 @@ body, html { overflow-x: hidden !important; }
     <div class="modal-box" style="width:500px;">
         <div class="modal-header">
             <h3 id="tankModalTitle">Tank Details</h3>
-            <button onclick="closeTankModal()" style="background:none; border:none; font-size:20px; cursor:pointer; color:#64748b;">&times;</button>
         </div>
         <div class="modal-body">
             <table style="width:100%; font-size:13px; border-collapse:collapse;">

@@ -96,7 +96,7 @@
     border-color: #15803d !important;
 }
 
-.po-table-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;}
+.po-table-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
 .po-table{width:100%;border-collapse:collapse;font-size:13px;}
 .po-table th{background:#002F70;color:#fff;padding:12px 14px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;text-align:center;}
 .po-table td{padding:12px 14px;border-bottom:1px solid #f1f5f9;vertical-align:middle;text-align:center;}

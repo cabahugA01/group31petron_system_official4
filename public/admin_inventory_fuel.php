@@ -405,7 +405,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 body, html { overflow-x:hidden !important; }
 
 /* Table */
-.aif-wrap { width:100%; overflow:hidden; }
+.aif-wrap { width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .aif-tbl { width:100%; border-collapse:collapse; font-size:12px; }
 .aif-tbl thead tr { background:#002F70; }
 .aif-tbl thead th { padding:10px 8px; text-align:left; font-size:11px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.3px; border:none; }
@@ -546,22 +546,6 @@ body, html { overflow-x:hidden !important; }
 <div class="int-head">
   <div>
     <h1><i class="fas fa-gas-pump"></i> Fuel Inventory Management</h1>
-    <div class="sub">Monitor and manage fuel inventory levels across all tanks &middot; Today: <?= date('F d, Y') ?></div>
-  </div>
-  
-  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
-    <button onclick="exportTableToExcel('adminFuelInvTable','admin_fuel_inventory_<?= date('Ymd') ?>.xls')" class="flt-btn flt-btn-excel" title="Export to Excel">
-      <i class="fas fa-file-excel"></i> Excel
-    </button>
-    <button onclick="exportTableToCSV('adminFuelInvTable','admin_fuel_inventory_<?= date('Ymd') ?>.csv')" class="flt-btn flt-btn-csv" title="Export to CSV">
-      <i class="fas fa-file-csv"></i> CSV
-    </button>
-    <button onclick="exportTableToPDF('adminFuelInvTable','Fuel Inventory Oversight','admin_fuel_inventory_<?= date('Ymd') ?>')" class="flt-btn flt-btn-pdf" title="Export PDF">
-      <i class="fas fa-file-pdf"></i> Export PDF
-    </button>
-    <button onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print">
-      <i class="fas fa-print"></i> Print
-    </button>
   </div>
 </div>
 

@@ -733,7 +733,7 @@ include __DIR__ . '/../partials/header.php';
 .filter-grid input:focus, .filter-grid select:focus { border-color:#002F70; }
 
 /* Table design */
-.po-table-wrap { background:#fff; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.05); overflow:hidden; border:1px solid #e2e8f0; }
+.po-table-wrap { background:#fff; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.05); overflow-x:auto;-webkit-overflow-scrolling:touch; border:1px solid #e2e8f0; }
 .po-table { width:100%; border-collapse:collapse; font-size:11px; }
 .po-table thead tr { background:#002F70; }
 .po-table thead th { padding:10px 12px; text-align:left; font-size:10px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.3px; border-bottom:2px solid #001a3d; vertical-align:middle; }

@@ -161,7 +161,7 @@ require_once __DIR__ . '/../partials/header.php';
 .card-title{font-size:13px;font-weight:700;color:#00264D;}
 .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;}
 .badge-red{background:#fee2e2;color:#991b1b;} .badge-blue{background:#dbeafe;color:#1e40af;} .badge-orange{background:#fff7ed;color:#9a3412;}
-.card-table-wrap { width: 100%; overflow: hidden; }
+.card-table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .t-void { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .t-void thead tr { background: #7f1d1d; }
 .t-void th { padding: 8px 5px; font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: .2px; border: none; text-align: left; white-space: normal; word-wrap: break-word; line-height: 1.3; }

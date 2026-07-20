@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'pending_validation';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -601,7 +601,7 @@ function exportPending(format) {
 
 <style>
 /* ── Design System ── */
-.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow:hidden; }
+.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:auto;-webkit-overflow-scrolling:touch; }
 .po-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
 .po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:left; font-weight:600; }
 .po-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }

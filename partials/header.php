@@ -562,6 +562,15 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         color: #93c5fd !important;
         border-color: var(--border-color) !important;
     }
+    /* Report-specific table headers visible in dark mode */
+    body.dark-theme .sr-table thead th,
+    body.dark-theme .sr-tbl thead th,
+    body.dark-theme .rpt-table thead th,
+    body.dark-theme .pr-tbl thead th {
+        background-color: var(--table-header) !important;
+        color: #93c5fd !important;
+        border-color: var(--border-color) !important;
+    }
     body.dark-theme table tbody tr:nth-child(odd) td,
     body.dark-theme .table tbody tr:nth-child(odd) td {
         background-color: var(--table-row-odd) !important;
@@ -598,6 +607,14 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     body.dark-theme select option {
         background-color: #252840;
         color: #e2e8f0;
+    }
+    /* Rows-per-page select — transparent background, native arrow always visible */
+    body.dark-theme select.rows-select,
+    select.rows-select {
+        background-color: transparent !important;
+        border-color: #cbd5e1 !important;
+        appearance: auto !important;
+        -webkit-appearance: auto !important;
     }
     body.dark-theme .form-control,
     body.dark-theme .form-select {
@@ -719,9 +736,9 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         color: var(--text-main) !important;
     }
     body.dark-theme p, body.dark-theme span, body.dark-theme li,
-    body.dark-theme td, body.dark-theme th { color: inherit; }
-    body.dark-theme a:not(.btn):not(.nav-item) { color: #60a5fa !important; }
-    body.dark-theme a:not(.btn):not(.nav-item):hover { color: #93c5fd !important; }
+    body.dark-theme td, body.dark-theme th { color: var(--text-main); }
+    body.dark-theme a:not(.btn):not(.nav-item):not(.sidebar-sub-item) { color: #60a5fa !important; }
+    body.dark-theme a:not(.btn):not(.nav-item):not(.sidebar-sub-item):hover { color: #93c5fd !important; }
 
     /* â”€â”€ Flash messages â€” keep original alert colors but on dark bg â”€â”€ */
     body.dark-theme .petron-toast {
@@ -1270,10 +1287,10 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     .nav-item.active { background-color: var(--petron-red) !important; color: #ffffff !important; font-size: 13px !important; font-weight: 500 !important; }
     .nav-item span { font-size: 13px !important; font-weight: 500 !important; }
     .nav-item.active span { font-size: 13px !important; font-weight: 500 !important; }
-    .sidebar-sub-item { font-size: 12px !important; font-weight: 500 !important; color: #eeeeee !important; }
-    .sidebar-sub-item span:not(.ico) { white-space: normal !important; word-break: break-word !important; color: #eeeeee !important; }
-    .sidebar-sub-item:hover { background-color: rgba(255,255,255,0.1) !important; color: #ffffff !important; }
-    .sidebar-sub-item.active { background-color: transparent !important; color: #ffffff !important; border-left: 3px solid var(--petron-red); }
+    .sidebar-sub-item { font-size: 12px !important; font-weight: 500 !important; color: #eeeeee !important; text-decoration: none !important; }
+    .sidebar-sub-item span:not(.ico) { white-space: normal !important; word-break: break-word !important; color: #eeeeee !important; text-decoration: none !important; }
+    .sidebar-sub-item:hover { background-color: rgba(255,255,255,0.1) !important; color: #ffffff !important; text-decoration: none !important; }
+    .sidebar-sub-item.active { background-color: transparent !important; color: #ffffff !important; border-left: 3px solid var(--petron-red); text-decoration: none !important; }
 
 
     
@@ -2971,12 +2988,13 @@ require_once __DIR__ . '/rbac_menu.php';
 
           $__sr = $__badge_count(
               "SELECT COUNT(*) FROM stock_requests
-               WHERE station_id=? AND status='Pending'",
+               WHERE station_id=? AND status IN ('Pending', 'Pending Manager Review')
+               AND LOWER(COALESCE(item_category, '')) != 'fuel'",
               [$myStationId]
           );
           $__fsr = $__badge_count(
               "SELECT COUNT(*) FROM fuel_stock_requests
-               WHERE station_id=? AND status='Pending'",
+               WHERE station_id=? AND status IN ('Pending', 'Pending Manager Review')",
               [$myStationId]
           );
           $__badge_add('mgr_stock_review', $__sr + $__fsr);

@@ -540,7 +540,7 @@ require_once __DIR__ . '/../partials/header.php';
 .adj-table tbody tr:hover td { background:#eff6ff; }
 .adj-table tbody td { padding:9px 10px; color:#334155; vertical-align:middle; background:#fff; font-size:11px; }
 
-.card-table-wrap { width: 100%; overflow: hidden; }
+.card-table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .t-compact { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .t-compact thead tr { background: #002F70; }
 .t-compact th { padding: 7px 4px !important; font-size: 10.5px !important; font-weight: 700 !important; color: #fff !important; text-transform: uppercase; letter-spacing: .2px; border: none; text-align: left; white-space: nowrap; line-height: 1.2; }

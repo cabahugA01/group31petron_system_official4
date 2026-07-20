@@ -434,6 +434,8 @@ require_once __DIR__ . '/../partials/header.php';
     /* Hide everything except the printable area */
     html,body{background:#fff !important;padding:0 !important;margin:0 !important;width:100% !important;overflow:visible !important;}
     .sidebar,aside,.top-header,header,nav,.sidebar-identity-footer,
+    .fixed-footer,.footer-sidebar-area,.footer-content,.footer-toggle,
+    #toggleScrollBtn,.toggle-scroll-btn,.toast,
     .pr-filter-bar,.pr-tabs,.pr-export-actions,.pr-summary-grid{display:none !important;}
 
     /* Reset main layout so there is no sidebar offset */
@@ -496,7 +498,7 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="pr-export-actions">
             <button type="button" class="pr-export-btn" onclick="prExport('excel')"><i class="fas fa-file-excel"></i> Excel</button>
             <button type="button" class="pr-export-btn" onclick="prExport('csv')"><i class="fas fa-file-csv"></i> CSV</button>
-            <button type="button" class="pr-export-btn" onclick="prExport('pdf')"><i class="fas fa-file-pdf"></i> Export PDF</button>
+            <button type="button" class="pr-export-btn" onclick="prExport('pdf')"><i class="fas fa-file-pdf"></i></button>
             <button type="button" class="pr-export-btn" onclick="prPrint()"><i class="fas fa-print"></i> Print</button>
         </div>
     </form>
@@ -782,6 +784,20 @@ function prPrint() {
     const active = document.querySelector('.pr-panel.active') || document.querySelector('.pr-printable');
     printReportArea(active);
 }
+
+// Hide fixed elements (scroll btn, footer) during print — CSS alone is overridden by inline styles
+window.addEventListener('beforeprint', function() {
+    const scrollBtn = document.getElementById('toggleScrollBtn');
+    if (scrollBtn) scrollBtn.style.setProperty('display', 'none', 'important');
+    const footer = document.querySelector('.fixed-footer');
+    if (footer) footer.style.setProperty('display', 'none', 'important');
+});
+window.addEventListener('afterprint', function() {
+    const scrollBtn = document.getElementById('toggleScrollBtn');
+    if (scrollBtn) scrollBtn.style.removeProperty('display');
+    const footer = document.querySelector('.fixed-footer');
+    if (footer) footer.style.removeProperty('display');
+});
 </script>
 
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

@@ -468,7 +468,7 @@ require_once __DIR__ . '/../partials/header.php';
     <div class="card-head">
         <div class="card-title">Voided Transactions History (<?php echo count($voided); ?>)</div>
     </div>
-    <div style="width:100%;overflow:hidden;">
+    <div style="width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;">
     <table class="void-table">
         <thead>
             <tr>

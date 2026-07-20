@@ -137,7 +137,7 @@ include __DIR__ . "/../partials/header.php";
 .int-head h1{font-size:22px!important;font-weight:700!important;color:#002F70!important;margin:0!important;text-transform:uppercase!important;display:flex;align-items:center;gap:8px}
 .int-head .sub{font-size:13px;color:#666;margin-top:4px;text-transform:none!important}
 /* == Table wrapper == */
-.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:hidden; }
+.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:auto; -webkit-overflow-scrolling:touch; }
 /* == Table - SuperAdmin ato-table standard == */
 .po-table { width:100%; border-collapse:collapse; font-size:11px; }
 .po-table thead th { background:#002F70; color:#fff; padding:9px 10px; text-align:left; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.4px; border-bottom:2px solid #001a3d; vertical-align:middle; }

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'manager_encode_delivery';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -242,7 +242,7 @@ include __DIR__ . '/../partials/header.php';
 .btn-sm { padding: 5px 12px; font-size: 12px; }
 
 /* ── Table ── */
-.enc-table-wrap { overflow:hidden; }
+.enc-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
 table.enc-dt { width: 100%; border-collapse: collapse; }
 table.enc-dt th { background: var(--light); padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700; color: var(--gray); border-bottom: 2px solid #e5e7eb; white-space: nowrap; text-transform: uppercase; letter-spacing: .4px; }
 table.enc-dt td { padding: 10px 14px; font-size: 13px; color: #333; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }

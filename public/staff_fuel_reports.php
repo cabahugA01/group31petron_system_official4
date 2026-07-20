@@ -419,7 +419,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 }
 
 /* Table */
-.sfr-table-wrap { overflow:hidden; }
+.sfr-table-wrap { overflow-x:auto;-webkit-overflow-scrolling:touch; }
 
 .sfr-table {
     width: 100%;

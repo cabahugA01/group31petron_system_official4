@@ -296,7 +296,7 @@ include __DIR__ . '/../partials/header.php';
 
 <!-- Table -->
 <div class="card" style="padding:0;overflow:hidden;">
-    <div style="width:100%;overflow:hidden;">
+    <div style="width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;">
         <table class="vt-table" style="table-layout:fixed;width:100%;border-collapse:collapse;">
         <thead>
             <tr>

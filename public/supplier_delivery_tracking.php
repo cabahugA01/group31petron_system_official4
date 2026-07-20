@@ -98,7 +98,7 @@ include __DIR__ . '/../partials/header.php';
   .st-alert-success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
   .st-alert-error { background: #fee2e2; color: #7f1d1d; border: 1px solid #fecaca; }
   
-  .st-table-wrap { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  .st-table-wrap { background: white; border-radius: 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
   .st-table { width: 100%; border-collapse: collapse; }
   .st-table thead { background: #f8fafc; border-bottom: 2px solid #e2e8f0; }
   .st-table th { padding: 16px; text-align: left; font-size: 13px; font-weight: 600; color: #334155; }

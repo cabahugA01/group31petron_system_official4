@@ -382,13 +382,6 @@ require_once __DIR__ . '/../partials/header.php';
         <div>
             <h1 class="stock-title"><i class="fas fa-list-alt"></i> All Transactions Oversight</h1>
         </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <a href="?<?=http_build_query(array_merge($_GET,['export'=>'excel']))?>"
-               class="flt-btn flt-btn-excel" style="height:32px;font-size:11px;"><i class="fas fa-file-excel"></i> Excel</a>
-            <a href="?<?=http_build_query(array_merge($_GET,['export'=>'csv']))?>"
-               class="flt-btn flt-btn-reset" style="height:32px;font-size:11px;"><i class="fas fa-file-csv"></i> CSV</a>
-            <button onclick="window.print()" class="flt-btn" style="height:32px;font-size:11px;border:1px solid #002F70;color:#002F70;"><i class="fas fa-print"></i> Print</button>
-        </div>
     </div>
 
 <?php

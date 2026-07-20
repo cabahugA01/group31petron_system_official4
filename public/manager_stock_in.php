@@ -307,7 +307,7 @@ body .main,
 .si-btn.outline{background:#fff!important;color:#475569!important;border-color:#cbd5e1!important;}
 .si-btn.success{background:#16a34a!important;color:#fff!important;border-color:#16a34a!important;}
 .si-btn:disabled{opacity:.55;cursor:not-allowed;}
-.table-card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow-x:auto;overflow-y:hidden;box-shadow:0 2px 8px rgba(15,23,42,.04);width:100%;box-sizing:border-box;}
+.table-card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow-x:auto;overflow-y:visible;box-shadow:0 2px 8px rgba(15,23,42,.04);width:100%;box-sizing:border-box;}
 .table-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid #e2e8f0;}
 .table-title{font-size:15px;font-weight:850;color:#002F70;display:flex;align-items:center;gap:8px;}
 .stock-table{width:100%;border-collapse:collapse;font-size:12px;}
@@ -320,7 +320,7 @@ body .main,
 .detail-row{display:none;background:#f8fafc;}
 .detail-row.open{display:table-row;}
 .detail-cell{padding:0!important;width:100%;}
-.detail-panel{padding:18px;border-top:1px solid #dbeafe;box-sizing:border-box;max-width:100%;overflow:hidden;}
+.detail-panel{padding:18px;padding-bottom:100px;border-top:1px solid #dbeafe;box-sizing:border-box;max-width:100%;overflow:visible;}
 .info-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:16px;}
 .info-item{background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;}
 .info-item label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.45px;font-weight:850;color:#64748b;margin-bottom:3px;}
@@ -333,7 +333,7 @@ body .main,
 .qty-input{width:96px;text-align:right;}
 .price-input{width:120px;text-align:right;}
 .readonly-money{font-weight:800;color:#475569;}
-.detail-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid #dbeafe;}
+.detail-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px;padding:14px 0 16px;border-top:2px solid #dbeafe;background:#f8fafc;z-index:5;}
 .summary-inline{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:#475569;}
 .summary-inline strong{color:#002F70;font-size:14px;}
 .approve-btn{flex:0 0 auto;justify-content:center;}
@@ -525,9 +525,9 @@ body .main,
                                                     <td><span class="readonly-money"><?= si_money($item['cost_price']) ?></span></td>
                                                     <td>
                                                          <input class="price-input price-field" type="number" step="0.01" min="0.01" required
-                                                                value="<?= (float)$item['current_selling_price'] > 0 ? si_h($item['current_selling_price']) : '' ?>"
+                                                                value=""
                                                                 placeholder="<?= (float)$item['current_selling_price'] > 0 ? 'Current ₱' . number_format($item['current_selling_price'], 2) . '/L' : 'Enter selling price/L (required)' ?>"
-                                                                style="border-color: <?= (float)$item['current_selling_price'] <= 0 ? '#f59e0b' : '#cbd5e1' ?>;">
+                                                                style="border-color: #f59e0b;">
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -567,9 +567,9 @@ body .main,
                                                     <td><span class="readonly-money"><?= si_money($item['cost_price']) ?></span></td>
                                                     <td>
                                                          <input class="price-input price-field" type="number" min="0.01" step="0.01" required
-                                                                value="<?= (float)$item['current_selling_price'] > 0 ? si_h($item['current_selling_price']) : (isset($item['suggested_price']) && (float)$item['suggested_price'] > 0 ? si_h($item['suggested_price']) : '') ?>"
+                                                                value=""
                                                                 placeholder="<?= (float)$item['current_selling_price'] > 0 ? 'Current ₱' . number_format($item['current_selling_price'], 2) : 'Enter selling price (required)' ?>"
-                                                                style="border-color: <?= (float)$item['current_selling_price'] <= 0 ? '#f59e0b' : '#cbd5e1' ?>;">
+                                                                style="border-color: #f59e0b;">
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>

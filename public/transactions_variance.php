@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Variance Alerts — Full Anomaly-Handling Workflow
  * Merchandise & Job Orders only. Fuel has its own reconciliation flow.
@@ -361,7 +361,7 @@ include __DIR__ . '/../partials/header.php';
         <strong style="color:#842029;font-size:14px;"><?= count($detected_anomalies); ?> New Anomal<?= count($detected_anomalies)>1?'ies':'y'; ?> Detected</strong>
         <span style="font-size:12px;color:#6c757d;">— Not yet logged. Review and flag below.</span>
     </div>
-    <div style="overflow:hidden;">
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
         <table class="va-table" style="font-size:12px;">
             <thead><tr><th>Type</th><th>Anomaly</th><th>Reference</th><th>Item / Service</th><th>Variance</th><th>Staff</th><th>Date</th><th>Action</th></tr></thead>
             <tbody>
@@ -928,7 +928,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .va-btn-danger    { background:#dc3545; color:#fff; }
 
 /* ── Main table — purchase-order style ── */
-.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow:hidden; }
+.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:auto;-webkit-overflow-scrolling:touch; }
 .po-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
 .po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:left; font-weight:600; }
 .po-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }

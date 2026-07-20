@@ -586,15 +586,15 @@ require_once __DIR__ . '/../partials/header.php';
 
 /* == FILTER BAR == */
 .afto-filter {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 1fr 1fr 0.8fr 1fr 0.9fr 0.9fr auto;
     align-items: flex-end;
-    gap: 12px;
-    flex-wrap: wrap;
+    gap: 6px;
     background: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 10px;
-    padding: 16px;
-    margin-bottom: 20px;
+    padding: 10px 12px;
+    margin-bottom: 16px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 .afto-fg {
@@ -603,22 +603,24 @@ require_once __DIR__ . '/../partials/header.php';
     gap: 4px;
 }
 .afto-fg label {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     color: #475569;
     text-transform: uppercase;
-    letter-spacing: 0.4px;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
 }
 .afto-fg input, .afto-fg select {
-    height: 36px;
-    padding: 0 12px;
+    height: 30px;
+    padding: 0 6px;
     border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    font-size: 13px;
+    border-radius: 5px;
+    font-size: 11px;
     color: #1e293b;
     background: #ffffff;
     outline: none;
     box-sizing: border-box;
+    width: 100%;
 }
 .afto-fg input:focus, .afto-fg select:focus {
     border-color: var(--petron-blue, #00264D);
@@ -626,9 +628,14 @@ require_once __DIR__ . '/../partials/header.php';
 }
 .afto-actions {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 4px;
+    white-space: nowrap;
+}
+.afto-actions .flt-btn {
+    height: 30px;
+    padding: 0 10px;
+    font-size: 11px;
 }
 
 .flt-btn {
@@ -716,8 +723,9 @@ require_once __DIR__ . '/../partials/header.php';
 }
 .afto-tbl {
     width: 100%;
+    min-width: 980px;
     border-collapse: collapse;
-    font-size: 12px;
+    font-size: 10px;
     text-align: left;
     table-layout: fixed;
 }
@@ -725,15 +733,13 @@ require_once __DIR__ . '/../partials/header.php';
     background: #002F70;
 }
 .afto-tbl thead th {
-    padding: 10px 8px;
+    padding: 7px 4px;
     font-weight: 700;
     color: #ffffff;
     text-transform: uppercase;
-    letter-spacing: 0.4px;
-    font-size: 11px;
+    letter-spacing: 0.2px;
+    font-size: 9px;
     border-bottom: 2px solid #001a3d;
-    overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
 }
 .afto-tbl tbody tr {
@@ -744,11 +750,20 @@ require_once __DIR__ . '/../partials/header.php';
     background: #f8fafc;
 }
 .afto-tbl tbody td {
-    padding: 8px;
+    padding: 6px 4px;
     color: #334155;
     vertical-align: middle;
+    white-space: nowrap;
+    font-size: 10px;
+    max-width: 120px;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+.afto-tbl tbody td:last-child, .afto-tbl thead th:last-child {
+    max-width: none !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: nowrap !important;
 }
 
 .align-right { text-align: right; font-family: monospace; }
@@ -888,12 +903,12 @@ require_once __DIR__ . '/../partials/header.php';
 
 <!-- Filter Bar -->
 <form method="GET" action="admin_inventory_merchandise.php" class="afto-filter">
-    <div class="afto-fg" style="flex: 2; min-width: 180px;">
+    <div class="afto-fg">
         <label for="search_query">Search Product</label>
         <input type="text" name="search_query" id="search_query" placeholder="Search SKU, name, brand..." value="<?= htmlspecialchars($search_query) ?>">
     </div>
     
-    <div class="afto-fg" style="flex: 1; min-width: 130px;">
+    <div class="afto-fg">
         <label for="category">Category</label>
         <select name="category" id="category">
             <option value="all">All Categories</option>
@@ -903,7 +918,7 @@ require_once __DIR__ . '/../partials/header.php';
         </select>
     </div>
 
-    <div class="afto-fg" style="flex: 1; min-width: 130px;">
+    <div class="afto-fg">
         <label for="brand">Brand</label>
         <select name="brand" id="brand">
             <option value="all">All Brands</option>
@@ -913,7 +928,7 @@ require_once __DIR__ . '/../partials/header.php';
         </select>
     </div>
 
-    <div class="afto-fg" style="flex: 1; min-width: 130px;">
+    <div class="afto-fg">
         <label for="supplier">Supplier</label>
         <select name="supplier" id="supplier">
             <option value="all">All Suppliers</option>
@@ -923,7 +938,7 @@ require_once __DIR__ . '/../partials/header.php';
         </select>
     </div>
 
-    <div class="afto-fg" style="flex: 1; min-width: 100px;">
+    <div class="afto-fg">
         <label for="unit">UOM</label>
         <select name="unit" id="unit">
             <option value="all">All UOMs</option>
@@ -933,7 +948,7 @@ require_once __DIR__ . '/../partials/header.php';
         </select>
     </div>
     
-    <div class="afto-fg" style="flex: 1; min-width: 120px;">
+    <div class="afto-fg">
         <label for="status_filter">Status</label>
         <select name="status_filter" id="status_filter">
             <option value="all">All Statuses</option>
@@ -945,12 +960,12 @@ require_once __DIR__ . '/../partials/header.php';
         </select>
     </div>
 
-    <div class="afto-fg" style="flex: 1; min-width: 110px;">
+    <div class="afto-fg">
         <label for="date_from">Updated From</label>
         <input type="date" name="date_from" id="date_from" value="<?= htmlspecialchars($date_from) ?>" style="font-size: 11px;">
     </div>
 
-    <div class="afto-fg" style="flex: 1; min-width: 110px;">
+    <div class="afto-fg">
         <label for="date_to">Updated To</label>
         <input type="date" name="date_to" id="date_to" value="<?= htmlspecialchars($date_to) ?>" style="font-size: 11px;">
     </div>
@@ -966,22 +981,36 @@ require_once __DIR__ . '/../partials/header.php';
     <div class="tbl-hd">
         <div class="tbl-title"><i class="fas fa-clipboard-list"></i> Merchandise Stock Records</div>
     </div>
-    <div style="overflow-x:hidden;width:100%;">
+    <div class="table-wrap" style="overflow-x:auto; width:100%; -webkit-overflow-scrolling:touch;">
         <table class="afto-tbl" id="adminMerchTable">
+            <colgroup>
+                <col style="width:80px">   <!-- SKU -->
+                <col style="width:160px">  <!-- Product Name -->
+                <col style="width:95px">   <!-- Category -->
+                <col style="width:50px">   <!-- UOM -->
+                <col style="width:50px">   <!-- Cap -->
+                <col style="width:115px">  <!-- Stock/Reorder -->
+                <col style="width:50px">   <!-- Phys -->
+                <col style="width:55px">   <!-- Variance -->
+                <col style="width:100px">  <!-- Status -->
+                <col style="width:70px">   <!-- Last Mov -->
+                <col style="width:90px">   <!-- Last Updated -->
+                <col style="width:80px">   <!-- Action -->
+            </colgroup>
             <thead>
                 <tr>
-                    <th style="width: 110px;">SKU</th>
+                    <th>SKU</th>
                     <th>Product Name</th>
                     <th style="text-align:center;">Category</th>
-                    <th style="width: 70px; text-align:center;">UOM</th>
-                    <th style="width: 90px; text-align:center;">Capacity</th>
-                    <th style="width: 170px;">Current Stock / Reorder</th>
-                    <th style="width: 105px; text-align:right;">Physical Count</th>
-                    <th style="width: 90px; text-align:right;">Variance</th>
-                    <th style="width: 90px;" class="align-center">Status</th>
-                    <th style="width: 120px; text-align:center;">Last Movement</th>
-                    <th style="width: 120px;">Last Updated</th>
-                    <th style="width: 70px; text-align:center;">Action</th>
+                    <th style="text-align:center;">UOM</th>
+                    <th style="text-align:center;">Cap.</th>
+                    <th>Stock / Reorder</th>
+                    <th style="text-align:right;">Phys.</th>
+                    <th style="text-align:right;">Variance</th>
+                    <th class="align-center">Status</th>
+                    <th style="text-align:center;">Last Mov.</th>
+                    <th>Last Updated</th>
+                    <th style="text-align:center;">Action</th>
                 </tr>
             </thead>
             <tbody>
@@ -1017,7 +1046,7 @@ require_once __DIR__ . '/../partials/header.php';
                         $badgeCls = $has_variance ? 'bg-amber' : getStatusBadgeClass($item['computed_status']);
                         $badgeLbl = $has_variance ? 'Variance Detected' : getStatusLabel($item['computed_status']);
                         $status_color = $has_variance ? '#fd7e14' : ($item['computed_status'] === 'available' ? '#28a745' : (in_array($item['computed_status'], ['critical', 'out']) ? '#dc3545' : '#fd7e14'));
-                        $updated = $item['last_updated'] ? date('M d, Y h:i A', strtotime($item['last_updated'])) : '-';
+                        $updated = $item['last_updated'] ? date('M d h:i A', strtotime($item['last_updated'])) : '-';
                         $phys_text = $item['physical_count'] !== null ? number_format((float)$item['physical_count'], 0) : '-';
                         $var_text = '-';
                         $var_style = 'color:#64748b;';
@@ -1048,8 +1077,8 @@ require_once __DIR__ . '/../partials/header.php';
                             <div class="fill-bar-wrap">
                                 <div class="fill-bar-inner" style="width:<?= min(100, round($fill_pct)) ?>%;background:<?= $status_color ?>;"></div>
                             </div>
-                            <span style="font-size:11px;font-weight:600;color:#334155;"><?= number_format($stock, 0) ?> <?= htmlspecialchars($item['unit']) ?></span>
-                            <span style="font-size:10px;color:#94a3b8;margin-left:4px;">&middot; Reorder: <?= number_format($reorder, 0) ?></span>
+                            <span style="font-size:10px;font-weight:600;color:#334155;"><?= number_format($stock, 0) ?> <?= htmlspecialchars($item['unit']) ?></span>
+                            <span style="font-size:9px;color:#94a3b8;">/ <?= number_format($reorder, 0) ?></span>
                         </td>
                         <td class="align-right" style="font-weight:700;color:#0f172a;"><?= $phys_text ?></td>
                         <td class="align-right" style="<?= $var_style ?>"><?= $var_text ?></td>

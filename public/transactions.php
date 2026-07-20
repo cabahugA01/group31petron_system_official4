@@ -2445,7 +2445,7 @@ function validatePaymentModal() {
 .txn-btn-payment:hover { background:#7c3aed !important; color:#fff !important; }
 
 /* -- Uniform table design -- */
-.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow:hidden; }
+.po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .po-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
 .po-table thead th { background:#002F70; color:#fff; padding:10px; text-align:left; font-weight:600; font-size:0.82rem; border-bottom:2px solid #002F70; }
 .po-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }
@@ -2657,7 +2657,7 @@ function validatePaymentModal() {
 /* ══ TABLE LAYOUT ══════════════════════════════════════════════════════════════ */
 .txn-table-wrap {
     width: 100%;
-    overflow:hidden;
+    overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     position: relative;
 }

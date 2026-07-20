@@ -363,6 +363,26 @@
         box-shadow: none !important;
     }
 
+    /* Clean pagination buttons — prevent global button theme color from bleeding in */
+    .pag-btn {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        color: #374151 !important;
+        border: 1px solid #d1d5db !important;
+        box-shadow: none !important;
+        font-weight: 400 !important;
+    }
+    .pag-btn:hover:not(:disabled) {
+        background: #f1f5f9 !important;
+        background-color: #f1f5f9 !important;
+        border-color: #94a3b8 !important;
+        color: #1e293b !important;
+    }
+    .pag-btn:disabled {
+        opacity: 0.45 !important;
+        cursor: not-allowed !important;
+    }
+
     .flt-btn-print,
     .exp-btn-print,
     .btn-act-print {
@@ -917,7 +937,7 @@
             });
             
             var totalRows = visibleRows.length;
-            if (totalRows <= 10) {
+            if (totalRows <= rowsPerPage) {
                 container.innerHTML = '';
                 container.style.display = 'none';
                 allRows.forEach(function(row) {
@@ -980,20 +1000,20 @@
             }
             
             var html = '';
-            html += '<button class="cust-btn" style="padding:4px 8px;margin:2px;font-size:11px;background:transparent;color:#333;border:1px solid #ccc;border-radius:4px;cursor:pointer;" ' + (currentPage === 1 ? 'disabled' : '') + ' onclick="setTablePage(\''+tableId+'\',' + (currentPage - 1) + ')">Prev</button>';
+            html += '<button class="pag-btn" style="padding:4px 8px;margin:2px;font-size:11px;background:transparent;color:inherit;border:1px solid #ccc;border-radius:4px;cursor:pointer;" ' + (currentPage === 1 ? 'disabled' : '') + ' onclick="setTablePage(\''+tableId+'\',' + (currentPage - 1) + ')">Prev</button>';
             
             for (var i = 1; i <= totalPages; i++) {
                 if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
                     var isActive = (i === currentPage);
-                    html += '<button class="cust-btn" style="padding:4px 8px;margin:2px;font-size:11px;border-radius:4px;cursor:pointer;' + (isActive ? 'background:#002F70;color:#ffffff;font-weight:bold;border:1px solid #002F70;' : 'background:transparent;color:#333;border:1px solid #ccc;') + '" onclick="setTablePage(\''+tableId+'\',' + i + ')">' + i + '</button>';
+                    html += '<button class="pag-btn" style="padding:4px 8px;margin:2px;font-size:11px;border-radius:4px;cursor:pointer;' + (isActive ? 'background:transparent;color:inherit;font-weight:bold;border:2px solid #6b7280;' : 'background:transparent;color:inherit;border:1px solid #ccc;') + '" onclick="setTablePage(\''+tableId+'\',' + i + ')">' + i + '</button>';
                 } else if (i === currentPage - 3 || i === currentPage + 3) {
                     html += '<span style="padding:4px 8px;margin:2px;font-size:11px;color:#6c757d;">...</span>';
                 }
             }
             
-            html += '<button class="cust-btn" style="padding:4px 8px;margin:2px;font-size:11px;background:transparent;color:#333;border:1px solid #ccc;border-radius:4px;cursor:pointer;" ' + (currentPage === totalPages ? 'disabled' : '') + ' onclick="setTablePage(\''+tableId+'\',' + (currentPage + 1) + ')">Next</button>';
+            html += '<button class="pag-btn" style="padding:4px 8px;margin:2px;font-size:11px;background:transparent;color:inherit;border:1px solid #ccc;border-radius:4px;cursor:pointer;" ' + (currentPage === totalPages ? 'disabled' : '') + ' onclick="setTablePage(\''+tableId+'\',' + (currentPage + 1) + ')">Next</button>';
             
-            var selectHtml = '<select class="rows-select" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:11px;color:#0f172a;background:#ffffff;cursor:pointer;margin-right:12px;outline:none;">';
+            var selectHtml = '<select class="rows-select" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:11px;background:transparent;cursor:pointer;margin-right:12px;outline:none;">';
             var options = [10, 20, 25, 50, 100];
             options.forEach(function(opt) {
                 var selectedAttr = (opt === rowsPerPage) ? 'selected' : '';

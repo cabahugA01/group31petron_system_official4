@@ -10,9 +10,11 @@ require_login();
 $me   = current_user();
 $role = role_key($me['role'] ?? 'staff');
 
-if (!in_array($role, ['admin', 'superadmin', 'manager'])) {
+$staff_roles   = ['staff', 'cashier', 'pump_attendant'];
+$is_staff_view = in_array($role, $staff_roles);
+if (!in_array($role, ['admin', 'superadmin', 'manager', 'staff', 'cashier', 'pump_attendant'])) {
     http_response_code(403);
-    die('<p style="font-family:Arial;padding:40px;color:#721c24;">Access denied. Manager or Admin privileges required.</p>');
+    die('<p style="font-family:Arial;padding:40px;color:#721c24;">Access denied.</p>');
 }
 
 $po_id    = (int)($_GET['id'] ?? 0);
@@ -444,7 +446,7 @@ $vat_tin       = htmlspecialchars($po['station_vat_tin'] ?? '—');
 <title>Purchase Order — <?php echo $po_number; ?></title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:11px;color:#333;background:#fff;padding:15px;line-height:1.3}
+body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:11px;color:#333;background:#fff;padding:15px;padding-top:55px;line-height:1.3}
 .po-document{width:100%;max-width:850px;margin:0 auto;border:1px solid #ddd;padding:20px;position:relative;background:#fff;box-shadow:0 0 10px rgba(0,0,0,0.05);}
 .header-box{display:flex;justify-content:space-between;align-items:center;position:relative;padding-bottom:8px;}
 .divider-double{border-top:3px double #333;margin:10px 0;}
@@ -462,8 +464,8 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:11px;
 .signatures-box{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-top:25px;}
 .sig-col{text-align:center;}
 .sig-line{border-top:1px solid #475569;width:80%;margin:30px auto 3px auto;}
-.btn-print-bar{max-width:850px;margin:0 auto 10px auto;display:flex;justify-content:flex-end;gap:10px;}
-.btn-print{font-family:sans-serif;font-size:11px;padding:6px 14px;background:#002F6C;color:#fff;border:none;border-radius:4px;cursor:pointer;text-decoration:none;font-weight:600;}
+.btn-print-bar{position:fixed;top:0;right:0;padding:8px 16px;display:flex;justify-content:flex-end;gap:10px;background:rgba(255,255,255,0.95);z-index:99999;box-shadow:0 2px 6px rgba(0,0,0,0.08);}
+.btn-print{font-family:sans-serif;font-size:11px;padding:6px 14px;background:#002F6C;color:#fff;border:none;border-radius:4px;cursor:pointer;text-decoration:none;font-weight:600;pointer-events:auto !important;position:relative;z-index:99999;}
 .btn-print:hover{background:#0b448a;}
 .btn-back{background:#fff;color:#333;border:1px solid #ccc;}
 .btn-back:hover{background:#f5f5f5;}
@@ -517,7 +519,10 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:11px;
 <body>
 
 <div class="btn-print-bar">
+    <?php if (!$is_staff_view): ?>
     <button type="button" onclick="window.print()" class="btn-print">Print PDF</button>
+    <?php endif; ?>
+    <button type="button" onclick="window.close()" class="btn-print btn-back">&#x2190; Close</button>
 </div>
 
 <div class="po-document">

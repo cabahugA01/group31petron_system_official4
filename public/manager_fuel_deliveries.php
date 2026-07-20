@@ -1132,7 +1132,7 @@ require __DIR__ . '/../partials/flash_toast.php';
     <?php if (empty($deliveries)): ?>
         <div class="empty-state"><i class="fas fa-truck"></i><p>No deliveries recorded yet.</p></div>
     <?php else: ?>
-    <div style="overflow:hidden;">
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
     <table class="data-table">
         <thead><tr>
             <th>#</th>

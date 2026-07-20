@@ -216,7 +216,7 @@ include __DIR__ . '/../partials/header.php';
 .flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
 
 /* ── Table (100% width, table-layout: fixed, no horizontal scroll) ── */
-.table-wrap{background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);border:1px solid #e9ecef;}
+.table-wrap{background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);border:1px solid #e9ecef;overflow-x:auto;-webkit-overflow-scrolling:touch;}
 body #del-table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;}
 body #del-table thead th{background:#002F70 !important;color:#fff !important;padding:8px 6px !important;font-weight:600 !important;font-size:10px !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;word-wrap:break-word;word-break:break-all;overflow:hidden;text-overflow:ellipsis;}
 body #del-table tbody td{padding:8px 6px;border-bottom:1px solid #e9ecef;vertical-align:middle;color:#212529;word-wrap:break-word;word-break:break-all;}

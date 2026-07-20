@@ -1059,7 +1059,7 @@ Fuel Products
 body{overflow-x:hidden !important;max-width:100vw !important;}
 
 /* Table styles */
-.table-wrap{overflow:hidden;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);border:1px solid #e9ecef;overflow:hidden;}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);border:1px solid #e9ecef;}
 .table{width:100%;border-collapse:collapse;font-size:0.875rem;}
 .table th{background:#002F70 !important;color:#fff !important;padding:14px 16px;text-align:left;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;border:none !important;}
 .table td{padding:12px 16px;border-bottom:1px solid #e9ecef;vertical-align:middle;color:#212529;}
@@ -1121,7 +1121,7 @@ body .card{background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08
 body .card-header{padding:16px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
 body .card-header h3{font-size:16px;font-weight:700;color:#002F70;margin:0;display:flex;align-items:center;gap:8px;}
 body .card-body{padding:20px;overflow-x:hidden;}
-body .table-wrap{overflow:hidden;-webkit-overflow-scrolling:touch;}
+body .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
 body .table{width:100%;border-collapse:collapse;font-size:0.875rem;background:#fff;}
 body .table thead th{background:#002F70 !important;color:#fff !important;padding:14px 16px !important;text-align:left !important;font-weight:600 !important;text-transform:uppercase !important;letter-spacing:0.3px !important;border:none !important;}
 body .table tbody td{padding:12px 16px !important;border-bottom:1px solid #e9ecef !important;vertical-align:middle !important;color:#212529 !important;background:#fff !important;}

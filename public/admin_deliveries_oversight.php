@@ -55,7 +55,7 @@ include __DIR__ . '/../partials/header.php';
 .btn-sm{padding:5px 10px;font-size:12px;}
 .btn:disabled{opacity:.5;cursor:not-allowed;}
 /* ── Table ── */
-.table-wrap{overflow-x:hidden;}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
 table.dt{width:100%;border-collapse:collapse;font-size:13px;}
 table.dt th{background:var(--light);padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray);border-bottom:2px solid #dee2e6;white-space:nowrap;text-transform:uppercase;letter-spacing:.4px;}
 table.dt td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}

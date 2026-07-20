@@ -524,7 +524,7 @@ require_once __DIR__ . '/../partials/header.php';
 .afto-table-card { background:#fff; border:1px solid #e2e8f0; border-radius:11px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.04); width:100%; }
 .afto-table-hd { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid #f1f5f9; flex-wrap:wrap; gap:8px; }
 .afto-table-title { font-size:13px; font-weight:700; color:#00264D; text-transform:uppercase; letter-spacing:.3px; margin:0; }
-.afto-tbl-wrap { width:100%; overflow:hidden; }
+.afto-tbl-wrap { width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .afto-tbl { width:100%; border-collapse:collapse; table-layout:fixed; font-size:10px; }
 .afto-tbl thead tr { background:#002F70; }
 .afto-tbl thead th { padding:8px 6px; text-align:left; font-size:9px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.3px; border-bottom:2px solid #001a3d; vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

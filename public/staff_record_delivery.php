@@ -1591,9 +1591,9 @@ body[data-page="staff_record_delivery"] .main {
                                 ], $po['items'])
                             ];
                             ?>
-                            <button type="button" onclick='openPOView(<?= rd_js_attr($merch_view_data) ?>)'
+                            <button type="button" onclick="toggleInlineDelivery('<?= $safe_key ?>')"
                                 style="background-color:transparent !important;border:none;color:#002F70;font-weight:800;font-family:monospace;font-size:13px;cursor:pointer;padding:0;text-decoration:underline;">
-                                <i class="fas fa-file-alt" style="font-size:11px;margin-right:4px;"></i>
+                                <i class="fas fa-file-invoice" style="font-size:11px;margin-right:4px;"></i>
                                 <?= htmlspecialchars($po['po_number']) ?>
                             </button>
                             <div style="font-size:11px;color:#64748b;margin-top:3px;">PR <?= htmlspecialchars($po['pr_number'] ?? '-') ?></div>
@@ -1614,7 +1614,6 @@ body[data-page="staff_record_delivery"] .main {
                         <td style="text-align:center;">
                             <div class="delivery-actions">
                                 <button type="button" class="txn-btn secondary" onclick='openPOView(<?= rd_js_attr($merch_view_data) ?>)'><i class="fas fa-eye"></i> View PO</button>
-                                <button type="button" class="txn-btn primary" onclick="toggleInlineDelivery('<?= $safe_key ?>')"><i class="fas fa-box-open"></i> Record Delivery</button>
                             </div>
                         </td>
                     </tr>
@@ -1643,7 +1642,7 @@ body[data-page="staff_record_delivery"] .main {
                                         <div><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Received By</div><div style="font-weight:600;color:#1e293b;"><?= htmlspecialchars($me['name'] ?? $me['username'] ?? 'Staff') ?></div></div>
                                     </div>
                                     <!-- Form -->
-                                    <form method="POST" action="staff_record_delivery.php?tab=merchandise" id="merch-form-<?= $safe_key ?>">
+                                    <form method="POST" action="staff_record_delivery.php?tab=merchandise" id="merch-form-<?= $safe_key ?>" autocomplete="off">
                                         <input type="hidden" name="action" value="record_merchandise">
                                         <?php foreach ($po['po_ids'] as $pid): ?>
                                         <input type="hidden" name="po_ids[]" value="<?= (int)$pid ?>">
@@ -1703,7 +1702,8 @@ body[data-page="staff_record_delivery"] .main {
                                                         <td style="padding:10px 12px;text-align:center;font-weight:700;color:#2563eb;"><?= number_format($item['ordered_qty']) ?></td>
                                                         <td style="padding:10px 12px;text-align:center;">
                                                             <input type="number" name="received_qty[<?= $item['item_id'] ?>]"
-                                                                step="0.01" min="0" value="" placeholder="____" required
+                                                                step="0.01" min="0" value="" placeholder="Enter qty" required
+                                                                autocomplete="off"
                                                                 style="width:90px;padding:6px;border:1.5px solid #cbd5e1;border-radius:6px;text-align:center;font-weight:700;font-size:13px;">
                                                         </td>
                                                         <td style="padding:10px 12px;text-align:center;color:#64748b;font-weight:600;"><?= htmlspecialchars($item['unit']) ?></td>
@@ -1964,9 +1964,9 @@ body[data-page="staff_record_delivery"] .main {
                                 ], $po['items'])
                             ];
                             ?>
-                            <button type="button" onclick='openPOView(<?= rd_js_attr($fuel_view_data) ?>)'
+                            <button type="button" onclick="toggleInlineDelivery('<?= $safe_fkey ?>')"
                                 style="background-color:transparent !important;border:none;color:#002F70;font-weight:800;font-family:monospace;font-size:13px;cursor:pointer;padding:0;text-decoration:underline;">
-                                <i class="fas fa-file-alt" style="font-size:11px;margin-right:4px;"></i>
+                                <i class="fas fa-file-invoice" style="font-size:11px;margin-right:4px;"></i>
                                 <?= htmlspecialchars($po['po_number']) ?>
                             </button>
                             <div style="font-size:11px;color:#64748b;margin-top:3px;">PR <?= htmlspecialchars($po['pr_number'] ?? '-') ?></div>
@@ -1987,7 +1987,6 @@ body[data-page="staff_record_delivery"] .main {
                         <td style="text-align:center;">
                             <div class="delivery-actions">
                                 <button type="button" class="txn-btn secondary" onclick='openPOView(<?= rd_js_attr($fuel_view_data) ?>)'><i class="fas fa-eye"></i> View PO</button>
-                                <button type="button" class="txn-btn primary" onclick="toggleInlineDelivery('<?= $safe_fkey ?>')"><i class="fas fa-gas-pump"></i> Record Delivery</button>
                             </div>
                         </td>
                     </tr>
@@ -2015,7 +2014,7 @@ body[data-page="staff_record_delivery"] .main {
                                         <div><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Received By</div><div style="font-weight:600;color:#1e293b;"><?= htmlspecialchars($me['name'] ?? $me['username'] ?? 'Staff') ?></div></div>
                                     </div>
                                     <!-- Form -->
-                                    <form method="POST" action="staff_record_delivery.php?tab=fuel" id="fuel-form-<?= $safe_fkey ?>">
+                                    <form method="POST" action="staff_record_delivery.php?tab=fuel" id="fuel-form-<?= $safe_fkey ?>" autocomplete="off">
                                         <input type="hidden" name="action" value="record_fuel">
                                         <input type="hidden" name="po_number" value="<?= htmlspecialchars($po['po_number']) ?>">
                                         <div style="font-size:10.5px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin:4px 0 6px;"><i class="fas fa-truck-loading" style="margin-right:5px;"></i> Delivery Information</div>
@@ -2073,7 +2072,8 @@ body[data-page="staff_record_delivery"] .main {
                                                         <td style="padding:10px 12px;text-align:center;">
                                                             <div style="display:inline-flex;align-items:center;gap:4px;">
                                                                 <input type="number" name="received_liters[<?= (int)$fitem['id'] ?>]"
-                                                                    step="0.01" min="0" value="" placeholder="____" required
+                                                                    step="0.01" min="0" value="" placeholder="Enter liters" required
+                                                                    autocomplete="off"
                                                                     style="width:110px;padding:6px;border:1.5px solid #cbd5e1;border-radius:6px;text-align:center;font-weight:700;font-size:13px;">
                                                                 <span style="font-size:11px;color:#64748b;font-weight:700;">L</span>
                                                             </div>
@@ -2279,7 +2279,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div style="color:rgba(255,255,255,0.72); font-size:11px; margin-top:1px;" id="dv_subtitle">View recorded delivery</div>
                 </div>
             </div>
-            <button type="button" onclick="closeDeliveryView()" style="background:none;border:none;color:#fff;font-size:22px;cursor:pointer;line-height:1;opacity:0.85;">&times;</button>
         </div>
         <div style="overflow-y:auto; flex:1; padding:24px;">
             <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(155px,1fr)); gap:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:16px; margin-bottom:18px;">
@@ -2323,55 +2322,6 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
         <div style="padding:14px 24px; border-top:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:flex-end; gap:10px; flex-shrink:0;">
             <button type="button" onclick="closeDeliveryView()" style="background:#6b7280;color:#fff;border:none;padding:9px 22px;border-radius:7px;font-weight:700;font-size:13px;cursor:pointer;">Close</button>
-        </div>
-    </div>
-</div>
-
-<!-- ═══════════════════════════════════════════
-     PO RECEIPT VIEW MODAL
-     ═══════════════════════════════════════════ -->
-<div id="poViewModal" style="display:none; position:fixed; inset:0; z-index:99999; background:rgba(0,0,0,0.55); backdrop-filter:blur(4px); align-items:center; justify-content:center; padding:20px;">
-    <div style="background:#fff; border-radius:14px; width:100%; max-width:780px; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 25px 60px rgba(0,0,0,0.35); overflow:hidden;">
-        <!-- Modal Header -->
-        <div style="background:#002F70; padding:16px 24px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
-            <div style="display:flex; align-items:center; gap:12px;">
-                <i class="fas fa-file-invoice" style="color:#fff; font-size:18px;"></i>
-                <div>
-                    <div style="color:#fff; font-weight:800; font-size:15px; letter-spacing:0.3px;" id="pov_title">Purchase Order Receipt</div>
-                    <div style="color:rgba(255,255,255,0.7); font-size:11px; margin-top:1px;" id="pov_subtitle">View PO Details</div>
-                </div>
-            </div>
-            <button type="button" onclick="closePOView()" style="background:none;border:none;color:#fff;font-size:22px;cursor:pointer;line-height:1;opacity:0.8;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">&times;</button>
-        </div>
-        <!-- Modal Body -->
-        <div style="overflow-y:auto; flex:1; padding:24px;">
-            <!-- Info Grid -->
-            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:16px; margin-bottom:20px;">
-                <div><div style="font-size:9.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Purchase Order No.</div><div style="font-weight:800;color:#002F70;font-family:monospace;font-size:13px;" id="pov_po_number">—</div></div>
-                <div><div style="font-size:9.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">PR No.</div><div style="font-weight:700;color:#1e293b;font-family:monospace;font-size:13px;" id="pov_pr_number">—</div></div>
-                <div><div style="font-size:9.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Supplier</div><div style="font-weight:700;color:#1e293b;font-size:13px;" id="pov_supplier">—</div></div>
-                <div><div style="font-size:9.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Expected Delivery</div><div style="font-weight:700;color:#1e293b;font-size:13px;" id="pov_exp_del">—</div></div>
-                <div><div style="font-size:9.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Prepared By</div><div style="font-weight:700;color:#1e293b;font-size:13px;" id="pov_prep_by">—</div></div>
-                <div><div style="font-size:9.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Approved By</div><div style="font-weight:700;color:#1e293b;font-size:13px;" id="pov_appr_by">—</div></div>
-            </div>
-            <!-- Items Table -->
-            <div style="font-size:11px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;" id="pov_items_label"><i class="fas fa-boxes" style="margin-right:5px;"></i>Ordered Items</div>
-            <div style="border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; margin-bottom:16px;">
-                <table style="width:100%; border-collapse:collapse; font-size:13px;">
-                    <thead id="pov_thead" style="background:#002F70;"></thead>
-                    <tbody id="pov_tbody"></tbody>
-                    <tfoot id="pov_tfoot"></tfoot>
-                </table>
-            </div>
-            <!-- Notes -->
-            <div id="pov_notes_wrap" style="background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:12px 16px; display:none;">
-                <div style="font-size:10px;font-weight:800;color:#92400e;text-transform:uppercase;margin-bottom:4px;"><i class="fas fa-sticky-note" style="margin-right:4px;"></i>Notes / Remarks</div>
-                <div style="font-size:13px;color:#78350f;" id="pov_notes"></div>
-            </div>
-        </div>
-        <!-- Modal Footer -->
-        <div style="padding:14px 24px; border-top:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:flex-end; gap:10px; flex-shrink:0;">
-            <button type="button" onclick="closePOView()" style="background:#6b7280;color:#fff;border:none;padding:9px 22px;border-radius:7px;font-weight:700;font-size:13px;cursor:pointer;">Close</button>
         </div>
     </div>
 </div>
@@ -2442,101 +2392,15 @@ function closeDeliveryView() {
 }
 
 function openPOView(data) {
-    var modal = document.getElementById('poViewModal');
-    var fmt = function(v) { return v || '—'; };
-    var fmtMoney = function(v) {
-        v = parseFloat(v) || 0;
-        return v > 0 ? '₱' + v.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
-    };
-    // Header
-    document.getElementById('pov_title').textContent = data.type + ' Purchase Order';
-    document.getElementById('pov_subtitle').textContent = data.po_number;
-    document.getElementById('pov_po_number').textContent = fmt(data.po_number);
-    document.getElementById('pov_pr_number').textContent = fmt(data.pr_number);
-    document.getElementById('pov_supplier').textContent  = fmt(data.supplier);
-    document.getElementById('pov_exp_del').textContent   = fmt(data.exp_del);
-    document.getElementById('pov_prep_by').textContent   = fmt(data.prep_by || data.appr_by);
-    document.getElementById('pov_appr_by').textContent   = fmt(data.appr_by);
-    // Notes
-    var notesWrap = document.getElementById('pov_notes_wrap');
-    if (data.remarks && data.remarks.trim()) {
-        document.getElementById('pov_notes').textContent = data.remarks;
-        notesWrap.style.display = 'block';
-    } else {
-        notesWrap.style.display = 'none';
-    }
-    // Items
-    var isFuel = data.type === 'Fuel';
-    document.getElementById('pov_items_label').innerHTML =
-        (isFuel ? '<i class="fas fa-gas-pump" style="margin-right:5px;"></i>Fuel Items Ordered'
-                : '<i class="fas fa-boxes" style="margin-right:5px;"></i>Items Ordered');
-    // Build thead
-    var thead = document.getElementById('pov_thead');
-    var tbody = document.getElementById('pov_tbody');
-    var tfoot = document.getElementById('pov_tfoot');
-    var thStyle = 'padding:10px 12px;color:#fff;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;';
-    if (isFuel) {
-        thead.innerHTML = '<tr>' +
-            '<th style="'+thStyle+'text-align:left;">Fuel Type</th>' +
-            '<th style="'+thStyle+'text-align:center;">UGT No.</th>' +
-            '<th style="'+thStyle+'text-align:right;">Liters Ordered</th>' +
-            '<th style="'+thStyle+'text-align:right;">Unit Price</th>' +
-            '<th style="'+thStyle+'text-align:right;">Total Amount</th>' +
-            '</tr>';
-    } else {
-        thead.innerHTML = '<tr>' +
-            '<th style="'+thStyle+'text-align:left;">Product Code</th>' +
-            '<th style="'+thStyle+'text-align:left;">Product Name</th>' +
-            '<th style="'+thStyle+'text-align:center;">Qty Ordered</th>' +
-            '<th style="'+thStyle+'text-align:center;">UOM</th>' +
-            '<th style="'+thStyle+'text-align:right;">Unit Price</th>' +
-            '<th style="'+thStyle+'text-align:right;">Total</th>' +
-            '</tr>';
-    }
-    // Build tbody
-    var tdStyle = 'padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#1e293b;';
-    var rows = '';
-    var grandTotal = 0;
-    (data.items || []).forEach(function(item) {
-        if (isFuel) {
-            var rowTotal = parseFloat(item.total) || (parseFloat(item.qty||0) * parseFloat(item.unit_price||0));
-            grandTotal += rowTotal;
-            rows += '<tr>' +
-                '<td style="'+tdStyle+'font-weight:700;">' + escH(item.name) + '</td>' +
-                '<td style="'+tdStyle+'text-align:center;"><span style="background:#dbeafe;color:#1d4ed8;font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;font-family:monospace;">' + escH(item.ugt||'—') + '</span></td>' +
-                '<td style="'+tdStyle+'text-align:right;font-weight:700;font-family:monospace;">' + Number(item.qty||0).toLocaleString('en-PH') + ' L</td>' +
-                '<td style="'+tdStyle+'text-align:right;color:#334155;">' + fmtMoney(item.unit_price) + '</td>' +
-                '<td style="'+tdStyle+'text-align:right;font-weight:800;color:#002F70;">' + fmtMoney(rowTotal) + '</td>' +
-                '</tr>';
-        } else {
-            var rowTotal = parseFloat(item.total) || (parseFloat(item.qty||0) * parseFloat(item.unit_price||0));
-            grandTotal += rowTotal;
-            rows += '<tr>' +
-                '<td style="'+tdStyle+'font-family:monospace;color:#475569;font-size:11.5px;">' + escH(item.sku||'—') + '</td>' +
-                '<td style="'+tdStyle+'font-weight:600;">' + escH(item.name) + '</td>' +
-                '<td style="'+tdStyle+'text-align:center;font-weight:700;color:#002F70;">' + Number(item.qty||0).toLocaleString('en-PH') + '</td>' +
-                '<td style="'+tdStyle+'text-align:center;color:#64748b;">' + escH(item.unit||'pcs') + '</td>' +
-                '<td style="'+tdStyle+'text-align:right;color:#334155;">' + fmtMoney(item.unit_price) + '</td>' +
-                '<td style="'+tdStyle+'text-align:right;font-weight:800;color:#002F70;">' + fmtMoney(rowTotal) + '</td>' +
-                '</tr>';
-        }
-    });
-    tbody.innerHTML = rows || '<tr><td colspan="6" style="padding:20px;text-align:center;color:#94a3b8;">No items found.</td></tr>';
-    // Grand total footer
-    var usedTotal = parseFloat(data.total) > 0 ? parseFloat(data.total) : grandTotal;
-    var colSpan = isFuel ? 4 : 5;
-    tfoot.innerHTML = '<tr style="background:#f8fafc;">' +
-        '<td colspan="'+colSpan+'" style="padding:12px;text-align:right;font-weight:800;font-size:12px;color:#334155;text-transform:uppercase;letter-spacing:.3px;">Grand Total</td>' +
-        '<td style="padding:12px;text-align:right;font-weight:900;font-size:15px;color:#002F70;font-family:monospace;">' + fmtMoney(usedTotal) + '</td>' +
-        '</tr>';
-    // Show modal
-    modal.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
+    var batchId = data.po_number || '';
+    var type    = (data.type === 'Fuel') ? 'fuel' : 'merch';
+    if (!batchId) { alert('PO number not found.'); return; }
+    var url = '/group31petron_system_official4/public/print_po_new.php'
+            + '?batch_id=' + encodeURIComponent(batchId)
+            + '&type='     + encodeURIComponent(type);
+    window.open(url, '_blank');
 }
-function closePOView() {
-    document.getElementById('poViewModal').style.display = 'none';
-    document.body.style.overflow = '';
-}
+
 function escH(s) {
     return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
@@ -2544,12 +2408,10 @@ function escH(s) {
 document.getElementById('deliveryViewModal').addEventListener('click', function(e) {
     if (e.target === this) closeDeliveryView();
 });
-document.getElementById('poViewModal').addEventListener('click', function(e) {
-    if (e.target === this) closePOView();
-});
+
 // Close on Escape
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' && document.getElementById('deliveryViewModal').style.display === 'flex') closeDeliveryView();
-    if (e.key === 'Escape' && document.getElementById('poViewModal').style.display === 'flex') closePOView();
+    
 });
 </script>

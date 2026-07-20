@@ -645,7 +645,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 .fsr-btn-generate-po { background:#667eea;color:#fff; }
 .fsr-btn-generate-po:hover { background:#5568d3; }
 
-.fsr-table-wrap { overflow:hidden; }
+.fsr-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .fsr-table { width:100%;border-collapse:collapse;font-size:12px;}
 .fsr-table thead th { background:#f8f9fa;color:#495057;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:9px 10px;border-bottom:2px solid#dee2e6;}
 .fsr-table tbody td { padding:8px 10px;border-bottom:1px solid#f0f0f0;vertical-align:middle; }

@@ -177,7 +177,7 @@ include __DIR__ . '/../partials/header.php';
   </div>
   <div class="mgrc-body">
     <input class="mgrc-search" id="recordSearch" placeholder="&#128269; Search deliveries..." oninput="filterRows('recordSearch','recordTable')">
-    <div style="overflow:hidden;">
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
       <table class="mgrc-table" id="recordTable">
         <thead><tr>
           <th>Batch ID</th>
@@ -230,7 +230,7 @@ include __DIR__ . '/../partials/header.php';
   </div>
   <div class="mgrc-body">
     <input class="mgrc-search" id="historySearch" placeholder="&#128269; Search history..." oninput="filterRows('historySearch','historyTable')">
-    <div style="overflow:hidden;">
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
       <table class="mgrc-table" id="historyTable">
         <thead><tr>
           <th>Batch ID</th>

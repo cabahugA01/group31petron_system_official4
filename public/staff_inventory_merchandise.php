@@ -195,6 +195,7 @@ unset($_SESSION['inv_notice']);
 body,html{overflow-x:hidden;max-width:100%;}
 .stock-page{overflow-x:hidden;max-width:100%;}
 .page-head{max-width:100%;overflow:hidden;}
+.main, .main-content { padding-top: 0 !important; }
 
 /* ── Summary Cards ── */
 .inv-stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:24px;}
@@ -372,7 +373,7 @@ body.modal-open .main {
 }
 </style>
 
-<div class="page-head" style="display:flex;justify-content:space-between;align-items:flex-start;padding-top:16px;padding-bottom:16px;border-bottom:2px solid #e9ecef;margin-bottom:20px;">
+<div class="page-head" style="display:flex;justify-content:space-between;align-items:flex-start;padding-top:0;padding-bottom:10px;border-bottom:2px solid #e9ecef;margin-bottom:12px;">
     <div>
         <h1 class="h1"><i class="fas fa-boxes"></i> Merchandise Inventory</h1>
     </div>
@@ -678,7 +679,7 @@ body.modal-open .main {
 </div>
 
 <script>
-var allMerchData = <?php echo json_encode(array_values($js_items)); ?>;
+var allMerchData = <?php echo json_encode(array_values($js_items), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP); ?>;
 var _srPreselect = null;
 
 // ── Filter / Sort ─────────────────────────────────────────────

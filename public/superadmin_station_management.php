@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 // ============================================================
 // SuperAdmin – Station Management
@@ -225,7 +225,7 @@ include __DIR__ . '/../partials/header.php';
 .sm-toolbar-right { margin-left: auto; }
 
 /* Table */
-.sm-table-wrap { background: #fff; border: 1px solid #eaeaea; border-radius: 16px; overflow:hidden; overflow-y: visible; box-shadow: 0 2px 12px rgba(0,0,0,.05); }
+.sm-table-wrap { background: #fff; border: 1px solid #eaeaea; border-radius: 16px; overflow-x: auto; overflow-y: visible; -webkit-overflow-scrolling: touch; box-shadow: 0 2px 12px rgba(0,0,0,.05); }
 .sm-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .sm-table thead th { background: var(--petron-blue); color: #fff; padding: 13px 16px; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
 .sm-table tbody tr { border-bottom: 1px solid #f0f0f0; transition: background .15s; }

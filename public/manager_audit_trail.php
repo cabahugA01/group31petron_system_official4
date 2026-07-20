@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Manager Audit Trail
  * Shows ONLY this manager's own validation actions: Approve, Reject, Adjust.
@@ -264,7 +264,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="mat-head">
         <h3><i class="fas fa-list-alt"></i> Validation Log (<?= $total ?> record<?= $total!==1?'s':'' ?>)</h3>
     </div>
-    <div style="overflow:hidden;">
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
     <table class="mat-table">
         <colgroup>
             <col style="width:5%;">  <!-- Log ID -->

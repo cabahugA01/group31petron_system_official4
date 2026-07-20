@@ -522,7 +522,7 @@ html,body{max-width:100vw;overflow-x:hidden}
         <div style="font-size:13px;">No merchandise variances match your active filter search.</div>
     </div>
     <?php else: ?>
-    <div style="overflow:hidden;max-width:100%;">
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;">
         <table class="mvr-tbl" id="mvrTable">
             <thead>
                 <tr>

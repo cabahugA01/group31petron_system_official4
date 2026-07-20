@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'mgr_customers';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -79,89 +79,36 @@ include __DIR__ . '/../partials/header.php';
 .cust-btn-gray      { background:#64748b; color:#fff!important; border-color:#64748b; }
 .cust-btn-gray:hover { background:#475569; }
 
-/* Export Buttons - Colored Borders Design matching admin_customers.php */
-.flt-btn,
-.flt-btn-excel,
-.flt-btn-pdf,
-.flt-btn-csv {
-    background: #ffffff !important;
-    border: 2px solid !important;
-    border-radius: 8px !important;
-    padding: 8px 16px !important;
-    height: 38px !important;
-    font-size: 13px !important;
-    font-weight: 600 !important;
-    cursor: pointer !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 8px !important;
-    transition: all 0.15s !important;
-    min-width: 100px !important;
-    white-space: nowrap !important;
-    text-decoration: none !important;
+/* Export Buttons */
+.flt-btn, .flt-btn-excel, .flt-btn-pdf, .flt-btn-csv {
+    background: #ffffff !important; border: 2px solid !important; border-radius: 8px !important;
+    padding: 8px 16px !important; height: 38px !important; font-size: 13px !important;
+    font-weight: 600 !important; cursor: pointer !important; display: inline-flex !important;
+    align-items: center !important; justify-content: center !important; gap: 8px !important;
+    transition: all 0.15s !important; min-width: 100px !important;
+    white-space: nowrap !important; text-decoration: none !important;
 }
-/* Excel — green */
-.flt-btn-excel {
-    color: #16a34a !important;
-    border-color: #16a34a !important;
-}
-.flt-btn-excel:hover {
-    background: #f0fdf4 !important;
-    border-color: #15803d !important;
-}
-/* CSV — blue */
-.flt-btn-csv {
-    color: #2563eb !important;
-    border-color: #2563eb !important;
-}
-.flt-btn-csv:hover {
-    background: #eff6ff !important;
-    border-color: #1d4ed8 !important;
-}
-/* PDF — red */
-.flt-btn-pdf {
-    color: #dc2626 !important;
-    border-color: #dc2626 !important;
-}
-.flt-btn-pdf:hover {
-    background: #fef2f2 !important;
-    border-color: #b91c1c !important;
-}
+.flt-btn-excel { color: #16a34a !important; border-color: #16a34a !important; }
+.flt-btn-excel:hover { background: #f0fdf4 !important; border-color: #15803d !important; }
+.flt-btn-csv { color: #2563eb !important; border-color: #2563eb !important; }
+.flt-btn-csv:hover { background: #eff6ff !important; border-color: #1d4ed8 !important; }
+.flt-btn-pdf { color: #dc2626 !important; border-color: #dc2626 !important; }
+.flt-btn-pdf:hover { background: #fef2f2 !important; border-color: #b91c1c !important; }
 
 /* Add Customer Button */
 .btn-add-customer {
-    background-color: #ffffff !important;
-    background: #ffffff !important;
-    color: #002F70 !important;
-    border: 1px solid #002F70 !important;
-    font-weight: 600 !important;
-    transition: all 0.15s ease-in-out !important;
-    border-radius: 6px !important;
-    padding: 8px 14px !important;
-    font-size: 13px !important;
-    cursor: pointer !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 6px !important;
-    height: 34px !important;
+    background-color: #ffffff !important; background: #ffffff !important;
+    color: #002F70 !important; border: 1px solid #002F70 !important;
+    font-weight: 600 !important; transition: all 0.15s ease-in-out !important;
+    border-radius: 6px !important; padding: 8px 14px !important; font-size: 13px !important;
+    cursor: pointer !important; display: inline-flex !important; align-items: center !important;
+    justify-content: center !important; gap: 6px !important; height: 34px !important;
     text-decoration: none !important;
 }
-.btn-add-customer:hover {
-    background-color: #002F70 !important;
-    background: #002F70 !important;
-    color: #ffffff !important;
-}
-}
-.btn-add-customer:hover {
-    background-color: #001f4d !important;
-    background: #001f4d !important;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
-}
+.btn-add-customer:hover { background-color: #001f4d !important; background: #001f4d !important; color: #ffffff !important; }
 
 /* ── Table ────────────────────────────────────────────────── */
-.cust-table-wrap { background:#fff; border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,.08); overflow:hidden; }
+.cust-table-wrap { background:#fff; border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,.08); overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .cust-table-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px 12px; border-bottom:1px solid #f1f5f9; }
 .cust-table-header h3 { font-size:14px; font-weight:700; color:#002F70; margin:0; }
 .cust-table { width:100%; border-collapse:collapse; }

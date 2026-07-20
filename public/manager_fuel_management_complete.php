@@ -3264,7 +3264,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
     <?php if (empty($shift_history)): ?>
         <div class="empty-state"><i class="fas fa-history"></i><p>No shift history found.</p></div>
     <?php else: ?>
-    <div style="overflow:hidden;">
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
     <table class="data-table" id="historyTable">
         <thead><tr>
             <th>Transaction ID</th><th>Date</th><th>Shift</th><th>Fuel Type</th>
@@ -3421,7 +3421,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
                 <i class="fas fa-check-circle"></i> Approved Only
             </span>
         </div>
-        <div style="overflow:hidden;margin-bottom:28px;">
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:28px;">
         <table style="width:100%;border-collapse:collapse;font-size:.82rem;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
             <thead>
                 <tr style="background:<?php echo $colors['primary']; ?>;color:#fff;">
@@ -3601,7 +3601,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
     <?php if (empty($pump_master_fuel_types)): ?>
         <div class="empty-state"><i class="fas fa-cog"></i><p>No fuel types found.</p></div>
     <?php else: ?>
-    <div class="po-table-wrap" style="margin-top:12px;overflow:hidden;">
+    <div class="po-table-wrap" style="margin-top:12px;overflow-x:auto;-webkit-overflow-scrolling:touch;">
     <table class="data-table" style="font-size:0.78rem;width:100%;table-layout:auto;">
         <thead><tr>
             <th style="">Fuel Type</th>
@@ -3655,7 +3655,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
     <?php if (empty($pump_master_fuel_types)): ?>
         <div class="empty-state"><i class="fas fa-cog"></i><p>No fuel types found.</p></div>
     <?php else: ?>
-    <div class="po-table-wrap" style="margin-top:12px;overflow:hidden;">
+    <div class="po-table-wrap" style="margin-top:12px;overflow-x:auto;-webkit-overflow-scrolling:touch;">
     <table class="data-table" style="font-size:0.78rem;width:100%;table-layout:auto;">
         <thead><tr>
             <th style="">Fuel Type</th>

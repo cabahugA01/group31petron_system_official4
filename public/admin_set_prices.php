@@ -550,7 +550,7 @@ include __DIR__ . '/../partials/header.php';
         <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
             <strong style="font-size:15px;color:#002F6C;"><i class="fas fa-gas-pump"></i> Fuel Inventory &amp; Pricing</strong>
         </div>
-        <div class="table-wrap" style="overflow-x:hidden;">
+        <div class="table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
             <table class="pricing-table">
                 <thead>
                     <tr>
@@ -686,7 +686,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
     <?php else: ?>
     <div class="card" style="padding:0;overflow:hidden;">
-        <div class="table-wrap" style="overflow-x:hidden;">
+        <div class="table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
             <table class="pricing-table" id="merchTable">
                 <thead>
                     <tr>
@@ -814,7 +814,7 @@ include __DIR__ . '/../partials/header.php';
                 No service types found.
             </div>
         <?php else: ?>
-            <div class="table-wrap" style="overflow:hidden;">
+            <div class="table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
                 <table class="pricing-table">
                     <thead>
                         <tr>
