@@ -2934,13 +2934,17 @@ require_once __DIR__ . '/rbac_menu.php';
           $__badge_add('inv_fuel', $__low_fuel);
           $__badge_add('fuel', $__own_fuel_pending + $__low_fuel, 'top');
 
-          $__pending_delivery = $__badge_count(
-              "SELECT COUNT(*) FROM deliveries_oversight
-               WHERE station_id=? AND (encoded_by=? OR encoded_by IS NULL)
-               AND status IN ('Expected Delivery','En Route','In Transit','Dispatched','Pending Verification','Pending Manager Approval','Pending Manager Confirmation','Ready for Stock-In','Pending Stock-In')",
-              [$myStationId, $__uid]
-          );
-          $__badge_add('inv_record_delivery', $__pending_delivery);
+          $__pending_merch_pos = $__badge_count(
+               "SELECT COUNT(DISTINCT po_number) FROM purchase_orders
+                WHERE station_id=? AND status IN ('Admin Finalized', 'Approved') AND type='merch'",
+               [$myStationId]
+           );
+           $__pending_fuel_pos = $__badge_count(
+               "SELECT COUNT(DISTINCT COALESCE(NULLIF(batch_id, ''), po_number)) FROM fuel_purchase_orders
+                WHERE station_id=? AND status IN ('Approved PO', 'Approved')",
+               [$myStationId]
+           );
+           $__badge_add('inv_record_delivery', $__pending_merch_pos + $__pending_fuel_pos);
 
           $__staff_stock_requests = $__badge_count(
               "SELECT COUNT(*) FROM stock_requests WHERE station_id=? AND staff_id=? AND status='Pending'",
