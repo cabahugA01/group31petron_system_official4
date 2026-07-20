@@ -97,7 +97,7 @@ try {
     $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    error_log('Request Data Management query error: ' . $e->getMessage());
+    error_log('Master Data Requests query error: ' . $e->getMessage());
 }
 
 require_once __DIR__ . '/../partials/header.php';
@@ -381,10 +381,10 @@ require_once __DIR__ . '/../partials/header.php';
 </style>
 
 <!-- Header -->
-<div class="page-head txn-page-head">
+<div class="stock-page">
+<div class="stock-head">
     <div>
-        <h1><i class="fas fa-clipboard-list"></i> Request Data Management</h1>
-        <div class="sub">Review and process master data requests submitted by staff members for Products, Services, and Vehicles.</div>
+        <h1 class="stock-title"><i class="fas fa-clipboard-list"></i> Master Data Requests</h1>
     </div>
 </div>
 
@@ -899,6 +899,7 @@ if (urlParams.has('success')) {
 }
 </script>
 
+</div>
 <?php
 require_once __DIR__ . '/../partials/footer.php';
 ?>

@@ -822,6 +822,10 @@ document.addEventListener('keydown', function(e) {
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 function toast(msg, type) {
+    if (window.showPetronFlash) {
+        window.showPetronFlash(msg, type || 'success');
+        return;
+    }
     var t = document.getElementById('toast');
     t.textContent = msg;
     t.className = 'toast toast-' + (type || 'success') + ' show';

@@ -13,6 +13,10 @@ if (!in_array($role, ['manager', 'supervisor', 'admin', 'superadmin'])) {
     header('Location: manager_dashboard.php'); exit;
 }
 
+$_SESSION['success'] = 'Voiding and transaction review are now handled inside All Transactions.';
+header('Location: manager_validated_transactions.php');
+exit;
+
 // ── Ensure table exists ───────────────────────────────────────────────────────
 try { $pdo->exec("CREATE TABLE IF NOT EXISTS voided_transactions (
     id INT AUTO_INCREMENT PRIMARY KEY, transaction_id VARCHAR(50) NOT NULL,

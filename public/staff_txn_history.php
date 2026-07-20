@@ -23,6 +23,13 @@
 .hist-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:13px}
 .hist-row .k{color:#64748b;font-weight:500}.hist-row .v{font-weight:600;text-align:right}
 .hist-items-tbl{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+/* Responsive table — no horizontal scroll */
+#histTbl{font-size:11px;width:100%;table-layout:fixed;}
+#histTbl th{padding:7px 4px;font-size:10px;word-break:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#histTbl td{padding:6px 4px;word-break:break-word;overflow-wrap:break-word;white-space:normal;font-size:10.5px;}
+#histTbl td.txn-id-cell{font-size:9.5px;word-break:break-all;}
+/* Prevent the wrapper from scrolling horizontally */
+#histTbl ~ *,#histTbl{max-width:100%;}
 .hist-items-tbl th{background:#f8fafc;padding:7px 10px;text-align:left;font-weight:700;font-size:11px;border-bottom:2px solid #e2e8f0}
 .hist-items-tbl td{padding:7px 10px;border-bottom:1px solid #f1f5f9}
 /* Inline items column */
@@ -43,7 +50,6 @@
   <div class="txn-section-title">
     <div>
       <h1><i class="fas fa-history" style="color:#002F70;margin-right:8px;font-size:20px"></i>Transaction History</h1>
-      <p>Your encoded transactions — <?= htmlspecialchars(date('F Y')) ?></p>
     </div>
   </div>
   <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
@@ -51,10 +57,6 @@
       <i class="fas fa-arrow-left"></i> <span>Back</span>
     </button>
     <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
-      <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'excel'])) ?>" class="txn-btn success" style="text-decoration:none; display:inline-flex; align-items:center; gap:5px;"><i class="fas fa-file-excel"></i> Excel</a>
-      <button type="button" onclick="exportTableToPDF('histTbl', 'Transaction History Report', 'transaction_history_<?= date('Ymd') ?>', this)" class="txn-btn danger" style="text-decoration:none; display:inline-flex; align-items:center; gap:5px;"><i class="fas fa-file-pdf"></i> Export PDF</button>
-      <button type="button" onclick="printReportArea()" class="txn-btn primary" style="text-decoration:none; display:inline-flex; align-items:center; gap:5px;"><i class="fas fa-print"></i> Print</button>
-      <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'csv'])) ?>" class="txn-btn primary" style="text-decoration:none; display:inline-flex; align-items:center; gap:5px;"><i class="fas fa-file-csv"></i> CSV</a>
     </div>
   </div>
 </div>
@@ -148,7 +150,7 @@ $_hq    = function(array $extra=[]) use ($_hbase, $hist_filter_date_from, $hist_
 <div class="txn-card" style="margin-top:6px">
   <div class="txn-card-header">
     <i class="fas fa-table" style="color:#002F70"></i>
-    <h3>All Transactions <span style="font-size:12px;font-weight:400;color:#64748b">(<?= number_format($hist_kpi_total) ?> records)</span></h3>
+    <h3>All Transactions</h3>
   </div>
   <div class="txn-card-body" style="padding:0">
 <?php if (empty($recent_merch)): ?>
@@ -157,20 +159,20 @@ $_hq    = function(array $extra=[]) use ($_hbase, $hist_filter_date_from, $hist_
       No transactions found for the selected period.
     </div>
 <?php else: ?>
-    <div style="overflow-x:auto">
-    <table class="txn-table" id="histTbl" style="width:100%;min-width:1000px">
+    <div>
+    <table class="txn-table" id="histTbl" style="width:100%;table-layout:fixed;">
       <thead><tr>
-        <th style="width:140px">Transaction ID</th>
-        <th style="width:75px">Cust. Type</th>
-        <th style="width:120px">Customer Name</th>
-        <th style="width:90px">Txn Type</th>
-        <th>Items Sold</th>
-        <th style="width:100px;text-align:right">Total Amount</th>
-        <th style="width:100px">Payment Method</th>
-        <th style="width:90px">Pay. Status</th>
-        <th style="width:90px">Txn Status</th>
-        <th style="width:125px">Date & Time</th>
-        <th style="width:110px" class="no-export">Actions</th>
+        <th style="width:15%">Transaction ID</th>
+        <th style="width:6%">Cust. Type</th>
+        <th style="width:10%">Customer</th>
+        <th style="width:7%">Txn Type</th>
+        <th style="width:24%">Items Sold</th>
+        <th style="width:8%;text-align:right">Total</th>
+        <th style="width:7%">Pay. Method</th>
+        <th style="width:6%">Pay. Status</th>
+        <th style="width:7%">Txn Status</th>
+        <th style="width:10%">Date & Time</th>
+        <th style="width:6%">Actions</th>
       </tr></thead>
       <tbody id="histTbody">
       <?php
@@ -269,9 +271,9 @@ $_hq    = function(array $extra=[]) use ($_hbase, $hist_filter_date_from, $hist_
             <?= $v_badge_label ?>
           </span>
         </td>
-        <td style="font-size:11px;color:#64748b;white-space:nowrap"><?= $ht_date ?: '—' ?></td>
+        <td style="font-size:10px;color:#64748b;"><?= $ht_date ?: '—' ?></td>
         <td class="no-export" onclick="event.stopPropagation()">
-          <button onclick="openHistModal(<?= $ht_id ?>)" class="txn-btn primary" style="min-width:0;height:28px;padding:0 10px;font-size:11px;border-radius:5px" title="View Full Details">
+          <button onclick="openHistModal(<?= $ht_id ?>)" class="txn-btn primary" style="min-width:0;height:24px;padding:0 7px;font-size:10px;border-radius:4px;white-space:nowrap;" title="View Full Details">
             <i class="fas fa-eye"></i> View
           </button>
         </td>

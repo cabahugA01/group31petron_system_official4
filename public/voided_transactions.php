@@ -19,6 +19,10 @@ if (!in_array($role, ['manager', 'supervisor', 'admin', 'superadmin'])) {
     exit;
 }
 
+$_SESSION['success'] = 'Voiding and transaction review are now handled inside All Transactions.';
+header('Location: manager_validated_transactions.php');
+exit;
+
 if (!$station_id) {
     die('Error: You are not assigned to a station.');
 }

@@ -41,6 +41,20 @@ async function api(url, opts={}){
 }
 
 function toast(msg){
+  const text = String(msg || '').toLowerCase();
+  let type = 'info';
+  if (/(error|failed|denied|invalid|cannot|unable)/.test(text)) type = 'error';
+  else if (/(warning|required|must|less than|not enough|out of stock|recheck)/.test(text)) type = 'warning';
+  else if (/(success|saved|updated|finalized|encoded|approved|completed|deleted|loaded|started|archived)/.test(text)) type = 'success';
+
+  if (window.showPetronFlash) {
+    window.showPetronFlash(msg, type);
+    return;
+  }
+  if (window.showToast) {
+    window.showToast(msg, type);
+    return;
+  }
   const t = $('#toast');
   if(!t) return alert(msg);
   t.textContent = msg;

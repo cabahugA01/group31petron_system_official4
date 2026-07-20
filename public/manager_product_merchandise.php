@@ -1148,6 +1148,10 @@ function filterTable() {
 
 // --- Toast ---
 function showToast(msg, type='success') {
+    if (window.showPetronFlash) {
+        window.showPetronFlash(msg, type);
+        return;
+    }
     const t = document.getElementById('toast');
     t.textContent = msg;
     t.className = 'toast show ' + (type==='success' ? 'toast-success' : 'toast-error');

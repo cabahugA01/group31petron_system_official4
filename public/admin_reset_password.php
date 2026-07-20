@@ -865,6 +865,10 @@ function confirmReset() {
 }
 
 function showToast(message, type = 'success') {
+    if (window.showPetronFlash) {
+        window.showPetronFlash(message, type);
+        return;
+    }
     const toast = document.createElement('div');
     toast.className = 'toast';
     toast.textContent = message;

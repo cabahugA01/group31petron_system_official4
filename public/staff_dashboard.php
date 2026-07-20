@@ -1667,7 +1667,6 @@ include __DIR__ . '/../partials/header.php';
             <i class="fas fa-user-circle" style="color:#64748b; font-size:14px;"></i>
             <span style="color:#64748b; font-size:13px; font-weight:600;">Staff Dashboard</span>
         </div>
-        <p>Monitor station operations, process transactions, and manage daily tasks.</p>
     </div>
     <div class="header-filters">
         <form method="GET" class="date-filter-form">

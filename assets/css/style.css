@@ -331,7 +331,7 @@ canvas{width:100%;padding:0 16px 16px 16px}
 .r-foot{text-align:center;margin-top:10px}
 .r-mini{font-size:10px;color:#475467;margin-top:6px}
 
-.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--blue);color:#fff;padding:10px 14px;border-radius:14px;display:none;z-index:60}
+.toast{position:fixed;top:84px;right:22px;left:auto;bottom:auto;transform:none;background:#fff;color:#0f172a;padding:13px 42px 13px 15px;border:1px solid #dbe4f0;border-left:5px solid #2563eb;border-radius:8px;display:none;z-index:2147483000;box-shadow:0 12px 28px rgba(15,23,42,.18);max-width:min(390px,calc(100vw - 32px));font-weight:700}
 .toast.show{display:block}
 
 @media (max-width: 1100px){
@@ -1886,7 +1886,8 @@ table thead th {
 
 /* Standardized Stock/Inventory Page Wrapper */
 .stock-page {
-    padding: 20px 24px 56px !important;
+    padding: 16px 24px 56px !important;
+    margin-top: 0 !important;
     color: #1e293b;
     background: #f8fafc;
     min-height: calc(100vh - 70px);
@@ -1900,6 +1901,7 @@ table thead th {
     justify-content: space-between;
     gap: 14px;
     flex-wrap: wrap;
+    margin-top: 0 !important;
     margin-bottom: 18px;
 }
 .stock-title {

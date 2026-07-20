@@ -977,6 +977,10 @@ function escHtml(str) {
 
 /* ── Toast Notifications ──────────────────────────────────────────────────── */
 function showToast(message, type = 'success', duration = 3500) {
+    if (window.showPetronFlash) {
+        window.showPetronFlash(message, type, duration);
+        return;
+    }
     const icons = {
         success: 'fas fa-check-circle',
         error:   'fas fa-times-circle',

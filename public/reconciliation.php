@@ -1203,6 +1203,10 @@ function adjustInventory() {
 }
 
 function showToast(message, type) {
+    if (window.showPetronFlash) {
+        window.showPetronFlash(message, type || 'success');
+        return;
+    }
     const toast = document.getElementById('toast');
     toast.textContent = message;
     toast.style.background = type === 'error' ? '#dc2626' : '#16a34a';

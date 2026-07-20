@@ -3,7 +3,7 @@
  * Legacy pending-transaction route.
  *
  * Staff transactions are official immediately on save. Managers now use
- * Transaction Monitoring to Adjust, Void, or Correct transactions with audit.
+ * All Transactions to view details, adjust, void, or reprint receipts.
  */
 $page_id = 'manager_transactions';
 require_once __DIR__ . '/../backend/lib.php';
@@ -18,6 +18,6 @@ if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
     exit;
 }
 
-$_SESSION['success'] = 'Transactions are official when saved. Use Adjust, Void, or Correct in Transaction Monitoring.';
-header('Location: manager_transaction_monitoring.php');
+$_SESSION['success'] = 'Transactions are official when saved. Use All Transactions to view details, adjust, void, or reprint receipts.';
+header('Location: manager_validated_transactions.php');
 exit;

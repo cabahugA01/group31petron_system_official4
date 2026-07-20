@@ -2022,7 +2022,7 @@ include __DIR__ . '/../partials/header.php';
 
 /* Match inventory page — no padding override needed */
 main.main {
-    padding: 20px 20px 120px 20px !important;
+    padding: 8px 20px 120px 20px !important;
     overflow-x: visible !important;
 }
 
@@ -2768,7 +2768,6 @@ input[list] {
             <div class="txn-section-title">
                 <div>
                     <h1>Meter Readings</h1>
-                    <p style="font-size:14px;color:#666666;margin:3px 0 0;text-transform:uppercase;letter-spacing:0.3px;font-weight:500;">ENCODE DAILY METER READINGS AND FUEL TRANSACTIONS FOR MONITORING.</p>
                 </div>
             </div>
         </div>
@@ -3966,6 +3965,10 @@ input[list] {
 
         // ── Generic toast helper ────────────────────────────────────────────────
         function showToast(msg, type = 'success') {
+            if (window.showPetronFlash) {
+                window.showPetronFlash(msg, type);
+                return;
+            }
             const colors = {
                 success: { bg:'#d4edda', color:'#155724', border:'#c3e6cb', icon:'fa-check-circle', iconColor:'#28a745' },
                 error:   { bg:'#f8d7da', color:'#721c24', border:'#f5c6cb', icon:'fa-times-circle',  iconColor:'#dc3545' },
@@ -4364,7 +4367,6 @@ input[list] {
             <div class="txn-section-title">
                 <div>
                     <h1>Transactions</h1>
-                    <p id="txnSectionDesc" style="font-size:14px;color:#666666;margin:3px 0 0;text-transform:uppercase;letter-spacing:0.3px;font-weight:500;"><?= $active_tab === 'tracker' ? 'Monitor service progress and pending balances in real time.' : 'Merchandise sales, job order encoding, and status tracking.' ?></p>
                 </div>
             </div>
             <div style="display:flex;gap:8px;align-items:center;">
@@ -9880,7 +9882,6 @@ input[list] {
             <div class="txn-section-title">
                 <div>
                     <h1>Fuel Transaction History</h1>
-                    <p>Your fuel transaction records</p>
                 </div>
             </div>
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
@@ -9889,10 +9890,7 @@ input[list] {
                     <i class="fas fa-arrow-left"></i> <span>Back</span>
                 </button>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
-                    <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'excel'])) ?>" class="txn-btn success" style="text-decoration:none;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-file-excel"></i> Excel</a>
-                    <button type="button" onclick="exportTableToPDF('fuelHistoryTable', 'Fuel Transaction History Report', 'fuel_transaction_history_<?= date('Ymd') ?>', this)" class="txn-btn danger" style="text-decoration:none;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-file-pdf"></i> Export PDF</button>
                     <button type="button" onclick="printReportArea()" class="txn-btn primary" style="text-decoration:none;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-print"></i> Print</button>
-                    <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'csv'])) ?>" class="txn-btn primary" style="text-decoration:none;display:inline-flex;align-items:center;gap:5px;"><i class="fas fa-file-csv"></i> CSV</a>
                 </div>
             </div>
         </div>
@@ -9909,17 +9907,17 @@ input[list] {
                     No fuel transactions found.
                 </div>
                 <?php else: ?>
-                <div style="overflow-x:hidden;">
-                <table class="txn-table" id="fuelHistoryTable" style="width:100%; table-layout:fixed; word-wrap:break-word;">
+                <div style="width:100%;">
+                <table class="txn-table" id="fuelHistoryTable" style="width:100%;table-layout:fixed;word-wrap:break-word;">
                     <thead>
                         <tr>
-                            <th>Txn ID</th>
-                            <th>Fuel Type</th>
-                            <th>Liters</th>
-                            <th>Amount</th>
-                            <th>Payment</th>
-                            <th>Date</th>
-                            <th>Status</th>
+                            <th style="width:22%">Txn ID</th>
+                            <th style="width:12%">Fuel Type</th>
+                            <th style="width:10%">Liters</th>
+                            <th style="width:12%">Amount</th>
+                            <th style="width:12%">Payment</th>
+                            <th style="width:18%">Date</th>
+                            <th style="width:14%">Status</th>
                         </tr>
                     </thead>
                     <tbody id="fhTableBody">

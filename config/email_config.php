@@ -12,11 +12,7 @@ $email_config = [
     // Sending duplicate accepted messages can make Gmail hide or suppress OTPs.
     'send_all_smtp_candidates' => false,
     // Same-mailbox Gmail aliases for recipients that do not receive the exact address.
-    'recipient_aliases' => [
-        'cabahug.amiedamas@gmail.com' => ['cabahug.amiedamas+petronotp@gmail.com'],
-        'yangc.developer@gmail.com' => ['yangc.developer+petronotp@gmail.com'],
-        'yyangcabahug@gmail.com' => ['yyangcabahug+petronotp@gmail.com']
-    ]
+    'recipient_aliases' => []
 ];
 
 // Optional secondary SMTP provider (used if primary fails). Fill and set enabled=>true to use.

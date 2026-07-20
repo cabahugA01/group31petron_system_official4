@@ -281,9 +281,9 @@ require_once __DIR__ . '/../partials/header.php';
     background: #e2e8f0;
 }
 .btn-header-add {
-    background: white;
-    color: #16a34a !important;
-    border: 1px solid #16a34a;
+    background: #fff !important;
+    color: #002F70 !important;
+    border: 1px solid #002F70;
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -297,7 +297,7 @@ require_once __DIR__ . '/../partials/header.php';
     white-space: nowrap;
 }
 .btn-header-add:hover {
-    background: #16a34a !important;
+    background: #002F70 !important;
     color: #fff !important;
 }
 
@@ -470,13 +470,10 @@ require_once __DIR__ . '/../partials/header.php';
 </style>
 
 <!-- Header -->
-<div class="page-head txn-page-head">
+<div class="stock-page">
+<div class="stock-head">
     <div>
-        <h1><i class="fas fa-wrench"></i> Mechanics Management</h1>
-        <div class="sub">Oversee service technicians, contact details, specialty categories, and availability status.</div>
-    </div>
-    <div>
-        <button onclick="openAddModal()" class="btn-header-add"><i class="fas fa-plus"></i> Add New Mechanic</button>
+        <h1 class="stock-title"><i class="fas fa-wrench"></i> Mechanics Management</h1>
     </div>
 </div>
 
@@ -518,8 +515,9 @@ require_once __DIR__ . '/../partials/header.php';
 
 <!-- Table Card -->
 <div class="table-card">
-    <div class="table-card-head">
+    <div class="table-card-head" style="display:flex;align-items:center;justify-content:space-between;">
         <div class="table-card-title"><i class="fas fa-list" style="margin-right: 6px;"></i> Mechanics List</div>
+        <button onclick="openAddModal()" class="btn-header-add"><i class="fas fa-plus"></i> Add New Mechanic</button>
     </div>
     <div class="table-responsive">
         <table class="tbl-requests" id="mechanicsTable">
@@ -851,6 +849,7 @@ document.querySelectorAll('.modal-backdrop').forEach(modal => {
     });
 });
 </script>
+</div>
 <?php
 require_once __DIR__ . '/../partials/footer.php';
 ?>

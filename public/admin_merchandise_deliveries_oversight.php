@@ -841,6 +841,10 @@ function esc(s){
 
 // Helper: Format Toast Notifications
 function toast(msg, type){
+    if (window.showPetronFlash) {
+        window.showPetronFlash(msg, type || 'success');
+        return;
+    }
     const t = document.getElementById('toast');
     t.textContent = msg;
     t.className = 'toast toast-' + (type || 'success') + ' show';

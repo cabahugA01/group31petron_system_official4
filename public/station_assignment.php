@@ -796,6 +796,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Toast notification
 function showToast(message, type = 'success') {
+    if (window.showPetronFlash) {
+        window.showPetronFlash(message, type);
+        return;
+    }
     console.log('Showing toast:', message, type);
     try {
         const toast = document.getElementById('toast');

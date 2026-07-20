@@ -750,6 +750,10 @@ function approveStockIn(type, groupId, poKey) {
 }
 
 function showStockToast(message, type) {
+    if (window.showPetronFlash) {
+        window.showPetronFlash(message, type === 'ok' ? 'success' : 'error');
+        return;
+    }
     const toast = document.getElementById('stockToast');
     if (!toast) return;
     toast.textContent = message;

@@ -102,10 +102,9 @@ require_once __DIR__ . '/../partials/header.php';
     .loading-row td { text-align: center; padding: 32px; color: #64748b; }
 </style>
 
-<div class="page-head">
+<div class="page-head" style="padding-top:16px;">
     <div>
         <h1 class="h1">STAFF OVERSIGHT – ADMIN VIEW</h1>
-        <div class="sub">Monitor and manage staff accounts, activity, and performance metrics.</div>
     </div>
 </div>
 

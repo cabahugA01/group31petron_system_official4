@@ -671,14 +671,48 @@ $qr_url = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&ecc=M&data='
 
 /* ── Print ── */
 @page {
-  size: 80mm auto;          /* thermal receipt width, height auto-fits content */
-  margin: 4mm 3mm;          /* small margins — real receipt printers use ~3–4mm */
+  size: 80mm auto;
+  margin: 3mm 2mm;
 }
 @media print{
-  html, body{width: 80mm; margin:0; padding:0; background:#fff}
-  .jo-page{box-shadow:none;border-radius:0;padding:0;max-width:80mm;width:80mm}
-  .jo-toolbar{display:none!important}
-  .no-print{display:none!important}
+  *,*::before,*::after{box-sizing:border-box}
+  html{width:80mm!important;min-width:0!important;max-width:80mm!important;margin:0!important;padding:0!important;background:#fff!important}
+  body{width:80mm!important;min-width:0!important;max-width:80mm!important;margin:0!important;padding:0!important;background:#fff!important;font-family:'Courier New',Courier,monospace}
+  .jo-toolbar,.no-print{display:none!important}
+  .jo-page{
+    width:80mm!important;
+    max-width:80mm!important;
+    min-width:0!important;
+    margin:0!important;
+    padding:1mm!important;
+    box-shadow:none!important;
+    border-radius:0!important;
+    background:#fff!important;
+  }
+  .jo-receipt{width:100%!important;font-size:9.5px!important;line-height:1.3!important;word-wrap:break-word!important;overflow-wrap:break-word!important}
+  /* tighten spacing */
+  .jo-r-div{margin:3px 0!important}
+  .jo-r-div2{margin:3px 0!important}
+  .jo-r-row{margin-bottom:1px!important;font-size:9.5px!important}
+  .jo-r-lbl{margin:3px 0 2px!important;font-size:8px!important}
+  .jo-r-head{margin-bottom:4px!important}
+  .jo-r-logo-img{width:60px!important}
+  .jo-r-brand{font-size:10px!important}
+  .jo-r-branch,.jo-r-tin{font-size:8.5px!important}
+  .jo-r-title{font-size:11px!important;margin:2px 0!important}
+  .jo-r-sub{font-size:8px!important;margin-bottom:2px!important}
+  .jo-r-grand{font-size:11px!important;padding:2px 0!important}
+  .jo-r-tr{margin-bottom:1px!important;padding-bottom:1px!important;font-size:9px!important}
+  .jo-r-th{font-size:8px!important;padding-bottom:1px!important;margin-bottom:1px!important}
+  .jo-r-foot{margin-top:3px!important}
+  .jo-r-foot-title{font-size:9px!important;margin-bottom:1px!important}
+  .jo-r-foot-line{font-size:8px!important;margin-bottom:1px!important}
+  .jo-r-foot-meta{font-size:7.5px!important;margin-top:2px!important}
+  /* hide QR — saves a full page */
+  .jo-r-qr{display:none!important}
+  /* prevent page breaks inside sections */
+  .jo-r-head,.jo-r-row,.jo-r-tr,.jo-r-foot,.jo-r-grand{page-break-inside:avoid;break-inside:avoid}
+  table,img{max-width:100%!important}
 }
 
 /* ── Receipt body ── */
@@ -749,10 +783,9 @@ $qr_url = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&ecc=M&data='
 <body>
 
 <!-- Toolbar (hidden on print) -->
-<div class="jo-toolbar">
-  <button class="btn-back" onclick="window.location.href='staff_transactions_hub.php?section=merchandise&amp;active_tab=merchandise'"><i class="fas fa-arrow-left"></i> Back</button>
-  <button class="btn-print" onclick="window.print()"><i class="fas fa-print"></i> Print</button>
-  <button class="btn-close" onclick="window.close()"><i class="fas fa-times"></i> Close</button>
+<div class="jo-toolbar no-print">
+  <button class="btn-back" onclick="window.close()"><i class="fas fa-arrow-left"></i> Back</button>
+  <button class="btn-print" onclick="window.open('receipt.pdf.php?id=<?php echo urlencode($txn_id); ?>&type=<?php echo urlencode($sale['transaction_type'] ?? $type); ?>','_blank')"><i class="fas fa-print"></i> Print</button>
 </div>
 
 <div class="jo-page">

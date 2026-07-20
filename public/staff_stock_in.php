@@ -884,6 +884,10 @@ function submitFuelStockIn(deliveryId, qtyExpected) {
 }
 
 function showToast(msg, type) {
+    if (window.showPetronFlash) {
+        window.showPetronFlash(msg, type === 'ok' ? 'success' : 'error');
+        return;
+    }
     var el = document.getElementById('flashMsg');
     el.style.background = type === 'ok' ? '#28a745' : '#dc3545';
     el.textContent = msg;

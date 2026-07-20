@@ -724,18 +724,18 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     body.dark-theme a:not(.btn):not(.nav-item):hover { color: #93c5fd !important; }
 
     /* â”€â”€ Flash messages â€” keep original alert colors but on dark bg â”€â”€ */
-    body.dark-theme .petron-flash.flash-success {
-        background: #14532d !important; color: #bbf7d0 !important; border-left-color: #16a34a !important;
+    body.dark-theme .petron-toast {
+        background: #111827 !important;
+        border-color: #263449 !important;
+        color: #e5e7eb !important;
     }
-    body.dark-theme .petron-flash.flash-error {
-        background: #450a0a !important; color: #fca5a5 !important; border-left-color: #dc2626 !important;
+    body.dark-theme .petron-toast-message { color: #d1d5db !important; }
+    body.dark-theme .petron-flash {
+        background: #111827 !important;
+        border-color: #263449 !important;
+        color: #e5e7eb !important;
     }
-    body.dark-theme .petron-flash.flash-warning {
-        background: #451a03 !important; color: #fde68a !important; border-left-color: #d97706 !important;
-    }
-    body.dark-theme .petron-flash.flash-info {
-        background: #0c1a3a !important; color: #93c5fd !important; border-left-color: #2563eb !important;
-    }
+    body.dark-theme .petron-flash span { color: #d1d5db !important; }
 
     /* â”€â”€ Modals â”€â”€ */
     body.dark-theme .modal-card,
@@ -1082,7 +1082,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
             bottom: 0;
             overflow-y: auto;
             overflow-x: hidden;
-            padding: 12px 24px 60px 24px;
+            padding: 0 24px 60px 24px;
             background: #f8f9fa;
             transition: left 0.3s ease;
             pointer-events: auto !important;
@@ -1147,7 +1147,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
             bottom: 0 !important;
             overflow-y: auto !important;
             overflow-x: hidden !important;
-            padding: 20px 16px 60px 16px !important;
+            padding: 0 16px 60px 16px !important;
             background: var(--bg-main, #f8f9fa);
             pointer-events: auto !important;
             z-index: 1 !important;
@@ -1274,6 +1274,8 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     .sidebar-sub-item span:not(.ico) { white-space: normal !important; word-break: break-word !important; color: #eeeeee !important; }
     .sidebar-sub-item:hover { background-color: rgba(255,255,255,0.1) !important; color: #ffffff !important; }
     .sidebar-sub-item.active { background-color: transparent !important; color: #ffffff !important; border-left: 3px solid var(--petron-red); }
+
+
     
     .nav-item .ico {
         display: flex;
@@ -3015,13 +3017,6 @@ require_once __DIR__ . '/rbac_menu.php';
           );
           $__badge_add('manager_request_data_management', $__master_pending);
 
-          $__recent_voids = $__badge_count(
-              "SELECT COUNT(*) FROM voided_transactions
-               WHERE station_id=? AND void_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)",
-              [$myStationId]
-          );
-          $__badge_add('manager_voided_transactions', $__recent_voids);
-
           $__pending_customers = $__badge_count(
               "SELECT COUNT(*) FROM customers
                WHERE station_id=?
@@ -3539,7 +3534,6 @@ require_once __DIR__ . '/rbac_menu.php';
       'manager_fuel_daily_ops'                    => ['fuel_reconciliation', 'fuel_variance_report'],
       'manager_fuel_reconciliation'               => ['fuel_reconciliation', 'fuel_variance_report'],
       'manager_request_data_management'           => ['manager_request_data_management'],
-      'manager_voided_transactions'               => ['manager_voided_transactions'],
       // ADMIN pages
       'admin_purchase_orders'                     => ['admin_purchase_orders'],
       'admin_request_data_management'             => ['admin_request_data_management'],
@@ -3592,7 +3586,6 @@ require_once __DIR__ . '/rbac_menu.php';
           'manager_fuel_daily_ops':             ['fuel_variance_report', 'fuel_reconciliation'],
           'manager_fuel_reconciliation':        ['fuel_variance_report', 'fuel_reconciliation'],
           'manager_request_data_management':    ['manager_request_data_management'],
-          'voided_transactions':                ['manager_voided_transactions', 'admin_voided_transactions'],
           // Admin
           'admin_purchase_orders':              ['admin_purchase_orders'],
           'admin_request_data_management':      ['admin_request_data_management'],
@@ -3928,163 +3921,279 @@ require_once __DIR__ . '/rbac_menu.php';
     <!-- ══ GLOBAL FLASH MESSAGE STYLES â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
     <style>
     /* â”€â”€ Petron system-wide flash alerts â”€â”€ */
-    .petron-flash {
-        display: flex;
-        align-items: flex-start;
-        gap: 10px;
-        padding: 13px 18px;
-        border-radius: 8px;
-        margin: 14px 18px 6px 18px;
-        font-size: 14px;
-        font-weight: 500;
-        line-height: 1.5;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        animation: flashSlideIn 0.3s ease;
-        position: relative;
-    }
-    @keyframes flashSlideIn {
-        from { opacity: 0; transform: translateY(-8px); }
-        to   { opacity: 1; transform: translateY(0); }
-    }
-    .petron-flash.flash-success {
-        background: #d4edda;
-        color: #155724;
-        border: 1px solid #b8dfc4;
-        border-left: 5px solid #28a745;
-    }
-    .petron-flash.flash-error {
-        background: #f8d7da;
-        color: #721c24;
-        border: 1px solid #f1b0b7;
-        border-left: 5px solid #dc3545;
-    }
-    .petron-flash.flash-warning {
-        background: #fff3cd;
-        color: #856404;
-        border: 1px solid #ffe08a;
-        border-left: 5px solid #ffc107;
-    }
-    .petron-flash.flash-info {
-        background: #d1ecf1;
-        color: #0c5460;
-        border: 1px solid #a8d9e3;
-        border-left: 5px solid #17a2b8;
-    }
-    .petron-flash i { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
-    .petron-flash .flash-close {
-        position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
-        background: none; border: none; cursor: pointer;
-        color: inherit; opacity: 0.5; font-size: 16px; padding: 0 4px;
-        line-height: 1;
-    }
-    .petron-flash .flash-close:hover { opacity: 1; }
+    /* Petron system-wide top-right toast notifications */
 
     /* â”€â”€ JS-powered toast (bottom-right, for AJAX actions) â”€â”€ */
     #petron-toast-container {
         position: fixed;
-        bottom: 60px;
-        right: 24px;
-        z-index: 99999;
+        top: 84px;
+        right: 22px;
+        z-index: 2147483000;
         display: flex;
         flex-direction: column;
         gap: 10px;
+        width: min(390px, calc(100vw - 32px));
         pointer-events: none;
     }
     .petron-toast {
-        min-width: 280px;
-        max-width: 420px;
-        padding: 13px 18px;
+        position: relative;
+        width: 100%;
+        min-height: 58px;
+        padding: 13px 42px 13px 15px;
         border-radius: 8px;
+        border: 1px solid #dbe4f0;
+        border-left: 5px solid #2563eb;
+        background: #fff;
+        color: #0f172a;
         font-size: 14px;
-        font-weight: 500;
-        line-height: 1.45;
+        font-weight: 600;
+        line-height: 1.4;
         display: flex;
         align-items: flex-start;
-        gap: 10px;
-        box-shadow: 0 4px 18px rgba(0,0,0,0.18);
+        gap: 12px;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
         pointer-events: auto;
-        animation: toastIn 0.3s ease;
+        animation: toastIn 0.26s ease;
         transition: opacity 0.35s ease, transform 0.35s ease;
+        overflow: hidden;
     }
-    .petron-toast.toast-success { background:#28a745; color:#fff; }
-    .petron-toast.toast-error   { background:#dc3545; color:#fff; }
-    .petron-toast.toast-warning { background:#ffc107; color:#333; }
-    .petron-toast.toast-info    { background:#17a2b8; color:#fff; }
-    .petron-toast.toast-hide    { opacity:0; transform:translateX(30px); }
+    .petron-toast.toast-success { border-left-color:#16a34a; }
+    .petron-toast.toast-error   { border-left-color:#dc2626; }
+    .petron-toast.toast-warning { border-left-color:#f59e0b; }
+    .petron-toast.toast-info    { border-left-color:#2563eb; }
+    .petron-toast.toast-success .petron-toast-icon { color:#16a34a; }
+    .petron-toast.toast-error .petron-toast-icon   { color:#dc2626; }
+    .petron-toast.toast-warning .petron-toast-icon { color:#d97706; }
+    .petron-toast.toast-info .petron-toast-icon    { color:#2563eb; }
+    .petron-toast.toast-hide { opacity:0; transform:translateX(34px); }
     @keyframes toastIn {
-        from { opacity:0; transform:translateX(30px); }
+        from { opacity:0; transform:translateX(34px); }
         to   { opacity:1; transform:translateX(0); }
     }
-    .petron-toast i { font-size: 16px; flex-shrink: 0; margin-top: 2px; }
+    .petron-toast-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+    .petron-toast-body { min-width: 0; flex: 1; }
+    .petron-toast-title {
+        display: block;
+        margin-bottom: 2px;
+        color: inherit;
+        font-size: 14px;
+        font-weight: 800;
+    }
+    .petron-toast-message {
+        display: block;
+        color: #475569;
+        font-size: 13px;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+    .petron-toast-close {
+        position: absolute;
+        top: 9px;
+        right: 10px;
+        width: 24px;
+        height: 24px;
+        border: 0;
+        border-radius: 50%;
+        background: transparent;
+        color: #64748b;
+        cursor: pointer;
+        font-size: 18px;
+        line-height: 1;
+    }
+    .petron-toast-close:hover { background: #f1f5f9; color: #0f172a; }
+    .petron-flash {
+        position: fixed;
+        top: 84px;
+        right: 22px;
+        z-index: 2147483000;
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        width: min(390px, calc(100vw - 32px));
+        min-height: 58px;
+        padding: 13px 42px 13px 15px;
+        border-radius: 8px;
+        border: 1px solid #dbe4f0;
+        border-left: 5px solid #2563eb;
+        background: #fff;
+        color: #0f172a;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.4;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+        animation: toastIn 0.26s ease;
+        transition: opacity 0.35s ease, transform 0.35s ease;
+    }
+    .petron-flash.flash-success { border-left-color:#16a34a; }
+    .petron-flash.flash-error   { border-left-color:#dc2626; }
+    .petron-flash.flash-warning { border-left-color:#f59e0b; }
+    .petron-flash.flash-info    { border-left-color:#2563eb; }
+    .petron-flash.flash-success i { color:#16a34a; }
+    .petron-flash.flash-error i   { color:#dc2626; }
+    .petron-flash.flash-warning i { color:#d97706; }
+    .petron-flash.flash-info i    { color:#2563eb; }
+    .petron-flash span { color:#475569; overflow-wrap:anywhere; }
+    .petron-flash.toast-hide { opacity:0; transform:translateX(34px); }
+    .petron-flash .flash-close {
+        position: absolute;
+        top: 9px;
+        right: 10px;
+        width: 24px;
+        height: 24px;
+        border: 0;
+        border-radius: 50%;
+        background: transparent;
+        color: #64748b;
+        cursor: pointer;
+        font-size: 18px;
+        line-height: 1;
+    }
+    .petron-flash .flash-close:hover { background: #f1f5f9; color: #0f172a; }
+    @media (max-width: 640px) {
+        #petron-toast-container {
+            top: 76px;
+            right: 12px;
+            left: 12px;
+            width: auto;
+        }
+        .petron-flash {
+            top: 76px;
+            right: 12px;
+            left: 12px;
+            width: auto;
+        }
+    }
+    @media print {
+        #petron-toast-container,
+        .petron-flash { display: none !important; }
+    }
     </style>
 
     <!-- â•â• GLOBAL FLASH MESSAGE RENDERER (PHP SESSION â†’ HTML) â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
     <?php
-    /* Icons + classes map */
-    $__flash_map = [
-        'success' => ['cls'=>'flash-success', 'ico'=>'fa-check-circle'],
-        'error'   => ['cls'=>'flash-error',   'ico'=>'fa-exclamation-circle'],
-        'warning' => ['cls'=>'flash-warning', 'ico'=>'fa-exclamation-triangle'],
-        'info'    => ['cls'=>'flash-info',    'ico'=>'fa-info-circle'],
+    $__toast_map = [
+        'success' => ['class'=>'success', 'title'=>'Success',     'icon'=>'fa-check-circle',          'keys'=>['success', 'flash_success', 'ok']],
+        'error'   => ['class'=>'error',   'title'=>'Error',       'icon'=>'fa-exclamation-circle',    'keys'=>['error', 'flash_error', 'err']],
+        'warning' => ['class'=>'warning', 'title'=>'Warning',     'icon'=>'fa-exclamation-triangle',  'keys'=>['warning', 'flash_warning']],
+        'info'    => ['class'=>'info',    'title'=>'Information', 'icon'=>'fa-info-circle',           'keys'=>['info', 'flash_info']],
     ];
-    foreach ($__flash_map as $__ftype => $__fmeta):
-        $__fkey = ($__ftype === 'error') ? 'error' : $__ftype;
-        /* support both $_SESSION['success'] and $_SESSION['flash_success'] patterns */
-        $__fmsg = $_SESSION[$__fkey] ?? $_SESSION['flash_'.$__fkey] ?? '';
-        if ($__fmsg === '') continue;
-        unset($_SESSION[$__fkey], $_SESSION['flash_'.$__fkey]);
-    ?>
-    <div class="petron-flash <?php echo $__fmeta['cls']; ?>" role="alert">
-        <i class="fas <?php echo $__fmeta['ico']; ?>"></i>
-        <span><?php echo htmlspecialchars((string)$__fmsg, ENT_QUOTES); ?></span>
-        <button class="flash-close" onclick="this.parentElement.remove();" title="Dismiss">&times;</button>
-    </div>
-    <?php endforeach; ?>
-
-    <!-- GLOBAL JS TOAST HELPER - Simple toast notifications helper -->
-    <div id="petron-toast-container"></div>
-    <script>
-    /**
-     * showPetronFlash(message, type, duration)
-     * Shows a bottom-right toast notification for AJAX-driven actions.
-     * type: 'success' | 'error' | 'warning' | 'info'   (default: 'success')
-     * duration: ms (default 3500, use 0 for persistent)
-     */
-    function showPetronFlash(message, type, duration) {
-        type     = type     || 'success';
-        duration = (duration === undefined) ? 3500 : duration;
-        var icons = {
-            success: 'fa-check-circle',
-            error:   'fa-exclamation-circle',
-            warning: 'fa-exclamation-triangle',
-            info:    'fa-info-circle'
-        };
-        var container = document.getElementById('petron-toast-container');
-        if (!container) return;
-        var toast = document.createElement('div');
-        toast.className = 'petron-toast toast-' + type;
-        toast.innerHTML =
-            '<i class="fas ' + (icons[type] || icons.success) + '"></i>' +
-            '<span>' + message + '</span>';
-        container.appendChild(toast);
-        if (duration > 0) {
-            setTimeout(function() {
-                toast.classList.add('toast-hide');
-                setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 400);
-            }, duration);
+    $__toasts = [];
+    foreach ($__toast_map as $__toast_type => $__toast_meta) {
+        foreach ($__toast_meta['keys'] as $__toast_key) {
+            if (!empty($_SESSION[$__toast_key])) {
+                $__toasts[] = [
+                    'type'    => $__toast_meta['class'],
+                    'title'   => $__toast_meta['title'],
+                    'icon'    => $__toast_meta['icon'],
+                    'message' => (string) $_SESSION[$__toast_key],
+                ];
+                unset($_SESSION[$__toast_key]);
+            }
         }
     }
+    ?>
 
-    /* Auto-dismiss page-level flash banners after 6 seconds */
-    document.addEventListener('DOMContentLoaded', function() {
-        document.querySelectorAll('.petron-flash').forEach(function(el) {
+    <!-- GLOBAL JS TOAST HELPER - Top-right toast notifications -->
+    <div id="petron-toast-container" aria-live="polite" aria-atomic="true">
+        <?php foreach ($__toasts as $__toast): ?>
+        <div class="petron-toast toast-<?php echo htmlspecialchars($__toast['type'], ENT_QUOTES); ?>" role="status">
+            <i class="fas <?php echo htmlspecialchars($__toast['icon'], ENT_QUOTES); ?> petron-toast-icon"></i>
+            <span class="petron-toast-body">
+                <strong class="petron-toast-title"><?php echo htmlspecialchars($__toast['title'], ENT_QUOTES); ?></strong>
+                <span class="petron-toast-message"><?php echo htmlspecialchars($__toast['message'], ENT_QUOTES); ?></span>
+            </span>
+            <button type="button" class="petron-toast-close" aria-label="Close notification">&times;</button>
+        </div>
+        <?php endforeach; ?>
+    </div>
+    <script>
+    /**
+     * showToast(message, type, duration, title)
+     * Shows a top-right toast notification for system feedback.
+     * type: 'success' | 'error' | 'warning' | 'info'   (default: 'success')
+     * duration: ms (default 4000, use 0 for persistent)
+     */
+    (function() {
+        var icons = {
+            success: 'fa-check-circle',
+            error: 'fa-exclamation-circle',
+            warning: 'fa-exclamation-triangle',
+            info: 'fa-info-circle'
+        };
+        var titles = {
+            success: 'Success',
+            error: 'Error',
+            warning: 'Warning',
+            info: 'Information'
+        };
+
+        function escapeHtml(value) {
+            var div = document.createElement('div');
+            div.textContent = value == null ? '' : String(value);
+            return div.innerHTML;
+        }
+
+        function dismissToast(toast) {
+            if (!toast || toast.classList.contains('toast-hide')) return;
+            toast.classList.add('toast-hide');
             setTimeout(function() {
-                el.style.transition = 'opacity 0.5s ease';
-                el.style.opacity = '0';
-                setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 500);
-            }, 6000);
+                if (toast.parentNode) toast.parentNode.removeChild(toast);
+            }, 380);
+        }
+
+        function armToast(toast, duration) {
+            var timeout = (duration === undefined) ? 4000 : Number(duration);
+            var close = toast.querySelector('.petron-toast-close, .flash-close');
+            if (close) close.addEventListener('click', function() { dismissToast(toast); });
+            if (timeout > 0) {
+                setTimeout(function() { dismissToast(toast); }, timeout);
+            }
+        }
+
+        function normalizeToastType(type) {
+            type = String(type || 'success').toLowerCase();
+            if (type === 'ok' || type === 'done') return 'success';
+            if (type === 'err' || type === 'danger' || type === 'failed' || type === 'fail') return 'error';
+            if (type === 'warn') return 'warning';
+            if (type === 'information') return 'info';
+            return ['success', 'error', 'warning', 'info'].indexOf(type) >= 0 ? type : 'success';
+        }
+
+        window.showToast = window.showToast || function(message, type, duration, title) {
+            type = normalizeToastType(type);
+            var container = document.getElementById('petron-toast-container');
+            if (!container) return;
+            var toast = document.createElement('div');
+            toast.className = 'petron-toast toast-' + type;
+            toast.setAttribute('role', 'status');
+            toast.innerHTML =
+                '<i class="fas ' + (icons[type] || icons.info) + ' petron-toast-icon"></i>' +
+                '<span class="petron-toast-body">' +
+                    '<strong class="petron-toast-title">' + escapeHtml(title || titles[type] || 'Information') + '</strong>' +
+                    '<span class="petron-toast-message">' + escapeHtml(message) + '</span>' +
+                '</span>' +
+                '<button type="button" class="petron-toast-close" aria-label="Close notification">&times;</button>';
+            container.appendChild(toast);
+            armToast(toast, duration);
+        };
+
+        var sharedShowToast = window.showToast;
+        window.showPetronFlash = window.showPetronFlash || function(message, type, duration) {
+            sharedShowToast(message, type, duration);
+        };
+
+        if (typeof window.toast !== 'function') {
+            window.toast = function(message, type) {
+                window.showToast(message, type || 'info');
+            };
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('#petron-toast-container .petron-toast, .petron-flash').forEach(function(toast) {
+                armToast(toast, 4500);
+            });
         });
-    });
+    })();
     </script>
 
     <!-- Page content starts here -->      

@@ -820,6 +820,10 @@ function fmt(n) { return parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d
 function fmtDate(d) { if (!d) return '—'; const dt = new Date(d); return dt.toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}); }
 
 function showToast(msg, type='success') {
+  if (window.showPetronFlash) {
+    window.showPetronFlash(msg, type);
+    return;
+  }
   const tc = document.getElementById('toast-container');
   const t = document.createElement('div');
   t.className = `toast toast-${type}`;

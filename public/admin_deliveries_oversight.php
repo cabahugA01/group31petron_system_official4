@@ -295,6 +295,10 @@ let currentId = null, currentRec = null;
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function closeModal(id){document.getElementById(id).classList.remove('show');}
 function toast(msg,type){
+  if (window.showPetronFlash) {
+    window.showPetronFlash(msg, type || 'success');
+    return;
+  }
   const t=document.getElementById('toast');
   t.textContent=msg;
   t.className='toast toast-'+(type||'success')+' show';

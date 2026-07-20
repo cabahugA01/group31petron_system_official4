@@ -358,7 +358,6 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 $filtered_item['sub_items'] = [
                     ['id' => 'staff_new_transaction',     'label' => 'New Transaction',     'href' => 'staff_transactions_hub.php?section=merchandise&active_tab=merchandise', 'ico' => 'fas fa-plus-circle',   'permissions' => ['create_transactions'], 'desc' => 'Create and process new job order, merchandise, or combined transactions.'],
                     ['id' => 'staff_transaction_history', 'label' => 'Transaction History', 'href' => 'staff_transactions_hub.php?section=history',                           'ico' => 'fas fa-history',        'permissions' => ['create_transactions'], 'desc' => 'View and track previously encoded transactions and payment records.'],
-                    ['id' => 'staff_receipts',            'label' => 'Receipts',            'href' => 'receipts.php',                                                         'ico' => 'fas fa-file-invoice',   'permissions' => ['create_transactions'], 'desc' => 'View, reprint, and manage generated transaction receipts.'],
                 ];
             }
 
@@ -379,11 +378,9 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 $filtered_item['href']  = '#';
                 $filtered_item['label'] = 'Transactions';
                 $filtered_item['sub_items'] = [
-                    ['id' => 'validated_transactions_manager', 'label' => 'All Transactions',        'href' => 'manager_validated_transactions.php',             'ico' => 'fas fa-check-double',    'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'View and monitor all transactions encoded by staff across operational shifts.'],
-                    ['id' => 'manager_transaction_adjustments','label' => 'Transaction Adjustments', 'href' => 'manager_transaction_monitoring.php',             'ico' => 'fas fa-sliders-h',       'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Review and manage transaction corrections, modifications, and adjustment records.'],
-                    ['id' => 'manager_voided_transactions',    'label' => 'Voided Transactions',     'href' => 'voided_transactions.php',                        'ico' => 'fas fa-ban',             'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Manage cancelled or invalid transactions with complete audit trail and inventory restoration.'],
-                    ['id' => 'manager_request_data_management','label' => 'Request Data Management','href' => 'manager_request_data_management.php',            'ico' => 'fas fa-clipboard-list',  'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Review and approve staff requests for new master data: products, service types, and vehicle types.'],
-                    ['id' => 'manager_mechanics_management',   'label' => 'Mechanics Management',   'href' => 'manager_mechanics_management.php',               'ico' => 'fas fa-wrench',          'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Manage mechanics details, contact info, specialties, status, and active assignments.'],
+                    ['id' => 'validated_transactions_manager', 'label' => 'All Transactions',       'href' => 'manager_validated_transactions.php',  'ico' => 'fas fa-list-check',       'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Monitor and manage merchandise, job order, and combined transactions in one page.'],
+                    ['id' => 'manager_request_data_management','label' => 'Master Data Requests',   'href' => 'manager_request_data_management.php', 'ico' => 'fas fa-clipboard-list',   'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Review and process staff requests for products, services, and vehicles.'],
+                    ['id' => 'manager_mechanics_management',   'label' => 'Mechanics Management',  'href' => 'manager_mechanics_management.php',    'ico' => 'fas fa-wrench',           'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Manage mechanic records used in job orders.'],
                 ];
             }
 

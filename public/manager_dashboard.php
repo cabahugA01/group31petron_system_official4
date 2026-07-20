@@ -1998,7 +1998,7 @@ include __DIR__ . '/../partials/header.php';
                     <div class="mgr-panel-title"><i class="fas fa-receipt"></i> Recent Transactions</div>
                     <div class="mgr-panel-sub">Latest 10 fuel, merchandise, and service records</div>
                 </div>
-                <a href="manager_transaction_monitoring.php" class="mgr-btn mgr-btn-blue"><i class="fas fa-magnifying-glass-chart"></i> View All</a>
+                <a href="manager_validated_transactions.php" class="mgr-btn mgr-btn-blue"><i class="fas fa-magnifying-glass-chart"></i> View All</a>
             </div>
             <?php if ($recent_transactions): ?>
                 <div class="mgr-table-wrap">

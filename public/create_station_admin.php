@@ -403,6 +403,10 @@ include __DIR__ . '/../partials/header.php';
 <script>
 // Show toast notification
 function showToast(message, type = 'success') {
+    if (window.showPetronFlash) {
+        window.showPetronFlash(message, type);
+        return;
+    }
     const toast = document.getElementById('toast');
     toast.textContent = message;
     toast.style.background = type === 'success' ? '#28A745' : '#DC3545';

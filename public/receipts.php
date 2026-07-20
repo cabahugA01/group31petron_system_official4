@@ -8,6 +8,10 @@ $me         = current_user();
 $role       = role_key($me['role'] ?? '');
 $station_id = (int) user_station_id();
 
+if (in_array($role, ['manager', 'supervisor'], true)) {
+    $page_id = 'manager_receipts';
+}
+
 if (!in_array($role, ['staff','manager','admin','superadmin','owner'])) {
     $_SESSION['error'] = 'Access denied.';
     header('Location: staff_dashboard.php'); exit;
@@ -178,8 +182,8 @@ include __DIR__ . '/../partials/header.php';
 .vt-btn-search{color:#002F70!important;border-color:#002F70!important}.vt-btn-search:hover{background:#002F70!important;color:#fff!important}
 .vt-btn-reset{color:#4b5563!important;border-color:#6b7280!important}.vt-btn-reset:hover{background:#6b7280!important;color:#fff!important}
 .vt-table{width:100%;border-collapse:collapse;font-size:11px}
-.vt-table thead th{background:#002F70;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:9px 10px;border-bottom:2px solid #001a3d;text-align:left;vertical-align:middle}
-.vt-table tbody td{padding:9px 10px;border-bottom:1px solid #f1f5f9;vertical-align:middle;background:#fff;font-size:11px}
+.vt-table thead th{background:#002F70;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:9px 8px;border-bottom:2px solid #001a3d;text-align:left;vertical-align:middle;word-break:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.vt-table tbody td{padding:8px 8px;border-bottom:1px solid #f1f5f9;vertical-align:middle;background:#fff;font-size:11px;word-break:break-word;overflow-wrap:break-word;white-space:normal;}
 .vt-table tbody tr:hover td{background:#eff6ff}
 .vt-badge{display:inline-block;padding:3px 10px;border-radius:4px;font-size:10px;font-weight:600;white-space:nowrap}
 .vt-badge-merch{background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe}
@@ -196,7 +200,7 @@ include __DIR__ . '/../partials/header.php';
 .summary-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
 .summary-card-dark{background:linear-gradient(135deg,#002F70 0%,#003d8a 100%);border-radius:10px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
 /* Item chips & expand rows */
-.rc-item-chip{display:inline-flex;align-items:center;gap:4px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:600;color:#374151;margin:1px 2px 1px 0;white-space:nowrap;cursor:pointer}
+.rc-item-chip{display:inline-flex;align-items:center;gap:4px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:600;color:#374151;margin:1px 2px 1px 0;white-space:normal;word-break:break-word;max-width:100%;cursor:pointer}
 .rc-item-chip.svc{background:#fffbeb;border-color:#fde68a;color:#92400e}
 .rc-item-chip .rc-chip-qty{background:#002F70;color:#fff;border-radius:3px;padding:0 4px;font-size:9px;margin-left:3px}
 .rc-expand-row td{background:#f8fafc;padding:0}
@@ -209,15 +213,12 @@ include __DIR__ . '/../partials/header.php';
 .rc-row-main:hover td{background:#eff6ff !important}
 </style>
 
-<div class="int-head">
+<div class="stock-page" style="padding-top:8px !important;">
+<div class="stock-head">
     <div>
-        <h1><i class="fas fa-file-invoice"></i> Receipts</h1>
-        <div class="sub">Search and reprint transaction receipts &mdash; merchandise and job orders.</div>
+        <h1 class="stock-title"><i class="fas fa-file-invoice"></i> Receipts</h1>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        <a href="?<?= http_build_query(array_merge($_GET,['export'=>'csv'])) ?>" class="txn-btn primary" title="Export CSV">
-            <i class="fas fa-file-csv"></i> CSV
-        </a>
         <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise" class="txn-btn secondary">
             <i class="fas fa-arrow-left"></i> Back
         </a>
@@ -295,25 +296,25 @@ include __DIR__ . '/../partials/header.php';
 
 <!-- Table -->
 <div class="card" style="padding:0;overflow:hidden;">
-    <table class="vt-table">
+    <div style="width:100%;overflow:hidden;">
+        <table class="vt-table" style="table-layout:fixed;width:100%;border-collapse:collapse;">
         <thead>
             <tr>
-                <th style="width:145px">Txn ID</th>
-                <th style="width:110px">Customer</th>
-                <th style="width:85px">Type</th>
-                <th>Items</th>
-                <th style="text-align:right;width:90px">Amount</th>
-                <th style="width:85px">Payment</th>
-                <th style="width:80px">Pay Status</th>
-                <th style="width:80px">Validation</th>
-                <th style="width:110px">Date &amp; Time</th>
-                <th style="width:100px">Encoded By</th>
-                <th style="text-align:center;width:65px">Receipt</th>
+                <th style="width:14%;">Txn ID</th>
+                <th style="width:11%;">Customer</th>
+                <th style="width:8%;">Type</th>
+                <th style="width:22%;">Items</th>
+                <th style="text-align:right;width:8%;">Amount</th>
+                <th style="width:8%;">Payment</th>
+                <th style="width:8%;">Pay Status</th>
+                <th style="width:8%;">Validation</th>
+                <th style="width:10%;">Date &amp; Time</th>
+                <th style="text-align:center;width:9%;">Receipt</th>
             </tr>
         </thead>
         <tbody>
         <?php if(empty($rows)): ?>
-            <tr><td colspan="11" style="text-align:center;padding:40px;color:#94a3b8;">
+            <tr><td colspan="10" style="text-align:center;padding:40px;color:#94a3b8;">
                 <i class="fas fa-file-invoice" style="font-size:32px;display:block;margin-bottom:10px;opacity:.4;"></i>
                 No receipts found. Adjust your filters and try again.
             </td></tr>
@@ -397,8 +398,7 @@ include __DIR__ . '/../partials/header.php';
                 <td><?= htmlspecialchars($r['payment_method']) ?></td>
                 <td><span class="vt-badge <?= $pay_class ?>"><?= $pay_st ?></span></td>
                 <td><span class="vt-badge <?= $vs_class ?>"><?= htmlspecialchars(ucfirst($r['validation_status'])) ?></span></td>
-                <td style="white-space:nowrap;"><?= date('M d, Y H:i',strtotime($r['txn_date'])) ?></td>
-                <td><?= htmlspecialchars($r['staff_name']) ?></td>
+                <td style="font-size:10.5px;"><?= date('M d, Y H:i',strtotime($r['txn_date'])) ?></td>
                 <td style="text-align:center;" onclick="event.stopPropagation()">
                     <a href="<?= htmlspecialchars($receipt_url) ?>" target="_blank" rel="noopener"
                        class="rc-action-btn <?= $is_jo ? 'rc-btn-jo' : 'rc-btn-print' ?>" title="Open Receipt">
@@ -408,7 +408,7 @@ include __DIR__ . '/../partials/header.php';
             </tr>
             <?php if (!empty($rc_row_items)): ?>
             <tr class="rc-expand-row" id="<?= $expand_id ?>" style="display:none">
-              <td colspan="11">
+              <td colspan="10">
                 <div class="rc-expand-inner">
                   <?php if (!empty($svc_items_rc)): ?>
                   <div style="font-size:11px;font-weight:800;color:#b45309;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">
@@ -453,18 +453,11 @@ include __DIR__ . '/../partials/header.php';
             <?php endif; ?>
         <?php endforeach; endif; ?>
         </tbody>
-        <?php if(!empty($rows)): ?>
-        <tfoot>
-            <tr style="background:#f0f7ff;">
-                <td colspan="4" style="font-weight:800;padding:10px;color:#002F70;">TOTAL (<?= count($rows) ?> records)</td>
-                <td style="text-align:right;font-weight:800;color:#002F70;padding:10px;">&#8369;<?= number_format($total_amt,2) ?></td>
-                <td colspan="6"></td>
-            </tr>
-        </tfoot>
-        <?php endif; ?>
     </table>
+    </div>
 </div>
 
+</div>
 <?php include __DIR__ . '/../partials/footer.php'; ?>
 <script>
 function rcToggleExpand(id) {
