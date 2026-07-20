@@ -681,7 +681,7 @@ html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !impor
 .main-content { max-width: 100% !important; overflow-x: hidden !important; padding: 0 !important; }
 
 /* Petron clean headers */
-.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; margin-top: 8px !important; padding-top: 8px; width: 100%; }
+.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; margin-top: 0 !important; padding-top: 16px; padding-bottom: 16px; border-bottom: 2px solid #e9ecef; width: 100%; }
 .int-head > div:first-child { flex: 1; min-width: 280px; max-width: 65%; }
 .int-head > div:last-child { flex-shrink: 0; display: flex; gap: 8px; flex-wrap: wrap; }
 .int-head h1 { font-size: 22px !important; font-weight: 700 !important; color: #00264D !important; margin: 0 !important; text-transform: uppercase !important; display: flex; align-items: center; gap: 8px; line-height: 1.3; }
@@ -831,12 +831,6 @@ input[type="checkbox"]:indeterminate {
     <div class="int-head">
         <div>
             <h1><i class="fas fa-check-double"></i> Fuel Transaction Validation</h1>
-            <div class="sub">Review and validate fuel transactions encoded by staff for accuracy and compliance.</div>
-        </div>
-        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
-            <button type="button" onclick="mftvExport('excel')" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
-            <button type="button" onclick="mftvExport('pdf')" class="ato-btn ato-btn-pdf"><i class="fas fa-file-pdf"></i> Export PDF</button>
-            <button type="button" onclick="printReportArea()" class="ato-btn ato-btn-print"><i class="fas fa-print"></i> Print</button>
         </div>
     </div>
 

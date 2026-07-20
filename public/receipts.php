@@ -27,7 +27,7 @@ $mt_cols = rc_cols($pdo,'merchandise_transactions');
 $jo_cols = rc_cols($pdo,'job_orders');
 
 // ── Filters ───────────────────────────────────────────────────────────────────
-$search    = trim($_GET['search']    ?? '');
+$search    = trim($_GET['search'] ?? $_GET['txn'] ?? '');
 $date_from = trim($_GET['date_from'] ?? '');
 $date_to   = trim($_GET['date_to']   ?? '');
 $type_f    = trim($_GET['type']      ?? '');
@@ -165,7 +165,7 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-.int-head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;margin-top:-12px!important}
+.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; margin-top: 0 !important; padding-top: 16px; padding-bottom: 16px; border-bottom: 2px solid #e9ecef; }
 .int-head h1{font-size:22px!important;font-weight:700!important;color:var(--petron-blue,#002F70)!important;margin:0!important;text-transform:uppercase!important;display:flex;align-items:center;gap:8px}
 .int-head .sub{font-size:13px;color:#666;margin-top:4px;text-transform:none!important}
 .txn-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 16px;height:36px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s;text-decoration:none;background:white!important}
@@ -300,16 +300,16 @@ include __DIR__ . '/../partials/header.php';
         <table class="vt-table" style="table-layout:fixed;width:100%;border-collapse:collapse;">
         <thead>
             <tr>
-                <th style="width:14%;">Txn ID</th>
-                <th style="width:11%;">Customer</th>
-                <th style="width:8%;">Type</th>
+                <th style="width:17%;">Txn ID</th>
+                <th style="width:10%;">Customer</th>
+                <th style="width:7%;">Type</th>
                 <th style="width:22%;">Items</th>
                 <th style="text-align:right;width:8%;">Amount</th>
-                <th style="width:8%;">Payment</th>
-                <th style="width:8%;">Pay Status</th>
-                <th style="width:8%;">Validation</th>
-                <th style="width:10%;">Date &amp; Time</th>
-                <th style="text-align:center;width:9%;">Receipt</th>
+                <th style="width:7%;">Payment</th>
+                <th style="width:7%;">Pay Status</th>
+                <th style="width:7%;">Validation</th>
+                <th style="width:9%;">Date &amp; Time</th>
+                <th style="text-align:center;width:6%;">Receipt</th>
             </tr>
         </thead>
         <tbody>
@@ -374,7 +374,7 @@ include __DIR__ . '/../partials/header.php';
             $merch_items_rc = array_filter($rc_row_items, fn($i) => $i['item_type'] !== 'service');
         ?>
             <tr class="rc-row-main" onclick="rcToggleExpand('<?= $expand_id ?>')">
-                <td><code style="font-size:10px;color:#002F70;"><?= htmlspecialchars($r['txn_id']) ?></code></td>
+                <td style="white-space:nowrap;"><strong style="font-size:10.5px;color:#002F70;white-space:nowrap;letter-spacing:-0.2px;"><?= htmlspecialchars($r['txn_id']) ?></strong></td>
                 <td><?= htmlspecialchars($r['customer']) ?></td>
                 <td><span class="vt-badge <?= $is_jo ? 'vt-badge-jo' : 'vt-badge-merch' ?>"><?= htmlspecialchars($r['entry_type']) ?></span></td>
                 <td>

@@ -197,7 +197,7 @@ try {
         COALESCE(NULLIF(TRIM(mt.job_order_service),''), '') as service_type
         FROM merchandise_transactions mt
         LEFT JOIN users u ON u.id=mt.staff_id
-        LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id=mt.id
+        LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id=mt.id AND COALESCE(mti.item_type,'') != 'service' AND COALESCE(mti.category,'') NOT LIKE '%Service%'
         $where GROUP BY mt.id ORDER BY $mt_date DESC LIMIT 500");
     $s->execute($params);
     $rows=$s->fetchAll(PDO::FETCH_ASSOC);

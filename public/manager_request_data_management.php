@@ -84,8 +84,8 @@ try {
     $stmt = $pdo->prepare("
         SELECT 
             r.*,
-            COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.name, 'Unknown Staff') as requester_name,
-            COALESCE(CONCAT(rev.first_name, ' ', rev.last_name), rev.name, '') as reviewer_name,
+            COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.name, u.username, 'Staff Encoder') as requester_name,
+            COALESCE(CONCAT(rev.first_name, ' ', rev.last_name), rev.name, rev.username, '') as reviewer_name,
             st.name AS station_name
         FROM master_data_requests r
         LEFT JOIN users u ON r.requested_by = u.id
@@ -103,49 +103,52 @@ try {
 require_once __DIR__ . '/../partials/header.php';
 ?>
 <style>
-.page-head.txn-page-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-bottom: 20px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid #e2e8f0;
+.stock-page {
+    padding: 16px 0;
+    width: 100%;
+    box-sizing: border-box;
 }
-.page-head.txn-page-head h1 {
-    font-size: 22px !important;
-    font-weight: 700 !important;
-    color: var(--petron-blue, #00264D) !important;
-    margin: 0 !important;
+.stock-head {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
+    margin-bottom: 16px;
 }
-.page-head.txn-page-head .sub {
-    font-size: 13px;
-    color: #64748b;
-    margin-top: 4px;
+.stock-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #00264D;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 /* == Petron Clean KPI Summary Cards == */
 .txn-kpi-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
     margin-bottom: 18px;
+    width: 100%;
+    box-sizing: border-box;
+}
+@media (max-width: 1100px) {
+    .txn-kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 .txn-kpi-card {
     background: #fff;
     border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    padding: 14px 16px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, .05);
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: none;
     transition: transform .15s, box-shadow .15s;
 }
 .txn-kpi-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, .08);
+    box-shadow: 0 4px 10px rgba(0,0,0,.09);
 }
 .txn-kpi-lbl {
     font-size: 11px;
@@ -153,60 +156,59 @@ require_once __DIR__ . '/../partials/header.php';
     text-transform: uppercase;
     letter-spacing: .5px;
     color: #64748b;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
     display: flex;
     align-items: center;
     gap: 6px;
 }
 .txn-kpi-val {
-    font-size: 24px;
+    font-size: 26px;
     font-weight: 800;
     color: #002F70;
     line-height: 1.1;
 }
-.txn-kpi-card.blue .txn-kpi-val { color: #0369a1; }
-.txn-kpi-card.purple .txn-kpi-val { color: #7c3aed; }
-.txn-kpi-card.green .txn-kpi-val { color: #16a34a; }
-.txn-kpi-card.orange .txn-kpi-val { color: #ea580c; }
+.txn-kpi-card.yellow .txn-kpi-val { color: #d97706; }
+.txn-kpi-card.green .txn-kpi-val  { color: #16a34a; }
 .txn-kpi-card.danger .txn-kpi-val { color: #dc2626; }
+.txn-kpi-card.blue .txn-kpi-val   { color: #0284c7; }
 
 .filters-form {
     display: flex;
     align-items: flex-end;
-    gap: 12px;
+    gap: 10px;
     flex-wrap: wrap;
     background: #fff;
     border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 16px 20px;
-    margin-bottom: 24px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 18px;
+    width: 100%;
+    box-sizing: border-box;
 }
 .filters-form > div {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
 }
 .filters-form label {
     font-size: 11px;
     font-weight: 700;
-    color: #475569;
+    color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.4px;
 }
-.filters-form .inp {
-    height: 38px;
-    padding: 0 12px;
+.filters-form .inp, .modal-body .inp {
+    height: 36px;
+    padding: 0 10px;
     border: 1px solid #cbd5e1;
-    border-radius: 8px;
+    border-radius: 7px;
     font-size: 13px;
     color: #1e293b;
     background: #fff;
     outline: none;
-    min-width: 140px;
     transition: border-color 0.15s, box-shadow 0.15s;
 }
-.filters-form .inp:focus {
+.filters-form .inp:focus, .modal-body .inp:focus {
     border-color: #002F70;
     box-shadow: 0 0 0 3px rgba(0, 47, 112, 0.1);
 }
@@ -217,14 +219,15 @@ require_once __DIR__ . '/../partials/header.php';
     justify-content: center;
     gap: 6px;
     padding: 0 14px;
-    height: 38px;
-    border-radius: 8px;
+    height: 36px;
+    border-radius: 7px;
     font-size: 13px;
     font-weight: 600;
-    cursor:pointer;
+    cursor: pointer;
     border: 1px solid transparent;
     transition: all 0.15s;
     background: #fff;
+    text-decoration: none;
 }
 .btn-primary {
     background: #002F70;
@@ -243,26 +246,44 @@ require_once __DIR__ . '/../partials/header.php';
 .btn-secondary:hover {
     background: #e2e8f0;
 }
+.btn-success {
+    background: #16a34a;
+    color: #fff;
+    border-color: #16a34a;
+}
+.btn-success:hover {
+    background: #15803d;
+}
+.btn-danger {
+    background: #dc2626;
+    color: #fff;
+    border-color: #dc2626;
+}
+.btn-danger:hover {
+    background: #b91c1c;
+}
 
 .table-card {
     background: #fff;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    width: 100%;
+    box-sizing: border-box;
 }
 .table-card-head {
-    padding: 16px 20px;
-    border-bottom: 1px solid #f1f5f9;
-    background: #f8fafc;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    padding: 13px 16px;
+    border-bottom: 1px solid #e9ecef;
+    background: #f8fafc;
 }
 .table-card-title {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
-    color: #0f172a;
+    color: #00264D;
 }
 .table-responsive {
     width: 100%;
@@ -271,7 +292,7 @@ require_once __DIR__ . '/../partials/header.php';
 .tbl-requests {
     width: 100%;
     border-collapse: collapse;
-    font-size: 13px;
+    font-size: 12px;
     text-align: left;
 }
 .tbl-requests th {
@@ -280,72 +301,84 @@ require_once __DIR__ . '/../partials/header.php';
     font-weight: 700;
     text-transform: uppercase;
     font-size: 11px;
-    letter-spacing: 0.5px;
-    padding: 10px 18px;
+    letter-spacing: 0.4px;
+    padding: 9px 12px;
     border-bottom: 2px solid #001a3d;
+    white-space: nowrap;
 }
 .tbl-requests td {
-    padding: 14px 18px;
+    padding: 9px 12px;
     border-bottom: 1px solid #f1f5f9;
     color: #334155;
     vertical-align: middle;
 }
-.tbl-requests tr:hover {
-    background: #f8fafc;
+.tbl-requests tr:hover td {
+    background: #eff6ff;
 }
 
+/* Badges */
 .badge {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 2px 8px;
-    border-radius: 999px;
+    padding: 3px 8px;
+    border-radius: 6px;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
+    white-space: nowrap;
 }
-.badge-pending { background: #fef3c7; color: #d97706; }
-.badge-approved { background: #d1fae5; color: #059669; }
-.badge-rejected { background: #fee2e2; color: #dc2626; }
+.badge-pending  { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+.badge-approved { background: #d1fae5; color: #15803d; border: 1px solid #86efac; }
+.badge-rejected { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
 
-.badge-cat {
-    background: #f1f5f9;
+.badge-cat { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+.badge-cat-vehicle { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.badge-cat-merchandise { background: #fdf2f8; color: #be185d; border: 1px solid #fbcfe8; }
+.badge-cat-service { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+
+/* Structured Payload Display */
+.payload-struct {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 11.5px;
+    line-height: 1.4;
+}
+.payload-struct div {
+    color: #334155;
+}
+.payload-struct strong {
     color: #475569;
-}
-.badge-cat-vehicle { background: #eff6ff; color: #1d4ed8; }
-.badge-cat-merchandise { background: #fdf2f8; color: #be185d; }
-.badge-cat-service { background: #f5f3ff; color: #6d28d9; }
-
-.payload-list {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    font-size: 12px;
-}
-.payload-list li {
-    margin-bottom: 4px;
-}
-.payload-list strong {
-    color: #475569;
+    font-weight: 700;
 }
 
+/* Modal */
 .modal-backdrop {
     display: none;
     position: fixed;
-    inset: 0;
-    z-index: 10000;
-    background: rgba(15, 23, 42, 0.6);
+    top: 65px;
+    left: 0;
+    right: 0;
+    bottom: 35px;
+    z-index: 999999 !important;
+    background: rgba(15, 23, 42, 0.65);
     backdrop-filter: blur(4px);
     align-items: center;
     justify-content: center;
     padding: 16px;
+    box-sizing: border-box;
 }
 .modal-content {
     background: #fff;
-    border-radius: 16px;
+    border-radius: 14px;
     width: 100%;
-    max-width: 520px;
-    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
-    overflow: hidden;
+    max-width: 620px;
+    max-height: 100%;
+    display: flex !important;
+    flex-direction: column !important;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+    overflow: hidden !important;
+    margin: auto;
     animation: modalSlideUp 0.2s ease-out;
 }
 @keyframes modalSlideUp {
@@ -353,30 +386,51 @@ require_once __DIR__ . '/../partials/header.php';
     to { transform: translateY(0); opacity: 1; }
 }
 .modal-header {
-    padding: 16px 20px;
-    border-bottom: 1px solid #f1f5f9;
+    padding: 14px 20px;
+    border-bottom: 1px solid #e2e8f0;
     background: #f8fafc;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-shrink: 0 !important;
+    height: 54px;
+    box-sizing: border-box;
 }
 .modal-title {
     font-size: 15px;
-    font-weight: 700;
-    color: #0f172a;
+    font-weight: 800;
+    color: #002F70;
 }
 .modal-body {
-    padding: 20px;
+    padding: 16px 20px;
     font-size: 13px;
     color: #334155;
+    overflow-y: auto !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
 }
 .modal-footer {
-    padding: 14px 20px;
-    border-top: 1px solid #f1f5f9;
+    padding: 12px 20px;
+    border-top: 1px solid #e2e8f0;
     background: #f8fafc;
     display: flex;
     justify-content: flex-end;
     gap: 10px;
+    flex-shrink: 0 !important;
+    height: 58px;
+    box-sizing: border-box;
+}
+.edit-form-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.edit-form-grid label {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 2px;
+    display: block;
 }
 </style>
 
@@ -390,20 +444,20 @@ require_once __DIR__ . '/../partials/header.php';
 
 <!-- KPIs -->
 <div class="txn-kpi-grid">
-    <div class="txn-kpi-card orange">
-        <div class="txn-kpi-lbl"><i class="fas fa-clock"></i> Pending Requests</div>
+    <div class="txn-kpi-card yellow">
+        <div class="txn-kpi-lbl"><i class="fas fa-clock" style="color:#d97706;margin-right:4px;"></i> Pending Requests</div>
         <div class="txn-kpi-val"><?= number_format($kpi_pending) ?></div>
     </div>
     <div class="txn-kpi-card green">
-        <div class="txn-kpi-lbl"><i class="fas fa-check-circle"></i> Approved Today</div>
+        <div class="txn-kpi-lbl"><i class="fas fa-check-circle" style="color:#16a34a;margin-right:4px;"></i> Approved Today</div>
         <div class="txn-kpi-val"><?= number_format($kpi_approved_today) ?></div>
     </div>
     <div class="txn-kpi-card danger">
-        <div class="txn-kpi-lbl"><i class="fas fa-times-circle"></i> Rejected Today</div>
+        <div class="txn-kpi-lbl"><i class="fas fa-times-circle" style="color:#dc2626;margin-right:4px;"></i> Rejected Today</div>
         <div class="txn-kpi-val"><?= number_format($kpi_rejected_today) ?></div>
     </div>
     <div class="txn-kpi-card blue">
-        <div class="txn-kpi-lbl"><i class="fas fa-database"></i> Total Requests</div>
+        <div class="txn-kpi-lbl"><i class="fas fa-list-alt" style="color:#0284c7;margin-right:4px;"></i> Total Requests</div>
         <div class="txn-kpi-val"><?= number_format($kpi_total) ?></div>
     </div>
 </div>
@@ -412,7 +466,7 @@ require_once __DIR__ . '/../partials/header.php';
 <form method="GET" class="filters-form">
     <div>
         <label>Category</label>
-        <select name="category" class="inp">
+        <select name="category" class="inp" style="min-width:160px;">
             <option value="">All Requests</option>
             <option value="Vehicle" <?= $f_category === 'Vehicle' ? 'selected' : '' ?>>Vehicle</option>
             <option value="Merchandise Product" <?= $f_category === 'Merchandise Product' ? 'selected' : '' ?>>Merchandise Product</option>
@@ -421,7 +475,7 @@ require_once __DIR__ . '/../partials/header.php';
     </div>
     <div>
         <label>Status</label>
-        <select name="status" class="inp">
+        <select name="status" class="inp" style="min-width:130px;">
             <option value="">All Status</option>
             <option value="Pending" <?= $f_status === 'Pending' ? 'selected' : '' ?>>Pending</option>
             <option value="Approved" <?= $f_status === 'Approved' ? 'selected' : '' ?>>Approved</option>
@@ -436,39 +490,41 @@ require_once __DIR__ . '/../partials/header.php';
         <label>To Date</label>
         <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>" class="inp">
     </div>
-    <div>
+    <div style="flex:1;min-width:260px;">
         <label>Search</label>
-        <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" class="inp" placeholder="Request No, keywords...">
+        <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" class="inp" style="width:100%;" placeholder="Search Request No., Product, Service, Vehicle, Requester">
     </div>
     <div style="flex-direction: row; gap: 8px;">
         <button type="submit" class="btn-action btn-primary"><i class="fas fa-search"></i> Filter</button>
-        <a href="manager_request_data_management.php" class="btn-action btn-secondary" style="text-decoration:none;"><i class="fas fa-undo"></i> Reset</a>
+        <a href="manager_request_data_management.php" class="btn-action btn-secondary"><i class="fas fa-undo"></i> Reset</a>
     </div>
 </form>
 
 <!-- Requests Table -->
 <div class="table-card">
     <div class="table-card-head">
-        <div class="table-card-title"><i class="fas fa-list-ul" style="margin-right: 6px;"></i> Master Data Request Log</div>
+        <div class="table-card-title"><i class="fas fa-list-ul" style="margin-right: 6px;color:#002F70;"></i> Master Data Request Log</div>
     </div>
     <div class="table-responsive">
         <table class="tbl-requests">
             <thead>
                 <tr>
-                    <th>Req No.</th>
-                    <th>Category</th>
-                    <th>Requester</th>
-                    <th>Requested Details</th>
-                    <th>Status</th>
-                    <th>Date Submitted</th>
-                    <th style="text-align: right;">Actions</th>
+                    <th style="width:10%">REQ No.</th>
+                    <th style="width:12%">Category</th>
+                    <th style="width:12%">Requester</th>
+                    <th style="width:25%">Requested Details</th>
+                    <th style="width:9%">Status</th>
+                    <th style="width:11%">Date Submitted</th>
+                    <th style="width:11%">Date Processed</th>
+                    <th style="width:10%">Processed By</th>
+                    <th style="width:8%;text-align:center;">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($rows)): ?>
                     <tr>
-                        <td colspan="7" style="text-align: center; padding: 40px; color: #94a3b8;">
-                            <i class="fas fa-inbox" style="font-size: 28px; display: block; margin-bottom: 10px;"></i>
+                        <td colspan="9" style="text-align: center; padding: 48px; color: #94a3b8;">
+                            <i class="fas fa-inbox" style="font-size: 36px; display: block; margin-bottom: 10px;"></i>
                             No requests found matching the filters.
                         </td>
                     </tr>
@@ -483,73 +539,74 @@ require_once __DIR__ . '/../partials/header.php';
                         elseif ($row['category'] === 'Service Type') $catClass = 'badge-cat-service';
 
                         // Status Badge
-                        $statusClass = 'badge-pending';
-                        if ($row['status'] === 'Approved') $statusClass = 'badge-approved';
-                        elseif ($row['status'] === 'Rejected') $statusClass = 'badge-rejected';
+                        if ($row['status'] === 'Approved') {
+                            $statusBadge = '<span class="badge badge-approved"><i class="fas fa-check-circle"></i> Approved</span>';
+                        } elseif ($row['status'] === 'Rejected') {
+                            $statusBadge = '<span class="badge badge-rejected"><i class="fas fa-times-circle"></i> Rejected</span>';
+                        } else {
+                            $statusBadge = '<span class="badge badge-pending"><i class="fas fa-clock"></i> Pending</span>';
+                        }
+
+                        $date_processed = ($row['status'] !== 'Pending' && !empty($row['updated_at'])) ? date('M d, Y g:i A', strtotime($row['updated_at'])) : '—';
+                        $processed_by   = ($row['status'] !== 'Pending' && !empty($row['reviewer_name'])) ? htmlspecialchars($row['reviewer_name']) : '—';
                     ?>
                         <tr>
-                            <td><strong><?= htmlspecialchars($row['request_no']) ?></strong></td>
+                            <td><strong style="color:#002F70;font-family:monospace;"><?= htmlspecialchars($row['request_no']) ?></strong></td>
                             <td><span class="badge <?= $catClass ?>"><?= htmlspecialchars($row['category']) ?></span></td>
-                            <td>
-                                <div><?= htmlspecialchars($row['requester_name']) ?></div>
-                            </td>
+                            <td><strong style="font-size:12px;color:#1e293b;"><?= htmlspecialchars($row['requester_name']) ?></strong></td>
 
                             <td>
-                                <ul class="payload-list">
+                                <div class="payload-struct">
                                     <?php if ($row['category'] === 'Merchandise Product'): ?>
-                                        <li><strong>Product Name:</strong> <?= htmlspecialchars($payload['product_name'] ?? '—') ?></li>
-                                        <li><strong>Category:</strong> <?= htmlspecialchars($payload['category'] ?? '—') ?></li>
-                                        <li><strong>Unit:</strong> <?= htmlspecialchars($payload['unit'] ?? '—') ?></li>
-                                        <?php if (!empty($payload['suggested_price'])): ?>
-                                            <li><strong>Suggested Price:</strong> ₱<?= number_format($payload['suggested_price'], 2) ?></li>
+                                        <div><strong>Product Name:</strong> <?= htmlspecialchars($payload['product_name'] ?? '—') ?></div>
+                                        <div><strong>Category:</strong> <?= htmlspecialchars($payload['category'] ?? 'Others') ?></div>
+                                        <div><strong>Unit of Measure:</strong> <?= htmlspecialchars($payload['unit'] ?? '—') ?></div>
+                                        <?php if (isset($payload['suggested_price']) && $payload['suggested_price'] !== ''): ?>
+                                            <div><strong>Suggested Selling Price:</strong> &#8369;<?= number_format((float)$payload['suggested_price'], 2) ?></div>
                                         <?php endif; ?>
                                         <?php if (!empty($payload['brand'])): ?>
-                                            <li><strong>Brand:</strong> <?= htmlspecialchars($payload['brand']) ?></li>
+                                            <div><strong>Brand:</strong> <?= htmlspecialchars($payload['brand']) ?></div>
                                         <?php endif; ?>
                                     <?php elseif ($row['category'] === 'Service Type'): ?>
-                                        <li><strong>Service Name:</strong> <?= htmlspecialchars($payload['service_name'] ?? '—') ?></li>
-                                        <li><strong>Category:</strong> <?= htmlspecialchars($payload['category'] ?? '—') ?></li>
-                                        <li><strong>Suggested Price:</strong> ₱<?= number_format($payload['suggested_price'] ?? 0, 2) ?></li>
+                                        <div><strong>Service Name:</strong> <?= htmlspecialchars($payload['service_name'] ?? '—') ?></div>
+                                        <div><strong>Category:</strong> <?= htmlspecialchars($payload['category'] ?? 'Others') ?></div>
+                                        <div><strong>Suggested Selling Price:</strong> &#8369;<?= number_format((float)($payload['suggested_price'] ?? 0), 2) ?></div>
                                         <?php if (!empty($payload['estimated_duration'])): ?>
-                                            <li><strong>Est. Duration:</strong> <?= htmlspecialchars($payload['estimated_duration']) ?></li>
+                                            <div><strong>Est. Duration:</strong> <?= htmlspecialchars($payload['estimated_duration']) ?></div>
                                         <?php endif; ?>
                                     <?php elseif ($row['category'] === 'Vehicle'): ?>
-                                        <li><strong>Brand:</strong> <?= htmlspecialchars($payload['vehicle_brand'] ?? '—') ?></li>
-                                        <li><strong>Model:</strong> <?= htmlspecialchars($payload['vehicle_model'] ?? '—') ?></li>
-                                        <li><strong>Type:</strong> <?= htmlspecialchars($payload['vehicle_type'] ?? '—') ?></li>
-                                        <li><strong>Fuel:</strong> <?= htmlspecialchars($payload['fuel_type'] ?? '—') ?></li>
+                                        <div><strong>Vehicle Brand:</strong> <?= htmlspecialchars($payload['vehicle_brand'] ?? '—') ?></div>
+                                        <div><strong>Vehicle Model:</strong> <?= htmlspecialchars($payload['vehicle_model'] ?? '—') ?></div>
+                                        <div><strong>Vehicle Type:</strong> <?= htmlspecialchars($payload['vehicle_type'] ?? '—') ?></div>
+                                        <div><strong>Fuel Type:</strong> <?= htmlspecialchars($payload['fuel_type'] ?? '—') ?></div>
                                     <?php endif; ?>
 
                                     <?php if (!empty($payload['remarks'])): ?>
-                                        <li style="margin-top: 4px; font-style: italic; color: #64748b;">
-                                            <strong>Remarks:</strong> "<?= htmlspecialchars($payload['remarks']) ?>"
-                                        </li>
+                                        <div style="margin-top:4px;color:#64748b;">
+                                            <strong>Reason for Request:</strong> "<?= htmlspecialchars($payload['remarks']) ?>"
+                                        </div>
                                     <?php endif; ?>
-                                </ul>
+                                </div>
                             </td>
                             <td>
-                                <span class="badge <?= $statusClass ?>"><?= htmlspecialchars($row['status']) ?></span>
+                                <?= $statusBadge ?>
                                 <?php if ($row['status'] === 'Rejected' && !empty($row['rejection_reason'])): ?>
-                                    <div style="font-size: 11px; color: #ef4444; max-width: 200px; margin-top: 4px;">
+                                    <div style="font-size: 11px; color: #dc2626; margin-top: 4px;">
                                         Reason: <?= htmlspecialchars($row['rejection_reason']) ?>
-                                    </div>
-                                <?php elseif ($row['status'] === 'Approved' && !empty($row['reviewer_name'])): ?>
-                                    <div style="font-size: 10px; color: #64748b; margin-top: 4px;">
-                                        By: <?= htmlspecialchars($row['reviewer_name']) ?>
                                     </div>
                                 <?php endif; ?>
                             </td>
-                            <td><?= date('M d, Y h:i A', strtotime($row['created_at'])) ?></td>
-                            <td style="text-align: right;">
+                            <td style="font-size:11px;color:#64748b;"><?= date('M d, Y g:i A', strtotime($row['created_at'])) ?></td>
+                            <td style="font-size:11px;color:#64748b;"><?= $date_processed ?></td>
+                            <td style="font-size:11.5px;font-weight:600;color:#334155;"><?= $processed_by ?></td>
+                            <td style="text-align: center;">
                                 <?php if ($row['status'] === 'Pending'): ?>
-                                    <div style="display: flex; gap: 6px; justify-content: flex-end;">
-                                        <button class="btn-action btn-primary" style="height: 32px; padding: 0 10px; font-size: 12px;" 
-                                                onclick='openApprovalModal(<?= json_encode($row) ?>)'>
-                                            <i class="fas fa-check"></i> Process
-                                        </button>
-                                    </div>
+                                    <button class="btn-action btn-primary" style="height: 30px; padding: 0 10px; font-size: 11.5px;" 
+                                            onclick='openReviewModal(<?= json_encode($row) ?>)' title="Review Master Data Request">
+                                        <i class="fas fa-eye"></i> Review
+                                    </button>
                                 <?php else: ?>
-                                    <span style="color:#94a3b8; font-size:12px; font-style:italic;">Processed</span>
+                                    <span style="color:#94a3b8; font-size:11.5px; font-style:italic;">Processed</span>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -560,53 +617,62 @@ require_once __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- Approval/Rejection Modal -->
-<div id="processModal" class="modal-backdrop">
+<!-- Review Request Modal -->
+<div id="reviewModal" class="modal-backdrop">
     <div class="modal-content">
         <div class="modal-header">
-            <span class="modal-title" id="processModalTitle">Process Request</span>
-            <button onclick="closeProcessModal()" style="background:none; border:none; cursor:pointer; font-size:20px; color:#94a3b8;">×</button>
+            <span class="modal-title" id="reviewModalTitle"><i class="fas fa-clipboard-check" style="color:#002F70;margin-right:6px;"></i> Review Request</span>
+            <button onclick="closeReviewModal()" style="background:none; border:none; cursor:pointer; font-size:22px; color:#94a3b8;">&times;</button>
         </div>
         <div class="modal-body">
-            <div id="requestDetailsContainer" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; margin-bottom:16px;">
+            <!-- Request Information -->
+            <div style="font-size:12px; font-weight:700; color:#002F70; text-transform:uppercase; letter-spacing:0.4px; margin-bottom:8px; border-bottom:2px solid #e2e8f0; padding-bottom:4px;">
+                <i class="fas fa-info-circle"></i> Request Information
+            </div>
+            <div id="requestInfoBox" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; margin-bottom:16px; font-size:12.5px; line-height:1.6;">
                 <!-- Filled dynamically -->
             </div>
 
-            <!-- Error message container -->
-            <div id="processErrorMsg" style="display:none; background:#fee2e2; border:1px solid #fca5a5; border-radius:8px; padding:10px 12px; color:#991b1b; margin-bottom:14px; font-size:12px;"></div>
-
-            <!-- Action Selector -->
+            <!-- Manager Decision Form -->
+            <div style="font-size:12px; font-weight:700; color:#002F70; text-transform:uppercase; letter-spacing:0.4px; margin-bottom:8px; border-bottom:2px solid #e2e8f0; padding-bottom:4px;">
+                <i class="fas fa-user-check"></i> Manager Decision
+            </div>
             <div style="margin-bottom:14px;">
-                <label style="font-weight:600; color:#475569; display:block; margin-bottom:5px;">Manager Decision</label>
-                <div style="display:flex; gap:12px;">
-                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                        <input type="radio" name="decision" value="approve" checked onchange="toggleDecisionView()"> Approve & Save
+                <div style="display:flex; gap:16px; margin-bottom:12px;">
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:700; color:#15803d;">
+                        <input type="radio" name="decision" value="approve" checked onchange="toggleDecisionView()"> <i class="fas fa-check-circle"></i> Approve Request
                     </label>
-                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                        <input type="radio" name="decision" value="reject" onchange="toggleDecisionView()"> Reject Request
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:700; color:#b91c1c;">
+                        <input type="radio" name="decision" value="reject" onchange="toggleDecisionView()"> <i class="fas fa-times-circle"></i> Reject Request
                     </label>
                 </div>
             </div>
 
-            <!-- Fields Editor (for Approval modification) -->
-            <div id="fieldsEditorContainer" style="margin-top:14px;">
-                <div style="font-weight:600; color:#475569; margin-bottom:10px; font-size:12px; border-bottom:1px solid #e2e8f0; padding-bottom:4px;">
-                    Edit/Confirm Details before Insertion
+            <!-- Editable Fields Editor (Shown when approving) -->
+            <div id="fieldsEditorContainer" style="margin-bottom:16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:14px;">
+                <div style="font-size:12px; font-weight:700; color:#002F70; margin-bottom:10px; border-bottom:1px solid #e2e8f0; padding-bottom:6px; display:flex; align-items:center; gap:6px;">
+                    <i class="fas fa-edit" style="color:#0284c7;"></i> Edit / Confirm Item Details Before Approval
                 </div>
-                <div id="dynamicFieldsInputs" style="display:flex; flex-direction:column; gap:10px;">
+                <div id="dynamicFieldsInputs" class="edit-form-grid">
                     <!-- Filled dynamically based on Category -->
                 </div>
             </div>
 
-            <!-- Rejection Reason Container -->
-            <div id="rejectionReasonContainer" style="display:none; margin-top:14px;">
-                <label style="font-weight:600; color:#475569; display:block; margin-bottom:5px;">Rejection Reason <span style="color:#dc2626;">*</span></label>
-                <textarea id="rejectionReasonInput" class="inp" style="width:100%; height:80px; padding:8px 10px; resize:none;" placeholder="Explain why the request is rejected..."></textarea>
+            <!-- Error message container -->
+            <div id="reviewErrorMsg" style="display:none; background:#fee2e2; border:1px solid #fca5a5; border-radius:8px; padding:10px 12px; color:#991b1b; margin-bottom:14px; font-size:12px;"></div>
+
+            <!-- Remarks / Rejection Reason -->
+            <div style="margin-top:10px;">
+                <label id="remarksLabel" style="font-weight:700; color:#475569; display:block; margin-bottom:5px; font-size:12px;">
+                    Remarks <span style="font-weight:400;color:#64748b;">(Optional notes for approval)</span>
+                </label>
+                <textarea id="remarksInput" class="inp" style="width:100%; height:75px; padding:8px 10px; resize:none;" placeholder="Enter manager remarks or reason..."></textarea>
             </div>
         </div>
         <div class="modal-footer">
-            <button class="btn-action btn-secondary" onclick="closeProcessModal()">Cancel</button>
-            <button id="btnSubmitDecision" class="btn-action btn-primary" onclick="submitDecision()">Submit Decision</button>
+            <button class="btn-action btn-secondary" onclick="closeReviewModal()">Cancel</button>
+            <button id="btnApproveAction" class="btn-action btn-success" onclick="submitReviewDecision('approve')"><i class="fas fa-check-circle"></i> Approve</button>
+            <button id="btnRejectAction" class="btn-action btn-danger" style="display:none;" onclick="submitReviewDecision('reject')"><i class="fas fa-times-circle"></i> Reject</button>
         </div>
     </div>
 </div>
@@ -614,103 +680,104 @@ require_once __DIR__ . '/../partials/header.php';
 <script>
 let currentRequest = null;
 
-function openApprovalModal(req) {
+function openReviewModal(req) {
     currentRequest = req;
-    const payload = JSON.parse(req.data_payload);
+    const payload = JSON.parse(req.data_payload || '{}');
     
     // Set Title
-    document.getElementById('processModalTitle').textContent = `Process Request ${req.request_no}`;
+    document.getElementById('reviewModalTitle').innerHTML = `<i class="fas fa-clipboard-check" style="color:#002F70;margin-right:6px;"></i> Review Request (${escapeHtml(req.request_no)})`;
     
     // Clear Error
-    setProcessError('');
+    setReviewError('');
 
-    // Setup Details Container
-    let detailsHtml = `
-        <div style="font-size:12px; margin-bottom:8px;">
-            <strong>Requester:</strong> ${req.requester_name} (${req.station_name || 'General'})<br>
-            <strong>Submitted:</strong> ${req.created_at}
-        </div>
+    // Request Information
+    let infoHtml = `
+        <div><strong>Request Number:</strong> <span style="color:#002F70;font-family:monospace;font-weight:700;">${escapeHtml(req.request_no)}</span></div>
+        <div><strong>Requester:</strong> ${escapeHtml(req.requester_name)} (${escapeHtml(req.station_name || 'Station')})</div>
+        <div><strong>Date Submitted:</strong> ${escapeHtml(req.created_at)}</div>
+        <div><strong>Category:</strong> <span class="badge badge-cat">${escapeHtml(req.category)}</span></div>
     `;
-    document.getElementById('requestDetailsContainer').innerHTML = detailsHtml;
+    document.getElementById('requestInfoBox').innerHTML = infoHtml;
 
-    // Reset Decision radio buttons to 'approve'
-    document.querySelector('input[name="decision"][value="approve"]').checked = true;
-    
-    // Generate inputs for fields editor
+    // Populate Editable Fields
     const editorDiv = document.getElementById('dynamicFieldsInputs');
     editorDiv.innerHTML = '';
 
     if (req.category === 'Merchandise Product') {
         editorDiv.innerHTML = `
             <div>
-                <label style="font-size:11px; font-weight:600; color:#475569;">Product Name</label>
+                <label>Product Name <span style="color:#dc2626;">*</span></label>
                 <input type="text" id="edit_product_name" class="inp" style="width:100%;" value="${escapeHtml(payload.product_name || '')}">
-            </div>
-            <div>
-                <label style="font-size:11px; font-weight:600; color:#475569;">Category</label>
-                <input type="text" id="edit_category" class="inp" style="width:100%;" value="${escapeHtml(payload.category || '')}">
             </div>
             <div style="display:flex; gap:10px;">
                 <div style="flex:1;">
-                    <label style="font-size:11px; font-weight:600; color:#475569;">Unit</label>
-                    <input type="text" id="edit_unit" class="inp" style="width:100%;" value="${escapeHtml(payload.unit || 'pc')}">
+                    <label>Category <span style="color:#dc2626;">*</span></label>
+                    <input type="text" id="edit_category" class="inp" style="width:100%;" value="${escapeHtml(payload.category || 'Lubricants')}">
                 </div>
                 <div style="flex:1;">
-                    <label style="font-size:11px; font-weight:600; color:#475569;">Suggested Price (₱)</label>
+                    <label>Unit of Measure <span style="color:#dc2626;">*</span></label>
+                    <input type="text" id="edit_unit" class="inp" style="width:100%;" value="${escapeHtml(payload.unit || 'Bottle')}">
+                </div>
+            </div>
+            <div style="display:flex; gap:10px;">
+                <div style="flex:1;">
+                    <label>Selling Price (&#8369;) <span style="color:#dc2626;">*</span></label>
                     <input type="number" step="0.01" id="edit_suggested_price" class="inp" style="width:100%;" value="${payload.suggested_price || ''}">
+                </div>
+                <div style="flex:1;">
+                    <label>Brand</label>
+                    <input type="text" id="edit_brand" class="inp" style="width:100%;" value="${escapeHtml(payload.brand || '')}">
                 </div>
             </div>
             <div>
-                <label style="font-size:11px; font-weight:600; color:#475569;">Brand</label>
-                <input type="text" id="edit_brand" class="inp" style="width:100%;" value="${escapeHtml(payload.brand || '')}">
-            </div>
-            <div>
-                <label style="font-size:11px; font-weight:600; color:#475569;">Remarks / Description</label>
+                <label>Reason for Request / Initial Notes</label>
                 <input type="text" id="edit_remarks" class="inp" style="width:100%;" value="${escapeHtml(payload.remarks || '')}">
             </div>
         `;
     } else if (req.category === 'Service Type') {
         editorDiv.innerHTML = `
             <div>
-                <label style="font-size:11px; font-weight:600; color:#475569;">Service Name</label>
+                <label>Service Name <span style="color:#dc2626;">*</span></label>
                 <input type="text" id="edit_service_name" class="inp" style="width:100%;" value="${escapeHtml(payload.service_name || '')}">
-            </div>
-            <div>
-                <label style="font-size:11px; font-weight:600; color:#475569;">Category</label>
-                <input type="text" id="edit_category" class="inp" style="width:100%;" value="${escapeHtml(payload.category || 'Others')}">
             </div>
             <div style="display:flex; gap:10px;">
                 <div style="flex:1;">
-                    <label style="font-size:11px; font-weight:600; color:#475569;">Suggested Price (₱)</label>
-                    <input type="number" step="0.01" id="edit_suggested_price" class="inp" style="width:100%;" value="${payload.suggested_price || 0}">
+                    <label>Category <span style="color:#dc2626;">*</span></label>
+                    <input type="text" id="edit_category" class="inp" style="width:100%;" value="${escapeHtml(payload.category || 'Others')}">
                 </div>
                 <div style="flex:1;">
-                    <label style="font-size:11px; font-weight:600; color:#475569;">Est. Duration</label>
-                    <input type="text" id="edit_duration" class="inp" style="width:100%;" value="${escapeHtml(payload.estimated_duration || '')}">
+                    <label>Selling Price (&#8369;) <span style="color:#dc2626;">*</span></label>
+                    <input type="number" step="0.01" id="edit_suggested_price" class="inp" style="width:100%;" value="${payload.suggested_price || 0}">
                 </div>
             </div>
             <div>
-                <label style="font-size:11px; font-weight:600; color:#475569;">Remarks</label>
+                <label>Est. Duration</label>
+                <input type="text" id="edit_duration" class="inp" style="width:100%;" value="${escapeHtml(payload.estimated_duration || '')}">
+            </div>
+            <div>
+                <label>Reason for Request / Initial Notes</label>
                 <input type="text" id="edit_remarks" class="inp" style="width:100%;" value="${escapeHtml(payload.remarks || '')}">
             </div>
         `;
     } else if (req.category === 'Vehicle') {
         editorDiv.innerHTML = `
-            <div>
-                <label style="font-size:11px; font-weight:600; color:#475569;">Vehicle Brand</label>
-                <input type="text" id="edit_brand" class="inp" style="width:100%;" value="${escapeHtml(payload.vehicle_brand || '')}">
-            </div>
-            <div>
-                <label style="font-size:11px; font-weight:600; color:#475569;">Vehicle Model</label>
-                <input type="text" id="edit_model" class="inp" style="width:100%;" value="${escapeHtml(payload.vehicle_model || '')}">
+            <div style="display:flex; gap:10px;">
+                <div style="flex:1;">
+                    <label>Vehicle Brand <span style="color:#dc2626;">*</span></label>
+                    <input type="text" id="edit_brand" class="inp" style="width:100%;" value="${escapeHtml(payload.vehicle_brand || '')}">
+                </div>
+                <div style="flex:1;">
+                    <label>Vehicle Model <span style="color:#dc2626;">*</span></label>
+                    <input type="text" id="edit_model" class="inp" style="width:100%;" value="${escapeHtml(payload.vehicle_model || '')}">
+                </div>
             </div>
             <div style="display:flex; gap:10px;">
                 <div style="flex:1;">
-                    <label style="font-size:11px; font-weight:600; color:#475569;">Vehicle Type</label>
+                    <label>Vehicle Type <span style="color:#dc2626;">*</span></label>
                     <input type="text" id="edit_type" class="inp" style="width:100%;" value="${escapeHtml(payload.vehicle_type || '')}">
                 </div>
                 <div style="flex:1;">
-                    <label style="font-size:11px; font-weight:600; color:#475569;">Fuel Type</label>
+                    <label>Fuel Type</label>
                     <select id="edit_fuel_type" class="inp" style="width:100%;">
                         <option value="Gasoline" ${payload.fuel_type === 'Gasoline' ? 'selected' : ''}>Gasoline</option>
                         <option value="Diesel" ${payload.fuel_type === 'Diesel' ? 'selected' : ''}>Diesel</option>
@@ -720,50 +787,59 @@ function openApprovalModal(req) {
                 </div>
             </div>
             <div>
-                <label style="font-size:11px; font-weight:600; color:#475569;">Remarks</label>
+                <label>Reason for Request / Initial Notes</label>
                 <input type="text" id="edit_remarks" class="inp" style="width:100%;" value="${escapeHtml(payload.remarks || '')}">
             </div>
         `;
     }
 
-    // Reset Rejection Inputs
-    document.getElementById('rejectionReasonInput').value = '';
+    // Reset Decision radio buttons to 'approve'
+    document.querySelector('input[name="decision"][value="approve"]').checked = true;
+    document.getElementById('remarksInput').value = '';
     
-    // Toggle view
     toggleDecisionView();
 
     // Show Modal
-    document.getElementById('processModal').style.display = 'flex';
+    document.getElementById('reviewModal').style.display = 'flex';
 }
 
-function closeProcessModal() {
-    document.getElementById('processModal').style.display = 'none';
+function closeReviewModal() {
+    document.getElementById('reviewModal').style.display = 'none';
     currentRequest = null;
 }
 
-function setProcessError(msg) {
-    const errBox = document.getElementById('processErrorMsg');
+function setReviewError(msg) {
+    const errBox = document.getElementById('reviewErrorMsg');
     errBox.textContent = msg;
     errBox.style.display = msg ? 'block' : 'none';
 }
 
 function toggleDecisionView() {
     const decision = document.querySelector('input[name="decision"]:checked').value;
+    const btnApprove = document.getElementById('btnApproveAction');
+    const btnReject  = document.getElementById('btnRejectAction');
+    const remarksLabel = document.getElementById('remarksLabel');
+    const fieldsEditor = document.getElementById('fieldsEditorContainer');
+
     if (decision === 'approve') {
-        document.getElementById('fieldsEditorContainer').style.display = 'block';
-        document.getElementById('rejectionReasonContainer').style.display = 'none';
+        btnApprove.style.display = 'inline-flex';
+        btnReject.style.display  = 'none';
+        fieldsEditor.style.display = 'block';
+        remarksLabel.innerHTML = 'Remarks <span style="font-weight:400;color:#64748b;">(Optional notes for approval)</span>';
     } else {
-        document.getElementById('fieldsEditorContainer').style.display = 'none';
-        document.getElementById('rejectionReasonContainer').style.display = 'block';
+        btnApprove.style.display = 'none';
+        btnReject.style.display  = 'inline-flex';
+        fieldsEditor.style.display = 'none';
+        remarksLabel.innerHTML = 'Rejection Reason <span style="color:#dc2626;">* (Required for Rejection)</span>';
     }
 }
 
-async function submitDecision() {
+async function submitReviewDecision(forcedAction) {
     if (!currentRequest) return;
-    setProcessError('');
+    setReviewError('');
 
-    const decision = document.querySelector('input[name="decision"]:checked').value;
-    const btn = document.getElementById('btnSubmitDecision');
+    const decision = forcedAction || document.querySelector('input[name="decision"]:checked').value;
+    const remarks  = document.getElementById('remarksInput').value.trim();
 
     let postData = {
         id: currentRequest.id,
@@ -771,78 +847,79 @@ async function submitDecision() {
     };
 
     if (decision === 'reject') {
-        const reason = document.getElementById('rejectionReasonInput').value.trim();
-        if (!reason) {
-            setProcessError('Please specify a rejection reason.');
+        if (!remarks) {
+            setReviewError('Rejection reason is required when rejecting a request.');
             return;
         }
-        postData.rejection_reason = reason;
+        postData.rejection_reason = remarks;
     } else {
-        // Build modified payload
+        // Collect edited values for approval
         let modifiedPayload = {};
         if (currentRequest.category === 'Merchandise Product') {
             const prodName = document.getElementById('edit_product_name').value.trim();
             const category = document.getElementById('edit_category').value.trim();
-            const unit = document.getElementById('edit_unit').value.trim();
-            const price = parseFloat(document.getElementById('edit_suggested_price').value);
-            const brand = document.getElementById('edit_brand').value.trim();
-            const remarks = document.getElementById('edit_remarks').value.trim();
+            const unit     = document.getElementById('edit_unit').value.trim();
+            const price    = parseFloat(document.getElementById('edit_suggested_price').value);
+            const brand    = document.getElementById('edit_brand').value.trim();
+            const rem      = document.getElementById('edit_remarks').value.trim();
 
-            if (!prodName) { setProcessError('Product Name is required.'); return; }
-            if (!category) { setProcessError('Category is required.'); return; }
-            if (!unit) { setProcessError('Unit is required.'); return; }
+            if (!prodName) { setReviewError('Product Name is required.'); return; }
+            if (!category) { setReviewError('Category is required.'); return; }
+            if (!unit) { setReviewError('Unit of Measure is required.'); return; }
+            if (isNaN(price) || price < 0) { setReviewError('Selling Price must be a valid positive amount.'); return; }
 
             modifiedPayload = {
                 product_name: prodName,
                 category: category,
                 unit: unit,
-                suggested_price: isNaN(price) ? null : price,
+                suggested_price: price,
                 brand: brand || null,
-                remarks: remarks || null
+                remarks: rem || null
             };
         } else if (currentRequest.category === 'Service Type') {
             const servName = document.getElementById('edit_service_name').value.trim();
             const category = document.getElementById('edit_category').value.trim();
-            const price = parseFloat(document.getElementById('edit_suggested_price').value);
+            const price    = parseFloat(document.getElementById('edit_suggested_price').value);
             const duration = document.getElementById('edit_duration').value.trim();
-            const remarks = document.getElementById('edit_remarks').value.trim();
+            const rem      = document.getElementById('edit_remarks').value.trim();
 
-            if (!servName) { setProcessError('Service Name is required.'); return; }
-            if (!category) { setProcessError('Category is required.'); return; }
-            if (isNaN(price) || price < 0) { setProcessError('Suggested price must be valid positive amount.'); return; }
+            if (!servName) { setReviewError('Service Name is required.'); return; }
+            if (!category) { setReviewError('Category is required.'); return; }
+            if (isNaN(price) || price < 0) { setReviewError('Selling Price must be a valid positive amount.'); return; }
 
             modifiedPayload = {
                 service_name: servName,
                 category: category,
                 suggested_price: price,
                 estimated_duration: duration || null,
-                remarks: remarks || null
+                remarks: rem || null
             };
         } else if (currentRequest.category === 'Vehicle') {
             const brand = document.getElementById('edit_brand').value.trim();
             const model = document.getElementById('edit_model').value.trim();
-            const type = document.getElementById('edit_type').value.trim();
-            const fuel = document.getElementById('edit_fuel_type').value;
-            const remarks = document.getElementById('edit_remarks').value.trim();
+            const type  = document.getElementById('edit_type').value.trim();
+            const fuel  = document.getElementById('edit_fuel_type').value;
+            const rem   = document.getElementById('edit_remarks').value.trim();
 
-            if (!brand) { setProcessError('Vehicle Brand is required.'); return; }
-            if (!model) { setProcessError('Vehicle Model is required.'); return; }
-            if (!type) { setProcessError('Vehicle Type is required.'); return; }
+            if (!brand) { setReviewError('Vehicle Brand is required.'); return; }
+            if (!model) { setReviewError('Vehicle Model is required.'); return; }
+            if (!type)  { setReviewError('Vehicle Type is required.'); return; }
 
             modifiedPayload = {
                 vehicle_brand: brand,
                 vehicle_model: model,
                 vehicle_type: type,
                 fuel_type: fuel,
-                remarks: remarks || null
+                remarks: rem || null
             };
         }
         postData.modified_data = modifiedPayload;
+        if (remarks) postData.rejection_reason = remarks;
     }
 
-    // Disable button & show spinner
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+    const activeBtn = (decision === 'approve') ? document.getElementById('btnApproveAction') : document.getElementById('btnRejectAction');
+    activeBtn.disabled = true;
+    activeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
 
     try {
         const response = await fetch('../backend/api/approve_master_data_request.php', {
@@ -853,24 +930,23 @@ async function submitDecision() {
         const result = await response.json();
 
         if (result.success) {
-            closeProcessModal();
-            // Reload page to reflect changes & show alert
+            closeReviewModal();
             window.location.href = 'manager_request_data_management.php?success=' + encodeURIComponent(result.message);
         } else {
-            setProcessError(result.error || 'Failed to submit decision.');
-            btn.disabled = false;
-            btn.innerHTML = 'Submit Decision';
+            setReviewError(result.error || 'Failed to submit decision.');
+            activeBtn.disabled = false;
+            activeBtn.innerHTML = decision === 'approve' ? '<i class="fas fa-check-circle"></i> Approve' : '<i class="fas fa-times-circle"></i> Reject';
         }
     } catch (err) {
-        setProcessError('Network error: ' + err.message);
-        btn.disabled = false;
-        btn.innerHTML = 'Submit Decision';
+        setReviewError('Network error: ' + err.message);
+        activeBtn.disabled = false;
+        activeBtn.innerHTML = decision === 'approve' ? '<i class="fas fa-check-circle"></i> Approve' : '<i class="fas fa-times-circle"></i> Reject';
     }
 }
 
 function escapeHtml(text) {
     if (!text) return '';
-    return text
+    return String(text)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")

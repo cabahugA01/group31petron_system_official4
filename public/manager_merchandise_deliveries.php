@@ -25,7 +25,7 @@ include __DIR__ . '/../partials/header.php';
 ?>
 <style>
 /* Header standardization */
-.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:0px !important; }
+.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; margin-top: 0 !important; padding-top: 16px; padding-bottom: 16px; border-bottom: 2px solid #e9ecef; }
 .int-head h1 { font-size:22px !important; font-weight:700 !important; color:#002F70 !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
 .int-head .sub { font-size:13px; color:#64748b; margin-top:4px; }
 
@@ -313,24 +313,8 @@ try {
 <div class="int-head">
     <div>
         <h1><i class="fas fa-truck"></i> Merchandise Deliveries Validation</h1>
-        <div class="sub">Validate staff-encoded merchandise deliveries &mdash; Verify, Reject, Return, or Adjust.</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <!-- Export buttons - shown on Manage Deliveries tab -->
-        <div id="export-buttons" style="display:flex;gap:8px;">
-            <button onclick="exportExcel()" class="flt-btn flt-btn-excel" title="Export to Excel">
-                <i class="fas fa-file-excel"></i> Excel
-            </button>
-            <button onclick="exportCSV()" class="flt-btn flt-btn-csv" title="Export to CSV">
-                <i class="fas fa-file-csv"></i> CSV
-            </button>
-            <button onclick="exportPDF()" class="flt-btn flt-btn-pdf" title="Export to PDF">
-                <i class="fas fa-file-pdf"></i> Export PDF
-            </button>
-            <button onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print">
-                <i class="fas fa-print"></i> Print
-            </button>
-        </div>
         <!-- Back button - shown on History tab -->
         <div id="back-button" style="display:none;gap:8px;">
             <button onclick="switchTab('manage')" class="flt-btn flt-btn-search">

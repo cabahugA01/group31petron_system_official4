@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'mgr_record_delivery';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -299,7 +299,6 @@ include __DIR__ . '/../partials/header.php';
 <div class="page-head">
     <div>
         <h1 class="h1"><i class="fas fa-truck-loading"></i> Record Delivery</h1>
-        <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Encode supplier delivery receipt details</div>
     </div>
     <div class="header-actions"></div>
 </div>

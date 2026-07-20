@@ -788,7 +788,6 @@ include __DIR__ . '/../partials/header.php';
 <div class="int-head">
     <div>
         <h1><i class="fas fa-history"></i> Inventory History</h1>
-        <div class="sub">Monitor and audit all operations regarding inventory requests, deliveries, and stock adjustments.</div>
     </div>
 </div>
 

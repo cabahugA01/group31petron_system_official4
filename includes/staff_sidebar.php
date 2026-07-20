@@ -46,11 +46,6 @@ function getStaffSidebar($current_page = 'dashboard') {
                     'title' => 'Record Delivery',
                     'url'   => 'staff_record_delivery.php',
                 ],
-                'inv_history' => [
-                    'icon'  => 'fas fa-history',
-                    'title' => 'Inventory History',
-                    'url'   => 'staff_inventory_history.php',
-                ],
             ],
         ],
 

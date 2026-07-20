@@ -25,7 +25,6 @@ $master_menu = [
         ['id'=>'inv_merch',           'label'=>'Merchandise Inventory',  'href'=>'staff_inventory_merchandise.php',  'permissions'=>['view_inventory'], 'desc'=>'Manage merchandise items and monitor stock levels.'],
         ['id'=>'inv_fuel',            'label'=>'Fuel Inventory',         'href'=>'staff_inventory_fuel.php',         'permissions'=>['view_inventory'], 'desc'=>'Record fuel pump readings and deliveries with Batch ID.'],
         ['id'=>'inv_record_delivery', 'label'=>'Record Delivery',        'href'=>'staff_record_delivery.php',        'permissions'=>['manage_inventory','view_inventory'], 'desc'=>'Record merchandise delivery receipts and update stock levels.'],
-        ['id'=>'inv_history',         'label'=>'Inventory History',      'href'=>'staff_inventory_history.php',      'permissions'=>['view_inventory'], 'desc'=>'Track the lifecycle of requests, deliveries, and stock updates.'],
     ]],
 
     // Product Management - Manager (view/manage products & pricing)
@@ -398,7 +397,6 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     ['id' => 'mgr_inv_fuel',     'label' => 'Fuel Inventory',         'href' => 'manager_inventory_fuel.php',             'ico' => 'fas fa-gas-pump',         'permissions' => ['manage_inventory', 'view_inventory']],
                     ['id' => 'mgr_stock_review', 'label' => 'Purchase Request',   'href' => 'manager_stock_request_review.php',       'ico' => 'fas fa-clipboard-check',  'permissions' => ['manage_inventory', 'view_inventory']],
                     ['id' => 'mgr_stock_in',     'label' => 'Stock-In',           'href' => 'manager_stock_in.php',                   'ico' => 'fas fa-download',         'permissions' => ['manage_inventory', 'view_inventory']],
-                    ['id' => 'mgr_inv_movement', 'label' => 'Inventory History', 'href' => 'manager_inventory_history.php',                  'ico' => 'fas fa-history',         'permissions' => ['manage_inventory', 'view_inventory']],
                 ];
                 $filtered_menu[] = $filtered_item;
                 

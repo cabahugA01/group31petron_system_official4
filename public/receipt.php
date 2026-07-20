@@ -661,10 +661,10 @@ $qr_url = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&ecc=M&data='
   .jo-toolbar{max-width:320px;margin:0 auto 14px;display:flex;gap:8px;justify-content:flex-end}
   .jo-toolbar button{padding:9px 18px;border:none;border-radius:5px;font-size:13px;
                      font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px}
-  .btn-print{background:#003d7a;color:#fff}
-  .btn-print:hover{background:#002a56}
-  .btn-back{background:#28a745;color:#fff}
-  .btn-back:hover{background:#1e7e34}
+  .btn-print{background:#fff;color:#003d7a;border:1px solid #003d7a !important;}
+  .btn-print:hover{background:#003d7a;color:#fff}
+  .btn-back{background:#fff;color:#475569;border:1px solid #475569 !important;}
+  .btn-back:hover{background:#475569;color:#fff}
   .btn-close{background:#6c757d;color:#fff}
   .btn-close:hover{background:#545b62}
 }

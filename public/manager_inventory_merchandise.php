@@ -709,7 +709,7 @@ include __DIR__ . '/../partials/header.php';
 ?>
 <style>
 /* Header standardization */
-.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; }
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; padding-top:16px; padding-bottom:16px; border-bottom:2px solid #e9ecef; }
 .int-head h1 { font-size:22px !important; font-weight:700 !important; color:#00264D !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
 .int-head .sub { font-size:13px; color:#64748b; margin-top:4px; }
 .ato-btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:0 16px; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid transparent; text-decoration:none; transition:all .15s; height:36px; white-space:nowrap; background:white !important; }
@@ -910,28 +910,6 @@ include __DIR__ . '/../partials/header.php';
 <div class="int-head">
     <div>
         <h1><i class="fas fa-boxes"></i> Merchandise Inventory</h1>
-        <div class="sub">Monitor real-time stock levels, alerts, movement history, and request approvals.</div>
-    </div>
-    
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
-        <!-- Excel -->
-        <button onclick="exportTableToExcel('mgrMerchTable','manager_merch_inventory_<?= date('Ymd') ?>')"
-                class="flt-btn flt-btn-excel" title="Export to Excel">
-            <i class="fas fa-file-excel"></i> Excel
-        </button>
-        <!-- CSV -->
-        <button onclick="exportTableToCSV('mgrMerchTable','manager_merch_inventory_<?= date('Ymd') ?>.csv')"
-                class="flt-btn flt-btn-csv" title="Export to CSV">
-            <i class="fas fa-file-csv"></i> CSV
-        </button>
-        <!-- PDF -->
-        <button onclick="exportTableToPDF('mgrMerchTable','Merchandise Inventory')"
-                class="flt-btn flt-btn-pdf" title="Export to PDF">
-            <i class="fas fa-file-pdf"></i> Export PDF
-        </button>
-        <button onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print">
-            <i class="fas fa-print"></i> Print
-        </button>
     </div>
 </div>
 
@@ -1162,9 +1140,11 @@ include __DIR__ . '/../partials/header.php';
                             <button class="int-btn-outline" onclick="viewDetails(<?= (int)$item['id'] ?>, 'info')" title="View Details" style="font-size:11px; padding:6px 12px; height:30px; width:100px;">
                                 <i class="fas fa-eye"></i> View
                             </button>
+                            <?php if ($has_variance): ?>
                             <button class="int-btn-outline" style="border-color:#28a745; color:#28a745; font-size:11px; padding:6px 12px; height:30px; width:100px;" onclick="openAdjustmentModal(<?= (int)$item['id'] ?>, '<?= htmlspecialchars(addslashes($item['name'])) ?>', <?= (float)$stock ?>, '<?= htmlspecialchars(addslashes($unit)) ?>')" title="Adjust Stock">
                                 <i class="fas fa-balance-scale"></i> Adjust
                             </button>
+                            <?php endif; ?>
                         </div>
                     </td>
                 </tr>
@@ -1770,7 +1750,7 @@ include __DIR__ . '/../partials/header.php';
         <div id="detailsContent" style="padding:10px 0;">
             <!-- Loaded via AJAX -->
         </div>
-        <div class="modal-footer" style="margin-top:16px;border-top:1px solid #e9ecef;padding-top:14px;display:flex;justify-content:flex-end;">
+        <div class="modal-footer" id="detailsModalFooter" style="margin-top:16px;border-top:1px solid #e9ecef;padding-top:14px;display:flex;justify-content:flex-end;gap:10px;">
             <button class="ato-btn ato-btn-back" onclick="closeDetailsModal()">Close</button>
         </div>
     </div>
@@ -2131,18 +2111,29 @@ function viewDetails(productId, focusTab) {
             } catch(e) {}
         }
         
-        // Format variance
+        // Format last movement
+        var lastMovText = '—';
+        if (res.movements && res.movements.length > 0) {
+            var lm = res.movements[0];
+            var lmSign = lm.quantity > 0 ? '+' : '';
+            lastMovText = lmSign + lm.quantity + ' ' + esc(lm.movement_type.toUpperCase()) + ' (' + fmtDate(lm.created_at) + ')';
+        }
+
+        // Format variance & check variance flag
         var variance = p.variance;
         var vText = '—';
         var vColor = '#64748b';
+        var hasVarInModal = false;
         if (variance !== null) {
             var vVal = parseFloat(variance);
             if (vVal > 0) {
                 vText = '+' + vVal;
                 vColor = '#28a745';
+                hasVarInModal = true;
             } else if (vVal < 0) {
                 vText = vVal;
                 vColor = '#dc3545';
+                hasVarInModal = true;
             } else {
                 vText = '0 (No Variance)';
                 vColor = '#64748b';
@@ -2196,7 +2187,7 @@ function viewDetails(productId, focusTab) {
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;width:120px;border-bottom:1px solid #f1f5f9;">Product Name:</td><td style="font-weight:700;color:#0f172a;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + esc(p.name) + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">SKU:</td><td style="border-bottom:1px solid #f1f5f9;padding:8px 0;"><code>' + esc(p.sku || '—') + '</code></td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Category:</td><td style="border-bottom:1px solid #f1f5f9;padding:8px 0;">' + esc(p.category_name) + '</td></tr>' +
-                            '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Unit:</td><td style="border-bottom:1px solid #f1f5f9;padding:8px 0;">' + esc(p.unit) + '</td></tr>' +
+                            '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Unit of Measure:</td><td style="border-bottom:1px solid #f1f5f9;padding:8px 0;">' + esc(p.unit) + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Supplier:</td><td style="font-weight:600;color:#475569;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + esc(p.supplier || '—') + '</td></tr>' +
                         '</table>' +
                     '</div>' +
@@ -2208,6 +2199,7 @@ function viewDetails(productId, focusTab) {
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Reorder Level:</td><td style="font-weight:700;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + p.reorder_level + ' ' + esc(p.unit) + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Physical Count:</td><td style="font-weight:700;color:#0f172a;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + (p.physical_count !== null ? p.physical_count + ' ' + esc(p.unit) : '—') + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Variance:</td><td style="font-weight:700;color:' + vColor + ';border-bottom:1px solid #f1f5f9;padding:8px 0;">' + vText + '</td></tr>' +
+                            '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Last Movement:</td><td style="font-size:12px;color:#475569;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + lastMovText + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Last Updated:</td><td style="font-size:12px;color:#475569;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + timestamp + '</td></tr>' +
                         '</table>' +
                     '</div>' +
@@ -2235,6 +2227,20 @@ function viewDetails(productId, focusTab) {
             '</div>';
             
         switchModalTab(focusTab);
+
+        // Update modal footer action button depending on variance
+        var footerEl = document.getElementById('detailsModalFooter');
+        if (footerEl) {
+            var btnHtml = '<button type="button" class="ato-btn ato-btn-back" onclick="closeDetailsModal()">Close</button>';
+            var safeName = esc(p.name).replace(/'/g, "\\'");
+            var safeUnit = esc(p.unit).replace(/'/g, "\\'");
+            if (hasVarInModal) {
+                btnHtml += ' <button type="button" class="ato-btn" style="background:#28a745 !important;color:#fff !important;display:inline-flex;align-items:center;gap:6px;" onclick="closeDetailsModal(); openAdjustmentModal(' + p.id + ', \'' + safeName + '\', ' + p.stock_level + ', \'' + safeUnit + '\')"><i class="fas fa-balance-scale"></i> Create Stock Adjustment</button>';
+            } else {
+                btnHtml += ' <button type="button" disabled title="No variance detected" class="ato-btn" style="background:#cbd5e1 !important;color:#94a3b8 !important;cursor:not-allowed;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-balance-scale"></i> Create Stock Adjustment</button>';
+            }
+            footerEl.innerHTML = btnHtml;
+        }
     })
     .catch(function(e) {
         content.innerHTML = '<div style="color:#dc3545;padding:20px;text-align:center;">Failed to load data. Network issue.</div>';

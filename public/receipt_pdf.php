@@ -378,42 +378,42 @@ $html = '<!doctype html>
 <head>
 <meta charset="utf-8">
 <style>
-@page { size: 80mm 220mm; margin: 4mm 3mm; }
+@page { size: 80mm 260mm; margin: 3mm 2mm; }
 body { margin: 0; font-family: "Courier New", monospace; color: #111; background: #fff; }
-.receipt { width: 74mm; font-size: 9px; line-height: 1.32; }
+.receipt { width: 76mm; font-size: 8.5px; line-height: 1.25; page-break-inside: avoid; }
 .center { text-align: center; }
-.logo { width: 16mm; height: auto; margin-bottom: 1.5mm; }
-.brand { color: #003d7a; font-size: 10px; font-weight: bold; letter-spacing: .5px; text-transform: uppercase; }
-.branch { font-size: 8px; color: #222; margin-top: 1mm; }
-.tin { font-size: 8px; color: #555; margin-top: .5mm; }
-.double { border-top: 1.2px solid #111; border-bottom: .6px solid #111; height: 1px; margin: 2.2mm 0; }
-.dash { border-top: .4px solid #999; margin: 2mm 0; }
-.title { font-size: 10.5px; font-weight: bold; letter-spacing: .8px; text-align: center; }
-.sub { font-size: 7.5px; color: #555; text-align: center; margin-top: .8mm; }
-.label { color: #003d7a; font-size: 8px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; margin: 1.5mm 0 .8mm; }
+.logo { width: 14mm; height: auto; margin-bottom: 1mm; }
+.brand { color: #003d7a; font-size: 9.5px; font-weight: bold; letter-spacing: .3px; text-transform: uppercase; }
+.branch { font-size: 7.5px; color: #222; margin-top: .5mm; }
+.tin { font-size: 7.5px; color: #555; margin-top: .3mm; }
+.double { border-top: 1px solid #111; border-bottom: .5px solid #111; height: 1px; margin: 1.5mm 0; }
+.dash { border-top: .4px solid #999; margin: 1.2mm 0; }
+.title { font-size: 9.5px; font-weight: bold; letter-spacing: .5px; text-align: center; }
+.sub { font-size: 7px; color: #555; text-align: center; margin-top: .5mm; }
+.label { color: #003d7a; font-size: 7.5px; font-weight: bold; letter-spacing: .8px; text-transform: uppercase; margin: 1.2mm 0 .5mm; }
 .label.warn-label { color: #b45309; }
 table { width: 100%; border-collapse: collapse; }
-.kv td { padding: .35mm 0; vertical-align: top; }
+.kv td { padding: .2mm 0; vertical-align: top; }
 .key { color: #666; width: 35%; }
 .val { text-align: right; width: 65%; word-break: break-word; }
 .bold { font-weight: bold; }
 .warn .key, .warn .val { color: #9a3412; }
 .credit .key, .credit .val { color: #6b21a8; }
-.items th { color: #555; border-bottom: .4px solid #bbb; font-size: 8px; text-align: left; padding-bottom: .8mm; }
-.items td { border-bottom: .25px dotted #ddd; padding: .7mm 0; vertical-align: top; }
+.items th { color: #555; border-bottom: .4px solid #bbb; font-size: 7.5px; text-align: left; padding-bottom: .5mm; }
+.items td { border-bottom: .25px dotted #ddd; padding: .4mm 0; vertical-align: top; }
 .item-name { width: 45%; }
 .num { width: 10%; text-align: center; }
 .money { width: 22.5%; text-align: right; }
-.small { font-size: 7.5px; }
+.small { font-size: 7px; }
 .muted { color: #777; }
-.grand td { font-size: 10.5px; font-weight: bold; padding: .8mm 0; }
-.qr { text-align: center; margin: 2mm 0; }
-.qr img { width: 20mm; height: 20mm; }
-.qr-label { color: #888; font-size: 7.5px; margin-bottom: 1mm; }
-.footer { text-align: center; margin-top: 2mm; }
-.foot-title { font-size: 9px; font-weight: bold; }
-.foot-line { color: #555; font-size: 7.8px; margin-top: .7mm; }
-.foot-meta { color: #999; font-size: 7px; margin-top: 1.2mm; }
+.grand td { font-size: 9.5px; font-weight: bold; padding: .5mm 0; }
+.qr { text-align: center; margin: 1.2mm 0; }
+.qr img { width: 16mm; height: 16mm; }
+.qr-label { color: #888; font-size: 7px; margin-bottom: .5mm; }
+.footer { text-align: center; margin-top: 1.5mm; }
+.foot-title { font-size: 8.5px; font-weight: bold; }
+.foot-line { color: #555; font-size: 7.2px; margin-top: .4mm; }
+.foot-meta { color: #999; font-size: 6.8px; margin-top: .8mm; }
 </style>
 </head>
 <body>
@@ -480,11 +480,11 @@ table { width: 100%; border-collapse: collapse; }
 
 $mpdf = new \Mpdf\Mpdf([
     'mode' => 'utf-8',
-    'format' => [80, 220],
-    'margin_left' => 3,
-    'margin_right' => 3,
-    'margin_top' => 4,
-    'margin_bottom' => 4,
+    'format' => [80, 260],
+    'margin_left' => 2,
+    'margin_right' => 2,
+    'margin_top' => 3,
+    'margin_bottom' => 3,
     'margin_header' => 0,
     'margin_footer' => 0,
     'default_font' => 'courier',

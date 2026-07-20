@@ -623,7 +623,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 .main-content { max-width: 100% !important; overflow-x: hidden !important; padding: 0 !important; }
 
 /* Petron style headers */
-.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; margin-top: 8px !important; padding-top: 8px; width: 100%; }
+.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; margin-top: 0 !important; padding-top: 16px; padding-bottom: 16px; border-bottom: 2px solid #e9ecef; width: 100%; }
 .int-head h1 { font-size: 22px !important; font-weight: 700 !important; color: #00264D !important; margin: 0 !important; text-transform: uppercase !important; display: flex; align-items: center; gap: 8px; line-height: 1.3; }
 .int-head .sub { font-size: 13px; color: #64748b; margin-top: 4px; line-height: 1.4; }
 
@@ -725,12 +725,6 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
     <div class="int-head">
         <div>
             <h1><i class="fas fa-balance-scale"></i> Calibration Review</h1>
-            <div class="sub">Verify and reconcile shift-based pump meter readings and calibration amounts.</div>
-        </div>
-        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'excel'])) ?>" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</a>
-            <button type="button" onclick="exportPrintableAreaToPDF('.mcr-table-card','Manager Calibration Review','manager_calibration_review_<?= htmlspecialchars($date_from) ?>_to_<?= htmlspecialchars($date_to) ?>',this)" class="ato-btn ato-btn-pdf"><i class="fas fa-file-pdf"></i> Export PDF</button>
-            <button type="button" onclick="printReportArea()" class="ato-btn ato-btn-print"><i class="fas fa-print"></i> Print</button>
         </div>
     </div>
 

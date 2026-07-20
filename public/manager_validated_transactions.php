@@ -155,6 +155,7 @@ if (vt_has($mt_cols, 'vehicle_plate')) {
 } elseif (vt_has($mt_cols, 'job_order_vehicle_plate')) {
     $mt_vehicle_expr = "COALESCE(NULLIF(TRIM(mt.job_order_vehicle_plate),''), '—') AS vehicle_plate";
 }
+$mt_jo_service_expr = vt_has($mt_cols, 'job_order_service') ? "COALESCE(NULLIF(TRIM(mt.job_order_service),''),'')" : "''";
 
 // IMPORTANT: Show ALL transactions from staff - no validation_status filter
 // This ensures all merchandise and job order transactions encoded by staff are visible
@@ -216,6 +217,7 @@ try {
                 WHEN mt.transaction_type = 'job_order' THEN 'Job Order'
                 ELSE 'Merchandise'
             END AS entry_type,
+            GROUP_CONCAT(CONCAT(mti.product_name, '::', COALESCE(mti.size_variant,''), '::', mti.quantity) ORDER BY mti.id SEPARATOR '||') AS items,
             GROUP_CONCAT(CONCAT(mti.product_name, ' (x', mti.quantity, ')') ORDER BY mti.id SEPARATOR ', ') AS items_service,
             {$mt_vehicle_expr},
             mt.total_amount AS amount,
@@ -235,11 +237,13 @@ try {
                 NULLIF(TRIM(COALESCE(mt.adjustment_reason,'')), ''),
                 NULLIF(TRIM(COALESCE(mt.rejection_reason,'')), ''),
                 ''
-            ) AS validation_remarks
+            ) AS validation_remarks,
+            COALESCE(NULLIF(TRIM(mt.job_order_service),''), '') AS service_type,
+            {$mt_jo_service_expr} AS job_order_service
         FROM merchandise_transactions mt
         LEFT JOIN users u ON u.id = mt.staff_id
         {$mt_validated_join}
-        LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
+        LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id AND COALESCE(mti.item_type,'') != 'service' AND COALESCE(mti.category,'') NOT LIKE '%Service%'
         {$mt_where}
         GROUP BY mt.id
         ORDER BY txn_date DESC
@@ -368,6 +372,56 @@ try {
     }
 } catch (Exception $e) { $mgr_items_map = []; }
 
+// ── Items Format Helper (Matching admin_all_transactions) ────────────────────
+if (!function_exists('format_transaction_items')) {
+    function format_transaction_items($raw_items_str, $htmlMode = true) {
+        $raw = trim($raw_items_str ?? '');
+        if ($raw === '' || $raw === '—') return '—';
+        $resolveUnit = function(string $nameLower, float $qty): string {
+            if (strpos($nameLower, 'refrigerant') !== false || strpos($nameLower, 'r134a') !== false)
+                return $qty > 1 ? 'Cans' : 'Can';
+            if (strpos($nameLower, 'oil') !== false || strpos($nameLower, 'coolant') !== false ||
+                strpos($nameLower, 'fluid') !== false || strpos($nameLower, 'cleaning') !== false ||
+                strpos($nameLower, 'cleaner') !== false || strpos($nameLower, 'lubricant') !== false)
+                return $qty > 1 ? 'Bottles' : 'Bottle';
+            if (strpos($nameLower, 'liter') !== false || strpos($nameLower, 'litre') !== false)
+                return $qty > 1 ? 'Liters' : 'Liter';
+            if (strpos($nameLower, 'tire') !== false || strpos($nameLower, 'tyre') !== false)
+                return $qty > 1 ? 'pcs' : 'pc';
+            return $qty > 1 ? 'pcs' : 'pc';
+        };
+        $parts = explode('||', $raw);
+        $formatted = [];
+        foreach ($parts as $part) {
+            $part = trim($part);
+            if ($part === '') continue;
+            $subparts = explode('::', $part);
+            if (count($subparts) >= 3) {
+                $name    = trim($subparts[0]);
+                $variant = trim($subparts[1]);
+                $qtyVal  = (float)($subparts[2]);
+                $qtyNum  = ($qtyVal == (int)$qtyVal) ? (int)$qtyVal : number_format($qtyVal, 2);
+                $unit    = $resolveUnit(strtolower($name), $qtyVal);
+                $variantStr = ($variant !== '') ? ' [' . $variant . ']' : '';
+                if ($htmlMode) {
+                    $formatted[] = '<strong>' . htmlspecialchars($name . $variantStr) . '</strong><br>'
+                        . '<span style="color:#64748b;font-size:10px;">Qty: ' . $qtyNum . ' ' . $unit . '</span>';
+                } else {
+                    $formatted[] = $name . $variantStr . ' x ' . $qtyNum . ' ' . $unit;
+                }
+            } else {
+                if ($htmlMode) {
+                    $formatted[] = htmlspecialchars($part);
+                } else {
+                    $formatted[] = $part;
+                }
+            }
+        }
+        if (empty($formatted)) return '—';
+        return implode($htmlMode ? '<br><br>' : '; ', $formatted);
+    }
+}
+
 // Helper for service classification
 $svc_keywords = ['cleaning','service','repair','check','lube','lubrication','alignment','rotation','flush','replacement','inspection','wash','polish','detailing','tune','oil change','brake','adjust'];
 $is_service_item = function(array $i) use ($svc_keywords): bool {
@@ -425,17 +479,17 @@ foreach ($all_rows as &$r) {
         }
     }
     
-    if ($has_m && $has_s) {
+    $has_jo_svc = !empty(trim($r['job_order_service'] ?? ''));
+    if (($has_m && $has_s) || ($has_m && $has_jo_svc)) {
         $r['entry_type'] = 'Combined';
-    } elseif ($has_s) {
+    } elseif ($has_s || $has_jo_svc) {
         $r['entry_type'] = 'Job Order';
     } elseif ($has_m) {
         $r['entry_type'] = 'Merchandise';
     } else {
-        // Fallback to database value
-        $db_t = strtolower(trim($r['entry_type'] ?? ''));
+        $db_t = strtolower(trim($r['entry_type'] ?? $r['transaction_type'] ?? ''));
         if ($db_t === 'combined') $r['entry_type'] = 'Combined';
-        elseif ($db_t === 'job order') $r['entry_type'] = 'Job Order';
+        elseif ($db_t === 'job order' || $db_t === 'job_order') $r['entry_type'] = 'Job Order';
         else $r['entry_type'] = 'Merchandise';
     }
 }
@@ -943,61 +997,70 @@ try {
 
 <!-- Filter Bar -->
 <div class="vt-filter-card">
-    <form method="get" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;width:100%;">
-        <div class="vt-flt-grp" style="flex:1;min-width:220px;">
-            <label class="vt-lbl"><i class="fas fa-search"></i> Search</label>
-            <input type="text" name="search" value="<?php echo htmlspecialchars($search); ?>"
-                   class="vt-inp" placeholder="Search Transaction ID, OR No., Customer, Plate No." style="width:100%;">
+    <form method="get" style="display:flex;flex-direction:column;gap:10px;width:100%;">
+        <!-- Row 1: Dropdowns -->
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+            <div class="vt-flt-grp">
+                <label class="vt-lbl"><i class="fas fa-tag"></i> Type</label>
+                <select name="type" class="vt-inp" style="width:180px;">
+                    <option value="" <?php echo $type_filter === '' ? 'selected' : ''; ?>>All Types</option>
+                    <option value="merchandise" <?php echo $type_filter === 'merchandise' ? 'selected' : ''; ?>>Merchandise</option>
+                    <option value="job_order"   <?php echo $type_filter === 'job_order'   ? 'selected' : ''; ?>>Job Order</option>
+                    <option value="combined"    <?php echo $type_filter === 'combined'    ? 'selected' : ''; ?>>Job Order + Merchandise</option>
+                </select>
+            </div>
+            <div class="vt-flt-grp">
+                <label class="vt-lbl"><i class="fas fa-wallet"></i> Payment</label>
+                <select name="payment_method" class="vt-inp" style="width:145px;">
+                    <option value="" <?php echo $payment_method === '' ? 'selected' : ''; ?>>All Methods</option>
+                    <option value="Cash"          <?php echo $payment_method === 'Cash'          ? 'selected' : ''; ?>>Cash</option>
+                    <option value="Card"          <?php echo $payment_method === 'Card'          ? 'selected' : ''; ?>>Card</option>
+                    <option value="E-Wallet"      <?php echo $payment_method === 'E-Wallet'      ? 'selected' : ''; ?>>E-Wallet</option>
+                    <option value="Petron E-Fuel" <?php echo $payment_method === 'Petron E-Fuel' ? 'selected' : ''; ?>>Petron E-Fuel</option>
+                    <option value="Fleet Card"    <?php echo $payment_method === 'Fleet Card'    ? 'selected' : ''; ?>>Fleet Card</option>
+                    <option value="Credit"        <?php echo $payment_method === 'Credit'        ? 'selected' : ''; ?>>Credit</option>
+                </select>
+            </div>
+            <div class="vt-flt-grp">
+                <label class="vt-lbl"><i class="fas fa-moon"></i> Shift</label>
+                <select name="shift" class="vt-inp" style="width:120px;">
+                    <option value="" <?php echo $shift_filter === '' ? 'selected' : ''; ?>>All Shifts</option>
+                    <option value="Shift 1" <?php echo $shift_filter === 'Shift 1' ? 'selected' : ''; ?>>Shift 1</option>
+                    <option value="Shift 2" <?php echo $shift_filter === 'Shift 2' ? 'selected' : ''; ?>>Shift 2</option>
+                </select>
+            </div>
+            <div class="vt-flt-grp">
+                <label class="vt-lbl"><i class="fas fa-circle-check"></i> Status</label>
+                <select name="status" class="vt-inp" style="width:130px;">
+                    <option value="" <?php echo $status_filter === '' ? 'selected' : ''; ?>>All Statuses</option>
+                    <option value="Completed" <?php echo $status_filter === 'Completed' ? 'selected' : ''; ?>>Completed</option>
+                    <option value="Voided"    <?php echo $status_filter === 'Voided'    ? 'selected' : ''; ?>>Voided</option>
+                    <option value="Adjusted"  <?php echo $status_filter === 'Adjusted'  ? 'selected' : ''; ?>>Adjusted</option>
+                </select>
+            </div>
         </div>
-        <div class="vt-flt-grp">
-            <label class="vt-lbl"><i class="fas fa-tag"></i> Type</label>
-            <select name="type" class="vt-inp" style="width:190px;">
-                <option value="" <?php echo $type_filter === '' ? 'selected' : ''; ?>>All Types</option>
-                <option value="merchandise" <?php echo $type_filter === 'merchandise' ? 'selected' : ''; ?>>Merchandise</option>
-                <option value="job_order"   <?php echo $type_filter === 'job_order'   ? 'selected' : ''; ?>>Job Order</option>
-                <option value="combined"    <?php echo $type_filter === 'combined'    ? 'selected' : ''; ?>>Job Order + Merchandise</option>
-            </select>
-        </div>
-        <div class="vt-flt-grp">
-            <label class="vt-lbl"><i class="fas fa-wallet"></i> Payment</label>
-            <select name="payment_method" class="vt-inp" style="width:145px;">
-                <option value="" <?php echo $payment_method === '' ? 'selected' : ''; ?>>All Methods</option>
-                <option value="Cash"          <?php echo $payment_method === 'Cash'          ? 'selected' : ''; ?>>Cash</option>
-                <option value="Card"          <?php echo $payment_method === 'Card'          ? 'selected' : ''; ?>>Card</option>
-                <option value="E-Wallet"      <?php echo $payment_method === 'E-Wallet'      ? 'selected' : ''; ?>>E-Wallet</option>
-                <option value="Petron E-Fuel" <?php echo $payment_method === 'Petron E-Fuel' ? 'selected' : ''; ?>>Petron E-Fuel</option>
-                <option value="Fleet Card"    <?php echo $payment_method === 'Fleet Card'    ? 'selected' : ''; ?>>Fleet Card</option>
-                <option value="Credit"        <?php echo $payment_method === 'Credit'        ? 'selected' : ''; ?>>Credit</option>
-            </select>
-        </div>
-        <div class="vt-flt-grp">
-            <label class="vt-lbl"><i class="fas fa-moon"></i> Shift</label>
-            <select name="shift" class="vt-inp" style="width:120px;">
-                <option value="" <?php echo $shift_filter === '' ? 'selected' : ''; ?>>All Shifts</option>
-                <option value="Shift 1" <?php echo $shift_filter === 'Shift 1' ? 'selected' : ''; ?>>Shift 1</option>
-                <option value="Shift 2" <?php echo $shift_filter === 'Shift 2' ? 'selected' : ''; ?>>Shift 2</option>
-            </select>
-        </div>
-        <div class="vt-flt-grp">
-            <label class="vt-lbl"><i class="fas fa-circle-check"></i> Status</label>
-            <select name="status" class="vt-inp" style="width:130px;">
-                <option value="" <?php echo $status_filter === '' ? 'selected' : ''; ?>>All Statuses</option>
-                <option value="Completed" <?php echo $status_filter === 'Completed' ? 'selected' : ''; ?>>Completed</option>
-                <option value="Voided"    <?php echo $status_filter === 'Voided'    ? 'selected' : ''; ?>>Voided</option>
-                <option value="Adjusted"  <?php echo $status_filter === 'Adjusted'  ? 'selected' : ''; ?>>Adjusted</option>
-            </select>
-        </div>
-        <div class="vt-flt-grp">
-            <label class="vt-lbl"><i class="fas fa-calendar"></i> From</label>
-            <input type="date" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>" class="vt-inp">
-        </div>
-        <div class="vt-flt-grp">
-            <label class="vt-lbl"><i class="fas fa-calendar"></i> To</label>
-            <input type="date" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>" class="vt-inp">
-        </div>
-        <div style="align-self:flex-end;display:flex !important;flex-direction:row !important;gap:8px;">
-            <button type="submit" class="flt-btn flt-btn-search"><i class="fas fa-search"></i> Filter</button>
-            <a href="?" class="flt-btn flt-btn-reset"><i class="fas fa-rotate-left"></i> Reset</a>
+        <!-- Row 2: Search, Dates, Buttons -->
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+            <div class="vt-flt-grp" style="flex:1;min-width:220px;">
+                <label class="vt-lbl"><i class="fas fa-search"></i> Search</label>
+                <input type="text" name="search" value="<?php echo htmlspecialchars($search); ?>"
+                       class="vt-inp" placeholder="Search Transaction ID, OR No., Customer, Plate No." style="width:100%;">
+            </div>
+            <div class="vt-flt-grp">
+                <label class="vt-lbl"><i class="fas fa-calendar"></i> From</label>
+                <input type="date" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>" class="vt-inp">
+            </div>
+            <div class="vt-flt-grp">
+                <label class="vt-lbl"><i class="fas fa-calendar"></i> To</label>
+                <input type="date" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>" class="vt-inp">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;">
+                <label class="vt-lbl">&nbsp;</label>
+                <div style="display:flex;gap:8px;">
+                    <button type="submit" class="flt-btn flt-btn-search"><i class="fas fa-search"></i> Filter</button>
+                    <a href="?" class="flt-btn flt-btn-reset"><i class="fas fa-rotate-left"></i> Reset</a>
+                </div>
+            </div>
         </div>
     </form>
 </div>
@@ -1033,23 +1096,23 @@ try {
 <!-- Table -->
 <div class="card" style="padding:0;overflow:hidden;">
     <div class="table-responsive" style="width:100%;overflow-x:auto;">
-    <table class="vt-table" style="table-layout:fixed;width:100%;border-collapse:collapse;">
+    <table class="vt-table" style="width:100%;border-collapse:collapse;">
         <thead>
             <tr>
-                <th style="width:7%;">OR NO.</th>
-                <th style="width:12%;">TRANSACTION ID</th>
-                <th style="width:9%;">CUSTOMER NAME</th>
-                <th style="width:10%;">TRANSACTION TYPE</th>
-                <th style="width:13%;">PRODUCTS</th>
-                <th style="width:8%;">SERVICE TYPE</th>
-                <th style="width:5%;">VEHICLE</th>
-                <th style="width:6%;">AMOUNT</th>
-                <th style="width:7%;">PAYMENT METHOD</th>
-                <th style="width:5%;">SHIFT</th>
-                <th style="width:7%;">STAFF ENCODER</th>
-                <th style="width:6%;">STATUS</th>
-                <th style="width:8%;">DATE & TIME</th>
-                <th style="width:6%;text-align:center;">ACTIONS</th>
+                <th style="white-space:nowrap;">OR NO.</th>
+                <th style="white-space:nowrap;">TRANSACTION ID</th>
+                <th style="white-space:nowrap;">CUSTOMER NAME</th>
+                <th style="white-space:nowrap;">TRANSACTION TYPE</th>
+                <th>PRODUCTS</th>
+                <th>SERVICE TYPE</th>
+                <th>VEHICLE</th>
+                <th>AMOUNT</th>
+                <th>PAYMENT METHOD</th>
+                <th>SHIFT</th>
+                <th>STAFF ENCODER</th>
+                <th>STATUS</th>
+                <th style="white-space:nowrap;">DATE & TIME</th>
+                <th style="text-align:center;">ACTIONS</th>
             </tr>
         </thead>
         <tbody>
@@ -1139,6 +1202,9 @@ try {
                     };
                     $col_svc   = array_values(array_filter($rc_row_items, fn($i) => $is_svc_fn($i)));
                     $col_merch = array_values(array_filter($rc_row_items, fn($i) => !$is_svc_fn($i)));
+                    if (empty($col_svc) && !empty(trim($r['job_order_service'] ?? ''))) {
+                        $col_svc = [['product_name' => trim($r['job_order_service'])]];
+                    }
                     
                     // Smart unit label helper
                     $ri_unit_fn = function(string $name, float $qty): string {
@@ -1152,6 +1218,20 @@ try {
                     };
                 ?>
                 <?php
+                    $t = strtolower($r['entry_type'] ?? $r['transaction_type'] ?? '');
+                    $has_items   = !empty(trim($r['items'] ?? ''));
+                    $has_service = !empty(trim($r['service_type'] ?? $r['job_order_service'] ?? ''));
+
+                    if ($has_items && $has_service) {
+                        $tLabel = 'Job Order + Merchandise'; $tIcon = 'fa-wrench'; $tBadge = 'badge-purple';
+                    } elseif ($t === 'combined') {
+                        $tLabel = 'Job Order + Merchandise'; $tIcon = 'fa-wrench'; $tBadge = 'badge-purple';
+                    } elseif ($t === 'job_order' || $t === 'job order' || $has_service) {
+                        $tLabel = 'Job Order'; $tIcon = 'fa-wrench'; $tBadge = 'badge-orange';
+                    } else {
+                        $tLabel = 'Merchandise'; $tIcon = 'fa-shopping-cart'; $tBadge = 'badge-blue';
+                    }
+
                     // Generate OR No. from transaction date + numeric DB id
                     $or_year = date('Y', strtotime($r['txn_date']));
                     $or_no   = ($r['_source'] === 'merchandise_transactions')
@@ -1159,67 +1239,23 @@ try {
                         : 'JO-'  . $or_year . '-' . str_pad((int)$r['row_id'], 6, '0', STR_PAD_LEFT);
                 ?>
                 <tr>
-                    <td>
+                    <td style="white-space:nowrap;">
                         <strong><?php echo htmlspecialchars($or_no); ?></strong>
                     </td>
-                    <td>
+                    <td style="white-space:nowrap;">
                         <span style="font-size:11px;color:#64748b;"><?php echo htmlspecialchars($r['txn_id']); ?></span>
                     </td>
-                    <td style="font-size:11px;" title="<?php echo htmlspecialchars($r['customer']); ?>"><?php echo htmlspecialchars($r['customer']); ?></td>
-                    <td>
-                        <?php
-                        $t_raw = strtolower(trim($r['entry_type'] ?? ''));
-                        
-                        // Dynamic classification based on actual items in columns
-                        $has_m = !empty($col_merch);
-                        $has_s = !empty($col_svc);
-                        
-                        if ($has_m && $has_s) {
-                            $tLabel = 'Job Order + Merchandise'; $tIcon = 'fa-wrench'; $tBadge = 'badge-purple';
-                        } elseif ($has_s) {
-                            $tLabel = 'Job Order'; $tIcon = 'fa-wrench'; $tBadge = 'badge-orange';
-                        } elseif ($has_m) {
-                            $tLabel = 'Merchandise'; $tIcon = 'fa-shopping-cart'; $tBadge = 'badge-blue';
-                        } else {
-                            if ($t_raw === 'combined') {
-                                $tLabel = 'Job Order + Merchandise'; $tIcon = 'fa-wrench'; $tBadge = 'badge-purple';
-                            } elseif ($t_raw === 'job order') {
-                                $tLabel = 'Job Order'; $tIcon = 'fa-wrench'; $tBadge = 'badge-orange';
-                            } else {
-                                $tLabel = 'Merchandise'; $tIcon = 'fa-shopping-cart'; $tBadge = 'badge-blue';
-                            }
-                        }
-                        ?>
+                    <td style="font-size:11px;white-space:nowrap;" title="<?php echo htmlspecialchars($r['customer']); ?>"><?php echo htmlspecialchars($r['customer']); ?></td>
+                    <td style="white-space:nowrap;">
                         <span class="badge <?= $tBadge ?>"><i class="fas <?= $tIcon ?>"></i> <?= htmlspecialchars($tLabel) ?></span>
                     </td>
                     <!-- Products column — matching admin_all_transactions -->
                     <td style="font-size:11px;line-height:1.4;vertical-align:top;">
-                      <?php if (empty($col_merch)): ?>
-                        <span style="color:#94a3b8;">—</span>
-                      <?php else: ?>
-                        <?php foreach ($col_merch as $cidx => $mi):
-                            $mq      = (float)$mi['quantity'];
-                            $mq_d    = ($mq == (int)$mq) ? (int)$mq : number_format($mq, 2);
-                            $m_var   = trim($mi['size_variant'] ?? '');
-                            $m_label = htmlspecialchars($mi['product_name'] . ($m_var !== '' ? ' [' . $m_var . ']' : ''));
-                            $m_unit  = $ri_unit_fn($mi['product_name'], $mq);
-                        ?>
-                        <?php if ($cidx > 0): ?><br><br><?php endif; ?>
-                        <strong><?= $m_label ?></strong><br>
-                        <span style="color:#64748b;font-size:10px;">Qty: <?= $mq_d ?> <?= $m_unit ?></span>
-                        <?php endforeach; ?>
-                      <?php endif; ?>
+                        <?= format_transaction_items($r['items'] ?? '') ?>
                     </td>
                     <!-- Service Type column — matching admin_all_transactions -->
                     <td style="font-size:11px;color:#475569;vertical-align:top;">
-                      <?php if (empty($col_svc)): ?>
-                        <span style="color:#94a3b8;">—</span>
-                      <?php else: ?>
-                        <?php foreach ($col_svc as $sidx => $si): ?>
-                        <?php if ($sidx > 0): ?><br><br><?php endif; ?>
-                        <?= htmlspecialchars($si['product_name']) ?>
-                        <?php endforeach; ?>
-                      <?php endif; ?>
+                        <?= htmlspecialchars(!empty(trim($r['service_type'] ?? $r['job_order_service'] ?? '')) ? trim($r['service_type'] ?? $r['job_order_service'] ?? '') : '—') ?>
                     </td>
                     <!-- Vehicle column -->
                     <td>
@@ -1384,21 +1420,16 @@ try {
 <div class="vt-modal-overlay" id="voidModal">
   <div class="vt-modal" style="max-width:750px; width:95%;">
     <!-- Normal Modal Content -->
-    <div id="voidModalMainContent" style="display:flex; flex-direction:column; max-height:90vh; width:100%;">
+    <div id="voidModalMainContent" style="display:flex; flex-direction:column; max-height:95vh; width:100%; overflow:hidden;">
       <div class="vt-modal-header" style="background:#fff3f3; border-bottom:1px solid #fee2e2;">
         <div style="display:flex;align-items:center;gap:10px;">
-          <div style="width:36px;height:36px;background:#fef2f2;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-            <i class="fas fa-ban" style="color:#dc2626;font-size:15px;"></i>
-          </div>
           <div>
-            <div style="font-size:16px;font-weight:700;color:#991b1b;display:flex;align-items:center;gap:6px;">🚫 VOID TRANSACTION</div>
-            <div style="font-size:11px;color:#7f1d1d;margin-top:2px;">Void a completed Merchandise / Job Order transaction. Only Managers are authorized to perform this action.</div>
+            <div style="font-size:16px;font-weight:700;color:#991b1b;">VOID TRANSACTION</div>
           </div>
         </div>
-        <button type="button" class="vt-modal-close" onclick="closeVoidModal()">&times;</button>
       </div>
       
-      <div class="vt-modal-body" style="padding:20px; overflow-y:auto;">
+      <div class="vt-modal-body" style="padding:20px; overflow-y:auto; flex:1; min-height:0;">
         
         <!-- Two Column Layout for info -->
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
@@ -1548,20 +1579,6 @@ try {
           </label>
         </div>
 
-        <!-- Warning Panel -->
-        <div style="padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:11px;color:#991b1b;">
-          <strong style="display:block;margin-bottom:4px;font-size:12px;text-transform:uppercase;"><i class="fas fa-exclamation-triangle"></i> WARNING</strong>
-          <div style="margin-bottom:4px;">This transaction will be marked as VOIDED. The following actions will happen automatically:</div>
-          <ul style="margin:4px 0 4px 16px;padding:0;list-style-type:disc;line-height:1.4;">
-            <li>Merchandise stock will be restored.</li>
-            <li>Job Order consumables will be restored.</li>
-            <li>Daily Sales Report will be updated.</li>
-            <li>Payment Report will be recalculated.</li>
-            <li>Customer Purchase History will be updated.</li>
-            <li>Audit Trail will be recorded.</li>
-          </ul>
-          <strong>This action cannot be undone.</strong>
-        </div>
 
       </div>
       
@@ -1778,7 +1795,7 @@ body { overflow-x:hidden !important; max-width:100vw !important; }
 /* View Modal */
 .vt-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:9999; align-items:center; justify-content:center; }
 .vt-modal-overlay.active { display:flex; }
-.vt-modal { background:#fff; border-radius:12px; width:100%; max-width:700px; box-shadow:0 8px 40px rgba(0,0,0,.2); max-height:90vh; display:flex; flex-direction:column; }
+.vt-modal { background:#fff; border-radius:12px; width:100%; max-width:700px; box-shadow:0 8px 40px rgba(0,0,0,.2); max-height:95vh; display:flex; flex-direction:column; overflow:hidden; }
 .vt-modal-header { display:flex; align-items:center; justify-content:space-between; padding:20px 24px; border-bottom:1px solid #e2e8f0; }
 .vt-modal-header h3 { margin:0; font-size:18px; font-weight:700; color:#1e293b; display:flex; align-items:center; }
 .vt-modal-close { background:none; border:none; font-size:28px; color:#64748b; cursor:pointer; padding:0; width:32px; height:32px; border-radius:6px; }

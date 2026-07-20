@@ -1669,7 +1669,6 @@ include __DIR__ . '/../partials/header.php';
                 <i class="fas fa-tachometer-alt" style="color:#64748b; font-size:14px;"></i>
                 <span style="color:#64748b; font-size:13px; font-weight:600;">Manager Dashboard</span>
             </div>
-            <p>Monitor station operations, approve requests, manage inventory, pricing, and track daily business performance.</p>
         </div>
         <form method="get" class="mgr-filter-form">
             <input type="date" name="date" value="<?= mgr_h($date_filter) ?>" required>

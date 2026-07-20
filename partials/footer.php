@@ -425,8 +425,6 @@
     </script>
   </footer>
 
-  <div class="toast" id="toast"></div>
-  
   <!-- Bootstrap JavaScript -->
   <script src="../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
   
@@ -982,18 +980,18 @@
             }
             
             var html = '';
-            html += '<button class="cust-btn" style="padding:4px 8px;margin:2px;font-size:11px;background:#f1f5f9;color:#333;border:1px solid #ccc;border-radius:4px;cursor:pointer;" ' + (currentPage === 1 ? 'disabled' : '') + ' onclick="setTablePage(\''+tableId+'\',' + (currentPage - 1) + ')">Prev</button>';
+            html += '<button class="cust-btn" style="padding:4px 8px;margin:2px;font-size:11px;background:transparent;color:#333;border:1px solid #ccc;border-radius:4px;cursor:pointer;" ' + (currentPage === 1 ? 'disabled' : '') + ' onclick="setTablePage(\''+tableId+'\',' + (currentPage - 1) + ')">Prev</button>';
             
             for (var i = 1; i <= totalPages; i++) {
                 if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
                     var isActive = (i === currentPage);
-                    html += '<button class="cust-btn" style="padding:4px 8px;margin:2px;font-size:11px;border-radius:4px;cursor:pointer;' + (isActive ? 'background:#f1f5f9;color:#0f172a;font-weight:bold;border:1px solid #94a3b8;' : 'background:#f1f5f9;color:#333;border:1px solid #ccc;') + '" onclick="setTablePage(\''+tableId+'\',' + i + ')">' + i + '</button>';
+                    html += '<button class="cust-btn" style="padding:4px 8px;margin:2px;font-size:11px;border-radius:4px;cursor:pointer;' + (isActive ? 'background:#002F70;color:#ffffff;font-weight:bold;border:1px solid #002F70;' : 'background:transparent;color:#333;border:1px solid #ccc;') + '" onclick="setTablePage(\''+tableId+'\',' + i + ')">' + i + '</button>';
                 } else if (i === currentPage - 3 || i === currentPage + 3) {
                     html += '<span style="padding:4px 8px;margin:2px;font-size:11px;color:#6c757d;">...</span>';
                 }
             }
             
-            html += '<button class="cust-btn" style="padding:4px 8px;margin:2px;font-size:11px;background:#f1f5f9;color:#333;border:1px solid #ccc;border-radius:4px;cursor:pointer;" ' + (currentPage === totalPages ? 'disabled' : '') + ' onclick="setTablePage(\''+tableId+'\',' + (currentPage + 1) + ')">Next</button>';
+            html += '<button class="cust-btn" style="padding:4px 8px;margin:2px;font-size:11px;background:transparent;color:#333;border:1px solid #ccc;border-radius:4px;cursor:pointer;" ' + (currentPage === totalPages ? 'disabled' : '') + ' onclick="setTablePage(\''+tableId+'\',' + (currentPage + 1) + ')">Next</button>';
             
             var selectHtml = '<select class="rows-select" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:11px;color:#0f172a;background:#ffffff;cursor:pointer;margin-right:12px;outline:none;">';
             var options = [10, 20, 25, 50, 100];

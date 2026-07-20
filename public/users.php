@@ -596,7 +596,6 @@ include __DIR__ . '/../partials/header.php';
 <div class="page-head">
     <div>
         <h1 class="h1" style="font-weight: 800;">USER MANAGEMENT</h1>
-        <div class="sub" style="font-weight: 500;">PROFESSIONAL USER ACCOUNT MANAGEMENT AND ACCESS CONTROL - SUPERADMIN/DEVELOPER/ADMIN/MANAGER</div>
     </div>
     <?php if($my_role !== 'staff'): ?>
     <div class="actions">

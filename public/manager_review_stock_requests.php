@@ -75,16 +75,16 @@ include __DIR__ . '/../partials/header.php';
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #f8fafc; }
   
-  .mr-wrapper { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .mr-wrapper { width: 100%; max-width: 100%; box-sizing: border-box; margin: 0; padding: 20px 24px 56px; }
   
   .mr-header { 
     background: linear-gradient(135deg, #059669 0%, #047857 100%); 
-    color: white; padding: 40px 32px; border-radius: 16px; margin-bottom: 32px; 
+    color: white; padding: 24px 32px; border-radius: 16px; margin-bottom: 32px; 
     box-shadow: 0 8px 24px rgba(5,150,105,0.3); 
   }
   .mr-header-content { display: flex; align-items: center; gap: 16px; }
   .mr-header-icon { font-size: 42px; }
-  .mr-header h1 { font-size: 32px; font-weight: 700; margin-bottom: 6px; }
+  .mr-header h1 { font-size: 32px; font-weight: 700; margin-bottom: 0; }
   .mr-header p { font-size: 14px; opacity: 0.85; }
   
   .mr-alert { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 10px; margin-bottom: 20px; }
@@ -135,7 +135,6 @@ include __DIR__ . '/../partials/header.php';
       <div class="mr-header-icon">✓</div>
       <div>
         <h1>Review Stock Requests</h1>
-        <p>Manager - Review requests submitted by Operations Staff</p>
       </div>
     </div>
   </div>

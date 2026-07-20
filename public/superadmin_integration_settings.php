@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // SuperAdmin – Integration Settings
 // public/superadmin_integration_settings.php
@@ -265,7 +265,7 @@ include __DIR__ . '/../partials/header.php';
 ?>
 <style>
 .int-page{padding:0 24px 28px}
-.int-head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;margin-top:-12px!important}
+.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; margin-top: 0 !important; padding-top: 16px; padding-bottom: 16px; border-bottom: 2px solid #e9ecef; }
 .int-head h1{font-size:22px!important;font-weight:700!important;color:var(--petron-blue)!important;margin:0!important;text-transform:uppercase!important}
 .int-head .sub{font-size:13px;color:#666;margin-top:4px;text-transform:none!important}
 .int-steps{display:flex;gap:0;margin-bottom:22px;background:#fff;border:1px solid #eaeaea;border-radius:14px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.04)}

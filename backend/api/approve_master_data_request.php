@@ -174,11 +174,11 @@ try {
 
         if ($action === 'approve') {
             $notifTitle   = "Request Approved: $requestNo";
-            $notifMessage = "Your request for a new $category has been approved by $reviewerName.";
+            $notifMessage = "Your Master Data Request ($requestNo) has been Approved.";
             $notifType    = 'success';
         } else {
             $notifTitle   = "Request Rejected: $requestNo";
-            $notifMessage = "Your request ($requestNo) was rejected. Reason: $rejectionReason";
+            $notifMessage = "Your Master Data Request ($requestNo) has been Rejected." . (!empty($rejectionReason) ? " Reason: $rejectionReason" : "");
             $notifType    = 'warning';
         }
 

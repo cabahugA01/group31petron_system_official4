@@ -458,7 +458,7 @@ require_once __DIR__ . '/../partials/header.php';
 ?>
 <style>
 /* == PAGE HEADER - matches SuperAdmin int-head standard == */
-.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:-12px !important; }
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:0 !important; padding-top:16px; padding-bottom:16px; border-bottom:2px solid #e9ecef; }
 .int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
 .int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
 
@@ -655,13 +655,6 @@ require_once __DIR__ . '/../partials/header.php';
 <div class="int-head">
     <div>
         <h1><i class="fas fa-gas-pump"></i> Fuel Transaction Oversight</h1>
-        <div class="sub">Monitor and audit all fuel transactions validated by managers, ensuring compliance and accuracy.</div>
-    </div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        <button type="button" onclick="aftoExport('excel')" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
-        <button type="button" onclick="aftoExport('csv')"   class="ato-btn ato-btn-csv"><i class="fas fa-file-csv"></i> CSV</button>
-        <button type="button" onclick="aftoExport('pdf')"   class="ato-btn ato-btn-pdf"><i class="fas fa-file-pdf"></i> Export PDF</button>
-        <button type="button" onclick="printReportArea()" class="ato-btn ato-btn-print"><i class="fas fa-print"></i> Print</button>
     </div>
 </div>
 

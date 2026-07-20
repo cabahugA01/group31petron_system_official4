@@ -1,49 +1,206 @@
 <?php /* Transaction History section — included by staff_transactions_hub.php */ ?>
 <style>
-.th-kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin:18px 0 0}
-.th-kpi{background:#fff;border-radius:10px;padding:18px 20px;border:1px solid #e2e8f0;box-shadow:0 1px 6px rgba(0,0,0,.07)}
-.th-kpi-val{font-size:26px;font-weight:800;line-height:1.2}
-.th-kpi-lbl{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px}
-.th-kpi-sub{font-size:11px;color:#94a3b8;margin-top:3px}
-.th-filter-bar{background:#fff;border-radius:10px;padding:14px 16px;margin:14px 0;box-shadow:0 1px 6px rgba(0,0,0,.06);display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
-.th-filter-bar label{font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:3px}
-.th-filter-bar input,.th-filter-bar select{height:32px;padding:0 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;color:#1e293b;background:#fff}
-.th-filter-bar input[type=text]{min-width:180px}
-.th-filter-grp{display:flex;flex-direction:column}
-.th-flt-btn{height:32px;padding:0 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:5px}
-.th-flt-search{background:#002F70;color:#fff}
-.th-flt-reset{background:#f1f5f9;color:#475569;border:1px solid #cbd5e1}
-.th-badge{display:inline-block;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700}
-.th-export-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px}
-.hist-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;align-items:center;justify-content:center}
-.hist-modal-bg.open{display:flex}
-.hist-modal{background:#fff;border-radius:14px;max-width:720px;width:96%;max-height:90vh;overflow-y:auto;padding:28px;position:relative}
-.hist-modal h2{font-size:16px;font-weight:800;color:#002F70;margin-bottom:16px}
-.hist-sec-title{font-size:12px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #e2e8f0;padding-bottom:6px;margin:14px 0 8px}
-.hist-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:13px}
-.hist-row .k{color:#64748b;font-weight:500}.hist-row .v{font-weight:600;text-align:right}
-.hist-items-tbl{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
-/* Responsive table — no horizontal scroll */
-#histTbl{font-size:11px;width:100%;table-layout:fixed;}
-#histTbl th{padding:7px 4px;font-size:10px;word-break:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-#histTbl td{padding:6px 4px;word-break:break-word;overflow-wrap:break-word;white-space:normal;font-size:10.5px;}
-#histTbl td.txn-id-cell{font-size:9.5px;word-break:break-all;}
-/* Prevent the wrapper from scrolling horizontally */
-#histTbl ~ *,#histTbl{max-width:100%;}
-.hist-items-tbl th{background:#f8fafc;padding:7px 10px;text-align:left;font-weight:700;font-size:11px;border-bottom:2px solid #e2e8f0}
-.hist-items-tbl td{padding:7px 10px;border-bottom:1px solid #f1f5f9}
-/* Inline items column */
-.hist-item-chip{display:inline-flex;align-items:center;gap:4px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:600;color:#374151;margin:1px 2px 1px 0;white-space:nowrap}
-.hist-item-chip.svc{background:#fffbeb;border-color:#fde68a;color:#92400e}
-.hist-item-chip .chip-qty{background:#002F70;color:#fff;border-radius:3px;padding:0 4px;font-size:9px;margin-left:3px}
-.hist-expand-row td{background:#f8fafc;border-top:none;padding:0}
-.hist-expand-inner{padding:12px 16px;border-top:2px solid #e2e8f0}
-.hist-expand-tbl{width:100%;border-collapse:collapse;font-size:11px}
-.hist-expand-tbl th{padding:5px 10px;text-align:left;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #e2e8f0}
-.hist-expand-tbl td{padding:6px 10px;border-bottom:1px solid #f1f5f9}
-.hist-expand-tbl tr:last-child td{border-bottom:none}
-.hist-row-main{cursor:pointer}
-.hist-row-main:hover td{background:#f8faff !important}
+.th-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 16px 0 0;
+}
+.th-kpi {
+  background: #fff;
+  border-radius: 10px;
+  padding: 16px 18px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 6px rgba(0,0,0,.06);
+}
+.th-kpi-val {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.2;
+  margin-top: 4px;
+}
+.th-kpi-lbl {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.th-kpi-sub {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 3px;
+}
+.th-filter-bar {
+  background: #fff;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin: 14px 0;
+  box-shadow: 0 1px 6px rgba(0,0,0,.06);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+.th-filter-bar label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  display: block;
+  margin-bottom: 4px;
+}
+.th-filter-bar input, .th-filter-bar select {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #1e293b;
+  background: #fff;
+}
+.th-filter-grp {
+  display: flex;
+  flex-direction: column;
+}
+.th-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.hist-modal-bg {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.5);
+  z-index: 9000;
+  align-items: center;
+  justify-content: center;
+}
+.hist-modal-bg.open {
+  display: flex;
+}
+.hist-modal {
+  background: #fff;
+  border-radius: 14px;
+  max-width: 720px;
+  width: 96%;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 28px;
+  position: relative;
+}
+.hist-modal h2 {
+  font-size: 16px;
+  font-weight: 800;
+  color: #002F70;
+  margin-bottom: 16px;
+}
+.hist-sec-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #002F70;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 6px;
+  margin: 14px 0 8px;
+}
+.hist-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 13px;
+}
+.hist-row .k { color: #64748b; font-weight: 500; }
+.hist-row .v { font-weight: 600; text-align: right; }
+.hist-items-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 6px;
+}
+#histTbl {
+  font-size: 11px;
+  width: 100%;
+  table-layout: fixed;
+}
+#histTbl th {
+  padding: 8px 6px;
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: #f8fafc;
+  border-bottom: 2px solid #e2e8f0;
+  color: #475569;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+#histTbl td {
+  padding: 8px 6px;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+  font-size: 11px;
+  vertical-align: middle;
+  border-bottom: 1px solid #f1f5f9;
+}
+.hist-item-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #374151;
+  margin: 1px 2px 1px 0;
+}
+.hist-item-chip.svc {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
+}
+.hist-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  transition: background 0.15s;
+}
+.btn-view-act {
+  border-color: #002F70;
+  color: #002F70;
+}
+.btn-view-act:hover {
+  background: #002F70;
+  color: #fff;
+}
+.btn-print-act {
+  border-color: #64748b;
+  color: #64748b;
+}
+.btn-print-act:hover {
+  background: #64748b;
+  color: #fff;
+}
 </style>
 
 <div class="txn-section-header">
@@ -56,67 +213,67 @@
     <button type="button" onclick="window.location.href='staff_transactions_hub.php?section=merchandise&active_tab=merchandise'" class="txn-btn secondary" title="Back to Merchandise/Service Transaction">
       <i class="fas fa-arrow-left"></i> <span>Back</span>
     </button>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
-    </div>
   </div>
 </div>
 
 <!-- KPI Cards -->
 <div class="th-kpi-grid">
   <div class="th-kpi">
-    <div class="th-kpi-lbl"><i class="fas fa-receipt"></i> Total Transactions</div>
+    <div class="th-kpi-lbl"><i class="fas fa-file-alt" style="color:#002F70;"></i> Total Transactions</div>
     <div class="th-kpi-val" style="color:#002F70"><?= number_format($hist_kpi_total) ?></div>
     <div class="th-kpi-sub">This period</div>
   </div>
   <div class="th-kpi">
-    <div class="th-kpi-lbl"><i class="fas fa-tools"></i> Job Orders</div>
+    <div class="th-kpi-lbl"><i class="fas fa-shopping-cart" style="color:#15803d;"></i> Merchandise</div>
+    <div class="th-kpi-val" style="color:#15803d"><?= number_format($hist_kpi_merch) ?></div>
+    <div class="th-kpi-sub">Merchandise Only</div>
+  </div>
+  <div class="th-kpi">
+    <div class="th-kpi-lbl"><i class="fas fa-wrench" style="color:#b45309;"></i> Job Orders</div>
     <div class="th-kpi-val" style="color:#b45309"><?= number_format($hist_kpi_jo) ?></div>
     <div class="th-kpi-sub">JO + Combined</div>
   </div>
   <div class="th-kpi">
-    <div class="th-kpi-lbl"><i class="fas fa-box"></i> Merchandise</div>
-    <div class="th-kpi-val" style="color:#15803d"><?= number_format($hist_kpi_merch) ?></div>
-    <div class="th-kpi-sub">Products only</div>
-  </div>
-  <div class="th-kpi">
-    <div class="th-kpi-lbl"><i class="fas fa-peso-sign"></i> Total Sales</div>
+    <div class="th-kpi-lbl"><i class="fas fa-coins" style="color:#7c3aed;"></i> Total Sales</div>
     <div class="th-kpi-val" style="color:#7c3aed">&#8369;<?= number_format($hist_kpi_sales, 2) ?></div>
     <div class="th-kpi-sub">Gross encoded</div>
+  </div>
+  <div class="th-kpi">
+    <div class="th-kpi-lbl"><i class="fas fa-credit-card" style="color:#16a34a;"></i> Paid</div>
+    <div class="th-kpi-val" style="color:#16a34a"><?= number_format($hist_kpi_paid ?? 0) ?></div>
+    <div class="th-kpi-sub">Fully paid</div>
+  </div>
+  <div class="th-kpi">
+    <div class="th-kpi-lbl"><i class="fas fa-hourglass-half" style="color:#ea580c;"></i> Unpaid / Partial</div>
+    <div class="th-kpi-val" style="color:#ea580c"><?= number_format($hist_kpi_unpaid ?? 0) ?></div>
+    <div class="th-kpi-sub">Pending / Credit</div>
   </div>
 </div>
 
 <!-- Filters -->
-<?php
-$_hbase = ['section'=>'history'];
-$_hq    = function(array $extra=[]) use ($_hbase, $hist_filter_date_from, $hist_filter_date_to, $hist_filter_type, $hist_filter_ctype, $hist_filter_pay, $hist_filter_pstatus, $hist_search) {
-    $p = $_hbase + ['date_from'=>$hist_filter_date_from,'date_to'=>$hist_filter_date_to,'txn_type'=>$hist_filter_type,'cust_type'=>$hist_filter_ctype,'payment'=>$hist_filter_pay,'pstatus'=>$hist_filter_pstatus,'hsearch'=>$hist_search];
-    return http_build_query(array_filter(array_merge($p, $extra)));
-};
-?>
 <form method="get" action="" class="th-filter-bar">
   <input type="hidden" name="section" value="history">
   <div class="th-filter-grp">
-    <label>From</label>
+    <label>From Date</label>
     <input type="date" name="date_from" value="<?= htmlspecialchars($hist_filter_date_from) ?>">
   </div>
   <div class="th-filter-grp">
-    <label>To</label>
+    <label>To Date</label>
     <input type="date" name="date_to" value="<?= htmlspecialchars($hist_filter_date_to) ?>">
   </div>
   <div class="th-filter-grp">
-    <label>Type</label>
+    <label>Transaction Type</label>
     <select name="txn_type">
       <option value="">All Types</option>
-      <option value="merchandise" <?= $hist_filter_type==='merchandise'?'selected':'' ?>>Merchandise</option>
-      <option value="job_order" <?= $hist_filter_type==='job_order'?'selected':'' ?>>Job Order</option>
-      <option value="combined" <?= $hist_filter_type==='combined'?'selected':'' ?>>Combined</option>
+      <option value="merchandise" <?= $hist_filter_type==='merchandise'?'selected':'' ?>>Merchandise Only</option>
+      <option value="job_order" <?= $hist_filter_type==='job_order'?'selected':'' ?>>Job Order Only</option>
+      <option value="combined" <?= $hist_filter_type==='combined'?'selected':'' ?>>Job Order + Merchandise</option>
     </select>
   </div>
   <div class="th-filter-grp">
     <label>Customer</label>
     <select name="cust_type">
       <option value="">All</option>
-      <option value="walkin" <?= $hist_filter_ctype==='walkin'?'selected':'' ?>>Walk-in</option>
       <option value="registered" <?= $hist_filter_ctype==='registered'?'selected':'' ?>>Registered</option>
     </select>
   </div>
@@ -139,44 +296,81 @@ $_hq    = function(array $extra=[]) use ($_hbase, $hist_filter_date_from, $hist_
     </select>
   </div>
   <div class="th-filter-grp">
-    <label>Search</label>
-    <input type="text" name="hsearch" placeholder="Txn ID / Customer / Plate" value="<?= htmlspecialchars($hist_search) ?>" style="width:200px">
+    <label>Status</label>
+    <select name="vstatus">
+      <option value="">All Statuses</option>
+      <option value="Completed" <?= $hist_filter_vstatus==='Completed'?'selected':'' ?>>Completed</option>
+      <option value="Adjusted" <?= $hist_filter_vstatus==='Adjusted'?'selected':'' ?>>Adjusted</option>
+      <option value="Voided" <?= $hist_filter_vstatus==='Voided'?'selected':'' ?>>Voided</option>
+    </select>
   </div>
-  <button type="submit" class="txn-btn primary" style="min-width:0; height:32px; padding:0 14px; font-size:12px; border-radius:6px"><i class="fas fa-search"></i> Filter</button>
-  <a href="?section=history" class="txn-btn secondary" style="min-width:0; height:32px; padding:0 14px; font-size:12px; border-radius:6px; display:inline-flex; align-items:center; gap:6px"><i class="fas fa-times"></i> Reset</a>
+  <div class="th-filter-grp">
+    <label>Shift</label>
+    <select name="shift">
+      <option value="">All Shifts</option>
+      <option value="first" <?= $hist_filter_shift==='first'?'selected':'' ?>>Shift 1</option>
+      <option value="second" <?= $hist_filter_shift==='second'?'selected':'' ?>>Shift 2</option>
+    </select>
+  </div>
+  <div class="th-filter-grp" style="flex:1;min-width:220px;">
+    <label>Search</label>
+    <input type="text" name="hsearch" placeholder="Search Transaction ID, Customer, OR No., Plate No." value="<?= htmlspecialchars($hist_search) ?>" style="width:100%;">
+  </div>
+  <button type="submit" class="txn-btn primary" style="min-width:0; height:34px; padding:0 16px; font-size:12px; border-radius:6px"><i class="fas fa-search"></i> Filter</button>
+  <a href="?section=history" class="txn-btn secondary" style="min-width:0; height:34px; padding:0 14px; font-size:12px; border-radius:6px; display:inline-flex; align-items:center; gap:6px"><i class="fas fa-times"></i> Reset</a>
 </form>
 
 <!-- Table -->
 <div class="txn-card" style="margin-top:6px">
   <div class="txn-card-header">
-    <i class="fas fa-table" style="color:#002F70"></i>
+    <i class="fas fa-list-alt" style="color:#002F70"></i>
     <h3>All Transactions</h3>
   </div>
   <div class="txn-card-body" style="padding:0">
 <?php if (empty($recent_merch)): ?>
-    <div style="text-align:center;padding:48px;color:#94a3b8">
-      <i class="fas fa-receipt" style="font-size:36px;display:block;margin-bottom:12px"></i>
-      No transactions found for the selected period.
+    <div style="text-align:center;padding:56px 20px;color:#64748b;">
+      <i class="fas fa-receipt" style="font-size:42px;display:block;margin-bottom:12px;color:#cbd5e1;"></i>
+      <div style="font-size:16px;font-weight:700;color:#1e293b;margin-bottom:4px;">📄 No transactions found.</div>
+      <div style="font-size:13px;color:#64748b;">Try changing the date range or filter settings.</div>
     </div>
 <?php else: ?>
     <div>
     <table class="txn-table" id="histTbl" style="width:100%;table-layout:fixed;">
       <thead><tr>
-        <th style="width:15%">Transaction ID</th>
-        <th style="width:6%">Cust. Type</th>
-        <th style="width:10%">Customer</th>
-        <th style="width:7%">Txn Type</th>
-        <th style="width:24%">Items Sold</th>
-        <th style="width:8%;text-align:right">Total</th>
-        <th style="width:7%">Pay. Method</th>
-        <th style="width:6%">Pay. Status</th>
-        <th style="width:7%">Txn Status</th>
-        <th style="width:10%">Date & Time</th>
-        <th style="width:6%">Actions</th>
+        <th style="width:13%">Transaction ID</th>
+        <th style="width:12%">Customer</th>
+        <th style="width:12%">Type</th>
+        <th style="width:14%">Product</th>
+        <th style="width:10%">Service Type</th>
+        <th style="width:5%;text-align:center">Qty</th>
+        <th style="width:6%;text-align:center">Unit</th>
+        <th style="width:9%;text-align:right">Amount</th>
+        <th style="width:9%">Payment</th>
+        <th style="width:8%">Status</th>
+        <th style="width:10%">Date</th>
+        <th style="width:10%;text-align:center">Actions</th>
       </tr></thead>
       <tbody id="histTbody">
       <?php
-      // Pre-fetch all items for displayed transactions in ONE query
+      // Helper to resolve unit labels
+      $resolveUnitLabel = function(string $name, string $variant, float $qty, string $item_type): string {
+          if ($item_type === 'service') return 'Svc';
+          $n_lower = strtolower($name . ' ' . $variant);
+          if (strpos($n_lower, 'refrigerant') !== false || strpos($n_lower, 'r134a') !== false || strpos($n_lower, 'can') !== false) {
+              return $qty > 1 ? 'Cans' : 'Can';
+          }
+          if (strpos($n_lower, 'bottle') !== false || strpos($n_lower, 'coolant') !== false || strpos($n_lower, 'fluid') !== false || strpos($n_lower, 'cleaner') !== false || strpos($n_lower, 'oil') !== false || strpos($n_lower, 'brake') !== false) {
+              return $qty > 1 ? 'Bottles' : 'Bottle';
+          }
+          if (strpos($n_lower, 'liter') !== false || strpos($n_lower, 'litre') !== false || preg_match('/\b\d+(\.\d+)?\s*l\b/i', $n_lower)) {
+              return $qty > 1 ? 'Liters' : 'Liter';
+          }
+          if (strpos($n_lower, 'set') !== false) return 'Set';
+          if (strpos($n_lower, 'box') !== false) return $qty > 1 ? 'Boxes' : 'Box';
+          return $qty > 1 ? 'Pcs' : 'Pc';
+      };
+
+      // Pre-fetch items
       $ht_ids = array_column($recent_merch, 'id');
       $ht_items_map = [];
       if (!empty($ht_ids)) {
@@ -196,18 +390,24 @@ $_hq    = function(array $extra=[]) use ($_hbase, $hist_filter_date_from, $hist_
               }
           } catch (Exception $e) { $ht_items_map = []; }
       }
+
       foreach ($recent_merch as $ht):
           $ht_id    = (int)$ht['id'];
           $ht_type  = $ht['transaction_type'] ?? 'merchandise';
-          $ht_ctype = ((int)($ht['credit_customer_id'] ?? 0) > 0) ? 'Registered' : 'Walk-in';
           $ht_ps    = strtolower(trim($ht['payment_status'] ?? 'pending'));
           if ($ht_ps === 'paid') { $psc='#16a34a'; }
           elseif (in_array($ht_ps,['partially paid','partial payment'])) { $psc='#d97706'; }
           elseif (in_array($ht_ps,['credit account','credit transaction','credit'])) { $psc='#7c3aed'; }
           else { $psc='#ea580c'; }
-          if ($ht_type==='combined') { $tc='#7c3aed'; $tb='#f3e8ff'; $tl='Combined'; }
-          elseif ($ht_type==='job_order') { $tc='#b45309'; $tb='#fffbeb'; $tl='Job Order'; }
-          else { $tc='#15803d'; $tb='#f0fdf4'; $tl='Merchandise'; }
+
+          if ($ht_type==='combined') { 
+            $tc='#7c3aed'; $tb='#f3e8ff'; $tborder='#d8b4fe'; $tl='Job Order + Merchandise'; 
+          } elseif ($ht_type==='job_order') { 
+            $tc='#b45309'; $tb='#fffbeb'; $tborder='#fde68a'; $tl='Job Order Only'; 
+          } else { 
+            $tc='#15803d'; $tb='#f0fdf4'; $tborder='#bbf7d0'; $tl='Merchandise Only'; 
+          }
+
           $ht_date = '';
           if (!empty($ht['transaction_date'])) {
               try { $ht_date = (new DateTime($ht['transaction_date']))->format('M j, Y g:i A'); } catch(Exception $e){}
@@ -215,7 +415,8 @@ $_hq    = function(array $extra=[]) use ($_hbase, $hist_filter_date_from, $hist_
           $ht_tid   = htmlspecialchars($ht['transaction_id'] ?? ('#'.$ht_id));
           $ht_cname = htmlspecialchars($ht['customer_name'] ?? 'Walk-in Customer');
           $row_items = $ht_items_map[$ht_id] ?? [];
-          // Fallback: if no items table rows exist, build from legacy sku column
+
+          // Fallback if no structured item table rows
           if (empty($row_items) && !empty($ht['item_sku'])) {
               $row_items = [[
                   'item_type'    => ($ht_type === 'job_order') ? 'service' : 'merchandise',
@@ -227,119 +428,100 @@ $_hq    = function(array $extra=[]) use ($_hbase, $hist_filter_date_from, $hist_
                   'size_variant' => '',
               ]];
           }
-          $expand_id = 'hte_'.$ht_id;
+
+          // Format Qty and Unit columns
+          $qty_str_arr = [];
+          $unit_str_arr = [];
+          if (!empty($row_items)) {
+              foreach ($row_items as $ri) {
+                  $qv = (float)($ri['quantity'] ?? 1);
+                  $q_num = ($qv == (int)$qv) ? (int)$qv : number_format($qv, 2);
+                  $u_lbl = $resolveUnitLabel($ri['product_name'] ?? '', $ri['size_variant'] ?? '', $qv, $ri['item_type'] ?? 'merchandise');
+                  $qty_str_arr[] = $q_num;
+                  $unit_str_arr[] = $u_lbl;
+              }
+              if (count($row_items) === 1) {
+                  $qty_col_val  = $qty_str_arr[0];
+                  $unit_col_val = $unit_str_arr[0];
+              } else {
+                  $qty_col_val  = implode(', ', $qty_str_arr);
+                  $unit_col_val = implode(', ', array_unique($unit_str_arr));
+              }
+          } else {
+              $qty_col_val  = '1';
+              $unit_col_val = ($ht_type === 'job_order') ? 'Svc' : 'Pc';
+          }
+
+          // Validation Status Badge (Completed / Adjusted / Voided)
+          $val_status = strtolower(trim($ht['validation_status'] ?? 'official'));
+          if (in_array($val_status, ['completed', 'approved', 'official', 'verified'])) {
+              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:12px;font-size:10.5px;font-weight:700;color:#166534;background:#d1fae5;border:1px solid #86efac;"><i class="fas fa-circle" style="font-size:7px;"></i> Completed</span>';
+          } elseif ($val_status === 'adjusted') {
+              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:12px;font-size:10.5px;font-weight:700;color:#854d0e;background:#fef08a;border:1px solid #fde047;"><i class="fas fa-circle" style="font-size:7px;"></i> Adjusted</span>';
+          } elseif (in_array($val_status, ['voided', 'cancelled', 'canceled'])) {
+              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:12px;font-size:10.5px;font-weight:700;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;"><i class="fas fa-circle" style="font-size:7px;"></i> Voided</span>';
+          } else {
+              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:12px;font-size:10.5px;font-weight:700;color:#166534;background:#d1fae5;border:1px solid #86efac;"><i class="fas fa-circle" style="font-size:7px;"></i> Completed</span>';
+          }
       ?>
-      <tr class="hist-row-main" onclick="toggleHistExpand('<?= $expand_id ?>')">
-        <td style="font-size:11px;font-weight:700;color:#002F70;font-family:monospace"><?= $ht_tid ?></td>
-        <td><span style="font-size:11px;font-weight:600;color:<?= $ht_ctype==='Registered'?'#002F70':'#64748b' ?>"><?= $ht_ctype ?></span></td>
-        <td style="font-weight:600;font-size:12px"><?= $ht_cname ?></td>
-        <td><span style="background:<?= $tb ?>;color:<?= $tc ?>;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700"><?= $tl ?></span></td>
+      <tr class="hist-row-main">
+        <td style="font-size:11px;font-weight:600;color:#334155;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0;" title="<?= $ht_tid ?>"><?= $ht_tid ?></td>
+        <td style="font-weight:600;font-size:11.5px"><?= $ht_cname ?></td>
+        <td><span style="background:<?= $tb ?>;color:<?= $tc ?>;border:1px solid <?= $tborder ?>;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700"><?= $tl ?></span></td>
         <td>
-          <?php if (empty($row_items)): ?>
+          <?php
+          $merch_items = array_filter($row_items, fn($ri) => ($ri['item_type'] ?? 'merchandise') !== 'service');
+          if (empty($merch_items)): ?>
             <span style="color:#94a3b8;font-size:11px">—</span>
           <?php else: ?>
-            <?php foreach ($row_items as $ri): ?>
-              <?php $is_svc = ($ri['item_type'] === 'service'); ?>
-              <span class="hist-item-chip<?= $is_svc ? ' svc' : '' ?>">
-                <?php if ($is_svc): ?><i class="fas fa-wrench" style="font-size:9px"></i><?php else: ?><i class="fas fa-box" style="font-size:9px"></i><?php endif; ?>
+            <?php foreach ($merch_items as $ri): ?>
+              <span class="hist-item-chip">
+                <i class="fas fa-box" style="font-size:9px"></i>
                 <?= htmlspecialchars($ri['product_name']) ?>
-                <?php if (!$is_svc && (float)$ri['quantity'] > 0): ?>
-                  <span class="chip-qty">x<?= (int)$ri['quantity'] ?></span>
+                <?php if (!empty($ri['size_variant'])): ?>
+                <small style="color:#64748b;">[<?= htmlspecialchars($ri['size_variant']) ?>]</small>
                 <?php endif; ?>
               </span>
             <?php endforeach; ?>
-            <i class="fas fa-chevron-down" style="font-size:9px;color:#94a3b8;margin-left:4px" id="<?= $expand_id ?>_icon"></i>
           <?php endif; ?>
         </td>
+        <td style="font-size:11px;color:#475569;">
+          <?php
+          $svc_items = array_filter($row_items, fn($ri) => ($ri['item_type'] ?? '') === 'service');
+          $svc_name  = '';
+          if (!empty($svc_items)) {
+              $svc_name = implode(', ', array_map(fn($s) => $s['product_name'], $svc_items));
+          } elseif (!empty($ht['job_order_service'])) {
+              $svc_name = $ht['job_order_service'];
+          }
+          echo $svc_name ? '<span class="hist-item-chip svc"><i class="fas fa-wrench" style="font-size:9px"></i> ' . htmlspecialchars($svc_name) . '</span>' : '<span style="color:#94a3b8;">—</span>';
+          ?>
+        </td>
+        <td style="text-align:center;font-weight:700;color:#334155"><?= $qty_col_val ?></td>
+        <td style="text-align:center;font-weight:600;color:#64748b;font-size:10.5px"><?= $unit_col_val ?></td>
         <td style="text-align:right;font-weight:700;color:#002F70">&#8369;<?= number_format((float)$ht['total_amount'],2) ?></td>
-        <td style="font-size:12px"><?= htmlspecialchars($ht['payment_method'] ?? '—') ?></td>
-        <td><span style="color:<?= $psc ?>;font-size:11px;font-weight:700"><?= htmlspecialchars($ht['payment_status'] ?? 'Pending') ?></span></td>
-        <?php
-        $val_status = strtolower(trim($ht['validation_status'] ?? 'official'));
-        if (in_array($val_status, ['completed', 'approved', 'official', 'verified'])) {
-            $v_badge_color = '#16a34a'; $v_badge_bg = '#f0fdf4'; $v_badge_border = '#bbf7d0'; $v_badge_label = 'Completed';
-        } elseif ($val_status === 'adjusted') {
-            $v_badge_color = '#d97706'; $v_badge_bg = '#fffbeb'; $v_badge_border = '#fde68a'; $v_badge_label = 'Adjusted';
-        } elseif ($val_status === 'voided') {
-            $v_badge_color = '#dc2626'; $v_badge_bg = '#fef2f2'; $v_badge_border = '#fecaca'; $v_badge_label = 'Voided';
-        } else {
-            $v_badge_color = '#16a34a'; $v_badge_bg = '#f0fdf4'; $v_badge_border = '#bbf7d0'; $v_badge_label = 'Completed';
-        }
-        ?>
-        <td>
-          <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;color:<?= $v_badge_color ?>;background:<?= $v_badge_bg ?>;border:1px solid <?= $v_badge_border ?>;white-space:nowrap">
-            <?= $v_badge_label ?>
-          </span>
+        <td style="font-size:11px">
+          <div><?= htmlspecialchars($ht['payment_method'] ?? 'Cash') ?></div>
+          <span style="color:<?= $psc ?>;font-size:10px;font-weight:700"><?= htmlspecialchars(ucwords($ht['payment_status'] ?? 'Paid')) ?></span>
         </td>
+        <td><?= $v_badge_html ?></td>
         <td style="font-size:10px;color:#64748b;"><?= $ht_date ?: '—' ?></td>
-        <td class="no-export" onclick="event.stopPropagation()">
-          <button onclick="openHistModal(<?= $ht_id ?>)" class="txn-btn primary" style="min-width:0;height:24px;padding:0 7px;font-size:10px;border-radius:4px;white-space:nowrap;" title="View Full Details">
-            <i class="fas fa-eye"></i> View
-          </button>
-        </td>
-      </tr>
-      <?php if (!empty($row_items)): ?>
-      <tr class="hist-expand-row" id="<?= $expand_id ?>" style="display:none">
-        <td colspan="11" class="no-export">
-          <div class="hist-expand-inner">
-            <?php
-            $svc_items   = array_filter($row_items, fn($i) => $i['item_type'] === 'service');
-            $merch_items = array_filter($row_items, fn($i) => $i['item_type'] !== 'service');
-            ?>
-            <?php if (!empty($svc_items)): ?>
-            <div style="font-size:11px;font-weight:800;color:#b45309;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">
-              <i class="fas fa-tools"></i> Services / Job Order
-            </div>
-            <table class="hist-expand-tbl" style="margin-bottom:10px">
-              <thead><tr>
-                <th>Service</th>
-                <th>Category</th>
-                <th style="text-align:right">Fee</th>
-              </tr></thead>
-              <tbody>
-              <?php foreach ($svc_items as $si): ?>
-              <tr>
-                <td style="font-weight:600"><?= htmlspecialchars($si['product_name']) ?></td>
-                <td style="color:#64748b"><?= htmlspecialchars($si['category'] ?: '—') ?></td>
-                <td style="text-align:right;font-weight:700;color:#002F70">&#8369;<?= number_format((float)$si['subtotal'],2) ?></td>
-              </tr>
-              <?php endforeach; ?>
-              </tbody>
-            </table>
-            <?php endif; ?>
-            <?php if (!empty($merch_items)): ?>
-            <div style="font-size:11px;font-weight:800;color:#15803d;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">
-              <i class="fas fa-box"></i> Merchandise Products
-            </div>
-            <table class="hist-expand-tbl">
-              <thead><tr>
-                <th>Product</th>
-                <th>Size/Variant</th>
-                <th style="text-align:center">Qty</th>
-                <th style="text-align:right">Unit Price</th>
-                <th style="text-align:right">Subtotal</th>
-              </tr></thead>
-              <tbody>
-              <?php foreach ($merch_items as $mi): ?>
-              <tr>
-                <td style="font-weight:600"><?= htmlspecialchars($mi['product_name']) ?></td>
-                <td style="color:#64748b;font-size:11px"><?= htmlspecialchars($mi['size_variant'] ?: '—') ?></td>
-                <td style="text-align:center;font-weight:700"><?= (int)$mi['quantity'] ?></td>
-                <td style="text-align:right;color:#475569">&#8369;<?= number_format((float)$mi['unit_price'],2) ?></td>
-                <td style="text-align:right;font-weight:700;color:#002F70">&#8369;<?= number_format((float)$mi['subtotal'],2) ?></td>
-              </tr>
-              <?php endforeach; ?>
-              </tbody>
-            </table>
-            <?php endif; ?>
+        <td style="text-align:center;">
+          <div style="display:flex;flex-direction:column;gap:4px;align-items:stretch;">
+            <button onclick="openHistModal(<?= $ht_id ?>)" class="hist-action-btn btn-view-act" title="View Transaction Details" style="width:100%;">
+              <i class="fas fa-eye"></i> View
+            </button>
+            <button onclick="window.open('receipt.php?id=<?= urlencode($ht_tid) ?>&type=<?= urlencode($ht_type) ?>', '_blank')" class="hist-action-btn btn-print-act" title="Print Receipt" style="width:100%;">
+              <i class="fas fa-print"></i> Print
+            </button>
           </div>
         </td>
       </tr>
-      <?php endif; ?>
       <?php endforeach; ?>
       </tbody>
     </table>
     </div>
+
     <!-- Pagination -->
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-top:1px solid #e2e8f0;flex-wrap:wrap">
       <div style="display:flex;align-items:center;gap:7px">
@@ -365,39 +547,24 @@ $_hq    = function(array $extra=[]) use ($_hbase, $hist_filter_date_from, $hist_
     <button onclick="closeHistModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">&times;</button>
     <h2><i class="fas fa-receipt" style="color:#002F70;margin-right:8px"></i>Transaction Details</h2>
     <div id="histModalContent" style="color:#475569;font-size:13px">Loading...</div>
+    <div id="histModalFooter" style="margin-top:20px;display:flex;justify-content:flex-end;gap:10px;border-top:1px solid #e2e8f0;padding-top:14px;">
+      <button id="modalPrintBtn" class="txn-btn primary" style="min-width:0;height:32px;padding:0 14px;font-size:12px;border-radius:6px;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-print"></i> Print Receipt</button>
+      <button onclick="closeHistModal()" class="txn-btn secondary" style="min-width:0;height:32px;padding:0 14px;font-size:12px;border-radius:6px;">Close</button>
+    </div>
   </div>
 </div>
 
 <script>
-// Expand/collapse inline item rows
-window.toggleHistExpand = function(id) {
-  var row = document.getElementById(id);
-  var icon = document.getElementById(id + '_icon');
-  if (!row) return;
-  var open = row.style.display !== 'none';
-  row.style.display = open ? 'none' : '';
-  if (icon) icon.style.transform = open ? '' : 'rotate(180deg)';
-};
-
 (function(){
-// Pagination — only count main rows (not expand rows)
 var histState={page:1,per_page:10};
 function histRender(){
-  // Collapse all expand rows first
-  document.querySelectorAll('.hist-expand-row').forEach(function(r){r.style.display='none';});
-  document.querySelectorAll('[id$="_icon"]').forEach(function(ic){ic.style.transform='';});
   var rows=Array.from(document.querySelectorAll('#histTbody tr.hist-row-main'));
   var pp=histState.per_page,p=histState.page,tot=rows.length;
   var tp=Math.max(1,Math.ceil(tot/pp));
   if(p>tp)histState.page=p=tp;
-  // Hide all main rows and their paired expand rows
-  rows.forEach(function(r){
-    r.style.display='none';
-    var next=r.nextElementSibling;
-    if(next&&next.classList.contains('hist-expand-row'))next.style.display='none';
+  rows.forEach(function(r, i){
+    r.style.display=(i >= (p-1)*pp && i < p*pp) ? '' : 'none';
   });
-  // Show current page main rows only
-  rows.slice((p-1)*pp,p*pp).forEach(function(r){r.style.display='';});
   var lbl=document.getElementById('histPageLabel');
   if(lbl)lbl.textContent='Page '+p+' of '+tp;
   var prev=document.getElementById('histPrevBtn'),next=document.getElementById('histNextBtn');
@@ -424,12 +591,21 @@ function openHistModal(mtId){
       var isMerch=(txnType==='merchandise'||txnType==='combined');
       var svcItems=items.filter(function(i){return i.item_type==='service';});
       var merItems=items.filter(function(i){return i.item_type!=='service';});
+      
+      // Update print button link
+      var printBtn = document.getElementById('modalPrintBtn');
+      if(printBtn) {
+        printBtn.onclick = function() {
+          window.open('receipt.php?id=' + encodeURIComponent(t.transaction_id || t.id) + '&type=' + encodeURIComponent(txnType), '_blank');
+        };
+      }
+
       var html='';
       // Transaction Info
       html+='<div class="hist-sec-title"><i class="fas fa-info-circle"></i> Transaction Information</div>';
       html+=row('Transaction ID','<strong style="color:#002F70;font-family:monospace">'+(t.transaction_id||'—')+'</strong>');
-      html+=row('Type','<span style="font-weight:700;text-transform:capitalize">'+(txnType.replace('_',' '))+'</span>');
-      html+=row('Customer Type',((t.credit_customer_id&&t.credit_customer_id>0)?'Registered':'Walk-in'));
+      var typeLabel = (txnType==='combined')?'Job Order + Merchandise':((txnType==='job_order')?'Job Order Only':'Merchandise Only');
+      html+=row('Type','<span style="font-weight:700">'+typeLabel+'</span>');
       html+=row('Customer Name',t.customer_name||'Walk-in Customer');
       if(t.contact_number)html+=row('Contact',t.contact_number);
       // Vehicle

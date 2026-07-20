@@ -496,15 +496,17 @@ $hist_page          = max(1, (int)($_GET['page'] ?? 1));
 $hist_per_page      = 50;
 $hist_offset        = ($hist_page - 1) * $hist_per_page;
 // ── History tab filters ───────────────────────────────────────────────────────
-$hist_filter_date_from = $_GET['date_from']  ?? date('Y-m-01');
-$hist_filter_date_to   = $_GET['date_to']    ?? date('Y-m-d');
+$hist_filter_date_from = $_GET['date_from']  ?? '';
+$hist_filter_date_to   = $_GET['date_to']    ?? '';
 $hist_filter_type      = $_GET['txn_type']   ?? '';   // job_order|merchandise|combined
 $hist_filter_ctype     = $_GET['cust_type']  ?? '';   // registered only (walk-in removed)
 $hist_filter_pay       = $_GET['payment']    ?? '';
 $hist_filter_pstatus   = $_GET['pstatus']    ?? '';
+$hist_filter_vstatus   = $_GET['vstatus']    ?? '';   // Completed|Adjusted|Voided
+$hist_filter_shift     = $_GET['shift']      ?? '';
 $hist_search           = trim($_GET['hsearch'] ?? '');
 // KPI accumulators
-$hist_kpi_total = 0; $hist_kpi_jo = 0; $hist_kpi_merch = 0; $hist_kpi_sales = 0.0;
+$hist_kpi_total = 0; $hist_kpi_jo = 0; $hist_kpi_merch = 0; $hist_kpi_sales = 0.0; $hist_kpi_paid = 0; $hist_kpi_unpaid = 0;
 
 // ── Merchandise section: Transaction History panel (right side) ───────────────
 $mh_recent        = [];
@@ -514,6 +516,7 @@ $mh_filter_start_date = $_GET['mh_start_date'] ?? '';
 $mh_filter_end_date   = $_GET['mh_end_date'] ?? '';
 $mh_filter_category   = $_GET['mh_category'] ?? '';
 $mh_filter_product    = $_GET['mh_product'] ?? '';
+$mh_filter_status     = $_GET['mh_status'] ?? '';
 $mh_page          = max(1, (int)($_GET['mh_page'] ?? 1));
 $mh_per_page      = isset($_GET['mh_per_page']) && in_array((int)$_GET['mh_per_page'], [10,20,30,50]) ? (int)$_GET['mh_per_page'] : 10;
 $mh_offset        = ($mh_page - 1) * $mh_per_page;
@@ -621,6 +624,12 @@ if ($section === 'merchandise') {
             $mh_params[] = (int)$mh_filter_product;
         }
 
+        // Status Filter
+        if ($mh_filter_status !== '') {
+            $mh_where_clauses[] = "COALESCE(mt.validation_status, 'Pending') = ?";
+            $mh_params[] = $mh_filter_status;
+        }
+
         $mh_where = "WHERE " . implode(" AND ", $mh_where_clauses);
 
         // Get total count of matching items
@@ -637,8 +646,11 @@ if ($section === 'merchandise') {
         $stmt_mh = $pdo->prepare("
             SELECT mt.id AS mt_id,
                    $mh_txnid_col AS transaction_id,
+                   CONCAT('OR-', YEAR($mh_date_col), '-', LPAD(mt.id, 6, '0')) AS or_number,
                    mt.customer_name,
                    mt.payment_method,
+                   COALESCE(mt.payment_status, 'Pending') AS payment_status,
+                   COALESCE(mt.validation_status, 'Pending') AS validation_status,
                    $mh_date_col AS transaction_date,
                    mti.id AS item_id,
                    mti.product_id,
@@ -785,8 +797,13 @@ if ($section === 'merchandise') {
 
 if ($section === 'history' || $section === 'fuel_history') {
     // Build fuel WHERE clause with optional shift/date filters
-    $fuel_where  = "WHERE ft.station_id = ? AND ft.staff_id = ?";
-    $fuel_params = [$station_id, $me['id']];
+    if ($station_id > 0) {
+        $fuel_where  = "WHERE (ft.station_id = ? OR ft.station_id IS NULL OR ft.station_id = 0)";
+        $fuel_params = [$station_id];
+    } else {
+        $fuel_where  = "WHERE 1=1";
+        $fuel_params = [];
+    }
 
     if ($filter_shift !== '') {
         $fuel_where  .= " AND ft.shift_period = ?";
@@ -832,9 +849,16 @@ if ($section === 'history' || $section === 'fuel_history') {
         $mt_bal_col   = isset($mt_cols['balance_due'])             ? 'mt.balance_due'             : 'NULL';
         $mt_valstat_col = isset($mt_cols['validation_status'])     ? 'mt.validation_status'       : "'Official'";
 
-        // Build WHERE
-        $merch_where2  = "WHERE mt.station_id = ? AND mt.staff_id = ?";
-        $merch_params2 = [$station_id, $me['id']];
+        $mt_shift_col   = isset($mt_cols['shift_period']) ? 'mt.shift_period' : (isset($mt_cols['shift_name']) ? 'mt.shift_name' : 'NULL');
+
+        // Build WHERE — fetch transactions for staff station (station_id)
+        if ($station_id > 0) {
+            $merch_where2  = "WHERE (mt.station_id = ? OR mt.station_id IS NULL OR mt.station_id = 0)";
+            $merch_params2 = [$station_id];
+        } else {
+            $merch_where2  = "WHERE 1=1";
+            $merch_params2 = [];
+        }
 
         if ($hist_filter_date_from !== '') {
             $merch_where2  .= " AND DATE($mt_date_col) >= ?";
@@ -853,7 +877,6 @@ if ($section === 'history' || $section === 'fuel_history') {
             if ($hist_filter_ctype === 'registered') {
                 $merch_where2 .= " AND $mt_cid_col IS NOT NULL AND $mt_cid_col > 0";
             }
-            // Legacy filter kept for backward compatibility (no longer accessible in UI)
             elseif ($hist_filter_ctype === 'walkin') {
                 $merch_where2 .= " AND ($mt_cid_col IS NULL OR $mt_cid_col = 0)";
             }
@@ -866,11 +889,22 @@ if ($section === 'history' || $section === 'fuel_history') {
             $merch_where2  .= " AND LOWER($mt_pstat_col) = ?";
             $merch_params2[] = strtolower($hist_filter_pstatus);
         }
+        if ($hist_filter_vstatus === 'Completed') {
+            $merch_where2  .= " AND (COALESCE($mt_valstat_col, '') NOT IN ('Voided', 'Adjusted', 'Cancelled', 'Canceled'))";
+        } elseif ($hist_filter_vstatus === 'Adjusted') {
+            $merch_where2  .= " AND ($mt_valstat_col = 'Adjusted')";
+        } elseif ($hist_filter_vstatus === 'Voided') {
+            $merch_where2  .= " AND ($mt_valstat_col IN ('Voided', 'Cancelled', 'Canceled'))";
+        }
+        if ($hist_filter_shift !== '' && $mt_shift_col !== 'NULL') {
+            $merch_where2  .= " AND COALESCE($mt_shift_col, '') = ?";
+            $merch_params2[] = $hist_filter_shift;
+        }
         if ($hist_search !== '') {
             $slike  = '%' . $hist_search . '%';
             $sllike = '%' . strtolower($hist_search) . '%';
-            $merch_where2 .= " AND ($mt_txnid_col LIKE ? OR LOWER(COALESCE(mt.customer_name,'')) LIKE ? OR LOWER(COALESCE($mt_plate_col,'')) LIKE ?)";
-            $merch_params2[] = $slike; $merch_params2[] = $sllike; $merch_params2[] = $sllike;
+            $merch_where2 .= " AND ($mt_txnid_col LIKE ? OR LOWER(COALESCE(mt.customer_name,'')) LIKE ? OR LOWER(COALESCE($mt_plate_col,'')) LIKE ? OR LOWER(COALESCE(mt.job_order_service,'')) LIKE ?)";
+            $merch_params2[] = $slike; $merch_params2[] = $sllike; $merch_params2[] = $sllike; $merch_params2[] = $sllike;
         }
 
         // KPI aggregation
@@ -878,16 +912,20 @@ if ($section === 'history' || $section === 'fuel_history') {
             SELECT COUNT(*) AS total,
                    SUM(CASE WHEN COALESCE($mt_type_col,'merchandise') IN ('job_order','combined') THEN 1 ELSE 0 END) AS jo_cnt,
                    SUM(CASE WHEN COALESCE($mt_type_col,'merchandise') = 'merchandise' THEN 1 ELSE 0 END) AS merch_cnt,
-                   COALESCE(SUM(mt.total_amount),0) AS total_sales
+                   COALESCE(SUM(mt.total_amount),0) AS total_sales,
+                   SUM(CASE WHEN LOWER($mt_pstat_col) = 'paid' THEN 1 ELSE 0 END) AS paid_cnt,
+                   SUM(CASE WHEN LOWER($mt_pstat_col) IN ('pending','partially paid','partial payment','credit','credit account','credit transaction') THEN 1 ELSE 0 END) AS unpaid_cnt
             FROM merchandise_transactions mt $merch_where2
         ");
         $kpi_q->execute($merch_params2);
         $kpi_row = $kpi_q->fetch(PDO::FETCH_ASSOC);
         if ($kpi_row) {
-            $hist_kpi_total = (int)$kpi_row['total'];
-            $hist_kpi_jo    = (int)$kpi_row['jo_cnt'];
-            $hist_kpi_merch = (int)$kpi_row['merch_cnt'];
-            $hist_kpi_sales = (float)$kpi_row['total_sales'];
+            $hist_kpi_total  = (int)$kpi_row['total'];
+            $hist_kpi_jo     = (int)$kpi_row['jo_cnt'];
+            $hist_kpi_merch  = (int)$kpi_row['merch_cnt'];
+            $hist_kpi_sales  = (float)$kpi_row['total_sales'];
+            $hist_kpi_paid   = (int)$kpi_row['paid_cnt'];
+            $hist_kpi_unpaid = (int)$kpi_row['unpaid_cnt'];
         }
         $merch_total_count = $hist_kpi_total;
 
@@ -914,7 +952,8 @@ if ($section === 'history' || $section === 'fuel_history') {
                    mt.item_sku,
                    mt.quantity,
                    mt.unit_price,
-                    $mt_valstat_col AS validation_status
+                   $mt_valstat_col AS validation_status,
+                   COALESCE(NULLIF(TRIM(mt.job_order_service),''),'') AS job_order_service
             FROM merchandise_transactions mt
             LEFT JOIN users u ON u.id = mt.staff_id
             $merch_where2
@@ -3355,12 +3394,6 @@ input[list] {
                             class="txn-btn secondary" title="Back to Staff Dashboard">
                         <i class="fas fa-arrow-left"></i> <span>Back</span>
                     </button>
-                    <button onclick="exportTodayReadings('excel');" class="txn-btn success">
-                        <i class="fas fa-file-excel"></i> Excel
-                    </button>
-                    <button onclick="exportTodayReadings('csv');" class="txn-btn primary">
-                        <i class="fas fa-file-csv"></i> CSV
-                    </button>
                 </div>
             </div>
 
@@ -5022,6 +5055,15 @@ input[list] {
                                         <?php endforeach; ?>
                                     </select>
                                 </div>
+                                <div style="display:flex;flex-direction:column;gap:4px;">
+                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Status</label>
+                                    <select name="mh_status" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
+                                        <option value="">All Statuses</option>
+                                        <option value="Completed" <?= ($_GET['mh_status'] ?? '') === 'Completed' ? 'selected' : '' ?>>Completed</option>
+                                        <option value="Pending" <?= ($_GET['mh_status'] ?? '') === 'Pending' ? 'selected' : '' ?>>Pending</option>
+                                        <option value="Voided" <?= ($_GET['mh_status'] ?? '') === 'Voided' ? 'selected' : '' ?>>Voided</option>
+                                    </select>
+                                </div>
                                 <button type="submit" class="txn-btn primary">
                                     <i class="fas fa-filter"></i> Filter
                                 </button>
@@ -5122,23 +5164,29 @@ input[list] {
 
                             <table class="txn-table" id="mhHistoryTable" style="width:100%; table-layout:fixed;">
                                 <colgroup>
-                                    <col style="width:18%;">
-                                    <col style="width:18%;">
-                                    <col style="width:22%;">
                                     <col style="width:10%;">
-                                    <col style="width:10%;">
-                                    <col style="width:10%;">
+                                    <col style="width:13%;">
                                     <col style="width:12%;">
+                                    <col style="width:16%;">
+                                    <col style="width:5%;">
+                                    <col style="width:6%;">
+                                    <col style="width:9%;">
+                                    <col style="width:9%;">
+                                    <col style="width:11%;">
+                                    <col style="width:9%;">
                                 </colgroup>
                                 <thead>
                                     <tr>
+                                        <th style="font-size:12px;text-align:left;padding:10px;">OR No.</th>
                                         <th style="font-size:12px;text-align:left;padding:10px;">Transaction ID</th>
                                         <th style="font-size:12px;text-align:left;padding:10px;">Customer</th>
                                         <th style="font-size:12px;text-align:left;padding:10px;">Product</th>
-                                        <th style="font-size:12px;text-align:center;padding:10px;">Quantity</th>
+                                        <th style="font-size:12px;text-align:center;padding:10px;">Qty</th>
+                                        <th style="font-size:12px;text-align:center;padding:10px;">UOM</th>
                                         <th style="font-size:12px;text-align:right;padding:10px;">Unit Price</th>
-                                        <th style="font-size:12px;text-align:right;padding:10px;">Total Amount</th>
+                                        <th style="font-size:12px;text-align:right;padding:10px;">Total</th>
                                         <th style="font-size:12px;text-align:left;padding:10px;">Date Released</th>
+                                        <th style="font-size:12px;text-align:center;padding:10px;">Receipt</th>
                                     </tr>
                                 </thead>
                                 <tbody id="mhTableBody">
@@ -5153,21 +5201,39 @@ input[list] {
                                             $date_released = (new DateTime($txn['transaction_date']))->format('M j, Y g:i A');
                                         } catch (Exception $e) {}
                                     }
+                                    // Determine unit label from product name
+                                    $pname_lower = strtolower($txn['product_name'] ?? '');
+                                    if (strpos($pname_lower, 'refrigerant') !== false || strpos($pname_lower, 'r134a') !== false) {
+                                        $unit_label = $qty > 1 ? 'Cans' : 'Can';
+                                    } elseif (strpos($pname_lower, 'oil') !== false || strpos($pname_lower, 'coolant') !== false || strpos($pname_lower, 'fluid') !== false || strpos($pname_lower, 'cleaner') !== false || strpos($pname_lower, 'cleaning') !== false) {
+                                        $unit_label = $qty > 1 ? 'Bottles' : 'Bottle';
+                                    } elseif (strpos($pname_lower, 'liter') !== false || strpos($pname_lower, 'litre') !== false) {
+                                        $unit_label = $qty > 1 ? 'Liters' : 'Liter';
+                                    } else {
+                                        $unit_label = $qty > 1 ? 'pcs' : 'pc';
+                                    }
                                 ?>
                                 <tr class="mh-row" style="cursor:pointer;" onclick="viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? '') ?>')" title="Click to view full transaction details">
-                                    <td style="font-size:12px;font-weight:700;color:var(--petron-blue);padding:10px;white-space:nowrap;">
+                                    <td style="font-size:11px;font-weight:700;color:#475569;padding:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0;">
+                                        <?= htmlspecialchars($txn['or_number'] ?? '—') ?>
+                                    </td>
+                                    <td style="font-size:11px;color:var(--petron-blue);font-family:monospace;padding:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0;"
+                                        title="<?= htmlspecialchars($txn['transaction_id'] ?? '') ?>">
                                         <?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['mt_id'])) ?>
                                     </td>
-                                    <td style="font-size:12px;padding:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                                    <td style="font-size:12px;padding:10px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
                                         title="<?= htmlspecialchars($txn['customer_name'] ?? '') ?>">
                                         <?= htmlspecialchars($txn['customer_name'] ?? 'No Customer') ?>
                                     </td>
-                                    <td style="font-size:12px;padding:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                                    <td style="font-size:12px;padding:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
                                         title="<?= htmlspecialchars($txn['product_name'] ?? '') ?>">
                                         <?= htmlspecialchars($txn['product_name'] ?? '—') ?>
                                     </td>
                                     <td style="font-size:12px;text-align:center;font-weight:600;color:#475569;padding:10px;">
                                         <?= $qty_display ?>
+                                    </td>
+                                    <td style="font-size:12px;text-align:center;color:#64748b;padding:10px;">
+                                        <?= htmlspecialchars($unit_label) ?>
                                     </td>
                                     <td style="font-size:12px;text-align:right;font-weight:600;color:#475569;padding:10px;white-space:nowrap;">
                                         ₱<?= number_format($unit_price, 2) ?>
@@ -5177,6 +5243,13 @@ input[list] {
                                     </td>
                                     <td style="font-size:11px;color:#64748b;padding:10px;white-space:nowrap;">
                                         <?= $date_released ?>
+                                    </td>
+                                    <td style="font-size:11px;text-align:center;padding:10px;">
+                                        <a href="receipt.php?id=<?= urlencode($txn['transaction_id'] ?? '') ?>&type=merchandise" target="_blank"
+                                           onclick="event.stopPropagation();"
+                                           style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid #002F70;border-radius:5px;color:#002F70;font-size:10px;font-weight:600;text-decoration:none;white-space:nowrap;">
+                                            <i class="fas fa-receipt"></i> View
+                                        </a>
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>
@@ -5672,10 +5745,6 @@ input[list] {
                         <div style="font-size:14px;font-weight:700;color:#1e293b;">Add New Service Type</div>
                         <div style="font-size:11px;color:#64748b;">Submitted for manager approval</div>
                     </div>
-                    <button onclick="closeAddServiceModal()"
-                            style="margin-left:auto;background:none;border:none;cursor:pointer;
-                                   color:#94a3b8;font-size:20px;line-height:1;padding:0;"
-                            title="Close">×</button>
                 </div>
 
                 <!-- Service Name -->
@@ -8303,8 +8372,15 @@ input[list] {
         // Staff view: simple tracker without manager-level KPIs
         ?>
 
-        <!-- Filter bar — Type, Date Range, Status, Mechanic, Service Type -->
+        <!-- Filter bar -->
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:14px;">
+            <!-- Row 1: Search -->
+            <div style="margin-bottom:10px;">
+                <input type="text" id="joSearchInput" oninput="joApplyFilters()"
+                       style="width:100%;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box;"
+                       placeholder="Search Transaction ID, Customer, JO No., Plate No.">
+            </div>
+            <!-- Row 2: Dropdowns + buttons -->
             <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;">
 
                 <!-- Type -->
@@ -8392,61 +8468,25 @@ input[list] {
             </div>
         </div>
 
-        <!-- KPI Snapshot Panel — collapsible, today's stats for logged-in staff -->
-        <div style="margin-bottom:12px;">
-            <button type="button"
-                    onclick="document.getElementById('kpiSnapshotPanel').classList.toggle('d-none')"
-                    class="txn-btn success">
-                <i class="fas fa-chart-bar"></i> My KPI Today
-            </button>
-        </div>
-        <div id="kpiSnapshotPanel" class="d-none"
-             style="display:none;margin-bottom:16px;background:#f0f7ff;border:1px solid #bfdbfe;
-                    border-radius:8px;padding:14px 18px;">
-            <div style="font-size:12px;font-weight:700;color:#1d6f42;margin-bottom:10px;">
-                <i class="fas fa-chart-bar"></i> My KPI — <?= date('F j, Y') ?>
+        <!-- KPI Cards — always visible -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px;">
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;text-align:center;">
+                <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Today's Transactions</div>
+                <div style="font-size:24px;font-weight:800;color:#002F70;"><?= (int)($mh_kpi_txn_count + $kpi_jo_count) ?></div>
             </div>
-            <div style="display:flex;gap:16px;flex-wrap:wrap;">
-                <div style="flex:1;background:#fff;border-radius:6px;
-                            padding:10px 14px;border:1px solid #dbeafe;text-align:center;">
-                    <div style="font-size:22px;font-weight:700;color:#002F6C;">
-                        <?= (int)$kpi_jo_count ?>
-                    </div>
-                    <div style="font-size:11px;color:#64748b;margin-top:2px;">Job Orders Encoded Today</div>
-                </div>
-                <div style="flex:1;background:#fff;border-radius:6px;
-                            padding:10px 14px;border:1px solid #dbeafe;text-align:center;">
-                    <div style="font-size:22px;font-weight:700;color:#002F6C;">
-                        <?= (int)$kpi_merch_released ?>
-                    </div>
-                    <div style="font-size:11px;color:#64748b;margin-top:2px;">Merchandise Released (pcs)</div>
-                </div>
-                <div style="flex:1;background:#fff;border-radius:6px;
-                            padding:10px 14px;border:1px solid #dbeafe;text-align:center;">
-                    <div style="font-size:22px;font-weight:700;color:#002F6C;">
-                        ₱<?= number_format($kpi_total_encoded, 2) ?>
-                    </div>
-                    <div style="font-size:11px;color:#64748b;margin-top:2px;">Total Amount Encoded</div>
-                </div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;text-align:center;">
+                <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Today's Sales</div>
+                <div style="font-size:20px;font-weight:800;color:#002F70;">₱<?= number_format($kpi_total_encoded, 2) ?></div>
+            </div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;text-align:center;">
+                <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Completed JO</div>
+                <div style="font-size:24px;font-weight:800;color:#16a34a;"><?= (int)array_reduce($job_orders, fn($c,$j) => $c + (($j['status']??'')==='Completed'?1:0), 0) ?></div>
+            </div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;text-align:center;">
+                <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Merchandise Sold</div>
+                <div style="font-size:24px;font-weight:800;color:#002F70;"><?= (int)$kpi_merch_released ?></div>
             </div>
         </div>
-        <script>
-        // KPI toggle — use inline display since d-none may be overridden by Bootstrap
-        (function(){
-            var kpiPanel = document.getElementById('kpiSnapshotPanel');
-            if (kpiPanel) {
-                // Auto-show if there's real data today
-                var hasData = (<?= (int)$kpi_jo_count ?> > 0 || <?= (int)$kpi_merch_released ?> > 0 || <?= round($kpi_total_encoded, 2) ?> > 0);
-                kpiPanel.style.display = hasData ? 'block' : 'none';
-            }
-            var kpiBtn = kpiPanel ? kpiPanel.previousElementSibling.querySelector('button') : null;
-            if (kpiBtn && kpiPanel) {
-                kpiBtn.onclick = function() {
-                    kpiPanel.style.display = (kpiPanel.style.display === 'none') ? 'block' : 'none';
-                };
-            }
-        })();
-        </script>
 
         <!-- Unified Job Order Table -->
         <div class="txn-card" style="margin-bottom: 80px;">
@@ -8466,25 +8506,33 @@ input[list] {
                 <div style="overflow-x:auto;">
                 <table class="txn-table" id="joUnifiedTable" style="table-layout:fixed;word-wrap:break-word;width:100%;">
                     <colgroup>
-                        <col style="width:8%;"><!-- JO Number -->
-                        <col style="width:12%;"><!-- Customer -->
-                        <col style="width:10%;"><!-- Vehicle -->
-                        <col style="width:12%;"><!-- Service Type -->
-                        <col style="width:10%;"><!-- Mechanic -->
-                        <col style="width:8%;" ><!-- Service Fee -->
-                        <col style="width:12%;"><!-- Status -->
-                        <col style="width:10%;"><!-- Date Created -->
-                        <col style="width:18%;" ><!-- Actions (increased from 6% to 18%) -->
+                        <col style="width:6%;"><!-- JO Number -->
+                        <col style="width:7%;"><!-- OR No. -->
+                        <col style="width:9%;"><!-- Customer -->
+                        <col style="width:7%;"><!-- Plate No. -->
+                        <col style="width:7%;"><!-- Vehicle -->
+                        <col style="width:9%;"><!-- Service Type -->
+                        <col style="width:8%;"><!-- Mechanic -->
+                        <col style="width:6%;"><!-- Service Fee -->
+                        <col style="width:8%;"><!-- Status -->
+                        <col style="width:7%;"><!-- Pay Status -->
+                        <col style="width:7%;"><!-- Est. Completion -->
+                        <col style="width:7%;"><!-- Date Created -->
+                        <col style="width:12%;"><!-- Actions -->
                     </colgroup>
                     <thead>
                         <tr>
                             <th style="font-size:11px;text-align:left;padding:8px 10px;">JO Number</th>
+                            <th style="font-size:11px;text-align:left;padding:8px 10px;">OR No.</th>
                             <th style="font-size:11px;text-align:left;padding:8px 10px;">Customer</th>
+                            <th style="font-size:11px;text-align:left;padding:8px 10px;">Plate No.</th>
                             <th style="font-size:11px;text-align:left;padding:8px 10px;">Vehicle</th>
                             <th style="font-size:11px;text-align:left;padding:8px 10px;">Service Type</th>
                             <th style="font-size:11px;text-align:left;padding:8px 10px;">Assigned Mechanic</th>
                             <th style="font-size:11px;text-align:right;padding:8px 10px;">Service Fee</th>
                             <th style="font-size:11px;text-align:left;padding:8px 10px;">Status</th>
+                            <th style="font-size:11px;text-align:left;padding:8px 10px;">Pay Status</th>
+                            <th style="font-size:11px;text-align:left;padding:8px 10px;">Est. Completion</th>
                             <th style="font-size:11px;text-align:left;padding:8px 10px;">Date Created</th>
                             <th style="font-size:11px;text-align:center;padding:8px 10px;">Actions</th>
                         </tr>
@@ -8498,19 +8546,17 @@ input[list] {
 
                         // Determine combined workflow label + badge style (plain text)
                         if (in_array($wf_status, ['Rejected', 'Cancelled']) || $val_status === 'Rejected') {
-                            $wf_color='#dc2626'; $wf_label='REJECTED'; $row_filter='rejected';
+                            $wf_color='#dc2626'; $wf_bg='#fee2e2'; $wf_label='Cancelled'; $row_filter='rejected';
                         } elseif ($wf_status === 'Completed' && $val_status === 'Pending Validation') {
-                            // NEW: Completed pero wala pa approve ni manager
-                            $wf_color='#d97706'; $wf_label='COMPLETED / PENDING VALIDATION'; $row_filter='completed';
+                            $wf_color='#0284c7'; $wf_bg='#e0f2fe'; $wf_label='Ready for Release'; $row_filter='completed';
                         } elseif ($wf_status === 'Completed' || $val_status === 'Completed') {
-                            $wf_color='#16a34a'; $wf_label='COMPLETED'; $row_filter='completed';
+                            $wf_color='#16a34a'; $wf_bg='#dcfce7'; $wf_label='Completed'; $row_filter='completed';
                         } elseif ($wf_status === 'In Progress' || $val_status === 'In Progress') {
-                            $wf_color='#2563eb'; $wf_label='IN PROGRESS'; $row_filter='inprogress';
+                            $wf_color='#d97706'; $wf_bg='#fef9c3'; $wf_label='In Progress'; $row_filter='inprogress';
                         } elseif (in_array($val_status, ['Approved', 'Validated'])) {
-                            $wf_color='#16a34a'; $wf_label='APPROVED'; $row_filter='approved';
+                            $wf_color='#16a34a'; $wf_bg='#dcfce7'; $wf_label='Approved'; $row_filter='approved';
                         } else {
-                            // Catches: 'Pending Validation', 'Pending', '', NULL
-                            $wf_color='#d97706'; $wf_label='PENDING VALIDATION'; $row_filter='pending';
+                            $wf_color='#64748b'; $wf_bg='#f1f5f9'; $wf_label='Pending'; $row_filter='pending';
                         }
 
                         // Payment badge — supports both new and legacy status values
@@ -8587,11 +8633,28 @@ input[list] {
                         data-jo-mechanic="<?= htmlspecialchars($job['mechanic_name'] ?? '') ?>"
                         data-jo-service="<?= htmlspecialchars($job['service_type'] ?? '') ?>"
                         data-jo-date="<?= date('Y-m-d', strtotime($job['created_at'])) ?>"
+                        data-jo-search="<?= htmlspecialchars(strtolower(implode(' ', [
+                            $job['job_order_id'] ?? ('#'.$job['id']),
+                            $job['customer_name'] ?? '',
+                            $job['vehicle_plate'] ?? '',
+                            $job['service_type'] ?? '',
+                        ]))) ?>"
                         style="<?= $wf_status === 'Rejected' ? 'background:#fff8f8;' : ($jo_is_overdue ? 'background:#fff5f5;border-left:3px solid #dc2626;' : '') ?>">
 
                         <!-- JO Number -->
                         <td style="padding:10px;font-weight:700;color:<?= $wf_status==='Rejected' ? '#dc2626' : 'var(--petron-blue)' ?>;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                             <?= htmlspecialchars($job['job_order_id'] ?? ('#'.$job['id'])) ?>
+                        </td>
+
+                        <!-- OR No. -->
+                        <td style="padding:10px;font-size:11px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                            <?php
+                            $jo_or = '';
+                            if (!empty($job['created_at'])) {
+                                $jo_or = 'OR-' . date('Y', strtotime($job['created_at'])) . '-' . str_pad($job['id'], 6, '0', STR_PAD_LEFT);
+                            }
+                            echo $jo_or ? htmlspecialchars($jo_or) : '<span style="color:#cbd5e1;">—</span>';
+                            ?>
                         </td>
 
                         <!-- Customer -->
@@ -8600,16 +8663,14 @@ input[list] {
                             <?= htmlspecialchars($job['customer_name'] ?? '—') ?>
                         </td>
 
-                        <!-- Vehicle -->
+                        <!-- Plate No. -->
+                        <td style="padding:10px;font-size:12px;font-weight:700;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                            <?= !empty($job['vehicle_plate']) ? htmlspecialchars($job['vehicle_plate']) : '<span style="color:#cbd5e1;">—</span>' ?>
+                        </td>
+
+                        <!-- Vehicle Type -->
                         <td style="padding:10px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                            <?php if (!empty($job['vehicle_plate'])): ?>
-                            <strong style="color:#1e293b;"><?= htmlspecialchars($job['vehicle_plate']) ?></strong>
-                            <?php if (!empty($job['vehicle_type'])): ?>
-                            <span style="color:#94a3b8;"> · <?= htmlspecialchars($job['vehicle_type']) ?></span>
-                            <?php endif; ?>
-                            <?php else: ?>
-                            <span style="color:#cbd5e1;">—</span>
-                            <?php endif; ?>
+                            <?= !empty($job['vehicle_type']) ? htmlspecialchars($job['vehicle_type']) : '<span style="color:#cbd5e1;">—</span>' ?>
                         </td>
 
                         <!-- Service Type -->
@@ -8639,10 +8700,35 @@ input[list] {
 
                         <!-- Status -->
                         <td style="padding:10px;">
-                            <span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.4px;white-space:nowrap;
-                                         background:<?= $wf_color ?>18;color:<?= $wf_color ?>;border:1px solid <?= $wf_color ?>40;">
+                            <span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.3px;white-space:nowrap;
+                                         background:<?= $wf_bg ?>;color:<?= $wf_color ?>;border:1px solid <?= $wf_color ?>40;">
                                 <?= $wf_label ?>
                             </span>
+                        </td>
+
+                        <!-- Payment Status -->
+                        <td style="padding:10px;">
+                            <span style="display:inline-block;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.3px;white-space:nowrap;
+                                         background:<?= $pay_color ?>18;color:<?= $pay_color ?>;border:1px solid <?= $pay_color ?>40;">
+                                <?= $pay_label ?>
+                            </span>
+                        </td>
+
+                        <!-- Est. Completion -->
+                        <td style="padding:10px;font-size:11px;color:#64748b;white-space:nowrap;">
+                            <?php
+                            $est_comp = $job['due_date'] ?? null;
+                            if ($est_comp && $est_comp !== '0000-00-00') {
+                                $comp_ts = strtotime($est_comp);
+                                $today_ts = strtotime(date('Y-m-d'));
+                                $color = ($comp_ts < $today_ts && !in_array($wf_status, ['Completed'])) ? '#dc2626' : '#64748b';
+                                echo '<span style="color:' . $color . ';">' . date('M j, Y', $comp_ts) . '</span>';
+                            } elseif (!empty($job['estimated_duration'])) {
+                                echo '<span style="color:#94a3b8;">' . (int)$job['estimated_duration'] . ' mins</span>';
+                            } else {
+                                echo '<span style="color:#cbd5e1;">—</span>';
+                            }
+                            ?>
                         </td>
 
                         <!-- Date Created -->
@@ -8652,7 +8738,7 @@ input[list] {
                         </td>
 
 
-                        <td style="padding:8px 10px;">
+                        <td style="padding:8px 10px;min-width:120px;">
                             <?php
                                 $jo_total   = (float)($job['total_cost'] ?? $job['estimated_cost'] ?? 0);
                                 $jo_paid    = (float)($job['amount_paid'] ?? 0);
@@ -8723,7 +8809,7 @@ input[list] {
                                         <!-- Paid = COMPLETE, Print Receipt Only (NO re-issue) - GRAY -->
                                         <button type="button"
                                                 onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
-                                                class="txn-btn secondary">
+                                                class="txn-btn secondary" style="white-space:nowrap;font-size:11px;">
                                             <i class="fas fa-print"></i> Print Receipt
                                         </button>
                                         <span style="font-size:11px;color:#16a34a;font-weight:600;text-align:center;padding:4px 0;display:flex;align-items:center;justify-content:center;gap:4px;">
@@ -8824,6 +8910,7 @@ input[list] {
             endDate:     '',
             mechanic:    '',
             serviceType: '',
+            search:      '',
             page:    1,
             per_page: 10
         };
@@ -8835,6 +8922,7 @@ input[list] {
             var statusEl  = document.getElementById('joFilterStatus');
             var mechEl    = document.getElementById('joFilterMechanic');
             var svcEl     = document.getElementById('joFilterServiceType');
+            var searchEl  = document.getElementById('joSearchInput');
 
             joState.type        = typeEl    ? typeEl.value    : 'all';
             joState.startDate   = startEl   ? startEl.value   : '';
@@ -8842,6 +8930,7 @@ input[list] {
             joState.status      = statusEl  ? statusEl.value  : 'all';
             joState.mechanic    = mechEl    ? mechEl.value    : '';
             joState.serviceType = svcEl     ? svcEl.value     : '';
+            joState.search      = searchEl  ? searchEl.value.trim().toLowerCase() : '';
             joState.page = 1;
             joRenderTable();
         }
@@ -8856,9 +8945,12 @@ input[list] {
                 var el = document.getElementById(id);
                 if (el) el.value = '';
             });
+            var searchEl = document.getElementById('joSearchInput');
+            if (searchEl) searchEl.value = '';
             joState.type = 'all'; joState.status = 'all';
             joState.startDate = ''; joState.endDate = '';
             joState.mechanic = ''; joState.serviceType = '';
+            joState.search = '';
             joState.page = 1;
             joRenderTable();
         }
@@ -8892,7 +8984,14 @@ input[list] {
                 // Service type filter (exact match)
                 var svcOk = (!joState.serviceType || rowService === joState.serviceType);
 
-                if (statusOk && typeOk && dateOk && mechOk && svcOk) {
+                // Search filter
+                var searchOk = true;
+                if (joState.search) {
+                    var rowSearchData = row.getAttribute('data-jo-search') || '';
+                    searchOk = rowSearchData.indexOf(joState.search) !== -1;
+                }
+
+                if (statusOk && typeOk && dateOk && mechOk && svcOk && searchOk) {
                     visibleRows.push(row);
                 } else {
                     row.style.display = 'none';
@@ -9292,64 +9391,92 @@ input[list] {
               </div>
             </div>
             <div style="padding:20px;max-height:70vh;overflow-y:auto;">
-              <div style="display:grid;gap:14px;">
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+              <!-- Transaction Information -->
+              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:6px 12px;margin:0 -20px 14px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                <i class="fas fa-info-circle" style="margin-right:5px;"></i>Transaction Information
+              </div>
+              <div style="display:grid;gap:10px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">JO Number:</span>
+                  <span id="viewJORef2" style="font-size:13px;color:#002F70;font-weight:700;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Transaction ID:</span>
+                  <span id="viewJOTxnId" style="font-size:12px;color:#475569;font-family:monospace;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
                   <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Customer:</span>
                   <span id="viewJOCustomer" style="font-size:13px;color:#1e293b;font-weight:600;">—</span>
                 </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
                   <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Vehicle:</span>
                   <span id="viewJOVehicle" style="font-size:13px;color:#475569;">—</span>
                 </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Service Type:</span>
-                  <span id="viewJOService" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Parts / Items:</span>
-                  <span id="viewJOParts" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
                   <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Mechanic:</span>
                   <span id="viewJOMechanic" style="font-size:13px;color:#475569;">—</span>
                 </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Est. Duration:</span>
-                  <span id="viewJODuration" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Workflow Status:</span>
-                  <span id="viewJOWorkflow" style="font-size:11px;font-weight:700;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Status:</span>
-                  <span id="viewJOPayment" style="font-size:11px;font-weight:700;">—</span>
-                </div>
-                <div style="border-top:1px solid #e2e8f0;padding-top:14px;display:grid;gap:8px;">
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:12px;color:#64748b;font-weight:600;">Total Cost:</span>
-                    <span id="viewJOTotal" style="font-size:16px;font-weight:800;color:#003d7a;">₱0.00</span>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:12px;color:#64748b;font-weight:600;">Amount Paid:</span>
-                    <span id="viewJOPaid" style="font-size:14px;font-weight:700;color:#166534;">₱0.00</span>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:12px;color:#64748b;font-weight:600;">Balance Due:</span>
-                    <span id="viewJOBalance" style="font-size:14px;font-weight:700;color:#dc2626;">₱0.00</span>
-                  </div>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Remarks:</span>
-                  <span id="viewJORemarks" style="font-size:12px;color:#475569;font-style:italic;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Created:</span>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Date Created:</span>
                   <span id="viewJOCreated" style="font-size:12px;color:#64748b;">—</span>
                 </div>
               </div>
+              <!-- Services -->
+              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:6px 12px;margin:16px -20px 14px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                <i class="fas fa-wrench" style="margin-right:5px;"></i>Services
+              </div>
+              <div style="display:grid;gap:10px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Service Type:</span>
+                  <span id="viewJOService" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Est. Duration:</span>
+                  <span id="viewJODuration" style="font-size:13px;color:#475569;">—</span>
+                </div>
+              </div>
+              <!-- Merchandise -->
+              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:6px 12px;margin:16px -20px 14px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                <i class="fas fa-box" style="margin-right:5px;"></i>Merchandise
+              </div>
+              <div style="display:grid;gap:10px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Parts / Items:</span>
+                  <span id="viewJOParts" style="font-size:13px;color:#475569;">—</span>
+                </div>
+              </div>
+              <!-- Payment -->
+              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:6px 12px;margin:16px -20px 14px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                <i class="fas fa-credit-card" style="margin-right:5px;"></i>Payment
+              </div>
+              <div style="display:grid;gap:10px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Status:</span>
+                  <span id="viewJOWorkflow" style="font-size:11px;font-weight:700;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Status:</span>
+                  <span id="viewJOPayment" style="font-size:11px;font-weight:700;">—</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding-top:4px;">
+                  <span style="font-size:12px;color:#64748b;font-weight:600;">Total Cost:</span>
+                  <span id="viewJOTotal" style="font-size:16px;font-weight:800;color:#003d7a;">₱0.00</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-size:12px;color:#64748b;font-weight:600;">Amount Paid:</span>
+                  <span id="viewJOPaid" style="font-size:14px;font-weight:700;color:#166534;">₱0.00</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-size:12px;color:#64748b;font-weight:600;">Balance Due:</span>
+                  <span id="viewJOBalance" style="font-size:14px;font-weight:700;color:#dc2626;">₱0.00</span>
+                </div>
+              </div>
             </div>
-            <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;">
+            <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+              <button id="viewJOPrintBtn" onclick="printJobOrderReceiptFromModal()"
+                      style="padding:0 16px;height:36px;background:#002F70;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                <i class="fas fa-print"></i> Print Receipt
+              </button>
               <button onclick="closeViewJobOrderModal()" style="padding:0 16px !important;height:36px !important;background:#ffffff !important;color:#64748b !important;
                       border:1px solid #64748b !important;border-radius:7px !important;font-size:13px !important;font-weight:600 !important;cursor:pointer !important;
                       display:inline-flex !important;align-items:center !important;justify-content:center !important;transition:all 0.15s !important;min-width:90px !important;"
@@ -9648,28 +9775,42 @@ input[list] {
         // ── Job Order Modal Functions ───────────────────────────────────────
         
         // View Job Order Details Modal
+        // Store current JO ref for print
+        var _currentViewJORef = '';
+        var _currentViewJOSource = '';
+
         function viewJobOrderDetails(joData) {
             var fmt = function(n){ return '₱' + parseFloat(n).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2}); };
-            
-            document.getElementById('viewJORef').textContent = joData.jo_ref || '—';
+
+            _currentViewJORef    = joData.jo_ref || '';
+            _currentViewJOSource = joData.source || 'job_orders';
+
+            document.getElementById('viewJORef').textContent  = joData.jo_ref || '—';
+            document.getElementById('viewJORef2').textContent = joData.jo_ref || '—';
+            document.getElementById('viewJOTxnId').textContent = joData.jo_ref || '—';
             document.getElementById('viewJOCustomer').textContent = joData.customer || '—';
-            document.getElementById('viewJOVehicle').textContent = (joData.vehicle_plate || '') + 
+            document.getElementById('viewJOVehicle').textContent = (joData.vehicle_plate || '') +
                 (joData.vehicle_type ? ' (' + joData.vehicle_type + ')' : '') || '—';
-            document.getElementById('viewJOService').textContent = joData.service_type || '—';
-            document.getElementById('viewJOParts').textContent = joData.parts || '—';
+            document.getElementById('viewJOService').textContent  = joData.service_type || '—';
+            document.getElementById('viewJOParts').textContent    = joData.parts || '—';
             document.getElementById('viewJOMechanic').textContent = joData.mechanic || 'Unassigned';
             document.getElementById('viewJODuration').textContent = joData.estimated_duration ? joData.estimated_duration + ' mins' : '—';
             document.getElementById('viewJOWorkflow').textContent = joData.workflow_status || '—';
-            document.getElementById('viewJOPayment').textContent = joData.payment_status || '—';
-            document.getElementById('viewJOTotal').textContent = fmt(joData.total || 0);
-            document.getElementById('viewJOPaid').textContent = fmt(joData.paid || 0);
+            document.getElementById('viewJOPayment').textContent  = joData.payment_status || '—';
+            document.getElementById('viewJOTotal').textContent   = fmt(joData.total || 0);
+            document.getElementById('viewJOPaid').textContent    = fmt(joData.paid || 0);
             document.getElementById('viewJOBalance').textContent = fmt(joData.balance || 0);
-            document.getElementById('viewJORemarks').textContent = joData.remarks || 'None';
-            document.getElementById('viewJOCreated').textContent = joData.created_at 
-                ? new Date(joData.created_at).toLocaleString('en-PH', {dateStyle:'medium', timeStyle:'short'}) 
+            document.getElementById('viewJOCreated').textContent = joData.created_at
+                ? new Date(joData.created_at).toLocaleString('en-PH', {dateStyle:'medium', timeStyle:'short'})
                 : '—';
-            
+
             document.getElementById('viewJobOrderModal').style.display = 'flex';
+        }
+
+        function printJobOrderReceiptFromModal() {
+            if (_currentViewJORef) {
+                printJobOrderReceipt(0, _currentViewJORef);
+            }
         }
         
         function closeViewJobOrderModal() {

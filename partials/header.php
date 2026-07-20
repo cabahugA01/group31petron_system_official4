@@ -1683,6 +1683,13 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         position: relative;
         z-index: 5;
         pointer-events: none;  /* Prevent center area from blocking header icon clicks */
+        min-width: 0;
+    }
+    /* Collapse header-center when empty (no search bar rendered for this role) */
+    .header-center:not(:has(#searchWrapper)) {
+        flex-grow: 0;
+        padding: 0;
+        width: 0;
     }
     .header-right {
         display: flex;
@@ -3708,30 +3715,8 @@ require_once __DIR__ . '/rbac_menu.php';
                 </div>
             </div>
         </div>
-        <div class="header-center">
-            <!-- Global Search Bar -->
-            <?php if(in_array($role, ['superadmin', 'developer', 'admin', 'manager', 'staff'])): ?>
-            <div style="position:relative;" id="searchWrapper">
-                <form method="get" action="<?php echo $public_base_url; ?>/search.php" style="margin:0;display:flex;" autocomplete="off">
-                    <input type="text" id="searchInput" name="q"
-                           placeholder="<?php
-                               if (in_array($role, ['superadmin', 'developer'])) echo 'Search Stations / Users / System Logs...';
-                               elseif ($role === 'admin')   echo 'Search Transactions / Customers / Inventory...';
-                               elseif ($role === 'manager') echo 'Search Transactions / Job Orders / Fuel / Products...';
-                               else echo 'Search Transactions / Customers / Products...';
-                           ?>"
-                           style="padding:6px 12px;border-radius:25px 0 0 25px;border:2px solid rgba(0,47,112,0.2);border-right:none;font-size:13px;width:220px;background:rgba(255,255,255,0.9);transition:all 0.3s ease;outline:none;">
-                    <button type="submit"
-                            style="padding:6px 12px;border-radius:0 25px 25px 0;border:2px solid rgba(0,47,112,0.2);border-left:none;background:var(--petron-blue);color:white;font-size:13px;cursor:pointer;transition:all 0.3s ease;">
-                        <i class="fas fa-search"></i>
-                    </button>
-                </form>
-                <!-- Autocomplete suggestions dropdown -->
-                <div id="searchSuggestions"
-                     style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:#fff;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.14);border:1px solid #e2e8f0;z-index:9999;overflow:hidden;max-height:420px;overflow-y:auto;">
-                </div>
-            </div>
-            <?php endif; ?>
+        <div class="header-center" <?php if(!in_array($role, ['superadmin','developer','admin','manager'])): ?>style="display:none"<?php endif; ?>>
+            <!-- Global Search Bar removed per user request -->
         </div>
         <div class="header-right">
             <!-- Variance Alert Badge (Job Order Tracker) â€” shown only to staff on merchandise page -->
@@ -3934,6 +3919,16 @@ require_once __DIR__ . '/rbac_menu.php';
         gap: 10px;
         width: min(390px, calc(100vw - 32px));
         pointer-events: none;
+        min-height: 0;
+        background: transparent;
+    }
+    /* Hide container and all children when no toast divs present */
+    #petron-toast-container:not(:has(.petron-toast)):not(:has(.petron-flash)) {
+        display: none !important;
+    }
+    /* Hide container when no visible toast children */
+    #petron-toast-container > *:not(.petron-toast):not(.petron-flash) {
+        display: none;
     }
     .petron-toast {
         position: relative;
@@ -4094,7 +4089,7 @@ require_once __DIR__ . '/rbac_menu.php';
     ?>
 
     <!-- GLOBAL JS TOAST HELPER - Top-right toast notifications -->
-    <div id="petron-toast-container" aria-live="polite" aria-atomic="true">
+    <div id="petron-toast-container" aria-live="polite" aria-atomic="true"<?php if(empty($__toasts)): ?> style="display:none"<?php endif; ?>>
         <?php foreach ($__toasts as $__toast): ?>
         <div class="petron-toast toast-<?php echo htmlspecialchars($__toast['type'], ENT_QUOTES); ?>" role="status">
             <i class="fas <?php echo htmlspecialchars($__toast['icon'], ENT_QUOTES); ?> petron-toast-icon"></i>
@@ -4138,6 +4133,11 @@ require_once __DIR__ . '/rbac_menu.php';
             toast.classList.add('toast-hide');
             setTimeout(function() {
                 if (toast.parentNode) toast.parentNode.removeChild(toast);
+                // Hide container when no toasts remain
+                var container = document.getElementById('petron-toast-container');
+                if (container && container.querySelectorAll('.petron-toast, .petron-flash').length === 0) {
+                    container.style.display = 'none';
+                }
             }, 380);
         }
 
@@ -4160,9 +4160,11 @@ require_once __DIR__ . '/rbac_menu.php';
         }
 
         window.showToast = window.showToast || function(message, type, duration, title) {
+            if (String(message == null ? '' : message).trim() === '') return;
             type = normalizeToastType(type);
             var container = document.getElementById('petron-toast-container');
             if (!container) return;
+            container.style.display = 'flex'; // ensure visible when adding toast
             var toast = document.createElement('div');
             toast.className = 'petron-toast toast-' + type;
             toast.setAttribute('role', 'status');

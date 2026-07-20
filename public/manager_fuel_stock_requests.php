@@ -340,7 +340,6 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 <div class="page-head">
     <div>
         <h1 class="h1"><i class="fas fa-clipboard-list" style="color:#667eea;"></i> Stock Requests Management</h1>
-        <div class="sub">Review fuel and merchandise stock requests, approve/reject, and generate Purchase Orders</div>
     </div>
 </div>
 

@@ -270,11 +270,25 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-.stock-page{padding:20px 24px 56px;color:#1e293b;background:#f8fafc;min-height:calc(100vh - 70px);}
+body .main,
+.main,
+.main-content {
+    padding: 0 !important;
+}
+
+.stock-page {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 20px 24px 56px;
+    color: #1e293b;
+    background: #f8fafc;
+    min-height: calc(100vh - 70px);
+}
 .stock-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:18px;}
 .stock-title{font-size:26px;font-weight:800;color:#002F70;margin:0;display:flex;align-items:center;gap:10px;text-transform:uppercase;}
 .stock-sub{font-size:13px;color:#64748b;margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;}
-.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:16px;}
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:16px;width:100%;box-sizing:border-box;}
 .summary-card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(15,23,42,.04);}
 .summary-label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;font-weight:800;}
 .summary-value{font-size:28px;color:#002F70;font-weight:850;margin-top:4px;}
@@ -282,7 +296,7 @@ include __DIR__ . '/../partials/header.php';
 .stock-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 16px;}
 .stock-tab{display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border:1px solid #002F70;border-radius:6px;background:#fff;color:#002F70;text-decoration:none;font-size:12px;font-weight:800;}
 .stock-tab.active,.stock-tab:hover{background:#002F70;color:#fff;text-decoration:none;}
-.filter-panel{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:16px;box-shadow:0 2px 8px rgba(15,23,42,.04);}
+.filter-panel{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:16px;box-shadow:0 2px 8px rgba(15,23,42,.04);width:100%;box-sizing:border-box;}
 .filter-grid{display:grid;grid-template-columns:2fr 1.4fr 1fr 1fr auto;gap:10px;align-items:end;}
 .field label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.45px;font-weight:800;color:#64748b;margin-bottom:5px;}
 .field input,.field select{width:100%;height:38px;border:1px solid #cbd5e1;border-radius:6px;padding:0 10px;font-size:12px;color:#1e293b;background:#fff;box-sizing:border-box;}
@@ -293,10 +307,10 @@ include __DIR__ . '/../partials/header.php';
 .si-btn.outline{background:#fff!important;color:#475569!important;border-color:#cbd5e1!important;}
 .si-btn.success{background:#16a34a!important;color:#fff!important;border-color:#16a34a!important;}
 .si-btn:disabled{opacity:.55;cursor:not-allowed;}
-.table-card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow-x:auto;overflow-y:hidden;box-shadow:0 2px 8px rgba(15,23,42,.04);}
+.table-card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow-x:auto;overflow-y:hidden;box-shadow:0 2px 8px rgba(15,23,42,.04);width:100%;box-sizing:border-box;}
 .table-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid #e2e8f0;}
 .table-title{font-size:15px;font-weight:850;color:#002F70;display:flex;align-items:center;gap:8px;}
-.stock-table{width:100%;min-width:760px;border-collapse:collapse;font-size:12px;table-layout:fixed;}
+.stock-table{width:100%;border-collapse:collapse;font-size:12px;}
 .stock-table th{background:#002F70;color:#fff;text-align:left;padding:11px 12px;text-transform:uppercase;letter-spacing:.45px;font-size:10px;}
 .stock-table td{padding:11px 12px;border-bottom:1px solid #eef2f7;vertical-align:middle;overflow-wrap:anywhere;}
 .click-row{cursor:pointer;}
@@ -343,7 +357,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="stock-head">
         <div>
             <h1 class="stock-title"><i class="fas fa-dolly"></i> Stock-In</h1>
-            <div class="stock-sub">Pending Stock-In</div>
         </div>
     </div>
 

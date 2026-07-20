@@ -1107,7 +1107,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="page-head">
         <div>
             <h1 class="h1">Manager Deliveries Management</h1>
-            <div class="sub">Complete delivery workflow: Inventory Alert → PO Creation → Admin Forward → Supplier Delivery → Manager Confirmation → Inventory Update → Close</div>
         </div>
     </div>
 

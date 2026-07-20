@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'manager_deliveries';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -162,7 +162,6 @@ include __DIR__ . '/../partials/header.php';
 <div class="page-head">
   <div>
     <h1 class="h1"><i class="<?php echo $sec_ico; ?>"></i> <?php echo $sec_title; ?></h1>
-    <div class="sub">Station #<?php echo (int)$station_id; ?> &mdash; Deliveries Management Oversight</div>
   </div>
 </div>
 

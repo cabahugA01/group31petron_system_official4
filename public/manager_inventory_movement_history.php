@@ -472,36 +472,6 @@ include __DIR__ . '/../partials/header.php';
 <div class="int-head">
     <div>
         <h1><i class="fas fa-history"></i> Inventory Movement History</h1>
-        <div class="sub">Detailed audit trail and logs of all merchandise stock and fuel movements.</div>
-    </div>
-    <div style="display:flex;gap:8px;align-items:center;">
-        <?php if ($active_tab === 'merch'): ?>
-        <button onclick="exportMovTableExcel()" class="flt-btn flt-btn-excel" title="Export to Excel">
-            <i class="fas fa-file-excel"></i> Excel
-        </button>
-        <button onclick="exportMovTableCSV()" class="flt-btn flt-btn-csv" title="Export to CSV">
-            <i class="fas fa-file-csv"></i> CSV
-        </button>
-        <button onclick="exportMovTablePDF()" class="flt-btn flt-btn-pdf" title="Export to PDF">
-            <i class="fas fa-file-pdf"></i> Export PDF
-        </button>
-        <button onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print">
-            <i class="fas fa-print"></i> Print
-        </button>
-        <?php else: ?>
-        <button onclick="exportFuelTableExcel()" class="flt-btn flt-btn-excel" title="Export to Excel">
-            <i class="fas fa-file-excel"></i> Excel
-        </button>
-        <button onclick="exportFuelTableCSV()" class="flt-btn flt-btn-csv" title="Export to CSV">
-            <i class="fas fa-file-csv"></i> CSV
-        </button>
-        <button onclick="exportFuelTablePDF()" class="flt-btn flt-btn-pdf" title="Export to PDF">
-            <i class="fas fa-file-pdf"></i> Export PDF
-        </button>
-        <button onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print">
-            <i class="fas fa-print"></i> Print
-        </button>
-        <?php endif; ?>
     </div>
 </div>
 

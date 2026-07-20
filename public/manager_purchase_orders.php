@@ -180,9 +180,11 @@ include __DIR__ . '/../partials/header.php';
 <style>
 /* ── Page Layout ─────────────────────────────────────────── */
 .mgr-po-wrap {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 10px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 20px 24px 56px;
 }
 
 .page-head {
@@ -469,7 +471,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="page-head">
         <div>
             <h1 class="h1">Purchase Orders</h1>
-            <div class="sub">VIEW THE HISTORY OF PURCHASE ORDERS APPROVED BY THE ADMIN, INCLUDING PROPOSED MANAGER PRICES FOR BOTH FUEL AND MERCHANDISE.</div>
         </div>
     </div>
 

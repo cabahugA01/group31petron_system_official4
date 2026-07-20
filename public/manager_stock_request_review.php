@@ -1071,9 +1071,6 @@ body .main,
         <h1 class="pr-title">
             <i class="fas fa-clipboard-list" style="color: #002F6C;"></i> Purchase Requests
         </h1>
-        <div class="pr-subtitle">
-            Review staff purchase requests and generate approved purchase orders for supplier release.
-        </div>
     </div>
 
     <!-- Alert Notifications -->

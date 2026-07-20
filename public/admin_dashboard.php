@@ -1734,7 +1734,6 @@ include __DIR__ . '/../partials/header.php';
         <div>
             <h1>WELCOME, <?= adm_h(strtoupper($display_name)) ?>!</h1>
             <div class="admin-kicker"><i class="fas fa-user-shield"></i> Admin Dashboard</div>
-            <p class="admin-subtext">Monitor overall station performance, users, inventory, financial operations, approvals, and system activities.</p>
         </div>
         <form class="admin-filter-form" method="get" action="admin_dashboard.php">
             <input class="admin-date-input" type="date" name="date" value="<?= adm_h($date_filter) ?>">

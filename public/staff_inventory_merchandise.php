@@ -37,6 +37,8 @@ try {
                COALESCE(si.capacity, 480)            AS capacity,
                COALESCE(si.reorder_level, 24)         AS reorder_level,
                COALESCE(si.critical_level, 10)         AS critical_level,
+               si.physical_count,
+               si.variance,
                si.last_updated AS last_updated
         FROM inventory_products ip
         LEFT JOIN station_inventory si
@@ -161,6 +163,8 @@ foreach ($merch_inventory as $item) {
         'reorder'    => (int)$reorder,
         'critical'   => (int)$critical,
         'fill_pct'   => round($fill_pct, 1),
+        'physical_count' => $item['physical_count'] !== null ? (float)$item['physical_count'] : null,
+        'variance'   => $item['variance'] !== null ? (float)$item['variance'] : null,
         'status'     => $st,
         'status_key' => $st_cls,
         'color'      => $sc,
@@ -189,6 +193,7 @@ unset($_SESSION['inv_notice']);
 <?php endif; ?>
 <style>
 body,html{overflow-x:hidden;max-width:100%;}
+.stock-page{overflow-x:hidden;max-width:100%;}
 .page-head{max-width:100%;overflow:hidden;}
 
 /* ── Summary Cards ── */
@@ -211,6 +216,9 @@ body,html{overflow-x:hidden;max-width:100%;}
 .inv-card-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #e9ecef;flex-wrap:wrap;gap:8px;}
 .inv-card-title{font-size:1rem;font-weight:700;color:#002F70;display:flex;align-items:center;gap:8px;}
 .inv-card-body{padding:16px 20px;}
+/* Ensure dropdowns open downward by giving enough space */
+.inv-filter-bar select { position: relative; }
+.page { min-height: 200vh; }
 .cat-header td{font-weight:700;background:#e9ecef!important;color:#495057!important;text-transform:uppercase;font-size:.8em;letter-spacing:.5px;border-bottom:2px solid #dee2e6;padding:8px 12px;text-align:center;}
 
 /* ── Fill bar ── */
@@ -226,49 +234,14 @@ body,html{overflow-x:hidden;max-width:100%;}
 .mv-none{color:#94a3b8;}
 
 /* ── Table ── */
-.table-wrap{overflow:hidden;width:100%;}
-#merchTable{width:100%;table-layout:fixed;border-collapse:collapse;}
+.table-wrap{overflow-x:auto;width:100%;-webkit-overflow-scrolling:touch;}
+#merchTable{width:100%;border-collapse:collapse;table-layout:fixed;}
 #merchTable thead th{background:#002F70;color:#fff;padding:10px 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-#merchTable tbody td{padding:9px 8px;font-size:12px;border-bottom:1px solid #f1f5f9;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#merchTable tbody td{padding:8px;font-size:12px;border-bottom:1px solid #f1f5f9;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;}
 #merchTable tbody tr:hover td{background:#f8faff;}
-/* 10 columns: SKU|Name|Category|Unit|Capacity|Current+Reorder|Status|Last Movement|Timestamp|Actions */
-#merchTable th:nth-child(1),#merchTable td:nth-child(1){width:8%;}
-#merchTable th:nth-child(2),#merchTable td:nth-child(2){width:18%;white-space:normal;}
-#merchTable th:nth-child(3),#merchTable td:nth-child(3){width:13%;text-align:center;}
-#merchTable th:nth-child(4),#merchTable td:nth-child(4){width:6%;text-align:center;}
-#merchTable th:nth-child(5),#merchTable td:nth-child(5){width:8%;text-align:center;}
-#merchTable th:nth-child(6),#merchTable td:nth-child(6){width:14%;}
-#merchTable th:nth-child(7),#merchTable td:nth-child(7){width:10%;text-align:center;}
-#merchTable th:nth-child(8),#merchTable td:nth-child(8){width:10%;text-align:center;}
-#merchTable th:nth-child(9),#merchTable td:nth-child(9){width:10%;text-align:center;}
-#merchTable th:nth-child(10),#merchTable td:nth-child(10){width:9%;text-align:center;}
-@media(max-width:1024px){
-  #merchTable th:nth-child(9),#merchTable td:nth-child(9){display:none;}
-}
 @media(max-width:768px){
-  #merchTable th:nth-child(1),#merchTable td:nth-child(1),
-  #merchTable th:nth-child(4),#merchTable td:nth-child(4),
-  #merchTable th:nth-child(5),#merchTable td:nth-child(5),
-  #merchTable th:nth-child(8),#merchTable td:nth-child(8),
-  #merchTable th:nth-child(9),#merchTable td:nth-child(9){display:none;}
-  #merchTable th:nth-child(2),#merchTable td:nth-child(2){width:30%;}
-  #merchTable th:nth-child(3),#merchTable td:nth-child(3){width:22%;}
-  #merchTable th:nth-child(6),#merchTable td:nth-child(6){width:22%;}
-  #merchTable th:nth-child(7),#merchTable td:nth-child(7){width:16%;}
-  #merchTable th:nth-child(10),#merchTable td:nth-child(10){width:10%;}
   .inv-card-body{padding:12px;}
 }
-
-/* ── Modal base ── */
-#merchTable tbody tr.merch-row td:nth-child(7),
-#merchTable tbody tr.merch-row td:nth-child(n+9){display:none !important;}
-#merchTable th:nth-child(1),#merchTable tbody tr.merch-row td:nth-child(1){width:11% !important;display:table-cell !important;}
-#merchTable th:nth-child(2),#merchTable tbody tr.merch-row td:nth-child(2){width:16% !important;display:table-cell !important;}
-#merchTable th:nth-child(3),#merchTable tbody tr.merch-row td:nth-child(3){width:24% !important;display:table-cell !important;}
-#merchTable th:nth-child(4),#merchTable tbody tr.merch-row td:nth-child(4){width:16% !important;display:table-cell !important;text-align:center;}
-#merchTable th:nth-child(5),#merchTable tbody tr.merch-row td:nth-child(5){width:12% !important;display:table-cell !important;text-align:center;}
-#merchTable th:nth-child(6),#merchTable tbody tr.merch-row td:nth-child(6){width:12% !important;display:table-cell !important;text-align:center;}
-#merchTable th:nth-child(7),#merchTable tbody tr.merch-row td:nth-child(8){width:9% !important;display:table-cell !important;text-align:center;}
 .mi-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:13000;align-items:center;justify-content:center;padding:40px 16px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
 .mi-overlay.open{display:flex !important;}
 .mi-box{background:#fff;border-radius:14px;padding:0;width:600px;max-width:calc(100vw - 32px);display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.3);animation:miIn .2s ease;overflow:hidden;position:relative;max-height:90vh;}
@@ -399,88 +372,9 @@ body.modal-open .main {
 }
 </style>
 
-<div class="page-head" style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:16px;border-bottom:2px solid #e9ecef;margin-bottom:20px;">
+<div class="page-head" style="display:flex;justify-content:space-between;align-items:flex-start;padding-top:16px;padding-bottom:16px;border-bottom:2px solid #e9ecef;margin-bottom:20px;">
     <div>
         <h1 class="h1"><i class="fas fa-boxes"></i> Merchandise Inventory</h1>
-        <div class="sub">MANAGE MERCHANDISE ITEMS AND MONITOR STOCK LEVELS.</div>
-    </div>
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <!-- Custom Export Buttons for Merchandise Inventory -->
-        <button onclick="exportTableToExcel('merchTable','merch_inventory_<?= date('Ymd') ?>.xls')"
-                title="Export to Excel"
-                class="exp-btn exp-btn-excel">
-            <i class="fas fa-file-excel"></i> Excel
-        </button>
-        
-        <button onclick="exportTableToCSV('merchTable','merch_inventory_<?= date('Ymd') ?>.csv')"
-                title="Export to CSV"
-                class="exp-btn exp-btn-csv">
-            <i class="fas fa-file-csv"></i> CSV
-        </button>
-        
-        <button type="button" onclick="exportTableToPDF('merchTable', 'Merchandise Inventory Report', 'merch_inventory_<?= date('Ymd') ?>')"
-                title="Export PDF"
-                class="exp-btn exp-btn-pdf">
-            <i class="fas fa-file-pdf"></i> Export PDF
-        </button>
-
-        <button type="button" onclick="printReportArea()"
-                title="Print"
-                class="exp-btn exp-btn-print">
-            <i class="fas fa-print"></i> Print
-        </button>
-        
-        <style>
-        .exp-btn {
-            display: inline-flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            gap: 6px !important;
-            height: 36px !important;
-            padding: 7px 14px !important;
-            border-radius: 4px !important;
-            font-size: 11px !important;
-            font-weight: 600 !important;
-            cursor: pointer !important;
-            text-decoration: none !important;
-            border: 1px solid transparent !important;
-            transition: all .2s ease-in-out !important;
-            white-space: nowrap !important;
-            background: #fff !important;
-        }
-        .exp-btn-excel {
-            color: #16a34a !important;
-            border-color: #16a34a !important;
-        }
-        .exp-btn-excel:hover {
-            background: #16a34a !important;
-            color: #fff !important;
-        }
-        .exp-btn-csv {
-            color: #002F70 !important;
-            border-color: #002F70 !important;
-        }
-        .exp-btn-csv:hover {
-            background: #002F70 !important;
-            color: #fff !important;
-        }
-        .exp-btn-pdf {
-            color: #dc2626 !important;
-            border-color: #dc2626 !important;
-        }
-        .exp-btn-pdf:hover {
-            background: #dc2626 !important;
-            color: #fff !important;
-        }
-        .exp-btn-print {
-            color: #002F70 !important;
-            border-color: #002F70 !important;
-        }
-        .exp-btn-print:hover {
-            background: #002F70 !important;
-            color: #fff !important;
-        }
-        </style>
     </div>
 </div>
 
@@ -579,19 +473,25 @@ body.modal-open .main {
         <!-- Table -->
         <div class="table-wrap">
             <table id="merchTable">
-                <colgroup>
-                    <col style="width:11%"><col style="width:16%"><col style="width:24%">
-                    <col style="width:16%"><col style="width:12%"><col style="width:12%"><col style="width:9%">
-                </colgroup>
                 <thead>
                     <tr>
-                        <th>Product ID</th><th>Product Code</th><th>Product Name</th><th style="text-align:center;">Category</th>
-                        <th style="text-align:center;">Current Stock</th><th style="text-align:center;">Reorder Level</th><th>Status</th>
+                        <th style="width:90px;">SKU</th>
+                        <th style="width:160px;">Product Name</th>
+                        <th style="text-align:center;width:110px;">Category</th>
+                        <th style="text-align:center;width:55px;">UOM</th>
+                        <th style="text-align:center;width:70px;">Cap.</th>
+                        <th style="width:150px;">Stock / Reorder</th>
+                        <th style="text-align:right;width:80px;">Phys. Count</th>
+                        <th style="text-align:right;width:70px;">Variance</th>
+                        <th style="text-align:center;width:100px;">Status</th>
+                        <th style="text-align:center;width:90px;">Last Mvmt</th>
+                        <th style="width:90px;">Updated</th>
+                        <th style="text-align:center;width:75px;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="merchTableBody">
                 <?php if (empty($js_items)): ?>
-                    <tr><td colspan="7" style="text-align:center;padding:32px;color:#6c757d;">No merchandise data available.</td></tr>
+                    <tr><td colspan="12" style="text-align:center;padding:32px;color:#6c757d;">No merchandise data available.</td></tr>
                 <?php else: ?>
                     <?php
                     // Group by category from $js_items (already filtered to active only)
@@ -600,10 +500,32 @@ body.modal-open .main {
                     ksort($grouped);
                     foreach ($grouped as $cat_label => $items):
                     ?>
-                    <tr class="cat-header"><td colspan="7"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                    <tr class="cat-header"><td colspan="12" style="font-weight:700; background:#e9ecef!important; color:#495057!important; text-transform:uppercase; font-size:11px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px; text-align:center;"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                     <?php foreach ($items as $it):
-                        $mv_class = $it['mv_sign']==='+'?'mv-pos':($it['mv_sign']==='-'?'mv-neg':'mv-none');
                         $ts = $it['last_updated'] ? (new DateTime($it['last_updated']))->format('M d, Y') : '—';
+                    ?>
+                    <?php
+                        $ts = $it['last_updated'] ? (new DateTime($it['last_updated']))->format('M d, Y') : '-';
+                        $has_variance = ($it['variance'] !== null && (float)$it['variance'] != 0);
+                        $display_status = $has_variance ? 'VARIANCE DETECTED' : $it['status'];
+                        $display_color = $has_variance ? '#fd7e14' : $it['color'];
+                        $phys_text = $it['physical_count'] !== null ? number_format((float)$it['physical_count'], 0) : '-';
+                        $var_text = '-';
+                        $var_style = 'color:#64748b;';
+                        if ($it['variance'] !== null) {
+                            $v_val = (float)$it['variance'];
+                            if ($v_val > 0) {
+                                $var_text = '+' . number_format($v_val, 0);
+                                $var_style = 'color:#28a745;font-weight:700;';
+                            } elseif ($v_val < 0) {
+                                $var_text = number_format($v_val, 0);
+                                $var_style = 'color:#dc3545;font-weight:700;';
+                            } else {
+                                $var_text = '0';
+                                $var_style = 'color:#64748b;font-weight:600;';
+                            }
+                        }
+                        $mv_cls = $it['mv_sign'] === '+' ? 'mv-pos' : ($it['mv_sign'] === '-' ? 'mv-neg' : 'mv-none');
                     ?>
                     <tr class="merch-row"
                         data-name="<?php echo strtolower(htmlspecialchars($it['name'])); ?>"
@@ -614,32 +536,33 @@ body.modal-open .main {
                         data-stock="<?php echo $it['stock']; ?>"
                         data-updated="<?php echo htmlspecialchars($it['last_updated']); ?>"
                         data-idx="<?php echo htmlspecialchars(json_encode($it)); ?>">
-                        <td><code style="font-size:11px;font-weight:700;"><?php echo 'P' . str_pad((string)$it['id'], 4, '0', STR_PAD_LEFT); ?></code></td>
-                        <td><code style="font-size:11px;font-weight:600;"><?php echo htmlspecialchars($it['sku']); ?></code></td>
+                        <td><code style="font-size:11px;font-weight:600;"><?php echo htmlspecialchars($it['sku'] ?: '-'); ?></code></td>
                         <td style="white-space:normal;"><strong><?php echo htmlspecialchars($it['name']); ?></strong></td>
                         <td style="text-align:center;"><?php echo htmlspecialchars($it['category']); ?></td>
-                        <td style="text-align:center;font-weight:700;color:#334155;"><?php echo number_format($it['stock']); ?></td>
-                        <td style="text-align:center;font-weight:700;color:#64748b;"><?php echo number_format($it['reorder']); ?></td>
+                        <td style="text-align:center;font-weight:600;color:#475569;"><?php echo htmlspecialchars($it['unit']); ?></td>
+                        <td style="text-align:center;font-weight:600;color:#334155;"><?php echo number_format($it['capacity']); ?></td>
                         <td>
                             <div class="fill-bar-wrap">
-                                <div class="fill-bar-inner" style="width:<?php echo min(100,round($it['fill_pct'])); ?>%;background:<?php echo $it['color']; ?>;"></div>
+                                <div class="fill-bar-inner" style="width:<?php echo min(100, round($it['fill_pct'])); ?>%;background:<?php echo $display_color; ?>;"></div>
                             </div>
                             <span style="font-size:11px;font-weight:600;color:#334155;"><?php echo number_format($it['stock']); ?> <?php echo htmlspecialchars($it['unit']); ?></span>
-                            <span style="font-size:10px;color:#94a3b8;margin-left:4px;">· Reorder: <?php echo number_format($it['reorder']); ?></span>
+                            <span style="font-size:10px;color:#94a3b8;margin-left:4px;">&middot; Reorder: <?php echo number_format($it['reorder']); ?></span>
                         </td>
+                        <td style="text-align:right;font-weight:700;color:#0f172a;"><?php echo $phys_text; ?></td>
+                        <td style="text-align:right;<?php echo $var_style; ?>"><?php echo $var_text; ?></td>
                         <td style="text-align:center;">
-                            <span class="status-badge" style="background:<?php echo $it['color']; ?>20;color:<?php echo $it['color']; ?>;border:1px solid <?php echo $it['color']; ?>40;">
-                                <?php echo htmlspecialchars($it['status']); ?>
+                            <span class="status-badge" style="background:<?php echo $display_color; ?>20;color:<?php echo $display_color; ?>;border:1px solid <?php echo $display_color; ?>40;">
+                                <?php if ($has_variance): ?><i class="fas fa-exclamation-triangle"></i> <?php endif; ?><?php echo htmlspecialchars($display_status); ?>
                             </span>
                         </td>
                         <td style="text-align:center;">
                             <?php if ($it['mv_label']): ?>
-                            <span class="<?php echo $mv_class; ?>" style="font-size:12px;"><?php echo htmlspecialchars($it['mv_label']); ?></span>
+                                <span class="<?php echo $mv_cls; ?>" style="font-size:11px;"><?php echo htmlspecialchars($it['mv_label']); ?></span>
                             <?php else: ?>
-                            <span class="mv-none" style="font-size:12px;">—</span>
+                                <span class="mv-none" style="font-size:11px;">-</span>
                             <?php endif; ?>
                         </td>
-                        <td style="text-align:center;font-size:11px;color:#64748b;"><?php echo $ts; ?></td>
+                        <td style="font-size:11px;color:#64748b;"><?php echo $ts; ?></td>
                         <td style="text-align:center;">
                             <button class="txn-btn info sm" onclick='viewDetails(<?php echo htmlspecialchars(json_encode($it),ENT_QUOTES); ?>)'>
                                 <i class="fas fa-eye"></i> View

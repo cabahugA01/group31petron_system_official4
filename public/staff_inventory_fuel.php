@@ -420,9 +420,6 @@ body, html { overflow-x: hidden !important; }
     white-space: nowrap; 
     line-height: 1.4; 
 }
-.fuel-table tbody tr.fuel-row td:nth-child(6),
-.fuel-table tbody tr.fuel-row td:nth-child(n+8){display:none !important;}
-.fuel-table tbody tr.fuel-row td:nth-child(7){display:table-cell !important;}
 .fuel-table tbody td.bold { font-weight: 700; color: #002F70; }
 .status-pill {
     display: inline-block; 
@@ -611,17 +608,9 @@ body, html { overflow-x: hidden !important; }
 .txn-btn.secondary:hover { background-color:#475569 !important; background:#475569 !important; color:#ffffff !important; }
 </style>
 
-<div class="mif-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap;padding-bottom:16px;border-bottom:2px solid #e9ecef;">
+<div class="mif-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap;padding-top:16px;padding-bottom:16px;border-bottom:2px solid #e9ecef;">
     <div>
         <h1 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#00264D;text-transform:uppercase;">Fuel Inventory</h1>
-        <div style="font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.3px;">17-Tanker Overview &middot; Today: <?= date('F d, Y') ?></div>
-    </div>
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <!-- Export Buttons -->
-        <button onclick="exportTableToExcel('fuelTable', 'fuel_inventory_' + new Date().toISOString().slice(0,10) + '.xls')" class="flt-btn flt-btn-excel" style="height:36px;"><i class="fas fa-file-excel"></i> Excel</button>
-        <button onclick="exportTableToCSV('fuelTable', 'fuel_inventory_' + new Date().toISOString().slice(0,10) + '.csv')" class="flt-btn flt-btn-csv" style="height:36px;"><i class="fas fa-file-csv"></i> CSV</button>
-        <button type="button" onclick="exportTableToPDF('fuelTable', 'Fuel Inventory Report', 'fuel_inventory_' + new Date().toISOString().slice(0,10), this)" class="flt-btn flt-btn-pdf" style="height:36px;"><i class="fas fa-file-pdf"></i> Export PDF</button>
-        <button type="button" onclick="printReportArea()" class="flt-btn flt-btn-print" style="height:36px;"><i class="fas fa-print"></i> Print</button>
     </div>
 </div>
 
@@ -724,7 +713,7 @@ body, html { overflow-x: hidden !important; }
 
 <div class="inv-card">
     <div class="inv-card-head">
-        <div class="inv-card-title">17-Tanker Fuel Inventory Grid</div>
+        <div class="inv-card-title">Fuel Tanks Catalog</div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
             <button onclick="openFuelSrModal()" class="txn-btn primary">
                 <i class="fas fa-boxes"></i> Stock Request
@@ -735,27 +724,35 @@ body, html { overflow-x: hidden !important; }
         <div class="table-wrap">
             <table class="fuel-table" id="fuelTable">
                 <colgroup>
-                    <col style="width:22%">
+                    <col style="width:8%">
                     <col style="width:14%">
-                    <col style="width:16%">
-                    <col style="width:16%">
-                    <col style="width:16%">
-                    <col style="width:16%">
+                    <col style="width:12%">
+                    <col style="width:11%">
+                    <col style="width:10%">
+                    <col style="width:11%">
+                    <col style="width:9%">
+                    <col style="width:9%">
+                    <col style="width:11%">
+                    <col style="width:5%">
                 </colgroup>
                 <thead>
                     <tr>
-                        <th>Fuel Type</th>
                         <th>UGT No.</th>
-                        <th>Tank Capacity</th>
-                        <th>Current Liters</th>
+                        <th>Fuel Type</th>
+                        <th>Current Level (L)</th>
+                        <th>Capacity (L)</th>
+                        <th>Fill %</th>
                         <th>Reorder Level</th>
+                        <th>Price/L</th>
                         <th>Status</th>
+                        <th>Last Updated</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                 <?php if (empty($rows)): ?>
                     <tr>
-                        <td colspan="6" style="text-align:center;padding:32px;color:#6c757d;font-size:14px;">
+                        <td colspan="10" style="text-align:center;padding:32px;color:#6c757d;font-size:14px;">
                             No fuel inventory data available.
                         </td>
                     </tr>
@@ -772,12 +769,20 @@ body, html { overflow-x: hidden !important; }
                         data-tank-ref="<?= htmlspecialchars(strtolower($r['label'])) ?>"
                         data-status="<?= htmlspecialchars(strtolower($r['status'])) ?>"
                         data-date="<?= $row_date ?>">
-                        <td style="font-weight:700;"><?= htmlspecialchars($r['fuel_type']) ?></td>
                         <td style="font-weight:700;color:#002F70;"><?= $r['tanker_num'] ?></td>
-                        <td><?= number_format($r['capacity'], 0) ?> Liters (L)</td>
-                        <td style="font-weight:700;color:#002F70;"><?= number_format($fl, 2) ?> Liters (L)</td>
-                        <td style="font-weight:600;color:#64748b;"><?= number_format($r['reorder_level'], 0) ?> Liters (L)</td>
-                        <td><?= $fill ?>%</td>
+                        <td style="font-weight:700;"><?= htmlspecialchars($r['fuel_type']) ?></td>
+                        <td style="font-weight:700;color:#002F70;"><?= number_format($fl, 2) ?> L</td>
+                        <td style="font-weight:600;color:#475569;"><?= number_format($r['capacity'], 0) ?> L</td>
+                        <td>
+                            <div style="display:flex;align-items:center;gap:6px;justify-content:center;">
+                                <div style="flex:1;height:8px;background:#e0e0e0;border-radius:4px;overflow:hidden;min-width:36px;">
+                                    <div style="width:<?= $fill ?>%;height:100%;background:<?= $r['status_color'] ?>;border-radius:4px;"></div>
+                                </div>
+                                <span style="font-size:11px;font-weight:600;min-width:30px;text-align:right;"><?= $fill ?>%</span>
+                            </div>
+                        </td>
+                        <td style="font-weight:600;color:#64748b;"><?= number_format($r['reorder_level'], 0) ?> L</td>
+                        <td style="font-weight:600;color:#0f172a;">&#8369;<?= number_format($r['price'], 2) ?></td>
                         <td>
                             <span class="status-pill" style="background:<?= $r['status_color'] ?>18;color:<?= $r['status_color'] ?>;border:1px solid <?= $r['status_color'] ?>40;">
                                 <?= htmlspecialchars($r['status']) ?>
@@ -787,7 +792,7 @@ body, html { overflow-x: hidden !important; }
                         <td>
                             <div style="display:flex; flex-direction:column; gap:4px; width:100%;">
                                 <button class="int-btn-outline" onclick="viewTankDetails(<?= htmlspecialchars(json_encode($r)) ?>)" title="View Details">
-                                    <i class="fas fa-eye" style="width:14px;"></i> View Tank Details
+                                    <i class="fas fa-eye" style="width:14px;"></i> View
                                 </button>
                             </div>
                         </td>
@@ -795,7 +800,7 @@ body, html { overflow-x: hidden !important; }
                     <?php endforeach; ?>
                 <?php endif; ?>
                     <tr id="fuelNoResultsRow" class="no-paginate" style="display:none;">
-                        <td colspan="6" style="text-align:center;padding:32px;color:#64748b;font-size:14px;">
+                        <td colspan="10" style="text-align:center;padding:32px;color:#64748b;font-size:14px;">
                             No fuel tanks match the selected filters.
                         </td>
                     </tr>

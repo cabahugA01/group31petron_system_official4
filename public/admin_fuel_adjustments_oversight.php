@@ -478,7 +478,10 @@ require_once __DIR__ . '/../partials/header.php';
     flex-wrap: wrap;
     gap: 12px;
     margin-bottom: 20px;
-    margin-top: -12px !important;
+    margin-top: 0 !important;
+    padding-top: 16px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid #e9ecef;
 }
 .int-head h1 {
     font-size: 22px !important;
@@ -813,17 +816,6 @@ require_once __DIR__ . '/../partials/header.php';
 <div class="int-head">
     <div>
         <h1><i class="fas fa-sliders-h"></i> Fuel Adjustments Oversight</h1>
-        <div class="sub">Admin review and approval override of manager-validated fuel inventory corrections</div>
-    </div>
-    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
-        <form method="post" style="display: inline;">
-            <?php foreach ($_GET as $k => $v): if ($k !== 'export'): ?>
-                <input type="hidden" name="<?= htmlspecialchars($k) ?>" value="<?= htmlspecialchars($v) ?>">
-            <?php endif; endforeach; ?>
-            <button type="submit" name="export" value="excel" class="ato-btn ato-btn-excel"><i class="fas fa-file-excel"></i> Excel</button>
-        </form>
-        <button type="button" onclick="exportPrintableAreaToPDF('.tbl-card','Fuel Adjustments Oversight','fuel_adjustments_<?= htmlspecialchars($date_from) ?>_to_<?= htmlspecialchars($date_to) ?>',this)" class="ato-btn ato-btn-pdf"><i class="fas fa-file-pdf"></i> Export PDF</button>
-        <button type="button" onclick="printReportArea()" class="ato-btn ato-btn-print"><i class="fas fa-print"></i> Print</button>
     </div>
 </div>
 

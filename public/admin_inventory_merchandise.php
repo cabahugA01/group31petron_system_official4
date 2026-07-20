@@ -307,7 +307,8 @@ try {
                COALESCE(si.capacity, ip.max_stock, 480) AS capacity,
                COALESCE(si.reorder_level, ip.min_stock, 24) AS reorder_level,
                COALESCE(si.critical_level, 10)              AS critical_level,
-               COALESCE(si.variance, 0.00)            AS variance,
+               si.physical_count,
+               si.variance,
                COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated,
                ip.supplier
         FROM inventory_products ip
@@ -323,6 +324,37 @@ try {
 }
 
 // ── Extract brand, barcode, and populate filter options ──────
+$last_movements = [];
+try {
+    $mvStmt = $pdo->prepare("
+        SELECT product_id, qty_received AS qty, 'Delivery' AS mtype, encoded_at AS mdate
+        FROM merchandise_stock_in WHERE station_id = ? AND product_id IS NOT NULL
+    ");
+    $mvStmt->execute([$station_id]);
+    foreach ($mvStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $pid = (int)$r['product_id'];
+        if (!isset($last_movements[$pid]) || $r['mdate'] > $last_movements[$pid]['date']) {
+            $last_movements[$pid] = ['qty' => (int)$r['qty'], 'type' => $r['mtype'], 'sign' => '+', 'date' => $r['mdate']];
+        }
+    }
+} catch (Exception $e) {}
+try {
+    $slStmt = $pdo->prepare("
+        SELECT ti.product_id, SUM(ti.quantity) AS qty, MAX(t.created_at) AS mdate
+        FROM merchandise_transaction_items ti
+        JOIN merchandise_transactions t ON t.id = ti.transaction_id
+        WHERE t.station_id = ? AND ti.product_id IS NOT NULL
+        GROUP BY ti.product_id
+    ");
+    $slStmt->execute([$station_id]);
+    foreach ($slStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $pid = (int)$r['product_id'];
+        if (!isset($last_movements[$pid]) || $r['mdate'] > $last_movements[$pid]['date']) {
+            $last_movements[$pid] = ['qty' => (int)$r['qty'], 'type' => 'Sales', 'sign' => '-', 'date' => $r['mdate']];
+        }
+    }
+} catch (Exception $e) {}
+
 $all_brands = [];
 $all_suppliers = [];
 $all_units = [];
@@ -479,7 +511,10 @@ require_once __DIR__ . '/../partials/header.php';
     flex-wrap: wrap;
     gap: 12px;
     margin-bottom: 20px;
-    margin-top: -12px !important;
+    margin-top: 0 !important;
+    padding-top: 16px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid #e9ecef;
 }
 .int-head h1 {
     font-size: 22px !important;
@@ -684,18 +719,22 @@ require_once __DIR__ . '/../partials/header.php';
     border-collapse: collapse;
     font-size: 12px;
     text-align: left;
+    table-layout: fixed;
 }
 .afto-tbl thead tr {
     background: #002F70;
 }
 .afto-tbl thead th {
-    padding: 10px 12px;
+    padding: 10px 8px;
     font-weight: 700;
     color: #ffffff;
     text-transform: uppercase;
     letter-spacing: 0.4px;
     font-size: 11px;
     border-bottom: 2px solid #001a3d;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .afto-tbl tbody tr {
     border-bottom: 1px solid #f1f5f9;
@@ -705,13 +744,21 @@ require_once __DIR__ . '/../partials/header.php';
     background: #f8fafc;
 }
 .afto-tbl tbody td {
-    padding: 10px 12px;
+    padding: 8px;
     color: #334155;
     vertical-align: middle;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .align-right { text-align: right; font-family: monospace; }
 .align-center { text-align: center; }
+
+.fill-bar-wrap { background:#e9ecef; border-radius:3px; height:5px; overflow:hidden; margin-bottom:2px; width:100%; }
+.fill-bar-inner { height:100%; border-radius:3px; }
+.mv-pos { color:#16a34a; font-weight:700; }
+.mv-neg { color:#dc2626; font-weight:700; }
+.mv-none { color:#94a3b8; }
 
 .var-pos { color: #16a34a !important; font-weight: 700; }
 .var-neg { color: #dc2626 !important; font-weight: 700; }
@@ -773,37 +820,20 @@ require_once __DIR__ . '/../partials/header.php';
     color: #334155;
 }
 
-/* Tab Hover Effects */
-.tab-btn:hover {
-    color: #002F70 !important;
-    background: #f8fafc !important;
-}
+/* ── Tab Navigation ── */
+.tab-nav { display:flex; gap:0; border-bottom:2px solid #e2e8f0; margin-bottom:22px; }
+.tab-btn { padding:10px 24px; background:none; border:none; border-bottom:3px solid transparent; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; margin-bottom:-2px; transition:all .15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
+.tab-btn.active { color:#002F70; border-bottom-color:#002F70; }
+.tab-btn:hover { color:#002F70 !important; background:#f8fafc !important; }
 </style>
 
 <!-- Page Header -->
 <div class="int-head">
     <div>
         <h1><i class="fas fa-boxes"></i> Merchandise Inventory Management</h1>
-        <div class="sub">Monitor and manage merchandise stock levels and products &middot; Today: <?= date('F d, Y') ?></div>
-    </div>
-    
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;">
-        <button onclick="exportTableToExcel('adminMerchTable','admin_merch_inventory_<?= date('Ymd') ?>')" class="flt-btn flt-btn-excel" title="Export to Excel">
-            <i class="fas fa-file-excel"></i> Excel
-        </button>
-        <button onclick="exportTableToCSV('adminMerchTable','admin_merch_inventory_<?= date('Ymd') ?>.csv')" class="flt-btn flt-btn-csv" title="Export to CSV">
-            <i class="fas fa-file-csv"></i> CSV
-        </button>
-        <button onclick="exportTableToPDF('adminMerchTable','Merchandise Inventory Oversight','admin_merch_inventory_<?= date('Ymd') ?>')" class="flt-btn flt-btn-pdf" title="Export PDF">
-            <i class="fas fa-file-pdf"></i> Export PDF
-        </button>
-        <button onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print">
-            <i class="fas fa-print"></i> Print
-        </button>
     </div>
 </div>
 
-<!-- Inventory Navigation Tabs -->
 <!-- Summary Cards -->
 <div class="afto-cards">
     <!-- Card 1: Total Merchandise Products -->
@@ -936,22 +966,20 @@ require_once __DIR__ . '/../partials/header.php';
     <div class="tbl-hd">
         <div class="tbl-title"><i class="fas fa-clipboard-list"></i> Merchandise Stock Records</div>
     </div>
-    <div style="overflow-x:auto;">
+    <div style="overflow-x:hidden;width:100%;">
         <table class="afto-tbl" id="adminMerchTable">
             <thead>
                 <tr>
-                    <th style="width: 110px;">Product Code</th>
+                    <th style="width: 110px;">SKU</th>
                     <th>Product Name</th>
-                    <th>Category</th>
-                    <th>Brand</th>
-                    <th>Supplier</th>
-                    <th style="width: 90px; text-align:right;">Current Stock</th>
-                    <th style="width: 60px;">UOM</th>
-                    <th style="width: 90px; text-align:right;">Reorder Level</th>
-                    <th style="width: 90px; text-align:right;">Unit Cost</th>
-                    <th style="width: 90px; text-align:right;">Selling Price</th>
-                    <th style="width: 100px; text-align:right;">Inventory Value</th>
+                    <th style="text-align:center;">Category</th>
+                    <th style="width: 70px; text-align:center;">UOM</th>
+                    <th style="width: 90px; text-align:center;">Capacity</th>
+                    <th style="width: 170px;">Current Stock / Reorder</th>
+                    <th style="width: 105px; text-align:right;">Physical Count</th>
+                    <th style="width: 90px; text-align:right;">Variance</th>
                     <th style="width: 90px;" class="align-center">Status</th>
+                    <th style="width: 120px; text-align:center;">Last Movement</th>
                     <th style="width: 120px;">Last Updated</th>
                     <th style="width: 70px; text-align:center;">Action</th>
                 </tr>
@@ -959,7 +987,7 @@ require_once __DIR__ . '/../partials/header.php';
             <tbody>
             <?php if (empty($sorted_filtered)): ?>
                 <tr>
-                    <td colspan="14" class="align-center" style="padding: 24px; color: #64748b;">
+                    <td colspan="12" class="align-center" style="padding: 24px; color: #64748b;">
                         <i class="fas fa-box-open" style="font-size: 24px; margin-bottom: 8px; display:block;"></i>
                         No merchandise inventory records matched your filters.
                     </td>
@@ -967,7 +995,7 @@ require_once __DIR__ . '/../partials/header.php';
             <?php else: ?>
                 <?php foreach ($sorted_filtered as $cat_label => $items): ?>
                     <tr class="cat-header">
-                        <td colspan="14" style="text-align:center; font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:12px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px;">
+                        <td colspan="12" style="text-align:center; font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:12px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px;">
                             <strong><?= htmlspecialchars($cat_label) ?></strong>
                         </td>
                     </tr>
@@ -981,19 +1009,58 @@ require_once __DIR__ . '/../partials/header.php';
                         $badgeLbl = getStatusLabel($item['computed_status']);
                         $updated  = $item['last_updated'] ? date('M d, Y h:i A', strtotime($item['last_updated'])) : '—';
                     ?>
+                    <?php
+                        $capacity = (float)$item['capacity'];
+                        $fill_pct = $capacity > 0 ? ($stock / $capacity) * 100 : 0;
+                        $variance = $item['variance'];
+                        $has_variance = ($variance !== null && (float)$variance != 0);
+                        $badgeCls = $has_variance ? 'bg-amber' : getStatusBadgeClass($item['computed_status']);
+                        $badgeLbl = $has_variance ? 'Variance Detected' : getStatusLabel($item['computed_status']);
+                        $status_color = $has_variance ? '#fd7e14' : ($item['computed_status'] === 'available' ? '#28a745' : (in_array($item['computed_status'], ['critical', 'out']) ? '#dc3545' : '#fd7e14'));
+                        $updated = $item['last_updated'] ? date('M d, Y h:i A', strtotime($item['last_updated'])) : '-';
+                        $phys_text = $item['physical_count'] !== null ? number_format((float)$item['physical_count'], 0) : '-';
+                        $var_text = '-';
+                        $var_style = 'color:#64748b;';
+                        if ($variance !== null) {
+                            $v_val = (float)$variance;
+                            if ($v_val > 0) {
+                                $var_text = '+' . number_format($v_val, 0);
+                                $var_style = 'color:#28a745;font-weight:700;';
+                            } elseif ($v_val < 0) {
+                                $var_text = number_format($v_val, 0);
+                                $var_style = 'color:#dc3545;font-weight:700;';
+                            } else {
+                                $var_text = '0';
+                                $var_style = 'color:#64748b;font-weight:600;';
+                            }
+                        }
+                        $mv = $last_movements[(int)$item['id']] ?? null;
+                        $mv_label = $mv ? ($mv['sign'] . $mv['qty'] . ' ' . $mv['type']) : '';
+                        $mv_class = $mv ? ($mv['sign'] === '+' ? 'mv-pos' : ($mv['sign'] === '-' ? 'mv-neg' : 'mv-none')) : 'mv-none';
+                    ?>
                     <tr>
-                        <td><code><?= htmlspecialchars($item['sku']) ?></code></td>
+                        <td><code><?= htmlspecialchars($item['sku'] ?: '-') ?></code></td>
                         <td><strong><?= htmlspecialchars($item['name']) ?></strong></td>
-                        <td><?= htmlspecialchars($item['category_name']) ?></td>
-                        <td><?= htmlspecialchars($item['brand']) ?></td>
-                        <td><?= htmlspecialchars($item['supplier'] ?: '—') ?></td>
-                        <td class="align-right" style="font-weight:700; color:#002F70;"><?= number_format($stock, 2) ?></td>
-                        <td><?= htmlspecialchars($item['unit']) ?></td>
-                        <td class="align-right"><?= number_format($reorder, 2) ?></td>
-                        <td class="align-right" style="font-family:monospace;">₱<?= number_format($cost, 2) ?></td>
-                        <td class="align-right" style="font-family:monospace; font-weight:600;">₱<?= number_format($price, 2) ?></td>
-                        <td class="align-right" style="font-weight:700; color:#16a34a; font-family:monospace;">₱<?= number_format($value, 2) ?></td>
+                        <td class="align-center"><?= htmlspecialchars($item['category_name']) ?></td>
+                        <td class="align-center" style="font-weight:600;color:#475569;"><?= htmlspecialchars($item['unit']) ?></td>
+                        <td class="align-center" style="font-weight:600;color:#334155;"><?= number_format($capacity, 0) ?></td>
+                        <td>
+                            <div class="fill-bar-wrap">
+                                <div class="fill-bar-inner" style="width:<?= min(100, round($fill_pct)) ?>%;background:<?= $status_color ?>;"></div>
+                            </div>
+                            <span style="font-size:11px;font-weight:600;color:#334155;"><?= number_format($stock, 0) ?> <?= htmlspecialchars($item['unit']) ?></span>
+                            <span style="font-size:10px;color:#94a3b8;margin-left:4px;">&middot; Reorder: <?= number_format($reorder, 0) ?></span>
+                        </td>
+                        <td class="align-right" style="font-weight:700;color:#0f172a;"><?= $phys_text ?></td>
+                        <td class="align-right" style="<?= $var_style ?>"><?= $var_text ?></td>
                         <td class="align-center"><span class="badge-lbl <?= $badgeCls ?>"><?= $badgeLbl ?></span></td>
+                        <td class="align-center">
+                            <?php if ($mv_label): ?>
+                                <span class="<?= $mv_class ?>" style="font-size:11px;"><?= htmlspecialchars($mv_label) ?></span>
+                            <?php else: ?>
+                                <span class="mv-none" style="font-size:11px;">-</span>
+                            <?php endif; ?>
+                        </td>
                         <td style="font-size:11px; color:#64748b;"><?= $updated ?></td>
                         <td style="text-align:center;">
                             <button type="button" class="txn-btn txn-btn-info" onclick='viewDetails(<?= json_encode($item, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)' title="View Details">

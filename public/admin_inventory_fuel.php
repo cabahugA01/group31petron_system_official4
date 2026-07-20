@@ -387,9 +387,15 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 ?>
 <style>
 /* == PAGE HEADER == */
-.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:-12px !important; }
+.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:0 !important; padding-top:16px; padding-bottom:16px; border-bottom:2px solid #e9ecef; }
 .int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
 .int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
+
+/* ── Tab Navigation ── */
+.tab-nav { display:flex; gap:0; border-bottom:2px solid #e2e8f0; margin-bottom:22px; }
+.tab-btn { padding:10px 24px; background:none; border:none; border-bottom:3px solid transparent; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; margin-bottom:-2px; transition:all .15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
+.tab-btn.active { color:#002F70; border-bottom-color:#002F70; }
+.tab-btn:hover { color:#002F70 !important; background:#f8fafc !important; }
 
 :root {
     --blue: #002F6C;
@@ -559,7 +565,6 @@ body, html { overflow-x:hidden !important; }
   </div>
 </div>
 
-<!-- Inventory Navigation Tabs -->
 <!-- Summary Cards -->
 <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-bottom:24px;">
     <!-- Card 1: Total Fuel Available -->
@@ -638,13 +643,11 @@ body, html { overflow-x:hidden !important; }
         <tr>
           <th style="width:70px; text-align:center;">UGT No.</th>
           <th>Fuel Type</th>
-          <th style="text-align:right;">Capacity</th>
-          <th style="text-align:right;">Current Liters</th>
+          <th style="text-align:right;">Current Level (L)</th>
+          <th style="text-align:right;">Capacity (L)</th>
+          <th style="text-align:center;">Fill %</th>
           <th style="text-align:right;">Reorder Level</th>
-          <th style="text-align:right;">Critical Level</th>
-          <th style="text-align:right;">Cost/Liter</th>
-          <th style="text-align:right;">Selling Price/Liter</th>
-          <th style="text-align:right;">Inventory Value</th>
+          <th style="text-align:right;">Price/L</th>
           <th style="text-align:center;">Status</th>
           <th>Last Updated</th>
           <th style="text-align:center; width:100px;">Action</th>
@@ -652,24 +655,30 @@ body, html { overflow-x:hidden !important; }
       </thead>
       <tbody>
       <?php if (empty($rows)): ?>
-        <tr><td colspan="12" style="text-align:center; padding:32px; color:#6c757d;">No fuel inventory data available.</td></tr>
+        <tr><td colspan="10" style="text-align:center; padding:32px; color:#6c757d;">No fuel inventory data available.</td></tr>
       <?php else: ?>
         <?php foreach ($rows as $r):
             $ts_str  = $r['timestamp'] ? date('M d, Y h:i A', strtotime($r['timestamp'])) : '—';
         ?>
+        <?php $fill = min(100, round($r['fill_pct'], 0)); ?>
         <tr class="fuel-row"
             data-tank-num="<?= htmlspecialchars(strtolower($r['tanker_num'])) ?>"
             data-fuel-type="<?= htmlspecialchars(strtolower(get_canonical_fuel_name($r['fuel_type']))) ?>"
             data-status="<?= htmlspecialchars(strtolower($r['status'])) ?>">
           <td style="text-align:center;" class="bold"><?= $r['tanker_num'] ?></td>
           <td style="font-weight:700;"><?= htmlspecialchars(get_canonical_fuel_name($r['fuel_type'])) ?></td>
-          <td style="text-align:right; font-weight:600; color:#475569;"><?= number_format($r['capacity'], 0) ?> L</td>
           <td style="text-align:right; font-weight:700; color:#002F70;"><?= number_format($r['current_level'], 2) ?> L</td>
+          <td style="text-align:right; font-weight:600; color:#475569;"><?= number_format($r['capacity'], 0) ?> L</td>
+          <td style="text-align:center;">
+            <div style="display:flex;align-items:center;gap:8px;justify-content:center;">
+              <div style="flex:1;height:8px;background:#e0e0e0;border-radius:4px;overflow:hidden;min-width:48px;">
+                <div style="width:<?= $fill ?>%;height:100%;background:<?= $r['status_color'] ?>;border-radius:4px;"></div>
+              </div>
+              <span style="font-size:11px;font-weight:600;min-width:32px;text-align:right;"><?= $fill ?>%</span>
+            </div>
+          </td>
           <td style="text-align:right;"><?= number_format($r['reorder_level'], 0) ?> L</td>
-          <td style="text-align:right;"><?= number_format($r['critical_level'], 0) ?> L</td>
-          <td style="text-align:right; font-family:monospace;">₱<?= number_format($r['cost'], 2) ?></td>
-          <td style="text-align:right; font-family:monospace; font-weight:600;">₱<?= number_format($r['price'], 2) ?></td>
-          <td style="text-align:right; font-family:monospace; font-weight:700; color:#16a34a;">₱<?= number_format($r['value'], 2) ?></td>
+          <td style="text-align:right; font-family:monospace; font-weight:600;">&#8369;<?= number_format($r['price'], 2) ?></td>
           <td style="text-align:center;"><span class="status-pill" style="background:<?= $r['status_color'] ?>18; color:<?= $r['status_color'] ?>; border:1px solid <?= $r['status_color'] ?>40;"><?= htmlspecialchars($r['status']) ?></span></td>
           <td style="color:#64748b; font-size:11px;"><?= $ts_str ?></td>
           <td style="text-align:center;">

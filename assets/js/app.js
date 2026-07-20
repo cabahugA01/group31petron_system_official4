@@ -41,6 +41,7 @@ async function api(url, opts={}){
 }
 
 function toast(msg){
+  if (String(msg || '').trim() === '') return;
   const text = String(msg || '').toLowerCase();
   let type = 'info';
   if (/(error|failed|denied|invalid|cannot|unable)/.test(text)) type = 'error';

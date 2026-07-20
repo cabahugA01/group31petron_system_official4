@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * verify.php — QR Code Scan Target / Transaction Verification Page
  * Accessible without login for QR scan purposes (read-only, no sensitive mutations).
@@ -586,12 +586,6 @@ body {
           }
       }
       ?>
-    </div>
-
-    <!-- Action Buttons -->
-    <div class="vactions no-print">
-      <button class="btn-vp btn-print-vp" onclick="window.print()"><i class="fas fa-print"></i> Print</button>
-      <button class="btn-vp btn-close-vp" onclick="window.close()"><i class="fas fa-times"></i> Close</button>
     </div>
 
   </div><!-- /.vbody -->

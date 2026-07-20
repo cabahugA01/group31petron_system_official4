@@ -146,7 +146,7 @@ foreach ($all_items as $item) {
 require_once __DIR__ . '/../partials/header.php';
 ?>
 <style>
-.int-head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;margin-top:-12px!important}
+.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; margin-top: 0 !important; padding-top: 16px; padding-bottom: 16px; border-bottom: 2px solid #e9ecef; }
 .int-head h1{font-size:22px!important;font-weight:700!important;color:#00264D!important;margin:0!important;text-transform:uppercase!important;display:flex;align-items:center;gap:8px}
 .int-head .sub{font-size:13px;color:#666;margin-top:4px}
 .sm-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px}

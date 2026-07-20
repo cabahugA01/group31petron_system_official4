@@ -122,7 +122,6 @@ include __DIR__ . "/../partials/header.php";
 <div class="int-head">
   <div>
     <h1><i class="fas fa-truck-loading"></i> Delivery Validation</h1>
-    <div class="sub">Check and validate deliveries against purchase orders, confirm batch IDs and quantities.</div>
   </div>
   <div style="display:flex;gap:8px;align-items:center;">
     <a href="manager_delivery_validation.php" class="ato-btn ato-btn-back"><i class="fas fa-sync-alt"></i> Refresh</a>
