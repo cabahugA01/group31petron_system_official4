@@ -170,7 +170,8 @@ try {
                COALESCE(NULLIF(TRIM(ip.category),''),'General')        AS category,
                COALESCE(NULLIF(TRIM(ip.size),''),'')                   AS size,
                ip.unit_price                                            AS unit_price,
-               COALESCE(si.stock_level, 0)                             AS stock_level
+               COALESCE(si.stock_level, 0)                             AS stock_level,
+               COALESCE(NULLIF(TRIM(si.unit),''), 'pc')               AS unit
         FROM inventory_products ip
         LEFT JOIN station_inventory si
                ON si.product_id = ip.id
@@ -658,9 +659,11 @@ if ($section === 'merchandise') {
                    mti.category AS item_category,
                    mti.quantity,
                    mti.unit_price,
-                   mti.subtotal AS item_total
+                   mti.subtotal AS item_total,
+                   COALESCE(NULLIF(TRIM(si.unit),''), 'pc') AS unit
             FROM merchandise_transactions mt
             INNER JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
+            LEFT JOIN station_inventory si ON si.product_id = mti.product_id AND si.station_id = mt.station_id
             $mh_where
             ORDER BY $mh_date_col DESC
         ");
@@ -4926,6 +4929,7 @@ input[list] {
                                              data-size="<?= htmlspecialchars($p['size']) ?>"
                                              data-price="<?= (float)$p['unit_price'] ?>"
                                              data-stock="<?= (int)$p['stock_level'] ?>"
+                                             data-unit="<?= htmlspecialchars($p['unit'] ?? 'pc') ?>"
                                              data-search="<?= strtolower(htmlspecialchars($p['product_name'].' '.$p['sku'].' '.$p['category'].' '.$p['size'])) ?>"
                                              onclick="selectProduct(this)"
                                              style="padding:8px 14px;cursor:pointer;
@@ -4963,7 +4967,8 @@ input[list] {
                                             data-cat="<?= htmlspecialchars($p['category']) ?>"
                                             data-size="<?= htmlspecialchars($p['size']) ?>"
                                             data-price="<?= (float)$p['unit_price'] ?>"
-                                            data-stock="<?= (int)$p['stock_level'] ?>">
+                                            data-stock="<?= (int)$p['stock_level'] ?>"
+                                            data-unit="<?= htmlspecialchars($p['unit'] ?? 'pc') ?>">
                                     </option>
                                     <?php endforeach; ?>
                                 </select>
@@ -5201,17 +5206,8 @@ input[list] {
                                             $date_released = (new DateTime($txn['transaction_date']))->format('M j, Y g:i A');
                                         } catch (Exception $e) {}
                                     }
-                                    // Determine unit label from product name
-                                    $pname_lower = strtolower($txn['product_name'] ?? '');
-                                    if (strpos($pname_lower, 'refrigerant') !== false || strpos($pname_lower, 'r134a') !== false) {
-                                        $unit_label = $qty > 1 ? 'Cans' : 'Can';
-                                    } elseif (strpos($pname_lower, 'oil') !== false || strpos($pname_lower, 'coolant') !== false || strpos($pname_lower, 'fluid') !== false || strpos($pname_lower, 'cleaner') !== false || strpos($pname_lower, 'cleaning') !== false) {
-                                        $unit_label = $qty > 1 ? 'Bottles' : 'Bottle';
-                                    } elseif (strpos($pname_lower, 'liter') !== false || strpos($pname_lower, 'litre') !== false) {
-                                        $unit_label = $qty > 1 ? 'Liters' : 'Liter';
-                                    } else {
-                                        $unit_label = $qty > 1 ? 'pcs' : 'pc';
-                                    }
+                                    // Get unit label directly from inventory (as-is, no normalization)
+                                    $unit_label = $txn['unit'] ?? 'pc';
                                 ?>
                                 <tr class="mh-row" style="cursor:pointer;" onclick="viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? '') ?>')" title="Click to view full transaction details">
                                     <td style="font-size:11px;font-weight:700;color:#475569;padding:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0;">
@@ -6226,6 +6222,7 @@ input[list] {
                 size:  el.dataset.size,
                 price: parseFloat(el.dataset.price) || 0,
                 stock: parseInt(el.dataset.stock) || 0,
+                unit:  el.dataset.unit || 'Piece (pc)',
             };
             const search = document.getElementById('productSearch');
             if (search) search.value = selectedProduct.name + (selectedProduct.size ? ' · ' + selectedProduct.size : '');
@@ -7463,6 +7460,7 @@ input[list] {
                     size_variant: selectedProduct.size,
                     quantity:     qty,
                     unit_price:   selectedProduct.price,
+                    unit:         selectedProduct.unit || 'Piece (pc)',
                 });
             }
 
@@ -7482,6 +7480,7 @@ input[list] {
             const size = opt.getAttribute('data-size');
             const price = parseFloat(opt.getAttribute('data-price') || 0);
             const stock = parseInt(opt.getAttribute('data-stock') || 0);
+            const unit = opt.getAttribute('data-unit') || 'Piece (pc)';
 
             if (stock <= 0) {
                 showTxnAlert('This product is out of stock.', 'warning');
@@ -7506,6 +7505,7 @@ input[list] {
                     size_variant: size || '',
                     quantity:     1,
                     unit_price:   price,
+                    unit:         unit,
                     stock_level:  stock
                 });
             }
