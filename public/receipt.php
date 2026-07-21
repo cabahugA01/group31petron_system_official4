@@ -36,8 +36,8 @@ if ($type === 'job_order') {
             error_log("Receipt: No job order found in job_orders table for id=$id");
         }
 
-        // ── FALLBACK: Try merchandise_transactions table for JO/combined types ──
-        if (!$jo && $numeric_id > 0) {
+        // ── FALLBACK: Try merchandise_transactions table for JO/combined/any types ──
+        if (!$jo) {
             try {
                 $stmt_mt = $pdo->prepare("
                     SELECT mt.*,
@@ -49,11 +49,13 @@ if ($type === 'job_order') {
                     FROM merchandise_transactions mt
                     LEFT JOIN users u ON mt.staff_id = u.id
                     LEFT JOIN stations s ON mt.station_id = s.id
-                    WHERE mt.id = ?
-                      AND mt.transaction_type IN ('job_order', 'combined')
+                    WHERE mt.transaction_id = ?
+                       OR mt.transaction_id LIKE ?
+                       OR mt.job_order_id = ?
+                       OR mt.id = ?
                     LIMIT 1
                 ");
-                $stmt_mt->execute([$numeric_id]);
+                $stmt_mt->execute([$id, $id . '%', $id, $numeric_id]);
                 $jo_mt = $stmt_mt->fetch(PDO::FETCH_ASSOC);
                 
                 if ($jo_mt) {
@@ -64,9 +66,23 @@ if ($type === 'job_order') {
                     $jo_paid = (float)($jo_mt['amount_paid'] ?? 0);
                     $jo_balance = (float)($jo_mt['balance_due'] ?? max(0, $jo_total - $jo_paid));
                     
+                    // Fetch transaction items if present
+                    $mt_items = [];
+                    try {
+                        $stmt_items = $pdo->prepare("
+                            SELECT product_name, category, size_variant, quantity, unit_price, subtotal,
+                                   COALESCE(item_type, 'merchandise') AS item_type
+                            FROM merchandise_transaction_items
+                            WHERE transaction_id = ?
+                        ");
+                        $stmt_items->execute([$jo_mt['id']]);
+                        $mt_items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (Exception $e_items) {}
+
                     $jo = [
                         'id' => $jo_mt['id'],
-                        'job_order_id' => $jo_mt['job_order_id'] ?? null,
+                        'transaction_id' => $jo_mt['transaction_id'] ?? $jo_mt['id'],
+                        'job_order_id' => $jo_mt['job_order_id'] ?? $jo_mt['transaction_id'] ?? null,
                         'job_order_number' => null,
                         'service_type' => $jo_mt['job_order_service'] ?? 'Service',
                         'service_description' => $jo_mt['job_order_description'] ?? '',
@@ -97,6 +113,7 @@ if ($type === 'job_order') {
                         'station_address' => $jo_mt['station_address'] ?? '',
                         'station_vat_tin' => $jo_mt['station_vat_tin'] ?? '',
                         'card_reference' => $jo_mt['card_reference'] ?? '',
+                        'items' => $mt_items,
                         'parts_used' => null,
                         '_source' => 'merchandise_transactions'
                     ];
@@ -121,9 +138,22 @@ if ($type === 'job_order') {
             $jo_paid    = (float)($jo['amount_paid'] ?? 0);
             $jo_balance = (float)($jo['balance_due'] ?? max(0, $jo_total - $jo_paid));
 
-            // Build a synthetic items array from service info
+            // Build items array from merchandise_transaction_items or service info
             $jo_items = [];
-            if (!empty($jo['service_type']) || !empty($jo['service_description'])) {
+            if (!empty($jo['items']) && is_array($jo['items'])) {
+                foreach ($jo['items'] as $it) {
+                    $jo_items[] = [
+                        'product_name' => $it['product_name'] ?? 'Item',
+                        'category'     => $it['category'] ?? 'Merchandise',
+                        'size_variant' => $it['size_variant'] ?? '',
+                        'quantity'     => (float)($it['quantity'] ?? 1),
+                        'unit_price'   => (float)($it['unit_price'] ?? 0),
+                        'subtotal'     => (float)($it['subtotal'] ?? 0),
+                        'item_type'    => $it['item_type'] ?? 'merchandise',
+                    ];
+                }
+            }
+            if (empty($jo_items) && (!empty($jo['service_type']) || !empty($jo['service_description']))) {
                 $jo_items[] = [
                     'product_name' => $jo['service_type'] ?? 'Service',
                     'category'     => 'Job Order Service',
@@ -160,7 +190,7 @@ if ($type === 'job_order') {
             if (!$raw_pay_status || $raw_pay_status === 'pending payment') $raw_pay_status = 'pending';
 
             $sale = [
-                'transaction_id'      => $jo['job_order_id'] ?? $jo['job_order_number'] ?? $jo['id'],  // Use numeric ID directly
+                'transaction_id'      => $jo['transaction_id'] ?? $jo['job_order_id'] ?? $jo['job_order_number'] ?? $jo['id'],
                 'id'                  => $jo['id'],  // Keep numeric ID for reference
                 'created_at'          => $jo['created_at'] ?? $jo['order_date'] ?? date('Y-m-d H:i:s'),
                 'staff_name'          => $jo['staff_name'] ?? 'N/A',
@@ -392,10 +422,218 @@ if ($type === 'job_order') {
     } catch (Exception $e) {
         error_log("Receipt error: " . $e->getMessage());
     }
-} else {
-    $sales = read_json('sales.json', []);
-    foreach ($sales as $s) {
-        if (($s['id'] ?? '') === $id) { $sale = $s; break; }
+}
+
+// ── UNIVERSAL FALLBACK: If $sale is still null, search all transaction tables ──
+if (!$sale && !empty($id)) {
+    require_once __DIR__ . '/db_connect.php';
+    $numeric_id = is_numeric($id) ? (int)$id : 0;
+    
+    // 1. Try merchandise_transactions
+    try {
+        $stmt_mt = $pdo->prepare("
+            SELECT mt.*,
+                   COALESCE(u.username, 'Staff') AS staff_name,
+                   COALESCE(s.name, 'Petron Station') AS station_name,
+                   COALESCE(s.location, '') AS station_location,
+                   COALESCE(s.address, 'Vamenta Blvd., Carmen, CDO') AS station_address,
+                   COALESCE(s.vat_tin, '236-002-207-0000') AS station_vat_tin
+            FROM merchandise_transactions mt
+            LEFT JOIN users u ON mt.staff_id = u.id
+            LEFT JOIN stations s ON mt.station_id = s.id
+            WHERE mt.transaction_id = ?
+               OR mt.transaction_id LIKE ?
+               OR mt.job_order_id = ?
+               OR mt.id = ?
+            LIMIT 1
+        ");
+        $stmt_mt->execute([$id, $id . '%', $id, $numeric_id]);
+        $txn_uf = $stmt_mt->fetch(PDO::FETCH_ASSOC);
+
+        if ($txn_uf) {
+            $stmt2 = $pdo->prepare("
+                SELECT product_name, category, size_variant, quantity, unit_price, subtotal,
+                       COALESCE(item_type, 'merchandise') AS item_type
+                FROM merchandise_transaction_items
+                WHERE transaction_id = ?
+            ");
+            $stmt2->execute([$txn_uf['id']]);
+            $items_uf = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+
+            $job_order_data = null;
+            if (!empty($txn_uf['job_order_service']) || !empty($txn_uf['job_order_vehicle_plate'])) {
+                $job_order_data = [
+                    'service_type'        => $txn_uf['job_order_service'] ?? '',
+                    'mechanic_name'       => $txn_uf['job_order_mechanic_name'] ?? null,
+                    'vehicle_plate'       => $txn_uf['job_order_vehicle_plate'] ?? null,
+                    'vehicle_type'        => $txn_uf['job_order_vehicle_type'] ?? null,
+                    'service_description' => $txn_uf['job_order_description'] ?? '',
+                ];
+            }
+
+            $txn_type = $txn_uf['transaction_type'] ?? 'merchandise';
+            if (!in_array($txn_type, ['job_order', 'merchandise', 'combined'])) {
+                $txn_type = 'merchandise';
+            }
+
+            $sale = [
+                'transaction_id'      => $txn_uf['transaction_id'],
+                'id'                  => $txn_uf['transaction_id'],
+                'created_at'          => $txn_uf['created_at'] ?? date('Y-m-d H:i:s'),
+                'staff_name'          => $txn_uf['staff_name'],
+                'customer_name'       => $txn_uf['customer_name'] ?? 'Walk-in Customer',
+                'customer_first_name' => $txn_uf['customer_first_name'] ?? '',
+                'customer_last_name'  => $txn_uf['customer_last_name'] ?? '',
+                'payment_method'      => $txn_uf['payment_method'] ?? 'Cash',
+                'payment_status'      => $txn_uf['payment_status'] ?? 'pending',
+                'amount_paid'         => (float)($txn_uf['amount_paid'] ?? 0),
+                'balance_due'         => (float)($txn_uf['balance_due'] ?? 0),
+                'total_amount'        => (float)($txn_uf['total_amount'] ?? 0),
+                'subtotal_amount'     => (float)($txn_uf['subtotal_amount'] ?? 0),
+                'vat_amount'          => (float)($txn_uf['vat_amount'] ?? 0),
+                'amount_tendered'     => (float)($txn_uf['amount_tendered'] ?? 0),
+                'change_amount'       => (float)($txn_uf['change_amount'] ?? 0),
+                'card_reference'      => $txn_uf['card_reference'] ?? '',
+                'remarks'             => $txn_uf['remarks'] ?? '',
+                'validation_status'   => $txn_uf['validation_status'] ?? 'Pending',
+                'station_name'        => $txn_uf['station_name'],
+                'station_address'     => $txn_uf['station_address'],
+                'station_location'    => $txn_uf['station_location'],
+                'station_vat_tin'     => $txn_uf['station_vat_tin'],
+                'items'               => $items_uf,
+                'job_order'           => $job_order_data,
+                'transaction_type'    => $txn_type,
+            ];
+        }
+    } catch (Exception $e) {}
+
+    // 2. Try job_orders if still null
+    if (!$sale) {
+        try {
+            $stmt_jo = $pdo->prepare("
+                SELECT jo.*,
+                       COALESCE(u.username, 'Mechanic') AS mechanic_name,
+                       COALESCE(cb.username, 'Staff') AS staff_name,
+                       s.name  AS station_name,
+                       s.location AS station_location,
+                       s.address  AS station_address,
+                       s.vat_tin  AS station_vat_tin
+                FROM job_orders jo
+                LEFT JOIN users u ON u.id = jo.assigned_mechanic_id
+                LEFT JOIN users cb ON cb.id = jo.created_by
+                LEFT JOIN stations s ON s.id = jo.station_id
+                WHERE jo.job_order_id = ? OR jo.job_order_number = ? OR jo.id = ?
+                LIMIT 1
+            ");
+            $stmt_jo->execute([$id, $id, $numeric_id]);
+            $jo_uf = $stmt_jo->fetch(PDO::FETCH_ASSOC);
+            if ($jo_uf) {
+                $jo_total   = (float)($jo_uf['total_amount'] ?? $jo_uf['service_cost'] ?? $jo_uf['labor_cost'] ?? 0);
+                $jo_paid    = (float)($jo_uf['amount_paid'] ?? 0);
+                $jo_balance = (float)($jo_uf['balance_due'] ?? max(0, $jo_total - $jo_paid));
+                $jo_items = [];
+                if (!empty($jo_uf['service_type']) || !empty($jo_uf['service_description'])) {
+                    $jo_items[] = [
+                        'product_name' => $jo_uf['service_type'] ?? 'Service',
+                        'category'     => 'Job Order Service',
+                        'size_variant' => '',
+                        'quantity'     => 1,
+                        'unit_price'   => $jo_total,
+                        'subtotal'     => $jo_total,
+                        'item_type'    => 'service',
+                    ];
+                }
+                $raw_pay_status = strtolower(trim($jo_uf['payment_status'] ?? ''));
+                if (!$raw_pay_status || $raw_pay_status === 'pending payment') $raw_pay_status = 'pending';
+
+                $sale = [
+                    'transaction_id'      => $jo_uf['job_order_id'] ?? $jo_uf['job_order_number'] ?? $jo_uf['id'],
+                    'id'                  => $jo_uf['id'],
+                    'created_at'          => $jo_uf['created_at'] ?? $jo_uf['order_date'] ?? date('Y-m-d H:i:s'),
+                    'staff_name'          => $jo_uf['staff_name'] ?? 'N/A',
+                    'shift_name'          => $jo_uf['shift_name'] ?? $jo_uf['shift_period'] ?? '',
+                    'customer_name'       => $jo_uf['customer_name'] ?? 'Walk-in Customer',
+                    'payment_method'      => $jo_uf['payment_method'] ?? 'Cash',
+                    'payment_status'      => $raw_pay_status,
+                    'amount_paid'         => $jo_paid,
+                    'balance_due'         => $jo_balance,
+                    'total_amount'        => $jo_total,
+                    'amount_tendered'     => $jo_paid,
+                    'change_amount'       => 0,
+                    'remarks'             => $jo_uf['notes'] ?? $jo_uf['remarks'] ?? '',
+                    'validation_status'   => $jo_uf['status'] ?? 'Pending',
+                    'station_name'        => $jo_uf['station_name']    ?? 'Petron Station',
+                    'station_address'     => $jo_uf['station_address'] ?? '',
+                    'station_location'    => $jo_uf['station_location'] ?? '',
+                    'station_vat_tin'     => $jo_uf['station_vat_tin'] ?? '',
+                    'items'               => $jo_items,
+                    'transaction_type'    => 'job_order',
+                    'job_order'           => [
+                        'job_order_id'        => $jo_uf['job_order_id'] ?? $jo_uf['job_order_number'] ?? null,
+                        'service_type'        => $jo_uf['service_type'] ?? $jo_uf['job_type'] ?? '',
+                        'service_description' => $jo_uf['service_description'] ?? $jo_uf['notes'] ?? '',
+                        'mechanic_name'       => $jo_uf['mechanic_name'] ?? $jo_uf['assigned_mechanic'] ?? null,
+                        'vehicle_plate'       => $jo_uf['vehicle_plate'] ?? $jo_uf['plate_number'] ?? null,
+                        'vehicle_type'        => $jo_uf['vehicle_type'] ?? null,
+                    ],
+                ];
+            }
+        } catch (Exception $e) {}
+    }
+
+    // 3. Try fuel_transactions if still null
+    if (!$sale) {
+        try {
+            $stmt_ft = $pdo->prepare("
+                SELECT ft.*,
+                       COALESCE(u.name, 'Staff') AS staff_name,
+                       COALESCE(s.name, 'Petron Station') AS station_name,
+                       COALESCE(s.location, '') AS station_location,
+                       COALESCE(s.address, 'Vamenta Blvd., Carmen, CDO') AS station_address,
+                       COALESCE(s.vat_tin, '236-002-207-0000') AS station_vat_tin
+                FROM fuel_transactions ft
+                LEFT JOIN users u ON ft.staff_id = u.id
+                LEFT JOIN stations s ON ft.station_id = s.id
+                WHERE ft.transaction_id = ? OR ft.id = ?
+                LIMIT 1
+            ");
+            $stmt_ft->execute([$id, $numeric_id]);
+            $ft_uf = $stmt_ft->fetch(PDO::FETCH_ASSOC);
+            if ($ft_uf) {
+                $sale = [
+                    'transaction_id'      => $ft_uf['transaction_id'],
+                    'id'                  => $ft_uf['id'],
+                    'created_at'          => $ft_uf['transaction_date'] ?? $ft_uf['created_at'],
+                    'staff_name'          => $ft_uf['staff_name'],
+                    'customer_name'       => 'Credit Customer',
+                    'payment_method'      => $ft_uf['payment_method'] ?? 'Cash',
+                    'payment_status'      => strtolower($ft_uf['status'] ?? '') === 'completed' ? 'paid' : 'pending',
+                    'amount_paid'         => (float)($ft_uf['total_amount'] ?? 0),
+                    'balance_due'         => 0.0,
+                    'total_amount'        => (float)($ft_uf['total_amount'] ?? 0),
+                    'amount_tendered'     => (float)($ft_uf['total_amount'] ?? 0),
+                    'change_amount'       => 0.0,
+                    'remarks'             => $ft_uf['notes'] ?? '',
+                    'validation_status'   => $ft_uf['status'] ?? 'Completed',
+                    'station_name'        => $ft_uf['station_name'],
+                    'station_address'     => $ft_uf['station_address'],
+                    'station_location'    => $ft_uf['station_location'],
+                    'station_vat_tin'     => $ft_uf['station_vat_tin'],
+                    'items'               => [
+                        [
+                            'product_name' => ($ft_uf['fuel_type'] ?? 'Fuel') . ' Fuel',
+                            'category'     => 'Fuel',
+                            'size_variant' => '',
+                            'quantity'     => (float)($ft_uf['liters_sold'] ?? 0),
+                            'unit_price'   => (float)($ft_uf['price_per_liter'] ?? 0),
+                            'subtotal'     => (float)($ft_uf['total_amount'] ?? 0),
+                            'item_type'    => 'fuel',
+                        ]
+                    ],
+                    'transaction_type'    => 'fuel',
+                ];
+            }
+        } catch (Exception $e) {}
     }
 }
 
