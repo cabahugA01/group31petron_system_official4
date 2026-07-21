@@ -108,8 +108,23 @@ try {
     $dr_row = $dr->fetch(PDO::FETCH_ASSOC);
     if ($dr_row && $dr_row['d']) $default_date = $dr_row['d'];
 } catch (Exception $e) {}
-$report_date = trim($_GET['report_date'] ?? $default_date);
-if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $report_date)) $report_date = $default_date;
+
+// Support date range: date_from / date_to (fall back to legacy report_date)
+$date_from = trim($_GET['date_from'] ?? $_GET['report_date'] ?? $default_date);
+$date_to   = trim($_GET['date_to']   ?? $date_from);
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_from)) $date_from = $default_date;
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to))   $date_to   = $date_from;
+if ($date_to < $date_from) $date_to = $date_from; // ensure sensible order
+$report_date = $date_from; // keep backward-compat alias used throughout the file
+$report_period_label = date('F d, Y', strtotime($date_from));
+if ($date_to !== $date_from) {
+    $report_period_label .= ' - ' . date('F d, Y', strtotime($date_to));
+}
+$export_date_slug = date('Ymd', strtotime($date_from));
+if ($date_to !== $date_from) {
+    $export_date_slug .= '_to_' . date('Ymd', strtotime($date_to));
+}
+
 $active_tab = strtolower(trim($_GET['tab'] ?? $_GET['type'] ?? 'fuel'));
 if (!in_array($active_tab, ['fuel', 'merchandise'], true)) {
     $active_tab = 'fuel';
@@ -215,7 +230,7 @@ function staff_report_line_amount_sql(string $itemAlias = 'mti', string $txAlias
     return "ROUND(COALESCE($itemAlias.subtotal, COALESCE($itemAlias.quantity, 0) * COALESCE($itemAlias.unit_price, 0), 0) * CASE WHEN COALESCE($sumAlias.item_subtotal, 0) > 0 AND COALESCE($txAlias.total_amount, 0) > 0 THEN $txAlias.total_amount / $sumAlias.item_subtotal ELSE 1 END, 2)";
 }
 
-function staff_report_fetch_merchandise_rows(PDO $pdo, int $station_id, string $report_date): array {
+function staff_report_fetch_merchandise_rows(PDO $pdo, int $station_id, string $date_from, string $date_to): array {
     if (!table_exists($pdo, 'merchandise_transactions')) {
         return [];
     }
@@ -249,7 +264,7 @@ function staff_report_fetch_merchandise_rows(PDO $pdo, int $station_id, string $
                   AND LOWER(COALESCE(mti.item_type, 'merchandise')) <> 'service'
             LEFT JOIN users u ON mt.staff_id = u.id
             WHERE mt.station_id = ?
-              AND (DATE(mt.transaction_date) = ? OR DATE(mt.created_at) = ?)
+              AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
               AND $validWhere
               AND (
                     mti.id IS NOT NULL
@@ -257,7 +272,7 @@ function staff_report_fetch_merchandise_rows(PDO $pdo, int $station_id, string $
                   )
             ORDER BY category, COALESCE(mt.transaction_date, mt.created_at), mt.id
         ");
-        $stmt->execute([$station_id, $report_date, $report_date]);
+        $stmt->execute([$station_id, $date_from, $date_to, $date_from, $date_to]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
@@ -276,16 +291,16 @@ function staff_report_fetch_merchandise_rows(PDO $pdo, int $station_id, string $
         FROM merchandise_transactions mt
         LEFT JOIN users u ON mt.staff_id = u.id
         WHERE mt.station_id = ?
-          AND (DATE(mt.transaction_date) = ? OR DATE(mt.created_at) = ?)
+          AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
           AND $validWhere
           AND LOWER(COALESCE(mt.transaction_type, 'merchandise')) NOT IN ('job_order','combined')
         ORDER BY COALESCE(mt.transaction_date, mt.created_at), mt.id
     ");
-    $stmt->execute([$station_id, $report_date, $report_date]);
+    $stmt->execute([$station_id, $date_from, $date_to, $date_from, $date_to]);
     return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 }
 
-function staff_report_fetch_service_income_rows(PDO $pdo, int $station_id, string $report_date): array {
+function staff_report_fetch_service_income_rows(PDO $pdo, int $station_id, string $date_from, string $date_to): array {
     $rows = [];
     $nativeJobOrderIds = [];
     $encoderSql = table_exists($pdo, 'users') ? staff_report_user_display_sql($pdo, 'u') : "'N/A'";
@@ -331,12 +346,12 @@ function staff_report_fetch_service_income_rows(PDO $pdo, int $station_id, strin
                        AND LOWER(COALESCE(mti.item_type, 'merchandise')) = 'service'
                 LEFT JOIN users u ON mt.staff_id = u.id
                 WHERE mt.station_id = ?
-                  AND (DATE(mt.transaction_date) = ? OR DATE(mt.created_at) = ?)
+                  AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
                   AND $validWhere
                   AND $jobOrderFilter
                 ORDER BY COALESCE(mt.transaction_date, mt.created_at), mt.id, mti.id
             ");
-            $stmt->execute([$station_id, $report_date, $report_date]);
+            $stmt->execute([$station_id, $date_from, $date_to, $date_from, $date_to]);
             $rows = array_merge($rows, $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
         }
 
@@ -373,13 +388,13 @@ function staff_report_fetch_service_income_rows(PDO $pdo, int $station_id, strin
             FROM merchandise_transactions mt
             LEFT JOIN users u ON mt.staff_id = u.id
             WHERE mt.station_id = ?
-              AND (DATE(mt.transaction_date) = ? OR DATE(mt.created_at) = ?)
+              AND (DATE(mt.transaction_date) BETWEEN ? AND ? OR DATE(mt.created_at) BETWEEN ? AND ?)
               AND $validWhere
               AND $jobOrderFilter
               $fallbackNotExists
             ORDER BY COALESCE(mt.transaction_date, mt.created_at), mt.id
         ");
-        $stmt->execute([$station_id, $report_date, $report_date]);
+        $stmt->execute([$station_id, $date_from, $date_to, $date_from, $date_to]);
         $rows = array_merge($rows, $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
 
         foreach ($rows as $row) {
@@ -422,12 +437,12 @@ function staff_report_fetch_service_income_rows(PDO $pdo, int $station_id, strin
             FROM job_orders jo
             LEFT JOIN users u ON jo.$joEncoderColumn = u.id
             WHERE jo.station_id = ?
-              AND DATE(jo.created_at) = ?
+              AND DATE(jo.created_at) BETWEEN ? AND ?
               AND LOWER(COALESCE(jo.status, '')) NOT IN ('cancelled','canceled','rejected')
               AND LOWER(COALESCE(jo.validation_status, '')) NOT IN ('voided','rejected','cancelled','canceled')
             ORDER BY jo.created_at, jo.id
         ");
-        $stmt->execute([$station_id, $report_date]);
+        $stmt->execute([$station_id, $date_from, $date_to]);
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
             $nativeId = (int)($row['native_job_order_id'] ?? 0);
             if ($nativeId > 0 && isset($nativeJobOrderIds[$nativeId])) {
@@ -454,10 +469,10 @@ function staff_report_fetch_service_income_rows(PDO $pdo, int $station_id, strin
                     st.created_at
                 FROM service_transactions st
                 LEFT JOIN users u ON st.user_id = u.id
-                WHERE st.station_id = ? AND DATE(st.created_at) = ?
+                WHERE st.station_id = ? AND DATE(st.created_at) BETWEEN ? AND ?
                 ORDER BY st.created_at, st.id
             ");
-            $stmt->execute([$station_id, $report_date]);
+            $stmt->execute([$station_id, $date_from, $date_to]);
             $rows = array_merge($rows, $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
         } catch (Exception $e) {}
     }
@@ -896,11 +911,11 @@ if ($has_fuel_readings) {
             $sql .= "LEFT JOIN fuel_types ft ON fr.fuel_type = ft.id ";
         }
         
-        $sql .= "WHERE fr.station_id = ? AND DATE(fr.encoded_at) = ?
+        $sql .= "WHERE fr.station_id = ? AND DATE(fr.encoded_at) BETWEEN ? AND ?
                  ORDER BY fr.encoded_at, fr.id";
         
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$station_id, $report_date]);
+        $stmt->execute([$station_id, $date_from, $date_to]);
         $meter_readings = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
     } catch (Exception $e) {
@@ -928,12 +943,12 @@ if (count($meter_readings) == 0 && $has_fuel_transactions) {
                     COALESCE(ft.total_amount, 0) AS amount
             FROM fuel_transactions ft
             LEFT JOIN fuel_pumps fp ON fp.id = ft.pump_id AND fp.station_id = ft.station_id
-            WHERE ft.station_id = ? AND DATE(ft.transaction_date) = ?
+            WHERE ft.station_id = ? AND DATE(ft.transaction_date) BETWEEN ? AND ?
               AND LOWER(COALESCE(ft.status, '')) NOT IN ('voided','rejected','cancelled','canceled')
             ORDER BY ft.transaction_date, ft.id";
         
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$station_id, $report_date]);
+        $stmt->execute([$station_id, $date_from, $date_to]);
         $meter_readings = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
     } catch (Exception $e) {}
@@ -964,12 +979,12 @@ if ($has_fuel_transactions) {
                     ft.shift_period AS shift,
                     ft.transaction_date AS created_at
             FROM fuel_transactions ft
-            WHERE ft.station_id = ? AND DATE(ft.transaction_date) = ?
+            WHERE ft.station_id = ? AND DATE(ft.transaction_date) BETWEEN ? AND ?
               AND LOWER(COALESCE(ft.status, '')) NOT IN ('voided','rejected','cancelled','canceled')
             ORDER BY ft.transaction_date, ft.id";
         
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$station_id, $report_date]);
+        $stmt->execute([$station_id, $date_from, $date_to]);
         $fuel_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
         if (!$is_manager_or_admin && !empty($user_current_shift)) {
             $fuel_transactions = array_filter($fuel_transactions, function($trans) use ($user_current_shift) {
@@ -1068,11 +1083,11 @@ try {
                 payment_method,
                 COUNT(*) AS transaction_count
             FROM fuel_transactions
-            WHERE station_id = ? AND DATE(transaction_date) = ?
+            WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?
             {$shiftFilter}
             GROUP BY shift_period, payment_method
         ");
-        $stmt->execute([$station_id, $report_date]);
+        $stmt->execute([$station_id, $date_from, $date_to]);
         $fuel_by_shift = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($fuel_by_shift as $row) {
@@ -1119,11 +1134,11 @@ try {
                 payment_method,
                 COUNT(*) AS transaction_count
             FROM merchandise_transactions
-            WHERE station_id = ? AND DATE(created_at) = ?
+            WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?
             {$merchShiftFilter}
             GROUP BY shift_period, payment_method
         ");
-        $stmt->execute([$station_id, $report_date]);
+        $stmt->execute([$station_id, $date_from, $date_to]);
         $merch_by_shift = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($merch_by_shift as $row) {
@@ -1197,10 +1212,10 @@ if ($ar_shift_summary['total'] <= 0 && table_exists($pdo, 'accounts_receivable')
                 created_at
             FROM accounts_receivable
             WHERE station_id = ?
-              AND DATE(created_at) = ?
+              AND DATE(created_at) BETWEEN ? AND ?
               AND COALESCE(status, 'pending') IN ('pending', 'overdue')
         ");
-        $stmt->execute([$station_id, $report_date]);
+        $stmt->execute([$station_id, $date_from, $date_to]);
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $arRow) {
             staff_report_add_ar_shift_amount($ar_shift_summary, $arRow);
         }
@@ -1231,8 +1246,8 @@ try {
 // ============================================================
 // MERCHANDISE + SERVICE REPORT ROWS
 // ============================================================
-$merchandise_report_transactions = staff_report_fetch_merchandise_rows($pdo, (int)$station_id, $report_date);
-$service_income_transactions = staff_report_fetch_service_income_rows($pdo, (int)$station_id, $report_date);
+$merchandise_report_transactions = staff_report_fetch_merchandise_rows($pdo, (int)$station_id, $date_from, $date_to);
+$service_income_transactions = staff_report_fetch_service_income_rows($pdo, (int)$station_id, $date_from, $date_to);
 
 if (!$is_manager_or_admin && !empty($user_current_shift)) {
     $merchandise_report_transactions = array_filter($merchandise_report_transactions, function($trans) use ($user_current_shift) {
@@ -1334,10 +1349,10 @@ if ($has_fuel_transactions) {
     try {
         $cv_stmt = $pdo->prepare("
             SELECT COUNT(*) FROM fuel_transactions
-            WHERE station_id = ? AND DATE(transaction_date) = ?
+            WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?
               AND LOWER(COALESCE(status, '')) IN ('voided','rejected','cancelled','canceled')
         ");
-        $cv_stmt->execute([$station_id, $report_date]);
+        $cv_stmt->execute([$station_id, $date_from, $date_to]);
         $cancelled_voided_count = (int)$cv_stmt->fetchColumn();
     } catch (Exception $e) {}
 }
@@ -1358,6 +1373,117 @@ if (!$is_manager_or_admin && !empty($user_current_shift)) {
 $page_title = "Fuel Sales Summary Report";
 
 // ============================================================
+// CSV EXPORT HANDLER
+// ============================================================
+if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+    $export_type = $_GET['type'] ?? 'fuel';
+    
+    $filename = $export_type === 'merchandise' 
+        ? "Merchandise_Sales_Report_{$export_date_slug}.csv"
+        : "Fuel_Sales_Report_{$export_date_slug}.csv";
+    
+    header('Content-Type: text/csv; charset=utf-8');
+    header("Content-Disposition: attachment; filename=\"{$filename}\"");
+    header('Cache-Control: max-age=0');
+    
+    $output = fopen('php://output', 'w');
+    
+    // UTF-8 BOM for Excel compatibility
+    fprintf($output, "\xEF\xBB\xBF");
+    
+    if ($export_type === 'merchandise') {
+        // Merchandise & Service CSV
+        fputcsv($output, ['DAILY MERCHANDISE & SERVICE SALES REPORT']);
+        fputcsv($output, [$summary_title_suffix]);
+        fputcsv($output, [$station_name]);
+        fputcsv($output, ['Date Range:', $report_period_label]);
+        fputcsv($output, []); // blank line
+        
+        fputcsv($output, ['MERCHANDISE SALES TABLE']);
+        fputcsv($output, ['Category', 'Product Name', 'Beginning Stock', 'Stock-In', 'Stock-Out', 'Ending Stock', 'Unit Price', 'Amount', 'Encoder']);
+        
+        $total_merch = 0;
+        foreach ($merchandise_report_transactions as $t) {
+            $total_merch += $t['total_amount'];
+            fputcsv($output, [
+                $t['category'],
+                $t['product_name'],
+                '—',
+                '—',
+                number_format($t['stock_out'], 2),
+                '—',
+                '₱' . number_format($t['unit_price'], 2),
+                '₱' . number_format($t['total_amount'], 2),
+                $t['encoder'] ?? 'N/A'
+            ]);
+        }
+        fputcsv($output, ['', '', '', '', '', '', 'TOTAL', '₱' . number_format($total_merch, 2), '']);
+        fputcsv($output, []);
+        
+        fputcsv($output, ['SERVICE INCOME TABLE']);
+        fputcsv($output, ['Service Type', 'Labor Fee', 'Parts Used', 'Total Service Amount', 'Encoder']);
+        
+        $total_svc = 0;
+        foreach ($service_income_transactions as $t) {
+            $total_svc += $t['total_amount'];
+            fputcsv($output, [
+                $t['service_type'],
+                '₱' . number_format($t['labor_fee'], 2),
+                $t['parts_used'] ?? '—',
+                '₱' . number_format($t['total_amount'], 2),
+                $t['encoder'] ?? 'N/A'
+            ]);
+        }
+        fputcsv($output, ['', '', 'TOTAL', '₱' . number_format($total_svc, 2), '']);
+        
+    } else {
+        // Fuel CSV
+        fputcsv($output, ['DAILY FUEL SALES REPORT']);
+        fputcsv($output, [$summary_title_suffix]);
+        fputcsv($output, [$station_name]);
+        fputcsv($output, ['Date Range:', $report_period_label]);
+        fputcsv($output, []);
+        
+        fputcsv($output, ['METER READINGS']);
+        fputcsv($output, ['Name', 'Fuel Type', 'Beginning', 'Ending', 'Calibration', 'Volume (Liters)', 'Price', 'Amount']);
+        
+        $total_liters = 0;
+        $total_amount = 0;
+        foreach ($meter_readings as $r) {
+            $total_liters += $r['liters_sold'];
+            [$price, $amount] = staff_report_fuel_price_amount($r, $volume_sales);
+            $total_amount += $amount;
+            fputcsv($output, [
+                $r['pump_name'] ?? '-',
+                $r['fuel_type'],
+                number_format($r['beginning_reading'], 2),
+                number_format($r['ending_reading'], 2),
+                number_format($r['calibration'], 2),
+                number_format($r['liters_sold'], 2),
+                '₱' . number_format($price, 2),
+                '₱' . number_format($amount, 2)
+            ]);
+        }
+        fputcsv($output, ['', '', '', '', 'TOTAL', number_format($total_liters, 2), '', '₱' . number_format($total_amount, 2)]);
+        fputcsv($output, []);
+        
+        fputcsv($output, ['VOLUME SALES SUMMARY']);
+        fputcsv($output, ['Fuel Type', 'Total Liters', 'Avg Price/L', 'Total Amount']);
+        foreach ($volume_sales as $v) {
+            fputcsv($output, [
+                $v['fuel_type'],
+                number_format($v['total_liters'], 2) . ' L',
+                '₱' . number_format($v['avg_price'], 2),
+                '₱' . number_format($v['total_amount'], 2)
+            ]);
+        }
+    }
+    
+    fclose($output);
+    exit;
+}
+
+// ============================================================
 // EXCEL EXPORT HANDLER
 // ============================================================
 if (isset($_GET['export']) && $_GET['export'] === 'excel') {
@@ -1365,9 +1491,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     
     header('Content-Type: application/vnd.ms-excel');
     if ($export_type === 'merchandise') {
-        header('Content-Disposition: attachment;filename="Merchandise_Sales_Report_' . $report_date . '.xls"');
+        header('Content-Disposition: attachment;filename="Merchandise_Sales_Report_' . $export_date_slug . '.xls"');
     } else {
-        header('Content-Disposition: attachment;filename="Fuel_Sales_Report_' . $report_date . '.xls"');
+        header('Content-Disposition: attachment;filename="Fuel_Sales_Report_' . $export_date_slug . '.xls"');
     }
     header('Cache-Control: max-age=0');
     
@@ -1415,7 +1541,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         echo '<h1>DAILY MERCHANDISE & SERVICE SALES REPORT</h1>';
         echo '<h1 style="font-size: 16px;">' . $summary_title_suffix . '</h1>';
         echo '<p>' . htmlspecialchars($station_name) . '</p>';
-        echo '<p><strong>Date:</strong> ' . date('F d, Y', strtotime($report_date)) . '</p>';
+        echo '<p><strong>Date Range:</strong> ' . htmlspecialchars($report_period_label) . '</p>';
         echo '<br/>';
         
         $merch_transactions = $merchandise_report_transactions;
@@ -1611,7 +1737,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         echo '<h1>DAILY FUEL SALES REPORT</h1>';
         echo '<h1 style="font-size: 16px;">' . $summary_title_suffix . '</h1>';
         echo '<p>' . htmlspecialchars($station_name) . '</p>';
-        echo '<p><strong>Date:</strong> ' . date('F d, Y', strtotime($report_date)) . '</p>';
+        echo '<p><strong>Date Range:</strong> ' . htmlspecialchars($report_period_label) . '</p>';
         echo '<br/>';
     
     // METER READINGS TABLE
@@ -1850,7 +1976,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     <html>
     <head>
         <meta charset="UTF-8">
-        <title>Daily Fuel Sales Report - <?= htmlspecialchars($report_date) ?></title>
+        <title>Daily Fuel Sales Report - <?= htmlspecialchars($report_period_label) ?></title>
         <style>
             @page {
                 size: A4 portrait;
@@ -2011,7 +2137,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
             <table>
                 <tr>
                     <td style="width: 50%;"><?= htmlspecialchars($station_name) ?></td>
-                    <td><strong>Date:</strong> <?= date('F d, Y', strtotime($report_date)) ?></td>
+                    <td><strong>Date Range:</strong> <?= htmlspecialchars($report_period_label) ?></td>
                 </tr>
                 <tr>
                     <td><strong>Location:</strong> <?= htmlspecialchars($station_location) ?></td>
@@ -2415,6 +2541,8 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     .flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
     .flt-btn-csv    { color: #002F70 !important; border-color: #002F70 !important; }
     .flt-btn-csv:hover    { background: #002F70 !important; color: #fff !important; }
+    .flt-btn-print  { color: #374151 !important; border-color: #374151 !important; }
+    .flt-btn-print:hover  { background: #374151 !important; color: #fff !important; }
     
     .tab-navigation {
         display: flex;
@@ -2581,83 +2709,128 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         font-weight: 700;
     }
     
+    /* ── Print styles — used by the JS print helper below ── */
     @media print {
         @page {
             size: legal portrait;
-            margin: 0.5in 0.4in;
+            margin: 0.25in;
         }
 
-        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-
-        body * { visibility: hidden !important; }
-        .print-area, .print-area * { visibility: visible !important; }
-        .print-area {
-            position: fixed !important; top: 0 !important; left: 0 !important;
-            width: 100% !important; margin: 0 !important; padding: 0 !important;
-            background: white !important;
-        }
-        html, body { margin: 0 !important; padding: 0 !important; background: white !important; overflow: visible !important; }
-        .container, .content { margin: 0 !important; padding: 0 !important; }
-
-        /* ── Kill ALL icons ── */
-        i, svg, .fas, .far, .fab, .fa, [class*="fa-"] {
-            display: none !important;
-            width: 0 !important; height: 0 !important;
-            font-size: 0 !important; line-height: 0 !important;
-            margin: 0 !important; padding: 0 !important;
-        }
-
-        .header { text-align: center !important; border-bottom: 2px solid #000 !important; padding: 6px 0 !important; margin: 0 0 8px 0 !important; }
-        .header h1 { font-size: 16px !important; font-weight: 700 !important; color: #000 !important; margin: 0 0 3px 0 !important; }
-        .header p { font-size: 10px !important; color: #000 !important; margin: 2px 0 !important; }
-        .section-title { font-size: 12px !important; font-weight: 700 !important; margin: 8px 0 4px 0 !important; padding-bottom: 3px !important; border-bottom: 2px solid #000 !important; page-break-after: avoid !important; }
-        .table-container { overflow: visible !important; width: 100% !important; text-align: center !important; }
-        table { width: 95% !important; max-width: 100% !important; border-collapse: collapse !important; font-size: 10px !important; table-layout: auto !important; margin: 0 auto 8px auto !important; }
-        thead { display: table-header-group !important; }
-        tbody { display: table-row-group !important; }
-        tr { page-break-inside: avoid !important; }
-        th { font-size: 10px !important; padding: 6px 8px !important; border: 1px solid #000 !important; background: #fff !important; color: #000 !important; font-weight: 700 !important; text-align: center !important; white-space: nowrap !important; }
-        td { font-size: 9px !important; padding: 5px 8px !important; border: 1px solid #000 !important; white-space: nowrap !important; vertical-align: top !important; }
-        .shift-boxes, .shift-summary { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 6px !important; margin: 6px 0 !important; page-break-inside: avoid !important; }
-        .shift-box { border: 1px solid #000 !important; padding: 5px !important; font-size: 9px !important; }
-        .shift-box h3 { font-size: 10px !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px 0 !important; }
-        .shift-box table { width: auto !important; margin: 0 !important; }
-        .shift-box td { border: none !important; border-bottom: 1px solid #ddd !important; font-size: 9px !important; }
-        .summary-grid { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 5px !important; margin: 6px 0 !important; page-break-inside: avoid !important; }
-        .summary-card { border: 1px solid #000 !important; padding: 5px !important; }
-        .summary-card .label { font-size: 7px !important; }
-        .summary-card .value { font-size: 10px !important; font-weight: 700 !important; }
-        .tab-navigation, .tab-btn, .controls { display: none !important; }
-        .tab-content { display: block !important; }
-        .tab-pane { display: block !important; }
-        
-        /* Hide all watermarks and background elements */
-        body::before, body::after, html::before, html::after {
-            content: none !important;
-            display: none !important;
-        }
-        
-        /* Hide fixed position elements (watermarks) */
-        body > *:not(.print-area) {
-            display: none !important;
-            visibility: hidden !important;
-            opacity: 0 !important;
-        }
-        
-        /* Remove background images */
         * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
             background-image: none !important;
             box-shadow: none !important;
         }
+
+        #toggleScrollBtn,
+        .toggle-scroll-btn,
+        .fixed-footer,
+        .footer-sidebar-area,
+        .footer-content,
+        .toast,
+        .toast-container,
+        .si-toast-container,
+        .sf-toast-container,
+        [class*="watermark"],
+        [id*="watermark"] {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            width: 0 !important;
+            height: 0 !important;
+        }
+
+        /* Hide everything on the real page */
+        html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+            overflow: visible !important;
+            height: auto !important;
+        }
+
+        body > * { display: none !important; }
+
+        /* Show only the injected print frame */
+        #sfss-print-frame {
+            display: block !important;
+            position: static !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+            overflow: visible !important;
+        }
+
+        #sfss-print-frame * { display: revert; }
+        #sfss-print-frame *,
+        #sfss-print-frame *::before,
+        #sfss-print-frame *::after {
+            box-shadow: none !important;
+            text-shadow: none !important;
+            background-image: none !important;
+        }
+
+        /* Icon/watermark suppression inside print frame */
+        #sfss-print-frame img,
+        #sfss-print-frame canvas,
+        #sfss-print-frame i,
+        #sfss-print-frame svg,
+        #sfss-print-frame .fas,
+        #sfss-print-frame .far,
+        #sfss-print-frame .fab,
+        #sfss-print-frame .fa,
+        #sfss-print-frame .toggle-scroll-btn,
+        #sfss-print-frame #toggleScrollBtn,
+        #sfss-print-frame [class*="watermark"],
+        #sfss-print-frame [id*="watermark"],
+        #sfss-print-frame [class*="fa-"] {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+            font-size: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        #sfss-print-frame .tab-navigation,
+        #sfss-print-frame .controls,
+        #sfss-print-frame .tab-btn { display: none !important; }
+
+        #sfss-print-frame .tab-content { display: none !important; }
+        #sfss-print-frame .tab-content.sfss-print-active { display: block !important; }
+
+        #sfss-print-frame .header { text-align: center !important; border-bottom: none !important; padding: 0 !important; margin: 0 0 4px 0 !important; }
+        #sfss-print-frame .header h1 { font-size: 12px !important; line-height: 1.05 !important; font-weight: 700 !important; color: #000 !important; margin: 0 0 1px 0 !important; }
+        #sfss-print-frame .header p { font-size: 7.5px !important; color: #000 !important; margin: 1px 0 !important; }
+        #sfss-print-frame .section-title { font-size: 8px !important; line-height: 1.05 !important; font-weight: 700 !important; margin: 4px 0 1px 0 !important; padding: 2px 4px !important; border: none !important; border-bottom: 1px solid #000 !important; background: #fff !important; color: #000 !important; page-break-after: avoid !important; text-transform: uppercase !important; }
+        #sfss-print-frame .table-container { overflow: visible !important; width: 100% !important; margin: 0 0 3px 0 !important; }
+        #sfss-print-frame table { width: 100% !important; border-collapse: collapse !important; font-size: 7.5px !important; line-height: 1.05 !important; margin: 0 !important; table-layout: fixed !important; }
+        #sfss-print-frame thead { display: table-header-group !important; }
+        #sfss-print-frame tbody { display: table-row-group !important; }
+        #sfss-print-frame tr { page-break-inside: avoid !important; }
+        #sfss-print-frame th { font-size: 7px !important; line-height: 1.05 !important; padding: 2px 3px !important; border: 1px solid #000 !important; background: #f3f4f6 !important; color: #000 !important; font-weight: 700 !important; text-align: center !important; overflow-wrap: anywhere !important; }
+        #sfss-print-frame td { font-size: 7px !important; line-height: 1.05 !important; padding: 2px 3px !important; border: 1px solid #000 !important; vertical-align: top !important; color: #000 !important; overflow-wrap: anywhere !important; }
+        #sfss-print-frame .container { margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
+        #sfss-print-frame .content { margin: 0 !important; padding: 0 !important; }
+        #sfss-print-frame .sfss-empty-print-hide { display: none !important; }
+        #sfss-print-frame .font-bold, #sfss-print-frame [style*="font-weight:700"] { font-weight: 700 !important; }
+        #sfss-print-frame .text-right { text-align: right !important; }
     }
 </style>
 
 <div class="stock-page">
 <!-- CONTROLS - OUTSIDE PRINTABLE AREA -->
 <div class="controls">
-    <div class="date-controls">
-        <label><strong>Report Date:</strong></label>
-        <input type="date" id="report_date" value="<?= htmlspecialchars($report_date) ?>" max="<?= $today ?>">
+    <div class="date-controls" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <label><strong>Report Date Range:</strong></label>
+        <input type="date" id="date_from" value="<?= htmlspecialchars($date_from) ?>" max="<?= $today ?>"
+               style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+        <span style="font-weight:600;color:#64748b;">to</span>
+        <input type="date" id="date_to" value="<?= htmlspecialchars($date_to) ?>" max="<?= $today ?>"
+               style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
         <button class="btn btn-primary" onclick="applyFilters()">
             <i class="fa-solid fa-filter"></i> Apply
         </button>
@@ -2665,21 +2838,21 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <!-- Excel -->
-        <a href="?export=excel&type=<?= urlencode($active_tab) ?>&report_date=<?= urlencode($report_date) ?>" 
+        <a href="?export=excel&type=<?= urlencode($active_tab) ?>&date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&report_date=<?= urlencode($date_from) ?>" 
            class="flt-btn flt-btn-excel" title="Export to Excel">
             <i class="fas fa-file-excel"></i> Excel
         </a>
         <!-- CSV -->
-        <button onclick="exportTableToCSV('salesTable','fuel_sales_summary_<?= date('Ymd') ?>.csv')"
+        <button onclick="sfssExportCSV()"
                 class="flt-btn flt-btn-csv" title="Export to CSV">
             <i class="fas fa-file-csv"></i> CSV
         </button>
         <!-- PDF -->
-        <button type="button" onclick="exportPrintableAreaToPDF('.print-area', 'Staff Sales Report', 'staff_sales_report_<?= date('Ymd', strtotime($report_date)) ?>', this)" class="flt-btn flt-btn-pdf" title="Export PDF">
+        <button type="button" onclick="exportPrintableAreaToPDF('.print-area', 'Staff Sales Report', 'staff_sales_report_<?= htmlspecialchars($export_date_slug) ?>', this)" class="flt-btn flt-btn-pdf" title="Export PDF">
             <i class="fas fa-file-pdf"></i> Export PDF
         </button>
         <!-- Print -->
-        <button type="button" onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print report">
+        <button type="button" onclick="sfssPrintReportArea()" class="flt-btn flt-btn-print" title="Print report">
             <i class="fas fa-print"></i> Print
         </button>
     </div>
@@ -2709,8 +2882,8 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                         <tr>
                             <td style="padding:5px 10px;width:18%;font-weight:700;border:1px solid #ddd;">Shift</td>
                             <td style="padding:5px 10px;border:1px solid #ddd;"><?= htmlspecialchars($shift_label_display) ?></td>
-                            <td style="padding:5px 10px;width:18%;font-weight:700;border:1px solid #ddd;">Date</td>
-                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= date('F d, Y', strtotime($report_date)) ?></td>
+                            <td style="padding:5px 10px;width:18%;font-weight:700;border:1px solid #ddd;">Date Range</td>
+                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= htmlspecialchars($report_period_label) ?></td>
                         </tr>
                         <tr>
                             <td style="padding:5px 10px;font-weight:700;border:1px solid #ddd;">Cashier</td>
@@ -3022,19 +3195,21 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
             <?php else: ?>
             <!-- No A/R for this shift -->
-            <div class="section-title" style="margin-top:18px;">
-                A/R SUMMARY (Account Receivable / Utang)
-            </div>
-            <div class="table-container">
-                <table>
-                    <tbody>
-                        <tr>
-                            <td style="text-align:center;padding:24px;color:#6b7280;font-style:italic;">
-                                No Account Receivables for this shift.
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="sfss-empty-print-hide">
+                <div class="section-title" style="margin-top:18px;">
+                    A/R SUMMARY (Account Receivable / Utang)
+                </div>
+                <div class="table-container">
+                    <table>
+                        <tbody>
+                            <tr>
+                                <td style="text-align:center;padding:24px;color:#6b7280;font-style:italic;">
+                                    No Account Receivables for this shift.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
             <?php endif; ?>
 
@@ -3060,8 +3235,8 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                         <tr>
                             <td style="padding:5px 10px;width:18%;font-weight:700;border:1px solid #ddd;">Shift</td>
                             <td style="padding:5px 10px;border:1px solid #ddd;"><?= htmlspecialchars($shift_label_display) ?></td>
-                            <td style="padding:5px 10px;width:18%;font-weight:700;border:1px solid #ddd;">Date</td>
-                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= date('F d, Y', strtotime($report_date)) ?></td>
+                            <td style="padding:5px 10px;width:18%;font-weight:700;border:1px solid #ddd;">Date Range</td>
+                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= htmlspecialchars($report_period_label) ?></td>
                         </tr>
                         <tr>
                             <td style="padding:5px 10px;font-weight:700;border:1px solid #ddd;">Cashier</td>
@@ -3230,9 +3405,9 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         // Dynamically update the Excel export button type parameter
         const excelLink = document.querySelector('.flt-btn-excel');
         if (excelLink) {
-            const url = new URL(excelLink.href, window.location.origin + window.location.pathname);
+            const url = new URL(excelLink.href, window.location.origin);
             url.searchParams.set('type', tabName);
-            excelLink.href = url.search + url.hash;
+            excelLink.href = url.toString();
         }
         
         // Update browser URL query parameter without full reload
@@ -3242,29 +3417,170 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     }
 
     function applyFilters() {
-        const reportDate = document.getElementById('report_date').value;
+        const dateFrom = document.getElementById('date_from').value;
+        const dateTo   = document.getElementById('date_to').value;
+
+        if (!dateFrom) { alert('Please select a From Date.'); return; }
+        if (!dateTo)   { alert('Please select a To Date.');   return; }
+        if (dateTo < dateFrom) {
+            alert('The To Date cannot be earlier than the From Date.');
+            return;
+        }
+
         const currentUrl = new URL(window.location.href);
-        currentUrl.searchParams.set('report_date', reportDate);
-        
+        currentUrl.searchParams.set('date_from',   dateFrom);
+        currentUrl.searchParams.set('date_to',     dateTo);
+        currentUrl.searchParams.set('report_date', dateFrom); // backward compat
+
         // Keep the active tab query parameter when applying date filter
         const activeTabBtn = document.querySelector('.tab-navigation .tab-btn.active');
         if (activeTabBtn) {
             const isMerch = activeTabBtn.textContent.includes('MERCHANDISE');
             currentUrl.searchParams.set('tab', isMerch ? 'merchandise' : 'fuel');
         }
-        
+
         window.location.href = currentUrl.toString();
     }
-    
-    // Support press Enter on date input
-    const dateInput = document.getElementById('report_date');
-    if (dateInput) {
-        dateInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                applyFilters();
+
+    // Keep To Date >= From Date automatically
+    const dateFromInput = document.getElementById('date_from');
+    const dateToInput   = document.getElementById('date_to');
+    if (dateFromInput && dateToInput) {
+        dateFromInput.addEventListener('change', function() {
+            if (dateToInput.value && dateToInput.value < this.value) {
+                dateToInput.value = this.value;
             }
+            dateToInput.min = this.value;
+        });
+        // Support Enter key on both date inputs
+        [dateFromInput, dateToInput].forEach(function(inp) {
+            inp.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') applyFilters();
+            });
         });
     }
+
+
+    // ─── CSV EXPORT ─────────────────────────────────────────────────────────────
+    /**
+     * Server-side CSV export — mirrors the Excel handler but outputs CSV.
+     * Falls back to client-side table scraping if the server route fails.
+     */
+    function sfssExportCSV() {
+        // Determine active tab
+        var activeBtn = document.querySelector('.tab-navigation .tab-btn.active');
+        var tabType   = 'fuel';
+        if (activeBtn && activeBtn.textContent.indexOf('MERCHANDISE') !== -1) {
+            tabType = 'merchandise';
+        }
+
+        var dateFrom = document.getElementById('date_from') ? document.getElementById('date_from').value : '';
+        var dateTo   = document.getElementById('date_to')   ? document.getElementById('date_to').value   : '';
+
+        // Build server-side CSV URL
+        var url = window.location.pathname
+            + '?export=csv'
+            + '&type='        + encodeURIComponent(tabType)
+            + '&date_from='   + encodeURIComponent(dateFrom)
+            + '&date_to='     + encodeURIComponent(dateTo)
+            + '&report_date=' + encodeURIComponent(dateFrom);
+
+        window.location.href = url;
+    }
+
+    // ─── PRINT ──────────────────────────────────────────────────────────────────
+    /**
+     * Clones .print-area into a top-level #sfss-print-frame div, prints, then removes it.
+     * This avoids the blank-page bug caused by .main having overflow:hidden + position:fixed.
+     */
+    function sfssPrintReportArea() {
+        _sfss_doNativePrint();
+    }
+
+    // ─── PDF EXPORT ─────────────────────────────────────────────────────────────
+    function exportPrintableAreaToPDF(selector, title, filename, btn) {
+        if (btn) {
+            const origHTML = btn.innerHTML;
+            btn.innerHTML  = '<i class="fas fa-spinner fa-spin"></i> Opening PDF dialog...';
+            btn.disabled   = true;
+            const origTitle = document.title;
+            document.title  = (filename || 'staff_sales_report').replace(/_/g, ' ');
+            _sfss_doNativePrint(function() {
+                document.title = origTitle;
+                btn.innerHTML  = origHTML;
+                btn.disabled   = false;
+            });
+        } else {
+            _sfss_doNativePrint();
+        }
+    }
+
+    /**
+     * Core print helper.
+     * 1. Clones .print-area content into a <div id="sfss-print-frame"> appended to <body>.
+     * 2. Prints only the currently active tab.
+     * 3. Calls window.print().
+     * 4. Removes the frame after printing.
+     */
+    function _sfss_doNativePrint(afterPrint) {
+        // Remove any stale frame
+        var old = document.getElementById('sfss-print-frame');
+        if (old) old.remove();
+
+        var source = document.querySelector('.print-area');
+        if (!source) { window.print(); return; }
+
+        // The global scroll button uses inline !important styles, so remove it
+        // from the DOM during print to keep it out of the preview.
+        var scrollBtn = document.getElementById('toggleScrollBtn');
+        var scrollBtnParent = scrollBtn ? scrollBtn.parentNode : null;
+        var scrollBtnNext = scrollBtn ? scrollBtn.nextSibling : null;
+        if (scrollBtn && scrollBtnParent) {
+            scrollBtn.remove();
+        }
+
+        var activeSource = source.querySelector('.tab-content.active') || source.querySelector('.tab-content');
+        var activeId = activeSource ? activeSource.id : '';
+
+        // Clone the entire print area
+        var frame = document.createElement('div');
+        frame.id  = 'sfss-print-frame';
+        frame.innerHTML = source.innerHTML;
+
+        // Keep only the active tab in print to avoid extra blank/report pages.
+        var tabs = frame.querySelectorAll('.tab-content');
+        tabs.forEach(function(t) {
+            if (activeId && t.id === activeId) {
+                t.style.display = 'block';
+                t.style.visibility = 'visible';
+                t.classList.add('active', 'sfss-print-active');
+            } else {
+                t.remove();
+            }
+        });
+
+        // Append directly to body so it is a top-level child
+        document.body.appendChild(frame);
+
+        // Small delay lets browser lay out the cloned content before printing
+        setTimeout(function() {
+            window.print();
+            // Remove frame after the print dialog closes (afterprint event or timeout)
+            var cleanup = function() {
+                var f = document.getElementById('sfss-print-frame');
+                if (f) f.remove();
+                if (scrollBtn && scrollBtnParent && !document.getElementById('toggleScrollBtn')) {
+                    scrollBtnParent.insertBefore(scrollBtn, scrollBtnNext);
+                }
+                window.removeEventListener('afterprint', cleanup);
+                if (typeof afterPrint === 'function') afterPrint();
+            };
+            window.addEventListener('afterprint', cleanup);
+            // Fallback cleanup after 30 s in case afterprint never fires
+            setTimeout(cleanup, 30000);
+        }, 150);
+    }
+
     </script>
 
     <?php require_once __DIR__ . '/../partials/footer.php'; ?>

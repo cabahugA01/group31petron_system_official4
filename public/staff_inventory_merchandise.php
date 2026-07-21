@@ -199,7 +199,11 @@ body,html{overflow-x:hidden;max-width:100%;}
 
 /* ── Summary Cards ── */
 .inv-stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:24px;}
-.inv-stat-card{background:#ffffff;border:1px solid #cbd5e1;border-radius:10px;padding:16px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 3px rgba(0,0,0,.05);position:relative;overflow:hidden;}
+.inv-stat-card{background:#ffffff;border:1px solid #cbd5e1;border-radius:10px;padding:16px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 3px rgba(0,0,0,.05);position:relative;overflow:hidden;transition:all .18s ease;}
+.inv-stat-card[data-filter]{cursor:pointer;user-select:none;}
+.inv-stat-card[data-filter]:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,.12);border-color:#94a3b8;}
+.inv-stat-card.card-active{border-width:2px!important;box-shadow:0 4px 14px rgba(0,0,0,.15)!important;}
+.inv-stat-card.card-active .inv-stat-label::after{content:' ✕ (click to reset)';font-size:9px;opacity:.75;}
 .inv-stat-info{display:flex;flex-direction:column;}
 .inv-stat-label{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;}
 .inv-stat-val{font-size:20px;font-weight:700;color:#1e293b;}
@@ -388,28 +392,28 @@ body.modal-open .main {
 
 <!-- ══ SUMMARY CARDS ══ -->
 <div class="inv-stats-row">
-    <div class="inv-stat-card">
+    <div class="inv-stat-card" id="card-total" onclick="filterByCard('', this)">
         <div class="inv-stat-info">
             <span class="inv-stat-label">Total Products</span>
             <span class="inv-stat-val"><?php echo $stats['total']; ?></span>
         </div>
         <div class="inv-stat-icon" style="color:#2563eb;"><i class="fas fa-box"></i></div>
     </div>
-    <div class="inv-stat-card">
+    <div class="inv-stat-card" id="card-low" data-filter="warning" onclick="filterByCard('warning', this)" title="Click to filter stock alert items">
         <div class="inv-stat-info">
             <span class="inv-stat-label">Low Stock</span>
             <span class="inv-stat-val"><?php echo $stats['low']; ?></span>
         </div>
         <div class="inv-stat-icon" style="color:#fd7e14;"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
-    <div class="inv-stat-card">
+    <div class="inv-stat-card" id="card-critical" data-filter="warning" onclick="filterByCard('warning', this)" title="Click to filter stock alert items">
         <div class="inv-stat-info">
             <span class="inv-stat-label">Critical Stock</span>
             <span class="inv-stat-val"><?php echo $stats['critical']; ?></span>
         </div>
         <div class="inv-stat-icon" style="color:#dc2626;"><i class="fas fa-bell"></i></div>
     </div>
-    <div class="inv-stat-card">
+    <div class="inv-stat-card" id="card-out" data-filter="warning" onclick="filterByCard('warning', this)" title="Click to filter stock alert items">
         <div class="inv-stat-info">
             <span class="inv-stat-label">Out of Stock</span>
             <span class="inv-stat-val"><?php echo $stats['out']; ?></span>
@@ -454,13 +458,7 @@ body.modal-open .main {
                 <option value="<?php echo htmlspecialchars(strtolower($u)); ?>"><?php echo htmlspecialchars($u); ?></option>
                 <?php endforeach; ?>
             </select>
-            <select id="filterStatus">
-                <option value="">All Statuses</option>
-                <option value="ok">Available</option>
-                <option value="low">Low Stock</option>
-                <option value="critical">Critical</option>
-                <option value="out">Out of Stock</option>
-            </select>
+            <input type="hidden" id="filterStatus" value="">
             <select id="sortBy" style="margin-left:auto;">
                 <option value="default">Default Sort</option>
                 <option value="newest">Newest Updated</option>
@@ -484,7 +482,6 @@ body.modal-open .main {
                         <th style="width:150px;">Stock / Reorder</th>
                         <th style="text-align:right;width:80px;">Phys. Count</th>
                         <th style="text-align:right;width:70px;">Variance</th>
-                        <th style="text-align:center;width:100px;">Status</th>
                         <th style="text-align:center;width:90px;">Last Mvmt</th>
                         <th style="width:90px;">Updated</th>
                         <th style="text-align:center;width:75px;">Actions</th>
@@ -492,7 +489,7 @@ body.modal-open .main {
                 </thead>
                 <tbody id="merchTableBody">
                 <?php if (empty($js_items)): ?>
-                    <tr><td colspan="12" style="text-align:center;padding:32px;color:#6c757d;">No merchandise data available.</td></tr>
+                    <tr><td colspan="11" style="text-align:center;padding:32px;color:#6c757d;">No merchandise data available.</td></tr>
                 <?php else: ?>
                     <?php
                     // Group by category from $js_items (already filtered to active only)
@@ -501,7 +498,7 @@ body.modal-open .main {
                     ksort($grouped);
                     foreach ($grouped as $cat_label => $items):
                     ?>
-                    <tr class="cat-header"><td colspan="12" style="font-weight:700; background:#e9ecef!important; color:#495057!important; text-transform:uppercase; font-size:11px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px; text-align:center;"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                    <tr class="cat-header"><td colspan="11" style="font-weight:700; background:#e9ecef!important; color:#495057!important; text-transform:uppercase; font-size:11px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px; text-align:center;"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                     <?php foreach ($items as $it):
                         $ts = $it['last_updated'] ? (new DateTime($it['last_updated']))->format('M d, Y') : '—';
                     ?>
@@ -530,6 +527,7 @@ body.modal-open .main {
                     ?>
                     <tr class="merch-row"
                         data-name="<?php echo strtolower(htmlspecialchars($it['name'])); ?>"
+                        data-sku="<?php echo strtolower(htmlspecialchars($it['sku'] ?: '')); ?>"
                         data-category="<?php echo strtolower(htmlspecialchars($it['category'])); ?>"
                         data-brand="<?php echo strtolower(htmlspecialchars($it['brand'])); ?>"
                         data-unit="<?php echo strtolower(htmlspecialchars($it['unit'])); ?>"
@@ -551,11 +549,6 @@ body.modal-open .main {
                         </td>
                         <td style="text-align:right;font-weight:700;color:#0f172a;"><?php echo $phys_text; ?></td>
                         <td style="text-align:right;<?php echo $var_style; ?>"><?php echo $var_text; ?></td>
-                        <td style="text-align:center;">
-                            <span class="status-badge" style="background:<?php echo $display_color; ?>20;color:<?php echo $display_color; ?>;border:1px solid <?php echo $display_color; ?>40;">
-                                <?php if ($has_variance): ?><i class="fas fa-exclamation-triangle"></i> <?php endif; ?><?php echo htmlspecialchars($display_status); ?>
-                            </span>
-                        </td>
                         <td style="text-align:center;">
                             <?php if ($it['mv_label']): ?>
                                 <span class="<?php echo $mv_cls; ?>" style="font-size:11px;"><?php echo htmlspecialchars($it['mv_label']); ?></span>
@@ -684,26 +677,52 @@ var _srPreselect = null;
 
 // ── Filter / Sort ─────────────────────────────────────────────
 function applyFilters() {
-    var q     = (document.getElementById('merchSearch').value || '').toLowerCase();
+    var q     = (document.getElementById('merchSearch').value || '').toLowerCase().trim();
     var cat   = (document.getElementById('filterCategory').value || '').toLowerCase();
     var brand = (document.getElementById('filterBrand').value || '').toLowerCase();
     var unit  = (document.getElementById('filterUnit').value || '').toLowerCase();
-    var stat  = (document.getElementById('filterStatus').value || '');
+    var stat  = (document.getElementById('filterStatus').value || '').toLowerCase();
     var sortBy = document.getElementById('sortBy').value;
 
     // 1. Filter each data row — use search-hidden class (works with pagination)
+    // WARNING TIERS: low, critical, out are all connected and shown together
+    var WARNING_KEYS = ['low', 'critical', 'out'];
+
     document.querySelectorAll('#merchTableBody .merch-row').forEach(function(r) {
         var name    = (r.dataset.name || '').toLowerCase();
+        var sku     = (r.dataset.sku || '').toLowerCase();
         var rcat    = (r.dataset.category || '').toLowerCase();
         var rbrand  = (r.dataset.brand || '').toLowerCase();
         var runit   = (r.dataset.unit || '').toLowerCase();
-        var rstat   = (r.dataset.status || '');
-        
-        var matchQ  = !q      || name.indexOf(q) !== -1;
+        var rstat   = (r.dataset.status || '').toLowerCase();
+
+        var isWarning = WARNING_KEYS.indexOf(rstat) !== -1;
+
         var matchC  = !cat    || rcat === cat;
         var matchB  = !brand  || rbrand === brand;
         var matchU  = !unit   || runit === unit;
-        var matchS  = !stat   || rstat === stat; // Exact match only
+
+        // Status filter: 'warning' or any single warning tier shows all warnings
+        var matchS = true;
+        if (stat) {
+            if (stat === 'warning' || WARNING_KEYS.indexOf(stat) !== -1) {
+                matchS = isWarning;
+            } else {
+                matchS = (rstat === stat);
+            }
+        }
+
+        // Search text: status keywords expand to show all warning products
+        var matchQ = true;
+        if (q) {
+            if (['low', 'low stock', 'out', 'out of stock', 'critical', 'critical stock', 'warning'].indexOf(q) !== -1) {
+                matchQ = isWarning;
+            } else if (q === 'available' || q === 'ok') {
+                matchQ = (rstat === 'ok' || rstat === 'available');
+            } else {
+                matchQ = (name.indexOf(q) !== -1 || sku.indexOf(q) !== -1 || rcat.indexOf(q) !== -1 || rbrand.indexOf(q) !== -1);
+            }
+        }
         
         var visible = matchQ && matchC && matchB && matchU && matchS;
         if (visible) {
@@ -774,10 +793,46 @@ function resetFilters() {
     document.getElementById('filterUnit').value = '';
     document.getElementById('filterStatus').value = '';
     document.getElementById('sortBy').value = 'default';
+    // Clear card highlights too
+    document.querySelectorAll('.inv-stat-card').forEach(function(c){ c.classList.remove('card-active'); });
     // Trigger change event to sort
     var event = new Event('change');
     document.getElementById('sortBy').dispatchEvent(event);
     applyFilters();
+}
+
+// ── Card filter shortcut ───────────────────────────────────────
+function filterByCard(statusKey, cardEl) {
+    var select = document.getElementById('filterStatus');
+    var isActive = cardEl.classList.contains('card-active');
+
+    // Remove active state from all cards
+    document.querySelectorAll('.inv-stat-card').forEach(function(c){
+        c.classList.remove('card-active');
+        c.style.borderColor = '';
+    });
+
+    if (isActive || statusKey === '') {
+        // Toggle off — show all
+        select.value = '';
+    } else {
+        // Activate this card (all warning cards share highlight)
+        cardEl.classList.add('card-active');
+        if (statusKey === 'warning') {
+            // Also highlight sibling warning cards
+            ['card-low','card-critical','card-out'].forEach(function(id) {
+                var c = document.getElementById(id);
+                if (c) c.classList.add('card-active');
+            });
+        }
+        select.value = statusKey;
+    }
+
+    applyFilters();
+
+    // Scroll table into view smoothly
+    var card = document.querySelector('.inv-card');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 ['input','change'].forEach(function(ev) {
@@ -853,7 +908,6 @@ function viewDetails(it) {
         vdRow('Current Stock', '<strong style="font-size:16px;">'+it.stock+'</strong> '+escHtml(it.unit)+
               ' <span style="font-size:11px;color:#94a3b8;">('+it.fill_pct+'%)</span>') +
         vdRow('Reorder Level', it.reorder+' '+escHtml(it.unit)) +
-        vdRow('Status', '<span class="status-badge" style="background:'+it.color+'20;color:'+it.color+';border:1px solid '+it.color+'40;">'+escHtml(it.status)+'</span>') +
         '</div>' +
         '<div style="background:#f8faff;border-radius:8px;padding:12px 14px;margin-top:4px;">' +
         '<div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;">Last Movement</div>' +

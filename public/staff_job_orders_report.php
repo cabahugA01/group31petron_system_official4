@@ -31,10 +31,27 @@ $redirect_date = trim($_GET['report_date'] ?? $_GET['date_start'] ?? $_GET['date
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $redirect_date)) {
     $redirect_date = date('Y-m-d');
 }
-header('Location: staff_fuel_sales_summary.php?' . http_build_query([
+$redirect_from = trim($_GET['date_from'] ?? $_GET['date_start'] ?? $redirect_date);
+$redirect_to = trim($_GET['date_to'] ?? $_GET['date_end'] ?? $redirect_date);
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $redirect_from)) $redirect_from = $redirect_date;
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $redirect_to)) $redirect_to = $redirect_from;
+if ($redirect_to < $redirect_from) $redirect_to = $redirect_from;
+
+$redirect_params = [
     'report_date' => $redirect_date,
     'tab' => 'merchandise',
-]));
+    'type' => 'merchandise',
+    'date_from' => $redirect_from,
+    'date_to' => $redirect_to,
+];
+if (isset($_GET['export'])) {
+    $export = strtolower(trim((string)$_GET['export']));
+    if (in_array($export, ['excel', 'csv', 'pdf'], true)) {
+        $redirect_params['export'] = $export;
+    }
+}
+
+header('Location: staff_fuel_sales_summary.php?' . http_build_query($redirect_params));
 exit;
 
 // Get Station Info

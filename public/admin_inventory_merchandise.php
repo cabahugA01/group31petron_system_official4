@@ -419,13 +419,20 @@ foreach ($all_items as $item) {
     // Apply Filters
     // 1. Search Query
     if ($search_query !== '') {
-        $s_lower = strtolower($search_query);
+        $s_lower = trim(strtolower($search_query));
+        $status_keywords = ['low', 'low stock', 'out', 'out of stock', 'critical', 'critical stock'];
+        $status_match = false;
+        if (in_array($s_lower, $status_keywords)) {
+            $status_match = in_array($computed_status, ['low', 'critical', 'out']);
+        } elseif ($s_lower === 'available') {
+            $status_match = ($computed_status === 'available');
+        }
         $name_match = (strpos(strtolower($item['name'] ?? ''), $s_lower) !== false);
         $sku_match  = (strpos(strtolower($item['sku'] ?? ''), $s_lower) !== false);
         $cat_match  = (strpos(strtolower($item['category_name'] ?? ''), $s_lower) !== false);
         $sup_match  = (strpos(strtolower($item['supplier'] ?? ''), $s_lower) !== false);
         $brand_match = (strpos(strtolower($item['brand'] ?? ''), $s_lower) !== false);
-        if (!$name_match && !$sku_match && !$cat_match && !$sup_match && !$brand_match) {
+        if (!$name_match && !$sku_match && !$cat_match && !$sup_match && !$brand_match && !$status_match) {
             continue;
         }
     }
@@ -460,8 +467,16 @@ foreach ($all_items as $item) {
 
     // 6. Status Filter
     if ($status_filter !== 'all' && $status_filter !== '') {
-        if ($computed_status !== $status_filter) {
-            continue;
+        $sf_lower = strtolower($status_filter);
+        if ($sf_lower === 'warning' || in_array($sf_lower, ['low', 'critical', 'out', 'low stock', 'critical stock', 'out of stock'])) {
+            // Any warning-tier filter shows all warning products (Low + Critical + Out of Stock)
+            if (!in_array($computed_status, ['low', 'critical', 'out'])) {
+                continue;
+            }
+        } else {
+            if ($computed_status !== $status_filter) {
+                continue;
+            }
         }
     }
 
@@ -852,7 +867,7 @@ require_once __DIR__ . '/../partials/header.php';
 <!-- Summary Cards -->
 <div class="afto-cards">
     <!-- Card 1: Total Merchandise Products -->
-    <div class="afto-card blue">
+    <div class="afto-card blue <?= ($status_filter === 'all' || $status_filter === '') ? 'card-active' : '' ?>" onclick="filterAdminByCard('all')" style="cursor:pointer;" title="Click to view All Products">
         <div class="afto-card-info">
             <span class="afto-card-lbl">Total Merchandise Products</span>
             <span class="afto-card-val"><?= number_format($kpi_total_products) ?></span>
@@ -876,7 +891,7 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="afto-card-icon"><i class="fas fa-coins"></i></div>
     </div>
     <!-- Card 4: Low Stock Items -->
-    <div class="afto-card yellow">
+    <div class="afto-card yellow <?= in_array($status_filter, ['warning','low','critical','out']) ? 'card-active' : '' ?>" onclick="filterAdminByCard('warning')" style="cursor:pointer;" title="Click to filter stock alert items">
         <div class="afto-card-info">
             <span class="afto-card-lbl">Low Stock Items</span>
             <span class="afto-card-val"><?= number_format($kpi_low_stock) ?></span>
@@ -884,7 +899,7 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="afto-card-icon"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
     <!-- Card 5: Critical Stock Items -->
-    <div class="afto-card red" style="border-bottom: 2px solid #dc2626;">
+    <div class="afto-card red <?= in_array($status_filter, ['warning','low','critical','out']) ? 'card-active' : '' ?>" onclick="filterAdminByCard('warning')" style="cursor:pointer; border-bottom: 2px solid #dc2626;" title="Click to filter stock alert items">
         <div class="afto-card-info">
             <span class="afto-card-lbl" style="color:#dc2626;">Critical Stock Items</span>
             <span class="afto-card-val" style="color:#dc2626;"><?= number_format($kpi_critical_stock) ?></span>
@@ -892,7 +907,7 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="afto-card-icon"><i class="fas fa-fire" style="color:#dc2626;"></i></div>
     </div>
     <!-- Card 6: Out of Stock Items -->
-    <div class="afto-card red">
+    <div class="afto-card red <?= in_array($status_filter, ['warning','low','critical','out']) ? 'card-active' : '' ?>" onclick="filterAdminByCard('warning')" style="cursor:pointer;" title="Click to filter stock alert items">
         <div class="afto-card-info">
             <span class="afto-card-lbl">Out of Stock Items</span>
             <span class="afto-card-val"><?= number_format($kpi_out_of_stock) ?></span>
@@ -953,9 +968,7 @@ require_once __DIR__ . '/../partials/header.php';
         <select name="status_filter" id="status_filter">
             <option value="all">All Statuses</option>
             <option value="available" <?= $status_filter === 'available' ? 'selected' : '' ?>>Available</option>
-            <option value="low" <?= $status_filter === 'low' ? 'selected' : '' ?>>Low Stock</option>
-            <option value="critical" <?= $status_filter === 'critical' ? 'selected' : '' ?>>Critical Stock</option>
-            <option value="out" <?= $status_filter === 'out' ? 'selected' : '' ?>>Out of Stock</option>
+            <option value="warning" <?= in_array($status_filter, ['warning','low','critical','out']) ? 'selected' : '' ?> hidden>Stock Alerts</option>
             <option value="inactive" <?= $status_filter === 'inactive' ? 'selected' : '' ?>>Inactive</option>
         </select>
     </div>
@@ -992,7 +1005,6 @@ require_once __DIR__ . '/../partials/header.php';
                 <col style="width:115px">  <!-- Stock/Reorder -->
                 <col style="width:50px">   <!-- Phys -->
                 <col style="width:55px">   <!-- Variance -->
-                <col style="width:100px">  <!-- Status -->
                 <col style="width:70px">   <!-- Last Mov -->
                 <col style="width:90px">   <!-- Last Updated -->
                 <col style="width:80px">   <!-- Action -->
@@ -1007,7 +1019,6 @@ require_once __DIR__ . '/../partials/header.php';
                     <th>Stock / Reorder</th>
                     <th style="text-align:right;">Phys.</th>
                     <th style="text-align:right;">Variance</th>
-                    <th class="align-center">Status</th>
                     <th style="text-align:center;">Last Mov.</th>
                     <th>Last Updated</th>
                     <th style="text-align:center;">Action</th>
@@ -1016,7 +1027,7 @@ require_once __DIR__ . '/../partials/header.php';
             <tbody>
             <?php if (empty($sorted_filtered)): ?>
                 <tr>
-                    <td colspan="12" class="align-center" style="padding: 24px; color: #64748b;">
+                    <td colspan="11" class="align-center" style="padding: 24px; color: #64748b;">
                         <i class="fas fa-box-open" style="font-size: 24px; margin-bottom: 8px; display:block;"></i>
                         No merchandise inventory records matched your filters.
                     </td>
@@ -1024,7 +1035,7 @@ require_once __DIR__ . '/../partials/header.php';
             <?php else: ?>
                 <?php foreach ($sorted_filtered as $cat_label => $items): ?>
                     <tr class="cat-header">
-                        <td colspan="12" style="text-align:center; font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:12px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px;">
+                        <td colspan="11" style="text-align:center; font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:12px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px;">
                             <strong><?= htmlspecialchars($cat_label) ?></strong>
                         </td>
                     </tr>
@@ -1034,8 +1045,6 @@ require_once __DIR__ . '/../partials/header.php';
                         $price    = (float)$item['price'];
                         $cost     = (float)$item['cost'];
                         $value    = $stock * $price;
-                        $badgeCls = getStatusBadgeClass($item['computed_status']);
-                        $badgeLbl = getStatusLabel($item['computed_status']);
                         $updated  = $item['last_updated'] ? date('M d, Y h:i A', strtotime($item['last_updated'])) : '—';
                     ?>
                     <?php
@@ -1043,8 +1052,6 @@ require_once __DIR__ . '/../partials/header.php';
                         $fill_pct = $capacity > 0 ? ($stock / $capacity) * 100 : 0;
                         $variance = $item['variance'];
                         $has_variance = ($variance !== null && (float)$variance != 0);
-                        $badgeCls = $has_variance ? 'bg-amber' : getStatusBadgeClass($item['computed_status']);
-                        $badgeLbl = $has_variance ? 'Variance Detected' : getStatusLabel($item['computed_status']);
                         $status_color = $has_variance ? '#fd7e14' : ($item['computed_status'] === 'available' ? '#28a745' : (in_array($item['computed_status'], ['critical', 'out']) ? '#dc3545' : '#fd7e14'));
                         $updated = $item['last_updated'] ? date('M d h:i A', strtotime($item['last_updated'])) : '-';
                         $phys_text = $item['physical_count'] !== null ? number_format((float)$item['physical_count'], 0) : '-';
@@ -1082,7 +1089,6 @@ require_once __DIR__ . '/../partials/header.php';
                         </td>
                         <td class="align-right" style="font-weight:700;color:#0f172a;"><?= $phys_text ?></td>
                         <td class="align-right" style="<?= $var_style ?>"><?= $var_text ?></td>
-                        <td class="align-center"><span class="badge-lbl <?= $badgeCls ?>"><?= $badgeLbl ?></span></td>
                         <td class="align-center">
                             <?php if ($mv_label): ?>
                                 <span class="<?= $mv_class ?>" style="font-size:11px;"><?= htmlspecialchars($mv_label) ?></span>
@@ -1138,7 +1144,6 @@ require_once __DIR__ . '/../partials/header.php';
                         <tr><td style="font-weight:bold; color:#64748b;">Unit Cost:</td><td id="detCost"></td></tr>
                         <tr><td style="font-weight:bold; color:#64748b;">Selling Price:</td><td id="detPrice" style="color:#16a34a; font-weight:700;"></td></tr>
                         <tr><td style="font-weight:bold; color:#64748b;">Inventory Value:</td><td id="detValue" style="font-weight:700; color:#002F70;"></td></tr>
-                        <tr><td style="font-weight:bold; color:#64748b;">Status:</td><td id="detStatus"></td></tr>
                     </table>
                 </div>
             </div>
@@ -1199,27 +1204,6 @@ function viewDetails(item) {
     var value = stock * price;
     document.getElementById('detValue').innerHTML = '₱' + value.toLocaleString(undefined, {minimumFractionDigits: 2});
     
-    var statusText = '';
-    var statusClass = '';
-    if (item.computed_status === 'out') {
-        statusText = 'Out of Stock';
-        statusClass = 'bg-red';
-    } else if (item.computed_status === 'critical') {
-        statusText = 'Critical Stock';
-        statusClass = 'bg-red';
-    } else if (item.computed_status === 'low') {
-        statusText = 'Low Stock';
-        statusClass = 'bg-amber';
-    } else if (item.computed_status === 'inactive') {
-        statusText = 'Inactive';
-        statusClass = 'bg-gray';
-    } else {
-        statusText = 'Available';
-        statusClass = 'bg-green';
-    }
-    
-    document.getElementById('detStatus').innerHTML = '<span class="badge-lbl ' + statusClass + '">' + statusText + '</span>';
-    
     // Fetch and display movement history
     var tbody = document.getElementById('detRecentMovement');
     tbody.innerHTML = '<tr><td colspan="5" class="align-center" style="padding: 10px; text-align:center;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
@@ -1259,6 +1243,18 @@ function viewDetails(item) {
         });
 
     document.getElementById('detailsModal').classList.add('show');
+}
+
+function filterAdminByCard(statusKey) {
+    var select = document.getElementById('status_filter');
+    if (!select) return;
+    if (select.value === statusKey) {
+        select.value = 'all';
+    } else {
+        select.value = statusKey;
+    }
+    var form = select.closest('form');
+    if (form) form.submit();
 }
 
 // Modal click-outside dismissal

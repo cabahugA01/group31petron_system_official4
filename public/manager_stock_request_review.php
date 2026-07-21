@@ -1237,7 +1237,7 @@ body .main,
                                     </div>
                                     <div class="pr-panel-meta-item">
                                         <strong>Request Date</strong>
-                                        <span style="color: #475569;"><?= date('M d, Y H:i', strtotime($group['created_at'])) ?></span>
+                                        <span style="color: #475569;"><?= date('M d, Y g:i A', strtotime($group['created_at'])) ?></span>
                                     </div>
                                     <div class="pr-panel-meta-item">
                                         <strong>Type</strong>
@@ -1459,7 +1459,7 @@ body .main,
                                             </div>
                                             <div>
                                                 <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px;">Request Time</div>
-                                                <div style="font-size: 13px; font-weight: 600; color: #1e293b;"><?= date('H:i', strtotime($group['created_at'])) ?></div>
+                                                <div style="font-size: 13px; font-weight: 600; color: #1e293b;"><?= date('g:i A', strtotime($group['created_at'])) ?></div>
                                             </div>
                                         </div>
                                         <?php

@@ -221,6 +221,71 @@ if ($has_merchandise_deliveries) {
 }
 
 // ============================================================
+// CSV EXPORT HANDLER
+// ============================================================
+if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment;filename="Deliveries_Report_' . $date_start . '_to_' . $date_end . '.csv"');
+    header('Cache-Control: max-age=0');
+
+    $out = fopen('php://output', 'w');
+    fprintf($out, "\xEF\xBB\xBF");
+    fputcsv($out, ['DELIVERIES REPORT']);
+    fputcsv($out, ['Station', $station_name]);
+    fputcsv($out, ['Period', date('F d, Y', strtotime($date_start)) . ' - ' . date('F d, Y', strtotime($date_end))]);
+    fputcsv($out, []);
+
+    $headers = ['Delivery ID', 'Supplier', 'Item', 'Quantity', 'Unit Price', 'Total Amount', 'Date', 'PO Reference', 'Expected', 'Actual', 'Variance', 'Status', 'Shift', 'Encoder', 'Remarks'];
+
+    fputcsv($out, ['FUEL DELIVERIES']);
+    fputcsv($out, $headers);
+    foreach ($fuel_deliveries as $delivery) {
+        fputcsv($out, [
+            $delivery['delivery_id'] ?? '',
+            $delivery['supplier'] ?? '',
+            $delivery['fuel_type'] ?? '',
+            number_format((float)($delivery['quantity'] ?? 0), 2),
+            'PHP ' . number_format((float)($delivery['unit_price'] ?? 0), 2),
+            'PHP ' . number_format((float)($delivery['total_amount'] ?? 0), 2),
+            !empty($delivery['delivery_date']) ? date('m/d/Y', strtotime($delivery['delivery_date'])) : '',
+            $delivery['po_reference'] ?? '',
+            number_format((float)($delivery['expected_quantity'] ?? 0), 2),
+            number_format((float)($delivery['actual_quantity'] ?? 0), 2),
+            number_format((float)($delivery['variance'] ?? 0), 2),
+            strtoupper($delivery['status'] ?? 'PENDING'),
+            $delivery['shift'] ?? 'N/A',
+            $delivery['encoder'] ?? 'N/A',
+            $delivery['remarks'] ?? '',
+        ]);
+    }
+    fputcsv($out, []);
+
+    fputcsv($out, ['MERCHANDISE DELIVERIES']);
+    fputcsv($out, $headers);
+    foreach ($merchandise_deliveries as $delivery) {
+        fputcsv($out, [
+            $delivery['delivery_id'] ?? '',
+            $delivery['supplier'] ?? '',
+            $delivery['product_name'] ?? '',
+            number_format((float)($delivery['quantity'] ?? 0), 2),
+            'PHP ' . number_format((float)($delivery['unit_price'] ?? 0), 2),
+            'PHP ' . number_format((float)($delivery['total_amount'] ?? 0), 2),
+            !empty($delivery['delivery_date']) ? date('m/d/Y', strtotime($delivery['delivery_date'])) : '',
+            $delivery['po_reference'] ?? '',
+            number_format((float)($delivery['expected_quantity'] ?? 0), 2),
+            number_format((float)($delivery['actual_quantity'] ?? 0), 2),
+            number_format((float)($delivery['variance'] ?? 0), 2),
+            strtoupper($delivery['status'] ?? 'PENDING'),
+            $delivery['shift'] ?? 'N/A',
+            $delivery['encoder'] ?? 'N/A',
+            $delivery['remarks'] ?? '',
+        ]);
+    }
+    fclose($out);
+    exit;
+}
+
+// ============================================================
 // EXCEL EXPORT HANDLER
 // ============================================================
 if (isset($_GET['export']) && $_GET['export'] === 'excel') {
@@ -789,6 +854,7 @@ require_once __DIR__ . '/../partials/header.php';
         
         <div>
             <a href="?date_start=<?= urlencode($date_start) ?>&date_end=<?= urlencode($date_end) ?>&export=excel" class="btn">Export Excel</a>
+            <a href="?date_start=<?= urlencode($date_start) ?>&date_end=<?= urlencode($date_end) ?>&export=csv" class="btn">CSV</a>
             <button type="button" class="btn" onclick="exportPrintableAreaToPDF('.print-area', 'Staff Sales Report', 'staff_sales_report_<?= date('Ymd', strtotime($date_start)) ?>_<?= date('Ymd', strtotime($date_end)) ?>', this)">Export PDF</button>
             <button type="button" class="btn" onclick="printReportArea()">Print</button>
         </div>

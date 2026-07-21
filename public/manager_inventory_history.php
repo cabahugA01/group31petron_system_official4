@@ -962,6 +962,9 @@ include __DIR__ . '/../partials/header.php';
                                     <a href="?print_stock_in=<?= urlencode($r['stock_in_no']) ?>" target="_blank" class="btn-outline">
                                         <i class="fas fa-print"></i> Print Stock-In
                                     </a>
+                                    <a href="print_supplier_invoice.php?batch_id=<?= urlencode($r['stock_in_no']) ?>&print=1" target="_blank" class="btn-outline" style="background:#16a34a !important; color:#fff !important; border-color:#16a34a !important;">
+                                        <i class="fas fa-file-invoice-dollar"></i> Print Invoice
+                                    </a>
                                 </div>
                             </td>
                         </tr>

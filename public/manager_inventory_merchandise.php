@@ -956,7 +956,7 @@ body { overflow-x: hidden; }
 <?php if ($active_tab === 'inventory'): ?>
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;">
     <!-- Total Products -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
+    <div onclick="filterMgrByCard('')" style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;cursor:pointer;" title="Click to show All Products">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Total Products</div>
             <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_total) ?></div>
@@ -964,7 +964,7 @@ body { overflow-x: hidden; }
         <div style="background:#f0f4ff;color:#002F70;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-boxes"></i></div>
     </div>
     <!-- Low Stock -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fed7aa;">
+    <div onclick="filterMgrByCard('warning')" style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fed7aa;cursor:pointer;" title="Click to filter stock alert items">
         <div>
             <div style="font-size:11px;font-weight:700;color:#ea580c;text-transform:uppercase;letter-spacing:.3px;">Low Stock</div>
             <div style="font-size:24px;font-weight:800;color:#ea580c;margin-top:4px;"><?= number_format($summary_alert_low) ?></div>
@@ -972,7 +972,7 @@ body { overflow-x: hidden; }
         <div style="background:#fff7ed;color:#ea580c;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
     <!-- Critical Stock -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fecaca;">
+    <div onclick="filterMgrByCard('warning')" style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fecaca;cursor:pointer;" title="Click to filter stock alert items">
         <div>
             <div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.3px;">Critical Stock</div>
             <div style="font-size:24px;font-weight:800;color:#dc2626;margin-top:4px;"><?= number_format($summary_alert_critical) ?></div>
@@ -980,7 +980,7 @@ body { overflow-x: hidden; }
         <div style="background:#fef2f2;color:#dc2626;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-fire"></i></div>
     </div>
     <!-- Out of Stock -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fecaca;">
+    <div onclick="filterMgrByCard('warning')" style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fecaca;cursor:pointer;" title="Click to filter stock alert items">
         <div>
             <div style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.3px;">Out of Stock</div>
             <div style="font-size:24px;font-weight:800;color:#991b1b;margin-top:4px;"><?= number_format($summary_out) ?></div>
@@ -988,7 +988,7 @@ body { overflow-x: hidden; }
         <div style="background:#fef2f2;color:#991b1b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
     </div>
     <!-- Products with Variance (manager-only extra card) -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
+    <div onclick="filterMgrByCard('variance detected')" style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;cursor:pointer;" title="Click to filter items with Variance">
         <div>
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">With Variance</div>
             <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_variance) ?></div>
@@ -1010,14 +1010,7 @@ body { overflow-x: hidden; }
                 <option value="<?php echo strtolower(htmlspecialchars($cat)); ?>"><?php echo htmlspecialchars($cat); ?></option>
                 <?php endforeach; ?>
             </select>
-            <select id="invStockFilter" onchange="filterInvTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
-                <option value="">All Statuses</option>
-                <option value="available">Available</option>
-                <option value="low">Low Stock</option>
-                <option value="critical">Critical Stock</option>
-                <option value="out of stock">Out of Stock</option>
-                <option value="variance detected">Variance Detected</option>
-            </select>
+            <input type="hidden" id="invStockFilter" value="">
         </div>
     </div>
     <div class="table-wrap">
@@ -1032,7 +1025,6 @@ body { overflow-x: hidden; }
                     <th>Current Stock / Reorder</th>
                     <th style="text-align:right;">Physical Count</th>
                     <th style="text-align:right;">Variance</th>
-                    <th style="text-align:center;">Status</th>
                     <th style="text-align:center;">Last Movement</th>
                     <th>Last Updated</th>
                     <th style="text-align:center;">Actions</th>
@@ -1042,8 +1034,9 @@ body { overflow-x: hidden; }
             <?php
             foreach ($sorted as $cat_label => $items):
             ?>
-                <tr class="cat-header no-paginate"><td colspan="12"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                <tr class="cat-header no-paginate"><td colspan="11"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                 <?php foreach ($items as $item):
+                    $stock    = (float)($item['stock_level'] ?? 0);
                     $reorder  = (float)($item['reorder_level'] ?? 24);
                     $critical = (float)($item['critical_level'] ?? 10);
                     $capacity = (float)($item['capacity']    ?? 480);
@@ -1110,7 +1103,8 @@ body { overflow-x: hidden; }
                     data-sku="<?php echo strtolower(htmlspecialchars($item['sku'] ?? '')); ?>"
                     data-cat="<?php echo strtolower(htmlspecialchars($item['category_name'] ?? '')); ?>"
                     data-has-variance="<?php echo $has_variance ? 'true' : 'false'; ?>"
-                    data-inv-status="<?php echo $si_cls; ?>">
+                    data-inv-status="<?php echo $si_cls; ?>"
+                    data-stock-status="<?php echo $stock_status_class; ?>">
                     <td><code style="font-size:11px;font-weight:600;"><?php echo htmlspecialchars($item['sku'] ?? '—'); ?></code></td>
                     <td><strong><?php echo htmlspecialchars($item['name']); ?></strong></td>
                     <td style="text-align:center;"><?php echo htmlspecialchars($item['category_name'] ?? ''); ?></td>
@@ -1125,11 +1119,6 @@ body { overflow-x: hidden; }
                     </td>
                     <td style="text-align:right;font-weight:700;color:#0f172a;"><?php echo $phys_text; ?></td>
                     <td style="text-align:right;<?php echo $var_style; ?>"><?php echo $var_text; ?></td>
-                    <td style="text-align:center;">
-                        <span class="inv-stock-badge" style="background:<?php echo $sc; ?>20;color:<?php echo $sc; ?>;border:1px solid <?php echo $sc; ?>40;padding:4px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;white-space:nowrap;">
-                            <?php if ($st === 'VARIANCE DETECTED'): ?><i class="fas fa-exclamation-triangle"></i> <?php endif; ?><?php echo $st; ?>
-                        </span>
-                    </td>
                     <td style="text-align:center;">
                         <?php if ($mv_label): ?>
                             <span class="<?php echo $mv_class; ?>" style="font-size:11px;"><?php echo htmlspecialchars($mv_label); ?></span>
@@ -2337,8 +2326,8 @@ function calculateAdjVariance() {
 // ─────────────────────────────────────────────────────────────────────────────
 function filterInvTable() {
     var cat = document.getElementById('invCatFilter').value.toLowerCase();
-    var srch = document.getElementById('invSearch').value.toLowerCase();
-    var stFlt = document.getElementById('invStockFilter').value.toLowerCase();
+    var srch = document.getElementById('invSearch').value.toLowerCase().trim();
+    var stFlt = document.getElementById('invStockFilter').value.toLowerCase().trim();
 
     console.log('=== FILTER DEBUG ===');
     console.log('Category Filter:', cat || '(all)');
@@ -2354,14 +2343,42 @@ function filterInvTable() {
         var rName = (r.dataset.name || '').toLowerCase();
         var rSku = (r.dataset.sku || '').toLowerCase();
         var rInv = (r.dataset.invStatus || '').toLowerCase();
+        var rStockStatus = (r.dataset.stockStatus || rInv).toLowerCase();
 
         // Count statuses for debugging
         if (!statusCounts[rInv]) statusCounts[rInv] = 0;
         statusCounts[rInv]++;
 
         var matchesCat = !cat || rCat === cat;
-        var matchesSrch = !srch || rName.includes(srch) || rSku.includes(srch);
-        var matchesStock = !stFlt || rInv === stFlt;
+
+        // WARNING TIERS: low, critical, out-of-stock are all connected
+        var WARNING_STATUSES = ['low', 'critical', 'out of stock', 'out'];
+        var isWarning = (WARNING_STATUSES.indexOf(rInv) !== -1 || WARNING_STATUSES.indexOf(rStockStatus) !== -1);
+
+        // Status filter matching
+        var matchesStock = false;
+        if (!stFlt) {
+            matchesStock = true;
+        } else if (stFlt === 'warning' || WARNING_STATUSES.indexOf(stFlt) !== -1) {
+            // Any warning-tier filter shows ALL warning products
+            matchesStock = isWarning;
+        } else if (stFlt === 'variance detected') {
+            matchesStock = (rInv === 'variance detected');
+        } else {
+            matchesStock = (rInv === stFlt || rStockStatus === stFlt);
+        }
+
+        // Search text matching (status keywords expand to all warnings)
+        var matchesSrch = false;
+        if (!srch) {
+            matchesSrch = true;
+        } else if (['low', 'low stock', 'out', 'out of stock', 'critical', 'critical stock', 'warning'].indexOf(srch) !== -1) {
+            matchesSrch = isWarning;
+        } else if (srch === 'available') {
+            matchesSrch = (rInv === 'available' || rStockStatus === 'available');
+        } else {
+            matchesSrch = rName.includes(srch) || rSku.includes(srch) || rCat.includes(srch);
+        }
 
         var ok = matchesCat && matchesSrch && matchesStock;
         if (ok) {
@@ -2518,15 +2535,6 @@ function printProductRecord(productId) {
 
         var stock = parseFloat(p.stock_level) || 0;
         var reorder = parseFloat(p.reorder_level) || 0;
-        var critical = parseFloat(p.critical_level) || 10;
-        var status = stock <= 0 ? 'Out of Stock'
-                   : stock <= critical ? 'Critical Stock'
-                   : stock <= reorder  ? 'Low Stock'
-                   : 'Available';
-        var statusColor = stock <= 0 ? '#dc3545'
-                        : stock <= critical ? '#dc3545'
-                        : stock <= reorder ? '#fd7e14'
-                        : '#28a745';
 
         var ts = p.last_updated ? (function(d) {
             var dt = new Date(d);
@@ -2558,13 +2566,12 @@ function printProductRecord(productId) {
         pw.document.write('<tr><td>Unit:</td><td>' + esc(p.unit || '—') + '</td></tr>');
         pw.document.write('<tr><td>Supplier:</td><td>' + esc(p.supplier || '—') + '</td></tr>');
         pw.document.write('</table></div>');
-        pw.document.write('<div class="section"><h4>Inventory Status</h4>');
+        pw.document.write('<div class="section"><h4>Inventory Details</h4>');
         pw.document.write('<table class="info">');
         pw.document.write('<tr><td>Current Stock:</td><td><strong style="font-size:15px;color:#002F6C;">' + p.stock_level + ' ' + esc(p.unit) + '</strong></td></tr>');
         pw.document.write('<tr><td>Reorder Level:</td><td>' + p.reorder_level + ' ' + esc(p.unit) + '</td></tr>');
         pw.document.write('<tr><td>Physical Count:</td><td>' + (p.physical_count !== null ? p.physical_count + ' ' + esc(p.unit) : '—') + '</td></tr>');
         pw.document.write('<tr><td>Variance:</td><td><span style="color:' + vColor + ';font-weight:700;">' + vText + '</span></td></tr>');
-        pw.document.write('<tr><td>Status:</td><td><span class="badge" style="background:' + statusColor + '20;color:' + statusColor + ';border:1px solid ' + statusColor + '40;">' + status + '</span></td></tr>');
         pw.document.write('<tr><td>Last Updated:</td><td>' + ts + '</td></tr>');
         pw.document.write('</table></div>');
         pw.document.write('<div class="footer">Petron Station Management System &copy; ' + new Date().getFullYear() + '</div>');
@@ -2813,6 +2820,22 @@ document.addEventListener('DOMContentLoaded', function() {
     if (mvSect) { setTimeout(function(){ mvSect.scrollIntoView({behavior:'smooth',block:'start'}); }, 300); }
     <?php endif; ?>
 });
+
+function filterMgrByCard(val) {
+    var select = document.getElementById('invStockFilter');
+    if (!select) return;
+    if (select.value === val) {
+        select.value = '';
+    } else {
+        select.value = val;
+    }
+    if (typeof filterInvTable === 'function') {
+        filterInvTable();
+    } else {
+        var event = new Event('change');
+        select.dispatchEvent(event);
+    }
+}
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -157,6 +157,7 @@ function si_fetch_pending_rows(PDO $pdo, int $station_id, string $type, array $f
                 do2.damaged_quantity,
                 do2.unit,
                 do2.delivery_date,
+                do2.delivery_time,
                 do2.dr_number,
                 do2.remarks,
                 do2.status,
@@ -221,6 +222,7 @@ function si_group_rows(array $rows, string $type): array
                 'supplier' => $row['supplier'] ?? '',
                 'delivery_ref' => $row['delivery_ref'] ?? '',
                 'delivery_date' => $row['delivery_date'] ?? '',
+                'delivery_time' => $row['delivery_time'] ?? '',
                 'received_by' => $row['received_by'] ?? 'Unknown',
                 'dr_number' => $row['dr_number'] ?? '',
                 'sales_invoice' => si_extract_invoice($row['remarks'] ?? ''),
@@ -490,7 +492,7 @@ body .main,
                                     <div class="info-item"><label>Supplier</label><span><?= si_h($group['supplier']) ?></span></div>
                                     <div class="info-item"><label>Delivery Receipt No.</label><span><?= si_h($group['dr_number'] ?: '-') ?></span></div>
                                     <div class="info-item"><label>Sales Invoice No.</label><span><?= si_h($group['sales_invoice'] ?: '-') ?></span></div>
-                                    <div class="info-item"><label>Delivery Date</label><span><?= $group['delivery_date'] ? date('M d, Y', strtotime($group['delivery_date'])) : '-' ?></span></div>
+                                    <div class="info-item"><label>Delivery Date &amp; Time</label><span><?= $group['delivery_date'] ? date('M d, Y', strtotime($group['delivery_date'])) : '-' ?><?= !empty($group['delivery_time']) ? ' at ' . date('g:i A', strtotime($group['delivery_time'])) : '' ?></span></div>
                                     <div class="info-item"><label>Received By</label><span><?= si_h($group['received_by']) ?></span></div>
                                 </div>
 
@@ -741,8 +743,10 @@ function approveStockIn(type, groupId, poKey) {
             })
             .then(function(data) {
                 if (data.success) {
-                    showStockToast(data.message || ('Approved ' + label + ' stock-in!'), 'ok');
-                    setTimeout(function() { window.location.reload(); }, 1600);
+                    showStockToast(data.message || ('Approved ' + label + ' stock-in! Opening printable invoice...'), 'ok');
+                    var invoiceUrl = 'print_supplier_invoice.php?batch_id=' + encodeURIComponent(data.batch_id || poKey) + '&type=' + encodeURIComponent(type) + '&print=1';
+                    window.open(invoiceUrl, '_blank');
+                    setTimeout(function() { window.location.reload(); }, 1800);
                 } else {
                     showStockToast(data.message || 'Unable to approve stock-in.', 'err');
                     if (button) {

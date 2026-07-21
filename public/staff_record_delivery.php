@@ -1660,7 +1660,9 @@ body[data-page="staff_record_delivery"] .main {
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label">Delivery Date <span>*</span></label>
-                                                <input type="date" name="delivery_date" class="form-control" required value="<?= date('Y-m-d') ?>">
+                                                <input type="date" name="delivery_date" class="form-control" required
+                                                    value="<?= htmlspecialchars($po['expected_delivery_date'] ?: date('Y-m-d')) ?>"
+                                                    data-expected="<?= htmlspecialchars($po['expected_delivery_date'] ?: date('Y-m-d')) ?>">
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label">Delivery Time <span>*</span></label>
@@ -2030,7 +2032,9 @@ body[data-page="staff_record_delivery"] .main {
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label">Delivery Date <span>*</span></label>
-                                                <input type="date" name="delivery_date" class="form-control" required value="<?= date('Y-m-d') ?>">
+                                                <input type="date" name="delivery_date" class="form-control" required
+                                                    value="<?= htmlspecialchars($po['expected_delivery_date'] ?: date('Y-m-d')) ?>"
+                                                    data-expected="<?= htmlspecialchars($po['expected_delivery_date'] ?: date('Y-m-d')) ?>">
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label">Delivery Time <span>*</span></label>
@@ -2202,6 +2206,32 @@ function switchTab(tab) {
     document.getElementById(`${tab}-tab`).classList.add('active');
 }
 
+// Real-time live TIME sync only — Delivery Date defaults to PO expected date, not today
+function updateRealTimeDeliveryInputs() {
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const currentTime = `${hours}:${minutes}`;
+
+    // Only auto-update TIME — date is pre-set from PO expected delivery date
+    document.querySelectorAll('input[name="delivery_time"]').forEach(input => {
+        if (!input.dataset.userEdited) {
+            input.value = currentTime;
+        }
+    });
+}
+
+document.addEventListener('input', function(e) {
+    if (e.target && (e.target.name === 'delivery_date' || e.target.name === 'delivery_time')) {
+        e.target.dataset.userEdited = 'true';
+    }
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    updateRealTimeDeliveryInputs();
+    setInterval(updateRealTimeDeliveryInputs, 30000);
+});
+
 // Inline accordion toggle
 function toggleInlineDelivery(key) {
     const detailRow = document.getElementById('detail_' + key);
@@ -2214,6 +2244,7 @@ function toggleInlineDelivery(key) {
     if (!isOpen) {
         detailRow.style.display = 'table-row';
         if (icon) icon.style.transform = 'rotate(90deg)';
+        updateRealTimeDeliveryInputs();
         // Scroll into view smoothly
         setTimeout(() => detailRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
     }

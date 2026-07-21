@@ -20,6 +20,8 @@ require_login();
 $me         = current_user();
 $station_id = user_station_id();
 $role       = role_key($me['role'] ?? '');
+$station_name = 'Station';
+$station_location = '';
 
 // Only staff roles can access this page
 if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
@@ -27,6 +29,16 @@ if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
     header('Location: dashboard.php');
     exit;
 }
+
+try {
+    $st = $pdo->prepare("SELECT name, location FROM stations WHERE id = ? LIMIT 1");
+    $st->execute([$station_id]);
+    $station = $st->fetch(PDO::FETCH_ASSOC);
+    if ($station) {
+        $station_name = $station['name'] ?: $station_name;
+        $station_location = $station['location'] ?? '';
+    }
+} catch (Exception $e) { /* non-fatal */ }
 
 // Active view: meter_readings | deliveries  (default: meter_readings)
 $view = $_GET['view'] ?? 'meter_readings';
@@ -215,6 +227,158 @@ function sfr_badge(string $status): string {
     return "<span style=\"background:{$bg};color:{$color};padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;\">{$label}</span>";
 }
 
+function sfr_clean($value): string {
+    $text = trim((string)($value ?? ''));
+    return $text !== '' ? $text : '-';
+}
+
+function sfr_num($value, int $places = 2): string {
+    return number_format((float)($value ?? 0), $places);
+}
+
+function sfr_shift_label(array $row, array $shift_periods): string {
+    $shift_label = trim((string)($row['shift_name'] ?? ''));
+    $shift_period = trim((string)($row['shift_period'] ?? ''));
+    if ($shift_label === '' && $shift_period !== '') {
+        foreach ($shift_periods as $sp) {
+            if (($sp['shift_key'] ?? '') === $shift_period) {
+                $shift_label = (string)($sp['shift_name'] ?? '');
+                break;
+            }
+        }
+    }
+    return $shift_label !== '' ? $shift_label : ucwords(str_replace('_', ' ', $shift_period ?: '-'));
+}
+
+function sfr_export_query(array $extra = []): string {
+    global $view, $filter_date_from, $filter_date_to, $filter_shift, $filter_fuel_type, $filter_status;
+    $params = [
+        'view' => $view,
+        'date_from' => $filter_date_from,
+        'date_to' => $filter_date_to,
+        'fuel_type' => $filter_fuel_type,
+    ];
+    if ($view === 'meter_readings') {
+        $params['shift'] = $filter_shift;
+        $params['status'] = $filter_status;
+    }
+    return http_build_query(array_merge($params, $extra));
+}
+
+function sfr_export_dataset(array $meter_rows, array $delivery_rows, array $shift_periods, array $me, string $view): array {
+    $staff_name = sfr_clean($me['name'] ?? $me['username'] ?? 'Staff');
+    if ($view === 'deliveries') {
+        $headers = ['Delivery ID', 'Delivery Date', 'Fuel Type', 'Supplier', 'Quantity (L)', 'Invoice No.', 'Tanker No.', 'Staff / Cashier', 'Remarks', 'Status', 'Verified By'];
+        $rows = [];
+        foreach ($delivery_rows as $d) {
+            $verified = sfr_clean($d['verified_by_name'] ?? '');
+            if ($verified !== '-' && !empty($d['verified_at'])) {
+                $verified .= ' - ' . date('M j, Y h:i A', strtotime($d['verified_at']));
+            }
+            $rows[] = [
+                '#' . (int)($d['id'] ?? 0),
+                !empty($d['delivery_date']) ? date('M j, Y', strtotime($d['delivery_date'])) : '-',
+                sfr_clean($d['fuel_type'] ?? ''),
+                sfr_clean($d['supplier'] ?? ''),
+                sfr_num($d['delivery_liters'] ?? 0),
+                sfr_clean($d['invoice_no'] ?? ''),
+                sfr_clean($d['tanker_number'] ?? ''),
+                $staff_name,
+                sfr_clean($d['notes'] ?? ''),
+                sfr_clean($d['status'] ?? 'Pending'),
+                $verified,
+            ];
+        }
+        return ['Staff Fuel Deliveries Report', 'staff_fuel_deliveries_report', $headers, $rows];
+    }
+
+    $headers = ['Fuel Type', 'Beginning', 'Ending', 'Calibration', 'Liters Sold', 'Price/L', 'Amount', 'Shift', 'Date', 'Time', 'Staff / Cashier', 'Notes', 'Status', 'Validated By'];
+    $rows = [];
+    foreach ($meter_rows as $r) {
+        $validated = sfr_clean($r['validated_by_name'] ?? '');
+        if ($validated !== '-' && !empty($r['validated_at'])) {
+            $validated .= ' - ' . date('M j, Y h:i A', strtotime($r['validated_at']));
+        }
+        $rows[] = [
+            sfr_clean($r['fuel_type'] ?? ''),
+            sfr_num($r['beginning'] ?? 0),
+            sfr_num($r['ending'] ?? 0),
+            sfr_num($r['cal'] ?? 0, 3),
+            sfr_num($r['liters_sold'] ?? 0),
+            'PHP ' . sfr_num($r['price_per_liter'] ?? 0),
+            'PHP ' . sfr_num($r['total_amount'] ?? 0),
+            sfr_shift_label($r, $shift_periods),
+            !empty($r['reading_date']) ? date('M j, Y', strtotime($r['reading_date'])) : '-',
+            !empty($r['reading_time']) ? date('h:i A', strtotime($r['reading_time'])) : '-',
+            sfr_clean($r['staff_name'] ?? $staff_name),
+            sfr_clean($r['notes'] ?? ''),
+            sfr_clean($r['status'] ?? 'Pending Validation'),
+            $validated,
+        ];
+    }
+    return ['Staff Meter Reading Report', 'staff_meter_reading_report', $headers, $rows];
+}
+
+if (isset($_GET['export'])) {
+    $export_format = strtolower(trim((string)$_GET['export']));
+    if (in_array($export_format, ['excel', 'csv'], true)) {
+        [$export_title, $export_file, $export_headers, $export_rows] = sfr_export_dataset($meter_rows, $delivery_rows, $shift_periods, $me, $view);
+        $filename_base = $export_file . '_' . date('Ymd', strtotime($filter_date_from)) . '_' . date('Ymd', strtotime($filter_date_to));
+        $meta_rows = [
+            ['Station', $station_name],
+            ['Location', $station_location ?: '-'],
+            ['Staff', sfr_clean($me['name'] ?? $me['username'] ?? 'Staff')],
+            ['Date Range', date('M j, Y', strtotime($filter_date_from)) . ' - ' . date('M j, Y', strtotime($filter_date_to))],
+            ['Generated', date('M j, Y h:i A')],
+        ];
+
+        if ($export_format === 'csv') {
+            header('Content-Type: text/csv; charset=utf-8');
+            header('Content-Disposition: attachment; filename="' . $filename_base . '.csv"');
+            header('Cache-Control: max-age=0');
+            $out = fopen('php://output', 'w');
+            fprintf($out, "\xEF\xBB\xBF");
+            fputcsv($out, [$export_title]);
+            foreach ($meta_rows as $row) fputcsv($out, $row);
+            fputcsv($out, []);
+            fputcsv($out, $export_headers);
+            foreach ($export_rows as $row) fputcsv($out, $row);
+            fclose($out);
+            exit;
+        }
+
+        header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename_base . '.xls"');
+        header('Cache-Control: max-age=0');
+        echo "\xEF\xBB\xBF";
+        echo '<html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #222;padding:7px;}th{background:#e8eef8;font-weight:bold;}h1{font-size:18px;}</style></head><body>';
+        echo '<h1>' . htmlspecialchars($export_title) . '</h1>';
+        echo '<table>';
+        foreach ($meta_rows as $row) {
+            echo '<tr><th style="width:180px;text-align:left;">' . htmlspecialchars($row[0]) . '</th><td>' . htmlspecialchars($row[1]) . '</td></tr>';
+        }
+        echo '</table><br>';
+        echo '<table><thead><tr>';
+        foreach ($export_headers as $head) echo '<th>' . htmlspecialchars($head) . '</th>';
+        echo '</tr></thead><tbody>';
+        if (empty($export_rows)) {
+            echo '<tr><td colspan="' . count($export_headers) . '" style="text-align:center;">No records found.</td></tr>';
+        } else {
+            foreach ($export_rows as $row) {
+                echo '<tr>';
+                foreach ($row as $cell) echo '<td>' . htmlspecialchars($cell) . '</td>';
+                echo '</tr>';
+            }
+        }
+        echo '</tbody></table></body></html>';
+        exit;
+    }
+}
+
+$sfr_report_title = $view === 'deliveries' ? 'Staff Fuel Deliveries Report' : 'Staff Meter Reading Report';
+$sfr_report_file = ($view === 'deliveries' ? 'staff_fuel_deliveries_report' : 'staff_meter_reading_report')
+    . '_' . date('Ymd', strtotime($filter_date_from)) . '_' . date('Ymd', strtotime($filter_date_to));
+
 require_once __DIR__ . '/../partials/header.php';
 require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
@@ -383,6 +547,65 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     color: #ffffff !important;
 }
 
+.sfr-export-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.sfr-export-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 13px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    border: 1px solid currentColor;
+    background: #fff;
+    text-decoration: none;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.sfr-export-btn.excel { color: #15803d; }
+.sfr-export-btn.csv { color: #002F6C; }
+.sfr-export-btn.pdf { color: #dc2626; }
+.sfr-export-btn.print { color: #1e3a8a; }
+
+.sfr-export-btn:hover {
+    color: #fff;
+}
+.sfr-export-btn.excel:hover { background: #15803d; }
+.sfr-export-btn.csv:hover { background: #002F6C; }
+.sfr-export-btn.pdf:hover { background: #dc2626; }
+.sfr-export-btn.print:hover { background: #1e3a8a; }
+
+.sfr-print-area {
+    min-width: 0;
+}
+
+.sfr-print-heading {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #002F6C;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 14px;
+    color: #475569;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.sfr-print-heading strong {
+    display: block;
+    color: #002F6C;
+    font-size: 15px;
+    margin-bottom: 4px;
+}
+
 /* Card */
 .sfr-card {
     background: #fff;
@@ -479,6 +702,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 @media (max-width: 768px) {
     .sfr-filter-bar { flex-direction: column; }
     .sfr-field { min-width: 100%; }
+    .sfr-export-actions { justify-content: flex-start; width: 100%; }
 }
 </style>
 
@@ -631,19 +855,52 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 </div>
 
                 <!-- Buttons -->
-                <div style="display:flex;gap:8px;">
-                    <button type="submit" class="txn-btn primary">
-                        <i class="fas fa-search"></i> Apply Filters
-                    </button>
-                    <a href="staff_fuel_reports.php?view=<?= htmlspecialchars($view) ?>" class="txn-btn secondary">
-                        <i class="fas fa-undo"></i> Reset
-                    </a>
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end;">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button type="submit" class="txn-btn primary">
+                            <i class="fas fa-search"></i> Apply Filters
+                        </button>
+                        <a href="staff_fuel_reports.php?view=<?= htmlspecialchars($view) ?>" class="txn-btn secondary">
+                            <i class="fas fa-undo"></i> Reset
+                        </a>
+                    </div>
+
+                    <div class="sfr-export-actions">
+                        <a href="staff_fuel_reports.php?<?= htmlspecialchars(sfr_export_query(['export' => 'excel'])) ?>" class="sfr-export-btn excel" title="Export to Excel">
+                            <i class="fas fa-file-excel"></i> Excel
+                        </a>
+                        <a href="staff_fuel_reports.php?<?= htmlspecialchars(sfr_export_query(['export' => 'csv'])) ?>" class="sfr-export-btn csv" title="Export to CSV">
+                            <i class="fas fa-file-csv"></i> CSV
+                        </a>
+                        <button type="button"
+                                onclick="exportPrintableAreaToPDF('#sfrPrintableArea', '<?= htmlspecialchars($sfr_report_title, ENT_QUOTES) ?>', '<?= htmlspecialchars($sfr_report_file, ENT_QUOTES) ?>', this)"
+                                class="sfr-export-btn pdf"
+                                title="Export PDF">
+                            <i class="fas fa-file-pdf"></i> Export PDF
+                        </button>
+                        <button type="button"
+                                onclick="printReportArea('#sfrPrintableArea')"
+                                class="sfr-export-btn print"
+                                title="Print report">
+                            <i class="fas fa-print"></i> Print
+                        </button>
+                    </div>
                 </div>
 
             </div>
 
         </div>
     </form>
+
+    <div id="sfrPrintableArea" class="sfr-print-area">
+
+        <div class="sfr-print-heading report-meta">
+            <strong><?= htmlspecialchars($sfr_report_title) ?></strong>
+            Station: <?= htmlspecialchars($station_name) ?>
+            <?php if ($station_location): ?> | <?= htmlspecialchars($station_location) ?><?php endif; ?>
+            | Staff: <?= htmlspecialchars($me['name'] ?? $me['username'] ?? 'Staff') ?>
+            | Date: <?= date('M j, Y', strtotime($filter_date_from)) ?> - <?= date('M j, Y', strtotime($filter_date_to)) ?>
+        </div>
 
     <?php /* ══════════════════════════════════════════════════════
            VIEW: METER READING REPORT
@@ -866,6 +1123,8 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     </div>
 
     <?php endif; ?>
+
+    </div><!-- /sfrPrintableArea -->
 
 </div><!-- /sfr-page -->
 

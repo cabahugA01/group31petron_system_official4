@@ -983,6 +983,7 @@ include __DIR__ . '/../partials/header.php';
                     <th>Approved By</th>
                     <th>Date</th>
                     <th>Status</th>
+                    <th style="text-align: center;">Action</th>
                 </tr>
             <?php elseif ($active_tab === 'updates'): ?>
                 <tr>
@@ -1072,6 +1073,11 @@ include __DIR__ . '/../partials/header.php';
                             <td><?= htmlspecialchars($r['performed_by']) ?></td>
                             <td><?= date('M d, Y g:i A', strtotime($r['date_time'])) ?></td>
                             <td><span class="badge badge-delivery"><?= htmlspecialchars($r['status']) ?></span></td>
+                            <td style="text-align: center;">
+                                <a href="print_supplier_invoice.php?batch_id=<?= urlencode($r['reference_no']) ?>&print=1" target="_blank" class="btn-outline" style="background:#16a34a !important; color:#fff !important; border-color:#16a34a !important;">
+                                    <i class="fas fa-file-invoice-dollar"></i> Print Invoice
+                                </a>
+                            </td>
                         </tr>
                     <?php elseif ($active_tab === 'updates'): ?>
                         <tr>
