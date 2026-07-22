@@ -43,6 +43,23 @@ if (!function_exists('customer_ensure_optional_columns')) {
         }
 
         $definitions = [
+            'customer_id'            => "VARCHAR(50) NULL DEFAULT NULL",
+            'first_name'             => "VARCHAR(100) NULL DEFAULT NULL",
+            'middle_name'            => "VARCHAR(100) NULL DEFAULT NULL",
+            'last_name'              => "VARCHAR(100) NULL DEFAULT NULL",
+            'contact_number'         => "VARCHAR(50) NULL DEFAULT NULL",
+            'address'                => "TEXT NULL DEFAULT NULL",
+            'customer_type'          => "VARCHAR(30) NOT NULL DEFAULT 'walk-in'",
+            'status'                 => "VARCHAR(30) NOT NULL DEFAULT 'active'",
+            'vehicle_plate'          => "VARCHAR(50) NULL DEFAULT NULL",
+            'vehicle_make'           => "VARCHAR(100) NULL DEFAULT NULL",
+            'vehicle_brand'          => "VARCHAR(100) NULL DEFAULT NULL",
+            'vehicle_model'          => "VARCHAR(100) NULL DEFAULT NULL",
+            'vehicle_type'           => "VARCHAR(100) NULL DEFAULT NULL",
+            'credit_limit'           => "DECIMAL(15,2) NOT NULL DEFAULT 0.00",
+            'balance'                => "DECIMAL(15,2) NOT NULL DEFAULT 0.00",
+            'current_balance'        => "DECIMAL(15,2) NOT NULL DEFAULT 0.00",
+            'outstanding_balance'    => "DECIMAL(15,2) NOT NULL DEFAULT 0.00",
             'gov_id_type'            => "VARCHAR(100) NULL DEFAULT NULL",
             'company_name'           => "VARCHAR(255) NULL DEFAULT NULL",
             'company_address'        => "TEXT NULL DEFAULT NULL",
@@ -64,7 +81,57 @@ if (!function_exists('customer_ensure_optional_columns')) {
             }
         }
 
+        try {
+            $pdo->exec("ALTER TABLE customers MODIFY COLUMN customer_type VARCHAR(30) NOT NULL DEFAULT 'walk-in'");
+        } catch (Exception $e) {
+            // Older deployments may not allow ALTER. Inserts still fall back to existing columns.
+        }
+
         customer_table_columns($pdo, true);
+        $done = true;
+    }
+}
+
+if (!function_exists('customer_ensure_request_table')) {
+    function customer_ensure_request_table(PDO $pdo): void {
+        static $done = false;
+        if ($done) {
+            return;
+        }
+
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS customer_requests (
+                    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                    station_id INT UNSIGNED NOT NULL,
+                    requested_by INT UNSIGNED NULL DEFAULT NULL,
+                    first_name VARCHAR(100) NOT NULL,
+                    middle_name VARCHAR(100) NULL DEFAULT NULL,
+                    last_name VARCHAR(100) NOT NULL,
+                    contact_number VARCHAR(50) NOT NULL,
+                    address TEXT NULL DEFAULT NULL,
+                    customer_type VARCHAR(30) NOT NULL DEFAULT 'walk-in',
+                    vehicle_plate VARCHAR(50) NULL DEFAULT NULL,
+                    vehicle_make VARCHAR(100) NULL DEFAULT NULL,
+                    vehicle_model VARCHAR(100) NULL DEFAULT NULL,
+                    vehicle_type VARCHAR(100) NULL DEFAULT NULL,
+                    request_reason TEXT NULL DEFAULT NULL,
+                    status VARCHAR(30) NOT NULL DEFAULT 'pending',
+                    reviewed_by INT UNSIGNED NULL DEFAULT NULL,
+                    reviewed_at DATETIME NULL DEFAULT NULL,
+                    manager_remarks TEXT NULL DEFAULT NULL,
+                    customer_record_id INT UNSIGNED NULL DEFAULT NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NULL DEFAULT NULL,
+                    INDEX idx_station_status (station_id, status),
+                    INDEX idx_requested_by (requested_by),
+                    INDEX idx_customer_record (customer_record_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            ");
+        } catch (Exception $e) {
+            // Request support is best-effort for legacy databases.
+        }
+
         $done = true;
     }
 }
@@ -156,7 +223,37 @@ if (!function_exists('customer_contact_expr')) {
 
 if (!function_exists('customer_type_expr')) {
     function customer_type_expr(PDO $pdo, string $alias = 'c'): string {
-        return "'registered'";
+        $type = customer_expr_col($pdo, $alias, 'customer_type');
+        if ($type === "NULL") {
+            return "'walk-in'";
+        }
+        return "CASE
+            WHEN LOWER(COALESCE($type,'')) IN ('credit','fleet') THEN 'credit'
+            WHEN LOWER(COALESCE($type,'')) = 'regular' THEN 'regular'
+            ELSE 'walk-in'
+        END";
+    }
+}
+
+if (!function_exists('customer_vehicle_expr')) {
+    function customer_vehicle_expr(PDO $pdo, string $field, string $alias = 'c'): string {
+        $fallbacks = [
+            'vehicle_plate' => ['plate_number', 'vehicle_plate_no'],
+            'vehicle_make'  => ['vehicle_brand', 'make'],
+            'vehicle_model' => ['model'],
+            'vehicle_type'  => ['vehicle_category'],
+        ];
+
+        $parts = [];
+        if (customer_has_column($pdo, $field)) {
+            $parts[] = "NULLIF({$alias}.{$field},'')";
+        }
+        foreach ($fallbacks[$field] ?? [] as $column) {
+            if (customer_has_column($pdo, $column)) {
+                $parts[] = "NULLIF({$alias}.{$column},'')";
+            }
+        }
+        return $parts ? "COALESCE(" . implode(', ', $parts) . ", '')" : "''";
     }
 }
 
@@ -190,13 +287,15 @@ if (!function_exists('customer_registered_at_expr')) {
 
 if (!function_exists('customer_balance_expr')) {
     function customer_balance_expr(PDO $pdo, string $alias = 'c'): string {
-        $parts = [];
-        foreach (['current_balance', 'outstanding_balance', 'balance'] as $column) {
+        $nonZero = [];
+        $raw = [];
+        foreach (['outstanding_balance', 'current_balance', 'balance'] as $column) {
             if (customer_has_column($pdo, $column)) {
-                $parts[] = "{$alias}.{$column}";
+                $nonZero[] = "NULLIF({$alias}.{$column}, 0)";
+                $raw[] = "{$alias}.{$column}";
             }
         }
-        return $parts ? "COALESCE(" . implode(', ', $parts) . ", 0)" : "0";
+        return $raw ? "COALESCE(" . implode(', ', array_merge($nonZero, $raw)) . ", 0)" : "0";
     }
 }
 
@@ -303,7 +402,7 @@ if (!function_exists('customer_station_sql')) {
 
 if (!function_exists('customer_legacy_billing_type')) {
     function customer_legacy_billing_type(string $customerType): string {
-        return 'cash';
+        return strtolower($customerType) === 'credit' ? 'credit' : 'cash';
     }
 }
 

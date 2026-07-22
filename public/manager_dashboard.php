@@ -281,17 +281,12 @@ $pending_fuel_stock = mgr_table_exists($pdo, 'fuel_stock_requests')
     ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM fuel_stock_requests WHERE {$station_sql} AND LOWER(status) IN ('pending', 'pending manager review')", $station_params)
     : 0;
 
-$pending_customer_requests = mgr_table_exists($pdo, 'customers')
+$pending_customer_requests = mgr_table_exists($pdo, 'customer_requests')
     ? (int) mgr_value(
         $pdo,
-        "SELECT COUNT(*) FROM customers
+        "SELECT COUNT(*) FROM customer_requests
          WHERE {$station_sql}
-           AND LOWER(COALESCE(status, 'active')) <> 'inactive'
-           {$registered_customer_only}
-           AND (
-                LOWER(COALESCE(verification_status, '')) = 'pending'
-                OR LOWER(COALESCE(mgr_status, '')) = 'pending'
-           )",
+           AND LOWER(COALESCE(status, 'pending')) = 'pending'",
         $station_params
     )
     : 0;

@@ -971,11 +971,11 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
 /* Google Calendar Style */
-.cal-layout { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff; display: flex; height: calc(100vh - 60px); }
+.cal-layout { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff; display: flex; min-height: calc(100vh - 60px); }
 .cal-layout * { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; box-sizing: border-box; }
 
 /* Sidebar */
-.cal-sidebar { width: 256px; border-right: 1px solid #dadce0; padding: 8px 0; overflow-y: auto; flex-shrink: 0; }
+.cal-sidebar { width: 256px; border-right: 1px solid #dadce0; padding: 8px 0; overflow-y: visible; flex-shrink: 0; }
 .cal-create-btn { margin: 20px 12px 32px; background: #fff; border: none; box-shadow: 0 1px 2px 0 rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15); border-radius: 24px; padding: 0 24px 0 12px; height: 56px; display: flex; align-items: center; gap: 16px; cursor: pointer; font-size: 14px; color: #3c4043; font-weight: 500; transition: box-shadow .2s; }
 .cal-create-btn:hover { box-shadow: 0 1px 3px 0 rgba(60,64,67,.3), 0 4px 8px 3px rgba(60,64,67,.15); }
 .cal-create-btn i { width: 36px; height: 36px; background: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #1a73e8; }
@@ -999,7 +999,7 @@ include __DIR__ . '/../partials/header.php';
 .cal-calendar-checkbox.checked::before { content: '✓'; }
 
 /* Main content */
-.cal-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.cal-main { flex: 1; display: flex; flex-direction: column; overflow: visible; }
 .cal-header { padding: 8px 16px; border-bottom: 1px solid #dadce0; display: flex; align-items: center; justify-content: space-between; }
 .cal-header-left { display: flex; align-items: center; gap: 16px; }
 .cal-menu-btn { background: none; border: none; padding: 12px; border-radius: 50%; cursor: pointer; color: #5f6368; font-size: 20px; }
@@ -1020,7 +1020,7 @@ include __DIR__ . '/../partials/header.php';
 .cal-icon-btn:hover { background: #f1f3f4; }
 
 /* Calendar grid */
-.cal-content { flex: 1; overflow: auto; }
+.cal-content { flex: 1; overflow: visible; }
 .cal-grid-container { min-width: 100%; }
 .cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid #dadce0; position: sticky; top: 0; background: #fff; z-index: 2; }
 .cal-weekday { padding: 8px; text-align: center; font-size: 11px; font-weight: 500; color: #70757a; }

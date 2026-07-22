@@ -9,6 +9,18 @@ $me     = current_user();
 $role   = role_key($me['role'] ?? '');
 $action = trim($_GET['action'] ?? $_POST['action'] ?? '');
 
+function admin_delivery_supplier_name(array $row = []): string {
+    return 'Petron Corporation';
+}
+
+function admin_normalize_delivery_supplier_rows(array $rows): array {
+    foreach ($rows as &$row) {
+        $row['supplier'] = admin_delivery_supplier_name($row);
+    }
+    unset($row);
+    return $rows;
+}
+
 // ── Schema migration: ensure all needed columns exist ────────────────────────
 $_migrations = [
     "ALTER TABLE deliveries_oversight ADD COLUMN IF NOT EXISTS remarks TEXT DEFAULT NULL",
@@ -56,7 +68,7 @@ if ($action === 'export_excel' || $action === 'export_pdf' || $action === 'expor
         $w.=" AND do2.status NOT IN ('Pending Manager Approval')";
     }
     if($tf!==''){$w.=' AND do2.delivery_type=?';$p[]=$tf;}
-    if($sup!==''){$w.=' AND do2.supplier LIKE ?';$p[]='%'.$sup.'%';}
+    if($sup!=='' && strcasecmp($sup, 'Petron Corporation') !== 0){$w.=' AND do2.supplier LIKE ?';$p[]='%'.$sup.'%';}
     if($cat!==''){$w.=' AND do2.category=?';$p[]=$cat;}
     if($dr!==''){$w.=' AND do2.dr_number LIKE ?';$p[]='%'.$dr.'%';}
 
@@ -72,7 +84,7 @@ if ($action === 'export_excel' || $action === 'export_pdf' || $action === 'expor
         $w 
         ORDER BY do2.delivery_date DESC
     ");
-    $st->execute($p); $rows=$st->fetchAll(PDO::FETCH_ASSOC);
+    $st->execute($p); $rows=admin_normalize_delivery_supplier_rows($st->fetchAll(PDO::FETCH_ASSOC));
     
     if($action==='export_csv'){
         header('Content-Type: text/csv; charset=utf-8');
@@ -298,6 +310,7 @@ try {
             $rec=$st->fetch(PDO::FETCH_ASSOC);
             
             if(!$rec){echo'Delivery not found';exit;}
+            $rec['supplier'] = admin_delivery_supplier_name($rec);
             
             // Generate printable payment report
             header('Content-Type: text/html; charset=utf-8');
@@ -523,7 +536,7 @@ try {
             }
             
             if($tf!==''){$w.=' AND do2.delivery_type=?';$p[]=$tf;}
-            if($sup!==''){$w.=' AND do2.supplier LIKE ?';$p[]='%'.$sup.'%';}
+            if($sup!=='' && strcasecmp($sup, 'Petron Corporation') !== 0){$w.=' AND do2.supplier LIKE ?';$p[]='%'.$sup.'%';}
             if($cat!==''){$w.=' AND do2.category=?';$p[]=$cat;}
             if($dr!==''){$w.=' AND do2.dr_number LIKE ?';$p[]='%'.$dr.'%';}
             
@@ -539,14 +552,14 @@ try {
                 {$w} 
                 ORDER BY FIELD(do2.status,'Discrepancy','Flagged','Pending Admin Oversight','Pending Manager Confirmation','Pending Validation','Expected Delivery','Confirmed','Validated'),do2.delivery_date DESC
             ");
-            $st->execute($p); $rows=$st->fetchAll(PDO::FETCH_ASSOC);
+            $st->execute($p); $rows=admin_normalize_delivery_supplier_rows($st->fetchAll(PDO::FETCH_ASSOC));
             
             // Calculate summary cards counts based on date range, supplier, category, dr_number, type
             // but without the status filter.
             $w_cards = 'WHERE station_id=? AND delivery_date BETWEEN ? AND ?';
             $p_cards = [$station_id, $start, $end];
             if($tf!==''){$w_cards.=' AND delivery_type=?';$p_cards[]=$tf;}
-            if($sup!==''){$w_cards.=' AND supplier LIKE ?';$p_cards[]='%'.$sup.'%';}
+            if($sup!=='' && strcasecmp($sup, 'Petron Corporation') !== 0){$w_cards.=' AND supplier LIKE ?';$p_cards[]='%'.$sup.'%';}
             if($cat!==''){$w_cards.=' AND category=?';$p_cards[]=$cat;}
             if($dr!==''){$w_cards.=' AND dr_number LIKE ?';$p_cards[]='%'.$dr.'%';}
             
@@ -601,6 +614,7 @@ try {
             ");
             $st->execute([$id,$station_id]); $rec=$st->fetch(PDO::FETCH_ASSOC);
             if(!$rec){echo json_encode(['success'=>false,'message'=>'Not found']);break;}
+            $rec['supplier'] = admin_delivery_supplier_name($rec);
             try{
                 // Try with source_table filter (entity_type column does not exist in this schema)
                 $at_cols = array_column($pdo->query("SHOW COLUMNS FROM audit_trail")->fetchAll(PDO::FETCH_ASSOC), 'Field');
@@ -717,6 +731,7 @@ try {
             $st->execute([$id,$station_id]);
             $del=$st->fetch(PDO::FETCH_ASSOC);
             if(!$del){http_response_code(404);echo 'Delivery not found';exit;}
+            $del['supplier'] = admin_delivery_supplier_name($del);
             
             // Generate printable payment report
             header('Content-Type: text/html; charset=utf-8');

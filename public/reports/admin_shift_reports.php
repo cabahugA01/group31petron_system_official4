@@ -1,6 +1,6 @@
-<?php
+﻿<?php
 /**
- * SHIFT REPORTS – COMPLETE CONTENTS
+ * SHIFT REPORTS â€“ COMPLETE CONTENTS
  * Matches staff_reports.php professional design with centered header + section tabs
  */
 
@@ -24,6 +24,9 @@ if ($is_standalone) {
     require_once __DIR__ . '/../../partials/header.php';
 }
 
+require_once __DIR__ . '/../../backend/customer_module_helpers.php';
+customer_ensure_optional_columns($pdo);
+
 // Station name
 $station_name = '';
 try {
@@ -40,11 +43,11 @@ if (!in_array($section, $valid_sections, true)) $section = 'fuel_sales';
 // Active shift filter
 $active_shift = (int)($_GET['shift'] ?? 0); // 0 = all, 1 = shift1, 2 = shift2
 
-// Shift definitions — extend Shift 2 to midnight to catch all late transactions
+// Shift definitions â€” extend Shift 2 to midnight to catch all late transactions
 // Ensure order: Shift 1 always comes before Shift 2
 $shifts = [
-    1 => ['label'=>'Shift 1 (6AM–2PM)',  'start'=>'06:00:00','end'=>'14:00:00'],
-    2 => ['label'=>'Shift 2 (2PM–12AM)', 'start'=>'14:00:00','end'=>'23:59:59'],
+    1 => ['label'=>'Shift 1 (6AMâ€“2PM)',  'start'=>'06:00:00','end'=>'14:00:00'],
+    2 => ['label'=>'Shift 2 (2PMâ€“12AM)', 'start'=>'14:00:00','end'=>'23:59:59'],
 ];
 // Sort by key to ensure Shift 1 comes first, then Shift 2
 ksort($shifts);
@@ -133,7 +136,7 @@ function srAdminShiftCondition(string $alias, string $datetime_expr, string $shi
 ?>
 
 <style>
-/* Shift Reports – matches staff_reports.php design */
+/* Shift Reports â€“ matches staff_reports.php design */
 .sr-report-title {
     text-align: center;
     padding: 20px 0 14px;
@@ -379,8 +382,8 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
 
                 $q = $pdo->prepare("
                     SELECT
-                        COALESCE(ft.pump_id, '—') AS pump_name,
-                        COALESCE(ft.fuel_type, '—') AS fuel_type,
+                        COALESCE(ft.pump_id, 'â€”') AS pump_name,
+                        COALESCE(ft.fuel_type, 'â€”') AS fuel_type,
                         COALESCE(ft.previous_reading, 0) AS beg_reading,
                         COALESCE(ft.present_reading, 0)  AS end_reading,
                         COALESCE(ft.calibration, 0)      AS calibration,
@@ -408,8 +411,8 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
             case 'merchandise':
                 $q = $pdo->prepare("
                     SELECT
-                        COALESCE(mti.category, '—') AS category,
-                        COALESCE(mti.product_name, '—') AS product_name,
+                        COALESCE(mti.category, 'â€”') AS category,
+                        COALESCE(mti.product_name, 'â€”') AS product_name,
                         COALESCE(si.stock_level, 0) + SUM(mti.quantity) AS beg_stock,
                         0 AS stock_in,
                         SUM(mti.quantity)               AS stock_out,
@@ -436,8 +439,8 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                 if (empty($rows)) {
                     $q2 = $pdo->prepare("
                         SELECT
-                            COALESCE(mti.category, '—') AS category,
-                            COALESCE(mti.product_name, '—') AS product_name,
+                            COALESCE(mti.category, 'â€”') AS category,
+                            COALESCE(mti.product_name, 'â€”') AS product_name,
                             COALESCE(si.stock_level, 0) + SUM(mti.quantity) AS beg_stock,
                             0 AS stock_in,
                             SUM(mti.quantity)               AS stock_out,
@@ -596,6 +599,14 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                 break;
 
             case 'customers':
+                $customerNameExpr = customer_display_name_expr($pdo, 'c');
+                $customerIdExpr = customer_id_expr($pdo, 'c');
+                $customerContactExpr = customer_contact_expr($pdo, 'c');
+                $customerTypeExpr = customer_type_expr($pdo, 'c');
+                $customerStatusExpr = customer_status_expr($pdo, 'c');
+                $customerBalanceExpr = customer_balance_expr($pdo, 'c');
+                $customerCreditLimitExpr = customer_credit_limit_expr($pdo, 'c');
+
                 // Check if customer_id FK exists in merchandise_transactions
                 try {
                     $ck = $pdo->query("SHOW COLUMNS FROM merchandise_transactions LIKE 'customer_id'");
@@ -626,7 +637,7 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                 if ($has_cid) {
                     $q = $pdo->prepare("
                         SELECT
-                            COALESCE(c.name, '—') AS customer_name,
+                            COALESCE(c.name, 'â€”') AS customer_name,
                             CONCAT('#', c.id) AS customer_ref,
                             COUNT(DISTINCT mt.id) AS txn_count,
                             COALESCE(c.balance, 0) AS balance,
@@ -645,7 +656,7 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                 } else {
                     $q = $pdo->prepare("
                         SELECT
-                            COALESCE(c.name, '—') AS customer_name,
+                            COALESCE(c.name, 'â€”') AS customer_name,
                             CONCAT('#', c.id) AS customer_ref,
                             COUNT(DISTINCT mt.id) AS txn_count,
                             COALESCE(c.balance, 0) AS balance,
@@ -672,11 +683,16 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                     $mt_customer_id = $has_cid ? 'mt.customer_id' : 'NULL';
                     $q = $pdo->prepare("
                         SELECT
-                            COALESCE(c.name, tx.customer_name, 'Registered Customer') AS customer_name,
-                            CONCAT('#', c.id) AS customer_ref,
+                            MAX(COALESCE({$customerNameExpr}, tx.customer_name, 'Registered Customer')) AS customer_name,
+                            MAX({$customerIdExpr}) AS customer_ref,
+                            MAX({$customerContactExpr}) AS contact_number,
+                            MAX({$customerTypeExpr}) AS customer_type,
+                            MAX({$customerStatusExpr}) AS status,
                             COUNT(*) AS txn_count,
-                            COALESCE(c.balance, c.current_balance, 0) AS balance,
-                            {$lp_col} AS loyalty_points
+                            MAX({$customerBalanceExpr}) AS balance,
+                            MAX({$customerCreditLimitExpr}) AS credit_limit,
+                            (MAX({$customerCreditLimitExpr}) - MAX({$customerBalanceExpr})) AS available_credit,
+                            MAX({$lp_col}) AS loyalty_points
                         FROM (
                             SELECT {$mt_customer_id} AS customer_id, NULLIF(TRIM(mt.customer_name), '') AS customer_name
                             FROM merchandise_transactions mt
@@ -701,7 +717,7 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                               (tx.customer_id IS NOT NULL AND c.id = tx.customer_id)
                               OR (tx.customer_id IS NULL AND tx.customer_name IS NOT NULL AND c.name = tx.customer_name)
                          )
-                        GROUP BY c.id, c.name, c.balance, c.current_balance
+                        GROUP BY c.id
                         ORDER BY txn_count DESC, customer_name ASC
                     ");
                     $q->execute([$station_id, $date_start, $date_end, $station_id, $date_start, $date_end, $station_id]);
@@ -746,7 +762,7 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
         <div style="font-size:12px;color:#334155;">
             <strong>Date:</strong>
             <?= date('F j, Y', strtotime($date_start)) ?>
-            <?= $date_start !== $date_end ? ' – ' . date('F j, Y', strtotime($date_end)) : '' ?>
+            <?= $date_start !== $date_end ? ' â€“ ' . date('F j, Y', strtotime($date_end)) : '' ?>
         </div>
     </div>
 
@@ -807,8 +823,8 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                     <td><?=number_format($r['end_reading'],2)?></td>
                     <td><?=number_format($r['calibration'],2)?></td>
                     <td><?=number_format($r['dispensed_liters'],2)?> L</td>
-                    <td>₱<?=number_format($r['unit_price'],2)?></td>
-                    <td>₱<?=number_format($r['amount'],2)?></td>
+                    <td>â‚±<?=number_format($r['unit_price'],2)?></td>
+                    <td>â‚±<?=number_format($r['amount'],2)?></td>
                     <td><?=htmlspecialchars($r['encoder'])?></td>
                 </tr>
             <?php endforeach; endif; ?>
@@ -817,7 +833,7 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
             <tfoot><tr>
                 <td colspan="4">TOTAL</td>
                 <td><?=number_format($tl,2)?> L</td><td></td>
-                <td>₱<?=number_format($ta,2)?></td><td></td>
+                <td>â‚±<?=number_format($ta,2)?></td><td></td>
             </tr></tfoot>
             <?php endif; ?>
         </table>
@@ -836,8 +852,8 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                 $q = $pdo->prepare("
                     SELECT mt.transaction_id AS receipt_no,
                            COALESCE(mt.customer_name, 'Walk-in') AS customer_name,
-                           COALESCE(mti.category, '—') AS category,
-                           COALESCE(mti.product_name, '—') AS product_name,
+                           COALESCE(mti.category, 'â€”') AS category,
+                           COALESCE(mti.product_name, 'â€”') AS product_name,
                            COALESCE(mti.quantity, 0) AS quantity,
                            COALESCE(mti.unit_price, 0) AS unit_price,
                            COALESCE(mti.subtotal, mti.quantity * mti.unit_price, 0) AS total_amount,
@@ -861,8 +877,8 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
             try {
                 $q = $pdo->prepare("
                     SELECT COALESCE(jo.job_order_number, jo.job_order_id, CONCAT('JO-',jo.id)) AS jo_number,
-                           COALESCE(jo.customer_name, '—') AS customer_name,
-                           COALESCE(jo.vehicle_plate, '—') AS vehicle_plate,
+                           COALESCE(jo.customer_name, 'â€”') AS customer_name,
+                           COALESCE(jo.vehicle_plate, 'â€”') AS vehicle_plate,
                            COALESCE(jo.service_type, 'General Service') AS service_type,
                            COALESCE(jo.actual_labor_cost, jo.estimated_labor_cost, 0) AS labor_fee,
                            COALESCE(jo.actual_parts_cost, jo.estimated_parts_cost, 0) AS parts_cost,
@@ -916,9 +932,9 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
             try {
                 $q = $pdo->prepare("
                     SELECT COALESCE(jo.job_order_number, jo.job_order_id, CONCAT('JO-',jo.id)) AS jo_number,
-                           COALESCE(jo.customer_name, '—') AS customer_name,
-                           COALESCE(p.name, '—') AS product_name,
-                           COALESCE(pc.name, '—') AS category,
+                           COALESCE(jo.customer_name, 'â€”') AS customer_name,
+                           COALESCE(p.name, 'â€”') AS product_name,
+                           COALESCE(pc.name, 'â€”') AS category,
                            COALESCE(jop.quantity_used, 0) AS quantity_used,
                            COALESCE(jop.unit_cost, 0) AS unit_price,
                            COALESCE(jop.total_cost, jop.quantity_used * jop.unit_cost, 0) AS total_cost
@@ -1055,7 +1071,7 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
             $inventory_impact = [];
             try {
                 $q = $pdo->prepare("
-                    SELECT p.name AS product_name, COALESCE(p.sku,'—') AS sku,
+                    SELECT p.name AS product_name, COALESCE(p.sku,'â€”') AS sku,
                            COALESCE(si.stock_level, p.current_stock, 0) AS beginning_stock,
                            COALESCE(SUM(CASE WHEN mti.item_type='merchandise' THEN mti.quantity ELSE 0 END), 0) AS sold,
                            COALESCE(SUM(CASE WHEN mti.item_type='service' THEN mti.quantity ELSE 0 END), 0) AS used_in_jo,
@@ -1236,8 +1252,8 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                     <td><?=htmlspecialchars($m['category'])?></td>
                     <td><?=htmlspecialchars($m['product_name'])?></td>
                     <td><?=number_format($m['quantity'])?></td>
-                    <td>₱<?=number_format($m['unit_price'],2)?></td>
-                    <td>₱<?=number_format($m['total_amount'],2)?></td>
+                    <td>â‚±<?=number_format($m['unit_price'],2)?></td>
+                    <td>â‚±<?=number_format($m['total_amount'],2)?></td>
                     <td><?=htmlspecialchars($m['staff_encoder'])?></td>
                 </tr>
             <?php endforeach; endif; ?>
@@ -1245,7 +1261,7 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
             <?php if(!empty($merch_sales)): ?>
             <tfoot><tr>
                 <td colspan="6"><strong>Total Merchandise Sales</strong></td>
-                <td><strong>₱<?=number_format($total_merch,2)?></strong></td>
+                <td><strong>â‚±<?=number_format($total_merch,2)?></strong></td>
                 <td></td>
             </tr></tfoot>
             <?php endif; ?>
@@ -1275,9 +1291,9 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                     <td><?=htmlspecialchars($jo['customer_name'])?></td>
                     <td><?=htmlspecialchars($jo['vehicle_plate'])?></td>
                     <td><?=htmlspecialchars($jo['service_type'])?></td>
-                    <td>₱<?=number_format($jo['labor_fee'],2)?></td>
-                    <td>₱<?=number_format($jo['parts_cost'],2)?></td>
-                    <td>₱<?=number_format($jo['total_amount'],2)?></td>
+                    <td>â‚±<?=number_format($jo['labor_fee'],2)?></td>
+                    <td>â‚±<?=number_format($jo['parts_cost'],2)?></td>
+                    <td>â‚±<?=number_format($jo['total_amount'],2)?></td>
                     <td><?=htmlspecialchars($jo['mechanic'])?></td>
                     <td><?=htmlspecialchars($jo['staff_encoder'])?></td>
                 </tr>
@@ -1286,9 +1302,9 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
             <?php if(!empty($job_orders)): ?>
             <tfoot><tr>
                 <td colspan="4"><strong>Total Service Income</strong></td>
-                <td><strong>₱<?=number_format($total_labor,2)?></strong></td>
-                <td><strong>₱<?=number_format($total_parts,2)?></strong></td>
-                <td><strong>₱<?=number_format($total_jo,2)?></strong></td>
+                <td><strong>â‚±<?=number_format($total_labor,2)?></strong></td>
+                <td><strong>â‚±<?=number_format($total_parts,2)?></strong></td>
+                <td><strong>â‚±<?=number_format($total_jo,2)?></strong></td>
                 <td colspan="2"></td>
             </tr></tfoot>
             <?php endif; ?>
@@ -1314,15 +1330,15 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                     <td><?=htmlspecialchars($jp['product_name'])?></td>
                     <td><?=htmlspecialchars($jp['category'])?></td>
                     <td><?=number_format($jp['quantity_used'])?></td>
-                    <td>₱<?=number_format($jp['unit_price'],2)?></td>
-                    <td>₱<?=number_format($jp['total_cost'],2)?></td>
+                    <td>â‚±<?=number_format($jp['unit_price'],2)?></td>
+                    <td>â‚±<?=number_format($jp['total_cost'],2)?></td>
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
             <?php if(!empty($jo_parts)): ?>
             <tfoot><tr>
                 <td colspan="6"><strong>Total Parts Used / Total Parts Cost</strong></td>
-                <td><strong>₱<?=number_format($total_parts_cost,2)?></strong></td>
+                <td><strong>â‚±<?=number_format($total_parts_cost,2)?></strong></td>
             </tr></tfoot>
             <?php endif; ?>
         </table>
@@ -1342,14 +1358,14 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                 <tr>
                     <td><?=htmlspecialchars($pb['payment_method'])?></td>
                     <td><?=number_format($pb['txn_count'])?></td>
-                    <td>₱<?=number_format($pb['total_amount'],2)?></td>
+                    <td>â‚±<?=number_format($pb['total_amount'],2)?></td>
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
             <?php if(!empty($payment_breakdown)): ?>
             <tfoot><tr>
                 <td colspan="2"><strong>Total</strong></td>
-                <td><strong>₱<?=number_format($total_pay,2)?></strong></td>
+                <td><strong>â‚±<?=number_format($total_pay,2)?></strong></td>
             </tr></tfoot>
             <?php endif; ?>
         </table>
@@ -1371,8 +1387,8 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                     <td><?=htmlspecialchars($sp['staff_name'])?></td>
                     <td><?=number_format($sp['merch_txn'])?></td>
                     <td><?=number_format($sp['jo_count'])?></td>
-                    <td>₱<?=number_format($sp['total_sales'],2)?></td>
-                    <td>₱<?=number_format($sp['total_collection'],2)?></td>
+                    <td>â‚±<?=number_format($sp['total_sales'],2)?></td>
+                    <td>â‚±<?=number_format($sp['total_collection'],2)?></td>
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
@@ -1481,17 +1497,17 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
             <?php else: $tl=0;$tp=0;$ta=0; foreach($rows as $r): $tl+=$r['labor_fee'];$tp+=$r['parts_used'];$ta+=$r['total_amount']; ?>
                 <tr>
                     <td><?=htmlspecialchars($r['service_type'])?></td>
-                    <td>₱<?=number_format($r['labor_fee'],2)?></td>
-                    <td>₱<?=number_format($r['parts_used'],2)?></td>
-                    <td>₱<?=number_format($r['total_amount'],2)?></td>
+                    <td>â‚±<?=number_format($r['labor_fee'],2)?></td>
+                    <td>â‚±<?=number_format($r['parts_used'],2)?></td>
+                    <td>â‚±<?=number_format($r['total_amount'],2)?></td>
                     <td><?=htmlspecialchars($r['encoder'])?></td>
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
             <?php if(!empty($rows)): ?>
             <tfoot><tr>
-                <td>TOTAL</td><td>₱<?=number_format($tl,2)?></td>
-                <td>₱<?=number_format($tp,2)?></td><td>₱<?=number_format($ta,2)?></td><td></td>
+                <td>TOTAL</td><td>â‚±<?=number_format($tl,2)?></td>
+                <td>â‚±<?=number_format($tp,2)?></td><td>â‚±<?=number_format($ta,2)?></td><td></td>
             </tr></tfoot>
             <?php endif; ?>
         </table>
@@ -1507,37 +1523,74 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                 <tr>
                     <td><?=htmlspecialchars($r['mode_of_payment'])?></td>
                     <td><?=number_format($r['txn_count'])?></td>
-                    <td>₱<?=number_format($r['amount'],2)?></td>
+                    <td>â‚±<?=number_format($r['amount'],2)?></td>
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
             <?php if(!empty($rows)): ?>
             <tfoot><tr>
-                <td>TOTAL</td><td><?=number_format($tc)?></td><td>₱<?=number_format($ta,2)?></td>
+                <td>TOTAL</td><td><?=number_format($tc)?></td><td>â‚±<?=number_format($ta,2)?></td>
             </tr></tfoot>
             <?php endif; ?>
         </table>
 
         <?php elseif ($sec_key === 'customers'): ?>
+        <div style="font-size:13px;font-weight:800;color:#00264D;text-transform:uppercase;margin:0 0 10px;">
+            Customer Transaction Summary
+        </div>
         <table class="sr-table">
             <thead><tr>
-                <th>Customer Name / ID</th><th>Transactions Made</th><th>Balance</th><th>Loyalty Points</th>
+                <th>Customer Name / ID</th><th>Type</th><th>Status</th><th>Transactions Made</th><th>Outstanding</th><th>Credit Limit</th><th>Available Credit</th><th>Loyalty Points</th>
             </tr></thead>
             <tbody>
-            <?php if (empty($rows)): ?><tr><td colspan="4" class="sr-empty">No customer transactions for this shift</td></tr>
-            <?php else: $tt=0;$tb=0;$tlp=0; foreach($rows as $r): $tt+=$r['txn_count'];$tb+=$r['balance'];$tlp+=$r['loyalty_points']; ?>
+            <?php if (empty($rows)): ?><tr><td colspan="8" class="sr-empty">No customer transactions for this shift</td></tr>
+            <?php else: $tt=0;$tb=0;$tc=0;$ta=0;$tlp=0; foreach($rows as $r): $tt+=$r['txn_count'];$tb+=$r['balance'];$tc+=($r['credit_limit']??0);$ta+=($r['available_credit']??0);$tlp+=$r['loyalty_points']; ?>
                 <tr>
                     <td><?=htmlspecialchars($r['customer_name'])?> / <?=htmlspecialchars($r['customer_ref'])?></td>
+                    <td><?=htmlspecialchars(ucwords(str_replace('-', ' ', $r['customer_type'] ?? 'walk-in')))?></td>
+                    <td><?=htmlspecialchars(ucfirst($r['status'] ?? 'active'))?></td>
                     <td><?=number_format($r['txn_count'])?></td>
-                    <td>₱<?=number_format($r['balance'],2)?></td>
+                    <td>â‚±<?=number_format($r['balance'],2)?></td>
+                    <td>&#x20B1;<?=number_format($r['credit_limit'] ?? 0,2)?></td>
+                    <td>&#x20B1;<?=number_format($r['available_credit'] ?? 0,2)?></td>
                     <td><?=number_format($r['loyalty_points'])?> pts</td>
                 </tr>
             <?php endforeach; endif; ?>
             </tbody>
             <?php if(!empty($rows)): ?>
             <tfoot><tr>
-                <td>TOTAL</td><td><?=number_format($tt)?></td>
-                <td>₱<?=number_format($tb,2)?></td><td><?=number_format($tlp)?> pts</td>
+                <td>TOTAL</td><td></td><td></td><td><?=number_format($tt)?></td>
+                <td>&#x20B1;<?=number_format($tb,2)?></td><td>&#x20B1;<?=number_format($tc,2)?></td><td>&#x20B1;<?=number_format($ta,2)?></td><td><?=number_format($tlp)?> pts</td>
+            </tr></tfoot>
+            <?php endif; ?>
+        </table>
+        <?php $creditRows = array_values(array_filter($rows, fn($r) => ($r['customer_type'] ?? '') === 'credit')); ?>
+        <div style="font-size:13px;font-weight:800;color:#00264D;text-transform:uppercase;margin:22px 0 10px;">
+            Credit Customer Report
+        </div>
+        <table class="sr-table">
+            <thead><tr>
+                <th>Customer Name / ID</th><th>Contact No.</th><th>Transactions</th><th>Credit Limit</th><th>Outstanding</th><th>Available Credit</th>
+            </tr></thead>
+            <tbody>
+            <?php if (empty($creditRows)): ?><tr><td colspan="6" class="sr-empty">No credit customer transactions for this shift</td></tr>
+            <?php else: $ct=0;$cl=0;$co=0;$ca=0; foreach($creditRows as $r): $ct+=$r['txn_count'];$cl+=($r['credit_limit']??0);$co+=$r['balance'];$ca+=($r['available_credit']??0); ?>
+                <tr>
+                    <td><?=htmlspecialchars($r['customer_name'])?> / <?=htmlspecialchars($r['customer_ref'])?></td>
+                    <td><?=htmlspecialchars($r['contact_number'] ?? '-')?></td>
+                    <td><?=number_format($r['txn_count'])?></td>
+                    <td>&#x20B1;<?=number_format($r['credit_limit'] ?? 0,2)?></td>
+                    <td>&#x20B1;<?=number_format($r['balance'],2)?></td>
+                    <td>&#x20B1;<?=number_format($r['available_credit'] ?? 0,2)?></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+            <?php if(!empty($creditRows)): ?>
+            <tfoot><tr>
+                <td>TOTAL</td><td></td><td><?=number_format($ct)?></td>
+                <td>&#x20B1;<?=number_format($cl,2)?></td>
+                <td>&#x20B1;<?=number_format($co,2)?></td>
+                <td>&#x20B1;<?=number_format($ca,2)?></td>
             </tr></tfoot>
             <?php endif; ?>
         </table>

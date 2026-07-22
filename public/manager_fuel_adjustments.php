@@ -174,16 +174,8 @@ if (empty($shifts)) {
     $shifts = ['First Shift', 'Second Shift', 'Third Shift'];
 }
 
-// Dynamic Suppliers list for filter
-$suppliers = [];
-try {
-    $sup_stmt = $pdo->prepare("SELECT DISTINCT supplier FROM fuel_deliveries WHERE station_id = ? AND supplier IS NOT NULL AND supplier != ''");
-    $sup_stmt->execute([$station_id]);
-    $suppliers = $sup_stmt->fetchAll(PDO::FETCH_COLUMN);
-} catch (Exception $e) {}
-if (empty($suppliers)) {
-    $suppliers = ['Petron Corporation', 'Shell', 'Caltex'];
-}
+// Petron station fuel deliveries use Petron Corporation as the sole supplier.
+$suppliers = ['Petron Corporation'];
 
 // ── EXPORTS ──────────────────────────────────────────────────
 if (in_array($export, ['excel', 'pdf'])) {
@@ -225,7 +217,7 @@ if (in_array($export, ['excel', 'pdf'])) {
             $rows_fmt[] = [
                 'ADJ-' . $adj['id'],
                 'DEL-' . ($notes_data['delivery_id'] ?? '—'),
-                $notes_data['supplier'] ?? '—',
+                'Petron Corporation',
                 $adj['fuel_type'],
                 number_format($prev_lit, 2) . ' L',
                 number_format($new_lit, 2) . ' L',
@@ -604,7 +596,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                                 <tr>
                                     <td><strong>ADJ-<?= $adj['id'] ?></strong></td>
                                     <td><strong>DEL-<?= htmlspecialchars($notes_data['delivery_id'] ?? '—') ?></strong></td>
-                                    <td><?= htmlspecialchars($notes_data['supplier'] ?? '—') ?></td>
+                                    <td><?= htmlspecialchars('Petron Corporation') ?></td>
                                     <td><?= htmlspecialchars($adj['fuel_type']) ?></td>
                                     <td style="text-align:right;"><?= number_format($prev_lit, 2) ?> L</td>
                                     <td style="text-align:right;"><?= number_format($new_lit, 2) ?> L</td>
@@ -618,7 +610,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                                         <button class="row-btn" onclick="viewDelDetails(<?= htmlspecialchars(json_encode([
                                             'adj_id' => 'ADJ-' . $adj['id'],
                                             'delivery_id' => 'DEL-' . ($notes_data['delivery_id'] ?? '—'),
-                                            'supplier' => $notes_data['supplier'] ?? '—',
+                                            'supplier' => 'Petron Corporation',
                                             'fuel_type' => $adj['fuel_type'],
                                             'invoice_no' => $notes_data['invoice_no'] ?? '—',
                                             'prev_liters' => number_format($prev_lit, 2) . ' L',

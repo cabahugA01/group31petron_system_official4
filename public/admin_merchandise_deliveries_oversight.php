@@ -25,12 +25,8 @@ try {
     $station_name = $s->fetchColumn() ?: $station_name;
 } catch (Exception $e) {}
 
-// Fetch unique suppliers for merchandise deliveries
-$suppliers = [];
-try {
-    $stmt = $pdo->query("SELECT DISTINCT supplier FROM deliveries_oversight WHERE delivery_type = 'merchandise' AND supplier IS NOT NULL AND supplier != '' ORDER BY supplier");
-    $suppliers = $stmt->fetchAll(PDO::FETCH_COLUMN);
-} catch (Exception $e) {}
+// Petron station deliveries use Petron Corporation as the sole supplier.
+$suppliers = ['Petron Corporation'];
 
 // Fetch unique categories for merchandise deliveries
 $categories = [];
@@ -892,7 +888,7 @@ async function loadDeliveries() {
         '<tr><td colspan="15"><div class="empty-state"><i class="fas fa-spinner fa-spin"></i> Loading deliveries...</div></td></tr>';
 
     try {
-        const url = `${API}?action=list&start=${start}&end=${end}&status=${encodeURIComponent(status)}&type=merchandise&supplier=${encodeURIComponent(supplier)}&category=${encodeURIComponent(category)}&dr_number=${encodeURIComponent(drNumber)}`;
+        const url = `${API}?action=list&start=${start}&end=${end}&status=${encodeURIComponent(status)}&type=merchandise&supplier=&category=${encodeURIComponent(category)}&dr_number=${encodeURIComponent(drNumber)}`;
         const res = await fetch(url);
         const data = await res.json();
         
@@ -901,7 +897,7 @@ async function loadDeliveries() {
             return;
         }
 
-        const rows = data.data || [];
+        const rows = (data.data || []).map(row => ({ ...row, supplier: 'Petron Corporation' }));
         document.getElementById('recordCount').textContent = rows.length + ' record(s) listed';
 
         if(rows.length === 0) {
@@ -1042,7 +1038,7 @@ function exportReport(format) {
         return;
     }
     
-    const url = `${API}?action=export_${format}&start=${start}&end=${end}&status=${encodeURIComponent(status)}&type=merchandise&supplier=${encodeURIComponent(supplier)}&category=${encodeURIComponent(category)}&dr_number=${encodeURIComponent(drNumber)}`;
+    const url = `${API}?action=export_${format}&start=${start}&end=${end}&status=${encodeURIComponent(status)}&type=merchandise&supplier=&category=${encodeURIComponent(category)}&dr_number=${encodeURIComponent(drNumber)}`;
     window.open(url, '_blank');
 }
 
@@ -1055,7 +1051,7 @@ async function showDetail(id) {
             toast(data.message, 'error');
             return;
         }
-        const r = data.data;
+        const r = { ...data.data, supplier: 'Petron Corporation' };
         
         let html = `
           <div class="detail-grid">
@@ -1164,7 +1160,7 @@ async function showAudit(id) {
             toast(data.message, 'error');
             return;
         }
-        const r = data.data;
+        const r = { ...data.data, supplier: 'Petron Corporation' };
         const audit = r.audit || [];
         
         let html = `
@@ -1270,7 +1266,7 @@ async function openProcess(id) {
             return;
         }
         
-        const r = data.data;
+        const r = { ...data.data, supplier: 'Petron Corporation' };
         currentRec = r;
         
         document.getElementById('processInfo').innerHTML = `

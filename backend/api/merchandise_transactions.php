@@ -7,6 +7,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once __DIR__ . '/../lib.php';
 require_once __DIR__ . '/../../public/db_connect.php';
+require_once __DIR__ . '/../customer_module_helpers.php';
 
 // Ensure session is active (lib.php may have already started it)
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
@@ -21,6 +22,9 @@ if (empty($_SESSION['user'])) {
 $me = current_user();
 $station_id = user_station_id();
 $role = role_key($me['role'] ?? '');
+
+customer_ensure_optional_columns($pdo);
+customer_ensure_request_table($pdo);
 
 try {
     switch ($_SERVER['REQUEST_METHOD']) {
@@ -193,12 +197,25 @@ function getMerchandiseProducts($pdo, $station_id) {
 
 function getCreditCustomers($pdo, $station_id) {
     try {
+        $nameExpr = customer_display_name_expr($pdo, 'c');
+        $typeExpr = customer_type_expr($pdo, 'c');
+        $statusExpr = customer_status_expr($pdo, 'c');
+        $creditLimitExpr = customer_credit_limit_expr($pdo, 'c');
+        $balanceExpr = customer_balance_expr($pdo, 'c');
+
         $stmt = $pdo->prepare("
-            SELECT id AS user_id, id, name, credit_limit, balance,
-                   (credit_limit - balance) AS available_credit
-            FROM customers 
-            WHERE station_id = ? AND LOWER(COALESCE(status, 'active')) = 'active'
-            ORDER BY name
+            SELECT
+                c.id AS user_id,
+                c.id,
+                {$nameExpr} AS name,
+                {$creditLimitExpr} AS credit_limit,
+                {$balanceExpr} AS balance,
+                ({$creditLimitExpr} - {$balanceExpr}) AS available_credit
+            FROM customers c
+            WHERE c.station_id = ?
+              AND LOWER({$statusExpr}) = 'active'
+              AND {$typeExpr} = 'credit'
+            ORDER BY {$nameExpr}
         ");
         $stmt->execute([$station_id]);
         $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -382,6 +399,48 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         return;
     }
 
+    $selected_customer_id = (int)($data['customer_id'] ?? 0);
+    if ($selected_customer_id <= 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Please select an approved customer before saving the transaction.']);
+        return;
+    }
+
+    try {
+        $nameExpr = customer_display_name_expr($pdo, 'c');
+        $firstExpr = customer_first_name_expr($pdo, 'c');
+        $lastExpr = customer_last_name_expr($pdo, 'c');
+        $statusExpr = customer_status_expr($pdo, 'c');
+        $stmt = $pdo->prepare("
+            SELECT
+                c.id,
+                {$nameExpr} AS display_name,
+                {$firstExpr} AS first_name,
+                {$lastExpr} AS last_name
+            FROM customers c
+            WHERE c.id = ?
+              AND c.station_id = ?
+              AND LOWER({$statusExpr}) = 'active'
+            LIMIT 1
+        ");
+        $stmt->execute([$selected_customer_id, $station_id]);
+        $selectedCustomer = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$selectedCustomer) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Selected customer was not found or is inactive.']);
+            return;
+        }
+
+        $data['customer_id'] = (int)$selectedCustomer['id'];
+        $data['customer_name'] = $selectedCustomer['display_name'] ?: $data['customer_name'];
+        $data['customer_first_name'] = $selectedCustomer['first_name'] ?: ($data['customer_first_name'] ?? null);
+        $data['customer_last_name'] = $selectedCustomer['last_name'] ?: ($data['customer_last_name'] ?? null);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Unable to validate selected customer: ' . $e->getMessage()]);
+        return;
+    }
+
     // ── Safe schema migration: run DDL BEFORE opening a transaction ──────────
     // ALTER TABLE causes an implicit commit in MySQL, which would break any
     // open transaction. Run these outside the transaction block.
@@ -391,6 +450,7 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         'shift_period'          => 'VARCHAR(50) NULL',
         'shift_name'            => 'VARCHAR(100) NULL',
         'customer_name'         => "VARCHAR(255) NOT NULL DEFAULT 'Walk-in Customer'",
+        'customer_id'           => 'INT NULL',
         'customer_first_name'   => "VARCHAR(100) NULL",
         'customer_last_name'    => "VARCHAR(100) NULL",
         'credit_customer_id'    => 'INT NULL',
@@ -570,7 +630,18 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         }
         // Check credit limit and customer status
         try {
-            $cstmt = $pdo->prepare("SELECT credit_limit, balance, status FROM customers WHERE id = ? AND station_id = ? LIMIT 1");
+            $creditLimitExpr = customer_credit_limit_expr($pdo, 'c');
+            $balanceExpr = customer_balance_expr($pdo, 'c');
+            $statusExpr = customer_status_expr($pdo, 'c');
+            $cstmt = $pdo->prepare("
+                SELECT
+                    {$creditLimitExpr} AS credit_limit,
+                    {$balanceExpr} AS balance,
+                    {$statusExpr} AS status
+                FROM customers c
+                WHERE c.id = ? AND c.station_id = ?
+                LIMIT 1
+            ");
             $cstmt->execute([$credit_customer_id, $station_id]);
             $cust = $cstmt->fetch(PDO::FETCH_ASSOC);
             if ($cust) {
@@ -717,25 +788,8 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         return;
     }
 
-    // ── Auto-register new customer if name is provided and not "Walk-in Customer" ──
-    if (!empty($data['customer_name']) && $data['customer_name'] !== 'Walk-in Customer') {
-        try {
-            // Check if customer already exists
-            $checkCustomer = $pdo->prepare("SELECT id FROM customers WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) AND station_id = ? LIMIT 1");
-            $checkCustomer->execute([$data['customer_name'], $station_id]);
-            $existingCustomer = $checkCustomer->fetch(PDO::FETCH_ASSOC);
-            
-            if (!$existingCustomer) {
-                // Customer doesn't exist - create new record
-                $insertCustomer = $pdo->prepare("INSERT INTO customers (name, station_id, status, type, created_at) VALUES (?, ?, 'active', 'cash', NOW())");
-                $insertCustomer->execute([$data['customer_name'], $station_id]);
-                error_log("Auto-registered new customer: " . $data['customer_name'] . " for station " . $station_id);
-            }
-        } catch (Exception $e) {
-            // Non-fatal - log but continue with transaction
-            error_log("Customer auto-registration warning: " . $e->getMessage());
-        }
-    }
+    // Customer records are Manager-controlled. Staff may only link an approved
+    // customer_id or submit a customer request from the transaction screen.
 
     try {
         $pdo->beginTransaction();
@@ -778,6 +832,7 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             'shift_id'              => $shift_id ?: null,
             'shift_period'          => $shift_key,
             'shift_name'            => $shift_name,
+            'customer_id'           => $data['customer_id'] ?? null,
             'customer_name'         => $data['customer_name'],
             'customer_first_name'   => $data['customer_first_name'] ?? null,
             'customer_last_name'    => $data['customer_last_name']  ?? null,

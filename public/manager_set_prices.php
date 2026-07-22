@@ -54,10 +54,13 @@ try {
     $TANK_CONFIG_17 = get_tank_config();
 
     $fi_lookup = [];
+    $fi_status_by_id = []; // track active/inactive by ID
     $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, reorder_level, critical_level FROM fuel_inventory WHERE station_id = ?");
     $s->execute([$station_id]);
     foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $fi_lookup[strtolower(trim($row['fuel_type']))] = $row;
+        // Normalize status: only 'inactive' = deactivated; anything else = active
+        $fi_status_by_id[(int)$row['id']] = (strtolower(trim($row['status'] ?? '')) === 'inactive') ? 'inactive' : 'active';
     }
 
     $del_lookup = [];
@@ -179,6 +182,7 @@ try {
             'current_stock'  => $ending_system,
             'critical_level' => $critical_level,
             'status'         => $status,
+            'inv_status'     => $inv_id ? ($fi_status_by_id[(int)$inv_id] ?? 'active') : 'active',
             'last_updated'   => $timestamp,
             'price_per_liter'=> $price,
             'pending_price'  => $app ? (float)$app['new_value'] : null,
@@ -212,50 +216,19 @@ $merch_by_cat   = [];
 $merch_all      = [];
 $merch_stats    = ['total' => 0, 'valid_price' => 0, 'below_cost' => 0, 'unpriced' => 0];
 $all_categories = [];
+$all_brands     = [];
+$all_units      = [];
+$all_suppliers  = [];
 
 try {
-    // Try manager's station first
-    $sid_merch = $station_id;
-    $stmt = $pdo->prepare("
-        SELECT i.id, i.category, i.product_name, i.sku, i.size,
-               COALESCE(si.unit, 'pcs') AS unit,
-               i.unit_cost, i.supplier,
-               i.unit_price, i.stock_quantity, i.stock, i.created_at,
-               COALESCE(si.reorder_level, 24)   AS reorder_level,
-               COALESCE(si.critical_level, 10)  AS critical_level,
-               p.new_value  AS pending_price,
-               p.status     AS approval_status,
-               p.id         AS approval_id
-        FROM inventory_products i
-        LEFT JOIN station_inventory si
-               ON si.product_id = i.id
-              AND si.station_id = ?
-        LEFT JOIN pending_price_approvals p
-               ON p.product_id = i.id
-              AND p.product_type = 'merchandise'
-              AND p.status = 'pending'
-              AND p.station_id = ?
-        WHERE i.category != 'Fuel'
-          AND LOWER(COALESCE(i.status,'active')) != 'inactive'
-        ORDER BY i.category, i.product_name
-    ");
-    $stmt->execute([$sid_merch, $sid_merch]);
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // If empty, try station 1
-    if (empty($rows)) {
-        $sid_merch = 1;
-        $stmt->execute([$sid_merch, $sid_merch]);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
+    $rows = load_merchandise_pricing_catalog($pdo, (int)$station_id);
 
     foreach ($rows as $row) {
-        $cat    = $row['category'] ?? 'Uncategorized';
+        $cat    = $row['category_name'] ?? $row['category'] ?? 'Uncategorized';
         $cost   = (float)($row['unit_cost']  ?? 0);
         $price  = (float)($row['unit_price'] ?? 0);
-        $stock  = (int)($row['stock_quantity'] ?? $row['stock'] ?? 0);
+        $stock  = (float)($row['stock_quantity'] ?? $row['stock'] ?? 0);
 
-        // Pricing stats
         $merch_stats['total']++;
         if ($price <= 0) {
             $merch_stats['unpriced']++;
@@ -272,6 +245,9 @@ try {
         $merch_by_cat[$cat][] = $row;
         $merch_all[]          = $row;
         $all_categories[$cat] = true;
+        $all_brands[$row['brand'] ?? 'Generic'] = true;
+        $all_units[$row['unit'] ?? 'Piece (pc)'] = true;
+        $all_suppliers[$row['supplier'] ?? 'Petron Corporation'] = true;
     }
 } catch (Exception $e) {
     $merch_by_cat = [];
@@ -280,6 +256,12 @@ try {
 
 $all_categories = array_keys($all_categories);
 sort($all_categories);
+$all_brands = array_keys($all_brands);
+sort($all_brands);
+$all_units = array_keys($all_units);
+sort($all_units);
+$all_suppliers = array_keys($all_suppliers);
+sort($all_suppliers);
 
 // ── Ensure job_order_service_types table exists & fetch service types ──────
 $service_types = [];
@@ -343,6 +325,7 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
+body, html { overflow-x: hidden; max-width: 100%; }
 /* ── Page-level styles ─────────────────────────────────────────────────────── */
 .ato-tab-bar { display:flex;gap:0;border-bottom:2px solid #dee2e6;margin-bottom:18px; }
 .ato-tab { display:inline-flex;align-items:center;gap:7px;padding:10px 22px;font-size:13px;font-weight:600;color:#6c757d;text-decoration:none;border-bottom:3px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap; cursor:pointer; }
@@ -392,20 +375,20 @@ include __DIR__ . '/../partials/header.php';
 .toolbar select:focus { outline: none; border-color: #002F6C; box-shadow: 0 0 0 2px rgba(0,47,108,.12); }
 
 /* Table tweaks */
-.pricing-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pricing-table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
 .pricing-table th {
     background: #002F70 !important; 
     color: #fff !important; 
-    padding: 10px 12px; 
-    text-align: left;
-    font-size: 11px; 
-    font-weight: 700; 
+    padding: 8px 6px;
+    font-size: 10px;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: .4px; 
-    border-bottom: 2px solid #002F70; 
+    letter-spacing: .3px;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
-.pricing-table td { padding: 11px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+.pricing-table td { padding: 8px 6px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .pricing-table tbody tr:hover { background: #e3f2fd; }
 
 /* Category header row */
@@ -508,16 +491,18 @@ include __DIR__ . '/../partials/header.php';
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 5px;
-    padding: 5px 10px;
+    gap: 4px;
+    padding: 4px 6px;
     border-radius: 5px;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     cursor: pointer;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     line-height: 1.2;
     width: 100%;
-    margin-bottom: 5px;
+    margin-bottom: 4px;
     transition: all .18s;
     background: #fff !important;
     border: 1px solid transparent;
@@ -533,7 +518,7 @@ include __DIR__ . '/../partials/header.php';
 .act-btn-deactivate:hover { background: #dc2626 !important; color: #fff !important; }
 .act-btn-activate { color: #16a34a !important; border-color: #16a34a !important; }
 .act-btn-activate:hover { background: #16a34a !important; color: #fff !important; }
-.act-btn-wrap { display: flex; flex-direction: column; gap: 4px; min-width: 100px; }
+.act-btn-wrap { display: flex; flex-direction: column; gap: 3px; width: 100%; }
 
 @media (max-width: 768px) {
     .summary-grid { grid-template-columns: repeat(2, 1fr); }
@@ -546,7 +531,6 @@ include __DIR__ . '/../partials/header.php';
 <div class="page-head" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
     <div>
         <h1 class="h1"><i class="fas fa-tags"></i> Product &amp; Pricing Management</h1>
-        <div class="sub">Manage product pricing and inventory</div>
     </div>
 </div>
 
@@ -661,7 +645,9 @@ include __DIR__ . '/../partials/header.php';
                                     <button onclick="openEditPriceModal(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars($f['raw_fuel_type']); ?>', <?php echo (float)($f['price_per_liter'] ?? 0); ?>)" class="act-btn act-btn-edit">
                                         <i class="fas fa-edit"></i> Edit
                                     </button>
-                                    <?php if (($f['status'] ?? 'active') === 'active'): ?>
+                                    <?php 
+                                    $fuel_active_status = $f['inv_status'] ?? 'active';
+                                    if ($fuel_active_status !== 'inactive'): ?>
                                         <button onclick="deactivateFuel(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars($f['raw_fuel_type']); ?>')" class="act-btn act-btn-deactivate">
                                             <i class="fas fa-ban"></i> Deactivate
                                         </button>
@@ -698,6 +684,24 @@ include __DIR__ . '/../partials/header.php';
                 <option value="<?php echo htmlspecialchars($cat); ?>"><?php echo htmlspecialchars($cat); ?></option>
             <?php endforeach; ?>
         </select>
+        <select id="brandFilter" onchange="filterTable()">
+            <option value="">All Brands</option>
+            <?php foreach ($all_brands as $brand): ?>
+                <option value="<?php echo htmlspecialchars($brand); ?>"><?php echo htmlspecialchars($brand); ?></option>
+            <?php endforeach; ?>
+        </select>
+        <select id="unitFilter" onchange="filterTable()">
+            <option value="">All UOMs</option>
+            <?php foreach ($all_units as $unit): ?>
+                <option value="<?php echo htmlspecialchars($unit); ?>"><?php echo htmlspecialchars($unit); ?></option>
+            <?php endforeach; ?>
+        </select>
+        <select id="supplierFilter" onchange="filterTable()">
+            <option value="">All Suppliers</option>
+            <?php foreach ($all_suppliers as $supplier): ?>
+                <option value="<?php echo htmlspecialchars($supplier); ?>"><?php echo htmlspecialchars($supplier); ?></option>
+            <?php endforeach; ?>
+        </select>
         <select id="statusFilter" onchange="filterTable()">
             <option value="">All Statuses</option>
             <option value="available">Available</option>
@@ -721,25 +725,48 @@ include __DIR__ . '/../partials/header.php';
         </div>
     <?php else: ?>
     <div class="card" style="padding:0;overflow:hidden;">
-        <div class="table-wrap" style="overflow-x:auto;">
+        <div class="table-wrap" style="overflow-x:hidden; width:100%;">
             <table class="pricing-table" id="merchTable">
+                <colgroup>
+                    <col style="width:6%">   <!-- SKU -->
+                    <col style="width:13%">  <!-- Product Name -->
+                    <col style="width:7%">   <!-- Brand -->
+                    <col style="width:8%">   <!-- Category -->
+                    <col style="width:4%">   <!-- UOM -->
+                    <col style="width:9%">   <!-- Supplier -->
+                    <col style="width:6%">   <!-- Cost -->
+                    <col style="width:6%">   <!-- Price -->
+                    <col style="width:4%">   <!-- Capacity -->
+                    <col style="width:8%">   <!-- Stock/Reorder -->
+                    <col style="width:6%">   <!-- Physical Count -->
+                    <col style="width:5%">   <!-- Variance -->
+                    <col style="width:8%">   <!-- Status -->
+                    <col style="width:7%">   <!-- Updated -->
+                    <col style="width:13%">  <!-- Actions -->
+                </colgroup>
                 <thead>
                     <tr>
-                        <th>Product Name</th>
                         <th>SKU</th>
+                        <th>Product Name</th>
+                        <th>Brand</th>
                         <th>Category</th>
                         <th>UOM</th>
+                        <th>Supplier</th>
                         <th>Cost (&#8369;)</th>
                         <th>Price (&#8369;)</th>
-                        <th>Stock</th>
+                        <th>Capacity</th>
+                        <th>Stock / Reorder</th>
+                        <th>Physical Count</th>
+                        <th>Variance</th>
                         <th>Status</th>
+                        <th>Updated</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="merchBody">
                 <?php foreach ($merch_by_cat as $cat_label => $items): ?>
                     <tr class="cat-row" data-cat-header="<?php echo htmlspecialchars($cat_label); ?>">
-                        <td colspan="9">
+                        <td colspan="15">
                             <i class="fas fa-folder"></i>
                             <?php echo htmlspecialchars($cat_label); ?>
                             <span class="muted cat-count" style="font-weight:400;margin-left:6px;">(<?php echo count($items); ?> items)</span>
@@ -751,6 +778,10 @@ include __DIR__ . '/../partials/header.php';
                         $stock         = $item['_stock'];
                         $reorder_level = (int)($item['reorder_level']  ?? 24);
                         $critical_lvl  = (int)($item['critical_level'] ?? 10);
+                        $capacity      = (float)($item['capacity'] ?? 0);
+                        $physical      = $item['physical_count'];
+                        $variance      = (float)($item['variance'] ?? 0);
+                        $updated       = !empty($item['last_updated']) ? date('M d, Y', strtotime($item['last_updated'])) : '&mdash;';
 
                         $below_cost = ($price > 0 && $price < $cost);
                         $no_price   = ($price <= 0);
@@ -765,19 +796,24 @@ include __DIR__ . '/../partials/header.php';
                     <tr class="merch-row <?php echo $row_class; ?>"
                         data-name="<?php echo strtolower(htmlspecialchars($item['product_name'] ?? '')); ?>"
                         data-sku="<?php echo strtolower(htmlspecialchars($item['sku'] ?? '')); ?>"
+                        data-brand="<?php echo strtolower(htmlspecialchars($item['brand'] ?? '')); ?>"
+                        data-unit="<?php echo strtolower(htmlspecialchars($item['unit'] ?? '')); ?>"
+                        data-supplier="<?php echo strtolower(htmlspecialchars($item['supplier'] ?? 'Petron Corporation')); ?>"
                         data-cat="<?php echo htmlspecialchars($cat_label); ?>"
                         data-status="<?php echo $st_key; ?>"
                         data-noprice="<?php echo $no_price ? '1' : '0'; ?>"
                         data-belowcost="<?php echo $below_cost ? '1' : '0'; ?>">
+                        <td class="muted"><?php echo htmlspecialchars($item['sku'] ?? '&mdash;'); ?></td>
                         <td>
                             <strong><?php echo htmlspecialchars($item['product_name'] ?? ''); ?></strong>
                             <?php if ($below_cost): ?>
                                 <span class="badge badge-warn" style="margin-left:6px;font-size:10px;">&#9888; Price Below Cost</span>
                             <?php endif; ?>
                         </td>
-                        <td class="muted"><?php echo htmlspecialchars($item['sku'] ?? '&mdash;'); ?></td>
+                        <td><?php echo htmlspecialchars($item['brand'] ?? 'Generic'); ?></td>
                         <td><?php echo htmlspecialchars($cat_label); ?></td>
-                        <td class="muted"><?php echo htmlspecialchars(format_merch_unit($item['unit'] ?? 'pcs')); ?></td>
+                        <td class="muted"><?php echo htmlspecialchars($item['unit'] ?? 'Piece (pc)'); ?></td>
+                        <td><?php echo htmlspecialchars($item['supplier'] ?? 'Petron Corporation'); ?></td>
                         <td style="color:#64748b;">&#8369;<?php echo number_format($cost, 2); ?></td>
                         <td>
                             <?php if ($no_price): ?>
@@ -794,8 +830,21 @@ include __DIR__ . '/../partials/header.php';
                                 </div>
                             <?php endif; ?>
                         </td>
-                        <td><?php echo number_format($stock, 0); ?></td>
+                        <td><?php echo number_format($capacity, 0); ?></td>
+                        <td>
+                            <strong><?php echo number_format($stock, 0); ?></strong>
+                            <div class="muted" style="font-size:11px;">Reorder: <?php echo number_format($reorder_level); ?> | Critical: <?php echo number_format($critical_lvl); ?></div>
+                        </td>
+                        <td><?php echo $physical !== null ? number_format((float)$physical, 0) : '<span class="muted">&mdash;</span>'; ?></td>
+                        <td>
+                            <?php if (abs($variance) > 0.0001): ?>
+                                <span class="badge <?php echo $variance < 0 ? 'badge-critical' : 'badge-low'; ?>"><?php echo ($variance > 0 ? '+' : '') . number_format($variance, 0); ?></span>
+                            <?php else: ?>
+                                <span class="muted">&mdash;</span>
+                            <?php endif; ?>
+                        </td>
                         <td><span class="badge <?php echo $st_class; ?>"><?php echo $st_label; ?></span></td>
+                        <td class="muted"><?php echo $updated; ?></td>
                         <td>
                             <div class="act-btn-wrap">
                                 <button onclick="openEditMerchPriceModal(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars($item['product_name'] ?? ''); ?>', <?php echo $price; ?>)" class="act-btn act-btn-edit">
@@ -947,6 +996,9 @@ function filterTable() {
     
     var q          = document.getElementById('searchInput').value.toLowerCase().trim();
     var catFilter  = document.getElementById('catFilter').value;
+    var brandFilter = document.getElementById('brandFilter').value;
+    var unitFilter = document.getElementById('unitFilter').value;
+    var supplierFilter = document.getElementById('supplierFilter').value;
     var stFilter   = document.getElementById('statusFilter').value;
     var rows       = document.querySelectorAll('#merchBody .merch-row');
     var catHeaders = document.querySelectorAll('#merchBody .cat-row');
@@ -957,13 +1009,19 @@ function filterTable() {
     rows.forEach(function(row) {
         var name      = row.getAttribute('data-name') || '';
         var sku       = row.getAttribute('data-sku')  || '';
+        var brand     = row.getAttribute('data-brand') || '';
+        var unit      = row.getAttribute('data-unit') || '';
+        var supplier  = row.getAttribute('data-supplier') || '';
         var cat       = row.getAttribute('data-cat')  || '';
         var status    = row.getAttribute('data-status') || '';
         var noprice   = row.getAttribute('data-noprice') === '1';
         var belowcost = row.getAttribute('data-belowcost') === '1';
 
-        var matchQ   = !q || name.indexOf(q) !== -1 || sku.indexOf(q) !== -1;
+        var matchQ   = !q || name.indexOf(q) !== -1 || sku.indexOf(q) !== -1 || brand.indexOf(q) !== -1 || unit.indexOf(q) !== -1 || supplier.indexOf(q) !== -1 || cat.toLowerCase().indexOf(q) !== -1;
         var matchCat = !catFilter || cat === catFilter;
+        var matchBrand = !brandFilter || brand === brandFilter.toLowerCase();
+        var matchUnit = !unitFilter || unit === unitFilter.toLowerCase();
+        var matchSupplier = !supplierFilter || supplier === supplierFilter.toLowerCase();
         var matchSt  = true;
         if (stFilter === 'available')  matchSt = status === 'available';
         else if (stFilter === 'low')   matchSt = status === 'low';
@@ -972,7 +1030,7 @@ function filterTable() {
         else if (stFilter === 'noprice')   matchSt = noprice;
         else if (stFilter === 'belowcost') matchSt = belowcost;
 
-        var show = matchQ && matchCat && matchSt;
+        var show = matchQ && matchCat && matchBrand && matchUnit && matchSupplier && matchSt;
         row.style.display = show ? '' : 'none';
         if (show) {
             visible++;

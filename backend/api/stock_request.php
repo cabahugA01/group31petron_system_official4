@@ -20,6 +20,50 @@ $station_id = user_station_id();
 $method     = $_SERVER['REQUEST_METHOD'];
 $action     = $_GET['action'] ?? '';
 
+function sr_resolve_merch_product(PDO $pdo, int $item_id): ?array {
+    if ($item_id <= 0) {
+        return null;
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT id, product_name, category, COALESCE(unit_price, unit_cost, 0) AS unit_price
+            FROM inventory_products
+            WHERE id = ? AND LOWER(COALESCE(category, '')) <> 'fuel'
+            LIMIT 1
+        ");
+        $stmt->execute([$item_id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+            return $row;
+        }
+    } catch (Throwable $ignored) {}
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT p.id,
+                   p.name AS product_name,
+                   COALESCE(pc.name, 'General') AS category,
+                   COALESCE(p.price, p.cost, 0) AS unit_price
+            FROM products p
+            LEFT JOIN product_categories pc ON pc.id = p.category_id
+            WHERE p.id = ?
+              AND LOWER(COALESCE(pc.name, '')) NOT IN ('fuel', 'fuel products', 'services')
+            LIMIT 1
+        ");
+        $stmt->execute([$item_id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    } catch (Throwable $ignored) {
+        return null;
+    }
+}
+
+function sr_resolve_merch_unit_price(PDO $pdo, int $item_id): float {
+    $product = sr_resolve_merch_product($pdo, $item_id);
+    return $product ? (float)($product['unit_price'] ?? 0) : 0.0;
+}
+
 // ── Route ────────────────────────────────────────────────────────────────────
 try {
     switch ($action) {
@@ -163,9 +207,7 @@ function handle_create($pdo, $me, $role, $station_id) {
                 continue;
             }
 
-            $stmt = $pdo->prepare("SELECT id, product_name, category FROM inventory_products WHERE id = ? AND category != 'Fuel'");
-            $stmt->execute([$item_id]);
-            $db_item = $stmt->fetch(PDO::FETCH_ASSOC);
+            $db_item = sr_resolve_merch_product($pdo, $item_id);
             if (!$db_item) {
                 continue;
             }
@@ -506,9 +548,7 @@ function handle_approve($pdo, $me, $role, $station_id) {
 
         // Auto-generate PO with status 'Pending Admin Validation'
         $po_number    = 'PO-' . date('Ymd') . '-SR' . str_pad($request_id, 4, '0', STR_PAD_LEFT);
-        $ip_stmt      = $pdo->prepare("SELECT unit_price FROM inventory_products WHERE id = ?");
-        $ip_stmt->execute([$req['item_id']]);
-        $unit_price   = (float)($ip_stmt->fetchColumn() ?: 0);
+        $unit_price   = sr_resolve_merch_unit_price($pdo, (int)$req['item_id']);
         $total_amount = round($unit_price * $approved_quantity, 2);
         $po_remarks   = "Auto-generated from Stock Request #{$request_id}. Purchase Request: {$pr_id}. Manager: {$me['name']}.";
         if ($manager_notes) $po_remarks .= " Notes: {$manager_notes}";

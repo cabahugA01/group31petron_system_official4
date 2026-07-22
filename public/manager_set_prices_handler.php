@@ -54,10 +54,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $id = (int)($_GET['id'] ?? 0);
         if ($id <= 0) { echo json_encode(['success'=>false,'message'=>'Invalid ID']); exit; }
         try {
-            $stmt = $pdo->prepare("SELECT id,product_name,sku,category,size,unit_cost,unit_price,supplier FROM inventory_products WHERE id=? LIMIT 1");
-            $stmt->execute([$id]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $row = find_merchandise_pricing_item($pdo, (int)$station_id, $id);
             if (!$row) { echo json_encode(['success'=>false,'message'=>'Not found']); exit; }
+            $row['size'] = $row['unit'] ?? 'Piece (pc)';
             echo json_encode(['success'=>true,'item'=>$row]); exit;
         } catch (Exception $e) { echo json_encode(['success'=>false,'message'=>$e->getMessage()]); exit; }
     }
@@ -335,15 +334,41 @@ try {
                 exit;
             }
             
-            // Insert new merchandise
-            $stmt = $pdo->prepare("
-                INSERT INTO inventory_products 
-                (product_name, category, unit_cost, unit_price, sku, size, stock_quantity, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, 0, 'active', NOW())
-            ");
-            $stmt->execute([$product_name, $category, $unit_cost, $unit_price, $sku, $size]);
+            $new_id = 0;
+            try {
+                $stmt = $pdo->prepare("
+                    INSERT INTO inventory_products 
+                    (product_name, category, unit_cost, unit_price, sku, size, stock_quantity, status, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 0, 'active', NOW())
+                ");
+                $stmt->execute([$product_name, $category, $unit_cost, $unit_price, $sku, $size]);
+                $new_id = (int)$pdo->lastInsertId();
+            } catch (Exception $legacy_error) {
+                $category_id = ensure_product_category_id($pdo, $category);
+                $unit_value = $size !== '' ? $size : 'pcs';
+                $stmt = $pdo->prepare("
+                    INSERT INTO products
+                    (sku, name, description, category_id, cost, price, created_at, updated_at, min_stock_level, max_stock_level, station_id, current_stock, unit, capacity, status)
+                    VALUES (?, ?, '', ?, ?, ?, NOW(), NOW(), 24, 480, ?, 0, ?, 480, 'active')
+                ");
+                $stmt->execute([$sku, $product_name, $category_id ?: null, $unit_cost, $unit_price, $station_id, $unit_value]);
+                $new_id = (int)$pdo->lastInsertId();
+            }
+
+            if ($new_id > 0) {
+                try {
+                    $unit_value = $size !== '' ? $size : 'pcs';
+                    $stmt = $pdo->prepare("SELECT id FROM station_inventory WHERE station_id=? AND product_id=? LIMIT 1");
+                    $stmt->execute([$station_id, $new_id]);
+                    if (!$stmt->fetchColumn()) {
+                        $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, unit, cost, price, status, last_updated) VALUES (?, ?, 0, ?, ?, ?, 'active', NOW())")
+                            ->execute([$station_id, $new_id, $unit_value, $unit_cost, $unit_price]);
+                    }
+                } catch (Exception $e) {
+                    // Display still works from products if station inventory is created later.
+                }
+            }
             
-            // Log activity
             log_activity($pdo, $me['id'], 'Add Merchandise',
                 "Manager added new merchandise: {$product_name}");
             
@@ -426,20 +451,47 @@ try {
                 exit;
             }
 
-            $stmt = $pdo->prepare("SELECT product_name, sku, category, size, unit_cost, unit_price FROM inventory_products WHERE id=? LIMIT 1");
-            $stmt->execute([$id]);
-            $old = $stmt->fetch(PDO::FETCH_ASSOC);
+            $old = find_merchandise_pricing_item($pdo, (int)$station_id, $id);
             if (!$old) { echo json_encode(['success'=>false,'message'=>'Merchandise not found']); exit; }
 
             $old_cost = (float)$old['unit_cost'];
             $old_price = (float)$old['unit_price'];
+            $category_id = ensure_product_category_id($pdo, $category);
+            $unit_value = $size !== '' ? $size : ($old['unit'] ?? 'pcs');
+
+            $updateProductBasics = function () use ($pdo, $id, $product_name, $sku, $category_id, $unit_value) {
+                if ($category_id > 0) {
+                    $stmt = $pdo->prepare("UPDATE products SET name=?, sku=?, category_id=?, unit=?, updated_at=NOW() WHERE id=?");
+                    $stmt->execute([$product_name, $sku, $category_id, $unit_value, $id]);
+                } else {
+                    $stmt = $pdo->prepare("UPDATE products SET name=?, sku=?, unit=?, updated_at=NOW() WHERE id=?");
+                    $stmt->execute([$product_name, $sku, $unit_value, $id]);
+                }
+            };
+
+            $upsertStationPricing = function ($cost, $price) use ($pdo, $station_id, $id, $unit_value) {
+                $stmt = $pdo->prepare("SELECT id FROM station_inventory WHERE station_id=? AND product_id=? LIMIT 1");
+                $stmt->execute([$station_id, $id]);
+                $si_id = (int)($stmt->fetchColumn() ?: 0);
+                if ($si_id > 0) {
+                    $stmt = $pdo->prepare("UPDATE station_inventory SET unit=?, cost=?, price=?, last_updated=NOW() WHERE id=?");
+                    $stmt->execute([$unit_value, $cost, $price, $si_id]);
+                } else {
+                    $stmt = $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, unit, cost, price, status, last_updated) VALUES (?, ?, 0, ?, ?, ?, 'active', NOW())");
+                    $stmt->execute([$station_id, $id, $unit_value, $cost, $price]);
+                }
+            };
 
             if ($old_cost != $unit_cost || $old_price != $unit_price) {
-                // Update non-pricing fields immediately
-                $stmt = $pdo->prepare("UPDATE inventory_products SET product_name=?, sku=?, category=?, size=?, updated_at=NOW() WHERE id=?");
-                $stmt->execute([$product_name, $sku, $category, $size, $id]);
+                try {
+                    $stmt = $pdo->prepare("UPDATE inventory_products SET product_name=?, sku=?, category=?, size=?, updated_at=NOW() WHERE id=?");
+                    $stmt->execute([$product_name, $sku, $category, $size, $id]);
+                } catch (Exception $legacy_error) {
+                    // Current inventory source uses products + station_inventory.
+                }
+                $updateProductBasics();
+                $upsertStationPricing($old_cost, $old_price);
 
-                // Create pending price approval
                 $pdo->prepare("DELETE FROM pending_price_approvals WHERE station_id=? AND product_type='merchandise' AND product_id=? AND status='pending'")
                     ->execute([$station_id, $id]);
 
@@ -461,9 +513,16 @@ try {
                 log_activity($pdo, $me['id'], 'Edit Merchandise', "Manager requested price change for {$product_name}");
                 echo json_encode(['success'=>true,'message'=>'Product details updated. Price/cost change submitted for Admin approval.']);
             } else {
-                // No cost or price change, update everything immediately
-                $stmt = $pdo->prepare("UPDATE inventory_products SET product_name=?, sku=?, category=?, size=?, unit_cost=?, unit_price=?, updated_at=NOW() WHERE id=?");
-                $stmt->execute([$product_name, $sku, $category, $size, $unit_cost, $unit_price, $id]);
+                try {
+                    $stmt = $pdo->prepare("UPDATE inventory_products SET product_name=?, sku=?, category=?, size=?, unit_cost=?, unit_price=?, updated_at=NOW() WHERE id=?");
+                    $stmt->execute([$product_name, $sku, $category, $size, $unit_cost, $unit_price, $id]);
+                } catch (Exception $legacy_error) {
+                    // Current inventory source uses products + station_inventory.
+                }
+                $updateProductBasics();
+                $stmt = $pdo->prepare("UPDATE products SET cost=?, price=?, updated_at=NOW() WHERE id=?");
+                $stmt->execute([$unit_cost, $unit_price, $id]);
+                $upsertStationPricing($unit_cost, $unit_price);
 
                 log_activity($pdo, $me['id'], 'Edit Merchandise', "Manager updated merchandise: {$product_name}");
                 echo json_encode(['success'=>true,'message'=>'Merchandise updated successfully']);
@@ -475,11 +534,15 @@ try {
             $id        = (int)($_POST['id'] ?? 0);
             $new_price = (float)($_POST['price'] ?? 0);
             if ($id <= 0 || $new_price < 0) { echo json_encode(['success'=>false,'message'=>'Invalid parameters']); exit; }
-            $stmt = $pdo->prepare("SELECT product_name, unit_price FROM inventory_products WHERE id=? LIMIT 1");
-            $stmt->execute([$id]);
-            $merch = $stmt->fetch(PDO::FETCH_ASSOC);
+            $merch = find_merchandise_pricing_item($pdo, (int)$station_id, $id);
             if (!$merch) { echo json_encode(['success'=>false,'message'=>'Merchandise not found']); exit; }
-            $pdo->prepare("UPDATE inventory_products SET unit_price=? WHERE id=?")->execute([$new_price, $id]);
+            try {
+                $pdo->prepare("UPDATE inventory_products SET unit_price=? WHERE id=?")->execute([$new_price, $id]);
+            } catch (Exception $legacy_error) {
+                // Current inventory source uses products + station_inventory.
+            }
+            $pdo->prepare("UPDATE products SET price=?, updated_at=NOW() WHERE id=?")->execute([$new_price, $id]);
+            $pdo->prepare("UPDATE station_inventory SET price=?, last_updated=NOW() WHERE station_id=? AND product_id=?")->execute([$new_price, $station_id, $id]);
             log_activity($pdo, $me['id'], 'Edit Merchandise Price', "Price updated for {$merch['product_name']}");
             echo json_encode(['success'=>true,'message'=>'Price updated successfully']);
             break;
@@ -495,30 +558,22 @@ try {
                 exit;
             }
             
-            // Get merchandise name
-            $stmt = $pdo->prepare("
-                SELECT product_name 
-                FROM inventory_products 
-                WHERE id = ?
-                LIMIT 1
-            ");
-            $stmt->execute([$id]);
-            $merch = $stmt->fetch(PDO::FETCH_ASSOC);
+            $merch = find_merchandise_pricing_item($pdo, (int)$station_id, $id);
             
             if (!$merch) {
                 echo json_encode(['success' => false, 'message' => 'Merchandise not found']);
                 exit;
             }
             
-            // Update status to inactive
-            $stmt = $pdo->prepare("
-                UPDATE inventory_products 
-                SET status = 'inactive'
-                WHERE id = ?
-            ");
-            $stmt->execute([$id]);
+            try {
+                $stmt = $pdo->prepare("UPDATE inventory_products SET status = 'inactive' WHERE id = ?");
+                $stmt->execute([$id]);
+            } catch (Exception $legacy_error) {
+                // Current inventory source uses products + station_inventory.
+            }
+            $pdo->prepare("UPDATE products SET status = 'inactive', updated_at = NOW() WHERE id = ?")->execute([$id]);
+            $pdo->prepare("UPDATE station_inventory SET status = 'inactive', last_updated = NOW() WHERE station_id = ? AND product_id = ?")->execute([$station_id, $id]);
             
-            // Log activity
             log_activity($pdo, $me['id'], 'Deactivate Merchandise',
                 "Manager deactivated merchandise: {$merch['product_name']}");
             
@@ -769,30 +824,22 @@ try {
                 exit;
             }
             
-            // Get merchandise name
-            $stmt = $pdo->prepare("
-                SELECT product_name 
-                FROM inventory_products 
-                WHERE id = ?
-                LIMIT 1
-            ");
-            $stmt->execute([$id]);
-            $merch = $stmt->fetch(PDO::FETCH_ASSOC);
+            $merch = find_merchandise_pricing_item($pdo, (int)$station_id, $id);
             
             if (!$merch) {
                 echo json_encode(['success' => false, 'message' => 'Merchandise not found']);
                 exit;
             }
             
-            // Update status to active
-            $stmt = $pdo->prepare("
-                UPDATE inventory_products 
-                SET status = 'active'
-                WHERE id = ?
-            ");
-            $stmt->execute([$id]);
+            try {
+                $stmt = $pdo->prepare("UPDATE inventory_products SET status = 'active' WHERE id = ?");
+                $stmt->execute([$id]);
+            } catch (Exception $legacy_error) {
+                // Current inventory source uses products + station_inventory.
+            }
+            $pdo->prepare("UPDATE products SET status = 'active', updated_at = NOW() WHERE id = ?")->execute([$id]);
+            $pdo->prepare("UPDATE station_inventory SET status = 'active', last_updated = NOW() WHERE station_id = ? AND product_id = ?")->execute([$station_id, $id]);
             
-            // Log activity
             log_activity($pdo, $me['id'], 'Activate Merchandise',
                 "Manager activated merchandise: {$merch['product_name']}");
             

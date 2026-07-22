@@ -80,7 +80,7 @@ function si_fetch_pending_rows(PDO $pdo, int $station_id, string $type, array $f
         $like = '%' . $filters['search'] . '%';
         array_push($params, $like, $like, $like, $like, $like);
     }
-    if ($filters['supplier'] !== '') {
+    if ($filters['supplier'] !== '' && strcasecmp($filters['supplier'], 'Petron Corporation') !== 0) {
         $where .= " AND do2.supplier LIKE ?";
         $params[] = '%' . $filters['supplier'] . '%';
     }
@@ -219,7 +219,7 @@ function si_group_rows(array $rows, string $type): array
                 'id' => substr(md5($type . '-' . $key), 0, 12),
                 'po_no' => $key,
                 'purchase_request_no' => $row['purchase_request_no'] ?? ($row['source_ref'] ?? ''),
-                'supplier' => $row['supplier'] ?? '',
+                'supplier' => 'Petron Corporation',
                 'delivery_ref' => $row['delivery_ref'] ?? '',
                 'delivery_date' => $row['delivery_date'] ?? '',
                 'delivery_time' => $row['delivery_time'] ?? '',
@@ -250,13 +250,7 @@ foreach (array_merge($merch_groups, $fuel_groups) as $group) {
     }
 }
 
-$supplier_options = [];
-try {
-    $stmt = $pdo->prepare("SELECT DISTINCT supplier FROM deliveries_oversight WHERE station_id = ? AND status IN (" . si_status_sql($pending_statuses) . ") AND supplier <> '' ORDER BY supplier");
-    $stmt->execute(array_merge([$station_id], $pending_statuses));
-    $supplier_options = $stmt->fetchAll(PDO::FETCH_COLUMN);
-} catch (Exception $ignored) {
-}
+$supplier_options = ['Petron Corporation'];
 
 function si_tab_url(string $type, array $filters): string
 {

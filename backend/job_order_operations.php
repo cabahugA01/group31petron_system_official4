@@ -14,6 +14,7 @@
 
 require_once __DIR__ . '/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
+require_once __DIR__ . '/customer_module_helpers.php';
 
 class JobOrderOperations {
     
@@ -468,22 +469,30 @@ class JobOrderOperations {
             // Generate job order number
             $job_order_number = $this->generateJobOrderNumber();
 
-            // Resolve or create customer (optional)
-            $customer_id = $data['customer_id'] ?? null;
-            $customer_name = trim((string)($data['customer_name'] ?? ''));
-            if (!$customer_id && $customer_name !== '') {
-                $stmt = $this->pdo->prepare("SELECT id FROM customers WHERE name = ? AND station_id = ? LIMIT 1");
-                $stmt->execute([$customer_name, $this->station_id]);
-                $existingCustomer = $stmt->fetch(PDO::FETCH_ASSOC);
-
-                if ($existingCustomer) {
-                    $customer_id = $existingCustomer['id'];
-                } else {
-                    $ins = $this->pdo->prepare("INSERT INTO customers (name, station_id, status, type) VALUES (?, ?, 'active', 'cash')");
-                    $ins->execute([$customer_name, $this->station_id]);
-                    $customer_id = $this->pdo->lastInsertId();
-                }
+            // Customers are Manager-controlled. Staff must select an approved
+            // customer or submit a new customer request from the transaction UI.
+            customer_ensure_optional_columns($this->pdo);
+            $customer_id = (int)($data['customer_id'] ?? 0);
+            if (!$customer_id) {
+                throw new Exception('Please select an approved customer before creating a job order.');
             }
+
+            $customerNameExpr = customer_display_name_expr($this->pdo, 'c');
+            $customerStatusExpr = customer_status_expr($this->pdo, 'c');
+            $stmt = $this->pdo->prepare("
+                SELECT c.id, {$customerNameExpr} AS customer_name
+                FROM customers c
+                WHERE c.id = ?
+                  AND c.station_id = ?
+                  AND LOWER({$customerStatusExpr}) = 'active'
+                LIMIT 1
+            ");
+            $stmt->execute([$customer_id, $this->station_id]);
+            $existingCustomer = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$existingCustomer) {
+                throw new Exception('Selected customer was not found or is inactive.');
+            }
+            $data['customer_name'] = $existingCustomer['customer_name'];
 
             // Resolve or create mechanic (required)
             $assigned_mechanic_id = $data['assigned_mechanic_id'] ?? null;

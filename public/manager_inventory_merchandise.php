@@ -25,38 +25,76 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_product_details') {
     header('Content-Type: application/json');
     try {
         // Product Info
-        $stmt = $pdo->prepare("
-            SELECT
-                ip.id,
-                ip.product_name                              AS name,
-                ip.category                                  AS category_name,
-                ip.unit_price                                AS price,
-                ip.unit_cost                                 AS cost,
-                ip.sku,
-                ip.supplier,
-                ip.status                                    AS product_status,
-                COALESCE(ip.min_stock, 0)                    AS min_stock,
-                COALESCE(ip.max_stock, 0)                    AS max_stock,
-                COALESCE(si.stock_level, ip.stock, 0)        AS stock_level,
-                COALESCE(si.capacity, ip.max_stock, 480)       AS capacity,
-                COALESCE(si.reorder_level, ip.min_stock, 24) AS reorder_level,
-                COALESCE(si.critical_level, 10)              AS critical_level,
-                COALESCE(si.unit, ip.size, 'pcs')            AS unit,
-                si.physical_count,
-                si.variance,
-                si.last_updated
-            FROM inventory_products ip
-            LEFT JOIN station_inventory si
-                   ON si.product_id = ip.id AND si.station_id = ?
-            WHERE ip.id = ?
-        ");
-        $stmt->execute([$station_id, $prod_id]);
-        $prod = $stmt->fetch(PDO::FETCH_ASSOC);
+        $prod = null;
+        try {
+            $stmt = $pdo->prepare("
+                SELECT
+                    ip.id,
+                    ip.product_name                              AS name,
+                    ip.category                                  AS category_name,
+                    ip.unit_price                                AS price,
+                    ip.unit_cost                                 AS cost,
+                    ip.sku,
+                    ip.supplier,
+                    ip.status                                    AS product_status,
+                    COALESCE(ip.min_stock, 0)                    AS min_stock,
+                    COALESCE(ip.max_stock, 0)                    AS max_stock,
+                    COALESCE(si.stock_level, ip.stock, 0)        AS stock_level,
+                    COALESCE(si.capacity, ip.max_stock, 480)       AS capacity,
+                    COALESCE(si.reorder_level, ip.min_stock, 24) AS reorder_level,
+                    COALESCE(si.critical_level, 10)              AS critical_level,
+                    COALESCE(si.unit, ip.size, 'pcs')            AS unit,
+                    si.physical_count,
+                    si.variance,
+                    si.last_updated
+                FROM inventory_products ip
+                LEFT JOIN station_inventory si
+                       ON si.product_id = ip.id AND si.station_id = ?
+                WHERE ip.id = ?
+            ");
+            $stmt->execute([$station_id, $prod_id]);
+            $prod = $stmt->fetch(PDO::FETCH_ASSOC);
+        } catch (Exception $primary_error) {}
+
+        if (!$prod) {
+            $stmt = $pdo->prepare("
+                SELECT
+                    p.id,
+                    p.name AS name,
+                    COALESCE(pc.name, 'General') AS category_name,
+                    p.description,
+                    COALESCE(si.price, p.price, si.cost, p.cost, 0) AS price,
+                    COALESCE(p.cost, si.cost, 0) AS cost,
+                    COALESCE(NULLIF(p.sku, ''), CONCAT('P', LPAD(p.id, 4, '0'))) AS sku,
+                    'Petron Corporation' AS supplier,
+                    COALESCE(NULLIF(si.status, ''), NULLIF(p.status, ''), 'active') AS product_status,
+                    COALESCE(NULLIF(p.min_stock_level, 0), 0) AS min_stock,
+                    COALESCE(NULLIF(p.max_stock_level, 0), 0) AS max_stock,
+                    COALESCE(si.stock_level, p.current_stock, 0) AS stock_level,
+                    COALESCE(NULLIF(si.capacity, 0), NULLIF(p.capacity, 0), NULLIF(p.max_stock_level, 0), 480) AS capacity,
+                    COALESCE(NULLIF(si.reorder_level, 0), NULLIF(p.min_stock_level, 0), 24) AS reorder_level,
+                    COALESCE(NULLIF(si.critical_level, 0), 10) AS critical_level,
+                    COALESCE(NULLIF(p.unit, ''), NULLIF(si.unit, ''), 'pcs') AS unit,
+                    si.physical_count,
+                    si.variance,
+                    COALESCE(si.last_updated, p.updated_at, p.created_at) AS last_updated
+                FROM products p
+                LEFT JOIN product_categories pc ON pc.id = p.category_id
+                LEFT JOIN station_inventory si ON si.product_id = p.id AND si.station_id = ?
+                WHERE p.id = ?
+                  AND LOWER(COALESCE(pc.name, '')) NOT IN ('fuel', 'fuel products', 'services')
+            ");
+            $stmt->execute([$station_id, $prod_id]);
+            $prod = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
 
         if (!$prod) {
             echo json_encode(['success' => false, 'message' => 'Product not found']);
             exit;
         }
+        $prod['category_name'] = format_product_category_display($prod['category_name'] ?? '', $prod['name'] ?? '', $prod['description'] ?? '');
+        $prod['unit'] = format_product_unit_display($prod['unit'] ?? 'pcs', $prod['name'] ?? '', $prod['category_name'] ?? '', $prod['description'] ?? '');
+        $prod['supplier'] = 'Petron Corporation';
 
         // Apply capacity fallbacks
         $capacity = (float)($prod['capacity'] ?? 0);
@@ -490,8 +528,50 @@ try {
     $stmt->execute([$station_id]);
     $merch_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    $msg = 'Error loading merchandise: ' . $e->getMessage();
+    try {
+        $stmt = $pdo->prepare("
+            SELECT
+                p.id,
+                p.name AS name,
+                COALESCE(pc.name, 'General') AS category_name,
+                p.description,
+                COALESCE(si.price, p.price, si.cost, p.cost, 0) AS price,
+                COALESCE(p.cost, si.cost, 0) AS cost,
+                COALESCE(NULLIF(p.sku, ''), CONCAT('P', LPAD(p.id, 4, '0'))) AS sku,
+                '' AS supplier,
+                COALESCE(NULLIF(si.status, ''), NULLIF(p.status, ''), 'active') AS product_status,
+                COALESCE(NULLIF(p.min_stock_level, 0), 0) AS min_stock,
+                COALESCE(NULLIF(p.max_stock_level, 0), 0) AS max_stock,
+                COALESCE(si.stock_level, p.current_stock, 0) AS stock_level,
+                COALESCE(NULLIF(si.capacity, 0), NULLIF(p.capacity, 0), NULLIF(p.max_stock_level, 0), 480) AS capacity,
+                COALESCE(NULLIF(si.reorder_level, 0), NULLIF(p.min_stock_level, 0), 24) AS reorder_level,
+                COALESCE(NULLIF(si.critical_level, 0), 10) AS critical_level,
+                COALESCE(NULLIF(p.unit, ''), NULLIF(si.unit, ''), 'pcs') AS unit,
+                COALESCE(si.last_updated, p.updated_at, p.created_at) AS last_updated,
+                si.physical_count,
+                si.variance
+            FROM products p
+            LEFT JOIN product_categories pc ON pc.id = p.category_id
+            LEFT JOIN station_inventory si ON si.product_id = p.id AND si.station_id = ?
+            WHERE LOWER(COALESCE(pc.name, '')) NOT IN ('fuel', 'fuel products', 'services')
+            ORDER BY COALESCE(pc.name, 'General'), p.name
+        ");
+        $stmt->execute([$station_id]);
+        $merch_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $fallback_error) {
+        $msg = 'Error loading merchandise: ' . $fallback_error->getMessage();
+    }
 }
+
+foreach ($merch_inventory as &$item) {
+    $item['category_name'] = format_product_category_display(
+        $item['category_name'] ?? '',
+        $item['name'] ?? '',
+        $item['description'] ?? ''
+    );
+    $item['supplier'] = 'Petron Corporation';
+}
+unset($item);
 
 // Last movement per product
 $last_movements = [];
@@ -535,7 +615,7 @@ foreach ($merch_inventory as $item) {
     $cat = $item['category_name'] ?? 'Uncategorized';
     $by_cat[$cat][] = $item;
 }
-$cat_order = ['Oils / Lubes / Grease','Car Accessories','Brake System','Tire','Maintenance','Oil / Fuel Filters','Others (Snacks / Drinks)'];
+$cat_order = ['Oils/Lubes/Grease','Filters','VIC Filters','Drinks/Food','Snacks','Car Accessories','Merchandise','Others'];
 $sorted = [];
 foreach ($cat_order as $k) { if (isset($by_cat[$k])) $sorted[$k] = $by_cat[$k]; }
 foreach ($by_cat as $k => $v) { if (!in_array($k, $cat_order)) $sorted[$k] = $v; }
@@ -731,6 +811,19 @@ body { overflow-x: hidden; }
 .inv-filter-bar select, .inv-filter-bar input[type="text"] { padding:8px 11px; border:1px solid #ced4da; border-radius:5px; font-size:13px; font-family:inherit; color:#1e293b; }
 .inv-filter-bar select { min-width:170px; }
 .inv-filter-bar input[type="text"] { min-width:210px; }
+.fd-select-source{display:none!important;}
+.fd-select{position:relative;display:inline-block;min-width:130px;}
+.fd-select-trigger{display:flex;align-items:center;gap:8px;width:100%;height:36px;padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#1e293b;font-size:13px;font-family:inherit;cursor:pointer;box-sizing:border-box;white-space:nowrap;}
+.fd-select-trigger:hover{border-color:#94a3b8;}
+.fd-select.fd-open .fd-select-trigger{border-color:#002F70;box-shadow:0 0 0 2px rgba(0,47,112,.1);}
+.fd-select-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-align:left;}
+.fd-select-arrow{font-size:10px;color:#94a3b8;margin-left:auto;transition:transform .15s;flex-shrink:0;}
+.fd-select.fd-open .fd-select-arrow{transform:rotate(180deg);}
+.fd-select-menu{display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:100%;max-height:280px;overflow-y:auto;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.16);z-index:10000;}
+.fd-select.fd-open .fd-select-menu{display:block;}
+.fd-select-option{padding:9px 14px;font-size:13px;color:#1e293b;cursor:pointer;white-space:nowrap;}
+.fd-select-option:hover{background:#f1f5f9;}
+.fd-select-option.fd-active{font-weight:700;color:#fff;background:#1a6fd4;}
 
 /* Status Badges */
 .inv-stock-badge { display:inline-block; padding:3px 9px; border-radius:4px; font-size:11px; font-weight:600; text-transform:uppercase; }
@@ -1010,7 +1103,15 @@ body { overflow-x: hidden; }
                 <option value="<?php echo strtolower(htmlspecialchars($cat)); ?>"><?php echo htmlspecialchars($cat); ?></option>
                 <?php endforeach; ?>
             </select>
-            <input type="hidden" id="invStockFilter" value="">
+            <select id="invStockFilter" onchange="filterInvTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+                <option value="">All Statuses</option>
+                <option value="available">Available</option>
+                <option value="low">Low Stock</option>
+                <option value="critical">Critical Stock</option>
+                <option value="out of stock">Out of Stock</option>
+                <option value="variance detected">Variance Detected</option>
+                <option value="warning" hidden>Stock Alerts</option>
+            </select>
         </div>
     </div>
     <div class="table-wrap">
@@ -1025,6 +1126,7 @@ body { overflow-x: hidden; }
                     <th>Current Stock / Reorder</th>
                     <th style="text-align:right;">Physical Count</th>
                     <th style="text-align:right;">Variance</th>
+                    <th style="text-align:center;">Status</th>
                     <th style="text-align:center;">Last Movement</th>
                     <th>Last Updated</th>
                     <th style="text-align:center;">Actions</th>
@@ -1034,13 +1136,13 @@ body { overflow-x: hidden; }
             <?php
             foreach ($sorted as $cat_label => $items):
             ?>
-                <tr class="cat-header no-paginate"><td colspan="11"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                <tr class="cat-header no-paginate"><td colspan="12"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                 <?php foreach ($items as $item):
                     $stock    = (float)($item['stock_level'] ?? 0);
                     $reorder  = (float)($item['reorder_level'] ?? 24);
                     $critical = (float)($item['critical_level'] ?? 10);
                     $capacity = (float)($item['capacity']    ?? 480);
-                    $unit     = htmlspecialchars(format_merch_unit($item['unit'] ?? 'pcs'));
+                    $unit     = htmlspecialchars(format_product_unit_display($item['unit'] ?? 'pcs', $item['name'] ?? '', $item['category_name'] ?? ''));
                     $variance = $item['variance'];
                     $has_variance = ($variance !== null && (float)$variance != 0);
 
@@ -1119,6 +1221,11 @@ body { overflow-x: hidden; }
                     </td>
                     <td style="text-align:right;font-weight:700;color:#0f172a;"><?php echo $phys_text; ?></td>
                     <td style="text-align:right;<?php echo $var_style; ?>"><?php echo $var_text; ?></td>
+                    <td style="text-align:center;">
+                        <span class="inv-stock-badge" style="background:<?php echo $sc; ?>20;color:<?php echo $sc; ?>;border:1px solid <?php echo $sc; ?>40;padding:4px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;white-space:nowrap;">
+                            <?php echo htmlspecialchars($st); ?>
+                        </span>
+                    </td>
                     <td style="text-align:center;">
                         <?php if ($mv_label): ?>
                             <span class="<?php echo $mv_class; ?>" style="font-size:11px;"><?php echo htmlspecialchars($mv_label); ?></span>
@@ -2355,17 +2462,17 @@ function filterInvTable() {
         var WARNING_STATUSES = ['low', 'critical', 'out of stock', 'out'];
         var isWarning = (WARNING_STATUSES.indexOf(rInv) !== -1 || WARNING_STATUSES.indexOf(rStockStatus) !== -1);
 
-        // Status filter matching
+        // Status filter matching — Low Stock, Critical Stock, Out of Stock all show the same combined stock alert view
         var matchesStock = false;
         if (!stFlt) {
             matchesStock = true;
-        } else if (stFlt === 'warning' || WARNING_STATUSES.indexOf(stFlt) !== -1) {
-            // Any warning-tier filter shows ALL warning products
+        } else if (stFlt === 'warning' || stFlt === 'low' || stFlt === 'critical' || stFlt === 'out of stock' || stFlt === 'out') {
+            // Any stock-alert filter shows ALL low + critical + out of stock items together
             matchesStock = isWarning;
         } else if (stFlt === 'variance detected') {
             matchesStock = (rInv === 'variance detected');
         } else {
-            matchesStock = (rInv === stFlt || rStockStatus === stFlt);
+            matchesStock = (rInv === stFlt || (rInv !== 'variance detected' && rStockStatus === stFlt));
         }
 
         // Search text matching (status keywords expand to all warnings)
@@ -2787,7 +2894,102 @@ function exportMovTableExcel() {
     }
 }
 
+function setupDownwardFilterSelects(selectors) {
+    var selects = [];
+    selectors.forEach(function(selector) {
+        var el = typeof selector === 'string' ? document.querySelector(selector) : selector;
+        if (el) selects.push(el);
+    });
+
+    selects.forEach(function(select) {
+        if (!select || select.dataset.forceDownReady === '1') return;
+        select.dataset.forceDownReady = '1';
+
+        var wrap = document.createElement('div');
+        wrap.className = 'fd-select';
+        var computed = window.getComputedStyle(select);
+        if (computed.minWidth && computed.minWidth !== '0px') wrap.style.minWidth = computed.minWidth;
+        if (select.style.width) wrap.style.width = select.style.width;
+        if (select.style.marginLeft) {
+            wrap.style.marginLeft = select.style.marginLeft;
+            select.style.marginLeft = '';
+        }
+
+        var trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'fd-select-trigger';
+        var label = document.createElement('span');
+        label.className = 'fd-select-label';
+        var arrow = document.createElement('i');
+        arrow.className = 'fas fa-chevron-down fd-select-arrow';
+        trigger.appendChild(label);
+        trigger.appendChild(arrow);
+
+        var menu = document.createElement('div');
+        menu.className = 'fd-select-menu';
+        Array.from(select.options).forEach(function(option) {
+            if (option.hidden) return;
+            var item = document.createElement('div');
+            item.className = 'fd-select-option';
+            item.dataset.value = option.value;
+            item.textContent = option.textContent;
+            item.addEventListener('click', function() {
+                select.value = option.value;
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+                syncLabel();
+                wrap.classList.remove('fd-open');
+            });
+            menu.appendChild(item);
+        });
+
+        function syncLabel() {
+            var selected = select.options[select.selectedIndex];
+            label.textContent = selected ? selected.textContent.trim() : '';
+            Array.from(menu.querySelectorAll('.fd-select-option')).forEach(function(item) {
+                item.classList.toggle('fd-active', item.dataset.value === select.value);
+            });
+        }
+
+        trigger.addEventListener('click', function(e) {
+            e.stopPropagation();
+            document.querySelectorAll('.fd-select.fd-open').forEach(function(openWrap) {
+                if (openWrap !== wrap) openWrap.classList.remove('fd-open');
+            });
+            wrap.classList.toggle('fd-open');
+        });
+
+        select.addEventListener('change', syncLabel);
+        select.classList.add('fd-select-source');
+        select.parentNode.insertBefore(wrap, select.nextSibling);
+        wrap.appendChild(trigger);
+        wrap.appendChild(menu);
+        syncLabel();
+    });
+
+    if (!window.__forceDownSelectCloseBound) {
+        window.__forceDownSelectCloseBound = true;
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.fd-select')) {
+                document.querySelectorAll('.fd-select.fd-open').forEach(function(wrap) {
+                    wrap.classList.remove('fd-open');
+                });
+            }
+        });
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+    setupDownwardFilterSelects([
+        '#invCatFilter',
+        '#invStockFilter',
+        '#alertCatFilter',
+        '#alertTypeFilter',
+        '#movTypeFilter',
+        '#reqCatFilter',
+        '#reqStatusFilter',
+        '#reqUserFilter'
+    ]);
+
     // Standard table pagination setup
     <?php if ($active_tab === 'inventory'): ?>
     setupTablePagination('mgrMerchTable', 'mgrMerchRowsLimit', 'mgrMerchPagination', 50);
@@ -2829,12 +3031,7 @@ function filterMgrByCard(val) {
     } else {
         select.value = val;
     }
-    if (typeof filterInvTable === 'function') {
-        filterInvTable();
-    } else {
-        var event = new Event('change');
-        select.dispatchEvent(event);
-    }
+    select.dispatchEvent(new Event('change', { bubbles: true }));
 }
 </script>
 

@@ -80,7 +80,7 @@ $date_f   = trim($_GET['date_updated'] ?? '');
 
 // ── Categories & Suppliers for dropdowns ────────────────────────
 $all_cats  = $pdo->query("SELECT DISTINCT category FROM inventory_products WHERE category NOT IN ('Fuel','') AND category IS NOT NULL ORDER BY category")->fetchAll(PDO::FETCH_COLUMN);
-$all_supps = $pdo->query("SELECT DISTINCT supplier FROM inventory_products WHERE supplier IS NOT NULL AND supplier != '' ORDER BY supplier")->fetchAll(PDO::FETCH_COLUMN);
+$all_supps = ['Petron Corporation'];
 
 // ── Fetch all items ──────────────────────────────────────────────
 $stmt = $pdo->prepare("
@@ -106,6 +106,7 @@ $kpi = ['total'=>0,'available'=>0,'low'=>0,'out'=>0,'critical'=>0,'value'=>0.0];
 $rows = [];
 
 foreach ($all_items as $item) {
+    $item['supplier'] = 'Petron Corporation';
     $stock   = (float)$item['current_stock'];
     $reorder = (float)$item['reorder_level'];
     $max     = (float)$item['max_stock'];

@@ -187,7 +187,10 @@ table.dt tr:hover td{background:#f8f9fa;}
       </div>
       <div class="fg">
         <label>Supplier</label>
-        <input type="text" id="fSupplier" placeholder="Search supplier…">
+        <select id="fSupplier">
+          <option value="">All Suppliers</option>
+          <option value="Petron Corporation">Petron Corporation</option>
+        </select>
       </div>
       <div style="margin-top:auto;">
         <button class="btn btn-primary" onclick="loadDeliveries()"><i class="fas fa-search"></i> Filter</button>
@@ -322,12 +325,12 @@ async function loadDeliveries(){
     // Admin Oversight: when no status filter selected, default to manager-validated records only.
     // 'pending' filter explicitly requested by admin to review unprocessed items.
     const effectiveStatus = status === '' ? 'approved' : status;
-    const url=`${API}?action=list&start=${start}&end=${end}&status=${encodeURIComponent(effectiveStatus)}&type=${encodeURIComponent(type)}&supplier=${encodeURIComponent(supplier)}`;
+    const url=`${API}?action=list&start=${start}&end=${end}&status=${encodeURIComponent(effectiveStatus)}&type=${encodeURIComponent(type)}&supplier=`;
     const res=await fetch(url);
     const data=await res.json();
     if(!data.success){toast(data.message,'error');return;}
 
-    const rows=data.data||[];
+    const rows=(data.data||[]).map(row => ({ ...row, supplier: 'Petron Corporation' }));
     document.getElementById('recordCount').textContent=rows.length+' record(s)';
 
     if(rows.length===0){

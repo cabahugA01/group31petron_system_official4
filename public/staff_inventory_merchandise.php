@@ -49,7 +49,36 @@ try {
     $stmt->execute([$station_id]);
     $merch_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    $msg = 'Error loading merchandise: ' . $e->getMessage();
+    try {
+        $stmt = $pdo->prepare("
+            SELECT p.id,
+                   p.name AS name,
+                   COALESCE(pc.name, 'General') AS category_name,
+                   p.description,
+                   COALESCE(si.price, p.price, si.cost, p.cost, 0) AS price,
+                   COALESCE(NULLIF(p.sku, ''), CONCAT('P', LPAD(p.id, 4, '0'))) AS sku,
+                   COALESCE(NULLIF(si.status, ''), NULLIF(p.status, ''), 'active') AS status,
+                   COALESCE(NULLIF(p.unit, ''), NULLIF(si.unit, ''), 'pcs') AS unit,
+                   COALESCE(si.stock_level, p.current_stock, 0) AS stock_level,
+                   COALESCE(NULLIF(si.capacity, 0), NULLIF(p.capacity, 0), NULLIF(p.max_stock_level, 0), 480) AS capacity,
+                   COALESCE(NULLIF(si.reorder_level, 0), NULLIF(p.min_stock_level, 0), 24) AS reorder_level,
+                   COALESCE(NULLIF(si.critical_level, 0), 10) AS critical_level,
+                   si.physical_count,
+                   si.variance,
+                   COALESCE(si.last_updated, p.updated_at, p.created_at) AS last_updated
+            FROM products p
+            LEFT JOIN product_categories pc
+                   ON pc.id = p.category_id
+            LEFT JOIN station_inventory si
+                   ON si.product_id = p.id AND si.station_id = ?
+            WHERE LOWER(COALESCE(pc.name, '')) NOT IN ('fuel', 'fuel products', 'services')
+            ORDER BY COALESCE(pc.name, 'General'), p.name
+        ");
+        $stmt->execute([$station_id]);
+        $merch_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $fallback_error) {
+        $msg = 'Error loading merchandise: ' . $fallback_error->getMessage();
+    }
 }
 
 // ── Last movement per product ─────────────────────────────────
@@ -87,39 +116,9 @@ $all_units = [];
 $stats = ['total'=>0,'available'=>0,'low'=>0,'critical'=>0,'out'=>0];
 $js_items = [];
 
-function get_product_brand($product_name) {
-    $name = strtolower($product_name);
-    if (strpos($name, 'hardex') !== false) return 'Hardex';
-    if (strpos($name, 'petron') !== false) return 'Petron';
-    if (strpos($name, 'petromate') !== false) return 'Petron';
-    if (strpos($name, 'rev-x') !== false) return 'Rev-X';
-    if (strpos($name, 'revx') !== false) return 'Rev-X';
-    if (strpos($name, 'ultron') !== false) return 'Ultron';
-    if (strpos($name, 'sprint') !== false) return 'Sprint';
-    if (strpos($name, 'blaze') !== false) return 'Blaze';
-    if (strpos($name, 'wd') !== false) return 'WD-40';
-    if (strpos($name, 'whiz') !== false) return 'Whiz';
-    if (strpos($name, 'sakura') !== false) return 'Sakura';
-    if (strpos($name, 'vic') !== false) return 'VIC';
-    if (strpos($name, 'toyota') !== false) return 'Toyota';
-    if (strpos($name, 'falcon') !== false) return 'Falcon';
-    if (strpos($name, 'yokohama') !== false) return 'Yokohama';
-    if (strpos($name, '3m') !== false) return '3M';
-    if (strpos($name, 'shell') !== false) return 'Shell';
-    if (strpos($name, 'mobil') !== false) return 'Mobil';
-    if (strpos($name, 'castrol') !== false) return 'Castrol';
-    
-    $words = explode(' ', trim($product_name));
-    $first = $words[0] ?? '';
-    $first = preg_replace('/[^A-Za-z0-9\-]/', '', $first);
-    if (strlen($first) > 2) {
-        return ucfirst(strtolower($first));
-    }
-    return 'Petron';
-}
-
 foreach ($merch_inventory as $item) {
-    if (strtolower($item['status'] ?? 'active') !== 'active') continue;
+    $raw_status = strtolower(trim((string)($item['status'] ?? 'active')));
+    if (in_array($raw_status, ['inactive', 'disabled', 'archived'], true)) continue;
 
     $stock    = (float)($item['stock_level'] ?? 0);
     $capacity = (float)($item['capacity'] ?? 0);
@@ -129,7 +128,7 @@ foreach ($merch_inventory as $item) {
     $fill_pct = $capacity > 0 ? ($stock/$capacity)*100 : 0;
     // Status driven by DB thresholds — no hardcoded numbers
     if      ($stock <= 0)         { $st='OUT OF STOCK'; $sc='#dc3545'; $st_cls='out'; }
-    elseif  ($stock <= $critical) { $st='CRITICAL';     $sc='#dc3545'; $st_cls='critical'; }
+    elseif  ($stock <= $critical) { $st='CRITICAL STOCK'; $sc='#dc3545'; $st_cls='critical'; }
     elseif  ($stock <= $reorder)  { $st='LOW STOCK';    $sc='#fd7e14'; $st_cls='low'; }
     else                          { $st='AVAILABLE';    $sc='#28a745'; $st_cls='ok'; }
 
@@ -142,13 +141,13 @@ foreach ($merch_inventory as $item) {
     $pid = (int)$item['id'];
     $mv  = $last_movements[$pid] ?? null;
 
-    $cat_label = $item['category_name'] ?? 'Uncategorized';
+    $cat_label = format_product_category_display($item['category_name'] ?? 'Uncategorized', $item['name'] ?? '', $item['description'] ?? '');
     if (!in_array($cat_label,$all_categories)) $all_categories[]=$cat_label;
 
-    $brand = get_product_brand($item['name']);
+    $brand = get_product_brand($item['name'], $cat_label, $item['description'] ?? '');
     if (!in_array($brand,$all_brands)) $all_brands[]=$brand;
 
-    $uom = format_merch_unit($item['unit'] ?? 'pcs');
+    $uom = format_product_unit_display($item['unit'] ?? 'pcs', $item['name'] ?? '', $cat_label);
     if (!in_array($uom,$all_units)) $all_units[]=$uom;
 
     $js_items[] = [
@@ -212,17 +211,50 @@ body,html{overflow-x:hidden;max-width:100%;}
 
 /* ── Filter Bar ── */
 .inv-filter-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;}
-.inv-filter-bar select,.inv-filter-bar input[type=text]{padding:8px 10px;border:1px solid #ced4da;border-radius:6px;font-size:13px;color:#374151;background:#fff;height:36px;outline:none;}
-.inv-filter-bar select:focus,.inv-filter-bar input[type=text]:focus{border-color:#002F70;box-shadow:0 0 0 2px rgba(0,47,112,.1);}
+.inv-filter-bar input[type=text]{padding:8px 10px;border:1px solid #ced4da;border-radius:6px;font-size:13px;color:#374151;background:#fff;height:36px;outline:none;}
+.inv-filter-bar input[type=text]:focus{border-color:#002F70;box-shadow:0 0 0 2px rgba(0,47,112,.1);}
 .inv-filter-bar input[type=text]{min-width:220px;}
+.inv-filter-bar select{height:36px;min-width:130px;padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;font-family:inherit;color:#1e293b;background:#fff;outline:none;}
+.inv-filter-bar select:focus{border-color:#002F70;box-shadow:0 0 0 2px rgba(0,47,112,.1);}
+.inv-filter-bar select:hover{border-color:#94a3b8;}
+#cdd-sort{display:none!important;}
+
+.fd-select-source{display:none!important;}
+.fd-select{position:relative;display:inline-block;min-width:130px;}
+.fd-select-trigger{display:flex;align-items:center;gap:8px;width:100%;height:36px;padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#1e293b;font-size:13px;font-family:inherit;cursor:pointer;box-sizing:border-box;white-space:nowrap;}
+.fd-select-trigger:hover{border-color:#94a3b8;}
+.fd-select.fd-open .fd-select-trigger{border-color:#002F70;box-shadow:0 0 0 2px rgba(0,47,112,.1);}
+.fd-select-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-align:left;}
+.fd-select-arrow{font-size:10px;color:#94a3b8;margin-left:auto;transition:transform .15s;flex-shrink:0;}
+.fd-select.fd-open .fd-select-arrow{transform:rotate(180deg);}
+.fd-select-menu{display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:100%;max-height:280px;overflow-y:auto;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.16);z-index:10000;}
+.fd-select.fd-open .fd-select-menu{display:block;}
+.fd-select-option{padding:9px 14px;font-size:13px;color:#1e293b;cursor:pointer;white-space:nowrap;}
+.fd-select-option:hover{background:#f1f5f9;}
+.fd-select-option.fd-active{font-weight:700;color:#fff;background:#1a6fd4;}
+
+/* ── Custom Dropdown (always opens downward) ── */
+.cdd-wrap{position:relative;display:inline-block;}
+.cdd-trigger{display:flex;align-items:center;gap:8px;padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#374151;background:#fff;height:36px;cursor:pointer;user-select:none;min-width:130px;white-space:nowrap;}
+.cdd-trigger:hover{border-color:#94a3b8;}
+.cdd-wrap.cdd-open .cdd-trigger{border-color:#002F70;box-shadow:0 0 0 2px rgba(0,47,112,.1);}
+.cdd-arrow{font-size:10px;color:#94a3b8;margin-left:auto;transition:transform .15s;}
+.cdd-wrap.cdd-open .cdd-arrow{transform:rotate(180deg);}
+.cdd-menu{display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:100%;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.13);z-index:9999;max-height:280px;overflow-y:auto;overflow-x:hidden;}
+.cdd-menu-right{left:auto;right:0;}
+.cdd-wrap.cdd-open .cdd-menu{display:block;}
+.cdd-item{padding:9px 14px;font-size:13px;color:#374151;cursor:pointer;white-space:nowrap;}
+.cdd-item:hover{background:#f1f5f9;}
+.cdd-item.cdd-active{font-weight:700;color:#fff;background:#1a6fd4;}
 
 /* ── Main card ── */
-.inv-card{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;overflow:hidden;}
+.inv-card{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;overflow:visible;}
 .inv-card-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #e9ecef;flex-wrap:wrap;gap:8px;}
 .inv-card-title{font-size:1rem;font-weight:700;color:#002F70;display:flex;align-items:center;gap:8px;}
 .inv-card-body{padding:16px 20px;}
-/* Ensure dropdowns open downward by giving enough space */
+/* Ensure dropdowns open downward */
 .inv-filter-bar select { position: relative; }
+.stock-page { min-height: 100vh; }
 .page { min-height: 200vh; }
 .cat-header td{font-weight:700;background:#e9ecef!important;color:#495057!important;text-transform:uppercase;font-size:.8em;letter-spacing:.5px;border-bottom:2px solid #dee2e6;padding:8px 12px;text-align:center;}
 
@@ -434,38 +466,69 @@ body.modal-open .main {
     </div>
     <div class="inv-card-body">
 
+        <select id="sortByHidden" style="display:none">
+            <option value="default">Default Sort</option>
+            <option value="newest">Newest Updated</option>
+            <option value="name_asc">Name A–Z</option>
+            <option value="name_desc">Name Z–A</option>
+            <option value="stock_asc">Stock Low–High</option>
+            <option value="stock_desc">Stock High–Low</option>
+        </select>
+
         <!-- Filter Bar -->
         <div class="inv-filter-bar" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px;">
             <div style="position:relative;">
                 <i class="fas fa-search" style="position:absolute; left:10px; top:11px; color:#94a3b8; font-size:12px;"></i>
                 <input type="text" id="merchSearch" placeholder="Search Product..." autocomplete="off" style="padding-left:28px;">
             </div>
-            <select id="filterCategory">
+            <select id="filterCategory" onchange="applyFilters()">
                 <option value="">All Categories</option>
                 <?php foreach ($all_categories as $cat): ?>
                 <option value="<?php echo htmlspecialchars(strtolower($cat)); ?>"><?php echo htmlspecialchars($cat); ?></option>
                 <?php endforeach; ?>
             </select>
-            <select id="filterBrand">
+            <select id="filterBrand" onchange="applyFilters()">
                 <option value="">All Brands</option>
                 <?php foreach ($all_brands as $b): ?>
                 <option value="<?php echo htmlspecialchars(strtolower($b)); ?>"><?php echo htmlspecialchars($b); ?></option>
                 <?php endforeach; ?>
             </select>
-            <select id="filterUnit">
+            <select id="filterUnit" onchange="applyFilters()">
                 <option value="">All Units</option>
                 <?php foreach ($all_units as $u): ?>
                 <option value="<?php echo htmlspecialchars(strtolower($u)); ?>"><?php echo htmlspecialchars($u); ?></option>
                 <?php endforeach; ?>
             </select>
-            <input type="hidden" id="filterStatus" value="">
-            <select id="sortBy" style="margin-left:auto;">
+            <select id="filterStatus" onchange="applyFilters()">
+                <option value="">All Statuses</option>
+                <option value="available">Available</option>
+                <option value="low">Low Stock</option>
+                <option value="critical">Critical Stock</option>
+                <option value="out">Out of Stock</option>
+                <option value="variance detected">Variance Detected</option>
+                <option value="warning">Stock Alerts</option>
+            </select>
+            <div class="cdd-wrap" id="cdd-sort" style="margin-left:auto;">
+                <div class="cdd-trigger" onclick="cddToggle('cdd-sort')">
+                    <span class="cdd-label">Default Sort</span>
+                    <i class="fas fa-chevron-down cdd-arrow"></i>
+                </div>
+                <div class="cdd-menu cdd-menu-right">
+                    <div class="cdd-item cdd-active" data-val="default">Default Sort</div>
+                    <div class="cdd-item" data-val="newest">Newest Updated</div>
+                    <div class="cdd-item" data-val="name_asc">Name A–Z</div>
+                    <div class="cdd-item" data-val="name_desc">Name Z–A</div>
+                    <div class="cdd-item" data-val="stock_asc">Stock Low–High</div>
+                    <div class="cdd-item" data-val="stock_desc">Stock High–Low</div>
+                </div>
+            </div>
+            <select id="sortBy" onchange="applyFilters()" style="margin-left:auto;">
                 <option value="default">Default Sort</option>
                 <option value="newest">Newest Updated</option>
-                <option value="name_asc">Name A–Z</option>
-                <option value="name_desc">Name Z–A</option>
-                <option value="stock_asc">Stock Low–High</option>
-                <option value="stock_desc">Stock High–Low</option>
+                <option value="name_asc">Name A-Z</option>
+                <option value="name_desc">Name Z-A</option>
+                <option value="stock_asc">Stock Low-High</option>
+                <option value="stock_desc">Stock High-Low</option>
             </select>
         </div>
 
@@ -482,6 +545,7 @@ body.modal-open .main {
                         <th style="width:150px;">Stock / Reorder</th>
                         <th style="text-align:right;width:80px;">Phys. Count</th>
                         <th style="text-align:right;width:70px;">Variance</th>
+                        <th style="text-align:center;width:100px;">Status</th>
                         <th style="text-align:center;width:90px;">Last Mvmt</th>
                         <th style="width:90px;">Updated</th>
                         <th style="text-align:center;width:75px;">Actions</th>
@@ -489,7 +553,7 @@ body.modal-open .main {
                 </thead>
                 <tbody id="merchTableBody">
                 <?php if (empty($js_items)): ?>
-                    <tr><td colspan="11" style="text-align:center;padding:32px;color:#6c757d;">No merchandise data available.</td></tr>
+                    <tr><td colspan="12" style="text-align:center;padding:32px;color:#6c757d;">No merchandise data available.</td></tr>
                 <?php else: ?>
                     <?php
                     // Group by category from $js_items (already filtered to active only)
@@ -498,7 +562,7 @@ body.modal-open .main {
                     ksort($grouped);
                     foreach ($grouped as $cat_label => $items):
                     ?>
-                    <tr class="cat-header"><td colspan="11" style="font-weight:700; background:#e9ecef!important; color:#495057!important; text-transform:uppercase; font-size:11px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px; text-align:center;"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                    <tr class="cat-header"><td colspan="12" style="font-weight:700; background:#e9ecef!important; color:#495057!important; text-transform:uppercase; font-size:11px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px; text-align:center;"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                     <?php foreach ($items as $it):
                         $ts = $it['last_updated'] ? (new DateTime($it['last_updated']))->format('M d, Y') : '—';
                     ?>
@@ -532,6 +596,7 @@ body.modal-open .main {
                         data-brand="<?php echo strtolower(htmlspecialchars($it['brand'])); ?>"
                         data-unit="<?php echo strtolower(htmlspecialchars($it['unit'])); ?>"
                         data-status="<?php echo htmlspecialchars($it['status_key']); ?>"
+                        data-filter-status="<?php echo $has_variance ? 'variance detected' : htmlspecialchars($it['status_key']); ?>"
                         data-stock="<?php echo $it['stock']; ?>"
                         data-updated="<?php echo htmlspecialchars($it['last_updated']); ?>"
                         data-idx="<?php echo htmlspecialchars(json_encode($it)); ?>">
@@ -549,6 +614,11 @@ body.modal-open .main {
                         </td>
                         <td style="text-align:right;font-weight:700;color:#0f172a;"><?php echo $phys_text; ?></td>
                         <td style="text-align:right;<?php echo $var_style; ?>"><?php echo $var_text; ?></td>
+                        <td style="text-align:center;">
+                            <span class="status-badge" style="background:<?php echo $display_color; ?>20;color:<?php echo $display_color; ?>;border:1px solid <?php echo $display_color; ?>40;">
+                                <?php echo htmlspecialchars($display_status); ?>
+                            </span>
+                        </td>
                         <td style="text-align:center;">
                             <?php if ($it['mv_label']): ?>
                                 <span class="<?php echo $mv_cls; ?>" style="font-size:11px;"><?php echo htmlspecialchars($it['mv_label']); ?></span>
@@ -695,6 +765,7 @@ function applyFilters() {
         var rbrand  = (r.dataset.brand || '').toLowerCase();
         var runit   = (r.dataset.unit || '').toLowerCase();
         var rstat   = (r.dataset.status || '').toLowerCase();
+        var rfilter = (r.dataset.filterStatus || rstat).toLowerCase();
 
         var isWarning = WARNING_KEYS.indexOf(rstat) !== -1;
 
@@ -702,13 +773,18 @@ function applyFilters() {
         var matchB  = !brand  || rbrand === brand;
         var matchU  = !unit   || runit === unit;
 
-        // Status filter: 'warning' or any single warning tier shows all warnings
+        // Status filter: selecting Low Stock, Critical Stock, or Out of Stock all show the same combined alert view
         var matchS = true;
         if (stat) {
-            if (stat === 'warning' || WARNING_KEYS.indexOf(stat) !== -1) {
+            if (stat === 'warning' || stat === 'low' || stat === 'critical' || stat === 'out' || stat === 'out of stock') {
+                // Any stock-alert filter shows ALL low + critical + out of stock items together
                 matchS = isWarning;
+            } else if (stat === 'variance detected') {
+                matchS = (rfilter === 'variance detected');
+            } else if (stat === 'available') {
+                matchS = (rfilter === 'available' || rfilter === 'ok');
             } else {
-                matchS = (rstat === stat);
+                matchS = (rfilter === stat);
             }
         }
 
@@ -788,16 +864,25 @@ function applyFilters() {
 
 function resetFilters() {
     document.getElementById('merchSearch').value = '';
+    // Reset hidden selects
     document.getElementById('filterCategory').value = '';
     document.getElementById('filterBrand').value = '';
     document.getElementById('filterUnit').value = '';
     document.getElementById('filterStatus').value = '';
     document.getElementById('sortBy').value = 'default';
+    // Reset custom dropdowns
+    cddSet('cdd-category', '', 'All Categories');
+    cddSet('cdd-brand', '', 'All Brands');
+    cddSet('cdd-unit', '', 'All Units');
+    cddSet('cdd-status', '', 'All Statuses');
+    cddSet('cdd-sort', 'default', 'Default Sort');
+    ['filterCategory','filterBrand','filterUnit','filterStatus','sortBy'].forEach(function(id) {
+        var select = document.getElementById(id);
+        if (select) select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
     // Clear card highlights too
     document.querySelectorAll('.inv-stat-card').forEach(function(c){ c.classList.remove('card-active'); });
-    // Trigger change event to sort
-    var event = new Event('change');
-    document.getElementById('sortBy').dispatchEvent(event);
+    // Trigger sort reset
     applyFilters();
 }
 
@@ -813,24 +898,23 @@ function filterByCard(statusKey, cardEl) {
     });
 
     if (isActive || statusKey === '') {
-        // Toggle off — show all
         select.value = '';
+        cddSet('cdd-status', '', 'All Statuses');
     } else {
-        // Activate this card (all warning cards share highlight)
         cardEl.classList.add('card-active');
         if (statusKey === 'warning') {
-            // Also highlight sibling warning cards
             ['card-low','card-critical','card-out'].forEach(function(id) {
                 var c = document.getElementById(id);
                 if (c) c.classList.add('card-active');
             });
         }
         select.value = statusKey;
+        cddSet('cdd-status', statusKey, statusKey === 'warning' ? 'Stock Alerts' : statusKey);
     }
 
+    select.dispatchEvent(new Event('change', { bubbles: true }));
     applyFilters();
 
-    // Scroll table into view smoothly
     var card = document.querySelector('.inv-card');
     if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -1112,13 +1196,161 @@ function closeSrSuccess() {
 function escHtml(str) { var d=document.createElement('div'); d.appendChild(document.createTextNode(str||'')); return d.innerHTML; }
 document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ closeVd(); closeSrModal(); } });
 
+function setupDownwardFilterSelects(selectors) {
+    var selects = [];
+    selectors.forEach(function(selector) {
+        var el = typeof selector === 'string' ? document.querySelector(selector) : selector;
+        if (el) selects.push(el);
+    });
+
+    selects.forEach(function(select) {
+        if (!select || select.dataset.forceDownReady === '1') return;
+        select.dataset.forceDownReady = '1';
+
+        var wrap = document.createElement('div');
+        wrap.className = 'fd-select';
+        var computed = window.getComputedStyle(select);
+        if (computed.minWidth && computed.minWidth !== '0px') wrap.style.minWidth = computed.minWidth;
+        if (select.style.width) wrap.style.width = select.style.width;
+        if (select.style.marginLeft) {
+            wrap.style.marginLeft = select.style.marginLeft;
+            select.style.marginLeft = '';
+        }
+
+        var trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'fd-select-trigger';
+        var label = document.createElement('span');
+        label.className = 'fd-select-label';
+        var arrow = document.createElement('i');
+        arrow.className = 'fas fa-chevron-down fd-select-arrow';
+        trigger.appendChild(label);
+        trigger.appendChild(arrow);
+
+        var menu = document.createElement('div');
+        menu.className = 'fd-select-menu';
+        Array.from(select.options).forEach(function(option) {
+            var item = document.createElement('div');
+            item.className = 'fd-select-option';
+            item.dataset.value = option.value;
+            item.textContent = option.textContent;
+            item.addEventListener('click', function() {
+                select.value = option.value;
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+                syncLabel();
+                wrap.classList.remove('fd-open');
+            });
+            menu.appendChild(item);
+        });
+
+        function syncLabel() {
+            var selected = select.options[select.selectedIndex];
+            label.textContent = selected ? selected.textContent.trim() : '';
+            Array.from(menu.querySelectorAll('.fd-select-option')).forEach(function(item) {
+                item.classList.toggle('fd-active', item.dataset.value === select.value);
+            });
+        }
+
+        trigger.addEventListener('click', function(e) {
+            e.stopPropagation();
+            document.querySelectorAll('.fd-select.fd-open').forEach(function(openWrap) {
+                if (openWrap !== wrap) openWrap.classList.remove('fd-open');
+            });
+            wrap.classList.toggle('fd-open');
+        });
+
+        select.addEventListener('change', syncLabel);
+        select.classList.add('fd-select-source');
+        select.parentNode.insertBefore(wrap, select.nextSibling);
+        wrap.appendChild(trigger);
+        wrap.appendChild(menu);
+        syncLabel();
+    });
+
+    if (!window.__forceDownSelectCloseBound) {
+        window.__forceDownSelectCloseBound = true;
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.fd-select')) {
+                document.querySelectorAll('.fd-select.fd-open').forEach(function(wrap) {
+                    wrap.classList.remove('fd-open');
+                });
+            }
+        });
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     ['srModal','vdModal','srSuccessOverlay','srSuccessPopup'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el && el.parentNode !== document.body) document.body.appendChild(el);
     });
+    setupDownwardFilterSelects([
+        '#filterCategory',
+        '#filterBrand',
+        '#filterUnit',
+        '#filterStatus',
+        '#sortBy'
+    ]);
     setupTablePagination('merchTable', 'merchRowsLimit', 'merchPagination', 50);
     applyFilters();
+});
+
+// ── Custom Dropdown (CDD) Logic ────────────────────────────────
+// Maps cdd id → hidden select id + change handler
+var cddMap = {
+    'cdd-category': { selectId: 'filterCategory', onChange: applyFilters },
+    'cdd-brand':    { selectId: 'filterBrand',    onChange: applyFilters },
+    'cdd-unit':     { selectId: 'filterUnit',     onChange: applyFilters },
+    'cdd-status':   { selectId: 'filterStatus',   onChange: applyFilters },
+    'cdd-sort':     { selectId: 'sortBy',         onChange: function(){ document.getElementById('sortBy').dispatchEvent(new Event('change')); } }
+};
+
+function cddToggle(id) {
+    var wrap = document.getElementById(id);
+    var isOpen = wrap.classList.contains('cdd-open');
+    // Close all
+    document.querySelectorAll('.cdd-wrap.cdd-open').forEach(function(w){ w.classList.remove('cdd-open'); });
+    if (!isOpen) wrap.classList.add('cdd-open');
+}
+
+function cddSet(cddId, val, label) {
+    var wrap = document.getElementById(cddId);
+    if (!wrap) return;
+    wrap.querySelector('.cdd-label').textContent = label;
+    wrap.querySelectorAll('.cdd-item').forEach(function(item){
+        item.classList.toggle('cdd-active', item.dataset.val === val);
+    });
+    var cfg = cddMap[cddId];
+    if (cfg) {
+        var sel = document.getElementById(cfg.selectId);
+        if (sel) sel.value = val;
+    }
+}
+
+// Wire up cdd item clicks
+document.querySelectorAll('.cdd-wrap').forEach(function(wrap) {
+    var id = wrap.id;
+    wrap.querySelectorAll('.cdd-item').forEach(function(item) {
+        item.addEventListener('click', function() {
+            var val = item.dataset.val;
+            var label = item.textContent.trim();
+            cddSet(id, val, label || (id === 'cdd-sort' ? 'Default Sort' :
+                id === 'cdd-category' ? 'All Categories' :
+                id === 'cdd-brand' ? 'All Brands' :
+                id === 'cdd-unit' ? 'All Units' :
+                id === 'cdd-status' ? 'All Statuses' : label));
+            wrap.classList.remove('cdd-open');
+            var cfg = cddMap[id];
+            if (cfg && cfg.onChange) cfg.onChange();
+        });
+    });
+});
+
+// Close dropdowns when clicking outside
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.cdd-wrap')) {
+        document.querySelectorAll('.cdd-wrap.cdd-open').forEach(function(w){ w.classList.remove('cdd-open'); });
+    }
 });
 </script>
 </div> <!-- /stock-page -->

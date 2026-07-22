@@ -35,9 +35,6 @@ $master_menu = [
         ['id'=>'mgr_prod_prices',     'label'=>'Approve Prices',      'href'=>'manager_approve_prices.php',     'permissions'=>['approve_transactions','manage_job_orders']],
     ]],
 
-    // Customers - Staff access (single page with all functionality)
-    ['id'=>'customers','label'=>'Customers','ico'=>'fas fa-users','href'=>'staff_customer_list.php','permissions'=>['create_transactions','view_transactions'],'station_specific'=>true],
-
     // Calendar - Staff & Manager
     ['id'=>'calendar','label'=>'Calendar','ico'=>'fas fa-calendar-alt','href'=>'staff_calendar.php','permissions'=>['view_dashboard','create_transactions','encode_fuel','manage_job_orders','create_job_orders','approve_transactions'],'station_specific'=>true],
 
@@ -46,7 +43,6 @@ $master_menu = [
         ['id'=>'report_daily_sales',      'label'=>'Sales Reports',                    'href'=>'staff_fuel_sales_summary.php',       'permissions'=>['view_personal_reports','view_operational_reports']],
         ['id'=>'report_deliveries',       'label'=>'Deliveries Reports',               'href'=>'staff_deliveries_report.php',           'permissions'=>['view_personal_reports','view_operational_reports']],
         ['id'=>'report_payments',         'label'=>'Payments Reports',                 'href'=>'staff_payments_report.php',    'permissions'=>['view_personal_reports','view_operational_reports']],
-        ['id'=>'report_customers',        'label'=>'Customer Reports',                 'href'=>'staff_customers_report.php',   'permissions'=>['view_personal_reports','view_operational_reports']],
         ['id'=>'report_activity',         'label'=>'Activity Reports',                 'href'=>'staff_activity_report.php',    'permissions'=>['view_personal_reports']],
     ]],
     
@@ -171,15 +167,6 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     ['id' => 'admin_inventory_merchandise', 'label' => 'Merchandise Inventory', 'href' => 'admin_inventory_merchandise.php', 'ico' => 'fas fa-box', 'permissions' => ['view_all_reports'], 'desc' => 'Monitor merchandise stock, pricing, and stock alerts.'],
                     ['id' => 'admin_inventory_fuel', 'label' => 'Fuel Inventory', 'href' => 'admin_inventory_fuel.php', 'ico' => 'fas fa-gas-pump', 'permissions' => ['view_all_reports'], 'desc' => 'Monitor fuel levels and submit discrepancy corrections.'],
                 ],
-            ],
-            // 7.5. Customers Oversight — Admin Oversight Module
-            [
-                'id' => 'admin_customers',
-                'label' => 'Customers',
-                'ico' => 'fas fa-users',
-                'href' => 'admin_customers.php',
-                'permissions' => ['view_all_reports', 'view_dashboard'],
-                'station_specific' => true,
             ],
             // 8. Product & Pricing Management — Standalone Admin Module
             [
@@ -408,7 +395,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     'href' => 'manager_customers.php',
                     'permissions' => ['approve_transactions', 'manage_job_orders'],
                     'station_specific' => true,
-                    'desc' => 'Manage and verify customer accounts and review outstanding balances.'
+                    'desc' => 'Manage customer records used in transactions and job orders.'
                 ];
                 
                 // Add standalone Product & Pricing Management after Customers

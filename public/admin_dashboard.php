@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Admin Dashboard
  *
@@ -384,7 +384,7 @@ $pending_price_requests = adm_table_exists($pdo, 'pending_price_approvals')
     : 0;
 
 $pending_inventory_approvals = $pending_purchase_orders + $pending_fuel_purchase_orders;
-$total_pending_approvals = $pending_user_accounts + $pending_customer_requests + $pending_inventory_approvals + $pending_price_requests;
+$total_pending_approvals = $pending_user_accounts + $pending_inventory_approvals + $pending_price_requests;
 
 $fuel_total_count = 0;
 $fuel_critical_count = 0;
@@ -831,24 +831,19 @@ if (adm_table_exists($pdo, 'fuel_purchase_orders')) {
 adm_sort_created_desc($pending_inventory_adjustments);
 $pending_inventory_adjustments = array_slice($pending_inventory_adjustments, 0, 8);
 
-$pending_customers = adm_table_exists($pdo, 'customers')
+$pending_customers = adm_table_exists($pdo, 'customer_requests')
     ? adm_rows(
         $pdo,
-        "SELECT c.id,
-                c.name AS customer,
-                COALESCE(NULLIF(c.contact_number, ''), NULLIF(c.phone, ''), NULLIF(c.email, ''), 'N/A') AS contact,
-                COALESCE(" . adm_user_name_expr('u') . ", c.contact_person, 'Customer Form') AS requested_by,
-                COALESCE(c.verification_status, c.mgr_status, 'Pending') AS status,
-                c.created_at
-         FROM customers c
-         LEFT JOIN users u ON u.id = c.mgr_reviewed_by
-         WHERE " . adm_station_clause($station_id, 'c') . "
-           AND LOWER(COALESCE(c.status, 'active')) <> 'inactive'
-           AND (
-                LOWER(COALESCE(c.verification_status, '')) = 'pending'
-                OR LOWER(COALESCE(c.mgr_status, '')) = 'pending'
-           )
-         ORDER BY c.created_at DESC
+        "SELECT cr.id,
+                TRIM(CONCAT(COALESCE(cr.first_name, ''), ' ', COALESCE(cr.middle_name, ''), ' ', COALESCE(cr.last_name, ''))) AS customer,
+                COALESCE(NULLIF(cr.contact_number, ''), 'N/A') AS contact,
+                COALESCE(" . adm_user_name_expr('u') . ", 'Staff Request') AS requested_by,
+                COALESCE(cr.status, 'Pending') AS status,
+                cr.created_at
+         FROM customer_requests cr
+         LEFT JOIN users u ON u.id = cr.requested_by
+         WHERE " . adm_station_clause($station_id, 'cr') . "
+         ORDER BY cr.created_at DESC
          LIMIT 8",
         adm_station_params($station_id)
     )
@@ -1746,7 +1741,7 @@ include __DIR__ . '/../partials/header.php';
             <div>
                 <div class="mgr-card-label">Today's Revenue</div>
                 <div class="mgr-card-value"><?= adm_money($total_revenue) ?></div>
-                <div class="mgr-card-sub">Fuel <?= adm_money($fuel_revenue) ?> · Merchandise <?= adm_money($merch_revenue) ?> · Services <?= adm_money($service_revenue) ?></div>
+                <div class="mgr-card-sub">Fuel <?= adm_money($fuel_revenue) ?> Â· Merchandise <?= adm_money($merch_revenue) ?> Â· Services <?= adm_money($service_revenue) ?></div>
             </div>
             <div class="mgr-icon" style="background: #eff6ff; color: #002F70;"><i class="fas fa-peso-sign"></i></div>
         </div>
@@ -1755,7 +1750,7 @@ include __DIR__ . '/../partials/header.php';
             <div>
                 <div class="mgr-card-label">Today's Transactions</div>
                 <div class="mgr-card-value"><?= number_format($total_transactions) ?></div>
-                <div class="mgr-card-sub">Fuel <?= number_format($fuel_count) ?> · Merchandise <?= number_format($merch_count) ?> · Services <?= number_format($service_count) ?></div>
+                <div class="mgr-card-sub">Fuel <?= number_format($fuel_count) ?> Â· Merchandise <?= number_format($merch_count) ?> Â· Services <?= number_format($service_count) ?></div>
             </div>
             <div class="mgr-icon" style="background: #f0fdf4; color: #16a34a;"><i class="fas fa-right-left"></i></div>
         </div>
@@ -1764,7 +1759,7 @@ include __DIR__ . '/../partials/header.php';
             <div>
                 <div class="mgr-card-label">Active Users</div>
                 <div class="mgr-card-value"><?= number_format($total_active_users) ?></div>
-                <div class="mgr-card-sub"><?= number_format($active_admins) ?> Admin · <?= number_format($active_managers) ?> Manager · <?= number_format($active_staff) ?> Staff</div>
+                <div class="mgr-card-sub"><?= number_format($active_admins) ?> Admin Â· <?= number_format($active_managers) ?> Manager Â· <?= number_format($active_staff) ?> Staff</div>
             </div>
             <div class="mgr-icon" style="background: #ecfeff; color: #0891b2;"><i class="fas fa-users"></i></div>
         </div>
@@ -1773,7 +1768,7 @@ include __DIR__ . '/../partials/header.php';
             <div>
                 <div class="mgr-card-label">Pending Approvals</div>
                 <div class="mgr-card-value"><?= number_format($total_pending_approvals) ?></div>
-                <div class="mgr-card-sub">Users <?= number_format($pending_user_accounts) ?> · Customers <?= number_format($pending_customer_requests) ?> · Inventory <?= number_format($pending_inventory_approvals) ?> · Pricing <?= number_format($pending_price_requests) ?></div>
+                <div class="mgr-card-sub">Users <?= number_format($pending_user_accounts) ?> &middot; Inventory <?= number_format($pending_inventory_approvals) ?> &middot; Pricing <?= number_format($pending_price_requests) ?></div>
             </div>
             <div class="mgr-icon" style="background: #fef9c3; color: #eab308;"><i class="fas fa-clipboard-check"></i></div>
         </div>
@@ -1782,7 +1777,7 @@ include __DIR__ . '/../partials/header.php';
             <div>
                 <div class="mgr-card-label">Inventory Alerts</div>
                 <div class="mgr-card-value"><?= number_format($total_inventory_alerts) ?></div>
-                <div class="mgr-card-sub">Low fuel <?= number_format($fuel_low_count) ?> · Low merchandise <?= number_format($merch_low_count) ?> · Critical <?= number_format($fuel_critical_count + $merch_critical_count) ?></div>
+                <div class="mgr-card-sub">Low fuel <?= number_format($fuel_low_count) ?> Â· Low merchandise <?= number_format($merch_low_count) ?> Â· Critical <?= number_format($fuel_critical_count + $merch_critical_count) ?></div>
             </div>
             <div class="mgr-icon" style="background: #fef2f2; color: #dc2626;"><i class="fas fa-triangle-exclamation"></i></div>
         </div>
@@ -1992,8 +1987,8 @@ include __DIR__ . '/../partials/header.php';
 
         <article class="admin-panel">
             <div class="panel-head">
-                <h3 class="panel-title"><i class="fas fa-address-card"></i>Pending Customer Registrations</h3>
-                <a class="tiny-btn" href="admin_customers.php">Customers</a>
+                <h3 class="panel-title"><i class="fas fa-address-card"></i>Customer Request Monitoring</h3>
+                <a class="tiny-btn" href="admin_reports.php?section=customers">Customer Reports</a>
             </div>
             <div class="panel-body">
                 <?php if (!$pending_customers): ?>
@@ -2006,7 +2001,7 @@ include __DIR__ . '/../partials/header.php';
                                     <th>Customer</th>
                                     <th>Contact</th>
                                     <th>Requested By</th>
-                                    <th>Action</th>
+                                    <th>Status</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -2017,8 +2012,7 @@ include __DIR__ . '/../partials/header.php';
                                         <td><?= adm_h($row['requested_by']) ?></td>
                                         <td>
                                             <div class="table-actions">
-                                                <a class="tiny-btn success" href="admin_customers.php">Approve</a>
-                                                <a class="tiny-btn danger" href="admin_customers.php">Reject</a>
+                                                <span class="badge <?= adm_badge_class($row['status']) ?>"><?= adm_h(adm_status_label($row['status'])) ?></span>
                                             </div>
                                         </td>
                                     </tr>

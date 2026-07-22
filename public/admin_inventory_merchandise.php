@@ -62,7 +62,7 @@ if (!function_exists('get_product_brand')) {
         if (strpos($name, 'rev-x') !== false || strpos($name, 'revx') !== false) return 'Rev-X';
         if (strpos($name, 'ultron') !== false) return 'Ultron';
         if (strpos($name, 'blaze') !== false) return 'Blaze';
-        return 'Petron Brand'; // Fallback brand
+        return 'Petron'; // Fallback brand
     }
 }
 
@@ -84,30 +84,97 @@ if (isset($_GET['print_id'])) {
     $print_id = (int)$_GET['print_id'];
     
     // Fetch product details
-    $stmt = $pdo->prepare("
-        SELECT ip.*,
-               COALESCE(si.unit, ip.size, 'pcs')       AS unit,
-               COALESCE(si.status, 'active')          AS status,
-               COALESCE(si.stock_level, ip.stock, 0)  AS stock_level,
-               COALESCE(si.capacity, ip.max_stock, 480) AS capacity,
-               COALESCE(si.reorder_level, ip.min_stock, 24) AS reorder_level,
-               COALESCE(si.critical_level, 10)              AS critical_level,
-               COALESCE(si.variance, 0.00)            AS variance,
-               COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated,
-               ip.supplier
-        FROM inventory_products ip
-        LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-        WHERE ip.id = ? AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
-    ");
-    $stmt->execute([$station_id, $print_id]);
-    $item = $stmt->fetch(PDO::FETCH_ASSOC);
+    $item = null;
+    try {
+        $stmt = $pdo->prepare("
+            SELECT ip.*,
+                   ip.product_name AS name,
+                   ip.category AS category_name,
+                   ip.unit_price AS price,
+                   ip.unit_cost AS cost,
+                   COALESCE(si.unit, ip.size, 'pcs')       AS unit,
+                   COALESCE(si.status, 'active')          AS status,
+                   COALESCE(si.stock_level, ip.stock, 0)  AS stock_level,
+                   COALESCE(si.capacity, ip.max_stock, 480) AS capacity,
+                   COALESCE(si.reorder_level, ip.min_stock, 24) AS reorder_level,
+                   COALESCE(si.critical_level, 10)              AS critical_level,
+                   COALESCE(si.variance, 0.00)            AS variance,
+                   COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated,
+                   ip.supplier
+            FROM inventory_products ip
+            LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
+            WHERE ip.id = ? AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
+        ");
+        $stmt->execute([$station_id, $print_id]);
+        $item = $stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (Exception $primary_error) {}
+
+    if (!$item) {
+        $stmt = $pdo->prepare("
+            SELECT p.*,
+                   p.name AS product_name,
+                   p.name AS name,
+                   COALESCE(pc.name, 'General') AS category,
+                   COALESCE(pc.name, 'General') AS category_name,
+                   COALESCE(si.price, p.price, si.cost, p.cost, 0) AS unit_price,
+                   COALESCE(si.price, p.price, si.cost, p.cost, 0) AS price,
+                   COALESCE(p.cost, si.cost, 0) AS unit_cost,
+                   COALESCE(p.cost, si.cost, 0) AS cost,
+                   COALESCE(NULLIF(p.sku, ''), CONCAT('P', LPAD(p.id, 4, '0'))) AS sku,
+                   COALESCE(NULLIF(p.unit, ''), NULLIF(si.unit, ''), 'pcs') AS unit,
+                   COALESCE(NULLIF(si.status, ''), NULLIF(p.status, ''), 'active') AS status,
+                   COALESCE(si.stock_level, p.current_stock, 0) AS stock_level,
+                   COALESCE(NULLIF(si.capacity, 0), NULLIF(p.capacity, 0), NULLIF(p.max_stock_level, 0), 480) AS capacity,
+                   COALESCE(NULLIF(si.reorder_level, 0), NULLIF(p.min_stock_level, 0), 24) AS reorder_level,
+                   COALESCE(NULLIF(si.critical_level, 0), 10) AS critical_level,
+                   COALESCE(si.variance, 0.00) AS variance,
+                   COALESCE(si.last_updated, p.updated_at, p.created_at) AS last_updated,
+                   COALESCE(latest_supplier.supplier, '') AS supplier
+            FROM products p
+            LEFT JOIN product_categories pc ON pc.id = p.category_id
+            LEFT JOIN (
+                SELECT LOWER(TRIM(poi.item_name)) AS product_key,
+                       SUBSTRING_INDEX(GROUP_CONCAT(s.name ORDER BY po.created_at DESC SEPARATOR '||'), '||', 1) AS supplier
+                FROM purchase_order_items poi
+                JOIN purchase_orders po ON po.id = poi.po_id
+                LEFT JOIN suppliers s ON s.id = po.supplier_id
+                WHERE po.station_id = ?
+                  AND po.type = 'merch'
+                  AND s.name IS NOT NULL
+                  AND s.name != ''
+                GROUP BY LOWER(TRIM(poi.item_name))
+            ) latest_supplier ON latest_supplier.product_key = LOWER(TRIM(p.name))
+            LEFT JOIN station_inventory si ON si.product_id = p.id AND si.station_id = ?
+            WHERE p.id = ?
+              AND LOWER(COALESCE(pc.name, '')) NOT IN ('fuel', 'fuel products', 'services')
+        ");
+        $stmt->execute([$station_id, $station_id, $print_id]);
+        $item = $stmt->fetch(PDO::FETCH_ASSOC);
+    }
     
     if (!$item) {
         die('Product not found.');
     }
     
-    $item['brand'] = get_product_brand($item['product_name']);
+    $item['category_name'] = format_product_category_display(
+        $item['category_name'] ?? $item['category'] ?? '',
+        $item['product_name'] ?? $item['name'] ?? '',
+        $item['description'] ?? ''
+    );
+    $item['category'] = $item['category_name'];
+    $item['brand'] = get_product_brand(
+        $item['product_name'] ?? $item['name'] ?? '',
+        $item['category_name'] ?? '',
+        $item['description'] ?? ''
+    );
     $item['barcode'] = get_product_barcode($item['sku']);
+    $item['supplier'] = 'Petron Corporation';
+    $item['unit'] = format_product_unit_display(
+        $item['unit'] ?? 'pcs',
+        $item['product_name'] ?? $item['name'] ?? '',
+        $item['category_name'] ?? '',
+        $item['description'] ?? ''
+    );
     
     $station_name = 'Petron Carmen';
     $station_address = 'Vamenta Blvd., Carmen, Cagayan de Oro';
@@ -280,7 +347,7 @@ $category_filter = trim($_GET['category'] ?? 'all');
 $brand_filter    = trim($_GET['brand'] ?? 'all');
 $supplier_filter = trim($_GET['supplier'] ?? 'all');
 $unit_filter     = trim($_GET['unit'] ?? 'all');
-$status_filter   = trim($_GET['status_filter'] ?? 'all');
+$status_filter   = strtolower(trim($_GET['status_filter'] ?? 'all'));
 $date_from      = trim($_GET['date_from'] ?? '');
 $date_to        = trim($_GET['date_to'] ?? '');
 
@@ -289,7 +356,20 @@ $all_categories = [];
 try {
     $cat_stmt = $pdo->query("SELECT DISTINCT category FROM inventory_products WHERE category NOT IN ('Fuel') AND category IS NOT NULL AND category != '' ORDER BY category");
     $all_categories = $cat_stmt->fetchAll(PDO::FETCH_COLUMN);
-} catch (Exception $e) {}
+} catch (Exception $e) {
+    try {
+        $cat_stmt = $pdo->query("
+            SELECT DISTINCT pc.name
+            FROM products p
+            LEFT JOIN product_categories pc ON pc.id = p.category_id
+            WHERE pc.name IS NOT NULL
+              AND pc.name != ''
+              AND LOWER(pc.name) NOT IN ('fuel', 'fuel products', 'services')
+            ORDER BY pc.name
+        ");
+        $all_categories = $cat_stmt->fetchAll(PDO::FETCH_COLUMN);
+    } catch (Exception $fallback_error) {}
+}
 
 // ── Fetch all merchandise items ──────────────────────────────
 $all_items = [];
@@ -320,7 +400,48 @@ try {
     $stmt->execute([$station_id]);
     $all_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    error_log("Error loading merchandise inventory: " . $e->getMessage());
+    try {
+        $stmt = $pdo->prepare("
+            SELECT p.id,
+                   p.name AS name,
+                   COALESCE(pc.name, 'General') AS category_name,
+                   p.description,
+                   COALESCE(si.price, p.price, si.cost, p.cost, 0) AS price,
+                   COALESCE(p.cost, si.cost, 0) AS cost,
+                   COALESCE(NULLIF(p.sku, ''), CONCAT('P', LPAD(p.id, 4, '0'))) AS sku,
+                   COALESCE(NULLIF(p.unit, ''), NULLIF(si.unit, ''), 'pcs') AS unit,
+                   COALESCE(NULLIF(si.status, ''), NULLIF(p.status, ''), 'active') AS status,
+                   COALESCE(si.stock_level, p.current_stock, 0) AS stock_level,
+                   COALESCE(NULLIF(si.capacity, 0), NULLIF(p.capacity, 0), NULLIF(p.max_stock_level, 0), 480) AS capacity,
+                   COALESCE(NULLIF(si.reorder_level, 0), NULLIF(p.min_stock_level, 0), 24) AS reorder_level,
+                   COALESCE(NULLIF(si.critical_level, 0), 10) AS critical_level,
+                   si.physical_count,
+                   si.variance,
+                   COALESCE(si.last_updated, p.updated_at, p.created_at) AS last_updated,
+                   COALESCE(latest_supplier.supplier, '') AS supplier
+            FROM products p
+            LEFT JOIN product_categories pc ON pc.id = p.category_id
+            LEFT JOIN (
+                SELECT LOWER(TRIM(poi.item_name)) AS product_key,
+                       SUBSTRING_INDEX(GROUP_CONCAT(s.name ORDER BY po.created_at DESC SEPARATOR '||'), '||', 1) AS supplier
+                FROM purchase_order_items poi
+                JOIN purchase_orders po ON po.id = poi.po_id
+                LEFT JOIN suppliers s ON s.id = po.supplier_id
+                WHERE po.station_id = ?
+                  AND po.type = 'merch'
+                  AND s.name IS NOT NULL
+                  AND s.name != ''
+                GROUP BY LOWER(TRIM(poi.item_name))
+            ) latest_supplier ON latest_supplier.product_key = LOWER(TRIM(p.name))
+            LEFT JOIN station_inventory si ON si.product_id = p.id AND si.station_id = ?
+            WHERE LOWER(COALESCE(pc.name, '')) NOT IN ('fuel', 'fuel products', 'services')
+            ORDER BY COALESCE(pc.name, 'General'), p.name
+        ");
+        $stmt->execute([$station_id, $station_id]);
+        $all_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $fallback_error) {
+        error_log("Error loading merchandise inventory: " . $fallback_error->getMessage());
+    }
 }
 
 // ── Extract brand, barcode, and populate filter options ──────
@@ -356,16 +477,25 @@ try {
 } catch (Exception $e) {}
 
 $all_brands = [];
-$all_suppliers = [];
+$all_suppliers = ['Petron Corporation'];
 $all_units = [];
+$all_categories = [];
 foreach ($all_items as &$item) {
-    $item['brand'] = get_product_brand($item['name']);
+    $item['category_name'] = format_product_category_display(
+        $item['category_name'] ?? '',
+        $item['name'] ?? '',
+        $item['description'] ?? ''
+    );
+    if (!empty($item['category_name']) && !in_array($item['category_name'], $all_categories)) {
+        $all_categories[] = $item['category_name'];
+    }
+    $item['brand'] = get_product_brand($item['name'] ?? '', $item['category_name'] ?? '', $item['description'] ?? '');
     $item['barcode'] = get_product_barcode($item['sku']);
+    $item['supplier'] = 'Petron Corporation';
     
     if (!in_array($item['brand'], $all_brands)) $all_brands[] = $item['brand'];
-    if (!empty($item['supplier']) && !in_array($item['supplier'], $all_suppliers)) $all_suppliers[] = $item['supplier'];
     
-    $u = format_merch_unit($item['unit']);
+    $u = format_product_unit_display($item['unit'], $item['name'] ?? '', $item['category_name'] ?? '', $item['description'] ?? '');
     $item['unit'] = $u;
     if (!empty($u) && !in_array($u, $all_units)) $all_units[] = $u;
 }
@@ -373,6 +503,7 @@ unset($item);
 sort($all_brands);
 sort($all_suppliers);
 sort($all_units);
+sort($all_categories);
 
 // ── Compute KPI summary metrics & filter list in PHP ──────────
 $kpi_total_products = 0;
@@ -391,6 +522,7 @@ foreach ($all_items as $item) {
     $critical  = (float)$item['critical_level'];
     $price     = (float)$item['price'];
     $variance  = (float)$item['variance'];
+    $has_variance = ($item['variance'] !== null && (float)$item['variance'] != 0);
     $item_status = strtolower(trim($item['status'] ?? 'active'));
     
     // Status computation — driven entirely by DB thresholds
@@ -420,12 +552,17 @@ foreach ($all_items as $item) {
     // 1. Search Query
     if ($search_query !== '') {
         $s_lower = trim(strtolower($search_query));
-        $status_keywords = ['low', 'low stock', 'out', 'out of stock', 'critical', 'critical stock'];
         $status_match = false;
-        if (in_array($s_lower, $status_keywords)) {
-            $status_match = in_array($computed_status, ['low', 'critical', 'out']);
+        if (in_array($s_lower, ['low', 'low stock'], true)) {
+            $status_match = ($computed_status === 'low');
+        } elseif (in_array($s_lower, ['critical', 'critical stock'], true)) {
+            $status_match = ($computed_status === 'critical');
+        } elseif (in_array($s_lower, ['out', 'out of stock'], true)) {
+            $status_match = ($computed_status === 'out');
+        } elseif (in_array($s_lower, ['variance', 'variance detected'], true)) {
+            $status_match = $has_variance;
         } elseif ($s_lower === 'available') {
-            $status_match = ($computed_status === 'available');
+            $status_match = ($computed_status === 'available' && !$has_variance);
         }
         $name_match = (strpos(strtolower($item['name'] ?? ''), $s_lower) !== false);
         $sku_match  = (strpos(strtolower($item['sku'] ?? ''), $s_lower) !== false);
@@ -465,16 +602,28 @@ foreach ($all_items as $item) {
         }
     }
 
-    // 6. Status Filter
+    // 6. Status Filter — Low Stock, Critical Stock, Out of Stock all show the same combined stock alert view
     if ($status_filter !== 'all' && $status_filter !== '') {
         $sf_lower = strtolower($status_filter);
-        if ($sf_lower === 'warning' || in_array($sf_lower, ['low', 'critical', 'out', 'low stock', 'critical stock', 'out of stock'])) {
-            // Any warning-tier filter shows all warning products (Low + Critical + Out of Stock)
-            if (!in_array($computed_status, ['low', 'critical', 'out'])) {
+        if (in_array($sf_lower, ['warning', 'low', 'low stock', 'critical', 'critical stock', 'out', 'out of stock'], true)) {
+            // Any stock-alert filter shows ALL low + critical + out of stock items together
+            if (!in_array($computed_status, ['low', 'critical', 'out'], true)) {
+                continue;
+            }
+        } elseif (in_array($sf_lower, ['variance', 'variance detected'], true)) {
+            if (!$has_variance) {
+                continue;
+            }
+        } elseif ($sf_lower === 'available') {
+            if ($computed_status !== 'available' || $has_variance) {
+                continue;
+            }
+        } elseif ($sf_lower === 'inactive') {
+            if ($computed_status !== 'inactive') {
                 continue;
             }
         } else {
-            if ($computed_status !== $status_filter) {
+            if ($computed_status !== $sf_lower) {
                 continue;
             }
         }
@@ -501,7 +650,7 @@ if (!empty($filtered_items)) {
         $cat = $item['category_name'] ?: 'Uncategorized';
         $grouped_filtered_items[$cat][] = $item;
     }
-    $cat_order = ['Oils / Lubes / Grease', 'Car Accessories', 'Brake System', 'Tire', 'Maintenance', 'Oil / Fuel Filters', 'Others (Snacks / Drinks)'];
+    $cat_order = ['Oils/Lubes/Grease', 'Filters', 'VIC Filters', 'Drinks/Food', 'Snacks', 'Car Accessories', 'Merchandise', 'Others'];
     foreach ($cat_order as $k) { 
         if (isset($grouped_filtered_items[$k])) {
             $sorted_filtered[$k] = $grouped_filtered_items[$k]; 
@@ -626,11 +775,11 @@ require_once __DIR__ . '/../partials/header.php';
     white-space: nowrap;
 }
 .afto-fg input, .afto-fg select {
-    height: 30px;
-    padding: 0 6px;
+    height: 36px;
+    padding: 6px 12px;
     border: 1px solid #cbd5e1;
-    border-radius: 5px;
-    font-size: 11px;
+    border-radius: 6px;
+    font-size: 13px;
     color: #1e293b;
     background: #ffffff;
     outline: none;
@@ -680,6 +829,36 @@ require_once __DIR__ . '/../partials/header.php';
 .flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
 .flt-btn-csv    { color: #002F70 !important; border-color: #002F70 !important; }
 .flt-btn-csv:hover    { background: #002F70 !important; color: #fff !important; }
+
+/* ── Admin Custom Dropdown (always opens downward) ── */
+.adm-cdd-wrap{position:relative;display:block;}
+.adm-cdd-trigger{display:flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#374151;background:#fff;cursor:pointer;user-select:none;white-space:nowrap;width:100%;box-sizing:border-box;}
+.adm-cdd-trigger:hover{border-color:#94a3b8;}
+.adm-cdd-wrap.adm-cdd-open .adm-cdd-trigger{border-color:#002F70;box-shadow:0 0 0 2px rgba(0,47,112,.1);}
+.adm-cdd-arrow{font-size:9px;color:#94a3b8;margin-left:auto;transition:transform .15s;flex-shrink:0;}
+.adm-cdd-wrap.adm-cdd-open .adm-cdd-arrow{transform:rotate(180deg);}
+.adm-cdd-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+.adm-cdd-menu{display:none;position:absolute;top:calc(100% + 3px);left:0;min-width:100%;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.13);z-index:9999;max-height:260px;overflow-y:auto;}
+.adm-cdd-wrap.adm-cdd-open .adm-cdd-menu{display:block;}
+.adm-cdd-item{padding:9px 14px;font-size:13px;color:#374151;cursor:pointer;white-space:nowrap;}
+.adm-cdd-item:hover{background:#f1f5f9;}
+.adm-cdd-item.adm-cdd-active{font-weight:700;color:#fff;background:#1a6fd4;}
+.adm-cdd-wrap{display:none!important;}
+.afto-filter{overflow:visible;}
+.fd-select-source{display:none!important;}
+.fd-select{position:relative;display:inline-block;min-width:130px;}
+.afto-filter .fd-select{width:100%;}
+.fd-select-trigger{display:flex;align-items:center;gap:8px;width:100%;height:36px;padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#1e293b;font-size:13px;font-family:inherit;cursor:pointer;box-sizing:border-box;white-space:nowrap;}
+.fd-select-trigger:hover{border-color:#94a3b8;}
+.fd-select.fd-open .fd-select-trigger{border-color:var(--petron-blue, #00264D);box-shadow:0 0 0 3px rgba(0,38,77,.1);}
+.fd-select-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-align:left;}
+.fd-select-arrow{font-size:10px;color:#94a3b8;margin-left:auto;transition:transform .15s;flex-shrink:0;}
+.fd-select.fd-open .fd-select-arrow{transform:rotate(180deg);}
+.fd-select-menu{display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:100%;max-height:280px;overflow-y:auto;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.16);z-index:10000;}
+.fd-select.fd-open .fd-select-menu{display:block;}
+.fd-select-option{padding:9px 14px;font-size:13px;color:#1e293b;cursor:pointer;white-space:nowrap;}
+.fd-select-option:hover{background:#f1f5f9;}
+.fd-select-option.fd-active{font-weight:700;color:#fff;background:#1a6fd4;}
 
 .txn-btn {
     display: inline-flex;
@@ -891,7 +1070,7 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="afto-card-icon"><i class="fas fa-coins"></i></div>
     </div>
     <!-- Card 4: Low Stock Items -->
-    <div class="afto-card yellow <?= in_array($status_filter, ['warning','low','critical','out']) ? 'card-active' : '' ?>" onclick="filterAdminByCard('warning')" style="cursor:pointer;" title="Click to filter stock alert items">
+    <div class="afto-card yellow <?= in_array($status_filter, ['low', 'low stock'], true) ? 'card-active' : '' ?>" onclick="filterAdminByCard('low')" style="cursor:pointer;" title="Click to filter low stock items">
         <div class="afto-card-info">
             <span class="afto-card-lbl">Low Stock Items</span>
             <span class="afto-card-val"><?= number_format($kpi_low_stock) ?></span>
@@ -899,7 +1078,7 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="afto-card-icon"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
     <!-- Card 5: Critical Stock Items -->
-    <div class="afto-card red <?= in_array($status_filter, ['warning','low','critical','out']) ? 'card-active' : '' ?>" onclick="filterAdminByCard('warning')" style="cursor:pointer; border-bottom: 2px solid #dc2626;" title="Click to filter stock alert items">
+    <div class="afto-card red <?= in_array($status_filter, ['critical', 'critical stock'], true) ? 'card-active' : '' ?>" onclick="filterAdminByCard('critical')" style="cursor:pointer; border-bottom: 2px solid #dc2626;" title="Click to filter critical stock items">
         <div class="afto-card-info">
             <span class="afto-card-lbl" style="color:#dc2626;">Critical Stock Items</span>
             <span class="afto-card-val" style="color:#dc2626;"><?= number_format($kpi_critical_stock) ?></span>
@@ -907,7 +1086,7 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="afto-card-icon"><i class="fas fa-fire" style="color:#dc2626;"></i></div>
     </div>
     <!-- Card 6: Out of Stock Items -->
-    <div class="afto-card red <?= in_array($status_filter, ['warning','low','critical','out']) ? 'card-active' : '' ?>" onclick="filterAdminByCard('warning')" style="cursor:pointer;" title="Click to filter stock alert items">
+    <div class="afto-card red <?= in_array($status_filter, ['out', 'out of stock'], true) ? 'card-active' : '' ?>" onclick="filterAdminByCard('out')" style="cursor:pointer;" title="Click to filter out of stock items">
         <div class="afto-card-info">
             <span class="afto-card-lbl">Out of Stock Items</span>
             <span class="afto-card-val"><?= number_format($kpi_out_of_stock) ?></span>
@@ -923,54 +1102,98 @@ require_once __DIR__ . '/../partials/header.php';
         <input type="text" name="search_query" id="search_query" placeholder="Search SKU, name, brand..." value="<?= htmlspecialchars($search_query) ?>">
     </div>
     
+    <!-- Hidden inputs for form submission -->
+    <input type="hidden" name="category" id="category" value="<?= htmlspecialchars($category_filter) ?>">
+    <input type="hidden" name="brand" id="brand" value="<?= htmlspecialchars($brand_filter) ?>">
+    <input type="hidden" name="supplier" id="supplier" value="<?= htmlspecialchars($supplier_filter) ?>">
+    <input type="hidden" name="unit" id="unit" value="<?= htmlspecialchars($unit_filter) ?>">
+    <input type="hidden" name="status_filter" id="status_filter" value="<?= htmlspecialchars($status_filter) ?>">
+
     <div class="afto-fg">
-        <label for="category">Category</label>
-        <select name="category" id="category">
-            <option value="all">All Categories</option>
-            <?php foreach ($all_categories as $cat): ?>
-                <option value="<?= htmlspecialchars($cat) ?>" <?= $category_filter === $cat ? 'selected' : '' ?>><?= htmlspecialchars($cat) ?></option>
-            <?php endforeach; ?>
-        </select>
+        <label>Category</label>
+        <div class="adm-cdd-wrap" id="acdd-category">
+            <div class="adm-cdd-trigger" onclick="acddToggle('acdd-category')">
+                <span class="adm-cdd-label"><?= $category_filter === 'all' || $category_filter === '' ? 'All Categories' : htmlspecialchars($category_filter) ?></span>
+                <i class="fas fa-chevron-down adm-cdd-arrow"></i>
+            </div>
+            <div class="adm-cdd-menu">
+                <div class="adm-cdd-item <?= ($category_filter === 'all' || $category_filter === '') ? 'adm-cdd-active' : '' ?>" data-val="all">All Categories</div>
+                <?php foreach ($all_categories as $cat): ?>
+                <div class="adm-cdd-item <?= $category_filter === $cat ? 'adm-cdd-active' : '' ?>" data-val="<?= htmlspecialchars($cat) ?>"><?= htmlspecialchars($cat) ?></div>
+                <?php endforeach; ?>
+            </div>
+        </div>
     </div>
 
     <div class="afto-fg">
-        <label for="brand">Brand</label>
-        <select name="brand" id="brand">
-            <option value="all">All Brands</option>
-            <?php foreach ($all_brands as $b): ?>
-                <option value="<?= htmlspecialchars($b) ?>" <?= $brand_filter === $b ? 'selected' : '' ?>><?= htmlspecialchars($b) ?></option>
-            <?php endforeach; ?>
-        </select>
+        <label>Brand</label>
+        <div class="adm-cdd-wrap" id="acdd-brand">
+            <div class="adm-cdd-trigger" onclick="acddToggle('acdd-brand')">
+                <span class="adm-cdd-label"><?= $brand_filter === 'all' || $brand_filter === '' ? 'All Brands' : htmlspecialchars($brand_filter) ?></span>
+                <i class="fas fa-chevron-down adm-cdd-arrow"></i>
+            </div>
+            <div class="adm-cdd-menu">
+                <div class="adm-cdd-item <?= ($brand_filter === 'all' || $brand_filter === '') ? 'adm-cdd-active' : '' ?>" data-val="all">All Brands</div>
+                <?php foreach ($all_brands as $b): ?>
+                <div class="adm-cdd-item <?= $brand_filter === $b ? 'adm-cdd-active' : '' ?>" data-val="<?= htmlspecialchars($b) ?>"><?= htmlspecialchars($b) ?></div>
+                <?php endforeach; ?>
+            </div>
+        </div>
     </div>
 
     <div class="afto-fg">
-        <label for="supplier">Supplier</label>
-        <select name="supplier" id="supplier">
-            <option value="all">All Suppliers</option>
-            <?php foreach ($all_suppliers as $s): ?>
-                <option value="<?= htmlspecialchars($s) ?>" <?= $supplier_filter === $s ? 'selected' : '' ?>><?= htmlspecialchars($s) ?></option>
-            <?php endforeach; ?>
-        </select>
+        <label>Supplier</label>
+        <div class="adm-cdd-wrap" id="acdd-supplier">
+            <div class="adm-cdd-trigger" onclick="acddToggle('acdd-supplier')">
+                <span class="adm-cdd-label"><?= $supplier_filter === 'all' || $supplier_filter === '' ? 'All Suppliers' : htmlspecialchars($supplier_filter) ?></span>
+                <i class="fas fa-chevron-down adm-cdd-arrow"></i>
+            </div>
+            <div class="adm-cdd-menu">
+                <div class="adm-cdd-item <?= ($supplier_filter === 'all' || $supplier_filter === '') ? 'adm-cdd-active' : '' ?>" data-val="all">All Suppliers</div>
+                <?php foreach ($all_suppliers as $s): ?>
+                <div class="adm-cdd-item <?= $supplier_filter === $s ? 'adm-cdd-active' : '' ?>" data-val="<?= htmlspecialchars($s) ?>"><?= htmlspecialchars($s) ?></div>
+                <?php endforeach; ?>
+            </div>
+        </div>
     </div>
 
     <div class="afto-fg">
-        <label for="unit">UOM</label>
-        <select name="unit" id="unit">
-            <option value="all">All UOMs</option>
-            <?php foreach ($all_units as $u): ?>
-                <option value="<?= htmlspecialchars($u) ?>" <?= $unit_filter === $u ? 'selected' : '' ?>><?= htmlspecialchars($u) ?></option>
-            <?php endforeach; ?>
-        </select>
+        <label>UOM</label>
+        <div class="adm-cdd-wrap" id="acdd-unit">
+            <div class="adm-cdd-trigger" onclick="acddToggle('acdd-unit')">
+                <span class="adm-cdd-label"><?= $unit_filter === 'all' || $unit_filter === '' ? 'All UOMs' : htmlspecialchars($unit_filter) ?></span>
+                <i class="fas fa-chevron-down adm-cdd-arrow"></i>
+            </div>
+            <div class="adm-cdd-menu">
+                <div class="adm-cdd-item <?= ($unit_filter === 'all' || $unit_filter === '') ? 'adm-cdd-active' : '' ?>" data-val="all">All UOMs</div>
+                <?php foreach ($all_units as $u): ?>
+                <div class="adm-cdd-item <?= $unit_filter === $u ? 'adm-cdd-active' : '' ?>" data-val="<?= htmlspecialchars($u) ?>"><?= htmlspecialchars($u) ?></div>
+                <?php endforeach; ?>
+            </div>
+        </div>
     </div>
     
     <div class="afto-fg">
-        <label for="status_filter">Status</label>
-        <select name="status_filter" id="status_filter">
-            <option value="all">All Statuses</option>
-            <option value="available" <?= $status_filter === 'available' ? 'selected' : '' ?>>Available</option>
-            <option value="warning" <?= in_array($status_filter, ['warning','low','critical','out']) ? 'selected' : '' ?> hidden>Stock Alerts</option>
-            <option value="inactive" <?= $status_filter === 'inactive' ? 'selected' : '' ?>>Inactive</option>
-        </select>
+        <label>Status</label>
+        <div class="adm-cdd-wrap" id="acdd-status">
+            <div class="adm-cdd-trigger" onclick="acddToggle('acdd-status')">
+                <?php
+                $status_labels = ['all'=>'All Statuses','available'=>'Available','low'=>'Low Stock','critical'=>'Critical Stock','out'=>'Out of Stock','out of stock'=>'Out of Stock','variance detected'=>'Variance Detected','warning'=>'Stock Alerts','inactive'=>'Inactive'];
+                $status_display = $status_labels[$status_filter] ?? 'All Statuses';
+                ?>
+                <span class="adm-cdd-label"><?= htmlspecialchars($status_display) ?></span>
+                <i class="fas fa-chevron-down adm-cdd-arrow"></i>
+            </div>
+            <div class="adm-cdd-menu">
+                <div class="adm-cdd-item <?= ($status_filter === 'all' || $status_filter === '') ? 'adm-cdd-active' : '' ?>" data-val="all">All Statuses</div>
+                <div class="adm-cdd-item <?= $status_filter === 'available' ? 'adm-cdd-active' : '' ?>" data-val="available">Available</div>
+                <div class="adm-cdd-item <?= $status_filter === 'low' ? 'adm-cdd-active' : '' ?>" data-val="low">Low Stock</div>
+                <div class="adm-cdd-item <?= $status_filter === 'critical' ? 'adm-cdd-active' : '' ?>" data-val="critical">Critical Stock</div>
+                <div class="adm-cdd-item <?= in_array($status_filter, ['out','out of stock'], true) ? 'adm-cdd-active' : '' ?>" data-val="out">Out of Stock</div>
+                <div class="adm-cdd-item <?= in_array($status_filter, ['variance','variance detected'], true) ? 'adm-cdd-active' : '' ?>" data-val="variance detected">Variance Detected</div>
+                <div class="adm-cdd-item <?= $status_filter === 'inactive' ? 'adm-cdd-active' : '' ?>" data-val="inactive">Inactive</div>
+            </div>
+        </div>
     </div>
 
     <div class="afto-fg">
@@ -1005,6 +1228,7 @@ require_once __DIR__ . '/../partials/header.php';
                 <col style="width:115px">  <!-- Stock/Reorder -->
                 <col style="width:50px">   <!-- Phys -->
                 <col style="width:55px">   <!-- Variance -->
+                <col style="width:100px">  <!-- Status -->
                 <col style="width:70px">   <!-- Last Mov -->
                 <col style="width:90px">   <!-- Last Updated -->
                 <col style="width:80px">   <!-- Action -->
@@ -1019,6 +1243,7 @@ require_once __DIR__ . '/../partials/header.php';
                     <th>Stock / Reorder</th>
                     <th style="text-align:right;">Phys.</th>
                     <th style="text-align:right;">Variance</th>
+                    <th class="align-center">Status</th>
                     <th style="text-align:center;">Last Mov.</th>
                     <th>Last Updated</th>
                     <th style="text-align:center;">Action</th>
@@ -1027,7 +1252,7 @@ require_once __DIR__ . '/../partials/header.php';
             <tbody>
             <?php if (empty($sorted_filtered)): ?>
                 <tr>
-                    <td colspan="11" class="align-center" style="padding: 24px; color: #64748b;">
+                    <td colspan="12" class="align-center" style="padding: 24px; color: #64748b;">
                         <i class="fas fa-box-open" style="font-size: 24px; margin-bottom: 8px; display:block;"></i>
                         No merchandise inventory records matched your filters.
                     </td>
@@ -1035,7 +1260,7 @@ require_once __DIR__ . '/../partials/header.php';
             <?php else: ?>
                 <?php foreach ($sorted_filtered as $cat_label => $items): ?>
                     <tr class="cat-header">
-                        <td colspan="11" style="text-align:center; font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:12px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px;">
+                        <td colspan="12" style="text-align:center; font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:12px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px;">
                             <strong><?= htmlspecialchars($cat_label) ?></strong>
                         </td>
                     </tr>
@@ -1052,6 +1277,8 @@ require_once __DIR__ . '/../partials/header.php';
                         $fill_pct = $capacity > 0 ? ($stock / $capacity) * 100 : 0;
                         $variance = $item['variance'];
                         $has_variance = ($variance !== null && (float)$variance != 0);
+                        $badgeCls = $has_variance ? 'bg-amber' : getStatusBadgeClass($item['computed_status']);
+                        $badgeLbl = $has_variance ? 'Variance Detected' : getStatusLabel($item['computed_status']);
                         $status_color = $has_variance ? '#fd7e14' : ($item['computed_status'] === 'available' ? '#28a745' : (in_array($item['computed_status'], ['critical', 'out']) ? '#dc3545' : '#fd7e14'));
                         $updated = $item['last_updated'] ? date('M d h:i A', strtotime($item['last_updated'])) : '-';
                         $phys_text = $item['physical_count'] !== null ? number_format((float)$item['physical_count'], 0) : '-';
@@ -1089,6 +1316,7 @@ require_once __DIR__ . '/../partials/header.php';
                         </td>
                         <td class="align-right" style="font-weight:700;color:#0f172a;"><?= $phys_text ?></td>
                         <td class="align-right" style="<?= $var_style ?>"><?= $var_text ?></td>
+                        <td class="align-center"><span class="badge-lbl <?= $badgeCls ?>"><?= htmlspecialchars($badgeLbl) ?></span></td>
                         <td class="align-center">
                             <?php if ($mv_label): ?>
                                 <span class="<?= $mv_class ?>" style="font-size:11px;"><?= htmlspecialchars($mv_label) ?></span>
@@ -1246,27 +1474,166 @@ function viewDetails(item) {
 }
 
 function filterAdminByCard(statusKey) {
-    var select = document.getElementById('status_filter');
-    if (!select) return;
-    if (select.value === statusKey) {
-        select.value = 'all';
+    var hidden = document.getElementById('status_filter');
+    if (!hidden) return;
+    var labels = {'all':'All Statuses','available':'Available','low':'Low Stock','critical':'Critical Stock','out':'Out of Stock','variance detected':'Variance Detected','inactive':'Inactive','warning':'Stock Alerts'};
+    if (hidden.value === statusKey) {
+        hidden.value = 'all';
+        acddSetLabel('acdd-status', 'all', 'All Statuses');
     } else {
-        select.value = statusKey;
+        hidden.value = statusKey;
+        acddSetLabel('acdd-status', statusKey, labels[statusKey] || statusKey);
     }
-    var form = select.closest('form');
+    var form = hidden.closest('form');
     if (form) form.submit();
 }
 
-// Modal click-outside dismissal
-document.querySelectorAll('.modal-overlay').forEach(function(modal) {
-    modal.addEventListener('click', function(e) {
-        if (e.target === this || e.target.classList.contains('modal-overlay')) {
-            this.classList.remove('show');
-        }
+// ── Admin Custom Dropdown (CDD) Logic ────────────────────────────
+function acddToggle(id) {
+    var wrap = document.getElementById(id);
+    var isOpen = wrap.classList.contains('adm-cdd-open');
+    document.querySelectorAll('.adm-cdd-wrap.adm-cdd-open').forEach(function(w){ w.classList.remove('adm-cdd-open'); });
+    if (!isOpen) wrap.classList.add('adm-cdd-open');
+}
+
+function acddSetLabel(cddId, val, label) {
+    var wrap = document.getElementById(cddId);
+    if (!wrap) return;
+    wrap.querySelector('.adm-cdd-label').textContent = label;
+    wrap.querySelectorAll('.adm-cdd-item').forEach(function(item){
+        item.classList.toggle('adm-cdd-active', item.dataset.val === val);
     });
-});
+}
+
+function setupDownwardFilterSelects(selects) {
+    Array.from(selects || []).forEach(function(select) {
+        if (!select || select.dataset.forceDownReady === '1') return;
+        select.dataset.forceDownReady = '1';
+
+        var wrap = document.createElement('div');
+        wrap.className = 'fd-select';
+        var computed = window.getComputedStyle(select);
+        if (computed.minWidth && computed.minWidth !== '0px') wrap.style.minWidth = computed.minWidth;
+        if (select.style.width) wrap.style.width = select.style.width;
+        if (select.closest('.afto-fg')) wrap.style.width = '100%';
+
+        var trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'fd-select-trigger';
+        var label = document.createElement('span');
+        label.className = 'fd-select-label';
+        var arrow = document.createElement('i');
+        arrow.className = 'fas fa-chevron-down fd-select-arrow';
+        trigger.appendChild(label);
+        trigger.appendChild(arrow);
+
+        var menu = document.createElement('div');
+        menu.className = 'fd-select-menu';
+        Array.from(select.options).forEach(function(option) {
+            var item = document.createElement('div');
+            item.className = 'fd-select-option';
+            item.dataset.value = option.value;
+            item.textContent = option.textContent;
+            item.addEventListener('click', function() {
+                select.value = option.value;
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+                syncLabel();
+                wrap.classList.remove('fd-open');
+            });
+            menu.appendChild(item);
+        });
+
+        function syncLabel() {
+            var selected = select.options[select.selectedIndex];
+            label.textContent = selected ? selected.textContent.trim() : '';
+            Array.from(menu.querySelectorAll('.fd-select-option')).forEach(function(item) {
+                item.classList.toggle('fd-active', item.dataset.value === select.value);
+            });
+        }
+
+        trigger.addEventListener('click', function(e) {
+            e.stopPropagation();
+            document.querySelectorAll('.fd-select.fd-open').forEach(function(openWrap) {
+                if (openWrap !== wrap) openWrap.classList.remove('fd-open');
+            });
+            wrap.classList.toggle('fd-open');
+        });
+
+        select.addEventListener('change', syncLabel);
+        select.classList.add('fd-select-source');
+        select.parentNode.insertBefore(wrap, select.nextSibling);
+        wrap.appendChild(trigger);
+        wrap.appendChild(menu);
+        syncLabel();
+    });
+
+    if (!window.__forceDownSelectCloseBound) {
+        window.__forceDownSelectCloseBound = true;
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.fd-select')) {
+                document.querySelectorAll('.fd-select.fd-open').forEach(function(wrap) {
+                    wrap.classList.remove('fd-open');
+                });
+            }
+        });
+    }
+}
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Wire hidden input map: cdd id → hidden input id
+    var acddInputMap = {
+        'acdd-category': 'category',
+        'acdd-brand':    'brand',
+        'acdd-supplier': 'supplier',
+        'acdd-unit':     'unit',
+        'acdd-status':   'status_filter'
+    };
+    document.querySelectorAll('.adm-cdd-wrap').forEach(function(wrap) {
+        var id = wrap.id;
+        var inputId = acddInputMap[id];
+        var hiddenInput = inputId ? document.getElementById(inputId) : null;
+        if (hiddenInput && !document.getElementById(id + '-native')) {
+            var nativeSelect = document.createElement('select');
+            nativeSelect.id = id + '-native';
+            var fieldWrap = wrap.closest('.afto-fg');
+            var fieldLabel = fieldWrap ? fieldWrap.querySelector('label') : null;
+            nativeSelect.setAttribute('aria-label', fieldLabel ? fieldLabel.textContent : 'Filter');
+            wrap.querySelectorAll('.adm-cdd-item').forEach(function(item) {
+                var option = document.createElement('option');
+                option.value = item.dataset.val || '';
+                option.textContent = item.textContent.trim();
+                if (item.classList.contains('adm-cdd-active')) option.selected = true;
+                nativeSelect.appendChild(option);
+            });
+            nativeSelect.addEventListener('change', function() {
+                hiddenInput.value = nativeSelect.value;
+                var selected = nativeSelect.options[nativeSelect.selectedIndex];
+                acddSetLabel(id, nativeSelect.value, selected ? selected.textContent : '');
+            });
+            wrap.parentNode.insertBefore(nativeSelect, wrap.nextSibling);
+        }
+        wrap.querySelectorAll('.adm-cdd-item').forEach(function(item) {
+            item.addEventListener('click', function() {
+                var val = item.dataset.val;
+                var label = item.textContent.trim();
+                acddSetLabel(id, val, label);
+                wrap.classList.remove('adm-cdd-open');
+                if (inputId) {
+                    var hidden = document.getElementById(inputId);
+                    if (hidden) hidden.value = val;
+                }
+            });
+        });
+    });
+    setupDownwardFilterSelects(document.querySelectorAll('.afto-filter select'));
+
+    // Close on outside click
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.adm-cdd-wrap')) {
+            document.querySelectorAll('.adm-cdd-wrap.adm-cdd-open').forEach(function(w){ w.classList.remove('adm-cdd-open'); });
+        }
+    });
+
     if (typeof setupTablePagination === 'function') {
         setupTablePagination('adminMerchTable', 'adminMerchRowsLimit', 'adminMerchPagination', 50);
     }

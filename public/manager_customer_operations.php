@@ -1,9 +1,4 @@
 <?php
-/**
- * MANAGER CUSTOMER OPERATIONS API
- * All queries verified against live DB schema
- */
-
 ob_start();
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -15,14 +10,15 @@ require_login();
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-cache, must-revalidate');
 
-$me         = current_user();
-$role       = role_key($me['role'] ?? '');
+$me = current_user();
+$role = role_key($me['role'] ?? '');
 $station_id = (int)user_station_id();
 
 customer_ensure_optional_columns($pdo);
+customer_ensure_request_table($pdo);
 
-if (!in_array($role, ['manager', 'admin', 'superadmin', 'developer'])) {
-    echo json_encode(['success' => false, 'error' => 'Unauthorized access']);
+if (!in_array($role, ['manager', 'superadmin', 'developer'], true)) {
+    echo json_encode(['success' => false, 'error' => 'Only managers can manage customers.']);
     exit;
 }
 
@@ -34,782 +30,697 @@ if (!customer_can_view_all_stations($role) && $station_id <= 0) {
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 try {
-    // ── Manager Permission Boundary ──────────────────────────────────
-    // The following actions are EXPLICITLY DENIED for the manager role.
-    // Even if a request is crafted manually, these will return a 403.
-    $denied_actions = ['delete', 'restore', 'permanent_delete', 'reverse_transaction',
-                       'manual_balance', 'manage_permissions', 'audit_logs'];
-    if (in_array($action, $denied_actions)) {
-        http_response_code(403);
-        echo json_encode([
-            'success' => false,
-            'error'   => 'Access denied. Managers are not permitted to perform this action.'
-        ]);
-        exit;
-    }
-
     switch ($action) {
-        case 'list':                listCustomers();          break;
-        case 'view':                viewCustomer();           break;
-        case 'add':                 addCustomer();            break;
-        case 'update':              updateCustomer();         break;
-        case 'verify':              verifyCustomer();         break;
-        case 'log_download':        logDownload();            break;
-        case 'transaction_history': getTransactionHistory();  break;
-        default:                    echo json_encode(['success' => false, 'error' => 'Invalid action']);
+        case 'list':
+            manager_list_customers();
+            break;
+        case 'view':
+            manager_view_customer();
+            break;
+        case 'add':
+            manager_add_customer();
+            break;
+        case 'update':
+            manager_update_customer();
+            break;
+        case 'deactivate':
+            manager_deactivate_customer();
+            break;
+        case 'requests':
+            manager_list_customer_requests();
+            break;
+        case 'approve_request':
+            manager_approve_customer_request();
+            break;
+        case 'reject_request':
+            manager_reject_customer_request();
+            break;
+        default:
+            echo json_encode(['success' => false, 'error' => 'Invalid action.']);
     }
-} catch (Exception $e) {
+} catch (Throwable $e) {
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// LIST CUSTOMERS
-// ─────────────────────────────────────────────────────────────────────
-function listCustomers() {
-    global $pdo, $station_id, $role;
+function manager_has_table(PDO $pdo, string $table): bool {
+    try {
+        $stmt = $pdo->prepare("SHOW TABLES LIKE ?");
+        $stmt->execute([$table]);
+        return (bool)$stmt->fetchColumn();
+    } catch (Throwable $e) {
+        return false;
+    }
+}
 
-    // Check table exists
-    try { $pdo->query("SELECT 1 FROM customers LIMIT 1"); }
-    catch (Exception $e) {
-        echo json_encode(['success' => true, 'customers' => [], 'stats' => emptyStats()]);
+function manager_table_columns(PDO $pdo, string $table): array {
+    static $cache = [];
+    if (isset($cache[$table])) {
+        return $cache[$table];
+    }
+
+    $cache[$table] = [];
+    try {
+        $rows = $pdo->query("SHOW COLUMNS FROM `$table`")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as $row) {
+            $cache[$table][strtolower($row['Field'])] = $row['Field'];
+        }
+    } catch (Throwable $e) {}
+    return $cache[$table];
+}
+
+function manager_has_col(PDO $pdo, string $table, string $column): bool {
+    $cols = manager_table_columns($pdo, $table);
+    return isset($cols[strtolower($column)]);
+}
+
+function manager_date_col(PDO $pdo, string $table, array $choices): ?string {
+    foreach ($choices as $column) {
+        if (manager_has_col($pdo, $table, $column)) {
+            return $column;
+        }
+    }
+    return null;
+}
+
+function manager_amount_col(PDO $pdo, string $table, array $choices): ?string {
+    foreach ($choices as $column) {
+        if (manager_has_col($pdo, $table, $column)) {
+            return $column;
+        }
+    }
+    return null;
+}
+
+function manager_scope_customer_where(string $alias = 'c'): array {
+    global $role, $station_id;
+    $where = [];
+    $params = [];
+    customer_apply_station_scope($where, $params, $alias, $role, $station_id);
+    return [$where, $params];
+}
+
+function manager_customer_select_sql(): array {
+    global $pdo;
+    return [
+        'customer_id' => customer_id_expr($pdo, 'c'),
+        'display_name' => customer_display_name_expr($pdo, 'c'),
+        'first_name' => customer_first_name_expr($pdo, 'c'),
+        'middle_name' => customer_middle_name_expr($pdo, 'c'),
+        'last_name' => customer_last_name_expr($pdo, 'c'),
+        'contact' => customer_contact_expr($pdo, 'c'),
+        'type' => customer_type_expr($pdo, 'c'),
+        'status' => customer_status_expr($pdo, 'c'),
+        'registered_at' => customer_registered_at_expr($pdo, 'c'),
+        'balance' => customer_balance_expr($pdo, 'c'),
+        'credit_limit' => customer_credit_limit_expr($pdo, 'c'),
+        'vehicle_plate' => customer_vehicle_expr($pdo, 'vehicle_plate', 'c'),
+        'vehicle_make' => customer_vehicle_expr($pdo, 'vehicle_make', 'c'),
+        'vehicle_model' => customer_vehicle_expr($pdo, 'vehicle_model', 'c'),
+        'vehicle_type' => customer_vehicle_expr($pdo, 'vehicle_type', 'c'),
+        'address' => customer_expr_col($pdo, 'c', 'address', "''"),
+    ];
+}
+
+function manager_customer_tx_summary(int $customerId, int $customerStation): array {
+    global $pdo;
+
+    $summary = [
+        'total_transactions' => 0,
+        'merchandise_purchases' => 0,
+        'job_orders' => 0,
+        'fuel_transactions' => 0,
+        'total_amount' => 0.0,
+        'last_transaction' => null,
+    ];
+
+    $tables = [
+        'merchandise_transactions' => [
+            'count_key' => 'merchandise_purchases',
+            'date_cols' => ['transaction_date', 'created_at'],
+            'amount_cols' => ['total_amount', 'grand_total', 'amount'],
+            'customer_cols' => ['customer_id', 'credit_customer_id'],
+        ],
+        'job_orders' => [
+            'count_key' => 'job_orders',
+            'date_cols' => ['created_at', 'transaction_date'],
+            'amount_cols' => ['total_cost', 'estimated_cost', 'amount'],
+            'customer_cols' => ['customer_id'],
+        ],
+        'fuel_transactions' => [
+            'count_key' => 'fuel_transactions',
+            'date_cols' => ['transaction_date', 'created_at'],
+            'amount_cols' => ['total_amount', 'amount'],
+            'customer_cols' => ['customer_id'],
+        ],
+    ];
+
+    foreach ($tables as $table => $meta) {
+        if (!manager_has_table($pdo, $table)) {
+            continue;
+        }
+
+        $customerConditions = [];
+        foreach ($meta['customer_cols'] as $column) {
+            if (manager_has_col($pdo, $table, $column)) {
+                $customerConditions[] = "`$column` = :customer_id";
+            }
+        }
+        if (!$customerConditions || !manager_has_col($pdo, $table, 'station_id')) {
+            continue;
+        }
+
+        $dateCol = manager_date_col($pdo, $table, $meta['date_cols']);
+        $amountCol = manager_amount_col($pdo, $table, $meta['amount_cols']);
+        $dateSql = $dateCol ? "MAX(`$dateCol`)" : "NULL";
+        $amountSql = $amountCol ? "COALESCE(SUM(`$amountCol`),0)" : "0";
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*) AS row_count, $amountSql AS amount_total, $dateSql AS last_date
+                FROM `$table`
+                WHERE station_id = :station_id
+                  AND (" . implode(' OR ', $customerConditions) . ")
+            ");
+            $stmt->execute([
+                ':station_id' => $customerStation,
+                ':customer_id' => $customerId,
+            ]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+            $count = (int)($row['row_count'] ?? 0);
+            $summary[$meta['count_key']] += $count;
+            $summary['total_transactions'] += $count;
+            $summary['total_amount'] += (float)($row['amount_total'] ?? 0);
+
+            $last = $row['last_date'] ?? null;
+            if ($last) {
+                $summary['last_transaction'] = $summary['last_transaction']
+                    ? max($summary['last_transaction'], $last)
+                    : $last;
+            }
+        } catch (Throwable $e) {}
+    }
+
+    return $summary;
+}
+
+function manager_empty_stats(): array {
+    return [
+        'total' => 0,
+        'active' => 0,
+        'inactive' => 0,
+        'credit' => 0,
+        'pending_requests' => 0,
+    ];
+}
+
+function manager_list_customers(): void {
+    global $pdo, $role, $station_id;
+
+    try {
+        $pdo->query("SELECT 1 FROM customers LIMIT 1");
+    } catch (Throwable $e) {
+        echo json_encode(['success' => true, 'customers' => [], 'stats' => manager_empty_stats()]);
         return;
     }
 
-    $search       = trim($_GET['search'] ?? '');
-    $type         = trim($_GET['type'] ?? '');
-    $status       = trim($_GET['status'] ?? '');
-    $verification = trim($_GET['verification'] ?? '');
-    $payment      = trim($_GET['payment'] ?? '');
-    $dateFrom     = trim($_GET['date_from'] ?? '');
-    $dateTo       = trim($_GET['date_to'] ?? '');
+    $search = trim($_GET['search'] ?? '');
+    $type = trim($_GET['type'] ?? '');
+    $status = trim($_GET['status'] ?? '');
+    $validTypes = ['walk-in', 'regular', 'credit'];
+    $validStatuses = ['active', 'inactive'];
 
-    $where  = [];
-    $params = [];
-    customer_apply_station_scope($where, $params, 'c', $role, $station_id);
-
-    $customerIdExpr = customer_id_expr($pdo, 'c');
-    $displayNameExpr = customer_display_name_expr($pdo, 'c');
-    $firstNameExpr = customer_first_name_expr($pdo, 'c');
-    $middleNameExpr = customer_middle_name_expr($pdo, 'c');
-    $lastNameExpr = customer_last_name_expr($pdo, 'c');
-    $contactExpr = customer_contact_expr($pdo, 'c');
-    $typeExpr = customer_type_expr($pdo, 'c');
-    $statusExpr = customer_status_expr($pdo, 'c');
-    $registeredExpr = customer_registered_at_expr($pdo, 'c');
-    $balanceExpr = customer_balance_expr($pdo, 'c');
-    $creditLimitExpr = customer_credit_limit_expr($pdo, 'c');
-    $verificationExpr = customer_verification_status_expr($pdo, 'c');
-    $govIdTypeExpr = customer_gov_id_type_expr($pdo, 'c');
+    [$where, $params] = manager_scope_customer_where('c');
+    $expr = manager_customer_select_sql();
 
     if ($search !== '') {
-        $where[] = "($customerIdExpr LIKE ? OR $displayNameExpr LIKE ? OR $contactExpr LIKE ?)";
+        $where[] = "({$expr['customer_id']} LIKE ? OR {$expr['display_name']} LIKE ? OR {$expr['contact']} LIKE ? OR {$expr['vehicle_plate']} LIKE ?)";
         $s = "%$search%";
-        array_push($params, $s, $s, $s);
+        array_push($params, $s, $s, $s, $s);
     }
-
-    if ($type !== '' && $type !== 'registered') { $type = ''; }
-
-    if ($status !== '') {
-        $where[] = "$statusExpr = ?";
+    if (in_array($type, $validTypes, true)) {
+        $where[] = "{$expr['type']} = ?";
+        $params[] = $type;
+    }
+    if (in_array($status, $validStatuses, true)) {
+        $where[] = "{$expr['status']} = ?";
         $params[] = $status;
     }
 
-    if ($verification !== '') {
-        $where[] = "$verificationExpr = ?";
-        $params[] = $verification;
-    }
-    if ($dateFrom !== '') {
-        $where[] = "DATE($registeredExpr) >= ?";
-        $params[] = $dateFrom;
-    }
-    if ($dateTo !== '') {
-        $where[] = "DATE($registeredExpr) <= ?";
-        $params[] = $dateTo;
-    }
-
     $whereClause = $where ? implode(' AND ', $where) : '1=1';
-
     $stmt = $pdo->prepare("
         SELECT
             c.id,
             c.station_id,
-            $customerIdExpr AS customer_id,
-            $displayNameExpr AS display_name,
-            $firstNameExpr AS first_name,
-            $middleNameExpr AS middle_name,
-            $lastNameExpr AS last_name,
-            $displayNameExpr AS name,
-            $contactExpr AS contact_number,
-            $typeExpr AS customer_type,
-            $statusExpr AS status,
-            $verificationExpr AS verification_status,
-            $balanceExpr AS outstanding_balance,
-            $creditLimitExpr AS credit_limit,
-            " . customer_company_expr($pdo, 'company_name', 'c') . " AS company_name,
-            " . customer_company_expr($pdo, 'company_address', 'c') . " AS company_address,
-            " . customer_company_expr($pdo, 'company_contact_person', 'c') . " AS company_contact_person,
-            " . customer_company_expr($pdo, 'company_contact_number', 'c') . " AS company_contact_number,
-            $govIdTypeExpr AS gov_id_type,
-            " . customer_verification_remarks_expr($pdo, 'c') . " AS verification_remarks,
-            c.gov_id_image,
-            c.cr_document,
-            $registeredExpr AS registered_at
+            {$expr['customer_id']} AS customer_id,
+            {$expr['display_name']} AS customer_name,
+            {$expr['first_name']} AS first_name,
+            {$expr['middle_name']} AS middle_name,
+            {$expr['last_name']} AS last_name,
+            {$expr['contact']} AS contact_number,
+            {$expr['address']} AS address,
+            {$expr['type']} AS customer_type,
+            {$expr['status']} AS status,
+            {$expr['vehicle_plate']} AS plate_no,
+            {$expr['vehicle_make']} AS vehicle_make,
+            {$expr['vehicle_model']} AS vehicle_model,
+            {$expr['vehicle_type']} AS vehicle_type,
+            {$expr['credit_limit']} AS credit_limit,
+            {$expr['balance']} AS outstanding_balance,
+            {$expr['registered_at']} AS registered_at
         FROM customers c
         WHERE $whereClause
-        ORDER BY $registeredExpr DESC, c.id DESC
+        ORDER BY {$expr['registered_at']} DESC, c.id DESC
+        LIMIT 500
     ");
     $stmt->execute($params);
-    $allCustomers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Fetch per-customer transaction stats + apply payment/date filters
-    $filteredCustomers = [];
-    foreach ($allCustomers as $c) {
-        $lastTxDate  = null;
-        $totalSpent  = 0.0;
-        $txStation = customer_can_view_all_stations($role) ? (int)($c['station_id'] ?? 0) : $station_id;
-
-        // Fuel
-        try {
-            $q = $pdo->prepare("SELECT MAX(transaction_date) AS last_d, COALESCE(SUM(total_amount),0) AS tot
-                                 FROM fuel_transactions WHERE customer_id = ? AND station_id = ?");
-            $q->execute([$c['id'], $txStation]);
-            $r = $q->fetch(PDO::FETCH_ASSOC);
-            if ($r && $r['last_d']) { $lastTxDate = max($lastTxDate, $r['last_d']); $totalSpent += (float)$r['tot']; }
-        } catch (Exception $e) {}
-
-        // Merchandise
-        try {
-            $q = $pdo->prepare("SELECT MAX(transaction_date) AS last_d, COALESCE(SUM(total_amount),0) AS tot
-                                 FROM merchandise_transactions WHERE customer_id = ? AND station_id = ?");
-            $q->execute([$c['id'], $txStation]);
-            $r = $q->fetch(PDO::FETCH_ASSOC);
-            if ($r && $r['last_d']) { $lastTxDate = max($lastTxDate, $r['last_d']); $totalSpent += (float)$r['tot']; }
-        } catch (Exception $e) {}
-
-        // Job Orders
-        try {
-            $q = $pdo->prepare("SELECT MAX(created_at) AS last_d, COALESCE(SUM(total_cost),0) AS tot
-                                 FROM job_orders WHERE customer_id = ? AND station_id = ?");
-            $q->execute([$c['id'], $txStation]);
-            $r = $q->fetch(PDO::FETCH_ASSOC);
-            if ($r && $r['last_d']) { $lastTxDate = max($lastTxDate, $r['last_d']); $totalSpent += (float)$r['tot']; }
-        } catch (Exception $e) {}
-
-        $ob = (float)($c['outstanding_balance'] ?? 0);
-        if ($ob <= 0) {
-            $payStatus = 'paid';
-        } elseif ($totalSpent > 0 && $ob < $totalSpent) {
-            $payStatus = 'partial';
-        } else {
-            $payStatus = 'unpaid';
-        }
-
-        // Payment filter
-        if ($payment !== '' && $payStatus !== $payment) continue;
-
-        $c['last_transaction'] = $lastTxDate;
-        $c['total_spent']      = $totalSpent;
-        $c['payment_status']   = $payStatus;
-        $filteredCustomers[]   = $c;
+    foreach ($customers as &$customer) {
+        $customerStation = customer_can_view_all_stations($role) ? (int)$customer['station_id'] : $station_id;
+        $tx = manager_customer_tx_summary((int)$customer['id'], $customerStation);
+        $customer = array_merge($customer, $tx);
+        $customer['available_credit'] = max(0, (float)$customer['credit_limit'] - (float)$customer['outstanding_balance']);
     }
+    unset($customer);
 
-    // Stats from all visible customers (unfiltered)
     $statsWhere = [];
     $statsParams = [];
     customer_apply_station_scope($statsWhere, $statsParams, 'c', $role, $station_id);
-    $statsWc = $statsWhere ? implode(' AND ', $statsWhere) : '1=1';
+    $statsClause = $statsWhere ? implode(' AND ', $statsWhere) : '1=1';
     $statsStmt = $pdo->prepare("
         SELECT
-            COUNT(*)                                                             AS total,
-            SUM(CASE WHEN DATE($registeredExpr) = CURDATE() THEN 1 ELSE 0 END) AS new_today,
-            COUNT(*)                                                           AS registered,
-            SUM(CASE WHEN $verificationExpr = 'pending' THEN 1 ELSE 0 END)     AS pending_verification,
-            SUM(CASE WHEN $balanceExpr > 0 THEN 1 ELSE 0 END)                  AS outstanding,
-            SUM(CASE WHEN $statusExpr = 'active' THEN 1 ELSE 0 END)            AS active
-        FROM customers c WHERE $statsWc
+            COUNT(*) AS total,
+            SUM(CASE WHEN {$expr['status']} = 'active' THEN 1 ELSE 0 END) AS active,
+            SUM(CASE WHEN {$expr['status']} = 'inactive' THEN 1 ELSE 0 END) AS inactive,
+            SUM(CASE WHEN {$expr['type']} = 'credit' THEN 1 ELSE 0 END) AS credit
+        FROM customers c
+        WHERE $statsClause
     ");
     $statsStmt->execute($statsParams);
-    $stats = $statsStmt->fetch(PDO::FETCH_ASSOC) ?: emptyStats();
+    $stats = $statsStmt->fetch(PDO::FETCH_ASSOC) ?: manager_empty_stats();
+    $stats['pending_requests'] = manager_count_pending_requests();
 
-    echo json_encode(['success' => true, 'customers' => $filteredCustomers, 'stats' => $stats]);
+    echo json_encode(['success' => true, 'customers' => $customers, 'stats' => $stats]);
 }
 
-function emptyStats() {
-    return ['total' => 0, 'new_today' => 0, 'registered' => 0, 'pending_verification' => 0, 'outstanding' => 0, 'active' => 0];
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// VIEW SINGLE CUSTOMER
-// ─────────────────────────────────────────────────────────────────────
-function viewCustomer() {
-    global $pdo, $station_id, $role;
+function manager_view_customer(): void {
+    global $pdo, $role, $station_id;
 
     $id = (int)($_GET['id'] ?? 0);
-    if (!$id) throw new Exception('Customer ID required');
+    if ($id <= 0) {
+        throw new Exception('Customer ID is required.');
+    }
 
-    $customerIdExpr = customer_id_expr($pdo, 'c');
-    $displayNameExpr = customer_display_name_expr($pdo, 'c');
-    $firstNameExpr = customer_first_name_expr($pdo, 'c');
-    $middleNameExpr = customer_middle_name_expr($pdo, 'c');
-    $lastNameExpr = customer_last_name_expr($pdo, 'c');
-    $contactExpr = customer_contact_expr($pdo, 'c');
-    $typeExpr = customer_type_expr($pdo, 'c');
-    $statusExpr = customer_status_expr($pdo, 'c');
-    $registeredExpr = customer_registered_at_expr($pdo, 'c');
-    $balanceExpr = customer_balance_expr($pdo, 'c');
-    $creditLimitExpr = customer_credit_limit_expr($pdo, 'c');
-    $verificationExpr = customer_verification_status_expr($pdo, 'c');
-    $govIdTypeExpr = customer_gov_id_type_expr($pdo, 'c');
+    [$where, $params] = manager_scope_customer_where('c');
+    array_unshift($where, 'c.id = ?');
+    array_unshift($params, $id);
 
-    $where = ['c.id = ?'];
-    $params = [$id];
-    customer_apply_station_scope($where, $params, 'c', $role, $station_id);
-
+    $expr = manager_customer_select_sql();
     $stmt = $pdo->prepare("
-        SELECT c.*,
-               $customerIdExpr AS customer_id,
-               $displayNameExpr AS display_name,
-               $firstNameExpr AS first_name,
-               $middleNameExpr AS middle_name,
-               $lastNameExpr AS last_name,
-               $contactExpr AS contact_number,
-               $typeExpr AS customer_type,
-               $statusExpr AS status,
-               $registeredExpr AS registered_at,
-               $balanceExpr AS outstanding_balance,
-               $creditLimitExpr AS credit_limit,
-               $verificationExpr AS verification_status,
-               $govIdTypeExpr AS gov_id_type,
-               " . customer_company_expr($pdo, 'company_name', 'c') . " AS company_name,
-               " . customer_company_expr($pdo, 'company_address', 'c') . " AS company_address,
-               " . customer_company_expr($pdo, 'company_contact_person', 'c') . " AS company_contact_person,
-               " . customer_company_expr($pdo, 'company_contact_number', 'c') . " AS company_contact_number,
-               " . customer_verification_remarks_expr($pdo, 'c') . " AS verification_remarks,
-               " . customer_user_name_expr('u') . " AS registered_by_name,
-               " . customer_user_name_expr('v') . " AS verified_by_name
+        SELECT
+            c.id,
+            c.station_id,
+            {$expr['customer_id']} AS customer_id,
+            {$expr['display_name']} AS customer_name,
+            {$expr['first_name']} AS first_name,
+            {$expr['middle_name']} AS middle_name,
+            {$expr['last_name']} AS last_name,
+            {$expr['contact']} AS contact_number,
+            {$expr['address']} AS address,
+            {$expr['type']} AS customer_type,
+            {$expr['status']} AS status,
+            {$expr['vehicle_plate']} AS plate_no,
+            {$expr['vehicle_make']} AS vehicle_make,
+            {$expr['vehicle_model']} AS vehicle_model,
+            {$expr['vehicle_type']} AS vehicle_type,
+            {$expr['credit_limit']} AS credit_limit,
+            {$expr['balance']} AS outstanding_balance,
+            {$expr['registered_at']} AS registered_at
         FROM customers c
-        LEFT JOIN users u ON c.registered_by = u.id
-        LEFT JOIN users v ON c.verified_by   = v.id
         WHERE " . implode(' AND ', $where) . "
+        LIMIT 1
     ");
     $stmt->execute($params);
     $customer = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$customer) throw new Exception('Customer not found');
+    if (!$customer) {
+        throw new Exception('Customer not found.');
+    }
 
-    $customerStation = customer_can_view_all_stations($role) ? (int)($customer['station_id'] ?? 0) : $station_id;
-
-    $txStats = [
-        'fuel_count' => 0, 'fuel_amount' => 0,
-        'merch_count' => 0, 'merch_amount' => 0,
-        'service_count' => 0, 'service_amount' => 0,
-        'total_count' => 0, 'total_amount' => 0,
-        'last_transaction' => null
-    ];
-    $history = [];
-
-    // ── Fuel ─────────────────────────────────────────────────────────
-    try {
-        $q = $pdo->prepare("
-            SELECT transaction_date AS txn_date,
-                   transaction_id   AS reference_no,
-                   'Fuel'           AS module,
-                   CONCAT(fuel_type, ' — ', liters_sold, 'L') AS description,
-                   total_amount     AS amount,
-                   COALESCE(status,'completed') AS txn_status
-            FROM fuel_transactions
-            WHERE customer_id = ? AND station_id = ?
-            ORDER BY transaction_date DESC
-            LIMIT 50
-        ");
-        $q->execute([$id, $customerStation]);
-        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $history[] = $row;
-            $txStats['fuel_count']++;
-            $txStats['fuel_amount'] += (float)$row['amount'];
-        }
-    } catch (Exception $e) {}
-
-    // ── Merchandise ──────────────────────────────────────────────────
-    try {
-        $q = $pdo->prepare("
-            SELECT transaction_date AS txn_date,
-                   transaction_id   AS reference_no,
-                   'Merchandise'    AS module,
-                   CONCAT('Sale — \u{20B1}', FORMAT(total_amount,2)) AS description,
-                   total_amount     AS amount,
-                   COALESCE(validation_status,'completed') AS txn_status
-            FROM merchandise_transactions
-            WHERE customer_id = ? AND station_id = ?
-            ORDER BY transaction_date DESC
-            LIMIT 50
-        ");
-        $q->execute([$id, $customerStation]);
-        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $history[] = $row;
-            $txStats['merch_count']++;
-            $txStats['merch_amount'] += (float)$row['amount'];
-        }
-    } catch (Exception $e) {}
-
-    // ── Job Orders ───────────────────────────────────────────────────
-    try {
-        $q = $pdo->prepare("
-            SELECT created_at  AS txn_date,
-                   COALESCE(job_order_id, job_order_number, CONCAT('JO-', id)) AS reference_no,
-                   'Job Order' AS module,
-                   COALESCE(service_type,'Service') AS description,
-                   total_cost  AS amount,
-                   COALESCE(status,'pending') AS txn_status
-            FROM job_orders
-            WHERE customer_id = ? AND station_id = ?
-            ORDER BY created_at DESC
-            LIMIT 50
-        ");
-        $q->execute([$id, $customerStation]);
-        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $history[] = $row;
-            $txStats['service_count']++;
-            $txStats['service_amount'] += (float)$row['amount'];
-        }
-    } catch (Exception $e) {}
-
-    // Sort by date desc
-    usort($history, fn($a, $b) => strtotime($b['txn_date']) - strtotime($a['txn_date']));
-    $history = array_slice($history, 0, 20);
-
-    $txStats['total_count']  = $txStats['fuel_count'] + $txStats['merch_count'] + $txStats['service_count'];
-    $txStats['total_amount'] = $txStats['fuel_amount'] + $txStats['merch_amount'] + $txStats['service_amount'];
-    $txStats['last_transaction'] = !empty($history) ? $history[0]['txn_date'] : null;
-
-    $ob = (float)($customer['outstanding_balance'] ?? 0);
-    $totalSpent = $txStats['total_amount'];
-    $totalPayments = max(0, $totalSpent - $ob);
-
-    if ($ob <= 0)                                           $payStatus = 'paid';
-    elseif ($totalSpent > 0 && $ob < $totalSpent)          $payStatus = 'partial';
-    else                                                    $payStatus = 'unpaid';
-
-    $financials = [
-        'outstanding_balance' => $ob,
-        'credit_limit'        => (float)($customer['credit_limit'] ?? 0),
-        'total_payments'      => $totalPayments,
-        'remaining_balance'   => $ob,
-        'payment_status'      => $payStatus,
-        'last_payment_date'   => $txStats['last_transaction']
-    ];
+    $customerStation = customer_can_view_all_stations($role) ? (int)$customer['station_id'] : $station_id;
+    $summary = manager_customer_tx_summary($id, $customerStation);
+    $customer['available_credit'] = max(0, (float)$customer['credit_limit'] - (float)$customer['outstanding_balance']);
 
     echo json_encode([
-        'success'             => true,
-        'customer'            => $customer,
-        'transactions'        => $txStats,
-        'financials'          => $financials,
-        'transaction_history' => $history
+        'success' => true,
+        'customer' => $customer,
+        'summary' => $summary,
     ]);
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// ADD CUSTOMER
-// ─────────────────────────────────────────────────────────────────────
-function addCustomer() {
+function manager_validate_customer_payload(): array {
+    $firstName = trim($_POST['first_name'] ?? '');
+    $middleName = trim($_POST['middle_name'] ?? '');
+    $lastName = trim($_POST['last_name'] ?? '');
+    $contact = trim($_POST['contact_number'] ?? '');
+    $address = trim($_POST['address'] ?? '');
+    $type = trim($_POST['customer_type'] ?? 'walk-in');
+    $status = trim($_POST['status'] ?? 'active');
+    $creditLimit = (float)($_POST['credit_limit'] ?? 0);
+
+    if ($firstName === '' || $lastName === '' || $contact === '') {
+        throw new Exception('First name, last name, and contact number are required.');
+    }
+    if (!in_array($type, ['walk-in', 'regular', 'credit'], true)) {
+        throw new Exception('Invalid customer type.');
+    }
+    if (!in_array($status, ['active', 'inactive'], true)) {
+        throw new Exception('Invalid customer status.');
+    }
+    if ($type !== 'credit') {
+        $creditLimit = 0;
+    }
+
+    return [
+        'first_name' => $firstName,
+        'middle_name' => $middleName,
+        'last_name' => $lastName,
+        'contact_number' => $contact,
+        'address' => $address,
+        'customer_type' => $type,
+        'status' => $status,
+        'vehicle_plate' => strtoupper(trim($_POST['plate_no'] ?? $_POST['vehicle_plate'] ?? '')),
+        'vehicle_make' => trim($_POST['vehicle_make'] ?? ''),
+        'vehicle_brand' => trim($_POST['vehicle_make'] ?? ''),
+        'vehicle_model' => trim($_POST['vehicle_model'] ?? ''),
+        'vehicle_type' => trim($_POST['vehicle_type'] ?? ''),
+        'credit_limit' => max(0, $creditLimit),
+    ];
+}
+
+function manager_generate_customer_id(int $stationId): string {
+    global $pdo;
+
+    $prefix = "CUS-{$stationId}-" . date('Ym') . "-";
+    $stmt = $pdo->prepare("SELECT customer_id FROM customers WHERE customer_id LIKE ? ORDER BY id DESC LIMIT 1");
+    $stmt->execute([$prefix . '%']);
+    $last = (string)$stmt->fetchColumn();
+    $next = $last ? ((int)substr($last, -3) + 1) : 1;
+    return $prefix . str_pad((string)$next, 3, '0', STR_PAD_LEFT);
+}
+
+function manager_audit(string $action, string $details, int $entityId = 0): void {
+    global $pdo;
+    if (function_exists('write_audit_log')) {
+        try {
+            write_audit_log($pdo, $action, $details, 'customers', $entityId, 'customer');
+        } catch (Throwable $e) {}
+    }
+}
+
+function manager_add_customer(): void {
     global $pdo, $station_id, $me;
 
     if ($station_id <= 0) {
         throw new Exception('A station assignment is required before adding customers.');
     }
 
-    $firstName   = trim($_POST['first_name']   ?? '');
-    $middleName  = trim($_POST['middle_name']  ?? '');
-    $lastName    = trim($_POST['last_name']    ?? '');
-    $contactNo   = trim($_POST['contact_number'] ?? '');
-    $address     = trim($_POST['address']      ?? '');
-    $custType    = 'regular';
-    $statusVal   = $_POST['status']        ?? 'active';
-    $govIdType   = trim($_POST['gov_id_type'] ?? '') ?: null;
-    $creditLimit = (float)($_POST['credit_limit'] ?? 0);
-    // NOTE: Managers are NOT permitted to manually set or edit outstanding_balance.
-    // Balance is system-managed through transactions only.
+    $data = manager_validate_customer_payload();
+    $customerId = manager_generate_customer_id($station_id);
+    $fullName = trim($data['first_name'] . ' ' . $data['middle_name'] . ' ' . $data['last_name']);
 
-    $companyName          = trim($_POST['company_name']           ?? '') ?: null;
-    $companyAddress       = trim($_POST['company_address']        ?? '') ?: null;
-    $companyContactPerson = trim($_POST['company_contact_person'] ?? '') ?: null;
-    $companyContactNumber = trim($_POST['company_contact_number'] ?? '') ?: null;
-
-    if (!$firstName || !$lastName || !$contactNo || !$address) {
-        throw new Exception('First name, last name, contact number, and address are required.');
-    }
-
-    $govIdImage  = null;
-    $crDocument  = null;
-
-    if (!empty($_FILES['gov_id_image']['name'])) {
-        $govIdImage = handleFileUpload($_FILES['gov_id_image'], 'gov_id');
-    }
-    if (!empty($_FILES['cr_document']['name'])) {
-        $crDocument = handleFileUpload($_FILES['cr_document'], 'cr');
-    }
-
-    $customerId = generateCustomerId($station_id);
-    $fullName   = trim("$firstName $middleName $lastName");
-
-    // outstanding_balance starts at 0 — managers cannot set it manually.
     $newId = customer_insert_existing($pdo, [
-        'customer_id'            => $customerId,
-        'station_id'             => $station_id,
-        'name'                   => $fullName,
-        'first_name'             => $firstName,
-        'middle_name'            => $middleName,
-        'last_name'              => $lastName,
-        'contact_number'         => $contactNo,
-        'phone'                  => $contactNo,
-        'address'                => $address,
-        'customer_type'          => $custType,
-        'type'                   => customer_legacy_billing_type($custType),
-        'status'                 => $statusVal,
-        'account_status'         => $statusVal,
-        'gov_id_type'            => $govIdType,
-        'id_type'                => $govIdType,
-        'gov_id_image'           => $govIdImage,
-        'cr_document'            => $crDocument,
-        'company_name'           => $companyName,
-        'company_address'        => $companyAddress,
-        'company_contact_person' => $companyContactPerson,
-        'contact_person'         => $companyContactPerson,
-        'company_contact_number' => $companyContactNumber,
-        'credit_limit'           => $creditLimit,
-        'current_balance'        => 0,
-        'balance'                => 0,
-        'verification_status'    => 'pending',
-        'registered_by'          => $me['id'] ?? null,
+        'customer_id' => $customerId,
+        'station_id' => $station_id,
+        'name' => $fullName,
+        'first_name' => $data['first_name'],
+        'middle_name' => $data['middle_name'],
+        'last_name' => $data['last_name'],
+        'contact_number' => $data['contact_number'],
+        'phone' => $data['contact_number'],
+        'address' => $data['address'],
+        'customer_type' => $data['customer_type'],
+        'type' => customer_legacy_billing_type($data['customer_type']),
+        'status' => $data['status'],
+        'account_status' => $data['status'],
+        'vehicle_plate' => $data['vehicle_plate'],
+        'plate_number' => $data['vehicle_plate'],
+        'vehicle_make' => $data['vehicle_make'],
+        'vehicle_brand' => $data['vehicle_make'],
+        'vehicle_model' => $data['vehicle_model'],
+        'vehicle_type' => $data['vehicle_type'],
+        'credit_limit' => $data['credit_limit'],
+        'outstanding_balance' => 0,
+        'current_balance' => 0,
+        'balance' => 0,
+        'registered_by' => $me['id'] ?? null,
     ], [
-        'registered_at'          => 'NOW()',
-        'created_at'             => 'NOW()',
+        'registered_at' => 'NOW()',
+        'created_at' => 'NOW()',
     ]);
-    write_audit_log($pdo, 'Create', "New customer: $fullName ($customerId)", 'customers', $newId, 'customer');
 
-    echo json_encode(['success' => true, 'message' => "Customer $customerId created successfully!", 'customer_id' => $customerId, 'id' => $newId]);
+    manager_audit('Create', "Created customer {$fullName} ({$customerId})", $newId);
+    echo json_encode(['success' => true, 'message' => 'Customer has been saved successfully.', 'id' => $newId, 'customer_id' => $customerId]);
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// UPDATE CUSTOMER
-// ─────────────────────────────────────────────────────────────────────
-function updateCustomer() {
-    global $pdo, $station_id, $me;
+function manager_update_customer(): void {
+    global $pdo, $station_id, $role, $me;
 
-    $id          = (int)($_POST['customer_id'] ?? 0);
-    if (!$id) throw new Exception('Customer ID required');
-
-    $firstName   = trim($_POST['first_name']   ?? '');
-    $middleName  = trim($_POST['middle_name']  ?? '');
-    $lastName    = trim($_POST['last_name']    ?? '');
-    $contactNo   = trim($_POST['contact_number'] ?? '');
-    $address     = trim($_POST['address']      ?? '');
-    $custType    = 'regular';
-    $statusVal   = $_POST['status']        ?? 'active';
-    $govIdType   = trim($_POST['gov_id_type'] ?? '') ?: null;
-    $creditLimit = (float)($_POST['credit_limit'] ?? 0);
-
-    $companyName          = trim($_POST['company_name']           ?? '') ?: null;
-    $companyAddress       = trim($_POST['company_address']        ?? '') ?: null;
-    $companyContactPerson = trim($_POST['company_contact_person'] ?? '') ?: null;
-    $companyContactNumber = trim($_POST['company_contact_number'] ?? '') ?: null;
-
-    if (!$firstName || !$lastName || !$contactNo || !$address) {
-        throw new Exception('Required fields are missing');
+    $id = (int)($_POST['id'] ?? $_POST['customer_id'] ?? 0);
+    if ($id <= 0) {
+        throw new Exception('Customer ID is required.');
     }
 
-    // Verify ownership
-    $chk = $pdo->prepare("SELECT customer_id FROM customers WHERE id = ? AND station_id = ?");
-    $chk->execute([$id, $station_id]);
-    if (!$chk->fetch()) throw new Exception('Customer not found');
-
-    $fullName = trim("$firstName $middleName $lastName");
-
-    $values = [
-        'name'                   => $fullName,
-        'first_name'             => $firstName,
-        'middle_name'            => $middleName,
-        'last_name'              => $lastName,
-        'contact_number'         => $contactNo,
-        'phone'                  => $contactNo,
-        'address'                => $address,
-        'customer_type'          => $custType,
-        'type'                   => customer_legacy_billing_type($custType),
-        'status'                 => $statusVal,
-        'account_status'         => $statusVal,
-        'gov_id_type'            => $govIdType,
-        'id_type'                => $govIdType,
-        'company_name'           => $companyName,
-        'company_address'        => $companyAddress,
-        'company_contact_person' => $companyContactPerson,
-        'contact_person'         => $companyContactPerson,
-        'company_contact_number' => $companyContactNumber,
-        'credit_limit'           => $creditLimit,
-        'updated_by'             => $me['id'] ?? null,
-    ];
-
-    if (!empty($_FILES['gov_id_image']['name'])) {
-        $img = handleFileUpload($_FILES['gov_id_image'], 'gov_id');
-        $values['gov_id_image'] = $img;
-    }
-    if (!empty($_FILES['cr_document']['name'])) {
-        $cr = handleFileUpload($_FILES['cr_document'], 'cr');
-        $values['cr_document'] = $cr;
+    [$where, $params] = manager_scope_customer_where('c');
+    array_unshift($where, 'c.id = ?');
+    array_unshift($params, $id);
+    $check = $pdo->prepare("SELECT c.id FROM customers c WHERE " . implode(' AND ', $where) . " LIMIT 1");
+    $check->execute($params);
+    if (!$check->fetchColumn()) {
+        throw new Exception('Customer not found.');
     }
 
-    customer_update_existing($pdo, $values, 'id = ? AND station_id = ?', [$id, $station_id], [
+    $data = manager_validate_customer_payload();
+    $fullName = trim($data['first_name'] . ' ' . $data['middle_name'] . ' ' . $data['last_name']);
+    $whereSql = customer_can_view_all_stations($role) ? 'id = ?' : 'id = ? AND station_id = ?';
+    $whereValues = customer_can_view_all_stations($role) ? [$id] : [$id, $station_id];
+
+    customer_update_existing($pdo, [
+        'name' => $fullName,
+        'first_name' => $data['first_name'],
+        'middle_name' => $data['middle_name'],
+        'last_name' => $data['last_name'],
+        'contact_number' => $data['contact_number'],
+        'phone' => $data['contact_number'],
+        'address' => $data['address'],
+        'customer_type' => $data['customer_type'],
+        'type' => customer_legacy_billing_type($data['customer_type']),
+        'status' => $data['status'],
+        'account_status' => $data['status'],
+        'vehicle_plate' => $data['vehicle_plate'],
+        'plate_number' => $data['vehicle_plate'],
+        'vehicle_make' => $data['vehicle_make'],
+        'vehicle_brand' => $data['vehicle_make'],
+        'vehicle_model' => $data['vehicle_model'],
+        'vehicle_type' => $data['vehicle_type'],
+        'credit_limit' => $data['credit_limit'],
+        'updated_by' => $me['id'] ?? null,
+    ], $whereSql, $whereValues, [
         'updated_at' => 'NOW()',
     ]);
 
-    write_audit_log($pdo, 'Update', "Updated customer: $fullName (ID: $id)", 'customers', $id, 'customer');
-    echo json_encode(['success' => true, 'message' => 'Customer updated successfully!']);
+    manager_audit('Update', "Updated customer {$fullName}", $id);
+    echo json_encode(['success' => true, 'message' => 'Customer has been updated successfully.']);
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// VERIFY CUSTOMER
-// ─────────────────────────────────────────────────────────────────────
-function verifyCustomer() {
-    global $pdo, $station_id, $me;
+function manager_deactivate_customer(): void {
+    global $pdo, $station_id, $role, $me;
 
-    $id      = (int)($_POST['id']     ?? 0);
-    $status  = $_POST['status']   ?? '';
-    $remarks = trim($_POST['remarks'] ?? '');
-
-    if (!$id || !in_array($status, ['verified', 'rejected'])) {
-        throw new Exception('Invalid verification parameters');
+    $id = (int)($_POST['id'] ?? 0);
+    if ($id <= 0) {
+        throw new Exception('Customer ID is required.');
     }
 
-    $chk = $pdo->prepare("SELECT customer_id, name, first_name, last_name FROM customers WHERE id = ? AND station_id = ?");
-    $chk->execute([$id, $station_id]);
-    $cust = $chk->fetch(PDO::FETCH_ASSOC);
-    if (!$cust) throw new Exception('Customer not found');
-
-    customer_update_existing($pdo, [
-        'verification_status'  => $status,
-        'mgr_status'           => $status,
-        'verified_by'          => $me['id'] ?? null,
-        'verification_remarks' => $remarks,
-        'mgr_notes'            => $remarks,
-        'mgr_reviewed_by'      => $me['id'] ?? null,
-    ], 'id = ? AND station_id = ?', [$id, $station_id], [
-        'verified_at'          => 'NOW()',
-        'mgr_reviewed_at'      => 'NOW()',
-        'updated_at'           => 'NOW()',
+    $whereSql = customer_can_view_all_stations($role) ? 'id = ?' : 'id = ? AND station_id = ?';
+    $whereValues = customer_can_view_all_stations($role) ? [$id] : [$id, $station_id];
+    $updated = customer_update_existing($pdo, [
+        'status' => 'inactive',
+        'account_status' => 'inactive',
+        'updated_by' => $me['id'] ?? null,
+    ], $whereSql, $whereValues, [
+        'updated_at' => 'NOW()',
     ]);
 
-    $fullName = trim(($cust['first_name'] ?: $cust['name']) . ' ' . $cust['last_name']);
-    $label    = strtoupper($status);
-    write_audit_log($pdo, 'Verify', "Customer $fullName ({$cust['customer_id']}) set to $label. Remarks: $remarks", 'customers', $id, 'customer');
-
-    echo json_encode(['success' => true, 'message' => "Customer has been $status successfully."]);
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// LOG DOCUMENT DOWNLOAD
-// ─────────────────────────────────────────────────────────────────────
-function logDownload() {
-    global $pdo, $station_id;
-
-    $id      = (int)($_GET['id']       ?? 0);
-    $docType = $_GET['doc_type'] ?? '';
-
-    if (!$id || !in_array($docType, ['gov_id', 'cr'])) {
-        throw new Exception('Invalid parameters');
+    if ($updated < 1) {
+        throw new Exception('Customer not found or already inactive.');
     }
 
-    $chk = $pdo->prepare("SELECT customer_id FROM customers WHERE id = ? AND station_id = ?");
-    $chk->execute([$id, $station_id]);
-    $custId = $chk->fetchColumn();
-
-    if ($custId) {
-        write_audit_log($pdo, 'Download', "Downloaded $docType document for customer: $custId", 'customers', $id, 'customer');
-        echo json_encode(['success' => true]);
-    } else {
-        echo json_encode(['success' => false, 'error' => 'Customer not found']);
-    }
+    manager_audit('Deactivate', "Deactivated customer ID {$id}", $id);
+    echo json_encode(['success' => true, 'message' => 'Customer has been deactivated.']);
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// GENERATE CUSTOMER ID
-// ─────────────────────────────────────────────────────────────────────
-function generateCustomerId($stationId) {
-    global $pdo;
-    $prefix = "CUS-{$stationId}-" . date('Ym') . "-";
-    $stmt = $pdo->prepare("SELECT customer_id FROM customers WHERE customer_id LIKE ? ORDER BY id DESC LIMIT 1");
-    $stmt->execute([$prefix . '%']);
-    $last = $stmt->fetchColumn();
-    $seq  = $last ? ((int)substr($last, -3) + 1) : 1;
-    return $prefix . str_pad($seq, 3, '0', STR_PAD_LEFT);
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// HANDLE FILE UPLOAD
-// ─────────────────────────────────────────────────────────────────────
-function handleFileUpload($file, $type) {
-    $uploadDir = __DIR__ . '/../uploads/customer_documents/';
-    if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
-
-    $ext     = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    $allowed = ['jpg', 'jpeg', 'png', 'pdf'];
-    if (!in_array($ext, $allowed)) throw new Exception("Invalid file type. Allowed: JPG, PNG, PDF.");
-    if ($file['size'] > 5 * 1024 * 1024) throw new Exception("File too large. Max 5MB.");
-    if ($file['error'] !== UPLOAD_ERR_OK) throw new Exception("Upload error: " . $file['error']);
-
-    $filename = $type . '_' . time() . '_' . bin2hex(random_bytes(6)) . '.' . $ext;
-    if (!move_uploaded_file($file['tmp_name'], $uploadDir . $filename)) {
-        throw new Exception("Failed to save uploaded file.");
-    }
-    return 'uploads/customer_documents/' . $filename;
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// TRANSACTION HISTORY (PAGINATED & FILTERABLE)
-// ─────────────────────────────────────────────────────────────────────
-function getTransactionHistory() {
+function manager_count_pending_requests(): int {
     global $pdo, $station_id, $role;
-
-    $customerId = (int)($_GET['customer_id'] ?? 0);
-    if (!$customerId) {
-        echo json_encode(['success' => false, 'error' => 'Customer ID is required']);
-        return;
+    if (!manager_has_table($pdo, 'customer_requests')) {
+        return 0;
     }
 
-    $scopeWhere = ['c.id = ?'];
-    $scopeParams = [$customerId];
-    customer_apply_station_scope($scopeWhere, $scopeParams, 'c', $role, $station_id);
-    $scopeStmt = $pdo->prepare("SELECT c.station_id FROM customers c WHERE " . implode(' AND ', $scopeWhere));
-    $scopeStmt->execute($scopeParams);
-    $customerStation = (int)$scopeStmt->fetchColumn();
-    if ($customerStation <= 0) {
-        echo json_encode(['success' => false, 'error' => 'Customer not found']);
-        return;
+    $where = ["LOWER(status) = 'pending'"];
+    $params = [];
+    if (!customer_can_view_all_stations($role)) {
+        $where[] = 'station_id = ?';
+        $params[] = $station_id;
     }
-
-    $search        = trim($_GET['search'] ?? '');
-    $module        = trim($_GET['module'] ?? '');
-    $txnStatus     = trim($_GET['txn_status'] ?? '');
-    $paymentStatus = trim($_GET['payment_status'] ?? '');
-    $dateFrom      = trim($_GET['date_from'] ?? '');
-    $dateTo        = trim($_GET['date_to'] ?? '');
-
-    $unionSql = "
-        SELECT
-            ft.id AS source_id,
-            ft.transaction_date AS txn_date,
-            ft.transaction_id AS reference_no,
-            'Fuel' AS module,
-            CONCAT(ft.fuel_type, ' — ', ft.liters_sold, 'L') AS description,
-            ft.total_amount AS amount,
-            CASE WHEN LOWER(ft.status) = 'completed' THEN 'paid' ELSE 'pending' END AS payment_status,
-            ft.status AS txn_status,
-            COALESCE(u.name, 'Staff') AS processed_by,
-            ft.customer_id,
-            ft.station_id
-        FROM fuel_transactions ft
-        LEFT JOIN users u ON ft.staff_id = u.id
-
-        UNION ALL
-
-        SELECT
-            mt.id AS source_id,
-            mt.transaction_date AS txn_date,
-            mt.transaction_id AS reference_no,
-            'Merchandise' AS module,
-            CONCAT('Sale — \u{20B1}', FORMAT(mt.total_amount,2)) AS description,
-            mt.total_amount AS amount,
-            COALESCE(mt.payment_status, 'pending') AS payment_status,
-            mt.validation_status AS txn_status,
-            COALESCE(u.name, 'Staff') AS processed_by,
-            mt.customer_id,
-            mt.station_id
-        FROM merchandise_transactions mt
-        LEFT JOIN users u ON mt.staff_id = u.id
-
-        UNION ALL
-
-        SELECT
-            jo.id AS source_id,
-            jo.created_at AS txn_date,
-            COALESCE(jo.job_order_id, jo.job_order_number, CONCAT('JO-', jo.id)) AS reference_no,
-            'Job Order' AS module,
-            COALESCE(jo.service_type, 'Service') AS description,
-            jo.total_cost AS amount,
-            COALESCE(jo.payment_status, 'pending') AS payment_status,
-            jo.status AS txn_status,
-            COALESCE(u.name, 'Staff') AS processed_by,
-            jo.customer_id,
-            jo.station_id
-        FROM job_orders jo
-        LEFT JOIN users u ON jo.created_by = u.id
-    ";
-
-    $where = ["t.customer_id = :customer_id", "t.station_id = :station_id"];
-    $binds = [
-        ':customer_id' => $customerId,
-        ':station_id'  => $customerStation
-    ];
-
-    if ($search !== '') {
-        $where[] = "t.reference_no LIKE :search";
-        $binds[':search'] = "%$search%";
-    }
-    if ($module !== '') {
-        $where[] = "t.module = :module";
-        $binds[':module'] = $module;
-    }
-    if ($txnStatus !== '') {
-        $where[] = "LOWER(t.txn_status) = :txn_status";
-        $binds[':txn_status'] = strtolower($txnStatus);
-    }
-    if ($paymentStatus !== '') {
-        $where[] = "LOWER(t.payment_status) = :payment_status";
-        $binds[':payment_status'] = strtolower($paymentStatus);
-    }
-    if ($dateFrom !== '') {
-        $where[] = "DATE(t.txn_date) >= :date_from";
-        $binds[':date_from'] = $dateFrom;
-    }
-    if ($dateTo !== '') {
-        $where[] = "DATE(t.txn_date) <= :date_to";
-        $binds[':date_to'] = $dateTo;
-    }
-
-    $whereClause = implode(' AND ', $where);
 
     try {
-        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM ($unionSql) t WHERE $whereClause");
-        foreach ($binds as $key => $val) {
-            $countStmt->bindValue($key, $val);
-        }
-        $countStmt->execute();
-        $totalRows = (int)$countStmt->fetchColumn();
-
-        $limit = (int)($_GET['limit'] ?? 10);
-        $page = (int)($_GET['page'] ?? 1);
-        $offset = ($page - 1) * $limit;
-
-        $dataStmt = $pdo->prepare("
-            SELECT t.* FROM ($unionSql) t
-            WHERE $whereClause
-            ORDER BY t.txn_date DESC
-            LIMIT :limit OFFSET :offset
-        ");
-        foreach ($binds as $key => $val) {
-            $dataStmt->bindValue($key, $val);
-        }
-        $dataStmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-        $dataStmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $dataStmt->execute();
-        $rows = $dataStmt->fetchAll(PDO::FETCH_ASSOC);
-
-        echo json_encode([
-            'success' => true,
-            'total'   => $totalRows,
-            'page'    => $page,
-            'limit'   => $limit,
-            'data'    => $rows
-        ]);
-    } catch (Exception $e) {
-        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM customer_requests WHERE ' . implode(' AND ', $where));
+        $stmt->execute($params);
+        return (int)$stmt->fetchColumn();
+    } catch (Throwable $e) {
+        return 0;
     }
+}
+
+function manager_list_customer_requests(): void {
+    global $pdo, $station_id, $role;
+
+    if (!manager_has_table($pdo, 'customer_requests')) {
+        echo json_encode(['success' => true, 'requests' => []]);
+        return;
+    }
+
+    $where = ["LOWER(cr.status) = 'pending'"];
+    $params = [];
+    if (!customer_can_view_all_stations($role)) {
+        $where[] = 'cr.station_id = ?';
+        $params[] = $station_id;
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT
+            cr.*,
+            TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS requested_by_name
+        FROM customer_requests cr
+        LEFT JOIN users u ON u.id = cr.requested_by
+        WHERE " . implode(' AND ', $where) . "
+        ORDER BY cr.created_at DESC, cr.id DESC
+        LIMIT 100
+    ");
+    $stmt->execute($params);
+    echo json_encode(['success' => true, 'requests' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+}
+
+function manager_fetch_request_for_review(int $requestId): array {
+    global $pdo, $station_id, $role;
+    $where = ['id = ?', "LOWER(status) = 'pending'"];
+    $params = [$requestId];
+    if (!customer_can_view_all_stations($role)) {
+        $where[] = 'station_id = ?';
+        $params[] = $station_id;
+    }
+
+    $stmt = $pdo->prepare('SELECT * FROM customer_requests WHERE ' . implode(' AND ', $where) . ' LIMIT 1');
+    $stmt->execute($params);
+    $request = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$request) {
+        throw new Exception('Customer request not found.');
+    }
+    return $request;
+}
+
+function manager_approve_customer_request(): void {
+    global $pdo, $me;
+
+    $requestId = (int)($_POST['id'] ?? 0);
+    if ($requestId <= 0) {
+        throw new Exception('Request ID is required.');
+    }
+
+    $request = manager_fetch_request_for_review($requestId);
+    $customerStation = (int)$request['station_id'];
+    if ($customerStation <= 0) {
+        throw new Exception('Request has no station.');
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $customerId = manager_generate_customer_id($customerStation);
+        $type = in_array($request['customer_type'], ['walk-in', 'regular', 'credit'], true)
+            ? $request['customer_type']
+            : 'walk-in';
+        $fullName = trim($request['first_name'] . ' ' . ($request['middle_name'] ?? '') . ' ' . $request['last_name']);
+
+        $newId = customer_insert_existing($pdo, [
+            'customer_id' => $customerId,
+            'station_id' => $customerStation,
+            'name' => $fullName,
+            'first_name' => $request['first_name'],
+            'middle_name' => $request['middle_name'],
+            'last_name' => $request['last_name'],
+            'contact_number' => $request['contact_number'],
+            'phone' => $request['contact_number'],
+            'address' => $request['address'],
+            'customer_type' => $type,
+            'type' => customer_legacy_billing_type($type),
+            'status' => 'active',
+            'account_status' => 'active',
+            'vehicle_plate' => strtoupper($request['vehicle_plate'] ?? ''),
+            'plate_number' => strtoupper($request['vehicle_plate'] ?? ''),
+            'vehicle_make' => $request['vehicle_make'] ?? '',
+            'vehicle_brand' => $request['vehicle_make'] ?? '',
+            'vehicle_model' => $request['vehicle_model'] ?? '',
+            'vehicle_type' => $request['vehicle_type'] ?? '',
+            'credit_limit' => 0,
+            'outstanding_balance' => 0,
+            'current_balance' => 0,
+            'balance' => 0,
+            'registered_by' => $me['id'] ?? null,
+        ], [
+            'registered_at' => 'NOW()',
+            'created_at' => 'NOW()',
+        ]);
+
+        $stmt = $pdo->prepare("
+            UPDATE customer_requests
+            SET status = 'approved',
+                reviewed_by = ?,
+                reviewed_at = NOW(),
+                customer_record_id = ?,
+                manager_remarks = ?,
+                updated_at = NOW()
+            WHERE id = ?
+        ");
+        $stmt->execute([$me['id'] ?? null, $newId, trim($_POST['remarks'] ?? ''), $requestId]);
+        $pdo->commit();
+
+        manager_audit('Approve', "Approved customer request #{$requestId} as {$customerId}", $newId);
+        echo json_encode(['success' => true, 'message' => 'Customer request approved and customer record created.', 'customer_id' => $customerId]);
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+}
+
+function manager_reject_customer_request(): void {
+    global $pdo, $me;
+
+    $requestId = (int)($_POST['id'] ?? 0);
+    if ($requestId <= 0) {
+        throw new Exception('Request ID is required.');
+    }
+    manager_fetch_request_for_review($requestId);
+
+    $stmt = $pdo->prepare("
+        UPDATE customer_requests
+        SET status = 'rejected',
+            reviewed_by = ?,
+            reviewed_at = NOW(),
+            manager_remarks = ?,
+            updated_at = NOW()
+        WHERE id = ?
+    ");
+    $stmt->execute([$me['id'] ?? null, trim($_POST['remarks'] ?? ''), $requestId]);
+
+    manager_audit('Reject', "Rejected customer request #{$requestId}", $requestId);
+    echo json_encode(['success' => true, 'message' => 'Customer request rejected.']);
 }
 ?>

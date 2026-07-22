@@ -784,6 +784,378 @@ function format_merch_unit($unit) {
     return ucfirst($unit);
 }
 
+if (!function_exists('get_product_brand')) {
+function get_product_brand($product_name, $category = '', $description = '') {
+    $name = strtolower(trim((string)$product_name));
+    $cat = strtolower(trim((string)$category));
+    $desc = strtolower(trim((string)$description));
+    $text = trim($name . ' ' . $cat . ' ' . $desc);
+
+    if ($name === '') return 'Generic';
+
+    $exact_contains = [
+        'coke/ sprite / royal' => 'Coke/Sprite/Royal',
+        'coke' => 'Coca-Cola',
+        'sprite' => 'Sprite',
+        'royal' => 'Royal',
+        'gatorade' => 'Gatorade',
+        'mineral water' => 'Mineral Water',
+        'breadstix' => 'Breadstix',
+        'butter coconut' => 'Butter Coconut',
+        'cheese ring' => 'Cheese Ring',
+        'chippy' => 'Chippy',
+        'chiz curls' => 'Chiz Curls',
+        'choco mucho' => 'Choco Mucho',
+        'clover' => 'Clover',
+        'cracklings' => 'Cracklings',
+        'fita' => 'Fita',
+        'jjampong' => 'Lucky Me',
+        'sotanghon' => 'Lucky Me',
+        'nova' => 'Nova',
+        'oishi' => 'Oishi',
+        'piattos' => 'Piattos',
+        'potato fries' => 'Potato Fries',
+        'presto' => 'Presto',
+        'roller coaster' => 'Roller Coaster',
+        'skyflakes' => 'Skyflakes',
+        'sweetcorn' => 'Sweet Corn',
+        'vic' => 'VIC',
+        'sakura' => 'Sakura',
+        'nomis' => 'Nomis',
+        'fleetmax' => 'Fleetmax',
+        'petromate' => 'Petron',
+        'petron' => 'Petron',
+        'blaze' => 'Blaze',
+        'ultron' => 'Ultron',
+        'sprint' => 'Sprint',
+        'rev-x' => 'Rev-X',
+        'rev x' => 'Rev-X',
+        'revx' => 'Rev-X',
+        'trekker' => 'Rev-X',
+        'enduro' => 'Rev-X',
+        'all terrain' => 'Rev-X',
+        'powerburn' => 'Petron 2T',
+        'autolube' => 'Petron 2T',
+        'atf' => 'Petron ATF',
+        'gep' => 'Petron GEP',
+        'hydrotur' => 'Petron Hydrotur',
+        'mp grease' => 'Petron MP Grease',
+    ];
+
+    foreach ($exact_contains as $needle => $brand) {
+        if (str_contains($name, $needle)) return $brand;
+    }
+
+    if (preg_match('/\bfes[-\s]?\d+/i', $name) || preg_match('/\bffs[-\s]?\d+/i', $name)) {
+        return 'Fleetmax';
+    }
+    if (preg_match('/\bhd\s*\d+/i', $name)) return 'Petron HD';
+    if (preg_match('/\bmo\s*\d+/i', $name)) return 'Petron MO';
+    if (str_contains($text, 'oil/fuel filter') || str_contains($name, 'oil filter') || str_contains($name, 'fuel filter')) {
+        return 'Generic Filter';
+    }
+    if (str_contains($text, 'oil/lube/grease')) {
+        return 'Petron';
+    }
+
+    $words = preg_split('/\s+/', trim((string)$product_name));
+    $first = preg_replace('/[^A-Za-z0-9\-]/', '', $words[0] ?? '');
+    return strlen($first) > 1 ? ucfirst(strtolower($first)) : 'Generic';
+}
+}
+
+function format_product_unit_display($unit, $product_name = '', $category = '', $description = '') {
+    $u = strtolower(trim((string)$unit));
+    $name = strtolower(trim((string)$product_name));
+    $cat = strtolower(trim((string)$category));
+    $desc = strtolower(trim((string)$description));
+    $text = trim($name . ' ' . $cat . ' ' . $desc);
+
+    $standard = [
+        'pc' => 'Piece (pc)', 'pcs' => 'Piece (pc)', 'piece' => 'Piece (pc)', 'pieces' => 'Piece (pc)',
+        'btl' => 'Bottle', 'bot' => 'Bottle', 'bottle' => 'Bottle', 'bottles' => 'Bottle',
+        'can' => 'Can', 'cans' => 'Can',
+        'pack' => 'Pack', 'packs' => 'Pack', 'packet' => 'Pack', 'packets' => 'Pack',
+        'box' => 'Box', 'boxes' => 'Box',
+        'carton' => 'Carton', 'cartons' => 'Carton', 'ctn' => 'Carton',
+        'case' => 'Case', 'cases' => 'Case',
+        'bag' => 'Bag', 'bags' => 'Bag',
+        'sachet' => 'Sachet', 'sachets' => 'Sachet',
+        'cup' => 'Cup', 'cups' => 'Cup',
+        'stick' => 'Stick', 'sticks' => 'Stick',
+        'tube' => 'Tube', 'tubes' => 'Tube',
+        'roll' => 'Roll', 'rolls' => 'Roll',
+        'l' => 'Liter (L)', 'ltr' => 'Liter (L)', 'liter' => 'Liter (L)', 'liters' => 'Liter (L)', 'litre' => 'Liter (L)', 'litres' => 'Liter (L)',
+        'ml' => 'Milliliter (mL)', 'milliliter' => 'Milliliter (mL)', 'milliliters' => 'Milliliter (mL)', 'millilitre' => 'Milliliter (mL)', 'millilitres' => 'Milliliter (mL)',
+        'kg' => 'Kilogram (kg)', 'kilogram' => 'Kilogram (kg)', 'kilograms' => 'Kilogram (kg)',
+        'g' => 'Gram (g)', 'gram' => 'Gram (g)', 'grams' => 'Gram (g)',
+        'pair' => 'Pair', 'pairs' => 'Pair', 'pr' => 'Pair',
+        'set' => 'Set', 'sets' => 'Set',
+        'dozen' => 'Dozen', 'dz' => 'Dozen',
+        'pail' => 'Pail', 'pails' => 'Pail',
+    ];
+
+    if ($u !== '' && !in_array($u, ['pc', 'pcs', 'piece', 'pieces'], true)) {
+        return $standard[$u] ?? ucfirst((string)$unit);
+    }
+
+    if (preg_match('/\bp\s*\/\s*\d+\b/i', $name)) return 'Pail';
+    if (preg_match('/\b\d+\s*\/\s*\d+\b/i', $name)) return 'Case';
+
+    if (preg_match('/\b(dozen|dz)\b/i', $text)) return 'Dozen';
+    if (preg_match('/\b(set|kit)\b/i', $text)) return 'Set';
+    if (preg_match('/\b(pair|pairs)\b/i', $text)) return 'Pair';
+    if (preg_match('/\b(box|carton|case|bag|sachet|cup|stick|tube|roll|pail)\b/i', $text, $m)) {
+        return $standard[strtolower($m[1])] ?? ucfirst($m[1]);
+    }
+    if (preg_match('/\b(can|canned)\b/i', $text)) return 'Can';
+
+    if (preg_match('/\b(coke|sprite|royal|gatorade|mineral water|water)\b/i', $text)) return 'Bottle';
+    if (preg_match('/\b(chippy|piattos|nova|oishi|clover|sweetcorn|cracklings|cheese ring|chiz curls|roller coaster|potato fries)\b/i', $text)) return 'Bag';
+    if (preg_match('/\b(breadstix|butter coconut|choco mucho|fita|presto|skyflakes|jjampong|sotanghon|snack|cookies|slugs|singles)\b/i', $text)) return 'Pack';
+    if (preg_match('/\b(filter|fleetmax|sakura|vic)\b/i', $text)) return 'Piece (pc)';
+
+    if (preg_match('/\b\d+(?:\.\d+)?\s*kg\b/i', $name)) return 'Kilogram (kg)';
+    if (preg_match('/\b\d+(?:\.\d+)?\s*g\b/i', $name)) return 'Gram (g)';
+    if (preg_match('/\b\d+(?:\.\d+)?\s*ml\b/i', $name)) return 'Milliliter (mL)';
+    if (preg_match('/\b\d+(?:\.\d+)?\s*l\b/i', $name)) return 'Liter (L)';
+
+    return 'Piece (pc)';
+}
+
+function format_product_category_display($category, $product_name = '', $description = '') {
+    $cat = trim((string)$category);
+    $cat_l = strtolower($cat);
+    $name_l = strtolower(trim((string)$product_name));
+    $desc_l = strtolower(trim((string)$description));
+    $text = trim($name_l . ' ' . $desc_l);
+
+    if (preg_match('/\b(vic)\b/i', $name_l) && preg_match('/filter/i', $name_l)) {
+        return 'VIC Filters';
+    }
+
+    if (
+        preg_match('/\b(filter|fleetmax|sakura|nomis)\b/i', $text) ||
+        str_contains($desc_l, 'oil/fuel filter')
+    ) {
+        return 'Filters';
+    }
+
+    if (
+        str_contains($desc_l, 'oil/lube/grease') ||
+        preg_match('/\b(2t|atf|gep|hd|mo|mp grease|grease|ultron|sprint|blaze|rev-x|revx|trekker|enduro|hydrotur|powerburn|terrain)\b/i', $text)
+    ) {
+        return 'Oils/Lubes/Grease';
+    }
+
+    if (preg_match('/\b(coke|sprite|royal|gatorade|mineral water|bottled water)\b/i', $name_l)) {
+        return 'Drinks/Food';
+    }
+
+    if (preg_match('/\b(breadstix|butter coconut|cheese ring|chippy|chiz curls|choco mucho|clover|cracklings|fita|jjampong|sotanghon|nova|oishi|piattos|potato fries|presto|roller coaster|skyflakes|sweetcorn|cookies|slugs|singles)\b/i', $name_l)) {
+        return 'Snacks';
+    }
+
+    if (preg_match('/\b(wiper|mat|air freshener|accessory|accessories|tool|car care)\b/i', $text)) {
+        return 'Car Accessories';
+    }
+
+    $valid = [
+        'oils/lubes/grease' => 'Oils/Lubes/Grease',
+        'filters' => 'Filters',
+        'vic filters' => 'VIC Filters',
+        'drinks/food' => 'Drinks/Food',
+        'snacks' => 'Snacks',
+        'car accessories' => 'Car Accessories',
+        'merchandise' => 'Merchandise',
+        'others' => 'Others',
+    ];
+
+    return $valid[$cat_l] ?? ($cat !== '' ? $cat : 'Others');
+}
+
+function ensure_product_category_id(PDO $pdo, string $category): int {
+    $category = trim($category);
+    if ($category === '') {
+        $category = 'Others';
+    }
+
+    try {
+        $stmt = $pdo->prepare("SELECT id FROM product_categories WHERE LOWER(name) = LOWER(?) LIMIT 1");
+        $stmt->execute([$category]);
+        $id = (int)($stmt->fetchColumn() ?: 0);
+        if ($id > 0) {
+            return $id;
+        }
+
+        $stmt = $pdo->prepare("INSERT INTO product_categories (name, created_at) VALUES (?, NOW())");
+        $stmt->execute([$category]);
+        return (int)$pdo->lastInsertId();
+    } catch (Exception $e) {
+        return 0;
+    }
+}
+
+function normalize_merchandise_catalog_rows(array $rows): array {
+    $normalized = [];
+
+    foreach ($rows as $row) {
+        $name = trim((string)($row['product_name'] ?? $row['name'] ?? ''));
+        if ($name === '') {
+            continue;
+        }
+
+        $description = (string)($row['description'] ?? '');
+        $category = format_product_category_display(
+            $row['category_name'] ?? $row['category'] ?? '',
+            $name,
+            $description
+        );
+        $unit = format_product_unit_display(
+            $row['unit'] ?? 'pcs',
+            $name,
+            $category,
+            $description
+        );
+        $stock = (float)($row['stock_quantity'] ?? $row['stock_level'] ?? $row['stock'] ?? 0);
+        $capacity = (float)($row['capacity'] ?? 0);
+        if ($capacity <= 0) {
+            $capacity = 480;
+        }
+
+        $row['product_name'] = $name;
+        $row['name'] = $name;
+        $row['description'] = $description;
+        $row['category'] = $category;
+        $row['category_name'] = $category;
+        $row['brand'] = get_product_brand($name, $category, $description);
+        $row['unit'] = $unit;
+        $row['supplier'] = 'Petron Corporation';
+        $row['unit_cost'] = (float)($row['unit_cost'] ?? $row['cost'] ?? 0);
+        $row['cost'] = $row['unit_cost'];
+        $row['unit_price'] = (float)($row['unit_price'] ?? $row['price'] ?? 0);
+        $row['price'] = $row['unit_price'];
+        $row['stock_quantity'] = $stock;
+        $row['stock_level'] = $stock;
+        $row['stock'] = $stock;
+        $row['capacity'] = $capacity;
+        $row['reorder_level'] = (float)($row['reorder_level'] ?? 24);
+        $row['critical_level'] = (float)($row['critical_level'] ?? 10);
+        $row['physical_count'] = isset($row['physical_count']) && $row['physical_count'] !== null ? (float)$row['physical_count'] : null;
+        $row['variance'] = isset($row['variance']) && $row['variance'] !== null ? (float)$row['variance'] : 0;
+        $row['status'] = strtolower(trim((string)($row['status'] ?? 'active'))) ?: 'active';
+        $row['last_updated'] = $row['last_updated'] ?? $row['updated_at'] ?? $row['created_at'] ?? '';
+        $row['pending_cost'] = isset($row['pending_cost']) ? (float)$row['pending_cost'] : null;
+        $row['pending_price'] = isset($row['pending_price']) ? (float)$row['pending_price'] : null;
+
+        $normalized[] = $row;
+    }
+
+    usort($normalized, function ($a, $b) {
+        return [$a['category_name'], $a['product_name']] <=> [$b['category_name'], $b['product_name']];
+    });
+
+    return $normalized;
+}
+
+function load_merchandise_pricing_catalog(PDO $pdo, int $station_id): array {
+    $rows = [];
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT ip.id,
+                   ip.product_name AS product_name,
+                   ip.product_name AS name,
+                   ip.category AS category,
+                   ip.category AS category_name,
+                   '' AS description,
+                   ip.sku,
+                   COALESCE(si.unit, ip.size, 'pcs') AS unit,
+                   ip.unit_cost AS unit_cost,
+                   ip.unit_price AS unit_price,
+                   COALESCE(si.status, ip.status, 'active') AS status,
+                   COALESCE(si.stock_level, ip.stock_quantity, ip.stock, 0) AS stock_quantity,
+                   COALESCE(si.capacity, 480) AS capacity,
+                   COALESCE(si.reorder_level, 24) AS reorder_level,
+                   COALESCE(si.critical_level, 10) AS critical_level,
+                   si.physical_count,
+                   COALESCE(si.variance, 0) AS variance,
+                   COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated,
+                   'Petron Corporation' AS supplier,
+                   COALESCE(p.new_cost, p.new_value) AS pending_cost,
+                   COALESCE(p.new_price, p.new_value) AS pending_price,
+                   p.status AS approval_status,
+                   p.id AS approval_id
+            FROM inventory_products ip
+            LEFT JOIN station_inventory si
+                   ON si.product_id = ip.id AND si.station_id = ?
+            LEFT JOIN pending_price_approvals p
+                   ON p.product_id = ip.id
+                  AND p.product_type = 'merchandise'
+                  AND p.status = 'pending'
+                  AND p.station_id = ?
+            WHERE LOWER(COALESCE(ip.category, '')) NOT IN ('fuel')
+            ORDER BY ip.category, ip.product_name
+        ");
+        $stmt->execute([$station_id, $station_id]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        $rows = [];
+    }
+
+    if (empty($rows)) {
+        $stmt = $pdo->prepare("
+            SELECT p.id,
+                   p.name AS product_name,
+                   p.name AS name,
+                   COALESCE(pc.name, 'General') AS category,
+                   COALESCE(pc.name, 'General') AS category_name,
+                   p.description,
+                   COALESCE(NULLIF(p.sku, ''), CONCAT('P', LPAD(p.id, 4, '0'))) AS sku,
+                   COALESCE(NULLIF(p.unit, ''), NULLIF(si.unit, ''), 'pcs') AS unit,
+                   COALESCE(p.cost, si.cost, 0) AS unit_cost,
+                   COALESCE(si.price, p.price, si.cost, p.cost, 0) AS unit_price,
+                   COALESCE(NULLIF(si.status, ''), NULLIF(p.status, ''), 'active') AS status,
+                   COALESCE(si.stock_level, p.current_stock, 0) AS stock_quantity,
+                   COALESCE(NULLIF(si.capacity, 0), NULLIF(p.capacity, 0), NULLIF(p.max_stock_level, 0), 480) AS capacity,
+                   COALESCE(NULLIF(si.reorder_level, 0), NULLIF(p.min_stock_level, 0), 24) AS reorder_level,
+                   COALESCE(NULLIF(si.critical_level, 0), 10) AS critical_level,
+                   si.physical_count,
+                   COALESCE(si.variance, 0) AS variance,
+                   COALESCE(si.last_updated, p.updated_at, p.created_at) AS last_updated,
+                   'Petron Corporation' AS supplier,
+                   COALESCE(pa.new_cost, pa.new_value) AS pending_cost,
+                   COALESCE(pa.new_price, pa.new_value) AS pending_price,
+                   pa.status AS approval_status,
+                   pa.id AS approval_id
+            FROM products p
+            LEFT JOIN product_categories pc ON pc.id = p.category_id
+            LEFT JOIN station_inventory si ON si.product_id = p.id AND si.station_id = ?
+            LEFT JOIN pending_price_approvals pa
+                   ON pa.product_id = p.id
+                  AND pa.product_type = 'merchandise'
+                  AND pa.status = 'pending'
+                  AND pa.station_id = ?
+            WHERE LOWER(COALESCE(pc.name, '')) NOT IN ('fuel', 'fuel products', 'services', 'service')
+              AND LOWER(COALESCE(p.status, 'active')) NOT IN ('deleted', 'archived')
+            ORDER BY COALESCE(pc.name, 'General'), p.name
+        ");
+        $stmt->execute([$station_id, $station_id]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    return normalize_merchandise_catalog_rows($rows);
+}
+
+function find_merchandise_pricing_item(PDO $pdo, int $station_id, int $product_id): ?array {
+    foreach (load_merchandise_pricing_catalog($pdo, $station_id) as $item) {
+        if ((int)($item['id'] ?? 0) === $product_id) {
+            return $item;
+        }
+    }
+    return null;
+}
+
 function today_key(){
   return date('Y-m-d');
 }

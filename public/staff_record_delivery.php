@@ -479,7 +479,10 @@ $grouped_merch_pos = [];
 $grouped_fuel_pos = [];
 $recorded_merch_deliveries = [];
 $recorded_fuel_deliveries = [];
-$delivery_suppliers = ['merchandise' => [], 'fuel' => []];
+$delivery_suppliers = [
+    'merchandise' => ['Petron Corporation' => true],
+    'fuel' => ['Petron Corporation' => true],
+];
 
 try {
     // 1. Merchandise POs — fetch base PO records (handles BOTH legacy & purchase_order_items formats)
@@ -715,18 +718,26 @@ try {
     error_log("Error fetching recorded deliveries: " . $e->getMessage());
 }
 
-foreach ($grouped_merch_pos as $po) {
-    if (!empty($po['supplier_name'])) $delivery_suppliers['merchandise'][$po['supplier_name']] = true;
+foreach ($grouped_merch_pos as &$po) {
+    $po['supplier_name'] = 'Petron Corporation';
+    $delivery_suppliers['merchandise']['Petron Corporation'] = true;
 }
-foreach ($recorded_merch_deliveries as $delivery) {
-    if (!empty($delivery['supplier_name'])) $delivery_suppliers['merchandise'][$delivery['supplier_name']] = true;
+unset($po);
+foreach ($recorded_merch_deliveries as &$delivery) {
+    $delivery['supplier_name'] = 'Petron Corporation';
+    $delivery_suppliers['merchandise']['Petron Corporation'] = true;
 }
-foreach ($grouped_fuel_pos as $po) {
-    if (!empty($po['supplier_name'])) $delivery_suppliers['fuel'][$po['supplier_name']] = true;
+unset($delivery);
+foreach ($grouped_fuel_pos as &$po) {
+    $po['supplier_name'] = 'Petron Corporation';
+    $delivery_suppliers['fuel']['Petron Corporation'] = true;
 }
-foreach ($recorded_fuel_deliveries as $delivery) {
-    if (!empty($delivery['supplier_name'])) $delivery_suppliers['fuel'][$delivery['supplier_name']] = true;
+unset($po);
+foreach ($recorded_fuel_deliveries as &$delivery) {
+    $delivery['supplier_name'] = 'Petron Corporation';
+    $delivery_suppliers['fuel']['Petron Corporation'] = true;
 }
+unset($delivery);
 ksort($delivery_suppliers['merchandise']);
 ksort($delivery_suppliers['fuel']);
 

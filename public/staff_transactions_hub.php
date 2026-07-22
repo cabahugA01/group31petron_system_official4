@@ -12,6 +12,7 @@ $page_id = 'transactions';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
 require_once __DIR__ . '/../backend/transaction_schema_fix.php';
+require_once __DIR__ . '/../backend/customer_module_helpers.php';
 require_login();
 
 // Set page_id based on section so sidebar highlights the correct nav item
@@ -24,6 +25,9 @@ if (in_array($_section_early, ['fuel', 'fuel_history'])) {
 $me         = current_user();
 $station_id = user_station_id();
 $role       = role_key($me['role'] ?? '');
+
+customer_ensure_optional_columns($pdo);
+customer_ensure_request_table($pdo);
 
 // ── Generate a per-request API token so AJAX calls don't depend on session cookies ──
 if (empty($_SESSION['api_token'])) {
@@ -188,26 +192,43 @@ try {
 $customers = [];
 $customer_names = []; // For autocomplete - full names
 try {
+    $customerNameExpr = customer_display_name_expr($pdo, 'c');
+    $customerFirstExpr = customer_first_name_expr($pdo, 'c');
+    $customerLastExpr = customer_last_name_expr($pdo, 'c');
+    $customerContactExpr = customer_contact_expr($pdo, 'c');
+    $customerStatusExpr = customer_status_expr($pdo, 'c');
+    $customerTypeExpr = customer_type_expr($pdo, 'c');
+    $customerIdExpr = customer_id_expr($pdo, 'c');
+    $customerPlateExpr = customer_vehicle_expr($pdo, 'vehicle_plate', 'c');
+    $customerMakeExpr = customer_vehicle_expr($pdo, 'vehicle_make', 'c');
+    $customerModelExpr = customer_vehicle_expr($pdo, 'vehicle_model', 'c');
+    $customerVehicleTypeExpr = customer_vehicle_expr($pdo, 'vehicle_type', 'c');
+    $customerCreditLimitExpr = customer_credit_limit_expr($pdo, 'c');
+    $customerBalanceExpr = customer_balance_expr($pdo, 'c');
+    $customerPointsExpr = customer_expr_col($pdo, 'c', 'points', '0');
+    $customerIdNumberExpr = customer_expr_col($pdo, 'c', 'id_number', "''");
+
     // Fetch customers with vehicle information for the search feature
     $stmt = $pdo->prepare("
         SELECT 
             c.id, 
-            c.name,
-            c.first_name,
-            c.last_name,
-            c.contact_number, 
-            c.credit_limit, 
-            c.balance,
-            c.points,
-            c.customer_id,
-            c.id_number,
-            NULL AS vehicle_type,
-            NULL AS vehicle_brand,
-            NULL AS vehicle_model,
-            NULL AS plate_number
+            {$customerNameExpr} AS name,
+            {$customerFirstExpr} AS first_name,
+            {$customerLastExpr} AS last_name,
+            {$customerContactExpr} AS contact_number,
+            {$customerCreditLimitExpr} AS credit_limit,
+            {$customerBalanceExpr} AS balance,
+            {$customerPointsExpr} AS points,
+            {$customerIdExpr} AS customer_id,
+            {$customerIdNumberExpr} AS id_number,
+            {$customerVehicleTypeExpr} AS vehicle_type,
+            {$customerMakeExpr} AS vehicle_brand,
+            {$customerModelExpr} AS vehicle_model,
+            {$customerPlateExpr} AS plate_number,
+            {$customerTypeExpr} AS customer_type
         FROM customers c
-        WHERE c.station_id = ? AND c.status = 'active' 
-        ORDER BY c.first_name, c.last_name
+        WHERE c.station_id = ? AND LOWER({$customerStatusExpr}) = 'active'
+        ORDER BY {$customerNameExpr}
     ");
     $stmt->execute([$station_id]);
     $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -4487,7 +4508,7 @@ input[list] {
                                        class="txn-input"
                                        placeholder="Type to search customer..."
                                        autocomplete="off"
-                                       oninput="searchCustomerByName('jo')"
+                                       oninput="clearSelectedCustomer('jo'); searchCustomerByName('jo')"
                                        onfocus="searchCustomerByName('jo')">
                                 <!-- First Name Dropdown -->
                                 <div id="joFirstNameResults" 
@@ -4834,7 +4855,7 @@ input[list] {
                                        class="txn-input"
                                        placeholder="Type to search customer..."
                                        autocomplete="off"
-                                       oninput="searchCustomerByName('merch')"
+                                       oninput="clearSelectedCustomer('merch'); searchCustomerByName('merch')"
                                        onfocus="searchCustomerByName('merch')">
                                 <!-- First Name Dropdown -->
                                 <div id="merchFirstNameResults" 
@@ -6115,6 +6136,7 @@ input[list] {
         let cart = [];
         let selectedProduct = null;
         const pointsPerPeso = <?= (float)$points_per_peso ?>;
+        const selectedCustomerIds = { jo: null, merch: null };
 
         function onLoyaltyChange() {
             const program = document.getElementById('loyaltyProgram')?.value || 'No Loyalty';
@@ -6831,7 +6853,8 @@ input[list] {
                 'plate_number' => $customer['plate_number'] ?? '',
                 'points' => (int)($customer['points'] ?? 0),
                 'customer_id' => $customer['customer_id'] ?? '',
-                'id_number' => $customer['id_number'] ?? ''
+                'id_number' => $customer['id_number'] ?? '',
+                'customer_type' => $customer['customer_type'] ?? 'walk-in'
             ];
         }, $customers)) ?>;
 
@@ -6840,11 +6863,195 @@ input[list] {
             console.log('Sample customer:', customerData[0]);
         }
 
+        let customerRequestPrefix = 'merch';
+
+        function ensureCustomerRequestModal() {
+            if (document.getElementById('customerRequestModal')) return;
+
+            const modalHtml = `
+                <div id="customerRequestModal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.48);align-items:center;justify-content:center;padding:18px;">
+                    <div style="background:#fff;border-radius:14px;max-width:720px;width:100%;box-shadow:0 18px 50px rgba(15,23,42,.24);overflow:hidden;">
+                        <div style="display:flex;align-items:flex-start;gap:12px;padding:18px 22px;border-bottom:1px solid #e2e8f0;">
+                            <div style="width:42px;height:42px;border-radius:10px;background:#eff6ff;display:flex;align-items:center;justify-content:center;color:#003b7a;">
+                                <i class="fas fa-user-plus"></i>
+                            </div>
+                            <div style="flex:1;">
+                                <div style="font-size:16px;font-weight:800;color:#00264D;">Request New Customer</div>
+                                <div style="font-size:12px;color:#64748b;">Submitted to the Manager for approval.</div>
+                            </div>
+                            <button type="button" onclick="closeCustomerRequestModal()" style="border:none;background:transparent;color:#64748b;font-size:22px;line-height:1;cursor:pointer;">&times;</button>
+                        </div>
+                        <div style="padding:20px 22px;max-height:70vh;overflow:auto;">
+                            <div class="txn-form-grid" style="margin-bottom:14px;">
+                                <div class="txn-field">
+                                    <label>First Name <span style="color:#dc2626;">*</span></label>
+                                    <input type="text" id="requestCustomerFirstName" class="txn-input" autocomplete="off">
+                                </div>
+                                <div class="txn-field">
+                                    <label>Middle Name</label>
+                                    <input type="text" id="requestCustomerMiddleName" class="txn-input" autocomplete="off">
+                                </div>
+                                <div class="txn-field">
+                                    <label>Last Name <span style="color:#dc2626;">*</span></label>
+                                    <input type="text" id="requestCustomerLastName" class="txn-input" autocomplete="off">
+                                </div>
+                            </div>
+                            <div class="txn-form-grid" style="margin-bottom:14px;">
+                                <div class="txn-field">
+                                    <label>Contact Number <span style="color:#dc2626;">*</span></label>
+                                    <input type="text" id="requestCustomerContact" class="txn-input" autocomplete="off">
+                                </div>
+                                <div class="txn-field">
+                                    <label>Customer Type</label>
+                                    <select id="requestCustomerType" class="txn-select">
+                                        <option value="walk-in">Walk-in</option>
+                                        <option value="regular">Regular</option>
+                                        <option value="credit">Credit</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="txn-field" style="margin-bottom:14px;">
+                                <label>Address</label>
+                                <input type="text" id="requestCustomerAddress" class="txn-input" autocomplete="off">
+                            </div>
+                            <div style="font-size:11px;font-weight:800;color:#00264D;text-transform:uppercase;margin:14px 0 10px;">Vehicle Information</div>
+                            <div class="txn-form-grid" style="margin-bottom:14px;">
+                                <div class="txn-field">
+                                    <label>Plate Number</label>
+                                    <input type="text" id="requestCustomerPlate" class="txn-input" autocomplete="off">
+                                </div>
+                                <div class="txn-field">
+                                    <label>Vehicle Make</label>
+                                    <input type="text" id="requestCustomerMake" class="txn-input" autocomplete="off">
+                                </div>
+                                <div class="txn-field">
+                                    <label>Vehicle Model</label>
+                                    <input type="text" id="requestCustomerModel" class="txn-input" autocomplete="off">
+                                </div>
+                                <div class="txn-field">
+                                    <label>Vehicle Type</label>
+                                    <input type="text" id="requestCustomerVehicleType" class="txn-input" autocomplete="off">
+                                </div>
+                            </div>
+                            <div class="txn-field" style="margin-bottom:14px;">
+                                <label>Reason / Notes</label>
+                                <textarea id="requestCustomerReason" class="txn-input" rows="3" placeholder="Why does this customer need to be added?" style="resize:vertical;"></textarea>
+                            </div>
+                            <div id="customerRequestError" style="display:none;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:12px;padding:10px 12px;margin-bottom:14px;"></div>
+                            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                                <button type="button" onclick="closeCustomerRequestModal()" class="txn-btn secondary">Cancel</button>
+                                <button type="button" id="customerRequestSubmitBtn" onclick="submitCustomerRequest()" class="txn-btn primary">
+                                    <i class="fas fa-paper-plane"></i> Submit Request
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            document.getElementById('customerRequestModal')?.addEventListener('click', function(e) {
+                if (e.target === this) closeCustomerRequestModal();
+            });
+        }
+
+        function setCustomerRequestError(message) {
+            const box = document.getElementById('customerRequestError');
+            if (!box) return;
+            box.textContent = message || '';
+            box.style.display = message ? 'block' : 'none';
+        }
+
+        function openCustomerRequestModal(prefix) {
+            ensureCustomerRequestModal();
+            customerRequestPrefix = prefix === 'jo' ? 'jo' : 'merch';
+            setCustomerRequestError('');
+
+            const get = id => (document.getElementById(id)?.value || '').trim();
+            document.getElementById('requestCustomerFirstName').value = get(customerRequestPrefix + 'FirstName');
+            document.getElementById('requestCustomerMiddleName').value = '';
+            document.getElementById('requestCustomerLastName').value = get(customerRequestPrefix + 'LastName');
+            document.getElementById('requestCustomerContact').value = get(customerRequestPrefix + 'ContactNumber');
+            document.getElementById('requestCustomerType').value = 'walk-in';
+            document.getElementById('requestCustomerAddress').value = '';
+            document.getElementById('requestCustomerPlate').value = get(customerRequestPrefix + 'VehiclePlate');
+            document.getElementById('requestCustomerMake').value = get(customerRequestPrefix + 'VehicleBrand');
+            document.getElementById('requestCustomerModel').value = get(customerRequestPrefix + 'VehicleModel');
+            document.getElementById('requestCustomerVehicleType').value = get(customerRequestPrefix + 'VehicleType');
+            document.getElementById('requestCustomerReason').value = 'Needed for transaction lookup.';
+
+            document.getElementById(customerRequestPrefix + 'CustomerResults')?.style.setProperty('display', 'none');
+            document.getElementById(customerRequestPrefix + 'FirstNameResults')?.style.setProperty('display', 'none');
+            document.getElementById('customerRequestModal').style.display = 'flex';
+            document.getElementById('requestCustomerFirstName')?.focus();
+        }
+
+        function closeCustomerRequestModal() {
+            const modal = document.getElementById('customerRequestModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        async function submitCustomerRequest() {
+            const firstName = (document.getElementById('requestCustomerFirstName')?.value || '').trim();
+            const lastName = (document.getElementById('requestCustomerLastName')?.value || '').trim();
+            const contact = (document.getElementById('requestCustomerContact')?.value || '').trim();
+
+            if (!firstName || !lastName || !contact) {
+                setCustomerRequestError('First name, last name, and contact number are required.');
+                return;
+            }
+
+            const form = new FormData();
+            form.append('action', 'request_new_customer');
+            form.append('first_name', firstName);
+            form.append('middle_name', (document.getElementById('requestCustomerMiddleName')?.value || '').trim());
+            form.append('last_name', lastName);
+            form.append('contact_number', contact);
+            form.append('address', (document.getElementById('requestCustomerAddress')?.value || '').trim());
+            form.append('customer_type', document.getElementById('requestCustomerType')?.value || 'walk-in');
+            form.append('vehicle_plate', (document.getElementById('requestCustomerPlate')?.value || '').trim());
+            form.append('vehicle_make', (document.getElementById('requestCustomerMake')?.value || '').trim());
+            form.append('vehicle_model', (document.getElementById('requestCustomerModel')?.value || '').trim());
+            form.append('vehicle_type', (document.getElementById('requestCustomerVehicleType')?.value || '').trim());
+            form.append('request_reason', (document.getElementById('requestCustomerReason')?.value || '').trim());
+
+            const btn = document.getElementById('customerRequestSubmitBtn');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+            }
+
+            try {
+                const res = await fetch('staff_customer_operations.php', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    body: form
+                });
+                const data = await res.json();
+                if (data.success) {
+                    closeCustomerRequestModal();
+                    showTxnAlert(data.message || 'Customer request submitted to the Manager.', 'success');
+                } else {
+                    setCustomerRequestError(data.error || 'Unable to submit customer request.');
+                }
+            } catch (err) {
+                setCustomerRequestError('Network error: ' + err.message);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request';
+                }
+            }
+        }
+
         // ═══════════════════════════════════════════════════════════════════════
         // Customer Type Toggle & Search Functions
         // ═══════════════════════════════════════════════════════════════════════
         
         function toggleCustomerType(prefix) {
+            if (Object.prototype.hasOwnProperty.call(selectedCustomerIds, prefix)) {
+                selectedCustomerIds[prefix] = null;
+            }
+
             // UPDATED: First Name is typeable for search, other fields auto-fill from selection
             const searchSection = document.getElementById(prefix + 'SearchCustomerSection');
             const firstNameInput = document.getElementById(prefix + 'FirstName');
@@ -6898,6 +7105,12 @@ input[list] {
             }
         }
 
+        function clearSelectedCustomer(prefix) {
+            if (Object.prototype.hasOwnProperty.call(selectedCustomerIds, prefix)) {
+                selectedCustomerIds[prefix] = null;
+            }
+        }
+
         function searchCustomer(prefix) {
             const searchInput = document.getElementById(prefix + 'SearchCustomer');
             const resultsDiv = document.getElementById(prefix + 'CustomerResults');
@@ -6923,7 +7136,16 @@ input[list] {
             });
             
             if (filtered.length === 0) {
-                resultsDiv.innerHTML = '<div style="padding:16px;text-align:center;color:#94a3b8;font-size:13px;">No customers found</div>';
+                resultsDiv.innerHTML = `
+                    <div style="padding:14px 16px;text-align:center;color:#64748b;font-size:13px;">No customers found</div>
+                    <div style="padding:0 16px 14px;text-align:center;">
+                        <button type="button" onclick="openCustomerRequestModal('${prefix}')"
+                                style="border:1px solid #003b7a;background:#003b7a;color:#fff;border-radius:8px;
+                                       padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;">
+                            <i class="fas fa-user-plus"></i> Request New Customer
+                        </button>
+                    </div>
+                `;
                 resultsDiv.style.display = 'block';
                 return;
             }
@@ -6960,6 +7182,7 @@ input[list] {
         function selectCustomer(prefix, customerId) {
             const customer = customerData.find(c => c.id == customerId);
             if (!customer) return;
+            selectedCustomerIds[prefix] = parseInt(customer.id, 10) || null;
             
             // Fill in all customer fields
             const firstNameInput = document.getElementById(prefix + 'FirstName');
@@ -7023,16 +7246,29 @@ input[list] {
                 const firstName = (c.first_name || '').toLowerCase();
                 const lastName = (c.last_name || '').toLowerCase();
                 const fullName = (firstName + ' ' + lastName).trim();
+                const contact = (c.contact_number || '').toLowerCase();
+                const plate = (c.plate_number || '').toLowerCase();
                 
                 return firstName.includes(query) || 
                        lastName.includes(query) ||
-                       fullName.includes(query);
+                       fullName.includes(query) ||
+                       contact.includes(query) ||
+                       plate.includes(query);
             });
             
             console.log('Found', filtered.length, 'matching customers');
             
             if (filtered.length === 0) {
-                resultsDiv.innerHTML = '<div style="padding:16px;text-align:center;color:#94a3b8;font-size:13px;">No customers found</div>';
+                resultsDiv.innerHTML = `
+                    <div style="padding:14px 16px;text-align:center;color:#64748b;font-size:13px;">No customers found</div>
+                    <div style="padding:0 16px 14px;text-align:center;">
+                        <button type="button" onclick="openCustomerRequestModal('${prefix}')"
+                                style="border:1px solid #003b7a;background:#003b7a;color:#fff;border-radius:8px;
+                                       padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;">
+                            <i class="fas fa-user-plus"></i> Request New Customer
+                        </button>
+                    </div>
+                `;
                 resultsDiv.style.display = 'block';
                 return;
             }
@@ -7070,6 +7306,7 @@ input[list] {
         function selectCustomerFromName(prefix, customerId) {
             const customer = customerData.find(c => c.id == customerId);
             if (!customer) return;
+            selectedCustomerIds[prefix] = parseInt(customer.id, 10) || null;
             
             console.log('Selected customer from name field:', customer);
             
@@ -7628,6 +7865,7 @@ input[list] {
         // ── Full reset: product fields + customer fields (called by Reset Form button) ──
         function fullResetMerchandiseForm() {
             resetMerchandiseForm(); // clears product fields
+            selectedCustomerIds.merch = null;
             // Also clear customer details
             const merchFirstName = document.getElementById('merchFirstName');
             const merchLastName = document.getElementById('merchLastName');
@@ -7648,6 +7886,7 @@ input[list] {
 
         // ── Reset Job Order form fields only ─────────────────────────────────
         function resetJobOrderForm() {
+            selectedCustomerIds.jo = null;
             // Customer fields remain readonly - must search for customer
             // (Walk-in option removed - all customers must be registered)
             
@@ -8112,6 +8351,7 @@ input[list] {
 
             // ── Customer name ─────────────────────────────────────────────────
             const hasService = cart.some(i => i.item_type === 'service');
+            const activeCustomerPrefix = hasService ? 'jo' : 'merch';
             let firstName, lastName;
             if (hasService) {
                 firstName = (document.getElementById('joFirstName')?.value || '').trim();
@@ -8121,6 +8361,11 @@ input[list] {
                 firstName = (document.getElementById('merchFirstName')?.value || '').trim();
                 lastName  = (document.getElementById('merchLastName')?.value  || '').trim();
                 if (!firstName) { showTxnAlert('Please enter the customer\'s first name.', 'warning'); return; }
+            }
+            const selectedCustomerId = selectedCustomerIds[activeCustomerPrefix] || null;
+            if (!selectedCustomerId) {
+                showTxnAlert('Please select an existing customer from the dropdown. If this is a new customer, use Request New Customer.', 'warning');
+                return;
             }
 
             // ── Payment validation ────────────────────────────────────────────
@@ -8195,6 +8440,7 @@ input[list] {
 
             const payload = {
                 action:              'create_transaction',
+                customer_id:         selectedCustomerId,
                 customer_first_name: firstName || null,
                 customer_last_name:  lastName  || null,
                 customer_name:       [firstName, lastName].filter(Boolean).join(' ') || 'No Customer',
@@ -8265,6 +8511,8 @@ input[list] {
                     renderCart();
                     updateCheckoutBtn();
                     resetMerchandiseForm();
+                    selectedCustomerIds.jo = null;
+                    selectedCustomerIds.merch = null;
                     // Reset JO fields
                     ['joFirstName','joLastName','joContactNumber','joVehiclePlate',
                      'joServicePrice','joNotes','joEstimatedDuration'].forEach(id => {
