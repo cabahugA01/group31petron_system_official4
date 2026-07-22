@@ -705,31 +705,25 @@ include __DIR__ . '/../partials/header.php';
         </div>
     <?php else: ?>
     <div class="card" style="padding:0;overflow:hidden;">
-        <div class="table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
-            <table class="pricing-table" id="merchTable">
+        <div class="table-wrap" style="overflow-x:hidden; width:100%;">
+            <table class="pricing-table" id="merchTable" style="width:100%; table-layout:auto;">
                 <thead>
                     <tr>
-                        <th>SKU</th>
-                        <th>Product Name</th>
-                        <th>Brand</th>
-                        <th>Category</th>
-                        <th>UOM</th>
-                        <th>Supplier</th>
+                        <th>Product &amp; SKU</th>
+                        <th>Category / Brand</th>
+                        <th>UOM / Supplier</th>
                         <th>Cost (&#8369;)</th>
                         <th>Price (&#8369;)</th>
-                        <th>Capacity</th>
-                        <th>Stock / Reorder</th>
-                        <th>Physical Count</th>
-                        <th>Variance</th>
+                        <th>Stock Level</th>
                         <th>Status</th>
                         <th>Updated</th>
-                        <th style="text-align: center;">Action</th>
+                        <th style="text-align:center;">Action</th>
                     </tr>
                 </thead>
                 <tbody id="merchBody">
                 <?php foreach ($merch_by_cat as $cat_label => $items): ?>
                     <tr class="cat-row" data-cat-header="<?php echo htmlspecialchars($cat_label); ?>">
-                        <td colspan="15">
+                        <td colspan="9">
                             <i class="fas fa-folder"></i>
                             <?php echo htmlspecialchars($cat_label); ?>
                             <span class="muted cat-count" style="font-weight:400;margin-left:6px;">(<?php echo count($items); ?> items)</span>
@@ -742,9 +736,6 @@ include __DIR__ . '/../partials/header.php';
                         $reorder_level = (int)($item['reorder_level']  ?? 24);
                         $critical_lvl  = (int)($item['critical_level'] ?? 10);
                         $margin        = $price - $cost;
-                        $capacity      = (float)($item['capacity'] ?? 0);
-                        $physical      = $item['physical_count'];
-                        $variance      = (float)($item['variance'] ?? 0);
                         $updated       = !empty($item['last_updated']) ? date('M d, Y', strtotime($item['last_updated'])) : '&mdash;';
 
                         $below_cost = ($price > 0 && $price < $cost);
@@ -767,42 +758,37 @@ include __DIR__ . '/../partials/header.php';
                         data-status="<?php echo $st_key; ?>"
                         data-noprice="<?php echo $no_price ? '1' : '0'; ?>"
                         data-belowcost="<?php echo $below_cost ? '1' : '0'; ?>">
-                        <td class="muted"><?php echo htmlspecialchars($item['sku'] ?? '&mdash;'); ?></td>
                         <td>
-                            <strong><?php echo htmlspecialchars($item['product_name'] ?? ''); ?></strong>
+                            <strong style="color:#1e293b;font-size:13px;"><?php echo htmlspecialchars($item['product_name'] ?? ''); ?></strong>
                             <?php if ($below_cost): ?>
-                                <span class="badge badge-warn" style="margin-left:6px;font-size:10px;">&#9888; Price Below Cost</span>
+                                <span class="badge badge-warn" style="margin-left:4px;font-size:10px;">&#9888; Below Cost</span>
                             <?php endif; ?>
+                            <div class="muted" style="font-size:11px;">SKU: <?php echo htmlspecialchars($item['sku'] ?? '&mdash;'); ?></div>
                         </td>
-                        <td><?php echo htmlspecialchars($item['brand'] ?? 'Generic'); ?></td>
-                        <td><?php echo htmlspecialchars($cat_label); ?></td>
-                        <td class="muted"><?php echo htmlspecialchars($item['unit'] ?? 'Piece (pc)'); ?></td>
-                        <td><?php echo htmlspecialchars($item['supplier'] ?? 'Petron Corporation'); ?></td>
-                        <td style="color:#64748b;">&#8369;<?php echo number_format($cost, 2); ?></td>
+                        <td>
+                            <div style="font-weight:600;color:#334155;"><?php echo htmlspecialchars($cat_label); ?></div>
+                            <div class="muted" style="font-size:11px;"><?php echo htmlspecialchars($item['brand'] ?? 'Generic'); ?></div>
+                        </td>
+                        <td>
+                            <div style="font-weight:500;color:#334155;"><?php echo htmlspecialchars($item['unit'] ?? 'Piece (pc)'); ?></div>
+                            <div class="muted" style="font-size:11px;"><?php echo htmlspecialchars($item['supplier'] ?? 'Petron Corporation'); ?></div>
+                        </td>
+                        <td style="color:#64748b;font-weight:500;">&#8369;<?php echo number_format($cost, 2); ?></td>
                         <td>
                             <?php if ($no_price): ?>
                                 <span class="badge badge-noprice">No Price Set</span>
                             <?php else: ?>
-                                <strong style="color:<?php echo $below_cost ? '#dc2626' : '#002F6C'; ?>">
+                                <strong style="color:<?php echo $below_cost ? '#dc2626' : '#002F6C'; ?>;font-size:13px;">
                                     &#8369;<?php echo number_format($price, 2); ?>
                                 </strong>
                             <?php endif; ?>
                         </td>
-                        <td><?php echo number_format($capacity, 0); ?></td>
                         <td>
-                            <strong><?php echo number_format($stock, 0); ?></strong>
-                            <div class="muted" style="font-size:11px;">Reorder: <?php echo number_format($reorder_level); ?> | Critical: <?php echo number_format($critical_lvl); ?></div>
-                        </td>
-                        <td><?php echo $physical !== null ? number_format((float)$physical, 0) : '<span class="muted">&mdash;</span>'; ?></td>
-                        <td>
-                            <?php if (abs($variance) > 0.0001): ?>
-                                <span class="badge <?php echo $variance < 0 ? 'badge-critical' : 'badge-low'; ?>"><?php echo ($variance > 0 ? '+' : '') . number_format($variance, 0); ?></span>
-                            <?php else: ?>
-                                <span class="muted">&mdash;</span>
-                            <?php endif; ?>
+                            <strong style="font-size:13px;"><?php echo number_format($stock, 0); ?></strong>
+                            <div class="muted" style="font-size:11px;">Reorder: <?php echo number_format($reorder_level); ?> | Crit: <?php echo number_format($critical_lvl); ?></div>
                         </td>
                         <td><span class="badge <?php echo $st_class; ?>"><?php echo $st_label; ?></span></td>
-                        <td class="muted"><?php echo $updated; ?></td>
+                        <td class="muted" style="font-size:11px;"><?php echo $updated; ?></td>
                         <td style="text-align: center; vertical-align: middle;">
                             <?php if (($item['approval_status'] ?? '') === 'pending'): ?>
                                 <div style="display:flex; flex-direction:column; gap:4px; align-items:center;">

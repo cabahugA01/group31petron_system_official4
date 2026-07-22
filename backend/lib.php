@@ -1652,7 +1652,7 @@ function get_system_logo_url($station_id = null) {
     return $default_logo;
 }
 
-define('TANK_CONFIG_17', [
+define('PETRON_7_UGT_CONFIG', [
     ['fuel_type'=>'Diesel',       'label'=>'DIESEL - 1',       'tank'=>'UGT #1',  'tanker_num'=>1,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
     ['fuel_type'=>'Diesel',       'label'=>'DIESEL - 2',       'tank'=>'UGT #2',  'tanker_num'=>2,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
     ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'UGT #3',  'tanker_num'=>3,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
@@ -1662,23 +1662,75 @@ define('TANK_CONFIG_17', [
     ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'UGT #7',  'tanker_num'=>7,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
 ]);
 
-function get_tank_config() {
-    return TANK_CONFIG_17;
+function get_tank_config(int $station_id = null): array {
+    global $pdo;
+
+    if ($station_id === null) {
+        $station_id = (int)user_station_id();
+    }
+
+    if ($pdo && $station_id > 0) {
+        try {
+            $tables = $pdo->query("SHOW TABLES LIKE 'fuel_tanks'")->fetchAll(PDO::FETCH_COLUMN);
+            if (!empty($tables)) {
+                $stmt = $pdo->prepare("
+                    SELECT
+                        id AS tanker_num,
+                        COALESCE(NULLIF(TRIM(fuel_type), ''), 'Unknown') AS fuel_type,
+                        COALESCE(NULLIF(TRIM(label), ''), CONCAT('Tank #', id)) AS label,
+                        COALESCE(NULLIF(TRIM(tank_name), ''), CONCAT('UGT #', id)) AS tank,
+                        COALESCE(NULLIF(capacity, 0), 14000) AS capacity,
+                        COALESCE(reorder_level, 0) AS reorder_level,
+                        COALESCE(critical_level, 0) AS critical_level
+                    FROM fuel_tanks
+                    WHERE station_id = ?
+                      AND LOWER(COALESCE(status,'active')) NOT IN ('inactive','disabled','deleted')
+                    ORDER BY id ASC
+                ");
+                $stmt->execute([$station_id]);
+                $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                if (!empty($rows)) {
+                    return array_map('_normalize_tank_row', $rows);
+                }
+            }
+        } catch (Throwable $e) {}
+    }
+
+    return array_map('_normalize_tank_row', PETRON_7_UGT_CONFIG);
 }
 
-function get_tanks_by_fuel_type($fuel_type) {
+/** Internal helper: ensure expected keys exist and are properly typed. */
+function _normalize_tank_row(array $row): array {
+    $cap = max(0.0, (float)($row['capacity'] ?? 0));
+    if ($cap <= 0) $cap = 14000.0;
+    $reorder   = (float)($row['reorder_level'] ?? 0);
+    $critical  = (float)($row['critical_level'] ?? 0);
+    if ($reorder <= 0)  $reorder  = ($cap == 7000) ? 2000.0 : 5000.0;
+    if ($critical <= 0) $critical = ($cap == 7000) ? 1000.0 : 2500.0;
+    return [
+        'fuel_type'      => trim((string)($row['fuel_type']  ?? 'Unknown')),
+        'label'          => trim((string)($row['label']      ?? 'Tank')),
+        'tank'           => trim((string)($row['tank']       ?? 'UGT')),
+        'tanker_num'     => (int)($row['tanker_num']         ?? 0),
+        'capacity'       => $cap,
+        'reorder_level'  => $reorder,
+        'critical_level' => $critical,
+    ];
+}
+
+function get_tanks_by_fuel_type(string $fuel_type, int $station_id = null): array {
     $tanks = [];
-    foreach (TANK_CONFIG_17 as $tank) {
-        if (strtolower($tank['fuel_type']) === strtolower($fuel_type)) {
+    foreach (get_tank_config($station_id) as $tank) {
+        if (strcasecmp($tank['fuel_type'], $fuel_type) === 0) {
             $tanks[] = $tank;
         }
     }
     return $tanks;
 }
 
-function get_tank_by_ugt($ugt_no) {
-    foreach (TANK_CONFIG_17 as $tank) {
-        if ((int)$tank['tanker_num'] === (int)$ugt_no) {
+function get_tank_by_ugt(int $ugt_no, int $station_id = null): ?array {
+    foreach (get_tank_config($station_id) as $tank) {
+        if ((int)$tank['tanker_num'] === $ugt_no) {
             return $tank;
         }
     }

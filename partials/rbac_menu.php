@@ -141,19 +141,15 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 'station_specific' => true,
                 'desc'             => 'Monitor and review all transaction records from all operational shifts and staff accounts.',
             ],
-            // 5. Fuel Management — Admin Oversight Module
+            // 5. Fuel Management — Direct Link
             [
-                'id' => 'admin_fuel_management',
-                'label' => 'Fuel Management',
-                'ico' => 'fas fa-gas-pump',
-                'href' => 'admin_fuel_transactions_oversight.php',
-                'permissions' => ['view_all_reports', 'view_dashboard'],
+                'id'               => 'admin_fuel_management',
+                'label'            => 'Fuel Management',
+                'ico'              => 'fas fa-gas-pump',
+                'href'             => 'admin_fuel_transactions_oversight.php',
+                'permissions'      => ['view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
-                'sub_items' => [
-                    ['id' => 'admin_fuel_transactions_oversight', 'label' => 'Fuel Transaction Oversight', 'href' => 'admin_fuel_transactions_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'Monitor validated fuel transactions for compliance.'],
-                    ['id' => 'admin_fuel_adjustments_oversight', 'label' => 'Adjustments Oversight', 'href' => 'admin_fuel_adjustments_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'Track manager adjustments for audit and transparency.'],
-                    ['id' => 'admin_pump_master_oversight', 'label' => 'Calibration Oversight', 'href' => 'admin_pump_master_oversight.php', 'permissions' => ['view_all_reports'], 'desc' => 'View calibration records and audit trail logs for oversight.'],
-                ],
+                'desc'             => 'Monitor validated fuel transactions for compliance.',
             ],
             // 6. Inventory Management — Admin Oversight Module
             [

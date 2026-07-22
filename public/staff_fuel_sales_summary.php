@@ -412,7 +412,10 @@ function staff_report_fetch_service_income_rows(PDO $pdo, int $station_id, strin
             : "COALESCE(NULLIF(jo.service_description, ''), 'Service')";
         $laborSql = "COALESCE(NULLIF(jo.actual_labor_cost, 0), NULLIF(jo.estimated_labor_cost, 0), 0)";
         $amountSql = "COALESCE(NULLIF(jo.total_cost, 0), NULLIF(jo.estimated_cost, 0), NULLIF(jo.amount_paid, 0), NULLIF(COALESCE(jo.actual_labor_cost, 0) + COALESCE(jo.actual_parts_cost, 0), 0), NULLIF(COALESCE(jo.estimated_labor_cost, 0) + COALESCE(jo.estimated_parts_cost, 0), 0), 0)";
-        $partsSql = table_exists($pdo, 'job_order_parts')
+
+        // Build parts subquery — try with inventory_products join first,
+        // fall back to part IDs only if the table is inaccessible (corrupt/missing engine file)
+        $partsSqlWithJoin = table_exists($pdo, 'job_order_parts')
             ? "(
                     SELECT GROUP_CONCAT(CONCAT(COALESCE(ip.product_name, CONCAT('Part #', jop.product_id)), ' (x', jop.quantity_used, ')') ORDER BY jop.id SEPARATOR ', ')
                     FROM job_order_parts jop
@@ -420,35 +423,91 @@ function staff_report_fetch_service_income_rows(PDO $pdo, int $station_id, strin
                     WHERE jop.job_order_id = jo.id
                )"
             : "NULL";
+        $partsSqlSafe = table_exists($pdo, 'job_order_parts')
+            ? "(
+                    SELECT GROUP_CONCAT(CONCAT('Part #', jop.product_id, ' (x', jop.quantity_used, ')') ORDER BY jop.id SEPARATOR ', ')
+                    FROM job_order_parts jop
+                    WHERE jop.job_order_id = jo.id
+               )"
+            : "NULL";
 
-        $stmt = $pdo->prepare("
-            SELECT
-                CONCAT('jo-', jo.id) AS source_key,
-                jo.id,
-                jo.id AS native_job_order_id,
-                $serviceSql AS service_type,
-                $laborSql AS labor_fee,
-                $partsSql AS parts_used,
-                $amountSql AS total_amount,
-                CASE WHEN HOUR(jo.created_at) >= 6 AND HOUR(jo.created_at) < 14 THEN 'Shift 1' ELSE 'Shift 2' END AS shift,
-                $encoderSql AS encoder,
-                COALESCE(jo.payment_method, 'Cash') AS payment_method,
-                jo.created_at
-            FROM job_orders jo
-            LEFT JOIN users u ON jo.$joEncoderColumn = u.id
-            WHERE jo.station_id = ?
-              AND DATE(jo.created_at) BETWEEN ? AND ?
-              AND LOWER(COALESCE(jo.status, '')) NOT IN ('cancelled','canceled','rejected')
-              AND LOWER(COALESCE(jo.validation_status, '')) NOT IN ('voided','rejected','cancelled','canceled')
-            ORDER BY jo.created_at, jo.id
-        ");
-        $stmt->execute([$station_id, $date_from, $date_to]);
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
-            $nativeId = (int)($row['native_job_order_id'] ?? 0);
-            if ($nativeId > 0 && isset($nativeJobOrderIds[$nativeId])) {
-                continue;
+        // Check if inventory_products is actually accessible (not just schema-present)
+        $invProductsAccessible = false;
+        if (table_exists($pdo, 'inventory_products')) {
+            try {
+                $pdo->query("SELECT 1 FROM inventory_products LIMIT 1");
+                $invProductsAccessible = true;
+            } catch (Throwable $e) {
+                $invProductsAccessible = false;
             }
-            $rows[] = $row;
+        }
+        $partsSql = $invProductsAccessible ? $partsSqlWithJoin : $partsSqlSafe;
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT
+                    CONCAT('jo-', jo.id) AS source_key,
+                    jo.id,
+                    jo.id AS native_job_order_id,
+                    $serviceSql AS service_type,
+                    $laborSql AS labor_fee,
+                    $partsSql AS parts_used,
+                    $amountSql AS total_amount,
+                    CASE WHEN HOUR(jo.created_at) >= 6 AND HOUR(jo.created_at) < 14 THEN 'Shift 1' ELSE 'Shift 2' END AS shift,
+                    $encoderSql AS encoder,
+                    COALESCE(jo.payment_method, 'Cash') AS payment_method,
+                    jo.created_at
+                FROM job_orders jo
+                LEFT JOIN users u ON jo.$joEncoderColumn = u.id
+                WHERE jo.station_id = ?
+                  AND DATE(jo.created_at) BETWEEN ? AND ?
+                  AND LOWER(COALESCE(jo.status, '')) NOT IN ('cancelled','canceled','rejected')
+                  AND LOWER(COALESCE(jo.validation_status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+                ORDER BY jo.created_at, jo.id
+            ");
+            $stmt->execute([$station_id, $date_from, $date_to]);
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+                $nativeId = (int)($row['native_job_order_id'] ?? 0);
+                if ($nativeId > 0 && isset($nativeJobOrderIds[$nativeId])) {
+                    continue;
+                }
+                $rows[] = $row;
+            }
+        } catch (Throwable $e) {
+            // Retry without any inventory_products reference (engine-level table corruption fallback)
+            try {
+                $stmt = $pdo->prepare("
+                    SELECT
+                        CONCAT('jo-', jo.id) AS source_key,
+                        jo.id,
+                        jo.id AS native_job_order_id,
+                        $serviceSql AS service_type,
+                        $laborSql AS labor_fee,
+                        $partsSqlSafe AS parts_used,
+                        $amountSql AS total_amount,
+                        CASE WHEN HOUR(jo.created_at) >= 6 AND HOUR(jo.created_at) < 14 THEN 'Shift 1' ELSE 'Shift 2' END AS shift,
+                        $encoderSql AS encoder,
+                        COALESCE(jo.payment_method, 'Cash') AS payment_method,
+                        jo.created_at
+                    FROM job_orders jo
+                    LEFT JOIN users u ON jo.$joEncoderColumn = u.id
+                    WHERE jo.station_id = ?
+                      AND DATE(jo.created_at) BETWEEN ? AND ?
+                      AND LOWER(COALESCE(jo.status, '')) NOT IN ('cancelled','canceled','rejected')
+                      AND LOWER(COALESCE(jo.validation_status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+                    ORDER BY jo.created_at, jo.id
+                ");
+                $stmt->execute([$station_id, $date_from, $date_to]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+                    $nativeId = (int)($row['native_job_order_id'] ?? 0);
+                    if ($nativeId > 0 && isset($nativeJobOrderIds[$nativeId])) {
+                        continue;
+                    }
+                    $rows[] = $row;
+                }
+            } catch (Throwable $e2) {
+                error_log('[staff_fuel_sales_summary] job_orders fetch failed: ' . $e2->getMessage());
+            }
         }
     }
 
@@ -2825,10 +2884,10 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 <!-- CONTROLS - OUTSIDE PRINTABLE AREA -->
 <div class="controls">
     <div class="date-controls" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <label><strong>Report Date Range:</strong></label>
+        <label style="font-weight:700;color:#64748b;font-size:13px;text-transform:uppercase;letter-spacing:.4px;">From</label>
         <input type="date" id="date_from" value="<?= htmlspecialchars($date_from) ?>" max="<?= $today ?>"
                style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
-        <span style="font-weight:600;color:#64748b;">to</span>
+        <span style="font-weight:700;color:#64748b;font-size:13px;text-transform:uppercase;letter-spacing:.4px;">To</span>
         <input type="date" id="date_to" value="<?= htmlspecialchars($date_to) ?>" max="<?= $today ?>"
                style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
         <button class="btn btn-primary" onclick="applyFilters()">
@@ -2849,7 +2908,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         </button>
         <!-- PDF -->
         <button type="button" onclick="exportPrintableAreaToPDF('.print-area', 'Staff Sales Report', 'staff_sales_report_<?= htmlspecialchars($export_date_slug) ?>', this)" class="flt-btn flt-btn-pdf" title="Export PDF">
-            <i class="fas fa-file-pdf"></i> Export PDF
+            <i class="fas fa-file-pdf"></i> PDF
         </button>
         <!-- Print -->
         <button type="button" onclick="sfssPrintReportArea()" class="flt-btn flt-btn-print" title="Print report">

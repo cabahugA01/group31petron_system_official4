@@ -209,16 +209,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stock_req_id = isset($stock_req_ids[$prod_id]) ? (int)$stock_req_ids[$prod_id] : 0;
                 $unit = isset($units[$prod_id]) ? trim($units[$prod_id]) : '';
 
-                $stmt_req = $pdo->prepare("
-                    SELECT sr.*, ip.product_name, ip.sku, ip.category,
-                           COALESCE(si.stock_level, ip.stock, sr.current_stock, 0) AS current_stock_actual
-                    FROM stock_requests sr
-                    LEFT JOIN inventory_products ip ON sr.item_id = ip.id
-                    LEFT JOIN station_inventory si ON sr.item_id = si.product_id AND si.station_id = sr.station_id
-                    WHERE sr.id = ? AND sr.station_id = ?
-                      AND sr.status IN ('Pending', 'Pending Manager Review')
-                    LIMIT 1
-                ");
+                $_inv2 = false;
+                try { $pdo->query("SELECT 1 FROM inventory_products LIMIT 1"); $_inv2 = true; } catch (Throwable $_e2) {}
+                if ($_inv2) {
+                    $stmt_req = $pdo->prepare("
+                        SELECT sr.*, ip.product_name, ip.sku, ip.category,
+                               COALESCE(si.stock_level, ip.stock, sr.current_stock, 0) AS current_stock_actual
+                        FROM stock_requests sr
+                        LEFT JOIN inventory_products ip ON sr.item_id = ip.id
+                        LEFT JOIN station_inventory si ON sr.item_id = si.product_id AND si.station_id = sr.station_id
+                        WHERE sr.id = ? AND sr.station_id = ?
+                          AND sr.status IN ('Pending', 'Pending Manager Review')
+                        LIMIT 1
+                    ");
+                } else {
+                    $stmt_req = $pdo->prepare("
+                        SELECT sr.*, NULL AS product_name, NULL AS sku, NULL AS category,
+                               COALESCE(si.stock_level, sr.current_stock, 0) AS current_stock_actual
+                        FROM stock_requests sr
+                        LEFT JOIN station_inventory si ON sr.item_id = si.product_id AND si.station_id = sr.station_id
+                        WHERE sr.id = ? AND sr.station_id = ?
+                          AND sr.status IN ('Pending', 'Pending Manager Review')
+                        LIMIT 1
+                    ");
+                }
                 $stmt_req->execute([$stock_req_id, $station_id]);
                 $req = $stmt_req->fetch(PDO::FETCH_ASSOC);
                 if (!$req) {
@@ -568,22 +582,43 @@ $cnt_completed = (int)$pdo->query("SELECT COUNT(DISTINCT delivery_ref) FROM deli
 
 // â”€â”€ Always Fetch Pending PRs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Merchandise pending requests
-$stmt1 = $pdo->prepare("
-    SELECT sr.id, 'Merchandise' AS req_type, sr.item_name AS item_title, sr.requested_quantity AS requested_qty, sr.created_at,
-           u.name AS staff_name, sr.staff_id,
-           COALESCE(si.unit, ip.size, 'pcs') AS unit,
-           COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
-           COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
-           sr.item_id AS product_id, sr.request_no, ip.sku AS item_sku,
-           COALESCE(sr.approved_price, ip.unit_cost, 0) AS unit_cost,
-           sr.status
-    FROM stock_requests sr
-    LEFT JOIN users u ON sr.staff_id = u.id
-    LEFT JOIN inventory_products ip ON sr.item_id = ip.id
-    LEFT JOIN station_inventory si ON sr.item_id = si.product_id AND si.station_id = sr.station_id
-    WHERE sr.station_id = ? AND sr.status IN ('Pending', 'Pending Manager Review') AND LOWER(COALESCE(sr.item_category, '')) != 'fuel'
-    ORDER BY sr.created_at DESC
-");
+$_inv_accessible = false;
+try { $pdo->query("SELECT 1 FROM inventory_products LIMIT 1"); $_inv_accessible = true; } catch (Throwable $_e) {}
+
+if ($_inv_accessible) {
+    $stmt1 = $pdo->prepare("
+        SELECT sr.id, 'Merchandise' AS req_type, sr.item_name AS item_title, sr.requested_quantity AS requested_qty, sr.created_at,
+               u.name AS staff_name, sr.staff_id,
+               COALESCE(si.unit, ip.size, 'pcs') AS unit,
+               COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
+               COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
+               sr.item_id AS product_id, sr.request_no, ip.sku AS item_sku,
+               COALESCE(sr.approved_price, ip.unit_cost, 0) AS unit_cost,
+               sr.status
+        FROM stock_requests sr
+        LEFT JOIN users u ON sr.staff_id = u.id
+        LEFT JOIN inventory_products ip ON sr.item_id = ip.id
+        LEFT JOIN station_inventory si ON sr.item_id = si.product_id AND si.station_id = sr.station_id
+        WHERE sr.station_id = ? AND sr.status IN ('Pending', 'Pending Manager Review') AND LOWER(COALESCE(sr.item_category, '')) != 'fuel'
+        ORDER BY sr.created_at DESC
+    ");
+} else {
+    $stmt1 = $pdo->prepare("
+        SELECT sr.id, 'Merchandise' AS req_type, sr.item_name AS item_title, sr.requested_quantity AS requested_qty, sr.created_at,
+               u.name AS staff_name, sr.staff_id,
+               COALESCE(si.unit, 'pcs') AS unit,
+               COALESCE(si.stock_level, 0) AS current_stock,
+               COALESCE(si.reorder_level, 10) AS reorder_level,
+               sr.item_id AS product_id, sr.request_no, NULL AS item_sku,
+               COALESCE(sr.approved_price, 0) AS unit_cost,
+               sr.status
+        FROM stock_requests sr
+        LEFT JOIN users u ON sr.staff_id = u.id
+        LEFT JOIN station_inventory si ON sr.item_id = si.product_id AND si.station_id = sr.station_id
+        WHERE sr.station_id = ? AND sr.status IN ('Pending', 'Pending Manager Review') AND LOWER(COALESCE(sr.item_category, '')) != 'fuel'
+        ORDER BY sr.created_at DESC
+    ");
+}
 $stmt1->execute([$station_id]);
 $merch_reqs = $stmt1->fetchAll(PDO::FETCH_ASSOC);
 

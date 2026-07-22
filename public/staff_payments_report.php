@@ -805,9 +805,9 @@ require_once __DIR__ . '/../partials/header.php';
 <!-- CONTROLS - OUTSIDE PRINTABLE AREA -->
 <div class="controls">
     <div class="date-controls">
-        <label><strong>From:</strong></label>
+        <label style="font-weight:700;color:#64748b;font-size:13px;text-transform:uppercase;letter-spacing:.4px;">From</label>
         <input type="date" id="date_start" value="<?= htmlspecialchars($date_start) ?>" max="<?= $today ?>">
-        <label><strong>To:</strong></label>
+        <label style="font-weight:700;color:#64748b;font-size:13px;text-transform:uppercase;letter-spacing:.4px;">To</label>
         <input type="date" id="date_end" value="<?= htmlspecialchars($date_end) ?>" max="<?= $today ?>">
         <button class="btn btn-primary" onclick="applyFilters()">
             Apply
@@ -827,7 +827,7 @@ require_once __DIR__ . '/../partials/header.php';
         </button>
         <!-- PDF -->
         <button type="button" onclick="exportPrintableAreaToPDF('.print-area', 'Staff Payments Report', 'staff_payments_report_<?= date('Ymd', strtotime($date_start)) ?>_<?= date('Ymd', strtotime($date_end)) ?>', this)" class="flt-btn flt-btn-pdf" title="Export PDF">
-            <i class="fas fa-file-pdf"></i> Export PDF
+            <i class="fas fa-file-pdf"></i> PDF
         </button>
         <!-- Print -->
         <button type="button" onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print report">

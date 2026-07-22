@@ -28,10 +28,15 @@ if (!$station_id && $role === 'manager') {
     render_no_station_page('manager_dashboard.php');
 }
 
-$date_filter = $_GET['date'] ?? date('Y-m-d');
-if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_filter)) {
-    $date_filter = date('Y-m-d');
-}
+// Date range filter — defaults to today for both from/to
+$date_from = $_GET['date_from'] ?? date('Y-m-d');
+$date_to   = $_GET['date_to']   ?? date('Y-m-d');
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_from)) { $date_from = date('Y-m-d'); }
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to))   { $date_to   = date('Y-m-d'); }
+if ($date_to < $date_from) { $date_to = $date_from; }
+
+// Legacy single-date alias (used by hourly chart and weekly breakdown which still need a single date)
+$date_filter = $date_from;
 
 function mgr_h($value): string
 {
@@ -232,27 +237,29 @@ $merch_status_ok_mt = mgr_transaction_status_ok($pdo, 'merchandise_transactions'
 $job_status_ok = mgr_transaction_status_ok($pdo, 'job_orders', ['status', 'validation_status']);
 $registered_customer_only = mgr_registered_customer_only($pdo);
 
-// Summary cards.
+// Summary cards — use date range.
+$date_range_params = array_merge($station_params, [$date_from, $date_to]);
+
 $fuel_count = mgr_table_exists($pdo, 'fuel_transactions')
-    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM fuel_transactions WHERE {$station_sql} AND DATE({$fuel_dt_expr}) = ? {$fuel_status_ok}", array_merge($station_params, [$date_filter]))
+    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM fuel_transactions WHERE {$station_sql} AND DATE({$fuel_dt_expr}) BETWEEN ? AND ? {$fuel_status_ok}", $date_range_params)
     : 0;
 
 $merch_count = mgr_table_exists($pdo, 'merchandise_transactions')
-    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$station_sql} AND DATE({$merch_dt_expr}) = ? {$merch_status_ok}", array_merge($station_params, [$date_filter]))
+    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$station_sql} AND DATE({$merch_dt_expr}) BETWEEN ? AND ? {$merch_status_ok}", $date_range_params)
     : 0;
 
 $service_count = mgr_table_exists($pdo, 'job_orders')
-    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND DATE({$job_dt_expr}) = ? {$job_status_ok}", array_merge($station_params, [$date_filter]))
+    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND DATE({$job_dt_expr}) BETWEEN ? AND ? {$job_status_ok}", $date_range_params)
     : 0;
 
 $total_transactions = $fuel_count + $merch_count + $service_count;
 
 $fuel_revenue = mgr_table_exists($pdo, 'fuel_transactions')
-    ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE({$fuel_dt_expr}) = ? {$fuel_status_ok}", array_merge($station_params, [$date_filter]))
+    ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE({$fuel_dt_expr}) BETWEEN ? AND ? {$fuel_status_ok}", $date_range_params)
     : 0.0;
 
 $merch_revenue = mgr_table_exists($pdo, 'merchandise_transactions')
-    ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$station_sql} AND DATE({$merch_dt_expr}) = ? {$merch_status_ok}", array_merge($station_params, [$date_filter]))
+    ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$station_sql} AND DATE({$merch_dt_expr}) BETWEEN ? AND ? {$merch_status_ok}", $date_range_params)
     : 0.0;
 
 $service_revenue = mgr_table_exists($pdo, 'job_orders')
@@ -261,16 +268,16 @@ $service_revenue = mgr_table_exists($pdo, 'job_orders')
         "SELECT COALESCE(SUM(COALESCE(total_cost, estimated_cost, actual_labor_cost + actual_parts_cost, 0)), 0)
          FROM job_orders
          WHERE {$station_sql}
-           AND DATE({$job_dt_expr}) = ?
+           AND DATE({$job_dt_expr}) BETWEEN ? AND ?
            AND LOWER(COALESCE(status, '')) IN ('completed', 'verified', 'finalized', 'released')",
-        array_merge($station_params, [$date_filter])
+        $date_range_params
     )
     : 0.0;
 
 $total_revenue = $fuel_revenue + $merch_revenue + $service_revenue;
 
 $total_fuel_liters = mgr_table_exists($pdo, 'fuel_transactions')
-    ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(liters_sold), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE({$fuel_dt_expr}) = ? {$fuel_status_ok}", array_merge($station_params, [$date_filter]))
+    ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(liters_sold), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE({$fuel_dt_expr}) BETWEEN ? AND ? {$fuel_status_ok}", $date_range_params)
     : 0.0;
 
 $pending_merch_stock = mgr_table_exists($pdo, 'stock_requests')
@@ -304,7 +311,7 @@ if (mgr_table_exists($pdo, 'fuel_inventory')) {
     foreach ($fuel_inv_rows as $fi_row) {
         $capacity = (float)($fi_row['capacity'] ?? 0);
         $level = min(max(0, (float)($fi_row['current_level'] ?? $fi_row['current_stock'] ?? 0)), $capacity);
-        if ($capacity == 14000)    { $critical_lvl = 5000; $low_lvl = 7000; }
+        if ($capacity == 14000)    { $critical_lvl = 2500; $low_lvl = 5000; }
         elseif ($capacity == 7000) { $critical_lvl = 1000; $low_lvl = 2000; }
         else                       { $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20; }
         if ($level <= 0) {
@@ -368,17 +375,17 @@ if (mgr_table_exists($pdo, 'labor_sessions')) {
                 COUNT(DISTINCT user_id) AS staff_count
          FROM labor_sessions
          WHERE {$station_sql}
-           AND DATE(start_time) = ?
            AND end_time IS NULL
          GROUP BY shift_label",
-        array_merge($station_params, [$date_filter])
+        $station_params
     );
     foreach ($staff_rows as $row) {
         $label = (string) ($row['shift_label'] ?? 'Unassigned');
+        $label_lower = strtolower($label);
         $count = (int) ($row['staff_count'] ?? 0);
-        if (stripos($label, '1') !== false || stripos($label, 'morning') !== false) {
+        if (str_contains($label_lower, 'first') || str_contains($label_lower, 'shift 1') || str_contains($label_lower, 'morning') || $label_lower === 'shift 1' || $label_lower === 'first shift') {
             $staff_shift_counts['Shift 1'] += $count;
-        } elseif (stripos($label, '2') !== false || stripos($label, 'afternoon') !== false) {
+        } elseif (str_contains($label_lower, 'second') || str_contains($label_lower, 'shift 2') || str_contains($label_lower, 'afternoon') || $label_lower === 'shift 2' || $label_lower === 'second shift') {
             $staff_shift_counts['Shift 2'] += $count;
         } else {
             $staff_shift_counts[$label] = ($staff_shift_counts[$label] ?? 0) + $count;
@@ -433,11 +440,11 @@ if (mgr_table_exists($pdo, 'fuel_transactions')) {
                 COALESCE(SUM(liters_sold), 0) AS total_liters
          FROM fuel_transactions
          WHERE {$station_sql}
-           AND DATE({$fuel_dt_expr}) = ?
+           AND DATE({$fuel_dt_expr}) BETWEEN ? AND ?
            {$fuel_status_ok}
          GROUP BY label
          ORDER BY total_liters DESC, label ASC",
-        array_merge($station_params, [$date_filter])
+        array_merge($station_params, [$date_from, $date_to])
     );
     foreach ($fuel_sales_rows as $row) {
         $fuel_products[] = (string) ($row['label'] ?? 'Unspecified');
@@ -469,11 +476,11 @@ if (mgr_table_exists($pdo, 'merchandise_transaction_items') && mgr_table_exists(
          FROM merchandise_transaction_items mti
          INNER JOIN merchandise_transactions mt ON mt.id = mti.transaction_id
          WHERE " . mgr_station_clause($station_id, 'mt') . "
-           AND DATE({$merch_dt_expr_mt}) = ?
+           AND DATE({$merch_dt_expr_mt}) BETWEEN ? AND ?
            {$merch_status_ok_mt}
          GROUP BY label
          ORDER BY total_sales DESC, label ASC",
-        array_merge($station_params, [$date_filter])
+        array_merge($station_params, [$date_from, $date_to])
     );
     foreach ($merch_sales_rows as $row) {
         $merch_categories[] = (string) ($row['label'] ?? 'Others');
@@ -481,7 +488,12 @@ if (mgr_table_exists($pdo, 'merchandise_transaction_items') && mgr_table_exists(
     }
 }
 
-$selected_ts = strtotime($date_filter);
+// Period label for cards — e.g. "Jul 22, 2026" or "Jun 1 – Jul 22, 2026"
+$period_label = ($date_from === $date_to)
+    ? date('M j, Y', strtotime($date_from))
+    : date('M j', strtotime($date_from)) . ' – ' . date('M j, Y', strtotime($date_to));
+$is_today = ($date_from === date('Y-m-d') && $date_to === date('Y-m-d'));
+$selected_ts = strtotime($date_from);
 $week_start = date('Y-m-d', strtotime('monday this week', $selected_ts));
 $weekly_labels = [];
 $weekly_revenue = [];
@@ -530,9 +542,7 @@ if (mgr_table_exists($pdo, 'fuel_inventory')) {
     foreach ($fuel_inventory_rows as $row) {
         $capacity = (float) $row['capacity_qty'];
         $current = min(max(0, (float) $row['current_qty']), $capacity);
-        if ($capacity == 14000) {
-            $critical_lvl = 5000; $low_lvl = 7000;
-        } elseif ($capacity == 7000) {
+        if ($capacity == 14000)    { $critical_lvl = 2500; $low_lvl = 5000; } elseif ($capacity == 7000) {
             $critical_lvl = 1000; $low_lvl = 2000;
         } else {
             $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20;
@@ -784,7 +794,7 @@ if (mgr_table_exists($pdo, 'fuel_inventory')) {
     foreach ($fuel_all as $fi_row) {
         $capacity = (float)($fi_row['capacity'] ?? 0);
         $level = min(max(0, (float)($fi_row['current_level'] ?? $fi_row['current_stock'] ?? 0)), $capacity);
-        if ($capacity == 14000)    { $critical_lvl = 5000; $low_lvl = 7000; }
+        if ($capacity == 14000)    { $critical_lvl = 2500; $low_lvl = 5000; }
         elseif ($capacity == 7000) { $critical_lvl = 1000; $low_lvl = 2000; }
         else                       { $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20; }
         if ($level <= 0) {
@@ -1064,11 +1074,21 @@ include __DIR__ . '/../partials/header.php';
 <script src="../assets/vendor/chart.js/chart.umd.min.js"></script>
 
 <style>
-    .mgr-dashboard {
-        padding: 0 0 72px;
+    body[data-page="manager_dashboard"] .main {
+        padding: 0 0 60px 0 !important;
         background: #f6f8fb;
+        box-sizing: border-box;
+    }
+
+    .mgr-dashboard {
+        width: 100%;
+        max-width: none;
+        margin: 0;
+        padding: 12px 24px 72px;
         min-height: calc(100vh - 110px);
+        background: #f6f8fb;
         color: #0f172a;
+        box-sizing: border-box;
     }
 
     .mgr-card,
@@ -1084,10 +1104,8 @@ include __DIR__ . '/../partials/header.php';
         align-items: center;
         justify-content: space-between;
         flex-wrap: wrap;
-        gap: 18px;
-        margin-bottom: 22px;
-        padding: 0 0 18px 0;
-        border-bottom: 2px solid #e2e9f3;
+        gap: 15px;
+        margin-bottom: 25px;
     }
 
     .mgr-title-block {
@@ -1660,13 +1678,13 @@ include __DIR__ . '/../partials/header.php';
     <div class="mgr-page-header">
         <div class="mgr-title-block">
             <h1>Welcome, <?= mgr_h($display_name) ?>!</h1>
-            <div style="display:flex; align-items:center; gap:8px; margin-top:4px; margin-bottom:8px;">
-                <i class="fas fa-tachometer-alt" style="color:#64748b; font-size:14px;"></i>
-                <span style="color:#64748b; font-size:13px; font-weight:600;">Manager Dashboard</span>
-            </div>
+            <p><i class="fas fa-tachometer-alt"></i> Manager Dashboard</p>
         </div>
         <form method="get" class="mgr-filter-form">
-            <input type="date" name="date" value="<?= mgr_h($date_filter) ?>" required>
+            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-right:4px;">From</label>
+            <input type="date" name="date_from" value="<?= mgr_h($date_from) ?>" required>
+            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin:0 4px;">To</label>
+            <input type="date" name="date_to" value="<?= mgr_h($date_to) ?>" required>
             <button class="mgr-btn mgr-btn-blue" type="submit"><i class="fas fa-filter"></i> Filter</button>
         </form>
     </div>
@@ -1674,7 +1692,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="mgr-summary-grid">
         <div class="mgr-card" data-tone="blue">
             <div>
-                <div class="mgr-card-label">Today's Transactions</div>
+                <div class="mgr-card-label"><?= $is_today ? "Today's Transactions" : "Transactions" ?></div>
                 <div class="mgr-card-value"><?= number_format($total_transactions) ?></div>
                 <div class="mgr-card-sub">Fuel <?= number_format($fuel_count) ?> | Merchandise <?= number_format($merch_count) ?> | Service <?= number_format($service_count) ?></div>
             </div>
@@ -1683,18 +1701,18 @@ include __DIR__ . '/../partials/header.php';
 
         <div class="mgr-card" data-tone="green">
             <div>
-                <div class="mgr-card-label">Today's Revenue</div>
+                <div class="mgr-card-label"><?= $is_today ? "Today's Revenue" : "Revenue" ?></div>
                 <div class="mgr-card-value"><?= mgr_money($total_revenue) ?></div>
-                <div class="mgr-card-sub">Current day sales from fuel, merchandise, and services</div>
+                <div class="mgr-card-sub"><?= mgr_h($period_label) ?> · Fuel, merchandise &amp; services</div>
             </div>
             <div class="mgr-icon" style="background:#e7f7ee;color:#128143;"><i class="fas fa-peso-sign"></i></div>
         </div>
 
         <div class="mgr-card" data-tone="amber">
             <div>
-                <div class="mgr-card-label">Fuel Sold Today</div>
+                <div class="mgr-card-label"><?= $is_today ? "Fuel Sold Today" : "Fuel Sold" ?></div>
                 <div class="mgr-card-value"><?= mgr_qty($total_fuel_liters) ?> L</div>
-                <div class="mgr-card-sub">Total liters sold on selected date</div>
+                <div class="mgr-card-sub">Total liters sold · <?= mgr_h($period_label) ?></div>
             </div>
             <div class="mgr-icon" style="background:#fff2dc;color:#c56b00;"><i class="fas fa-gas-pump"></i></div>
         </div>

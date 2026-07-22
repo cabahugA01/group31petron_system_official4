@@ -250,8 +250,8 @@ require_once __DIR__ . '/../partials/header.php';
 .cr-export-btn{padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;border:1px solid;display:inline-flex;align-items:center;gap:6px;background:#ffffff !important;}
 .cr-export-btn:nth-child(1){color:#16a34a !important;border-color:#16a34a !important;}
 .cr-export-btn:nth-child(1):hover{background:#f0fdf4 !important;border-color:#15803d !important;color:#16a34a !important;}
-.cr-export-btn:nth-child(2){color:#1e40af !important;border-color:#1e40af !important;}
-.cr-export-btn:nth-child(2):hover{background:#dbeafe !important;border-color:#1e3a8a !important;color:#1e40af !important;}
+.cr-export-btn:nth-child(2){color:#002F70 !important;border-color:#002F70 !important;}
+.cr-export-btn:nth-child(2):hover{background:#eff6ff !important;border-color:#001f4d !important;color:#002F70 !important;}
 .cr-export-btn:nth-child(3){color:#dc2626 !important;border-color:#dc2626 !important;}
 .cr-export-btn:nth-child(3):hover{background:#fef2f2 !important;border-color:#b91c1c !important;color:#dc2626 !important;}
 .cr-export-btn:nth-child(4){color:#334155 !important;border-color:#64748b !important;}
@@ -352,15 +352,15 @@ require_once __DIR__ . '/../partials/header.php';
     <!-- Filter Bar -->
     <form method="GET" class="cr-filter-bar">
         <input type="hidden" name="section" value="<?= htmlspecialchars($section) ?>">
-        <label><i class="fas fa-calendar"></i> Report Date:</label>
+        <label style="font-weight:700;color:#64748b;font-size:13px;text-transform:uppercase;letter-spacing:.4px;">From</label>
         <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" required>
-        <span style="color:#64748b;">to</span>
+        <span style="font-weight:700;color:#64748b;font-size:13px;text-transform:uppercase;letter-spacing:.4px;">To</span>
         <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>" required>
         <button type="submit"><i class="fas fa-sync-alt"></i> Apply</button>
         <div style="display:flex;gap:6px;margin-left:auto;">
             <button type="button" class="cr-export-btn" onclick="crExport('excel')"><i class="fas fa-file-excel"></i> Excel</button>
             <button type="button" class="cr-export-btn" onclick="crExport('csv')"><i class="fas fa-file-csv"></i> CSV</button>
-            <button type="button" class="cr-export-btn" onclick="crExport('pdf')"><i class="fas fa-file-pdf"></i> Export PDF</button>
+            <button type="button" class="cr-export-btn" onclick="crExport('pdf')"><i class="fas fa-file-pdf"></i> PDF</button>
             <button type="button" class="cr-export-btn" onclick="crPrint()"><i class="fas fa-print"></i> Print</button>
         </div>
     </form>

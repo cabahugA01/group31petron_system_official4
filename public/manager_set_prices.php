@@ -9,6 +9,11 @@ require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
 
+// Schema safety: widen fuel_inventory status column to VARCHAR(50) so 'active' and 'inactive' persist across page refreshes
+try {
+    $pdo->exec("ALTER TABLE fuel_inventory MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'active'");
+} catch (Exception $e) {}
+
 $me         = current_user();
 $role       = role_key($me['role'] ?? '');
 $station_id = user_station_id();
@@ -59,8 +64,9 @@ try {
     $s->execute([$station_id]);
     foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $fi_lookup[strtolower(trim($row['fuel_type']))] = $row;
-        // Normalize status: only 'inactive' = deactivated; anything else = active
-        $fi_status_by_id[(int)$row['id']] = (strtolower(trim($row['status'] ?? '')) === 'inactive') ? 'inactive' : 'active';
+        // Normalize status: inactive if status is 'inactive', 'disabled', or 'deactivated'
+        $st_lower = strtolower(trim($row['status'] ?? ''));
+        $fi_status_by_id[(int)$row['id']] = in_array($st_lower, ['inactive', 'disabled', 'deactivated'], true) ? 'inactive' : 'active';
     }
 
     $del_lookup = [];
@@ -375,20 +381,23 @@ body, html { overflow-x: hidden; max-width: 100%; }
 .toolbar select:focus { outline: none; border-color: #002F6C; box-shadow: 0 0 0 2px rgba(0,47,108,.12); }
 
 /* Table tweaks */
-.pricing-table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
+.table-wrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+}
+.pricing-table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: auto !important; }
 .pricing-table th {
     background: #002F70 !important; 
     color: #fff !important; 
-    padding: 8px 6px;
-    font-size: 10px;
+    padding: 10px 14px;
+    font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: .3px;
+    letter-spacing: .5px;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
-.pricing-table td { padding: 8px 6px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.pricing-table td { padding: 10px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; white-space: nowrap; font-size: 12px; }
 .pricing-table tbody tr:hover { background: #e3f2fd; }
 
 /* Category header row */
@@ -726,47 +735,24 @@ body, html { overflow-x: hidden; max-width: 100%; }
     <?php else: ?>
     <div class="card" style="padding:0;overflow:hidden;">
         <div class="table-wrap" style="overflow-x:hidden; width:100%;">
-            <table class="pricing-table" id="merchTable">
-                <colgroup>
-                    <col style="width:6%">   <!-- SKU -->
-                    <col style="width:13%">  <!-- Product Name -->
-                    <col style="width:7%">   <!-- Brand -->
-                    <col style="width:8%">   <!-- Category -->
-                    <col style="width:4%">   <!-- UOM -->
-                    <col style="width:9%">   <!-- Supplier -->
-                    <col style="width:6%">   <!-- Cost -->
-                    <col style="width:6%">   <!-- Price -->
-                    <col style="width:4%">   <!-- Capacity -->
-                    <col style="width:8%">   <!-- Stock/Reorder -->
-                    <col style="width:6%">   <!-- Physical Count -->
-                    <col style="width:5%">   <!-- Variance -->
-                    <col style="width:8%">   <!-- Status -->
-                    <col style="width:7%">   <!-- Updated -->
-                    <col style="width:13%">  <!-- Actions -->
-                </colgroup>
+            <table class="pricing-table" id="merchTable" style="width:100%; table-layout:auto;">
                 <thead>
                     <tr>
-                        <th>SKU</th>
-                        <th>Product Name</th>
-                        <th>Brand</th>
-                        <th>Category</th>
-                        <th>UOM</th>
-                        <th>Supplier</th>
+                        <th>Product &amp; SKU</th>
+                        <th>Category / Brand</th>
+                        <th>UOM / Supplier</th>
                         <th>Cost (&#8369;)</th>
                         <th>Price (&#8369;)</th>
-                        <th>Capacity</th>
-                        <th>Stock / Reorder</th>
-                        <th>Physical Count</th>
-                        <th>Variance</th>
+                        <th>Stock Level</th>
                         <th>Status</th>
                         <th>Updated</th>
-                        <th>Actions</th>
+                        <th style="text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="merchBody">
                 <?php foreach ($merch_by_cat as $cat_label => $items): ?>
                     <tr class="cat-row" data-cat-header="<?php echo htmlspecialchars($cat_label); ?>">
-                        <td colspan="15">
+                        <td colspan="9">
                             <i class="fas fa-folder"></i>
                             <?php echo htmlspecialchars($cat_label); ?>
                             <span class="muted cat-count" style="font-weight:400;margin-left:6px;">(<?php echo count($items); ?> items)</span>
@@ -778,9 +764,6 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         $stock         = $item['_stock'];
                         $reorder_level = (int)($item['reorder_level']  ?? 24);
                         $critical_lvl  = (int)($item['critical_level'] ?? 10);
-                        $capacity      = (float)($item['capacity'] ?? 0);
-                        $physical      = $item['physical_count'];
-                        $variance      = (float)($item['variance'] ?? 0);
                         $updated       = !empty($item['last_updated']) ? date('M d, Y', strtotime($item['last_updated'])) : '&mdash;';
 
                         $below_cost = ($price > 0 && $price < $cost);
@@ -803,59 +786,53 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         data-status="<?php echo $st_key; ?>"
                         data-noprice="<?php echo $no_price ? '1' : '0'; ?>"
                         data-belowcost="<?php echo $below_cost ? '1' : '0'; ?>">
-                        <td class="muted"><?php echo htmlspecialchars($item['sku'] ?? '&mdash;'); ?></td>
                         <td>
-                            <strong><?php echo htmlspecialchars($item['product_name'] ?? ''); ?></strong>
+                            <strong style="color:#1e293b;font-size:13px;"><?php echo htmlspecialchars($item['product_name'] ?? ''); ?></strong>
                             <?php if ($below_cost): ?>
-                                <span class="badge badge-warn" style="margin-left:6px;font-size:10px;">&#9888; Price Below Cost</span>
+                                <span class="badge badge-warn" style="margin-left:4px;font-size:10px;">&#9888; Below Cost</span>
                             <?php endif; ?>
+                            <div class="muted" style="font-size:11px;">SKU: <?php echo htmlspecialchars($item['sku'] ?? '&mdash;'); ?></div>
                         </td>
-                        <td><?php echo htmlspecialchars($item['brand'] ?? 'Generic'); ?></td>
-                        <td><?php echo htmlspecialchars($cat_label); ?></td>
-                        <td class="muted"><?php echo htmlspecialchars($item['unit'] ?? 'Piece (pc)'); ?></td>
-                        <td><?php echo htmlspecialchars($item['supplier'] ?? 'Petron Corporation'); ?></td>
-                        <td style="color:#64748b;">&#8369;<?php echo number_format($cost, 2); ?></td>
+                        <td>
+                            <div style="font-weight:600;color:#334155;"><?php echo htmlspecialchars($cat_label); ?></div>
+                            <div class="muted" style="font-size:11px;"><?php echo htmlspecialchars($item['brand'] ?? 'Generic'); ?></div>
+                        </td>
+                        <td>
+                            <div style="font-weight:500;color:#334155;"><?php echo htmlspecialchars($item['unit'] ?? 'Piece (pc)'); ?></div>
+                            <div class="muted" style="font-size:11px;"><?php echo htmlspecialchars($item['supplier'] ?? 'Petron Corporation'); ?></div>
+                        </td>
+                        <td style="color:#64748b;font-weight:500;">&#8369;<?php echo number_format($cost, 2); ?></td>
                         <td>
                             <?php if ($no_price): ?>
                                 <span class="badge badge-noprice">No Price Set</span>
                             <?php else: ?>
-                                <strong style="color:<?php echo $below_cost ? '#dc2626' : '#002F6C'; ?>">
+                                <strong style="color:<?php echo $below_cost ? '#dc2626' : '#002F6C'; ?>;font-size:13px;">
                                     &#8369;<?php echo number_format($price, 2); ?>
                                 </strong>
                             <?php endif; ?>
                             <?php if (($item['approval_status'] ?? '') === 'pending'): ?>
                                 <div style="font-size:11px; color:#d97706; background:#fef3c7; padding:2px 6px; border-radius:4px; margin-top:4px; display:block; font-weight:600; text-align:left; line-height:1.3;">
-                                    Pending Cost: ₱<?php echo number_format($item['pending_cost'], 2); ?><br>
-                                    Pending Price: ₱<?php echo number_format($item['pending_price'], 2); ?>
+                                    Pending: ₱<?php echo number_format($item['pending_price'], 2); ?>
                                 </div>
                             <?php endif; ?>
                         </td>
-                        <td><?php echo number_format($capacity, 0); ?></td>
                         <td>
-                            <strong><?php echo number_format($stock, 0); ?></strong>
-                            <div class="muted" style="font-size:11px;">Reorder: <?php echo number_format($reorder_level); ?> | Critical: <?php echo number_format($critical_lvl); ?></div>
-                        </td>
-                        <td><?php echo $physical !== null ? number_format((float)$physical, 0) : '<span class="muted">&mdash;</span>'; ?></td>
-                        <td>
-                            <?php if (abs($variance) > 0.0001): ?>
-                                <span class="badge <?php echo $variance < 0 ? 'badge-critical' : 'badge-low'; ?>"><?php echo ($variance > 0 ? '+' : '') . number_format($variance, 0); ?></span>
-                            <?php else: ?>
-                                <span class="muted">&mdash;</span>
-                            <?php endif; ?>
+                            <strong style="font-size:13px;"><?php echo number_format($stock, 0); ?></strong>
+                            <div class="muted" style="font-size:11px;">Reorder: <?php echo number_format($reorder_level); ?> | Crit: <?php echo number_format($critical_lvl); ?></div>
                         </td>
                         <td><span class="badge <?php echo $st_class; ?>"><?php echo $st_label; ?></span></td>
-                        <td class="muted"><?php echo $updated; ?></td>
-                        <td>
-                            <div class="act-btn-wrap">
-                                <button onclick="openEditMerchPriceModal(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars($item['product_name'] ?? ''); ?>', <?php echo $price; ?>)" class="act-btn act-btn-edit">
+                        <td class="muted" style="font-size:11px;"><?php echo $updated; ?></td>
+                        <td style="text-align:center;">
+                            <div class="act-btn-wrap" style="display:flex;flex-direction:column;gap:3px;align-items:center;">
+                                <button onclick="openEditMerchPriceModal(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars($item['product_name'] ?? ''); ?>', <?php echo $price; ?>)" class="act-btn act-btn-edit" style="width:100%;max-width:90px;">
                                     <i class="fas fa-edit"></i> Edit
                                 </button>
                                 <?php if (($item['status'] ?? 'active') !== 'inactive'): ?>
-                                    <button onclick="deactivateMerchandise(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars($item['product_name'] ?? ''); ?>')" class="act-btn act-btn-deactivate">
+                                    <button onclick="deactivateMerchandise(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars($item['product_name'] ?? ''); ?>')" class="act-btn act-btn-deactivate" style="width:100%;max-width:90px;">
                                         <i class="fas fa-ban"></i> Deactivate
                                     </button>
                                 <?php else: ?>
-                                    <button onclick="activateMerchandise(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars($item['product_name'] ?? ''); ?>')" class="act-btn act-btn-activate">
+                                    <button onclick="activateMerchandise(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars($item['product_name'] ?? ''); ?>')" class="act-btn act-btn-activate" style="width:100%;max-width:90px;">
                                         <i class="fas fa-check-circle"></i> Activate
                                     </button>
                                 <?php endif; ?>

@@ -200,14 +200,14 @@ require_once __DIR__ . '/../partials/header.php';
     border-color: #15803d !important;
 }
 
-/* CSV Button - Blue Border */
+/* CSV Button - Dark Blue Border */
 .rpt-export-btn:nth-child(2) {
-    color: #2563eb !important;
-    border-color: #2563eb !important;
+    color: #002F70 !important;
+    border-color: #002F70 !important;
 }
 .rpt-export-btn:nth-child(2):hover {
     background: #eff6ff !important;
-    border-color: #1d4ed8 !important;
+    border-color: #001f4d !important;
 }
 
 /* PDF Button - Red Border */
@@ -347,9 +347,9 @@ require_once __DIR__ . '/../partials/header.php';
         <!-- Date Filter Bar -->
         <form method="GET" class="rpt-filter-bar">
             <input type="hidden" name="section" id="managerFinanceSection" value="<?= htmlspecialchars($section) ?>">
-            <label><i class="fas fa-calendar"></i> Report Date:</label>
+            <label style="font-weight:700;color:#64748b;font-size:13px;text-transform:uppercase;letter-spacing:.4px;">From</label>
             <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" required>
-            <span style="color: #64748b;">to</span>
+            <span style="font-weight:700;color:#64748b;font-size:13px;text-transform:uppercase;letter-spacing:.4px;">To</span>
             <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>" required>
             <button type="submit"><i class="fas fa-sync-alt"></i> Apply</button>
             
@@ -361,7 +361,7 @@ require_once __DIR__ . '/../partials/header.php';
                     <i class="fas fa-file-csv"></i> CSV
                 </button>
                 <button type="button" class="rpt-export-btn" onclick="exportReport('pdf', this)">
-                    <i class="fas fa-file-pdf"></i> Export PDF
+                    <i class="fas fa-file-pdf"></i> PDF
                 </button>
                 <button type="button" class="rpt-export-btn" onclick="printReport()">
                     <i class="fas fa-print"></i> Print

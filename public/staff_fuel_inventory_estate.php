@@ -119,14 +119,11 @@ foreach ($TANK_CONFIG_17 as $tank) {
     $actual_dip      = $ending_balance;
     $variance        = 0;
 
-    // Capacity-based thresholds aligned with TANK_CONFIG_17
-    if ($capacity == 14000) {
-        $critical_lvl = 2500; $low_lvl = 5000;
-    } elseif ($capacity == 7000) {
-        $critical_lvl = 1000; $low_lvl = 2000;
-    } else {
-        $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20;
-    }
+    // Thresholds — from DB tank config (reorder_level / critical_level)
+    $critical_lvl = (float)($tank['critical_level'] ?? 0);
+    $low_lvl      = (float)($tank['reorder_level']  ?? 0);
+    if ($critical_lvl <= 0) $critical_lvl = $capacity > 0 ? $capacity * 0.15 : 0;
+    if ($low_lvl <= 0)      $low_lvl      = $capacity > 0 ? $capacity * 0.30 : 0;
     $fill_pct = $capacity > 0 ? round(($ending_balance / $capacity) * 100, 2) : 0;
     if      ($ending_balance <= 0)              { $status = 'Out of Stock'; $status_color = '#dc3545'; }
     elseif  ($ending_balance <= $critical_lvl)  { $status = 'Critical';    $status_color = '#dc3545'; }

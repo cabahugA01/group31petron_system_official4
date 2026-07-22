@@ -103,8 +103,9 @@ try {
 }
 
 // ── Build UGT lookup: fuel_type → UGT No (from canonical config) ──────────
+$_tank_cfg = get_tank_config($station_id ?? null);
 $ugt_lookup = []; // key: lowercase fuel_type, value: 'UGT #X'
-foreach (TANK_CONFIG_17 as $tc) {
+foreach ($_tank_cfg as $tc) {
     $key = strtolower(trim($tc['fuel_type']));
     // First entry per fuel type wins (maps to first UGT)
     if (!isset($ugt_lookup[$key])) {
@@ -113,7 +114,7 @@ foreach (TANK_CONFIG_17 as $tc) {
 }
 // Build array of all UGTs per fuel type (for display)
 $ugt_all_lookup = [];
-foreach (TANK_CONFIG_17 as $tc) {
+foreach ($_tank_cfg as $tc) {
     $key = strtolower(trim($tc['fuel_type']));
     $ugt_all_lookup[$key][] = $tc['tank'];
 }

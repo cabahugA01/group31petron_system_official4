@@ -641,18 +641,17 @@ if ($mt_service_where !== '0=1') {
     } catch (Exception $e) {}
 }
 
-// 5. Fuel Stock Alerts (dynamic capacity-based thresholds: Critical + Low)
+// 5. Fuel Stock Alerts (dynamic: uses reorder_level / critical_level from fuel_inventory or 20% capacity)
 $fuel_stock_alerts_count = 0;
 try {
-    $stmt = $pdo->prepare("SELECT current_level, capacity FROM fuel_inventory WHERE station_id=?");
+    $stmt = $pdo->prepare("SELECT current_level, capacity, COALESCE(reorder_level, 0) AS reorder_level FROM fuel_inventory WHERE station_id=?");
     $stmt->execute([$station_id]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $fi_row) {
         $fi_cap   = (float)($fi_row['capacity'] ?? 0);
-        $fi_level = min(max(0, (float)($fi_row['current_level'] ?? 0)), $fi_cap);
-        if ($fi_cap == 14000)    { $fi_low = 7000; }
-        elseif ($fi_cap == 7000) { $fi_low = 3000; }
-        else                     { $fi_low = $fi_cap * 0.20; }
-        if ($fi_level <= $fi_low) $fuel_stock_alerts_count++;
+        $fi_level = min(max(0, (float)($fi_row['current_level'] ?? 0)), $fi_cap > 0 ? $fi_cap : PHP_FLOAT_MAX);
+        $fi_reorder = (float)($fi_row['reorder_level'] ?? 0);
+        if ($fi_reorder <= 0) $fi_reorder = $fi_cap > 0 ? $fi_cap * 0.20 : 0;
+        if ($fi_level <= $fi_reorder) $fuel_stock_alerts_count++;
     }
 } catch (Exception $e) {}
 
@@ -957,7 +956,7 @@ $weekly_chart_data = array_values($weekly_days);
 
 // Chart 6: Fuel Tank Levels — 7 physical underground storage tanks (UGTs)
 // Computes current level based on Beginning Inventory + Deliveries - Sales - Calibrations.
-$TANK_CONFIG = get_tank_config();
+$TANK_CONFIG = get_tank_config($station_id);
 
 $fi_lookup = [];
 try {
@@ -998,57 +997,72 @@ try {
 $tank_levels = [];
 foreach ($TANK_CONFIG as $tc) {
     $ft_key   = strtolower(trim($tc['fuel_type']));
-    // XTRA UNL split: distinguish sub-groups by label
-    if ($ft_key === 'xtra unl') {
-        if (strpos(strtolower($tc['label']), 'xtra unl 1') !== false) {
-            $ft_key = 'xtra unl 1';
-        } elseif (strpos(strtolower($tc['label']), 'xtra unl 2') !== false) {
-            $ft_key = 'xtra unl 2';
-        }
-    }
     $tank_key = strtolower(trim($tc['tank']));
-    $inv      = $fi_lookup[$ft_key] ?? null;
+    $tank_num = (int)($tc['tanker_num'] ?? 0);
+
+    // Smart lookup for split fuel types in fuel_inventory (e.g. Diesel 1, Diesel 2, Xtra UNL 1, Xtra UNL 2)
+    $inv = null;
+    if ($ft_key === 'diesel') {
+        if ($tank_num === 1 && isset($fi_lookup['diesel 1'])) {
+            $inv = $fi_lookup['diesel 1'];
+        } elseif ($tank_num === 2 && isset($fi_lookup['diesel 2'])) {
+            $inv = $fi_lookup['diesel 2'];
+        } else {
+            $inv = $fi_lookup['diesel'] ?? null;
+        }
+    } elseif ($ft_key === 'xtra unl' || $ft_key === 'xtr advance') {
+        if ($tank_num === 4 && (isset($fi_lookup['xtra unl 1']) || isset($fi_lookup['xtr advance 1']))) {
+            $inv = $fi_lookup['xtra unl 1'] ?? $fi_lookup['xtr advance 1'];
+        } elseif ($tank_num === 6 && (isset($fi_lookup['xtra unl 2']) || isset($fi_lookup['xtr advance 2']))) {
+            $inv = $fi_lookup['xtra unl 2'] ?? $fi_lookup['xtr advance 2'];
+        } else {
+            $inv = $fi_lookup['xtra unl'] ?? $fi_lookup['xtr advance'] ?? null;
+        }
+    } else {
+        $inv = $fi_lookup[$ft_key] ?? null;
+    }
 
     $capacity  = (float)$tc['capacity'];
     $cur_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
 
-    // Number of tanks for this fuel sub-group (respecting XTRA UNL split)
-    $same_type_count = count(array_filter($TANK_CONFIG, function($t) use ($ft_key) {
-        $k = strtolower(trim($t['fuel_type']));
-        if ($k === 'xtra unl') {
-            if (strpos(strtolower($t['label']), 'xtra unl 1') !== false) {
-                $k = 'xtra unl 1';
-            } elseif (strpos(strtolower($t['label']), 'xtra unl 2') !== false) {
-                $k = 'xtra unl 2';
-            }
-        }
-        return $k === $ft_key;
-    }));
+    // Deliveries per tank_assigned (or tank label)
+    $purchases = $del_lookup[$tank_key] ?? $del_lookup[strtolower($tc['label'])] ?? 0;
 
-    // Deliveries: per tank_assigned
-    $purchases = $del_lookup[$tank_key] ?? 0;
+    // Number of tanks sharing this fuel type without dedicated split rows
+    $same_type_count = count(array_filter($TANK_CONFIG, fn($t) => strcasecmp(trim($t['fuel_type']), $tc['fuel_type']) === 0));
 
-    // Sales & Calibration: split equally
-    $sales_total = $sales_lookup[$ft_key] ?? 0;
-    $adj_total   = $adj_lookup[$ft_key] ?? 0;
-    $sales       = $same_type_count > 0 ? round($sales_total / $same_type_count, 2) : 0;
-    $calibration_adj = $same_type_count > 0 ? round($adj_total / $same_type_count, 2) : 0;
+    // If inv is directly matched to a specific split row (like Diesel 1), use exact level directly
+    $is_split_match = ($ft_key === 'diesel' && ($tank_num === 1 && isset($fi_lookup['diesel 1']) || $tank_num === 2 && isset($fi_lookup['diesel 2'])))
+                   || (($ft_key === 'xtra unl' || $ft_key === 'xtr advance') && ($tank_num === 4 && (isset($fi_lookup['xtra unl 1']) || isset($fi_lookup['xtr advance 1'])) || $tank_num === 6 && (isset($fi_lookup['xtra unl 2']) || isset($fi_lookup['xtr advance 2']))));
 
-    // Beginning Balance
-    $beginning = $same_type_count > 0 ? round($cur_level / $same_type_count, 2) : 0;
+    if ($is_split_match) {
+        $beginning = $cur_level;
+        $sales = $sales_lookup[strtolower(trim($inv['fuel_type'] ?? ''))] ?? 0;
+        $calibration_adj = $adj_lookup[strtolower(trim($inv['fuel_type'] ?? ''))] ?? 0;
+    } else {
+        $sales_total     = $sales_lookup[$ft_key] ?? 0;
+        $adj_total       = $adj_lookup[$ft_key] ?? 0;
+        $sales           = $same_type_count > 0 ? round($sales_total / $same_type_count, 2) : 0;
+        $calibration_adj = $same_type_count > 0 ? round($adj_total   / $same_type_count, 2) : 0;
+        $beginning       = $same_type_count > 0 ? round($cur_level / $same_type_count, 2) : 0;
+    }
 
     $total_available = $beginning + $purchases;
-    $ending_system   = min(max(0, $total_available - $sales - $calibration_adj), $capacity);
+    $ending_system   = $capacity > 0
+        ? min(max(0, $total_available - $sales - $calibration_adj), $capacity)
+        : max(0, $total_available - $sales - $calibration_adj);
 
     $current_level_tank = $ending_system;
 
-    // Thresholds aligned with TANK_CONFIG_17
-    if ($capacity == 14000) {
-        $critical_lvl = 2500; $low_lvl = 5000;
-    } elseif ($capacity == 7000) {
-        $critical_lvl = 1000; $low_lvl = 2000;
+    // Reorder & Critical levels matching user's exact specification:
+    // 14,000L tank => Low (reorder) at <= 5,000L, Critical at <= 2,500L
+    // 7,000L tank => Low (reorder) at <= 2,000L, Critical at <= 1,000L
+    if ($capacity == 7000) {
+        $low_lvl      = 2000.0;
+        $critical_lvl = 1000.0;
     } else {
-        $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20;
+        $low_lvl      = 5000.0;
+        $critical_lvl = 2500.0;
     }
 
     $fill_pct = $capacity > 0 ? round(($current_level_tank / $capacity) * 100, 2) : 0;
@@ -1058,17 +1072,18 @@ foreach ($TANK_CONFIG as $tc) {
     else                                           { $status = 'Normal';       $sc = '#28a745'; }
 
     $tank_levels[] = [
-        'tank_label'   => $tc['label'],
-        'tank_assign'  => $tc['tank'],
-        'fuel_type'    => $tc['fuel_type'],
-        'level'        => $current_level_tank,
-        'capacity'     => $capacity,
-        'status'       => $status,
-        'status_color' => $sc,
-        'pct'          => min(100.0, round($fill_pct, 1)),
-        'reorder_level'=> $tc['reorder_level'] ?? 0
+        'tank_label'    => $tc['label'],
+        'tank_assign'   => $tc['tank'],
+        'fuel_type'     => $tc['fuel_type'],
+        'level'         => $current_level_tank,
+        'capacity'      => $capacity,
+        'status'        => $status,
+        'status_color'  => $sc,
+        'pct'           => min(100.0, round($fill_pct, 1)),
+        'reorder_level' => $low_lvl,
     ];
 }
+
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1186,25 +1201,27 @@ foreach ($active_services as &$active_service) {
 }
 unset($active_service);
 
-// Table 3: Fuel Stock Alerts (dynamic capacity-based thresholds: Critical + Low)
+// Table 3: Fuel Stock Alerts (dynamic: uses reorder_level / critical_level from DB)
 $fuel_stock_alerts = [];
 try {
-    $fi_rows = $pdo->prepare("SELECT fuel_type, current_level, capacity FROM fuel_inventory WHERE station_id=?");
+    $fi_rows = $pdo->prepare("SELECT fuel_type, current_level, capacity, COALESCE(reorder_level, 0) AS reorder_level, COALESCE(critical_level, 0) AS critical_level FROM fuel_inventory WHERE station_id=?");
     $fi_rows->execute([$station_id]);
     foreach ($fi_rows->fetchAll(PDO::FETCH_ASSOC) as $fi_row) {
-        $fi_cap  = (float)($fi_row['capacity'] ?? 0);
-        $fi_level = min(max(0, (float)($fi_row['current_level'] ?? 0)), $fi_cap);
-        if ($fi_cap == 14000)    { $fi_crit = 5000; $fi_low = 7000; }
-        elseif ($fi_cap == 7000) { $fi_crit = 1000; $fi_low = 2000; }
-        else                     { $fi_crit = $fi_cap * 0.10; $fi_low = $fi_cap * 0.20; }
-        if ($fi_level <= $fi_low) {  // show anything at or below Low threshold
-            if ($fi_level <= 0)           { $st = 'Out of Stock'; }
-            elseif ($fi_level <= $fi_crit){ $st = 'Critical'; }
-            else                          { $st = 'Low'; }
+        $fi_cap    = (float)($fi_row['capacity'] ?? 0);
+        $fi_level  = min(max(0, (float)($fi_row['current_level'] ?? 0)), $fi_cap > 0 ? $fi_cap : PHP_FLOAT_MAX);
+        $fi_reorder = (float)($fi_row['reorder_level'] ?? 0);
+        $fi_crit    = (float)($fi_row['critical_level'] ?? 0);
+        // Fall back to capacity percentages if not configured
+        if ($fi_reorder <= 0) $fi_reorder = $fi_cap > 0 ? round($fi_cap * 0.30, 2) : 0;
+        if ($fi_crit   <= 0) $fi_crit    = $fi_cap > 0 ? round($fi_cap * 0.15, 2) : 0;
+        if ($fi_level <= $fi_reorder) {
+            if ($fi_level <= 0)              { $st = 'Out of Stock'; }
+            elseif ($fi_level <= $fi_crit)   { $st = 'Critical'; }
+            else                             { $st = 'Low'; }
             $fuel_stock_alerts[] = [
                 'fuel_type'     => $fi_row['fuel_type'],
                 'current_stock' => $fi_level,
-                'reorder_level' => $fi_low,
+                'reorder_level' => $fi_reorder,
                 'status'        => $st,
             ];
         }
@@ -1670,6 +1687,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
     <div class="header-filters">
         <form method="GET" class="date-filter-form">
+            <span style="color:#64748b; font-weight:600; font-size:13px;">From</span>
             <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" required>
             <span style="color:#64748b; font-weight:600; font-size:13px;">to</span>
             <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>" required>

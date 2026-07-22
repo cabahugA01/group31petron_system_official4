@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Admin Dashboard
  *
@@ -28,12 +28,30 @@ if (!$station_id && $role === 'admin') {
     render_no_station_page('admin_dashboard.php');
 }
 
-$date_filter = $_GET['date'] ?? $_POST['date'] ?? date('Y-m-d');
-$date_check = DateTimeImmutable::createFromFormat('Y-m-d', (string) $date_filter);
-if (!$date_check || $date_check->format('Y-m-d') !== $date_filter) {
-    $date_filter = date('Y-m-d');
-    $date_check = new DateTimeImmutable($date_filter);
+// Date range filter — defaults to today for both from/to
+$date_from = trim($_GET['date_from'] ?? $_POST['date_from'] ?? date('Y-m-d'));
+$date_to   = trim($_GET['date_to']   ?? $_POST['date_to']   ?? date('Y-m-d'));
+$date_check_from = DateTimeImmutable::createFromFormat('Y-m-d', $date_from);
+if (!$date_check_from || $date_check_from->format('Y-m-d') !== $date_from) {
+    $date_from = date('Y-m-d');
+    $date_check_from = new DateTimeImmutable($date_from);
 }
+$date_check_to = DateTimeImmutable::createFromFormat('Y-m-d', $date_to);
+if (!$date_check_to || $date_check_to->format('Y-m-d') !== $date_to) {
+    $date_to = date('Y-m-d');
+    $date_check_to = new DateTimeImmutable($date_to);
+}
+if ($date_to < $date_from) { $date_to = $date_from; $date_check_to = $date_check_from; }
+
+// Legacy aliases used by weekly chart and audit (single-date context)
+$date_filter = $date_from;
+$date_check  = $date_check_from;
+
+// Period label
+$period_label = ($date_from === $date_to)
+    ? date('M j, Y', strtotime($date_from))
+    : date('M j', strtotime($date_from)) . ' – ' . date('M j, Y', strtotime($date_to));
+$is_today = ($date_from === date('Y-m-d') && $date_to === date('Y-m-d'));
 
 function adm_h($value): string
 {
@@ -264,7 +282,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['admin_dashboard_action'] ?
         $_SESSION['error'] = 'Backup failed: ' . $e->getMessage();
     }
 
-    header('Location: admin_dashboard.php?' . http_build_query(['date' => $date_filter]));
+    header('Location: admin_dashboard.php?' . http_build_query(['date_from' => $date_from, 'date_to' => $date_to]));
     exit;
 }
 
@@ -290,27 +308,29 @@ $station_params = adm_station_params($station_id);
 $station_sql_mt = adm_station_clause($station_id, 'mt');
 $station_params_mt = adm_station_params($station_id);
 
-// Summary metrics.
+// Summary metrics — use date range.
+$date_range_params = array_merge($station_params, [$date_from, $date_to]);
+
 $fuel_count = adm_table_exists($pdo, 'fuel_transactions')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM fuel_transactions WHERE {$station_sql} AND DATE(transaction_date) = ?", array_merge($station_params, [$date_filter]))
+    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM fuel_transactions WHERE {$station_sql} AND DATE(transaction_date) BETWEEN ? AND ?", $date_range_params)
     : 0;
 
 $merch_count = adm_table_exists($pdo, 'merchandise_transactions')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$station_sql} AND DATE(COALESCE(transaction_date, created_at)) = ?", array_merge($station_params, [$date_filter]))
+    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$station_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?", $date_range_params)
     : 0;
 
 $service_count = adm_table_exists($pdo, 'job_orders')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND DATE(created_at) = ?", array_merge($station_params, [$date_filter]))
+    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND DATE(created_at) BETWEEN ? AND ?", $date_range_params)
     : 0;
 
 $total_transactions = $fuel_count + $merch_count + $service_count;
 
 $fuel_revenue = adm_table_exists($pdo, 'fuel_transactions')
-    ? (float) adm_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE(transaction_date) = ?", array_merge($station_params, [$date_filter]))
+    ? (float) adm_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE(transaction_date) BETWEEN ? AND ?", $date_range_params)
     : 0.0;
 
 $merch_revenue = adm_table_exists($pdo, 'merchandise_transactions')
-    ? (float) adm_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$station_sql} AND DATE(COALESCE(transaction_date, created_at)) = ?", array_merge($station_params, [$date_filter]))
+    ? (float) adm_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$station_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?", $date_range_params)
     : 0.0;
 
 $service_revenue = adm_table_exists($pdo, 'job_orders')
@@ -319,9 +339,9 @@ $service_revenue = adm_table_exists($pdo, 'job_orders')
         "SELECT COALESCE(SUM(COALESCE(total_cost, estimated_cost, COALESCE(actual_labor_cost, 0) + COALESCE(actual_parts_cost, 0), 0)), 0)
          FROM job_orders
          WHERE {$station_sql}
-           AND DATE(created_at) = ?
+           AND DATE(created_at) BETWEEN ? AND ?
            AND LOWER(COALESCE(status, '')) IN ('completed', 'verified', 'finalized', 'released')",
-        array_merge($station_params, [$date_filter])
+        $date_range_params
     )
     : 0.0;
 
@@ -395,7 +415,7 @@ if (adm_table_exists($pdo, 'fuel_inventory')) {
     foreach ($fuel_inv_rows as $fi_row) {
         $capacity = (float)($fi_row['capacity'] ?? 0);
         $level = min(max(0, (float)($fi_row['current_level'] ?? $fi_row['current_stock'] ?? 0)), $capacity);
-        if ($capacity == 14000)    { $critical_lvl = 5000; $low_lvl = 7000; }
+        if ($capacity == 14000)    { $critical_lvl = 2500; $low_lvl = 5000; }
         elseif ($capacity == 7000) { $critical_lvl = 1000; $low_lvl = 2000; }
         else                       { $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20; }
         if ($level <= $critical_lvl) {
@@ -525,31 +545,31 @@ $system_health_ok = $db_connected && $server_running && $backup_ok;
 $system_health_value = $system_health_ok ? 'OK' : ($db_connected && $server_running ? 'Review' : 'Issue');
 
 $audit_today_logs = adm_table_exists($pdo, 'audit_logs')
-    ? (int) adm_value($pdo, 'SELECT COUNT(*) FROM audit_logs WHERE DATE(created_at) = ?', [$date_filter])
+    ? (int) adm_value($pdo, 'SELECT COUNT(*) FROM audit_logs WHERE DATE(created_at) BETWEEN ? AND ?', [$date_from, $date_to])
     : 0;
 $audit_errors = adm_table_exists($pdo, 'audit_logs')
     ? (int) adm_value(
         $pdo,
         "SELECT COUNT(*) FROM audit_logs
-         WHERE DATE(created_at) = ?
+         WHERE DATE(created_at) BETWEEN ? AND ?
            AND (LOWER(COALESCE(status, '')) IN ('error', 'failed') OR error_message IS NOT NULL)",
-        [$date_filter]
+        [$date_from, $date_to]
     )
     : 0;
 $audit_warnings = adm_table_exists($pdo, 'audit_logs')
     ? (int) adm_value(
         $pdo,
         "SELECT COUNT(*) FROM audit_logs
-         WHERE DATE(created_at) = ?
+         WHERE DATE(created_at) BETWEEN ? AND ?
            AND (LOWER(COALESCE(status, '')) = 'warning' OR LOWER(COALESCE(log_type, '')) = 'warning')",
-        [$date_filter]
+        [$date_from, $date_to]
     )
     : 0;
 $login_successes = adm_table_exists($pdo, 'login_attempts')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM login_attempts WHERE DATE(attempt_time) = ? AND LOWER(status) = 'success'", [$date_filter])
+    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM login_attempts WHERE DATE(attempt_time) BETWEEN ? AND ? AND LOWER(status) = 'success'", [$date_from, $date_to])
     : 0;
 $login_failures = adm_table_exists($pdo, 'login_attempts')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM login_attempts WHERE DATE(attempt_time) = ? AND LOWER(status) IN ('failed', 'locked', 'blocked')", [$date_filter])
+    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM login_attempts WHERE DATE(attempt_time) BETWEEN ? AND ? AND LOWER(status) IN ('failed', 'locked', 'blocked')", [$date_from, $date_to])
     : 0;
 
 $db_stats = ['storage_bytes' => 0, 'records' => 0];
@@ -649,9 +669,9 @@ foreach ($fuel_rules as [$condition, $condition_params]) {
             "SELECT COALESCE(SUM(liters_sold), 0)
              FROM fuel_transactions
              WHERE {$station_sql}
-               AND DATE(transaction_date) = ?
+               AND DATE(transaction_date) BETWEEN ? AND ?
                AND {$condition}",
-            array_merge($station_params, [$date_filter], $condition_params)
+            array_merge($station_params, [$date_from, $date_to], $condition_params)
         )
         : 0.0;
 }
@@ -667,9 +687,9 @@ if (adm_table_exists($pdo, 'merchandise_transaction_items') && adm_table_exists(
          FROM merchandise_transaction_items mti
          INNER JOIN merchandise_transactions mt ON mt.id = mti.transaction_id
          WHERE {$station_sql_mt}
-           AND DATE(COALESCE(mt.transaction_date, mt.created_at)) = ?
+           AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
          GROUP BY COALESCE(mti.category, ''), COALESCE(mti.product_name, '')",
-        array_merge($station_params_mt, [$date_filter])
+        array_merge($station_params_mt, [$date_from, $date_to])
     );
     foreach ($category_rows as $row) {
         $bucket = adm_merch_bucket((string) ($row['category'] ?? ''), (string) ($row['product_name'] ?? ''));
@@ -684,10 +704,10 @@ if (adm_table_exists($pdo, 'fuel_transactions')) {
         "SELECT staff_id AS user_id, COUNT(*) AS tx_count
          FROM fuel_transactions
          WHERE {$station_sql}
-           AND DATE(transaction_date) = ?
+           AND DATE(transaction_date) BETWEEN ? AND ?
            AND staff_id IS NOT NULL
          GROUP BY staff_id",
-        array_merge($station_params, [$date_filter])
+        array_merge($station_params, [$date_from, $date_to])
     ) as $row) {
         $id = (int) ($row['user_id'] ?? 0);
         if ($id > 0) {
@@ -701,10 +721,10 @@ if (adm_table_exists($pdo, 'merchandise_transactions')) {
         "SELECT staff_id AS user_id, COUNT(*) AS tx_count
          FROM merchandise_transactions
          WHERE {$station_sql}
-           AND DATE(COALESCE(transaction_date, created_at)) = ?
+           AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
            AND staff_id IS NOT NULL
          GROUP BY staff_id",
-        array_merge($station_params, [$date_filter])
+        array_merge($station_params, [$date_from, $date_to])
     ) as $row) {
         $id = (int) ($row['user_id'] ?? 0);
         if ($id > 0) {
@@ -718,10 +738,10 @@ if (adm_table_exists($pdo, 'job_orders')) {
         "SELECT COALESCE(NULLIF(created_by, 0), user_id) AS user_id, COUNT(*) AS tx_count
          FROM job_orders
          WHERE {$station_sql}
-           AND DATE(created_at) = ?
+           AND DATE(created_at) BETWEEN ? AND ?
            AND COALESCE(NULLIF(created_by, 0), user_id) IS NOT NULL
          GROUP BY COALESCE(NULLIF(created_by, 0), user_id)",
-        array_merge($station_params, [$date_filter])
+        array_merge($station_params, [$date_from, $date_to])
     ) as $row) {
         $id = (int) ($row['user_id'] ?? 0);
         if ($id > 0) {
@@ -951,7 +971,7 @@ if (adm_table_exists($pdo, 'fuel_inventory')) {
     foreach ($fuel_all as $fi_row) {
         $capacity = (float)($fi_row['capacity'] ?? 0);
         $level = min(max(0, (float)($fi_row['current_level'] ?? $fi_row['current_stock'] ?? 0)), $capacity);
-        if ($capacity == 14000)    { $critical_lvl = 5000; $low_lvl = 7000; }
+        if ($capacity == 14000)    { $critical_lvl = 2500; $low_lvl = 5000; }
         elseif ($capacity == 7000) { $critical_lvl = 1000; $low_lvl = 2000; }
         else                       { $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20; }
         if ($level <= 0) {
@@ -1055,6 +1075,12 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
+    body[data-page="admin_dashboard"] .main {
+        padding: 0 0 60px 0 !important;
+        background: #f5f7fb;
+        box-sizing: border-box;
+    }
+
     .admin-dashboard {
         --petron-blue: #002f70;
         --petron-navy: #032b55;
@@ -1069,9 +1095,11 @@ include __DIR__ . '/../partials/header.php';
         --danger: #dc2626;
         --info: #0e7490;
         color: var(--ink);
-        padding: 0 0 70px;
+        padding: 12px 24px 72px;
         background: var(--page);
         min-height: calc(100vh - 120px);
+        width: 100%;
+        box-sizing: border-box;
     }
 
     .admin-dashboard * {
@@ -1093,10 +1121,8 @@ include __DIR__ . '/../partials/header.php';
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 18px;
-        padding: 0 0 18px 0;
-        margin-bottom: 22px;
-        border-bottom: 2px solid var(--line);
+        gap: 15px;
+        margin-bottom: 25px;
     }
 
     .admin-kicker {
@@ -1731,7 +1757,10 @@ include __DIR__ . '/../partials/header.php';
             <div class="admin-kicker"><i class="fas fa-user-shield"></i> Admin Dashboard</div>
         </div>
         <form class="admin-filter-form" method="get" action="admin_dashboard.php">
-            <input class="admin-date-input" type="date" name="date" value="<?= adm_h($date_filter) ?>">
+            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-right:4px;">From</label>
+            <input class="admin-date-input" type="date" name="date_from" value="<?= adm_h($date_from) ?>">
+            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin:0 4px;">To</label>
+            <input class="admin-date-input" type="date" name="date_to" value="<?= adm_h($date_to) ?>">
             <button class="admin-btn primary" type="submit"><i class="fas fa-filter"></i>Filter</button>
         </form>
     </section>
@@ -1739,18 +1768,18 @@ include __DIR__ . '/../partials/header.php';
     <section class="mgr-summary-grid" aria-label="Admin summary cards">
         <div class="mgr-card" data-tone="blue">
             <div>
-                <div class="mgr-card-label">Today's Revenue</div>
+                <div class="mgr-card-label"><?= $is_today ? "Today's Revenue" : "Revenue" ?></div>
                 <div class="mgr-card-value"><?= adm_money($total_revenue) ?></div>
-                <div class="mgr-card-sub">Fuel <?= adm_money($fuel_revenue) ?> Â· Merchandise <?= adm_money($merch_revenue) ?> Â· Services <?= adm_money($service_revenue) ?></div>
+                <div class="mgr-card-sub">Fuel <?= adm_money($fuel_revenue) ?> &middot; Merchandise <?= adm_money($merch_revenue) ?> &middot; Services <?= adm_money($service_revenue) ?></div>
             </div>
             <div class="mgr-icon" style="background: #eff6ff; color: #002F70;"><i class="fas fa-peso-sign"></i></div>
         </div>
 
         <div class="mgr-card" data-tone="green">
             <div>
-                <div class="mgr-card-label">Today's Transactions</div>
+                <div class="mgr-card-label"><?= $is_today ? "Today's Transactions" : "Transactions" ?></div>
                 <div class="mgr-card-value"><?= number_format($total_transactions) ?></div>
-                <div class="mgr-card-sub">Fuel <?= number_format($fuel_count) ?> Â· Merchandise <?= number_format($merch_count) ?> Â· Services <?= number_format($service_count) ?></div>
+                <div class="mgr-card-sub">Fuel <?= number_format($fuel_count) ?> &middot; Merchandise <?= number_format($merch_count) ?> &middot; Services <?= number_format($service_count) ?></div>
             </div>
             <div class="mgr-icon" style="background: #f0fdf4; color: #16a34a;"><i class="fas fa-right-left"></i></div>
         </div>
@@ -1759,7 +1788,7 @@ include __DIR__ . '/../partials/header.php';
             <div>
                 <div class="mgr-card-label">Active Users</div>
                 <div class="mgr-card-value"><?= number_format($total_active_users) ?></div>
-                <div class="mgr-card-sub"><?= number_format($active_admins) ?> Admin Â· <?= number_format($active_managers) ?> Manager Â· <?= number_format($active_staff) ?> Staff</div>
+                <div class="mgr-card-sub"><?= number_format($active_admins) ?> Admin &middot; <?= number_format($active_managers) ?> Manager &middot; <?= number_format($active_staff) ?> Staff</div>
             </div>
             <div class="mgr-icon" style="background: #ecfeff; color: #0891b2;"><i class="fas fa-users"></i></div>
         </div>
@@ -1777,7 +1806,7 @@ include __DIR__ . '/../partials/header.php';
             <div>
                 <div class="mgr-card-label">Inventory Alerts</div>
                 <div class="mgr-card-value"><?= number_format($total_inventory_alerts) ?></div>
-                <div class="mgr-card-sub">Low fuel <?= number_format($fuel_low_count) ?> Â· Low merchandise <?= number_format($merch_low_count) ?> Â· Critical <?= number_format($fuel_critical_count + $merch_critical_count) ?></div>
+                <div class="mgr-card-sub">Low fuel <?= number_format($fuel_low_count) ?> &middot; Low merchandise <?= number_format($merch_low_count) ?> &middot; Critical <?= number_format($fuel_critical_count + $merch_critical_count) ?></div>
             </div>
             <div class="mgr-icon" style="background: #fef2f2; color: #dc2626;"><i class="fas fa-triangle-exclamation"></i></div>
         </div>
@@ -2169,7 +2198,8 @@ include __DIR__ . '/../partials/header.php';
                     <div class="mini-list-row"><span>Next Scheduled Backup</span><strong><?= adm_h($next_backup) ?></strong></div>
                 </div>
                 <form class="quick-form" method="post" action="admin_dashboard.php" style="margin-top:16px;">
-                    <input type="hidden" name="date" value="<?= adm_h($date_filter) ?>">
+                    <input type="hidden" name="date_from" value="<?= adm_h($date_from) ?>">
+                    <input type="hidden" name="date_to" value="<?= adm_h($date_to) ?>">
                     <input type="hidden" name="admin_dashboard_action" value="run_backup">
                     <button class="admin-btn primary" type="submit"><i class="fas fa-download"></i>Backup Now</button>
                 </form>
@@ -2204,7 +2234,8 @@ include __DIR__ . '/../partials/header.php';
             </a>
         <?php endforeach; ?>
         <form class="quick-form" method="post" action="admin_dashboard.php">
-            <input type="hidden" name="date" value="<?= adm_h($date_filter) ?>">
+            <input type="hidden" name="date_from" value="<?= adm_h($date_from) ?>">
+            <input type="hidden" name="date_to" value="<?= adm_h($date_to) ?>">
             <input type="hidden" name="admin_dashboard_action" value="run_backup">
             <button class="quick-action" type="submit">
                 <i class="fas fa-database"></i>

@@ -45,7 +45,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
     exit;
 }
 
-$TANK_CONFIG_17 = get_tank_config();
+$TANK_CONFIG_17 = get_tank_config((int)$station_id);
 
 // ── Fetch fuel_inventory (one row per fuel_type for this station) ─────
 $fi_lookup = [];
@@ -222,17 +222,11 @@ try {
 
         $current_level_tank = $ending_system;
 
-        // Capacity-based thresholds aligned with TANK_CONFIG_17
-        if ($capacity == 14000) {
-            $critical_lvl = 2500;
-            $low_lvl = 5000;
-        } elseif ($capacity == 7000) {
-            $critical_lvl = 1000;
-            $low_lvl = 2000;
-        } else {
-            $critical_lvl = $capacity * 0.10;
-            $low_lvl = $capacity * 0.20;
-        }
+        // Thresholds — from DB tank config (reorder_level / critical_level)
+        $critical_lvl = (float)($tc['critical_level'] ?? 0);
+        $low_lvl      = (float)($tc['reorder_level']  ?? 0);
+        if ($critical_lvl <= 0) $critical_lvl = $capacity > 0 ? $capacity * 0.15 : 0;
+        if ($low_lvl <= 0)      $low_lvl      = $capacity > 0 ? $capacity * 0.30 : 0;
         $fill_pct = $capacity > 0 ? round(($current_level_tank / $capacity) * 100, 2) : 0;
         if      ($current_level_tank <= 0)             { $status = 'Out of Stock'; $sc = '#dc3545'; }
         elseif  ($current_level_tank <= $critical_lvl) { $status = 'Critical';     $sc = '#dc3545'; }

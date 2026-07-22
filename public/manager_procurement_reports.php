@@ -362,7 +362,7 @@ require_once __DIR__ . '/../partials/header.php';
 .mp-export-actions{display:flex;gap:6px;margin-left:auto;}
 .mp-export-btn{padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid;display:inline-flex;align-items:center;gap:6px;background:#fff !important;}
 .mp-export-btn:nth-child(1){color:#16a34a !important;border-color:#16a34a !important;}
-.mp-export-btn:nth-child(2){color:#2563eb !important;border-color:#2563eb !important;}
+.mp-export-btn:nth-child(2){color:#002F70 !important;border-color:#002F70 !important;}
 .mp-export-btn:nth-child(3){color:#dc2626 !important;border-color:#dc2626 !important;}
 .mp-export-btn:nth-child(4){color:#002F70 !important;border-color:#002F70 !important;}
 .mp-tabs{display:flex;border-bottom:2px solid #e2e8f0;overflow-x:auto;background:#00264D;}
@@ -448,15 +448,15 @@ require_once __DIR__ . '/../partials/header.php';
 <div class="mp-wrapper">
     <form method="GET" class="mp-filter-bar">
         <input type="hidden" name="section" value="<?= mp_h($section) ?>">
-        <label><i class="fas fa-calendar"></i> Report Date:</label>
+        <label style="font-weight:700;color:#64748b;font-size:13px;text-transform:uppercase;letter-spacing:.4px;">From</label>
         <input type="date" name="date_from" value="<?= mp_h($date_from) ?>" required>
-        <span style="color:#64748b;">to</span>
+        <span style="font-weight:700;color:#64748b;font-size:13px;text-transform:uppercase;letter-spacing:.4px;">To</span>
         <input type="date" name="date_to" value="<?= mp_h($date_to) ?>" required>
         <button type="submit"><i class="fas fa-sync-alt"></i> Apply</button>
         <div class="mp-export-actions">
             <button type="button" class="mp-export-btn" onclick="mpExport('excel')"><i class="fas fa-file-excel"></i> Excel</button>
             <button type="button" class="mp-export-btn" onclick="mpExport('csv')"><i class="fas fa-file-csv"></i> CSV</button>
-            <button type="button" class="mp-export-btn" onclick="mpExport('pdf')"><i class="fas fa-file-pdf"></i> Export PDF</button>
+            <button type="button" class="mp-export-btn" onclick="mpExport('pdf')"><i class="fas fa-file-pdf"></i> PDF</button>
             <button type="button" class="mp-export-btn" onclick="mpPrint()"><i class="fas fa-print"></i> Print</button>
         </div>
     </form>

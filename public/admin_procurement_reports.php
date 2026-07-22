@@ -373,8 +373,8 @@ require_once __DIR__ . '/../partials/header.php';
 .pr-export-btn{padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;border:1px solid;display:inline-flex;align-items:center;gap:6px;background:#fff !important;}
 .pr-export-btn:nth-child(1){color:#16a34a !important;border-color:#16a34a !important;}
 .pr-export-btn:nth-child(1):hover{background:#f0fdf4 !important;}
-.pr-export-btn:nth-child(2){color:#1e40af !important;border-color:#1e40af !important;}
-.pr-export-btn:nth-child(2):hover{background:#dbeafe !important;}
+.pr-export-btn:nth-child(2){color:#002F70 !important;border-color:#002F70 !important;}
+.pr-export-btn:nth-child(2):hover{background:#eff6ff !important;}
 .pr-export-btn:nth-child(3){color:#dc2626 !important;border-color:#dc2626 !important;}
 .pr-export-btn:nth-child(3):hover{background:#fef2f2 !important;}
 .pr-export-btn:nth-child(4){color:#334155 !important;border-color:#64748b !important;}
@@ -490,15 +490,15 @@ require_once __DIR__ . '/../partials/header.php';
 <div class="pr-wrapper">
     <form method="GET" class="pr-filter-bar">
         <input type="hidden" name="section" value="<?= pr_h($section) ?>">
-        <label><i class="fas fa-calendar"></i> Report Date:</label>
+        <label style="font-weight:700;color:#64748b;font-size:13px;text-transform:uppercase;letter-spacing:.4px;">From</label>
         <input type="date" name="date_from" value="<?= pr_h($date_from) ?>" required>
-        <span style="color:#64748b;">to</span>
+        <span style="font-weight:700;color:#64748b;font-size:13px;text-transform:uppercase;letter-spacing:.4px;">To</span>
         <input type="date" name="date_to" value="<?= pr_h($date_to) ?>" required>
         <button type="submit"><i class="fas fa-sync-alt"></i> Apply</button>
         <div class="pr-export-actions">
             <button type="button" class="pr-export-btn" onclick="prExport('excel')"><i class="fas fa-file-excel"></i> Excel</button>
             <button type="button" class="pr-export-btn" onclick="prExport('csv')"><i class="fas fa-file-csv"></i> CSV</button>
-            <button type="button" class="pr-export-btn" onclick="prExport('pdf')"><i class="fas fa-file-pdf"></i></button>
+            <button type="button" class="pr-export-btn" onclick="prExport('pdf')"><i class="fas fa-file-pdf"></i> PDF</button>
             <button type="button" class="pr-export-btn" onclick="prPrint()"><i class="fas fa-print"></i> Print</button>
         </div>
     </form>

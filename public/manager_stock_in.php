@@ -143,7 +143,12 @@ function si_fetch_pending_rows(PDO $pdo, int $station_id, string $type, array $f
             ORDER BY do2.delivery_date ASC, do2.created_at ASC, do2.id ASC
         ";
     } else {
-        $sql = "
+        // Check if inventory_products is accessible (InnoDB engine file may be missing)
+        $inv_accessible = false;
+        try { $pdo->query("SELECT 1 FROM inventory_products LIMIT 1"); $inv_accessible = true; } catch (Throwable $e) {}
+
+        if ($inv_accessible) {
+            $sql = "
             SELECT
                 do2.id AS delivery_id,
                 do2.delivery_ref,
@@ -202,6 +207,43 @@ function si_fetch_pending_rows(PDO $pdo, int $station_id, string $type, array $f
             WHERE {$where}
             ORDER BY do2.delivery_date ASC, do2.created_at ASC, do2.id ASC
         ";
+        } else {
+            // Fallback: no inventory_products JOIN (engine file missing/corrupt)
+            $sql = "
+            SELECT
+                do2.id AS delivery_id,
+                do2.delivery_ref,
+                COALESCE(NULLIF(do2.source_ref, ''), do2.delivery_ref) AS po_key,
+                do2.source_ref,
+                do2.supplier,
+                do2.product,
+                do2.quantity,
+                do2.expected_quantity,
+                do2.actual_quantity,
+                do2.damaged_quantity,
+                do2.unit,
+                do2.delivery_date,
+                do2.delivery_time,
+                do2.dr_number,
+                do2.remarks,
+                do2.status,
+                do2.batch_id,
+                do2.encoded_by,
+                COALESCE(NULLIF(do2.received_by_name, ''), u.name, 'Unknown') AS received_by,
+                NULL AS product_id,
+                NULL AS sku,
+                NULL AS category,
+                COALESCE(do2.unit, 'Piece') AS unit_display,
+                COALESCE(do2.unit_cost, do2.unit_price, 0) AS cost_price,
+                0 AS current_selling_price,
+                NULL AS po_id,
+                do2.source_ref AS purchase_request_no
+            FROM deliveries_oversight do2
+            LEFT JOIN users u ON u.id = do2.encoded_by
+            WHERE {$where}
+            ORDER BY do2.delivery_date ASC, do2.created_at ASC, do2.id ASC
+        ";
+        }
     }
 
     $stmt = $pdo->prepare($sql);
