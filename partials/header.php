@@ -231,33 +231,237 @@ try {
                 $s2->execute([$myStationId]);
                 $badges['admin_stock_in'] = (int)$s2->fetchColumn();
             } catch (Exception $e) { $badges['admin_stock_in'] = 0; }
+            $badges['reports_admin'] = $pending_tx + $pending_jo_count + ($badges['inventory'] ?? 0);
+        } else {
+            // Reports Aggregate for manager
+            $badges['reports'] = ($badges['pos'] ?? 0) + $pending_jo_count + ($badges['inventory'] ?? 0);
+        }
+    } elseif ($role === 'staff') {
+        // Staff badges are dynamically computed via $__badge_add in the layout section below
+    }
+
+    // Deliveries Oversight pending badge (admin)
+    if ($role === 'admin' || $role === 'superadmin') {
+        try {
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id = ? AND status IN ('Pending Validation','Pending Manager Approval','Confirmed')");
+            $stmt->execute([$myStationId]);
+            $badges['deliveries_oversight'] = (int)$stmt->fetchColumn();
+        } catch (Exception $e) { $badges['deliveries_oversight'] = 0; }
+    }
+    // Manager deliveries pending badge
+    if ($role === 'manager') {
+        try {
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id = ? AND status = 'Pending Manager Approval'");
+            $stmt->execute([$myStationId]);
+            $badges['manager_deliveries'] = (int)$stmt->fetchColumn();
+        } catch (Exception $e) { $badges['manager_deliveries'] = 0; }
+    }
+
+    // Fetch Stations for Header Filter (Super Admin)
+    $header_stations = [];
+    if ($role === 'superadmin') {
+        try {
+            $header_stations = $pdo->query("SELECT id, name FROM stations ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {}
+    }
+} catch (Exception $e) { /* Tables might not exist yet */ }
+
+$header_notif_url = function($url) use ($app_base_path, $public_base_url) {
+    $url = trim((string)$url);
+    if ($url === '' || $url === '#') return '#';
+    if (preg_match('/^https?:\/\//i', $url)) return $url;
+    if (strpos($url, '/public/') === 0) return $app_base_path . $url;
+    if (strpos($url, 'public/') === 0) return $app_base_path . '/' . $url;
+    if (preg_match('/^[a-zA-Z0-9_-]+\.php/', $url)) return $public_base_url . '/' . $url;
+    return $url;
+};
+if (in_array($role, ['staff','admin','manager','superadmin','developer'])) {
+    try {
+        if (function_exists('ensure_notifications_table')) {
+            ensure_notifications_table($pdo);
+        }
+        $hn_stmt = $pdo->prepare(
+            "SELECT id, type, title, message, event_type, severity, redirect_url, status, created_at
+             FROM notifications
+             WHERE user_id = ?
+             ORDER BY created_at DESC
+             LIMIT 15"
+        );
+        $hn_stmt->execute([(int)($user['id'] ?? 0)]);
+        $header_notifications = $hn_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $hc_stmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'");
+        $hc_stmt->execute([(int)($user['id'] ?? 0)]);
+        $header_unread_count = (int)$hc_stmt->fetchColumn();
+    } catch (Exception $e) {
+        $header_notifications = [];
+        $header_unread_count = 0;
+    }
+}
+
+// --- FETCH ALERTS FOR DROPDOWN ---
+$header_alerts = [];
+if(in_array($role, ['superadmin','admin','manager'])){
+    // 1. Failed Logins (Super Admin only)
+    if($role === 'superadmin'){
+        try {
+            $failed_stmt = $pdo->prepare("SELECT user_id, details, created_at FROM activity_logs WHERE action = 'Login Failed' AND created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR) AND (user_id IS NULL OR user_id <> ?) ORDER BY created_at DESC LIMIT 5");
+            $failed_stmt->execute([(int)($user['id'] ?? 0)]);
+            $failed_logins = $failed_stmt->fetchAll();
+            foreach($failed_logins as $fl) {
+                $details = (string)($fl['details'] ?? '');
+                $searchUser = '';
+                if (preg_match('/username\s*:\s*([^\s]+)/i', $details, $matches)) {
+                    $searchUser = trim($matches[1]);
+                }
+
+                $failedLink = $public_base_url . '/audit_logs.php?date=today&event=' . urlencode('Login Failed');
+                if ($searchUser !== '') {
+                    $failedLink .= '&q=' . urlencode($searchUser);
+                }
+
+                $header_alerts[] = [
+                    'msg' => "Failed Login: " . htmlspecialchars($fl['details']),
+                    'time' => $fl['created_at'],
+                    'link' => $failedLink
+                ];
+            }
+        } catch(Exception $e){}
+    }
+    // 2. Password Expirations
+    try {
+        $expiring_passwords = $pdo->query("SELECT username FROM users WHERE password_expires_at < NOW() AND status = 'Active' LIMIT 5")->fetchAll();
+        foreach($expiring_passwords as $ep) $header_alerts[] = ['msg'=>"Password Expired: {$ep['username']}", 'time'=>'Now', 'link'=>'users.php'];
+    } catch(Exception $e){}
+    // 3. Reconciliation Delays (Super Admin only)
+    // 4. Anomalies Detected
+    $sales_data = read_json('sales.json', []);
+    foreach($sales_data as $s){
+        if(($s['total'] > 10000 || $s['total'] == 0)) $header_alerts[] = ['msg'=>"Anomaly Detected: ₱".number_format($s['total']), 'time'=>$s['date']??'', 'link'=>'transactions.php'];
+    }
+    // 5. Inventory (keep existing)
+    try {
+        $inv = $pdo->query("SELECT product_name FROM inventory WHERE stock_level <= 20 LIMIT 5")->fetchAll();
+        foreach($inv as $i) $header_alerts[] = ['msg'=>"Low Stock: {$i['product_name']}", 'time'=>'Now', 'link'=>'oversight.php'];
+    } catch(Exception $e){}
+    // 6. Pending Jobs (keep existing)
+    try {
+        $pjobs = $pdo->query("SELECT id FROM job_orders WHERE status='Pending' LIMIT 5")->fetchAll();
+        foreach($pjobs as $j) $header_alerts[] = ['msg'=>"Pending Job #{$j['id']}", 'time'=>'Now', 'link'=>'joborder_stats.php'];
+    } catch(Exception $e){}
+    // 8. Pending Deliveries
+    try {
+        $pending_deliveries = $pdo->query("SELECT id FROM receiving WHERE status = 'pending' LIMIT 5")->fetchAll();
+        foreach($pending_deliveries as $d) $header_alerts[] = ['msg'=>"Pending Delivery #{$d['id']}", 'time'=>'Now', 'link'=>'supplier_confirmation.php'];
+    } catch(Exception $e){}
+    // 9. Credit Warnings
+    try {
+        $credit_warnings = $pdo->query("SELECT name FROM customers WHERE credit_balance > 0 LIMIT 5")->fetchAll();
+        foreach($credit_warnings as $cw) $header_alerts[] = ['msg'=>"Credit Warning: {$cw['name']}", 'time'=>'Now', 'link'=>'customer_credit.php'];
+    } catch(Exception $e){}
+    // 10. Fuel Variance (keep existing)
+    $fuel_readings = read_json('fuel_readings.json', []);
+    foreach($fuel_readings as $fr) {
+        if(($fr['computed_liters'] ?? 0) < 0) {
+             if($role !== 'superadmin' && ($fr['station_id']??'') != $myStationId) continue;
+             $header_alerts[] = ['msg'=>"Fuel Variance: Station " . ($fr['station_id']??'?'), 'time'=>$fr['date']??'', 'link'=>'oversight.php'];
+        }
+    }
+}
+$header_alerts = array_slice($header_alerts, 0, 5);
+$unread_alerts = count($header_alerts);
+
+// --- BADGE LOGIC ---
+$badges = [];
+$station_name = '';
+$current_date = date('Y-m-d');
+$hour = (int)date('H');
+$shift = ($hour >= 6 && $hour < 14) ? 'First Shift' : 'Second Shift';
+
+// Get station name for all non-superadmin users
+if ($myStationId && in_array($role, ['admin', 'manager', 'staff'])) {
+    try {
+        $stmt = $pdo->prepare("SELECT name FROM stations WHERE id = ?");
+        $stmt->execute([$myStationId]);
+        $station_name = $stmt->fetchColumn() ?: 'Unknown Station';
+    } catch (Exception $e) {
+        $station_name = 'Unknown Station';
+    }
+}
+
+// 1. Transactions / Anomalies (JSON)
+if (in_array($role, ['superadmin','admin','manager'])) {
+    $sales_data = read_json('sales.json', []);
+    $anomalies_count = 0;
+    $station_anomalies = 0;
+    foreach ($sales_data as $s) {
+        $amt = (float)($s['total'] ?? 0);
+        if ($amt > 10000 || $amt == 0) {
+            $anomalies_count++;
+            if (($s['station_id'] ?? '') == $myStationId) {
+                $station_anomalies++;
+            }
+        }
+    }
+    if ($role === 'superadmin') {
+        $badges['transactions'] = $anomalies_count;
+    } elseif ($role === 'admin' || $role === 'manager') {
+        $badges['pos'] = $station_anomalies;
+    }
+}
+
+// 2. Job Orders & Users (DB)
+try {
+    if ($role === 'superadmin') {
+        $badges['joborder_stats'] = $pdo->query("SELECT COUNT(*) FROM job_orders WHERE status = 'Pending'")->fetchColumn();
+        $badges['users'] = $pdo->query("SELECT COUNT(*) FROM users WHERE status = 'Disabled'")->fetchColumn();
+        
+        // Inventory Shortages (Oversight)
+        $shortages_count = $pdo->query("SELECT COUNT(*) FROM inventory WHERE stock_level <= 20")->fetchColumn();
+        $badges['oversight'] = $shortages_count;
+
+        // Reports aggregates all anomalies/action items
+        $badges['reports'] = ($badges['transactions'] ?? 0) + $badges['joborder_stats'] + $shortages_count;
+    } elseif ($role === 'admin' || $role === 'manager') {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND status = 'Pending'");
+        $stmt->execute([$myStationId]);
+        $pending_jo_count = (int)$stmt->fetchColumn();
+        $badges['joborder'] = $pending_jo_count; // manager
+
+        // Inventory Shortages
+        $stmtInv = $pdo->prepare("SELECT COUNT(*) FROM inventory WHERE station_id = ? AND stock_level <= 20");
+        $stmtInv->execute([$myStationId]);
+        $badges['inventory'] = (int)$stmtInv->fetchColumn();
+
+        if ($role === 'admin') {
+            // Admin-specific badge keys matching sidebar item IDs
+            try {
+                $s = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND validation_status='Pending'");
+                $s->execute([$myStationId]);
+                $pending_tx = (int)$s->fetchColumn();
+            } catch (Exception $e) { $pending_tx = 0; }
+            try {
+                $s = $pdo->prepare("SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND status IN ('Pending','Pending Approval','Pending Admin Validation') AND type='merch'");
+                $s->execute([$myStationId]);
+                $pending_po = (int)$s->fetchColumn();
+            } catch (Exception $e) { $pending_po = 0; }
+            $badges['admin_transactions_oversight'] = $pending_tx + $pending_jo_count;
+            $badges['purchase_orders_admin']        = $pending_po;
+            // Badge for Stock-In: POs admin-finalized AND manager-validated, awaiting stock-in
+            try {
+                $s2 = $pdo->prepare("SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND admin_finalized=1 AND delivery_validated=1 AND stock_in_done=0 AND type='merch'");
+                $s2->execute([$myStationId]);
+                $badges['admin_stock_in'] = (int)$s2->fetchColumn();
+            } catch (Exception $e) { $badges['admin_stock_in'] = 0; }
             $badges['reports_admin']                = $pending_tx + $pending_jo_count + ($badges['inventory'] ?? 0);
         } else {
             // Reports Aggregate for manager
             $badges['reports'] = ($badges['pos'] ?? 0) + $pending_jo_count + ($badges['inventory'] ?? 0);
         }
     } elseif ($role === 'staff') {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE user_id = ? AND status IN ('Pending', 'In Progress', 'Awaiting Parts')");
-        $stmt->execute([$user['id']]);
-        $badges['joborder'] = $stmt->fetchColumn();
-        // Stock-In badge: deliveries approved by manager (Ready for Stock-In), awaiting staff stock-in
-        try {
-            $s = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status='Ready for Stock-In'");
-            $s->execute([$myStationId]);
-            $badges['staff_stock_in'] = (int)$s->fetchColumn();
-        } catch (Exception $e) { $badges['staff_stock_in'] = 0; }
-        // Stock requests badge: pending requests submitted by this staff (merch + fuel)
-        try {
-            $s_merch = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE staff_id=? AND status='Pending'");
-            $s_merch->execute([$user['id']]);
-            $cnt_merch = (int)$s_merch->fetchColumn();
-
-            $s_fuel = $pdo->prepare("SELECT COUNT(*) FROM fuel_stock_requests WHERE staff_id=? AND status='Pending'");
-            $s_fuel->execute([$user['id']]);
-            $cnt_fuel = (int)$s_fuel->fetchColumn();
-
-            $badges['staff_stock_requests'] = $cnt_merch + $cnt_fuel;
-        } catch (Exception $e) { $badges['staff_stock_requests'] = 0; }
+        // Legacy individual badge assignments removed — now handled by the newer
+        // $__badge_add() system below (lines ~2900+) to avoid double-counting.
+        // No legacy badge keys added here for staff.
     }
 
     // Deliveries Oversight pending badge (admin)
@@ -431,9 +635,9 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         --header-text: #00264D;
     }
     
-    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    /* â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• 
        DARK THEME â€” Full proper dark mode
-       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+       â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â•  */
 
     /* Dark theme CSS variable overrides */
     body.dark-theme {
@@ -2918,9 +3122,9 @@ require_once __DIR__ . '/rbac_menu.php';
 
           $__low_merch = $__badge_count(
               "SELECT COUNT(*) FROM station_inventory si
-               INNER JOIN inventory_products ip ON ip.id=si.product_id
+               LEFT JOIN inventory_products ip ON ip.id=si.product_id
                WHERE si.station_id=? AND COALESCE(si.stock_level,0) <= COALESCE(si.reorder_level, ip.min_stock, 10)
-               AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels')",
+               AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL)",
               [$myStationId]
           );
           $__badge_add('inv_merch', $__low_merch);
@@ -2928,11 +3132,12 @@ require_once __DIR__ . '/rbac_menu.php';
           $__low_fuel = $__badge_count(
               "SELECT COUNT(*) FROM fuel_inventory
                WHERE station_id=? AND current_level >= 0 AND capacity > 0
-               AND current_level <= COALESCE(critical_level, reorder_level, capacity * 0.20)",
+               AND current_level <= COALESCE(reorder_level, capacity * 0.20)",
               [$myStationId]
           );
           $__badge_add('inv_fuel', $__low_fuel);
-          $__badge_add('fuel', $__own_fuel_pending + $__low_fuel, 'top');
+
+          $__badge_add('fuel', $__low_fuel + $__own_fuel_pending, 'top');
 
           $__pending_merch_pos = $__badge_count(
                "SELECT COUNT(DISTINCT po_number) FROM purchase_orders
@@ -2947,21 +3152,13 @@ require_once __DIR__ . '/rbac_menu.php';
            $__badge_add('inv_record_delivery', $__pending_merch_pos + $__pending_fuel_pos);
 
           $__staff_stock_requests = $__badge_count(
-              "SELECT COUNT(*) FROM stock_requests WHERE station_id=? AND staff_id=? AND status='Pending'",
+              "SELECT COUNT(*) FROM stock_requests WHERE station_id=? AND staff_id=? AND status IN ('Pending', 'Pending Manager Review')",
               [$myStationId, $__uid]
           ) + $__badge_count(
-              "SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id=? AND staff_id=? AND status='Pending'",
+              "SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id=? AND staff_id=? AND status IN ('Pending', 'Pending Manager Review')",
               [$myStationId, $__uid]
           );
           $__badge_add('staff_stock_requests', $__staff_stock_requests);
-
-          $__pending_customers = $__badge_count(
-              "SELECT COUNT(*) FROM customers
-               WHERE station_id=?
-               AND LOWER(COALESCE(NULLIF(verification_status,''), NULLIF(mgr_status,''), 'verified')) IN ('pending','pending verification','pending_validation','for review')",
-              [$myStationId]
-          );
-          $__badge_add('customers', $__pending_customers, 'top');
 
           $__calendar_due = $__badge_count(
               "SELECT COUNT(*) FROM calendar_events
@@ -2972,318 +3169,9 @@ require_once __DIR__ . '/rbac_menu.php';
           );
           $__badge_add('calendar', $__calendar_due, 'top');
       }
-
-      // Manager badges
-      if ($role === 'manager' && $myStationId) {
-
-          $__fuel_pending = $__badge_count(
-              "SELECT COUNT(*) FROM fuel_transactions
-               WHERE station_id=? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation','pending_validation')",
-              [$myStationId]
-          );
-          $__badge_add('fuel_transactions_validation', $__fuel_pending);
-
-          $__open_variance = $__badge_count(
-              "SELECT COUNT(*) FROM fuel_variance_reports
-               WHERE station_id=? AND status IN ('Open','Under Investigation')",
-              [$myStationId]
-          );
-          $__badge_add('fuel_adjustments', $__open_variance);
-
-          $__sr = $__badge_count(
-              "SELECT COUNT(*) FROM stock_requests
-               WHERE station_id=? AND status IN ('Pending', 'Pending Manager Review')
-               AND LOWER(COALESCE(item_category, '')) != 'fuel'",
-              [$myStationId]
-          );
-          $__fsr = $__badge_count(
-              "SELECT COUNT(*) FROM fuel_stock_requests
-               WHERE station_id=? AND status IN ('Pending', 'Pending Manager Review')",
-              [$myStationId]
-          );
-          $__badge_add('mgr_stock_review', $__sr + $__fsr);
-
-          $__pending_stock_in = $__badge_count(
-              "SELECT COUNT(DISTINCT delivery_ref) FROM deliveries_oversight
-               WHERE station_id=? AND status='Pending Stock-In'",
-              [$myStationId]
-          );
-          $__badge_add('mgr_stock_in', $__pending_stock_in);
-
-          $__low_merch = $__badge_count(
-              "SELECT COUNT(*) FROM station_inventory si
-               INNER JOIN inventory_products ip ON ip.id=si.product_id
-               WHERE si.station_id=? AND COALESCE(si.stock_level,0) <= COALESCE(si.reorder_level, ip.min_stock, 10)
-               AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels')",
-              [$myStationId]
-          );
-          $__badge_add('mgr_inv_merch', $__low_merch);
-
-          $__low_fuel = $__badge_count(
-              "SELECT COUNT(*) FROM fuel_inventory
-               WHERE station_id=? AND current_level >= 0 AND capacity > 0
-               AND current_level <= COALESCE(critical_level, reorder_level, capacity * 0.20)",
-              [$myStationId]
-          );
-          $__badge_add('mgr_inv_fuel', $__low_fuel);
-
-          $__merch_pending = $__badge_count(
-              "SELECT COUNT(*) FROM merchandise_transactions
-               WHERE station_id=? AND LOWER(COALESCE(validation_status,'')) IN ('pending','pending validation','pending_validation')",
-              [$myStationId]
-          );
-          $__job_pending = $__badge_count(
-              "SELECT COUNT(*) FROM job_orders
-               WHERE station_id=? AND LOWER(COALESCE(validation_status,status,'')) IN ('pending','pending validation','pending_validation')",
-              [$myStationId]
-          );
-          $__badge_add('validated_transactions_manager', $__merch_pending + $__job_pending);
-
-          $__master_pending = $__badge_count(
-              "SELECT COUNT(*) FROM master_data_requests
-               WHERE station_id=? AND status='Pending'",
-              [$myStationId]
-          );
-          $__badge_add('manager_request_data_management', $__master_pending);
-
-          $__pending_customers = $__badge_count(
-              "SELECT COUNT(*) FROM customers
-               WHERE station_id=?
-               AND LOWER(COALESCE(NULLIF(verification_status,''), NULLIF(mgr_status,''), 'verified')) IN ('pending','pending verification','pending_validation','for review')",
-              [$myStationId]
-          );
-          $__badge_add('mgr_customers', $__pending_customers, 'top');
-
-          $__pending_prices = $__badge_count(
-              "SELECT COUNT(*) FROM pending_price_approvals
-               WHERE station_id=? AND status='pending'",
-              [$myStationId]
-          );
-          $__badge_add('mgr_product_pricing', $__pending_prices, 'top');
-
-          $__calendar_due = $__badge_count(
-              "SELECT COUNT(*) FROM calendar_events
-               WHERE station_id=? AND (manager_assigned=? OR manager_assigned IS NULL)
-               AND event_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
-               AND status IN ('pending','approved')",
-              [$myStationId, $__uid]
-          );
-          $__badge_add('calendar', $__calendar_due, 'top');
-      }
-
-      // Admin badges
-      if ($role === 'admin') {
-          // Admin oversees their assigned station (or all if no station)
-          $__admin_where_station = $myStationId ? "station_id=? AND " : "";
-          $__admin_params        = $myStationId ? [$myStationId] : [];
-
-          $__disabled_users = $__badge_count(
-              "SELECT COUNT(*) FROM users
-               WHERE " . ($myStationId ? "station_id=? AND " : "") . "status IN ('Locked','Disabled')",
-              $myStationId ? [$myStationId] : []
-          );
-          $__badge_add('users', $__disabled_users, 'top');
-
-          $__pending_merch = $__badge_count(
-              "SELECT COUNT(*) FROM merchandise_transactions
-               WHERE {$__admin_where_station}LOWER(COALESCE(validation_status,'')) IN ('pending','pending validation','pending_validation')",
-              $__admin_params
-          );
-          $__pending_fuel = $__badge_count(
-              "SELECT COUNT(*) FROM fuel_transactions
-               WHERE {$__admin_where_station}LOWER(COALESCE(status,'')) IN ('pending','pending validation','pending_validation')",
-              $__admin_params
-          );
-          $__pending_jobs = $__badge_count(
-              "SELECT COUNT(*) FROM job_orders
-               WHERE {$__admin_where_station}LOWER(COALESCE(validation_status,status,'')) IN ('pending','pending validation','pending_validation')",
-              $__admin_params
-          );
-          $__badge_add('admin_all_transactions', $__pending_merch + $__pending_fuel + $__pending_jobs);
-
-          $__recent_adjustments = $__badge_count(
-              "SELECT COUNT(*) FROM transaction_adjustments
-               WHERE {$__admin_where_station}adjustment_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)",
-              $__admin_params
-          );
-          $__badge_add('admin_transaction_adjustments', $__recent_adjustments);
-
-          $__recent_voids = $__badge_count(
-              "SELECT COUNT(*) FROM voided_transactions
-               WHERE {$__admin_where_station}void_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)",
-              $__admin_params
-          );
-          $__badge_add('admin_voided_transactions', $__recent_voids);
-
-          $__master_pending = $__badge_count(
-              "SELECT COUNT(*) FROM master_data_requests
-               WHERE {$__admin_where_station}status='Pending'",
-              $__admin_params
-          );
-          $__badge_add('admin_request_data_management', $__master_pending);
-
-          $__badge_add('admin_fuel_transactions_oversight', $__pending_fuel);
-
-          $__fuel_adjustments = $__badge_count(
-              "SELECT COUNT(*) FROM fuel_adjustments
-               WHERE {$__admin_where_station}(LOWER(COALESCE(status,''))='pending' OR status IS NULL OR status='')",
-              $__admin_params
-          );
-          $__badge_add('admin_fuel_adjustments_oversight', $__fuel_adjustments);
-
-          $__low_merch = $__badge_count(
-              "SELECT COUNT(*) FROM station_inventory si
-               INNER JOIN inventory_products ip ON ip.id=si.product_id
-               WHERE " . ($myStationId ? "si.station_id=? AND " : "") . "COALESCE(si.stock_level,0) <= COALESCE(si.reorder_level, ip.min_stock, 10)
-               AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels')",
-              $__admin_params
-          );
-          $__badge_add('admin_inventory_merchandise', $__low_merch);
-
-          $__low_fuel = $__badge_count(
-              "SELECT COUNT(*) FROM fuel_inventory
-               WHERE {$__admin_where_station}current_level >= 0 AND capacity > 0
-               AND current_level <= COALESCE(critical_level, reorder_level, capacity * 0.20)",
-              $__admin_params
-          );
-          $__badge_add('admin_inventory_fuel', $__low_fuel);
-
-          $__pending_po = $__badge_count(
-              "SELECT COUNT(*) FROM purchase_orders
-               WHERE {$__admin_where_station}
-               status IN ('Pending','Pending Approval','Pending Admin Validation','Submitted')
-               AND COALESCE(admin_finalized,0)=0",
-              $__admin_params
-          );
-          $__pending_fuel_po = $__badge_count(
-              "SELECT COUNT(*) FROM fuel_purchase_orders
-               WHERE {$__admin_where_station}status IN ('Pending','Pending Approval','Pending Admin Validation','Submitted')",
-              $__admin_params
-          );
-          $__badge_add('admin_purchase_orders', $__pending_po + $__pending_fuel_po);
-
-          $__awaiting_stock = $__badge_count(
-              "SELECT COUNT(*) FROM purchase_orders
-               WHERE {$__admin_where_station}admin_finalized=1
-               AND (COALESCE(stock_in_done,0)=0 OR status IN ('Approved','Approved PO','Admin Finalized'))",
-              $__admin_params
-          );
-          $__badge_add('admin_inventory_history', $__awaiting_stock);
-
-          $__pending_customers = $__badge_count(
-              "SELECT COUNT(*) FROM customers
-               WHERE {$__admin_where_station}LOWER(COALESCE(NULLIF(verification_status,''), NULLIF(mgr_status,''), 'verified')) IN ('pending','pending verification','pending_validation','for review')",
-              $__admin_params
-          );
-          $__badge_add('admin_customers', $__pending_customers, 'top');
-
-          $__pending_prices = $__badge_count(
-              "SELECT COUNT(*) FROM pending_price_approvals
-               WHERE {$__admin_where_station}status='pending'",
-              $__admin_params
-          );
-          $__badge_add('admin_product_pricing', $__pending_prices, 'top');
-
-          $__calendar_due = $__badge_count(
-              "SELECT COUNT(*) FROM calendar_events
-               WHERE " . ($myStationId ? "station_id=? AND " : "") . "event_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
-               AND status IN ('pending','approved')",
-              $__admin_params
-          );
-          $__badge_add('admin_calendar', $__calendar_due, 'top');
-
-          $__open_variance = $__badge_count(
-              "SELECT COUNT(*) FROM variance_alerts
-               WHERE {$__admin_where_station}status IN ('open','investigating','escalated')",
-              $__admin_params
-          );
-          $__badge_add('rpt_operations', $__open_variance);
-      }
-
-      // Superadmin / developer badges
-      if (in_array($role, ['superadmin', 'developer'], true)) {
-          $__locked_users = $__badge_count(
-              "SELECT COUNT(*) FROM users WHERE status IN ('Locked','Disabled')",
-              []
-          );
-          $__badge_add('admin_management', $__locked_users, 'top');
-
-          $__security_alerts = $__badge_count(
-              "SELECT COUNT(*) FROM activity_logs
-               WHERE created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
-               AND (action LIKE '%Failed%' OR action LIKE '%failed%'
-                    OR action LIKE '%Unauthorized%' OR action LIKE '%unauthorized%'
-                    OR details LIKE '%failed%' OR details LIKE '%Access denied%' OR details LIKE '%access denied%'
-                    OR action LIKE '%Suspicious%' OR details LIKE '%suspicious%')",
-              []
-          );
-          $__badge_add('audit_trail', $__security_alerts, 'top');
-          $__badge_add('rpt_dev_security', $__security_alerts);
-
-          $__system_errors = $__badge_count(
-              "SELECT COUNT(*) FROM system_error_logs
-               WHERE severity IN ('critical','warning')
-               AND created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)",
-              []
-          ) + $__badge_count(
-              "SELECT COUNT(*) FROM activity_logs
-               WHERE created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
-               AND (action LIKE '%Downtime%' OR action LIKE '%downtime%'
-                    OR action LIKE '%CPU%' OR action LIKE '%Memory%'
-                    OR details LIKE '%database connection%' OR details LIKE '%offline%')",
-              []
-          );
-          $__badge_add('rpt_dev_technical', $__system_errors);
-
-          $__database_alerts = $__badge_count(
-              "SELECT COUNT(*) FROM activity_logs
-               WHERE created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
-               AND (action LIKE '%Backup%' OR action LIKE '%backup%' OR details LIKE '%backup%')
-               AND (details LIKE '%fail%' OR details LIKE '%error%' OR details LIKE '%Error%')",
-              []
-          );
-          $__badge_add('database_management', $__database_alerts, 'top');
-
-          $__integration_alerts = $__badge_count(
-              "SELECT COUNT(*) FROM activity_logs
-               WHERE created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
-               AND (action LIKE '%API%' OR action LIKE '%Sync%' OR action LIKE '%Import%' OR action LIKE '%Integration%'
-                    OR details LIKE '%API%' OR details LIKE '%sync%' OR details LIKE '%import%' OR details LIKE '%connection failure%')
-               AND (action LIKE '%fail%' OR action LIKE '%error%' OR details LIKE '%fail%' OR details LIKE '%error%' OR details LIKE '%timeout%')",
-              []
-          );
-          $__badge_add('integration_settings', $__integration_alerts, 'top');
-
-          $__config_changes = $__badge_count(
-              "SELECT COUNT(*) FROM module_config_audit
-               WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)",
-              []
-          );
-          $__badge_add('module_config', $__config_changes, 'top');
-
-          $__settings_changes = $__badge_count(
-              "SELECT COUNT(*) FROM system_settings_audit
-               WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)",
-              []
-          ) + $__badge_count(
-              "SELECT COUNT(*) FROM activity_logs
-               WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-               AND (action LIKE '%Setting%' OR details LIKE '%setting%')",
-              []
-          );
-          $__badge_add('system_settings', $__settings_changes, 'top');
-
-          $__audit_alerts = $__badge_count(
-              "SELECT COUNT(*) FROM activity_logs
-               WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-               AND (action LIKE '%Delete%' OR action LIKE '%Override%' OR action LIKE '%Export%' OR details LIKE '%bulk%')",
-              []
-          );
-          $__badge_add('rpt_dev_audit', $__audit_alerts);
-      }
   }
 
-  // ═══════════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
   // AGGREGATE ALL BADGES FOR NOTIFICATION BELL COUNT
   // Must be AFTER all badge calculations (including fuel_sub_badges)
   // ═══════════════════════════════════════════════════════════════
@@ -3292,17 +3180,18 @@ require_once __DIR__ . '/rbac_menu.php';
   // Add all main badges
   if (isset($badges) && is_array($badges)) {
       foreach ($badges as $key => $count) {
-          // Exclude aggregate badges that are sums of other badges (to avoid double counting)
           $exclude_badges = [
-              'total',                          // Meta badge
-              'variance_anomaly_count',         // Meta badge
-              'reports',                        // Aggregate: transactions + joborder_stats + inventory
-              'reports_admin',                  // Aggregate: pending_tx + pending_jo + inventory
-              'admin_transactions_oversight',   // Aggregate: pending_tx + pending_jo_count
-              'pos',                            // Station anomalies
-              'transactions'                    // All anomalies count
+              'total',
+              'variance_anomaly_count',
+              'reports',
+              'reports_admin',
+              'admin_transactions_oversight',
+              'pos',
+              'transactions',
+              'joborder',
+              'staff_stock_in',
+              'staff_stock_requests',
           ];
-          
           if (!in_array($key, $exclude_badges)) {
               $total_badge_count += (int)$count;
           }
@@ -3791,7 +3680,7 @@ require_once __DIR__ . '/rbac_menu.php';
             <?php if(in_array($role, ['staff','admin','manager','superadmin','developer'])): ?>
             <div class="notification-bell" id="notificationBell" onclick="petronToggleNotif(event)" style="z-index: 99999 !important; pointer-events: auto !important; position: relative !important; cursor: pointer !important;">
                 <i class="fas fa-bell" style="pointer-events: none !important;"></i>
-                <span class="badge" id="notificationBadge" style="display: <?php echo $header_unread_count > 0 ? 'block' : 'none'; ?>; pointer-events: none !important;"><?php echo $header_unread_count > 99 ? '99+' : (int)$header_unread_count; ?></span>
+                <span class="badge" id="notificationBadge" data-server-count="<?php echo (int)$header_unread_count; ?>" style="display: <?php echo $header_unread_count > 0 ? 'flex' : 'none'; ?>; pointer-events: none !important;"><?php echo $header_unread_count > 99 ? '99+' : (int)$header_unread_count; ?></span>
 
                 <div class="notif-dropdown" id="notificationDropdown">
                     <div class="notif-dropdown-header">

@@ -1429,7 +1429,9 @@ if (!$is_manager_or_admin && !empty($user_current_shift)) {
     $shift_label_display = '24-Hour Summary';
 }
 
-$page_title = "Fuel Sales Summary Report";
+$page_title = $active_tab === 'merchandise'
+    ? "Merchandise & Service Sales Report"
+    : "Fuel Sales Summary Report";
 
 // ============================================================
 // CSV EXPORT HANDLER
@@ -2035,7 +2037,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     <html>
     <head>
         <meta charset="UTF-8">
-        <title>Daily Fuel Sales Report - <?= htmlspecialchars($report_period_label) ?></title>
+        <title><?= $active_tab === 'merchandise' ? 'Daily Merchandise & Service Sales Report' : 'Daily Fuel Sales Report' ?> - <?= htmlspecialchars($report_period_label) ?></title>
         <style>
             @page {
                 size: A4 portrait;
@@ -2460,7 +2462,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     exit;
 }
 
-$page_title = "Fuel Sales Summary Report";
+$page_title = $active_tab === 'merchandise'
+    ? "Merchandise & Service Sales Report"
+    : "Fuel Sales Summary Report";
 
 // Include system header
 require_once __DIR__ . '/../partials/header.php';
@@ -2768,7 +2772,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         font-weight: 700;
     }
     
-    /* ── Print styles — used by the JS print helper below ── */
+    /* ── Print styles ── */
     @media print {
         @page {
             size: legal portrait;
@@ -2782,6 +2786,19 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             box-shadow: none !important;
         }
 
+        /* Hide the whole page UI */
+        html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+            overflow: visible !important;
+            height: auto !important;
+        }
+
+        /* JS adds .sfss-printing-fuel or .sfss-printing-merchandise to <body>
+           and we show only the matching tab, hiding everything else */
+        .stock-page .controls,
+        .stock-page .tab-navigation,
         #toggleScrollBtn,
         .toggle-scroll-btn,
         .fixed-footer,
@@ -2792,60 +2809,47 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         .si-toast-container,
         .sf-toast-container,
         [class*="watermark"],
-        [id*="watermark"] {
+        [id*="watermark"],
+        nav, header, footer, aside,
+        .sidebar, .main-sidebar, .main-header,
+        .navbar, .topbar {
             display: none !important;
-            visibility: hidden !important;
-            opacity: 0 !important;
-            width: 0 !important;
-            height: 0 !important;
         }
 
-        /* Hide everything on the real page */
-        html, body {
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #fff !important;
-            overflow: visible !important;
-            height: auto !important;
+        /* Hide non-print elements on the body */
+        body > *:not(.sfss-print-only) {
+            display: none !important;
         }
 
-        body > * { display: none !important; }
-
-        /* Show only the injected print frame */
-        #sfss-print-frame {
+        /* The injected print container */
+        .sfss-print-only {
             display: block !important;
             position: static !important;
             width: 100% !important;
-            max-width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #fff !important;
-            overflow: visible !important;
         }
 
-        #sfss-print-frame * { display: revert; }
-        #sfss-print-frame *,
-        #sfss-print-frame *::before,
-        #sfss-print-frame *::after {
+        .sfss-print-only *,
+        .sfss-print-only *::before,
+        .sfss-print-only *::after {
             box-shadow: none !important;
             text-shadow: none !important;
             background-image: none !important;
         }
 
-        /* Icon/watermark suppression inside print frame */
-        #sfss-print-frame img,
-        #sfss-print-frame canvas,
-        #sfss-print-frame i,
-        #sfss-print-frame svg,
-        #sfss-print-frame .fas,
-        #sfss-print-frame .far,
-        #sfss-print-frame .fab,
-        #sfss-print-frame .fa,
-        #sfss-print-frame .toggle-scroll-btn,
-        #sfss-print-frame #toggleScrollBtn,
-        #sfss-print-frame [class*="watermark"],
-        #sfss-print-frame [id*="watermark"],
-        #sfss-print-frame [class*="fa-"] {
+        .sfss-print-only img,
+        .sfss-print-only canvas,
+        .sfss-print-only i,
+        .sfss-print-only svg,
+        .sfss-print-only .fas,
+        .sfss-print-only .far,
+        .sfss-print-only .fab,
+        .sfss-print-only .fa,
+        .sfss-print-only [class*="fa-"],
+        .sfss-print-only [class*="watermark"],
+        .sfss-print-only [id*="watermark"] {
             display: none !important;
             width: 0 !important;
             height: 0 !important;
@@ -2854,29 +2858,24 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             padding: 0 !important;
         }
 
-        #sfss-print-frame .tab-navigation,
-        #sfss-print-frame .controls,
-        #sfss-print-frame .tab-btn { display: none !important; }
-
-        #sfss-print-frame .tab-content { display: none !important; }
-        #sfss-print-frame .tab-content.sfss-print-active { display: block !important; }
-
-        #sfss-print-frame .header { text-align: center !important; border-bottom: none !important; padding: 0 !important; margin: 0 0 4px 0 !important; }
-        #sfss-print-frame .header h1 { font-size: 12px !important; line-height: 1.05 !important; font-weight: 700 !important; color: #000 !important; margin: 0 0 1px 0 !important; }
-        #sfss-print-frame .header p { font-size: 7.5px !important; color: #000 !important; margin: 1px 0 !important; }
-        #sfss-print-frame .section-title { font-size: 8px !important; line-height: 1.05 !important; font-weight: 700 !important; margin: 4px 0 1px 0 !important; padding: 2px 4px !important; border: none !important; border-bottom: 1px solid #000 !important; background: #fff !important; color: #000 !important; page-break-after: avoid !important; text-transform: uppercase !important; }
-        #sfss-print-frame .table-container { overflow: visible !important; width: 100% !important; margin: 0 0 3px 0 !important; }
-        #sfss-print-frame table { width: 100% !important; border-collapse: collapse !important; font-size: 7.5px !important; line-height: 1.05 !important; margin: 0 !important; table-layout: fixed !important; }
-        #sfss-print-frame thead { display: table-header-group !important; }
-        #sfss-print-frame tbody { display: table-row-group !important; }
-        #sfss-print-frame tr { page-break-inside: avoid !important; }
-        #sfss-print-frame th { font-size: 7px !important; line-height: 1.05 !important; padding: 2px 3px !important; border: 1px solid #000 !important; background: #f3f4f6 !important; color: #000 !important; font-weight: 700 !important; text-align: center !important; overflow-wrap: anywhere !important; }
-        #sfss-print-frame td { font-size: 7px !important; line-height: 1.05 !important; padding: 2px 3px !important; border: 1px solid #000 !important; vertical-align: top !important; color: #000 !important; overflow-wrap: anywhere !important; }
-        #sfss-print-frame .container { margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
-        #sfss-print-frame .content { margin: 0 !important; padding: 0 !important; }
-        #sfss-print-frame .sfss-empty-print-hide { display: none !important; }
-        #sfss-print-frame .font-bold, #sfss-print-frame [style*="font-weight:700"] { font-weight: 700 !important; }
-        #sfss-print-frame .text-right { text-align: right !important; }
+        .sfss-print-only .header { text-align: center !important; border-bottom: none !important; padding: 0 !important; margin: 0 0 4px 0 !important; }
+        .sfss-print-only .header h1 { display: block !important; font-size: 12px !important; line-height: 1.05 !important; font-weight: 700 !important; color: #000 !important; margin: 0 0 1px 0 !important; }
+        .sfss-print-only .header p { display: block !important; font-size: 7.5px !important; color: #000 !important; margin: 1px 0 !important; }
+        .sfss-print-only .section-title { display: block !important; font-size: 8px !important; line-height: 1.05 !important; font-weight: 700 !important; margin: 4px 0 1px 0 !important; padding: 2px 4px !important; border: none !important; border-bottom: 1px solid #000 !important; background: #fff !important; color: #000 !important; page-break-after: avoid !important; text-transform: uppercase !important; }
+        .sfss-print-only .table-container { overflow: visible !important; width: 100% !important; margin: 0 0 3px 0 !important; }
+        .sfss-print-only table { width: 100% !important; border-collapse: collapse !important; font-size: 7.5px !important; line-height: 1.05 !important; margin: 0 !important; table-layout: fixed !important; }
+        .sfss-print-only thead { display: table-header-group !important; }
+        .sfss-print-only tbody { display: table-row-group !important; }
+        .sfss-print-only tr { display: table-row !important; page-break-inside: avoid !important; }
+        .sfss-print-only th { display: table-cell !important; font-size: 7px !important; line-height: 1.05 !important; padding: 2px 3px !important; border: 1px solid #000 !important; background: #f3f4f6 !important; color: #000 !important; font-weight: 700 !important; text-align: center !important; overflow-wrap: anywhere !important; }
+        .sfss-print-only td { display: table-cell !important; font-size: 7px !important; line-height: 1.05 !important; padding: 2px 3px !important; border: 1px solid #000 !important; vertical-align: top !important; color: #000 !important; overflow-wrap: anywhere !important; }
+        .sfss-print-only .container { display: block !important; margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
+        .sfss-print-only .content { display: block !important; margin: 0 !important; padding: 0 !important; }
+        .sfss-print-only .sfss-empty-print-hide { display: none !important; }
+        .sfss-print-only .font-bold { font-weight: 700 !important; }
+        .sfss-print-only .text-right { text-align: right !important; }
+        .sfss-print-only div { display: block !important; }
+        .sfss-print-only span { display: inline !important; }
     }
 </style>
 
@@ -3549,9 +3548,22 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
     // ─── PRINT ──────────────────────────────────────────────────────────────────
     /**
-     * Clones .print-area into a top-level #sfss-print-frame div, prints, then removes it.
-     * This avoids the blank-page bug caused by .main having overflow:hidden + position:fixed.
+     * Determines which tab is currently active.
+     * Priority: tab-btn text → URL param → DOM .active class
      */
+    function _sfss_getActiveTabName() {
+        var activeBtn = document.querySelector('.tab-navigation .tab-btn.active');
+        if (activeBtn) {
+            return activeBtn.textContent.indexOf('MERCHANDISE') !== -1 ? 'merchandise' : 'fuel';
+        }
+        var urlParams = new URLSearchParams(window.location.search);
+        var urlTab = (urlParams.get('tab') || urlParams.get('type') || '').toLowerCase();
+        if (urlTab === 'merchandise') return 'merchandise';
+        var activeContent = document.querySelector('.print-area .tab-content.active');
+        if (activeContent && activeContent.id === 'merchandise-tab') return 'merchandise';
+        return 'fuel';
+    }
+
     function sfssPrintReportArea() {
         _sfss_doNativePrint();
     }
@@ -3562,10 +3574,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             const origHTML = btn.innerHTML;
             btn.innerHTML  = '<i class="fas fa-spinner fa-spin"></i> Opening PDF dialog...';
             btn.disabled   = true;
-            const origTitle = document.title;
-            document.title  = (filename || 'staff_sales_report').replace(/_/g, ' ');
             _sfss_doNativePrint(function() {
-                document.title = origTitle;
                 btn.innerHTML  = origHTML;
                 btn.disabled   = false;
             });
@@ -3576,66 +3585,46 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
     /**
      * Core print helper.
-     * 1. Clones .print-area content into a <div id="sfss-print-frame"> appended to <body>.
-     * 2. Prints only the currently active tab.
-     * 3. Calls window.print().
-     * 4. Removes the frame after printing.
+     * Extracts only the active tab's inner HTML, injects it into a clean
+     * div.sfss-print-only appended to <body>, triggers window.print(),
+     * then removes it. Avoids all CSS inheritance/clone issues.
      */
     function _sfss_doNativePrint(afterPrint) {
-        // Remove any stale frame
-        var old = document.getElementById('sfss-print-frame');
+        // Clean up any previous print container
+        var old = document.querySelector('.sfss-print-only');
         if (old) old.remove();
 
-        var source = document.querySelector('.print-area');
-        if (!source) { window.print(); return; }
+        var activeTabName = _sfss_getActiveTabName();
+        var activeTabEl   = document.getElementById(activeTabName + '-tab');
+        if (!activeTabEl) { window.print(); return; }
 
-        // The global scroll button uses inline !important styles, so remove it
-        // from the DOM during print to keep it out of the preview.
-        var scrollBtn = document.getElementById('toggleScrollBtn');
-        var scrollBtnParent = scrollBtn ? scrollBtn.parentNode : null;
-        var scrollBtnNext = scrollBtn ? scrollBtn.nextSibling : null;
-        if (scrollBtn && scrollBtnParent) {
-            scrollBtn.remove();
-        }
+        // Set document title so the browser print header shows the correct report name
+        var origTitle = document.title;
+        document.title = activeTabName === 'merchandise'
+            ? 'Merchandise & Service Sales Report'
+            : 'Fuel Sales Report';
 
-        var activeSource = source.querySelector('.tab-content.active') || source.querySelector('.tab-content');
-        var activeId = activeSource ? activeSource.id : '';
+        // Build the print container with only the active tab's content
+        var printDiv = document.createElement('div');
+        printDiv.className = 'sfss-print-only';
+        printDiv.innerHTML = activeTabEl.innerHTML;
+        printDiv.style.display    = 'block';
+        printDiv.style.visibility = 'visible';
 
-        // Clone the entire print area
-        var frame = document.createElement('div');
-        frame.id  = 'sfss-print-frame';
-        frame.innerHTML = source.innerHTML;
+        document.body.appendChild(printDiv);
 
-        // Keep only the active tab in print to avoid extra blank/report pages.
-        var tabs = frame.querySelectorAll('.tab-content');
-        tabs.forEach(function(t) {
-            if (activeId && t.id === activeId) {
-                t.style.display = 'block';
-                t.style.visibility = 'visible';
-                t.classList.add('active', 'sfss-print-active');
-            } else {
-                t.remove();
-            }
-        });
-
-        // Append directly to body so it is a top-level child
-        document.body.appendChild(frame);
-
-        // Small delay lets browser lay out the cloned content before printing
         setTimeout(function() {
             window.print();
-            // Remove frame after the print dialog closes (afterprint event or timeout)
+
             var cleanup = function() {
-                var f = document.getElementById('sfss-print-frame');
-                if (f) f.remove();
-                if (scrollBtn && scrollBtnParent && !document.getElementById('toggleScrollBtn')) {
-                    scrollBtnParent.insertBefore(scrollBtn, scrollBtnNext);
-                }
+                var p = document.querySelector('.sfss-print-only');
+                if (p) p.remove();
+                document.title = origTitle;
                 window.removeEventListener('afterprint', cleanup);
                 if (typeof afterPrint === 'function') afterPrint();
             };
             window.addEventListener('afterprint', cleanup);
-            // Fallback cleanup after 30 s in case afterprint never fires
+            // Fallback cleanup in case afterprint never fires
             setTimeout(cleanup, 30000);
         }, 150);
     }
