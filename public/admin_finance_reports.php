@@ -398,7 +398,7 @@ require_once __DIR__ . '/../partials/header.php';
 /* Chart container */
 .fr-chart-wrap { max-width:500px; margin:0 auto 28px; }
 @media print {
-    @page { size:legal portrait; margin:.3in .4in; }
+    @page { size: A4 portrait; margin:.3in .4in; }
     * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
     html,body { background:white !important; padding:0 !important; margin:0 !important; }
     body > * { display:none !important; }

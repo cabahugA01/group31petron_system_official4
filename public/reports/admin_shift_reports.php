@@ -234,18 +234,19 @@ function srAdminShiftCondition(string $alias, string $datetime_expr, string $shi
     font-size: 12px;
 }
 .sr-table thead tr {
-    border-top: 2px solid #00264D;
-    border-bottom: 1px solid #e2e8f0;
-    background: #f8f9fa;
+    border-top: 2px solid #002F6C;
+    border-bottom: 2px solid #002F6C;
+    background: #002F6C !important;
 }
 .sr-table thead th {
     padding: 10px 8px;
     text-align: left;
     font-weight: 700;
-    color: #00264D;
+    color: #ffffff !important;
     font-size: 11px;
     text-transform: uppercase;
     white-space: nowrap;
+    background: #002F6C !important;
 }
 .sr-table tbody tr { border-bottom: 1px solid #f1f5f9; }
 .sr-table tbody tr:hover { background: #f8fafc; }
@@ -1598,6 +1599,20 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
 
     </div><!-- end sr-shift-block -->
     <?php endforeach; // shifts ?>
+
+    <!-- PREPARED BY SIGNATURE -->
+    <table style="width:100%; margin-top:25px; page-break-inside:avoid; border:none; border-collapse:collapse;">
+        <tr>
+            <td style="border:none;"></td>
+            <td style="border:none; width:220px; text-align:center;">
+                <div style="font-size:10px; font-weight:700; color:#333; margin-bottom:25px;">PREPARED BY:</div>
+                <div style="border-top:1px solid #000; padding-top:4px; font-weight:700; font-size:11px; color:#000;">
+                    <?= htmlspecialchars(trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? '')) ?: ($me['username'] ?? 'System User')) ?>
+                </div>
+                <div style="font-size:9.5px; color:#555; margin-top:2px;"><?= htmlspecialchars(ucfirst($role)) ?></div>
+            </td>
+        </tr>
+    </table>
 
 </div><!-- end sr-panel -->
 <?php endforeach; // tabs ?>

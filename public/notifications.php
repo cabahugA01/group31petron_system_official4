@@ -178,6 +178,8 @@ body[data-page="notifications"] .main {
 .notif-row {
     display: table;
     width: 100%;
+    max-width: 100%;
+    table-layout: fixed;    /* columns NEVER exceed 100% total */
     border-collapse: collapse;
     cursor: pointer;
     text-decoration: none !important;
@@ -216,10 +218,12 @@ body[data-page="notifications"] .main {
 }
 
 .notif-cell-content {
-    /* Takes all remaining space */
+    /* Takes all remaining space — overflow-hidden so text can't push table wider */
     padding-right: 16px;
     word-break: break-word;
     overflow-wrap: break-word;
+    overflow: hidden;
+    max-width: 0;       /* trick: with table-layout:fixed, forces cell to use remaining space */
 }
 
 .notif-cell-meta {

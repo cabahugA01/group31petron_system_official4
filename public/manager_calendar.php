@@ -351,7 +351,7 @@ try {
             SELECT COUNT(*) 
             FROM inventory_products ip
             LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-            WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
+            WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
               AND ip.status = 'Active'
               AND COALESCE(si.stock_level, ip.stock, 0) <= COALESCE(si.reorder_level, ip.min_stock, 10)
         ");
@@ -631,7 +631,7 @@ try {
                    COALESCE(si.unit, ip.size, 'pcs') AS unit
             FROM inventory_products ip
             LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-            WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
+            WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
               AND ip.status = 'Active'
               AND COALESCE(si.stock_level, ip.stock, 0) <= COALESCE(si.reorder_level, ip.min_stock, 10)
             LIMIT 10

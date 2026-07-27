@@ -563,13 +563,26 @@
             doScroll();
         }, false);
         
-        // FORCE button to stay clickable - ABSOLUTE MAXIMUM PRIORITY
+        // FORCE button to stay clickable - ABSOLUTE MAXIMUM PRIORITY (except when printing)
         setInterval(function() {
+            if (window.matchMedia && window.matchMedia('print').matches) {
+                if (btn) btn.style.setProperty('display', 'none', 'important');
+                return;
+            }
             if (btn.style.pointerEvents !== 'auto' || btn.style.zIndex !== '2147483647') {
                 btn.style.cssText = 'pointer-events: auto !important; cursor: pointer !important; z-index: 2147483647 !important; position: fixed !important; opacity: 1 !important; visibility: visible !important; display: flex !important;';
                 console.log('⚠ Scroll button styles reset - reapplied maximum priority clickability');
             }
         }, 500); // Check every 500ms
+
+        window.addEventListener('beforeprint', function() {
+            if (btn) btn.style.setProperty('display', 'none', 'important');
+        });
+        window.addEventListener('afterprint', function() {
+            if (btn && (!window.matchMedia || !window.matchMedia('print').matches)) {
+                btn.style.setProperty('display', 'flex', 'important');
+            }
+        });
 
         // Attach scroll listener to the right target
         function attachScrollListener() {
@@ -1088,49 +1101,10 @@
     }
 
     // --- PWA OFFLINE / ONLINE DETECTION SYSTEM ---
+    // Connection status banner disabled for a cleaner, seamless system experience
     function showConnectionStatus(online) {
-        let banner = document.getElementById('offline-status-banner');
-        if (!banner) {
-            banner = document.createElement('div');
-            banner.id = 'offline-status-banner';
-            banner.style.position = 'fixed';
-            banner.style.top = '20px';
-            banner.style.left = '50%';
-            banner.style.transform = 'translateX(-50%) translateY(-100px)';
-            banner.style.zIndex = '999999';
-            banner.style.padding = '12px 24px';
-            banner.style.borderRadius = '30px';
-            banner.style.boxShadow = '0 10px 25px rgba(0,0,0,0.2)';
-            banner.style.fontFamily = 'system-ui, -apple-system, sans-serif';
-            banner.style.fontWeight = 'bold';
-            banner.style.fontSize = '14px';
-            banner.style.display = 'flex';
-            banner.style.alignItems = 'center';
-            banner.style.gap = '8px';
-            banner.style.transition = 'transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease';
-            banner.style.opacity = '0';
-            document.body.appendChild(banner);
-        }
-
-        if (online) {
-            banner.style.backgroundColor = '#10B981'; // Emerald/success green
-            banner.style.color = '#FFFFFF';
-            banner.innerHTML = '<i class="fas fa-wifi"></i> Online Mode - System Connected';
-            banner.style.opacity = '1';
-            banner.style.transform = 'translateX(-50%) translateY(0)';
-            
-            // Hide after 3 seconds when back online
-            setTimeout(() => {
-                banner.style.transform = 'translateX(-50%) translateY(-100px)';
-                banner.style.opacity = '0';
-            }, 3000);
-        } else {
-            banner.style.backgroundColor = '#EF4444'; // Red/danger
-            banner.style.color = '#FFFFFF';
-            banner.innerHTML = '<i class="fas fa-wifi-slash"></i> Offline Mode - Running from Cache';
-            banner.style.opacity = '1';
-            banner.style.transform = 'translateX(-50%) translateY(0)';
-        }
+        // Silent handling — no popups
+        return;
     }
 
     window.addEventListener('online', () => showConnectionStatus(true));

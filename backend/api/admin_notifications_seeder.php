@@ -274,7 +274,19 @@ if ($action === 'seed') {
     $active_shifts = adm_count($pdo,
         "SELECT COUNT(*) FROM labor_sessions WHERE station_id=? AND DATE(start_time)=CURDATE()",
         [$station_id]);
-    if ($active_shifts === 0) {
+    $staff_audit_today = adm_count($pdo,
+        "SELECT COUNT(*) FROM audit_logs al JOIN users u ON u.id=al.user_id WHERE u.station_id=? AND LOWER(u.role)='staff' AND DATE(al.created_at)=CURDATE()",
+        [$station_id]);
+    $txn_today = adm_count($pdo,
+        "SELECT COUNT(*) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date)=CURDATE()",
+        [$station_id]);
+    $merch_today = adm_count($pdo,
+        "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND DATE(transaction_date)=CURDATE()",
+        [$station_id]);
+
+    $has_staff_act = ($active_shifts > 0) || ($staff_audit_today > 0) || ($txn_today > 0) || ($merch_today > 0);
+
+    if (!$has_staff_act) {
         upsert_notif($pdo, $user_id, [
             'type'        => 'info',
             'title'       => 'No Active Shifts Today',
@@ -284,6 +296,11 @@ if ($action === 'seed') {
             'source_key'  => "no_shifts_".date('Y-m-d')."_{$station_id}",
             'redirect_url'=> '/public/admin_staff_oversight.php',
         ]);
+    } else {
+        try {
+            $del = $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND (source_key = ? OR (title = 'No Active Shifts Today' AND DATE(created_at) = CURDATE()))");
+            $del->execute([$user_id, "no_shifts_".date('Y-m-d')."_{$station_id}"]);
+        } catch (Exception $e) {}
     }
 
     // ── 8. Manager Actions (recent approvals/rejections) ──────

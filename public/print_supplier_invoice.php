@@ -76,13 +76,16 @@ $actual_batch_id = '';
 // 1. Try Merchandise Stock-In first
 if ($type !== 'fuel') {
     try {
+        // NOTE: inventory_products JOIN removed — product_name & sku are stored in merchandise_stock_in directly
         $stmt = $pdo->prepare("
-            SELECT msi.*, ip.sku, ip.product_name, COALESCE(si.unit, ip.size, 'pcs') AS unit_display,
+            SELECT msi.*,
+                   msi.sku AS sku,
+                   msi.product_name AS product_name,
+                   COALESCE(si.unit, 'pcs') AS unit_display,
                    do.dr_number, do.sales_invoice_no, do.supplier AS do_supplier, do.delivery_date AS do_date,
                    do.delivery_time AS do_time, do.remarks AS do_remarks, u.name AS mgr_name
             FROM merchandise_stock_in msi
-            LEFT JOIN inventory_products ip ON msi.product_id = ip.id
-            LEFT JOIN station_inventory si ON (si.product_id = ip.id AND si.station_id = msi.station_id)
+            LEFT JOIN station_inventory si ON (si.product_id = msi.product_id AND si.station_id = msi.station_id)
             LEFT JOIN deliveries_oversight do ON msi.delivery_id = do.id
             LEFT JOIN users u ON msi.encoded_by = u.id
             WHERE msi.station_id = ? AND (msi.batch_ref = ? OR msi.po_number = ? OR do.delivery_ref = ?)
@@ -106,19 +109,21 @@ if ($type !== 'fuel') {
             $approved_at = $rows[0]['encoded_at'];
             foreach ($rows as $r) {
                 $items[] = [
-                    'sku' => $r['sku'] ?: '—',
-                    'name' => $r['product_name'],
-                    'qty_ordered' => (float)$r['qty_ordered'],
+                    'sku'          => $r['sku'] ?: '—',
+                    'name'         => $r['product_name'],
+                    'qty_ordered'  => (float)$r['qty_ordered'],
                     'qty_received' => (float)$r['qty_received'],
-                    'unit' => $r['unit_display'] ?: 'pcs',
-                    'cost' => (float)$r['unit_cost'],
-                    'total' => (float)$r['total_cost'],
-                    'condition' => $r['condition_flag'],
-                    'remarks' => $r['remarks']
+                    'unit'         => $r['unit_display'] ?: 'pcs',
+                    'cost'         => (float)$r['unit_cost'],
+                    'total'        => (float)$r['total_cost'],
+                    'condition'    => $r['condition_flag'],
+                    'remarks'      => $r['remarks']
                 ];
             }
         }
-    } catch (Exception $e) {}
+    } catch (Exception $e) {
+        error_log('[print_supplier_invoice] merch query error: ' . $e->getMessage());
+    }
 }
 
 // 2. Try Fuel Stock-In if empty or if type is fuel
@@ -202,7 +207,7 @@ $subtotal = array_sum(array_column($items, 'total'));
 $total_amount = $subtotal;
 
 /* back link depending on role */
-$back_url = 'manager_inventory_history.php?tab=stock_in';
+$back_url = 'admin_inventory_history.php?tab=stock_in';
 if ($role === 'admin' || $role === 'superadmin') {
     $back_url = 'admin_inventory_history.php?tab=stock_in';
 }
@@ -232,10 +237,39 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:11px;
 .signatures-box{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-top:25px;}
 .sig-col{text-align:center;}
 .sig-line{border-top:1px solid #475569;width:80%;margin:30px auto 3px auto;}
-.btn-print-bar{max-width:850px;margin:0 auto 10px auto;display:flex;justify-content:flex-end;gap:10px;}
-.btn-print{font-family:sans-serif;font-size:11px;padding:6px 14px;background:#002F6C;color:#fff;border:none;border-radius:4px;cursor:pointer;text-decoration:none;font-weight:600;}
-.btn-print:hover{background:#0b448a;}
-.btn-back{background:#fff;color:#333;border:1px solid #ccc;}
+.btn-print-bar{
+    position:fixed;
+    top:14px;
+    right:18px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    z-index:999;
+}
+.btn-print{
+    font-family:sans-serif;
+    font-size:12px;
+    padding:8px 18px;
+    background:#002F6C;
+    color:#fff;
+    border:none;
+    border-radius:6px;
+    cursor:pointer;
+    text-decoration:none;
+    font-weight:700;
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    transition:background 0.2s, box-shadow 0.2s;
+    box-shadow:0 2px 8px rgba(0,47,108,0.30);
+}
+.btn-print:hover{background:#0b448a;box-shadow:0 4px 14px rgba(0,47,108,0.45);}
+.btn-back{
+    background:#fff;
+    color:#333;
+    border:1px solid #ccc;
+    box-shadow:0 1px 4px rgba(0,0,0,0.10);
+}
 .btn-back:hover{background:#f5f5f5;}
 
 /* Rotated official stamp */
@@ -287,7 +321,7 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:11px;
 
 <div class="btn-print-bar">
     <a href="<?= htmlspecialchars($back_url) ?>" class="btn-print btn-back">&larr; Back</a>
-    <button onclick="window.print()" class="btn-print">Print Invoice</button>
+    <button onclick="window.print()" class="btn-print">&#128438; Print Invoice</button>
 </div>
 
 <div class="po-document">
@@ -467,11 +501,8 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:11px;
 </div>
 
 <script>
-<?php if (isset($_GET['print']) && $_GET['print'] == '1'): ?>
-window.addEventListener('load', function () {
-    setTimeout(function () { window.print(); }, 500);
-});
-<?php endif; ?>
+// No auto-print — user clicks "Print Invoice" button to print manually
 </script>
 </body>
 </html>
+

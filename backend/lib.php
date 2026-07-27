@@ -1066,45 +1066,40 @@ function load_merchandise_pricing_catalog(PDO $pdo, int $station_id): array {
             SELECT ip.id,
                    ip.product_name AS product_name,
                    ip.product_name AS name,
-                   ip.category AS category,
-                   ip.category AS category_name,
+                   COALESCE(ip.category, 'Merchandise') AS category,
+                   COALESCE(ip.category, 'Merchandise') AS category_name,
                    '' AS description,
-                   ip.sku,
+                   COALESCE(NULLIF(ip.sku, ''), CONCAT('P', LPAD(ip.id, 4, '0'))) AS sku,
+                   ip.barcode AS barcode,
+                   ip.brand AS brand,
                    COALESCE(si.unit, ip.size, 'pcs') AS unit,
-                   ip.unit_cost AS unit_cost,
-                   ip.unit_price AS unit_price,
+                   COALESCE(ip.unit_cost, 0) AS unit_cost,
+                   COALESCE(ip.unit_price, 0) AS unit_price,
                    COALESCE(si.status, ip.status, 'active') AS status,
                    COALESCE(si.stock_level, ip.stock_quantity, ip.stock, 0) AS stock_quantity,
                    COALESCE(si.capacity, 480) AS capacity,
-                   COALESCE(si.reorder_level, 24) AS reorder_level,
-                   COALESCE(si.critical_level, 10) AS critical_level,
+                   COALESCE(ip.reorder_level, si.reorder_level, 24) AS reorder_level,
+                   COALESCE(ip.critical_level, si.critical_level, 10) AS critical_level,
                    si.physical_count,
                    COALESCE(si.variance, 0) AS variance,
                    COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated,
                    'Petron Corporation' AS supplier,
-                   COALESCE(p.new_cost, p.new_value) AS pending_cost,
-                   COALESCE(p.new_price, p.new_value) AS pending_price,
-                   p.status AS approval_status,
-                   p.id AS approval_id
+                   COALESCE(pa.new_cost, pa.new_value) AS pending_cost,
+                   COALESCE(pa.new_price, pa.new_value) AS pending_price,
+                   pa.status AS approval_status,
+                   pa.id AS approval_id
             FROM inventory_products ip
             LEFT JOIN station_inventory si
                    ON si.product_id = ip.id AND si.station_id = ?
-            LEFT JOIN pending_price_approvals p
-                   ON p.product_id = ip.id
-                  AND p.product_type = 'merchandise'
-                  AND p.status = 'pending'
-                  AND p.station_id = ?
-            WHERE LOWER(COALESCE(ip.category, '')) NOT IN ('fuel')
-            ORDER BY ip.category, ip.product_name
-        ");
-        $stmt->execute([$station_id, $station_id]);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {
-        $rows = [];
-    }
+            LEFT JOIN pending_price_approvals pa
+                   ON pa.product_id = ip.id
+                  AND pa.product_type = 'merchandise'
+                  AND pa.status = 'pending'
+                  AND pa.station_id = ?
+            WHERE LOWER(COALESCE(ip.category, '')) NOT IN ('fuel', 'fuel products')
 
-    if (empty($rows)) {
-        $stmt = $pdo->prepare("
+            UNION
+
             SELECT p.id,
                    p.name AS product_name,
                    p.name AS name,
@@ -1112,36 +1107,42 @@ function load_merchandise_pricing_catalog(PDO $pdo, int $station_id): array {
                    COALESCE(pc.name, 'General') AS category_name,
                    p.description,
                    COALESCE(NULLIF(p.sku, ''), CONCAT('P', LPAD(p.id, 4, '0'))) AS sku,
-                   COALESCE(NULLIF(p.unit, ''), NULLIF(si.unit, ''), 'pcs') AS unit,
-                   COALESCE(p.cost, si.cost, 0) AS unit_cost,
-                   COALESCE(si.price, p.price, si.cost, p.cost, 0) AS unit_price,
-                   COALESCE(NULLIF(si.status, ''), NULLIF(p.status, ''), 'active') AS status,
-                   COALESCE(si.stock_level, p.current_stock, 0) AS stock_quantity,
-                   COALESCE(NULLIF(si.capacity, 0), NULLIF(p.capacity, 0), NULLIF(p.max_stock_level, 0), 480) AS capacity,
-                   COALESCE(NULLIF(si.reorder_level, 0), NULLIF(p.min_stock_level, 0), 24) AS reorder_level,
-                   COALESCE(NULLIF(si.critical_level, 0), 10) AS critical_level,
-                   si.physical_count,
-                   COALESCE(si.variance, 0) AS variance,
-                   COALESCE(si.last_updated, p.updated_at, p.created_at) AS last_updated,
+                   NULL AS barcode,
+                   p.brand AS brand,
+                   COALESCE(NULLIF(p.unit, ''), NULLIF(si2.unit, ''), 'pcs') AS unit,
+                   COALESCE(p.cost, si2.cost, 0) AS unit_cost,
+                   COALESCE(si2.price, p.price, si2.cost, p.cost, 0) AS unit_price,
+                   COALESCE(NULLIF(si2.status, ''), NULLIF(p.status, ''), 'active') AS status,
+                   COALESCE(si2.stock_level, p.current_stock, 0) AS stock_quantity,
+                   COALESCE(NULLIF(si2.capacity, 0), NULLIF(p.capacity, 0), NULLIF(p.max_stock_level, 0), 480) AS capacity,
+                   COALESCE(NULLIF(si2.reorder_level, 0), NULLIF(p.min_stock_level, 0), 24) AS reorder_level,
+                   COALESCE(NULLIF(si2.critical_level, 0), 10) AS critical_level,
+                   si2.physical_count,
+                   COALESCE(si2.variance, 0) AS variance,
+                   COALESCE(si2.last_updated, p.updated_at, p.created_at) AS last_updated,
                    'Petron Corporation' AS supplier,
-                   COALESCE(pa.new_cost, pa.new_value) AS pending_cost,
-                   COALESCE(pa.new_price, pa.new_value) AS pending_price,
-                   pa.status AS approval_status,
-                   pa.id AS approval_id
+                   COALESCE(p2.new_cost, p2.new_value) AS pending_cost,
+                   COALESCE(p2.new_price, p2.new_value) AS pending_price,
+                   p2.status AS approval_status,
+                   p2.id AS approval_id
             FROM products p
             LEFT JOIN product_categories pc ON pc.id = p.category_id
-            LEFT JOIN station_inventory si ON si.product_id = p.id AND si.station_id = ?
-            LEFT JOIN pending_price_approvals pa
-                   ON pa.product_id = p.id
-                  AND pa.product_type = 'merchandise'
-                  AND pa.status = 'pending'
-                  AND pa.station_id = ?
+            LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND si2.station_id = ?
+            LEFT JOIN pending_price_approvals p2
+                   ON p2.product_id = p.id
+                  AND p2.product_type = 'merchandise'
+                  AND p2.status = 'pending'
+                  AND p2.station_id = ?
             WHERE LOWER(COALESCE(pc.name, '')) NOT IN ('fuel', 'fuel products', 'services', 'service')
               AND LOWER(COALESCE(p.status, 'active')) NOT IN ('deleted', 'archived')
-            ORDER BY COALESCE(pc.name, 'General'), p.name
+              AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(category, '')) NOT IN ('fuel', 'fuel products'))
+
+            ORDER BY category_name, product_name
         ");
-        $stmt->execute([$station_id, $station_id]);
+        $stmt->execute([$station_id, $station_id, $station_id, $station_id]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        $rows = [];
     }
 
     return normalize_merchandise_catalog_rows($rows);

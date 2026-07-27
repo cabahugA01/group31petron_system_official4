@@ -257,11 +257,54 @@ if ($ar_overdue > 0) {
 
 // ════════════════════════════════════════════════════════════
 // 7. STAFF SHIFT ISSUES (No Active Shifts Today)
+//    Check multiple sources — only fire if truly NO staff
+//    activity at this station today.
 // ════════════════════════════════════════════════════════════
+
+// Source 1: labor_sessions (traditional shift clock-in)
 $active_shifts = adm_count($pdo,
     "SELECT COUNT(*) FROM labor_sessions WHERE station_id=? AND DATE(start_time)=CURDATE()",
     [$station_id]);
-if ($active_shifts === 0) {
+
+// Source 2: staff activity or logins in audit_logs today
+$staff_audit_today = 0;
+try {
+    $s = $pdo->prepare(
+        "SELECT COUNT(*) FROM audit_logs al
+         JOIN users u ON u.id = al.user_id
+         WHERE u.station_id = ?
+           AND LOWER(u.role) = 'staff'
+           AND DATE(al.created_at) = CURDATE()"
+    );
+    $s->execute([$station_id]);
+    $staff_audit_today = (int)$s->fetchColumn();
+} catch (Exception $e) {}
+
+// Source 3: staff actively logged in today (user_sessions)
+$staff_logins_today = 0;
+try {
+    $s = $pdo->prepare(
+        "SELECT COUNT(*) FROM user_sessions us
+         JOIN users u ON u.id = us.user_id
+         WHERE u.station_id = ?
+           AND LOWER(u.role) = 'staff'
+           AND DATE(us.login_time) = CURDATE()"
+    );
+    $s->execute([$station_id]);
+    $staff_logins_today = (int)$s->fetchColumn();
+} catch (Exception $e) {}
+
+// Source 4: any fuel or merchandise transactions today (proof staff are working)
+$txn_today   = adm_count($pdo,
+    "SELECT COUNT(*) FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date)=CURDATE()",
+    [$station_id]);
+$merch_today = adm_count($pdo,
+    "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND DATE(transaction_date)=CURDATE()",
+    [$station_id]);
+
+$has_staff_activity = ($active_shifts > 0) || ($staff_audit_today > 0) || ($staff_logins_today > 0) || ($txn_today > 0) || ($merch_today > 0);
+
+if (!$has_staff_activity) {
     $generated += upsert_notif($pdo, $user_id, [
         'type'        => 'info',
         'title'       => 'No Active Shifts Today',
@@ -271,6 +314,12 @@ if ($active_shifts === 0) {
         'source_key'  => "no_shifts_".date('Y-m-d')."_{$station_id}",
         'redirect_url'=> '/public/admin_staff_oversight.php',
     ]);
+} else {
+    // If staff are active today, remove any stale "No Active Shifts Today" notifications for today
+    try {
+        $del = $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND (source_key = ? OR (title = 'No Active Shifts Today' AND DATE(created_at) = CURDATE()))");
+        $del->execute([$user_id, "no_shifts_".date('Y-m-d')."_{$station_id}"]);
+    } catch (Exception $e) {}
 }
 
 // ════════════════════════════════════════════════════════════

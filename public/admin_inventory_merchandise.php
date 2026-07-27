@@ -100,10 +100,10 @@ if (isset($_GET['print_id'])) {
                    COALESCE(si.critical_level, 10)              AS critical_level,
                    COALESCE(si.variance, 0.00)            AS variance,
                    COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated,
-                   ip.supplier
+                   COALESCE(ip.brand, 'Petron Corporation') AS supplier
             FROM inventory_products ip
             LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-            WHERE ip.id = ? AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
+            WHERE ip.id = ? AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
         ");
         $stmt->execute([$station_id, $print_id]);
         $item = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -354,7 +354,7 @@ $date_to        = trim($_GET['date_to'] ?? '');
 // ── Fetch dynamic categories for dropdown ────────────────────
 $all_categories = [];
 try {
-    $cat_stmt = $pdo->query("SELECT DISTINCT category FROM inventory_products WHERE category NOT IN ('Fuel') AND category IS NOT NULL AND category != '' ORDER BY category");
+    $cat_stmt = $pdo->query("SELECT DISTINCT category FROM inventory_products WHERE category NOT IN ('fuel', 'fuel products') AND category IS NOT NULL AND category != '' ORDER BY category");
     $all_categories = $cat_stmt->fetchAll(PDO::FETCH_COLUMN);
 } catch (Exception $e) {
     try {
@@ -377,71 +377,56 @@ try {
     $stmt = $pdo->prepare("
         SELECT ip.id,
                ip.product_name AS name,
-               ip.category     AS category_name,
-               ip.unit_price   AS price,
-               ip.unit_cost    AS cost,
+               COALESCE(ip.category,'Merchandise') AS category_name,
+               COALESCE(ip.unit_price, 0)   AS price,
+               COALESCE(ip.unit_cost, 0)    AS cost,
                ip.sku,
-               COALESCE(si.unit, 'pcs')       AS unit,
-               COALESCE(si.status, 'active')          AS status,
-               COALESCE(si.stock_level, ip.stock, 0)  AS stock_level,
-               COALESCE(si.capacity, ip.max_stock, 480) AS capacity,
-               COALESCE(si.reorder_level, ip.min_stock, 24) AS reorder_level,
-               COALESCE(si.critical_level, 10)              AS critical_level,
+               COALESCE(si.unit, ip.size, 'pcs')            AS unit,
+               COALESCE(si.status, ip.status, 'active')      AS status,
+               COALESCE(si.stock_level, ip.stock, 0)         AS stock_level,
+               COALESCE(si.capacity, ip.max_stock, 480)      AS capacity,
+               COALESCE(si.reorder_level, ip.min_stock, 24)  AS reorder_level,
+               COALESCE(si.critical_level, 10)               AS critical_level,
                si.physical_count,
                si.variance,
                COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated,
-               ip.supplier
+               COALESCE(ip.brand,'Petron Corporation')       AS supplier
         FROM inventory_products ip
         LEFT JOIN station_inventory si
                ON si.product_id = ip.id AND si.station_id = ?
-        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
-        ORDER BY ip.category, ip.product_name
+        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
+
+        UNION
+
+        SELECT p.id,
+               p.name AS name,
+               COALESCE(pc.name,'General')                   AS category_name,
+               COALESCE(si2.price, p.price, 0)               AS price,
+               COALESCE(p.cost, si2.cost, 0)                 AS cost,
+               COALESCE(NULLIF(p.sku,''), CONCAT('P', LPAD(p.id,4,'0'))) AS sku,
+               COALESCE(NULLIF(p.unit,''), NULLIF(si2.unit,''), 'pcs')  AS unit,
+               COALESCE(NULLIF(si2.status,''), NULLIF(p.status,''), 'active') AS status,
+               COALESCE(si2.stock_level, p.current_stock, 0) AS stock_level,
+               COALESCE(NULLIF(si2.capacity,0), NULLIF(p.capacity,0), NULLIF(p.max_stock_level,0), 480) AS capacity,
+               COALESCE(NULLIF(si2.reorder_level,0), NULLIF(p.min_stock_level,0), 24) AS reorder_level,
+               COALESCE(NULLIF(si2.critical_level,0), 10)    AS critical_level,
+               si2.physical_count,
+               si2.variance,
+               COALESCE(si2.last_updated, p.updated_at, p.created_at) AS last_updated,
+               'Petron Corporation'                           AS supplier
+        FROM products p
+        LEFT JOIN product_categories pc ON pc.id = p.category_id
+        LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND si2.station_id = ?
+        WHERE LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
+          AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
+          AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products'))
+
+        ORDER BY category_name, name
     ");
-    $stmt->execute([$station_id]);
+    $stmt->execute([$station_id, $station_id]);
     $all_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    try {
-        $stmt = $pdo->prepare("
-            SELECT p.id,
-                   p.name AS name,
-                   COALESCE(pc.name, 'General') AS category_name,
-                   p.description,
-                   COALESCE(si.price, p.price, si.cost, p.cost, 0) AS price,
-                   COALESCE(p.cost, si.cost, 0) AS cost,
-                   COALESCE(NULLIF(p.sku, ''), CONCAT('P', LPAD(p.id, 4, '0'))) AS sku,
-                   COALESCE(NULLIF(p.unit, ''), NULLIF(si.unit, ''), 'pcs') AS unit,
-                   COALESCE(NULLIF(si.status, ''), NULLIF(p.status, ''), 'active') AS status,
-                   COALESCE(si.stock_level, p.current_stock, 0) AS stock_level,
-                   COALESCE(NULLIF(si.capacity, 0), NULLIF(p.capacity, 0), NULLIF(p.max_stock_level, 0), 480) AS capacity,
-                   COALESCE(NULLIF(si.reorder_level, 0), NULLIF(p.min_stock_level, 0), 24) AS reorder_level,
-                   COALESCE(NULLIF(si.critical_level, 0), 10) AS critical_level,
-                   si.physical_count,
-                   si.variance,
-                   COALESCE(si.last_updated, p.updated_at, p.created_at) AS last_updated,
-                   COALESCE(latest_supplier.supplier, '') AS supplier
-            FROM products p
-            LEFT JOIN product_categories pc ON pc.id = p.category_id
-            LEFT JOIN (
-                SELECT LOWER(TRIM(poi.item_name)) AS product_key,
-                       SUBSTRING_INDEX(GROUP_CONCAT(s.name ORDER BY po.created_at DESC SEPARATOR '||'), '||', 1) AS supplier
-                FROM purchase_order_items poi
-                JOIN purchase_orders po ON po.id = poi.po_id
-                LEFT JOIN suppliers s ON s.id = po.supplier_id
-                WHERE po.station_id = ?
-                  AND po.type = 'merch'
-                  AND s.name IS NOT NULL
-                  AND s.name != ''
-                GROUP BY LOWER(TRIM(poi.item_name))
-            ) latest_supplier ON latest_supplier.product_key = LOWER(TRIM(p.name))
-            LEFT JOIN station_inventory si ON si.product_id = p.id AND si.station_id = ?
-            WHERE LOWER(COALESCE(pc.name, '')) NOT IN ('fuel', 'fuel products', 'services')
-            ORDER BY COALESCE(pc.name, 'General'), p.name
-        ");
-        $stmt->execute([$station_id, $station_id]);
-        $all_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $fallback_error) {
-        error_log("Error loading merchandise inventory: " . $fallback_error->getMessage());
-    }
+    error_log("Error loading merchandise inventory: " . $e->getMessage());
 }
 
 // ── Extract brand, barcode, and populate filter options ──────
@@ -1231,7 +1216,6 @@ require_once __DIR__ . '/../partials/header.php';
                 <col style="width:100px">  <!-- Status -->
                 <col style="width:70px">   <!-- Last Mov -->
                 <col style="width:90px">   <!-- Last Updated -->
-                <col style="width:80px">   <!-- Action -->
             </colgroup>
             <thead>
                 <tr>
@@ -1246,13 +1230,12 @@ require_once __DIR__ . '/../partials/header.php';
                     <th class="align-center">Status</th>
                     <th style="text-align:center;">Last Mov.</th>
                     <th>Last Updated</th>
-                    <th style="text-align:center;">Action</th>
                 </tr>
             </thead>
             <tbody>
             <?php if (empty($sorted_filtered)): ?>
                 <tr>
-                    <td colspan="12" class="align-center" style="padding: 24px; color: #64748b;">
+                    <td colspan="11" class="align-center" style="padding: 24px; color: #64748b;">
                         <i class="fas fa-box-open" style="font-size: 24px; margin-bottom: 8px; display:block;"></i>
                         No merchandise inventory records matched your filters.
                     </td>
@@ -1260,7 +1243,7 @@ require_once __DIR__ . '/../partials/header.php';
             <?php else: ?>
                 <?php foreach ($sorted_filtered as $cat_label => $items): ?>
                     <tr class="cat-header">
-                        <td colspan="12" style="text-align:center; font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:12px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px;">
+                        <td colspan="11" style="text-align:center; font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:12px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px;">
                             <strong><?= htmlspecialchars($cat_label) ?></strong>
                         </td>
                     </tr>
@@ -1325,11 +1308,6 @@ require_once __DIR__ . '/../partials/header.php';
                             <?php endif; ?>
                         </td>
                         <td style="font-size:11px; color:#64748b;"><?= $updated ?></td>
-                        <td style="text-align:center;">
-                            <button type="button" class="txn-btn txn-btn-info" onclick='viewDetails(<?= json_encode($item, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)' title="View Details">
-                                <i class="fas fa-eye"></i> View
-                            </button>
-                        </td>
                     </tr>
                     <?php endforeach; ?>
                 <?php endforeach; ?>

@@ -353,6 +353,7 @@ foreach ($TANK_CONFIG_17 as $tc) {
         'fuel_type'      => $tc['fuel_type'],
         'label'          => $tc['label'],
         'tank'           => $tc['tank'],
+        'tank_name'      => $inv['tank_name'] ?? $tc['label'] ?? '',
         'tanker_num'     => $tc['tanker_num'],
         'capacity'       => $capacity,
         'beginning'      => $beginning,
@@ -634,12 +635,11 @@ body, html { overflow-x:hidden !important; }
           <th style="text-align:right;">Price/L</th>
           <th style="text-align:center;">Status</th>
           <th>Last Updated</th>
-          <th style="text-align:center; width:100px;">Action</th>
         </tr>
       </thead>
       <tbody>
       <?php if (empty($rows)): ?>
-        <tr><td colspan="10" style="text-align:center; padding:32px; color:#6c757d;">No fuel inventory data available.</td></tr>
+        <tr><td colspan="9" style="text-align:center; padding:32px; color:#6c757d;">No fuel inventory data available.</td></tr>
       <?php else: ?>
         <?php foreach ($rows as $r):
             $ts_str  = $r['timestamp'] ? date('M d, Y h:i A', strtotime($r['timestamp'])) : '—';
@@ -649,7 +649,10 @@ body, html { overflow-x:hidden !important; }
             data-tank-num="<?= htmlspecialchars(strtolower($r['tanker_num'])) ?>"
             data-fuel-type="<?= htmlspecialchars(strtolower(get_canonical_fuel_name($r['fuel_type']))) ?>"
             data-status="<?= htmlspecialchars(strtolower($r['status'])) ?>">
-          <td style="text-align:center;" class="bold"><?= $r['tanker_num'] ?></td>
+          <td>
+            <strong style="font-family:monospace;color:#002F6C;font-size:14px;"><?= htmlspecialchars('UGT #' . $r['tanker_num']) ?></strong>
+            <div style="font-size:11px;color:#64748b;margin-top:2px;font-weight:600;"><?= htmlspecialchars($r['tank_name']) ?></div>
+          </td>
           <td style="font-weight:700;"><?= htmlspecialchars(get_canonical_fuel_name($r['fuel_type'])) ?></td>
           <td style="text-align:right; font-weight:700; color:#002F70;"><?= number_format($r['current_level'], 2) ?> L</td>
           <td style="text-align:right; font-weight:600; color:#475569;"><?= number_format($r['capacity'], 0) ?> L</td>
@@ -665,11 +668,6 @@ body, html { overflow-x:hidden !important; }
           <td style="text-align:right; font-family:monospace; font-weight:600;">&#8369;<?= number_format($r['price'], 2) ?></td>
           <td style="text-align:center;"><span class="status-pill" style="background:<?= $r['status_color'] ?>18; color:<?= $r['status_color'] ?>; border:1px solid <?= $r['status_color'] ?>40;"><?= htmlspecialchars($r['status']) ?></span></td>
           <td style="color:#64748b; font-size:11px;"><?= $ts_str ?></td>
-          <td style="text-align:center;">
-            <button class="int-btn-outline" onclick="viewTankDetails(<?= htmlspecialchars(json_encode($r)) ?>)" title="View Details" style="padding:6px 12px;">
-               <i class="fas fa-eye"></i> View
-            </button>
-          </td>
         </tr>
         <?php endforeach; ?>
       <?php endif; ?>

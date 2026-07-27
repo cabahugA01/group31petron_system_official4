@@ -182,6 +182,7 @@ try {
         $fuel_products[] = [
             'id'             => $inv_id,
             'pump_id'        => $tc['tanker_num'],
+            'ugt_no'         => $tc['tank'],
             'tank_label'     => $tc['label'],
             'raw_fuel_type'  => $tc['fuel_type'],
             'capacity'       => $capacity,
@@ -259,6 +260,21 @@ try {
     $merch_by_cat = [];
     error_log('[manager_set_prices] merch error: ' . $e->getMessage());
 }
+
+// ── Pre-load merchandise batches per product ──────────────────────────────
+$merch_batches_by_product = [];
+try {
+    $bStmt = $pdo->prepare("
+        SELECT mb.*
+        FROM merchandise_batches mb
+        WHERE mb.station_id = ? AND LOWER(COALESCE(mb.status, 'active')) NOT IN ('cancelled', 'disabled')
+        ORDER BY mb.date_received ASC, mb.id ASC
+    ");
+    $bStmt->execute([(int)$station_id]);
+    foreach ($bStmt->fetchAll(PDO::FETCH_ASSOC) as $b) {
+        $merch_batches_by_product[(int)$b['product_id']][] = $b;
+    }
+} catch (Exception $e) {}
 
 $all_categories = array_keys($all_categories);
 sort($all_categories);
@@ -380,24 +396,38 @@ body, html { overflow-x: hidden; max-width: 100%; }
 .toolbar input[type="text"]:focus,
 .toolbar select:focus { outline: none; border-color: #002F6C; box-shadow: 0 0 0 2px rgba(0,47,108,.12); }
 
-/* Table tweaks */
+/* Table tweaks - Fix horizontal overflow */
 .table-wrap {
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch;
-    width: 100%;
+    overflow-x: hidden !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
 }
-.pricing-table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: auto !important; }
+.pricing-table {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: auto !important;
+    box-sizing: border-box !important;
+}
 .pricing-table th {
     background: #002F70 !important; 
     color: #fff !important; 
-    padding: 10px 14px;
-    font-size: 11px;
+    padding: 8px 6px !important;
+    font-size: 10px !important;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: .5px;
+    letter-spacing: .3px;
     white-space: nowrap;
 }
-.pricing-table td { padding: 10px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; white-space: nowrap; font-size: 12px; }
+.pricing-table td {
+    padding: 6px 5px !important;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+    white-space: normal !important;
+    word-break: break-word !important;
+    font-size: 11px !important;
+}
 .pricing-table tbody tr:hover { background: #e3f2fd; }
 
 /* Category header row */
@@ -527,7 +557,9 @@ body, html { overflow-x: hidden; max-width: 100%; }
 .act-btn-deactivate:hover { background: #dc2626 !important; color: #fff !important; }
 .act-btn-activate { color: #16a34a !important; border-color: #16a34a !important; }
 .act-btn-activate:hover { background: #16a34a !important; color: #fff !important; }
-.act-btn-wrap { display: flex; flex-direction: column; gap: 3px; width: 100%; }
+.act-btn-batches { color: #0284c7 !important; border-color: #0284c7 !important; }
+.act-btn-batches:hover { background: #0284c7 !important; color: #fff !important; }
+.act-btn-wrap { display: flex; flex-direction: column; gap: 3px; width: 100%; align-items: center; }
 
 @media (max-width: 768px) {
     .summary-grid { grid-template-columns: repeat(2, 1fr); }
@@ -610,7 +642,8 @@ body, html { overflow-x: hidden; max-width: 100%; }
                     ?>
                     <tr>
                         <td>
-                            <strong><?php echo htmlspecialchars($f['tank_label']); ?></strong>
+                            <strong style="font-family:monospace;color:#002F6C;font-size:14px;"><?php echo htmlspecialchars($f['ugt_no'] ?? ('UGT #' . $f['pump_id'])); ?></strong>
+                            <div style="font-size:11px;color:#64748b;margin-top:2px;font-weight:600;"><?php echo htmlspecialchars($f['tank_label']); ?></div>
                         </td>
                         <td>
                             <strong><?php echo htmlspecialchars($canonical_type); ?></strong>
@@ -735,48 +768,59 @@ body, html { overflow-x: hidden; max-width: 100%; }
     <?php else: ?>
     <div class="card" style="padding:0;overflow:hidden;">
         <div class="table-wrap" style="overflow-x:hidden; width:100%;">
-            <table class="pricing-table" id="merchTable" style="width:100%; table-layout:auto;">
+            <table class="pricing-table" id="merchTable" style="width:100%; table-layout:fixed;">
+                <colgroup>
+                    <col style="width:110px;">
+                    <col style="width:auto;">
+                    <col style="width:140px;">
+                    <col style="width:130px;">
+                    <col style="width:90px;">
+                    <col style="width:140px;">
+                    <col style="width:90px;">
+                    <col style="width:90px;">
+                    <col style="width:110px;">
+                    <col style="width:130px;">
+                </colgroup>
                 <thead>
                     <tr>
-                        <th>Product &amp; SKU</th>
-                        <th>Category / Brand</th>
-                        <th>UOM / Supplier</th>
-                        <th>Cost (&#8369;)</th>
-                        <th>Price (&#8369;)</th>
-                        <th>Stock Level</th>
-                        <th>Status</th>
-                        <th>Updated</th>
+                        <th>SKU / Code</th>
+                        <th>Product Name</th>
+                        <th>Category</th>
+                        <th>Brand</th>
+                        <th>UOM</th>
+                        <th style="text-align:right;">Default Selling Price</th>
+                        <th style="text-align:center;">Reorder Lvl</th>
+                        <th style="text-align:center;">Critical Lvl</th>
+                        <th style="text-align:center;">Status</th>
                         <th style="text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="merchBody">
                 <?php foreach ($merch_by_cat as $cat_label => $items): ?>
                     <tr class="cat-row" data-cat-header="<?php echo htmlspecialchars($cat_label); ?>">
-                        <td colspan="9">
+                        <td colspan="10">
                             <i class="fas fa-folder"></i>
                             <?php echo htmlspecialchars($cat_label); ?>
                             <span class="muted cat-count" style="font-weight:400;margin-left:6px;">(<?php echo count($items); ?> items)</span>
                         </td>
                     </tr>
                     <?php foreach ($items as $item):
-                        $cost          = $item['_cost'];
                         $price         = $item['_price'];
                         $stock         = $item['_stock'];
                         $reorder_level = (int)($item['reorder_level']  ?? 24);
                         $critical_lvl  = (int)($item['critical_level'] ?? 10);
-                        $updated       = !empty($item['last_updated']) ? date('M d, Y', strtotime($item['last_updated'])) : '&mdash;';
+                        $no_price      = ($price <= 0);
+                        $brand_display = htmlspecialchars($item['brand'] ?? '—');
 
-                        $below_cost = ($price > 0 && $price < $cost);
-                        $no_price   = ($price <= 0);
-
-                        if ($stock <= 0)               { $st_label = 'Out of Stock';   $st_class = 'badge-out';      $st_key = 'out'; }
+                        if ($stock <= 0)                { $st_label = 'Out of Stock';   $st_class = 'badge-out';      $st_key = 'out'; }
                         elseif ($stock <= $critical_lvl){ $st_label = 'Critical Stock'; $st_class = 'badge-critical'; $st_key = 'critical'; }
                         elseif ($stock <= $reorder_level){ $st_label = 'Low Stock';     $st_class = 'badge-low';      $st_key = 'low'; }
                         else                            { $st_label = 'Available';      $st_class = 'badge-available';$st_key = 'available'; }
 
-                        $row_class = $below_cost ? 'row-below-cost' : '';
+                        $product_status = strtolower(trim($item['status'] ?? 'active'));
+                        $is_inactive = in_array($product_status, ['inactive','disabled','deactivated']);
                     ?>
-                    <tr class="merch-row <?php echo $row_class; ?>"
+                    <tr class="merch-row"
                         data-name="<?php echo strtolower(htmlspecialchars($item['product_name'] ?? '')); ?>"
                         data-sku="<?php echo strtolower(htmlspecialchars($item['sku'] ?? '')); ?>"
                         data-brand="<?php echo strtolower(htmlspecialchars($item['brand'] ?? '')); ?>"
@@ -785,57 +829,65 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         data-cat="<?php echo htmlspecialchars($cat_label); ?>"
                         data-status="<?php echo $st_key; ?>"
                         data-noprice="<?php echo $no_price ? '1' : '0'; ?>"
-                        data-belowcost="<?php echo $below_cost ? '1' : '0'; ?>">
+                        <?php if ($is_inactive): ?>style="opacity:0.6;background:#f8f9fa;"<?php endif; ?>>
+                        <!-- SKU / Code -->
+                        <td>
+                            <code style="font-size:11px;color:#4f46e5;background:#ede9fe;padding:2px 6px;border-radius:4px;font-weight:700;">
+                                <?php echo htmlspecialchars($item['sku'] ?? '—'); ?>
+                            </code>
+                        </td>
+                        <!-- Product Name -->
                         <td>
                             <strong style="color:#1e293b;font-size:13px;"><?php echo htmlspecialchars($item['product_name'] ?? ''); ?></strong>
-                            <?php if ($below_cost): ?>
-                                <span class="badge badge-warn" style="margin-left:4px;font-size:10px;">&#9888; Below Cost</span>
+                            <?php if ($is_inactive): ?>
+                                <span style="margin-left:5px;font-size:10px;background:#e2e8f0;color:#64748b;padding:1px 5px;border-radius:3px;font-weight:600;">INACTIVE</span>
                             <?php endif; ?>
-                            <div class="muted" style="font-size:11px;">SKU: <?php echo htmlspecialchars($item['sku'] ?? '&mdash;'); ?></div>
+                            <?php if (($item['approval_status'] ?? '') === 'pending'): ?>
+                                <div style="font-size:10px;color:#d97706;background:#fef3c7;padding:2px 5px;border-radius:3px;margin-top:2px;font-weight:600;display:inline-block;">⏳ Pending: ₱<?php echo number_format($item['pending_price'], 2); ?></div>
+                            <?php endif; ?>
                         </td>
-                        <td>
-                            <div style="font-weight:600;color:#334155;"><?php echo htmlspecialchars($cat_label); ?></div>
-                            <div class="muted" style="font-size:11px;"><?php echo htmlspecialchars($item['brand'] ?? 'Generic'); ?></div>
-                        </td>
-                        <td>
-                            <div style="font-weight:500;color:#334155;"><?php echo htmlspecialchars($item['unit'] ?? 'Piece (pc)'); ?></div>
-                            <div class="muted" style="font-size:11px;"><?php echo htmlspecialchars($item['supplier'] ?? 'Petron Corporation'); ?></div>
-                        </td>
-                        <td style="color:#64748b;font-weight:500;">&#8369;<?php echo number_format($cost, 2); ?></td>
-                        <td>
+                        <!-- Category -->
+                        <td style="font-size:12px;color:#334155;"><?php echo htmlspecialchars($cat_label); ?></td>
+                        <!-- Brand -->
+                        <td style="font-size:12px;color:#64748b;"><?php echo $brand_display ?: '—'; ?></td>
+                        <!-- UOM -->
+                        <td style="font-size:12px;color:#334155;font-weight:500;"><?php echo htmlspecialchars($item['unit'] ?? 'pcs'); ?></td>
+                        <!-- Default Selling Price -->
+                        <td style="text-align:right;">
                             <?php if ($no_price): ?>
                                 <span class="badge badge-noprice">No Price Set</span>
                             <?php else: ?>
-                                <strong style="color:<?php echo $below_cost ? '#dc2626' : '#002F6C'; ?>;font-size:13px;">
-                                    &#8369;<?php echo number_format($price, 2); ?>
-                                </strong>
-                            <?php endif; ?>
-                            <?php if (($item['approval_status'] ?? '') === 'pending'): ?>
-                                <div style="font-size:11px; color:#d97706; background:#fef3c7; padding:2px 6px; border-radius:4px; margin-top:4px; display:block; font-weight:600; text-align:left; line-height:1.3;">
-                                    Pending: ₱<?php echo number_format($item['pending_price'], 2); ?>
-                                </div>
+                                <strong style="color:#002F6C;font-size:13px;">&#8369;<?php echo number_format($price, 2); ?></strong>
                             <?php endif; ?>
                         </td>
-                        <td>
-                            <strong style="font-size:13px;"><?php echo number_format($stock, 0); ?></strong>
-                            <div class="muted" style="font-size:11px;">Reorder: <?php echo number_format($reorder_level); ?> | Crit: <?php echo number_format($critical_lvl); ?></div>
-                        </td>
-                        <td><span class="badge <?php echo $st_class; ?>"><?php echo $st_label; ?></span></td>
-                        <td class="muted" style="font-size:11px;"><?php echo $updated; ?></td>
+                        <!-- Reorder Level -->
                         <td style="text-align:center;">
-                            <div class="act-btn-wrap" style="display:flex;flex-direction:column;gap:3px;align-items:center;">
-                                <button onclick="openEditMerchPriceModal(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars($item['product_name'] ?? ''); ?>', <?php echo $price; ?>)" class="act-btn act-btn-edit" style="width:100%;max-width:90px;">
+                            <span style="display:inline-block;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:4px;padding:2px 8px;font-size:12px;font-weight:700;"><?php echo number_format($reorder_level); ?></span>
+                        </td>
+                        <!-- Critical Level -->
+                        <td style="text-align:center;">
+                            <span style="display:inline-block;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:4px;padding:2px 8px;font-size:12px;font-weight:700;"><?php echo number_format($critical_lvl); ?></span>
+                        </td>
+                        <!-- Status -->
+                        <td style="text-align:center;"><span class="badge <?php echo $st_class; ?>"><?php echo $st_label; ?></span></td>
+                        <!-- Actions -->
+                        <td style="text-align:center;">
+                            <div class="act-btn-wrap">
+                                <button onclick="openEditMerchModal(<?php echo $item['id']; ?>)" class="act-btn act-btn-edit">
                                     <i class="fas fa-edit"></i> Edit
                                 </button>
-                                <?php if (($item['status'] ?? 'active') !== 'inactive'): ?>
-                                    <button onclick="deactivateMerchandise(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars($item['product_name'] ?? ''); ?>')" class="act-btn act-btn-deactivate" style="width:100%;max-width:90px;">
+                                <?php if (!$is_inactive): ?>
+                                    <button onclick="deactivateMerchandise(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars(addslashes($item['product_name'] ?? '')); ?>')" class="act-btn act-btn-deactivate">
                                         <i class="fas fa-ban"></i> Deactivate
                                     </button>
                                 <?php else: ?>
-                                    <button onclick="activateMerchandise(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars($item['product_name'] ?? ''); ?>')" class="act-btn act-btn-activate" style="width:100%;max-width:90px;">
+                                    <button onclick="activateMerchandise(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars(addslashes($item['product_name'] ?? '')); ?>')" class="act-btn act-btn-activate">
                                         <i class="fas fa-check-circle"></i> Activate
                                     </button>
                                 <?php endif; ?>
+                                <button onclick="viewProductBatches(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars(addslashes($item['product_name'] ?? '')); ?>')" class="act-btn act-btn-batches">
+                                    <i class="fas fa-layer-group"></i> Batches
+                                </button>
                             </div>
                         </td>
                     </tr>
@@ -1223,26 +1275,70 @@ function filterTable() {
 
 <!-- Add Merchandise Modal -->
 <div id="addMerchandiseModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:12px;width:90%;max-width:600px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3);">
-    <div style="background:#002F6C !important;border-radius:12px 12px 0 0;padding:18px 20px;display:flex;align-items:center;justify-content:space-between;">
-      <h3 style="margin:0 !important;font-size:17px !important;font-weight:800 !important;color:#ffffff !important;display:flex !important;align-items:center;gap:10px;letter-spacing:0.3px;"><i class="fas fa-plus-circle" style="font-size:18px;color:#ffffff !important;"></i> <span style="color:#ffffff !important;">ADD NEW MERCHANDISE</span></h3>
+  <div style="background:#fff;border-radius:12px;width:90%;max-width:650px;max-height:92vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3);">
+    <div style="background:linear-gradient(135deg,#002F6C,#004494);border-radius:12px 12px 0 0;padding:18px 22px;display:flex;align-items:center;justify-content:space-between;">
+      <h3 style="margin:0;font-size:16px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;">
+        <i class="fas fa-plus-circle"></i> ADD NEW MERCHANDISE PRODUCT
+      </h3>
+      <button onclick="closeAddMerchandiseModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:16px;">&times;</button>
     </div>
     <form id="addMerchandiseForm" style="padding:22px;">
+      <!-- Row 1: Product Name + SKU -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-        <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Product Name <span style="color:#dc2626;">*</span></label><input type="text" id="newMerchName" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="Product Name"></div>
-        <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">SKU</label><input type="text" id="newMerchSku" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. ITEM-001"></div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Product Name <span style="color:#dc2626;">*</span></label>
+          <input type="text" id="newMerchName" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Coke 1.5L">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">SKU / Product Code</label>
+          <input type="text" id="newMerchSku" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;font-family:monospace;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. ITEM-001 (auto if blank)">
+        </div>
       </div>
+      <!-- Row 2: Category + Brand -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-        <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Category <span style="color:#dc2626;">*</span></label><input type="text" id="newMerchCategory" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Air Fresheners"></div>
-        <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Size / Unit</label><input type="text" id="newMerchSize" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. 500ml, Standard"></div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Category <span style="color:#dc2626;">*</span></label>
+          <input type="text" id="newMerchCategory" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Drinks/Food">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Brand</label>
+          <input type="text" id="newMerchBrand" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Coca-Cola, Petron">
+        </div>
       </div>
+      <!-- Row 3: UOM + Barcode -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Unit of Measure (UOM)</label>
+          <input type="text" id="newMerchSize" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Bottle, Box, pcs, 500ml">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Barcode <span style="color:#94a3b8;font-weight:400;text-transform:none;">(optional)</span></label>
+          <input type="text" id="newMerchBarcode" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;font-family:monospace;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="Scan or type barcode">
+        </div>
+      </div>
+      <!-- Row 4: Default Selling Price -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#002F6C;text-transform:uppercase;margin-bottom:4px;">Default Selling Price (&#8369;) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="newMerchPrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:2px solid #002F6C;border-radius:7px;font-size:14px;font-weight:600;box-sizing:border-box;" onfocus="this.style.borderColor='#004494'" onblur="this.style.borderColor='#002F6C'" placeholder="0.00">
+          <small style="color:#64748b;font-size:11px;">Cost price will be set per delivery batch (Record Delivery)</small>
+        </div>
+        <div></div>
+      </div>
+      <!-- Row 5: Reorder Level + Critical Level -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
-        <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Unit Cost (₱) <span style="color:#dc2626;">*</span></label><input type="number" id="newMerchCost" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00"></div>
-        <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Unit Price (₱) <span style="color:#dc2626;">*</span></label><input type="number" id="newMerchPrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00"></div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:4px;">Reorder Level</label>
+          <input type="number" id="newMerchReorder" min="0" value="24" style="width:100%;padding:9px 11px;border:1.5px solid #fde68a;border-radius:7px;font-size:13px;background:#fffbeb;box-sizing:border-box;" onfocus="this.style.borderColor='#f59e0b'" onblur="this.style.borderColor='#fde68a'" placeholder="24">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;margin-bottom:4px;">Critical Level</label>
+          <input type="number" id="newMerchCritical" min="0" value="10" style="width:100%;padding:9px 11px;border:1.5px solid #fca5a5;border-radius:7px;font-size:13px;background:#fff1f2;box-sizing:border-box;" onfocus="this.style.borderColor='#ef4444'" onblur="this.style.borderColor='#fca5a5'" placeholder="10">
+        </div>
       </div>
-      <div style="display:flex;gap:10px;justify-content:flex-end;">
-        <button type="button" onclick="closeAddMerchandiseModal()" style="background:#f1f5f9;color:#ffffff !important;border:1px solid #e2e8f0;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
-        <button type="submit" style="background:#002F6C;color:#fff;border:none;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-check"></i> Add Merchandise</button>
+      <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:16px;">
+        <button type="button" onclick="closeAddMerchandiseModal()" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
+        <button type="submit" style="background:linear-gradient(135deg,#002F6C,#004494);color:#fff;border:none;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-check"></i> Add Product</button>
       </div>
     </form>
   </div>
@@ -1250,29 +1346,94 @@ function filterTable() {
 
 <!-- Edit Merchandise Modal — Full Edit -->
 <div id="editMerchPriceModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:12px;width:90%;max-width:600px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3);">
-    <div style="background:#002F6C !important;border-radius:12px 12px 0 0;padding:18px 20px;display:flex;align-items:center;justify-content:space-between;">
-      <h3 style="margin:0 !important;font-size:17px !important;font-weight:800 !important;color:#ffffff !important;display:flex !important;align-items:center;gap:10px;letter-spacing:0.3px;"><i class="fas fa-box" style="font-size:18px;color:#ffffff !important;"></i> <span style="color:#ffffff !important;">EDIT MERCHANDISE</span></h3>
+  <div style="background:#fff;border-radius:12px;width:90%;max-width:650px;max-height:92vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3);">
+    <div style="background:linear-gradient(135deg,#1e40af,#2563eb);border-radius:12px 12px 0 0;padding:18px 22px;display:flex;align-items:center;justify-content:space-between;">
+      <h3 style="margin:0;font-size:16px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;">
+        <i class="fas fa-edit"></i> EDIT MERCHANDISE PRODUCT
+      </h3>
+      <button onclick="closeEditMerchPriceModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:16px;">&times;</button>
     </div>
     <form id="editMerchPriceForm" style="padding:22px;">
       <input type="hidden" id="editMerchId">
+      <!-- Row 1: Product Name + SKU -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-        <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Product Name <span style="color:#dc2626;">*</span></label><input type="text" id="editMerchName" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"></div>
-        <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">SKU</label><input type="text" id="editMerchSku" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. ITEM-001"></div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Product Name <span style="color:#dc2626;">*</span></label>
+          <input type="text" id="editMerchName" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">SKU / Product Code</label>
+          <input type="text" id="editMerchSku" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;font-family:monospace;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+        </div>
       </div>
+      <!-- Row 2: Category + Brand -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-        <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Category <span style="color:#dc2626;">*</span></label><input type="text" id="editMerchCategory" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"></div>
-        <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Size / Unit</label><input type="text" id="editMerchSize" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. 500ml, Standard"></div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Category <span style="color:#dc2626;">*</span></label>
+          <input type="text" id="editMerchCategory" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Brand</label>
+          <input type="text" id="editMerchBrand" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Coca-Cola, Petron">
+        </div>
       </div>
+      <!-- Row 3: UOM + Barcode -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Unit of Measure (UOM)</label>
+          <input type="text" id="editMerchSize" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Bottle, Box, pcs">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Barcode <span style="color:#94a3b8;font-weight:400;text-transform:none;">(optional)</span></label>
+          <input type="text" id="editMerchBarcode" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;font-family:monospace;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+        </div>
+      </div>
+      <!-- Row 4: Default Selling Price -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#002F6C;text-transform:uppercase;margin-bottom:4px;">Default Selling Price (&#8369;) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="editMerchPrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:2px solid #002F6C;border-radius:7px;font-size:14px;font-weight:600;box-sizing:border-box;" onfocus="this.style.borderColor='#004494'" onblur="this.style.borderColor='#002F6C'" placeholder="0.00">
+          <small style="color:#64748b;font-size:11px;">Cost price is managed per delivery batch</small>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Status</label>
+          <select id="editMerchStatus" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;">
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+      </div>
+      <!-- Row 5: Reorder Level + Critical Level -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
-        <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Unit Cost (₱) <span style="color:#dc2626;">*</span></label><input type="number" id="editMerchCost" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00"></div>
-        <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Unit Price (₱) <span style="color:#dc2626;">*</span></label><input type="number" id="editMerchPrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00"></div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:4px;">Reorder Level</label>
+          <input type="number" id="editMerchReorder" min="0" style="width:100%;padding:9px 11px;border:1.5px solid #fde68a;border-radius:7px;font-size:13px;background:#fffbeb;box-sizing:border-box;" onfocus="this.style.borderColor='#f59e0b'" onblur="this.style.borderColor='#fde68a'">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;margin-bottom:4px;">Critical Level</label>
+          <input type="number" id="editMerchCritical" min="0" style="width:100%;padding:9px 11px;border:1.5px solid #fca5a5;border-radius:7px;font-size:13px;background:#fff1f2;box-sizing:border-box;" onfocus="this.style.borderColor='#ef4444'" onblur="this.style.borderColor='#fca5a5'">
+        </div>
       </div>
-      <div style="display:flex;gap:10px;justify-content:flex-end;">
-        <button type="button" onclick="closeEditMerchPriceModal()" style="background:#f1f5f9;color:#ffffff !important;border:1px solid #e2e8f0;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
-        <button type="submit" style="background:#002F6C;color:#fff;border:none;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save"></i> Save Changes</button>
+      <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:16px;">
+        <button type="button" onclick="closeEditMerchPriceModal()" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
+        <button type="submit" style="background:linear-gradient(135deg,#1e40af,#2563eb);color:#fff;border:none;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save"></i> Save Changes</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- View Batches Modal -->
+<div id="viewBatchesModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:12px;width:95%;max-width:900px;max-height:92vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3);">
+    <div style="background:linear-gradient(135deg,#0369a1,#0284c7);border-radius:12px 12px 0 0;padding:18px 22px;display:flex;align-items:center;justify-content:space-between;">
+      <h3 style="margin:0;font-size:16px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;">
+        <i class="fas fa-layer-group"></i> <span id="viewBatchesTitle">Product Batches</span>
+      </h3>
+      <button onclick="document.getElementById('viewBatchesModal').style.display='none'" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:16px;">&times;</button>
+    </div>
+    <div id="viewBatchesContent" style="padding:22px;">
+      <div style="text-align:center;color:#94a3b8;padding:30px;"><i class="fas fa-spinner fa-spin" style="font-size:24px;"></i><br>Loading batches...</div>
+    </div>
   </div>
 </div>
 
@@ -1683,26 +1844,35 @@ function closeAddMerchandiseModal() {
     document.getElementById('addMerchandiseForm').reset();
 }
 
-function openEditMerchPriceModal(id, productName, currentPrice) {
+// Open Edit Merchandise Modal — populates all FIFO Product Management fields
+function openEditMerchModal(id) {
     document.getElementById('editMerchId').value = id;
-    document.getElementById('editMerchName').value = productName;
-    document.getElementById('editMerchPrice').value = currentPrice;
-    // Fetch full details
+    document.getElementById('editMerchPriceModal').style.display = 'flex';
+    // Fetch full details from handler
     fetch('manager_set_prices_handler.php?action=get_merch_details&id=' + id)
         .then(r => r.json()).then(data => {
             if (data.success && data.item) {
                 var i = data.item;
-                document.getElementById('editMerchName').value     = i.product_name || productName;
-                document.getElementById('editMerchSku').value      = i.sku || '';
-                document.getElementById('editMerchCategory').value = i.category || '';
-                document.getElementById('editMerchSize').value     = i.size || '';
-                document.getElementById('editMerchCost').value     = parseFloat(i.unit_cost || 0);
-                document.getElementById('editMerchPrice').value    = parseFloat(i.unit_price || currentPrice);
+                document.getElementById('editMerchName').value      = i.product_name || '';
+                document.getElementById('editMerchSku').value       = i.sku || '';
+                document.getElementById('editMerchCategory').value  = i.category || '';
+                document.getElementById('editMerchBrand').value     = i.brand || '';
+                document.getElementById('editMerchSize').value      = i.size || i.unit || '';
+                document.getElementById('editMerchBarcode').value   = i.barcode || '';
+                document.getElementById('editMerchPrice').value     = parseFloat(i.unit_price || 0);
+                document.getElementById('editMerchReorder').value   = parseInt(i.reorder_level || 24);
+                document.getElementById('editMerchCritical').value  = parseInt(i.critical_level || 10);
+                document.getElementById('editMerchStatus').value    = i.status || 'active';
             }
         });
-    document.getElementById('editMerchPriceModal').style.display = 'flex';
     document.getElementById('editMerchName').focus();
 }
+
+// Keep old name as alias for backward compat
+function openEditMerchPriceModal(id, productName, currentPrice) {
+    openEditMerchModal(id);
+}
+
 
 function closeEditMerchPriceModal() {
     document.getElementById('editMerchPriceModal').style.display = 'none';
@@ -1712,66 +1882,123 @@ function closeEditMerchPriceModal() {
 // Add Merchandise Form Handler
 document.getElementById('addMerchandiseForm').addEventListener('submit', function(e) {
     e.preventDefault();
-    
-    var name = document.getElementById('newMerchName').value.trim();
+
+    var name     = document.getElementById('newMerchName').value.trim();
     var category = document.getElementById('newMerchCategory').value.trim();
-    var cost = parseFloat(document.getElementById('newMerchCost').value);
-    var price = parseFloat(document.getElementById('newMerchPrice').value);
-    var sku = document.getElementById('newMerchSku').value.trim();
-    var size = document.getElementById('newMerchSize').value.trim();
-    
-    if (!name || !category || cost < 0 || price < 0) {
+    var price    = parseFloat(document.getElementById('newMerchPrice').value);
+    var sku      = document.getElementById('newMerchSku').value.trim();
+    var brand    = document.getElementById('newMerchBrand').value.trim();
+    var size     = document.getElementById('newMerchSize').value.trim();
+    var barcode  = document.getElementById('newMerchBarcode').value.trim();
+    var reorder  = parseInt(document.getElementById('newMerchReorder').value) || 24;
+    var critical = parseInt(document.getElementById('newMerchCritical').value) || 10;
+
+    if (!name || !category || price < 0) {
         alert('Please fill all required fields with valid values.');
         return;
     }
-    
+
     var formData = new FormData();
     formData.append('action', 'add_merchandise');
     formData.append('product_name', name);
     formData.append('category', category);
-    formData.append('unit_cost', cost);
+    formData.append('brand', brand);
     formData.append('unit_price', price);
+    formData.append('unit_cost', 0); // cost set per delivery batch
     formData.append('sku', sku);
     formData.append('size', size);
-    
-    fetch('manager_set_prices_handler.php', {
-        method: 'POST',
-        body: formData
-    })
+    formData.append('barcode', barcode);
+    formData.append('reorder_level', reorder);
+    formData.append('critical_level', critical);
+
+    fetch('manager_set_prices_handler.php', { method: 'POST', body: formData })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('SUCCESS: Merchandise added successfully!');
+            alert('SUCCESS: Product added successfully!');
             closeAddMerchandiseModal();
             location.reload();
         } else {
-            alert('Error: ' + (data.message || 'Failed to add merchandise'));
+            alert('Error: ' + (data.message || 'Failed to add product'));
         }
     })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error adding merchandise. Please try again.');
-    });
+    .catch(() => alert('Error adding product. Please try again.'));
 });
 
 // Edit Merchandise Full Form Handler
 document.getElementById('editMerchPriceForm').addEventListener('submit', function(e) {
     e.preventDefault();
     var fd = new FormData();
-    fd.append('action',       'edit_merchandise_full');
-    fd.append('id',           document.getElementById('editMerchId').value);
-    fd.append('product_name', document.getElementById('editMerchName').value.trim());
-    fd.append('sku',          document.getElementById('editMerchSku').value.trim());
-    fd.append('category',     document.getElementById('editMerchCategory').value.trim());
-    fd.append('size',         document.getElementById('editMerchSize').value.trim());
-    fd.append('unit_cost',    document.getElementById('editMerchCost').value);
-    fd.append('unit_price',   document.getElementById('editMerchPrice').value);
+    fd.append('action',         'edit_merchandise_full');
+    fd.append('id',             document.getElementById('editMerchId').value);
+    fd.append('product_name',   document.getElementById('editMerchName').value.trim());
+    fd.append('sku',            document.getElementById('editMerchSku').value.trim());
+    fd.append('category',       document.getElementById('editMerchCategory').value.trim());
+    fd.append('brand',          document.getElementById('editMerchBrand').value.trim());
+    fd.append('size',           document.getElementById('editMerchSize').value.trim());
+    fd.append('barcode',        document.getElementById('editMerchBarcode').value.trim());
+    fd.append('unit_price',     document.getElementById('editMerchPrice').value);
+    fd.append('unit_cost',      0); // cost managed per delivery batch
+    fd.append('reorder_level',  document.getElementById('editMerchReorder').value);
+    fd.append('critical_level', document.getElementById('editMerchCritical').value);
+    fd.append('status',         document.getElementById('editMerchStatus').value);
     fetch('manager_set_prices_handler.php', {method:'POST', body:fd})
         .then(r => r.json()).then(data => {
-            if (data.success) { alert('SUCCESS: Merchandise updated!'); closeEditMerchPriceModal(); location.reload(); }
+            if (data.success) { alert('SUCCESS: Product updated!'); closeEditMerchPriceModal(); location.reload(); }
             else alert('Error: ' + (data.message || 'Failed'));
-        }).catch(() => alert('Error updating merchandise.'));
+        }).catch(() => alert('Error updating product.'));
 });
+
+// View Batches function
+function viewProductBatches(productId, productName) {
+    document.getElementById('viewBatchesTitle').textContent = '📦 ' + productName + ' — Batch History';
+    document.getElementById('viewBatchesContent').innerHTML = '<div style="text-align:center;color:#94a3b8;padding:30px;"><i class="fas fa-spinner fa-spin" style="font-size:24px;"></i><br>Loading batches...</div>';
+    document.getElementById('viewBatchesModal').style.display = 'flex';
+
+    fetch('manager_set_prices_handler.php?action=get_product_batches&id=' + productId)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success || !data.batches || data.batches.length === 0) {
+                document.getElementById('viewBatchesContent').innerHTML = '<div style="text-align:center;color:#94a3b8;padding:30px;"><i class="fas fa-box-open" style="font-size:32px;margin-bottom:10px;display:block;"></i>No batch records found for this product.<br><small>Record a delivery to create the first batch.</small></div>';
+                return;
+            }
+            var batches = data.batches;
+            var firstActive = true;
+            var rows = batches.map(function(b) {
+                var isFirst = firstActive && b.status === 'active';
+                if (isFirst) firstActive = false;
+                var bNum = b.batch_number || ('B' + String(b.id).padStart(4,'0'));
+                var fifo = isFirst ? '<span style="background:#16a34a;color:#fff;font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700;margin-left:4px;">NEXT FIFO</span>' : '';
+                var statusBadge = b.status === 'active'
+                    ? '<span style="background:#dcfce7;color:#166534;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;">Active</span>'
+                    : '<span style="background:#f1f5f9;color:#64748b;padding:2px 7px;border-radius:4px;font-size:11px;">Depleted</span>';
+                return '<tr style="border-bottom:1px solid #f1f5f9;">'
+                    + '<td style="padding:8px 10px;"><code style="color:#4f46e5;background:#ede9fe;padding:2px 6px;border-radius:3px;font-size:12px;">' + bNum + '</code>' + fifo + '</td>'
+                    + '<td style="padding:8px 10px;text-align:right;">' + parseInt(b.quantity_received||0) + '</td>'
+                    + '<td style="padding:8px 10px;text-align:right;font-weight:700;">' + parseInt(b.remaining_qty||0) + '</td>'
+                    + '<td style="padding:8px 10px;text-align:right;color:#64748b;">&#8369;' + parseFloat(b.unit_cost||0).toFixed(2) + '</td>'
+                    + '<td style="padding:8px 10px;text-align:right;color:#002F6C;font-weight:600;">&#8369;' + parseFloat(b.selling_price||0).toFixed(2) + '</td>'
+                    + '<td style="padding:8px 10px;font-size:11px;color:#64748b;">' + (b.date_received||'—').substring(0,10) + '</td>'
+                    + '<td style="padding:8px 10px;text-align:center;">' + statusBadge + '</td>'
+                    + '</tr>';
+            }).join('');
+            document.getElementById('viewBatchesContent').innerHTML =
+                '<div style="overflow-x:auto;">'
+                + '<table style="width:100%;border-collapse:collapse;font-size:13px;">'
+                + '<thead><tr style="background:#002F6C;color:#fff;">'
+                + '<th style="padding:10px;text-align:left;">Batch No.</th>'
+                + '<th style="padding:10px;text-align:right;">Received Qty</th>'
+                + '<th style="padding:10px;text-align:right;">Remaining</th>'
+                + '<th style="padding:10px;text-align:right;">Unit Cost</th>'
+                + '<th style="padding:10px;text-align:right;">Selling Price</th>'
+                + '<th style="padding:10px;">Date Received</th>'
+                + '<th style="padding:10px;text-align:center;">Status</th>'
+                + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+        })
+        .catch(() => {
+            document.getElementById('viewBatchesContent').innerHTML = '<div style="text-align:center;color:#dc2626;padding:20px;">Error loading batch data.</div>';
+        });
+}
 
 function deactivateMerchandise(id, productName) {
     if (!confirm('Are you sure you want to deactivate "' + productName + '"?\n\nThis will set the merchandise status to inactive.')) {

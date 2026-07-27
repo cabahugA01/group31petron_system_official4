@@ -402,7 +402,7 @@ require_once __DIR__ . '/../partials/header.php';
 @media(max-width:900px){.mp-summary-grid{grid-template-columns:repeat(2,minmax(130px,1fr));}.mp-export-actions{margin-left:0;width:100%;flex-wrap:wrap;}}
 @media print{
     @page{
-        size:legal landscape;
+        size: A4 landscape;
         margin:.2in .3in;
         /* Suppress browser-injected URL/date headers and footers */
         @top-left{content:none;}

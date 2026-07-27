@@ -84,7 +84,7 @@ $all_supps = ['Petron Corporation'];
 
 // ── Fetch all items ──────────────────────────────────────────────
 $stmt = $pdo->prepare("
-    SELECT ip.id, ip.sku, ip.product_name, ip.category, ip.supplier,
+    SELECT ip.id, ip.sku, ip.product_name, ip.category, COALESCE(ip.brand, 'Petron Corporation') AS supplier,
            COALESCE(si.unit, 'pcs') AS unit,
            COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
            COALESCE(si.reorder_level, ip.min_stock, 10) AS reorder_level,
@@ -95,7 +95,7 @@ $stmt = $pdo->prepare("
            COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated
     FROM inventory_products ip
     LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-    WHERE ip.category NOT IN ('Fuel')
+    WHERE ip.category NOT IN ('fuel', 'fuel products')
     ORDER BY ip.category, ip.product_name
 ");
 $stmt->execute([$station_id]);

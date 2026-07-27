@@ -307,7 +307,7 @@ require_once __DIR__ . '/../partials/header.php';
 .status-cancelled{background:#fee2e2;color:#dc2626;}
 .status-progress{background:#dbeafe;color:#1d4ed8;}
 @media print{
-    @page{size:legal portrait;margin:.3in .4in;}
+    @page{size: A4 portrait;margin:.3in .4in;}
     *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
     html,body{background:white !important;padding:0 !important;margin:0 !important;}
     body > *{display:none !important;}

@@ -357,7 +357,7 @@ require_once __DIR__ . '/../partials/header.php';
 /* Print Styles - matches staff_reports.php approach */
 @media print {
     @page {
-        size: legal portrait;
+        size: A4 portrait;
         margin: 0.3in 0.4in;
     }
 

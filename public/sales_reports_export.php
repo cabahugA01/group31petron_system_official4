@@ -102,6 +102,10 @@ function exportToExcel($data, $start_date, $end_date) {
 }
 
 function exportToPDF($data, $start_date, $end_date) {
+    $u = current_user();
+    $prepared_by_name = trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? '')) ?: ($u['username'] ?? 'System User');
+    $user_role_label  = function_exists('role_key') ? ucfirst(role_key($u['role'] ?? 'staff')) : 'Staff';
+
     // Create HTML content
     $html = '
     <!DOCTYPE html>
@@ -110,23 +114,27 @@ function exportToPDF($data, $start_date, $end_date) {
         <meta charset="UTF-8">
         <title>Sales Report</title>
         <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .header { text-align: center; margin-bottom: 30px; }
-            .header h1 { color: #333; }
-            .info { margin-bottom: 20px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #f2f2f2; font-weight: bold; }
-            .summary { margin-top: 30px; padding: 15px; background-color: #f9f9f9; border-radius: 5px; }
-            .summary h3 { margin-top: 0; color: #333; }
+            body { font-family: "Segoe UI", Arial, sans-serif; margin: 20px; color: #1e293b; }
+            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #002F6C; padding-bottom: 10px; }
+            .header h1 { font-size: 18px; font-weight: 800; color: #002F6C; margin: 0 0 5px 0; letter-spacing: 0.5px; }
+            .info { font-size: 11px; color: #334155; font-weight: 600; margin-top: 5px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px; }
+            th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; }
+            th { background-color: #002F6C; color: #ffffff; font-weight: 700; border-color: #002F6C; }
+            .summary { margin-top: 20px; padding: 15px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; }
+            .summary h3 { margin-top: 0; color: #002F6C; font-size: 14px; }
+            .sig-table { width: 100%; margin-top: 30px; page-break-inside: avoid; border: none; border-collapse: collapse; }
+            .sig-table td { border: none; }
         </style>
     </head>
     <body>
         <div class="header">
-            <h1>Sales Report</h1>
+            <h1>SALES REPORT</h1>
+            <div style="font-size:12px; font-weight:700; color:#1e293b; margin-bottom:4px;">PETRON STATION</div>
             <div class="info">
-                <p><strong>Date Range:</strong> ' . $start_date . ' to ' . $end_date . '</p>
-                <p><strong>Generated:</strong> ' . date('Y-m-d H:i:s') . '</p>
+                <span><strong>Date Range:</strong> ' . htmlspecialchars($start_date) . ' to ' . htmlspecialchars($end_date) . '</span>
+                &nbsp;•&nbsp;
+                <span><strong>Generated:</strong> ' . date('M j, Y h:i A') . '</span>
             </div>
         </div>
         
@@ -135,9 +143,9 @@ function exportToPDF($data, $start_date, $end_date) {
                 <tr>
                     <th>Date</th>
                     <th>Branch</th>
-                    <th>Sales</th>
-                    <th>Transactions</th>
-                    <th>Average Sale</th>
+                    <th style="text-align:right">Sales</th>
+                    <th style="text-align:center">Transactions</th>
+                    <th style="text-align:right">Average Sale</th>
                 </tr>
             </thead>
             <tbody>';
@@ -147,11 +155,11 @@ function exportToPDF($data, $start_date, $end_date) {
         $avg_sale = $row['transactions'] > 0 ? $row['sales'] / $row['transactions'] : 0;
         $html .= '
                 <tr>
-                    <td>' . $row['date'] . '</td>
+                    <td>' . htmlspecialchars($row['date']) . '</td>
                     <td>' . htmlspecialchars($row['branch']) . '</td>
-                    <td>₱' . number_format($row['sales'], 2) . '</td>
-                    <td>' . $row['transactions'] . '</td>
-                    <td>₱' . number_format($avg_sale, 2) . '</td>
+                    <td style="text-align:right">₱' . number_format($row['sales'], 2) . '</td>
+                    <td style="text-align:center">' . $row['transactions'] . '</td>
+                    <td style="text-align:right">₱' . number_format($avg_sale, 2) . '</td>
                 </tr>';
     }
     
@@ -168,6 +176,20 @@ function exportToPDF($data, $start_date, $end_date) {
             <p><strong>Total Transactions:</strong> ' . $total_transactions . '</p>
             <p><strong>Average Sale:</strong> ₱' . number_format($total_transactions > 0 ? $total_sales / $total_transactions : 0, 2) . '</p>
         </div>
+
+        <!-- PREPARED BY SIGNATURE -->
+        <table class="sig-table">
+            <tr>
+                <td style="border:none;"></td>
+                <td style="border:none; width:220px; text-align:center;">
+                    <div style="font-size:10px; font-weight:700; color:#333; margin-bottom:25px;">PREPARED BY:</div>
+                    <div style="border-top:1px solid #000; padding-top:4px; font-weight:700; font-size:11px; color:#000;">
+                        ' . htmlspecialchars($prepared_by_name) . '
+                    </div>
+                    <div style="font-size:9.5px; color:#555; margin-top:2px;">' . htmlspecialchars($user_role_label) . '</div>
+                </td>
+            </tr>
+        </table>
     </body>
     </html>';
     

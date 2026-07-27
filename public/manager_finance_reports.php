@@ -315,7 +315,7 @@ require_once __DIR__ . '/../partials/header.php';
 }
 
 @media print {
-    @page { size: legal portrait; margin: 0.3in 0.4in; }
+    @page { size: A4 portrait; margin: 0.3in 0.4in; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     .fr-section-tabs { display: none !important; }
     .rpt-filter-bar, .rpt-export-actions { display: none !important; }

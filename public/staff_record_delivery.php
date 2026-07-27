@@ -33,18 +33,54 @@ try {
 } catch (Exception $ignored) {}
 
 $staff_profile = [
-    'name' => $me['name'] ?? $me['username'] ?? 'Staff',
+    'name'           => $me['name'] ?? $me['username'] ?? 'Staff',
     'assigned_shift' => 'Not Assigned',
 ];
 try {
-    $staff_stmt = $pdo->prepare("SELECT name, username, assigned_shift FROM users WHERE id = ? LIMIT 1");
+    $staff_stmt = $pdo->prepare("SELECT name, username, assigned_shift, shift_assignment FROM users WHERE id = ? LIMIT 1");
     $staff_stmt->execute([(int)$me['id']]);
     $staff_row = $staff_stmt->fetch(PDO::FETCH_ASSOC);
     if ($staff_row) {
         $staff_profile['name'] = $staff_row['name'] ?: ($staff_row['username'] ?: $staff_profile['name']);
-        $staff_profile['assigned_shift'] = $staff_row['assigned_shift'] ?: 'Not Assigned';
+        // Use assigned_shift or shift_assignment, whichever is set
+        $shift_val = $staff_row['assigned_shift'] ?: $staff_row['shift_assignment'] ?: '';
+        if ($shift_val && $shift_val !== 'Not Assigned' && $shift_val !== 'All Shifts') {
+            $staff_profile['assigned_shift'] = $shift_val;
+        } else {
+            // Fallback: determine current shift from shift_period_config by current hour
+            $current_hour = (int)date('G'); // 0-23
+            try {
+                $spc = $pdo->query("SELECT shift_name, start_hour, end_hour FROM shift_period_config WHERE is_active = 1 ORDER BY sort_order ASC");
+                $shift_found = '';
+                foreach ($spc->fetchAll(PDO::FETCH_ASSOC) as $sp) {
+                    $s = (int)$sp['start_hour'];
+                    $e = (int)$sp['end_hour'];
+                    if ($s <= $e) {
+                        // Normal range e.g. 6-13
+                        if ($current_hour >= $s && $current_hour <= $e) {
+                            $shift_found = $sp['shift_name'] . ' Shift';
+                            break;
+                        }
+                    } else {
+                        // Overnight range e.g. 22-5
+                        if ($current_hour >= $s || $current_hour <= $e) {
+                            $shift_found = $sp['shift_name'] . ' Shift';
+                            break;
+                        }
+                    }
+                }
+                if ($shift_found) {
+                    $staff_profile['assigned_shift'] = $shift_found;
+                } elseif ($shift_val) {
+                    $staff_profile['assigned_shift'] = $shift_val; // Use All Shifts or whatever it is
+                }
+            } catch (Exception $ignored) {
+                $staff_profile['assigned_shift'] = $shift_val ?: 'Not Assigned';
+            }
+        }
     }
 } catch (Exception $ignored) {}
+
 
 function notify_manager_delivery_recorded(PDO $pdo, int $station_id, string $title, string $message): void
 {
@@ -100,7 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                     SELECT po.*, s.name as supplier_name
                     FROM purchase_orders po
                     LEFT JOIN suppliers s ON po.supplier_id = s.id
-                    WHERE po.id = ? AND po.station_id = ? AND po.status IN ('Admin Finalized', 'Approved') AND po.type = 'merch'
+                    WHERE po.id = ? AND po.station_id = ? AND po.status IN ('Admin Finalized', 'Approved', 'Pending Delivery', 'Pending Admin Validation', 'Forwarded to Admin', 'Approved PO', 'Official', 'Expected Delivery') AND po.type = 'merch'
                 ");
                 $stmt->execute([$pr_id, $station_id]);
                 $po = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -130,13 +166,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                     $damaged_qty = !$is_good ? $received_qty : 0.0;
                     $actual_qty  = $is_good ? $received_qty : 0.0;
 
-                    $p_stmt = $pdo->prepare("
-                        SELECT COALESCE(si.unit, ip.size, 'pcs') AS unit
-                        FROM inventory_products ip
-                        LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-                        WHERE ip.product_name = ? LIMIT 1
-                    ");
-                    $p_stmt->execute([$station_id, $item['item_name']]);
+                    $p_stmt = $inv_products_exists
+                        ? $pdo->prepare("
+                            SELECT COALESCE(si.unit, ip.size, 'pcs') AS unit
+                            FROM inventory_products ip
+                            LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
+                            WHERE ip.product_name = ? LIMIT 1
+                          ")
+                        : $pdo->prepare("
+                            SELECT COALESCE(p.unit, 'pcs') AS unit
+                            FROM products p
+                            WHERE p.name = ? LIMIT 1
+                          ");
+
+                    if ($inv_products_exists) {
+                        $p_stmt->execute([$station_id, $item['item_name']]);
+                    } else {
+                        $p_stmt->execute([$item['item_name']]);
+                    }
                     $prod_unit = $p_stmt->fetchColumn() ?: 'pcs';
 
                     $pdo->prepare("
@@ -205,13 +252,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                     $leg_po = $leg_stmt->fetch(PDO::FETCH_ASSOC);
                     if (!$leg_po) continue;
 
-                    $p_stmt = $pdo->prepare("
-                        SELECT COALESCE(si.unit, ip.size, 'pcs') AS unit
-                        FROM inventory_products ip
-                        LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-                        WHERE ip.product_name = ? LIMIT 1
-                    ");
-                    $p_stmt->execute([$station_id, $leg_po['product_name']]);
+                    $p_stmt = $inv_products_exists
+                        ? $pdo->prepare("
+                            SELECT COALESCE(si.unit, ip.size, 'pcs') AS unit
+                            FROM inventory_products ip
+                            LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
+                            WHERE ip.product_name = ? LIMIT 1
+                          ")
+                        : $pdo->prepare("
+                            SELECT COALESCE(p.unit, 'pcs') AS unit
+                            FROM products p
+                            WHERE p.name = ? LIMIT 1
+                          ");
+
+                    if ($inv_products_exists) {
+                        $p_stmt->execute([$station_id, $leg_po['product_name']]);
+                    } else {
+                        $p_stmt->execute([$leg_po['product_name']]);
+                    }
                     $prod_unit = $p_stmt->fetchColumn() ?: 'pcs';
 
                     $pdo->prepare("
@@ -484,6 +542,15 @@ $delivery_suppliers = [
     'fuel' => ['Petron Corporation' => true],
 ];
 
+// ── Check if inventory_products table exists ──────────────────────────────
+$inv_products_exists = false;
+try {
+    $pdo->query("SELECT 1 FROM inventory_products LIMIT 1");
+    $inv_products_exists = true;
+} catch (Exception $e) {
+    $inv_products_exists = false;
+}
+
 try {
     // 1. Merchandise POs — fetch base PO records (handles BOTH legacy & purchase_order_items formats)
     $stmt = $pdo->prepare("
@@ -504,7 +571,7 @@ try {
         LEFT JOIN users u_prep ON po.created_by = u_prep.id
         LEFT JOIN users u_app ON po.approved_by = u_app.id
         WHERE po.station_id = ? 
-          AND po.status IN ('Admin Finalized', 'Approved')
+          AND po.status IN ('Admin Finalized', 'Approved', 'Pending Delivery', 'Pending Admin Validation', 'Forwarded to Admin', 'Approved PO', 'Official', 'Expected Delivery')
           AND po.type = 'merch'
         ORDER BY po.expected_delivery_date ASC, po.created_at ASC
     ");
@@ -553,16 +620,29 @@ try {
         $all_po_ids = $po_group['po_ids'];
         if (empty($all_po_ids)) continue;
         $in_ph = implode(',', array_fill(0, count($all_po_ids), '?'));
-        $poi_stmt = $pdo->prepare("
-            SELECT poi.id as item_id, poi.item_name as product_name, poi.quantity as ordered_qty,
-                   poi.unit_price, poi.total_price,
-                   ip.id AS product_id, ip.sku, COALESCE(si.unit, ip.size, 'pcs') AS unit
-            FROM purchase_order_items poi
-            LEFT JOIN inventory_products ip ON poi.product_id = ip.id
-            LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-            WHERE poi.po_id IN ($in_ph)
-        ");
-        $poi_stmt->execute(array_merge([$station_id], $all_po_ids));
+        
+        if ($inv_products_exists) {
+            $poi_stmt = $pdo->prepare("
+                SELECT poi.id as item_id, poi.item_name as product_name, poi.quantity as ordered_qty,
+                       poi.unit_price, poi.total_price,
+                       ip.id AS product_id, ip.sku, COALESCE(si.unit, ip.size, 'pcs') AS unit
+                FROM purchase_order_items poi
+                LEFT JOIN inventory_products ip ON poi.product_id = ip.id
+                LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
+                WHERE poi.po_id IN ($in_ph)
+            ");
+        } else {
+            $poi_stmt = $pdo->prepare("
+                SELECT poi.id as item_id, poi.item_name as product_name, poi.quantity as ordered_qty,
+                       poi.unit_price, poi.total_price,
+                       p.id AS product_id, '' AS sku, COALESCE(p.unit, 'pcs') AS unit
+                FROM purchase_order_items poi
+                LEFT JOIN products p ON poi.product_id = p.id
+                WHERE poi.po_id IN ($in_ph)
+            ");
+        }
+        
+        $poi_stmt->execute($inv_products_exists ? array_merge([$station_id], $all_po_ids) : $all_po_ids);
         $poi_rows = $poi_stmt->fetchAll(PDO::FETCH_ASSOC);
 
         if (!empty($poi_rows)) {
@@ -584,13 +664,22 @@ try {
         } else {
             // Legacy: attempt to look up unit from inventory for each item
             foreach ($po_group['items'] as &$item) {
-                $u_stmt = $pdo->prepare("
-                    SELECT ip.id AS product_id, ip.sku, COALESCE(si.unit, ip.size, 'pcs') AS unit
-                    FROM inventory_products ip
-                    LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-                    WHERE ip.product_name = ? LIMIT 1
-                ");
-                $u_stmt->execute([$station_id, $item['product_name']]);
+                if ($inv_products_exists) {
+                    $u_stmt = $pdo->prepare("
+                        SELECT ip.id AS product_id, ip.sku, COALESCE(si.unit, ip.size, 'pcs') AS unit
+                        FROM inventory_products ip
+                        LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
+                        WHERE ip.product_name = ? LIMIT 1
+                    ");
+                    $u_stmt->execute([$station_id, $item['product_name']]);
+                } else {
+                    $u_stmt = $pdo->prepare("
+                        SELECT p.id AS product_id, '' AS sku, COALESCE(p.unit, 'pcs') AS unit
+                        FROM products p
+                        WHERE p.name = ? LIMIT 1
+                    ");
+                    $u_stmt->execute([$item['product_name']]);
+                }
                 $product_row = $u_stmt->fetch(PDO::FETCH_ASSOC);
                 $item['unit'] = format_merch_unit($product_row['unit'] ?? 'pcs');
                 $item['sku'] = $product_row['sku'] ?? $item['sku'];

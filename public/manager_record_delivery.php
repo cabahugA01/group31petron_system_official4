@@ -149,7 +149,7 @@ try {
 /* ── Fetch merchandise categories ── */
 $merch_cats = [];
 try {
-    $mc = $pdo->query("SELECT DISTINCT category FROM inventory_products WHERE category NOT IN ('Fuel') ORDER BY category");
+    $mc = $pdo->query("SELECT DISTINCT category FROM inventory_products WHERE category NOT IN ('fuel', 'fuel products') ORDER BY category");
     $merch_cats = $mc ? $mc->fetchAll(PDO::FETCH_COLUMN) : [];
 } catch (Exception $e) {
     $merch_cats = [];

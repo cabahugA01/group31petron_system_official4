@@ -567,7 +567,11 @@ require_once __DIR__ . '/../partials/header.php';
     .int-head h1 { font-size:20px; font-weight:700; color:#00264D; margin:0; text-transform:uppercase; display:flex; align-items:center; gap:8px; }
     .int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none; }
     .int-head .actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-    
+
+    /* Hide prepared-by on screen, only show on print */
+    .print-only-signature { display: none !important; }
+    @media print { .print-only-signature { display: table !important; } }
+
     .controls {
         padding: 12px 20px;
         background: #fff;
@@ -673,7 +677,7 @@ require_once __DIR__ . '/../partials/header.php';
     }
     
     .table-container {
-        overflow-x: hidden;
+        overflow-x: auto;
         margin-bottom: 20px;
         width: 100%;
         max-width: 100%;
@@ -683,130 +687,152 @@ require_once __DIR__ . '/../partials/header.php';
         width: 100%;
         border-collapse: collapse;
         background: white;
-        border: 1px solid #000;
-        font-size: 10px;
-        table-layout: fixed;
+        border: 1px solid #cbd5e1;
+        font-size: 11px;
+        table-layout: auto;
         max-width: 100%;
     }
     
     thead {
-        background: #fff;
-        color: #000;
+        background: #002F6C;
+        color: #fff;
     }
     
     th {
-        padding: 6px 4px;
-        text-align: left;
+        padding: 8px 6px;
+        text-align: center;
         font-weight: 700;
-        font-size: 9px;
+        font-size: 10px;
         text-transform: uppercase;
         letter-spacing: 0;
-        border: 1px solid #000;
+        border: 1px solid #002F6C;
         white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        background: #002F6C;
+        color: #ffffff;
     }
     
     td {
-        padding: 5px 4px;
-        border: 1px solid #000;
-        font-size: 10px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        padding: 7px 6px;
+        border: 1px solid #e2e8f0;
+        font-size: 11px;
+        white-space: normal;
+        word-break: break-word;
+        vertical-align: middle;
+        color: #1e293b;
     }
     
     tbody tr {
         background: #fff;
     }
     
-    /* Column width optimization */
-    table th:nth-child(1), table td:nth-child(1) { width: 6%; }  /* Delivery ID */
-    table th:nth-child(2), table td:nth-child(2) { width: 8%; }  /* Supplier */
-    table th:nth-child(3), table td:nth-child(3) { width: 8%; }  /* Fuel/Product */
-    table th:nth-child(4), table td:nth-child(4) { width: 5%; }  /* Qty */
-    table th:nth-child(5), table td:nth-child(5) { width: 6%; }  /* Unit Price */
-    table th:nth-child(6), table td:nth-child(6) { width: 7%; }  /* Total */
-    table th:nth-child(7), table td:nth-child(7) { width: 7%; }  /* Date */
-    table th:nth-child(8), table td:nth-child(8) { width: 6%; }  /* PO Ref */
-    table th:nth-child(9), table td:nth-child(9) { width: 5%; }  /* Expected */
-    table th:nth-child(10), table td:nth-child(10) { width: 5%; } /* Actual */
-    table th:nth-child(11), table td:nth-child(11) { width: 5%; } /* Variance */
-    table th:nth-child(12), table td:nth-child(12) { width: 6%; } /* Status */
-    table th:nth-child(13), table td:nth-child(13) { width: 5%; } /* Shift */
-    table th:nth-child(14), table td:nth-child(14) { width: 7%; } /* Encoder */
-    table th:nth-child(15), table td:nth-child(15) { width: 14%; } /* Remarks */
+    /* Optimized column min-widths so all 15 columns display fully without squeezing */
+    table th:nth-child(1), table td:nth-child(1) { min-width: 60px; text-align: center; }  /* Delivery ID */
+    table th:nth-child(2), table td:nth-child(2) { min-width: 120px; } /* Supplier */
+    table th:nth-child(3), table td:nth-child(3) { min-width: 120px; } /* Fuel/Product */
+    table th:nth-child(4), table td:nth-child(4) { min-width: 50px; text-align: right; }  /* Qty */
+    table th:nth-child(5), table td:nth-child(5) { min-width: 65px; text-align: right; }  /* Unit Price */
+    table th:nth-child(6), table td:nth-child(6) { min-width: 75px; text-align: right; }  /* Total */
+    table th:nth-child(7), table td:nth-child(7) { min-width: 75px; text-align: center; } /* Date */
+    table th:nth-child(8), table td:nth-child(8) { min-width: 90px; text-align: center; } /* PO Ref */
+    table th:nth-child(9), table td:nth-child(9) { min-width: 50px; text-align: right; }  /* Expected */
+    table th:nth-child(10), table td:nth-child(10) { min-width: 50px; text-align: right; } /* Actual */
+    table th:nth-child(11), table td:nth-child(11) { min-width: 50px; text-align: right; } /* Variance */
+    table th:nth-child(12), table td:nth-child(12) { min-width: 110px; text-align: center; } /* Status */
+    table th:nth-child(13), table td:nth-child(13) { min-width: 65px; text-align: center; } /* Shift */
+    table th:nth-child(14), table td:nth-child(14) { min-width: 75px; text-align: center; } /* Encoder */
+    table th:nth-child(15), table td:nth-child(15) { min-width: 150px; } /* Remarks */
     
     .text-right { text-align: right; }
     .text-center { text-align: center; }
     .font-bold { font-weight: 700; }
     
+    /* ── Shift Summary Boxes ── */
     .shift-summary {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 15px;
-        margin: 20px 0;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin: 14px 0;
     }
-    
+
     .shift-box {
         background: #fff;
-        padding: 15px;
-        border: 1px solid #000;
+        border: 1.5px solid #cbd5e1;
+        border-radius: 6px;
+        overflow: hidden;
+        width: 100%;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
     }
-    
+
     .shift-box h3 {
-        font-size: 14px;
-        color: #000;
-        margin: 0 0 10px 0;
+        font-size: 12px;
+        color: #ffffff;
+        margin: 0;
         font-weight: 700;
-        border-bottom: 1px solid #000;
-        padding-bottom: 8px;
         text-transform: uppercase;
+        letter-spacing: 0.5px;
+        background: #002F6C;
+        padding: 8px 14px;
     }
-    
+
     .shift-box table {
-        font-size: 11px;
+        font-size: 12px;
+        width: 100%;
+        border-collapse: collapse;
     }
-    
+
     .shift-box td {
-        padding: 6px 4px;
+        padding: 8px 14px;
         border: none;
-        border-bottom: 1px solid #ddd;
-    }
-    
-    .remarks-section {
-        margin-top: 20px;
-        padding: 15px;
-        border: 1px solid #000;
+        border-bottom: 1px solid #f1f5f9;
+        color: #1e293b;
         background: #fff;
+        font-size: 12px;
     }
-    
-    .remarks-section h3 {
-        font-size: 14px;
-        color: #000;
-        margin: 0 0 10px 0;
+
+    .shift-box tr:last-child td {
+        border-bottom: none;
         font-weight: 700;
-        border-bottom: 1px solid #000;
-        padding-bottom: 8px;
-        text-transform: uppercase;
+        color: #002F70;
     }
-    
+
+    /* ── Remarks Section ── */
+    .remarks-section {
+        margin-top: 12px;
+        border: 1.5px solid #cbd5e1;
+        border-radius: 6px;
+        overflow: hidden;
+        background: #fff;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    .remarks-section h3 {
+        font-size: 12px;
+        color: #ffffff;
+        margin: 0;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        background: #002F6C;
+        padding: 8px 14px;
+    }
+
     .remarks-list {
         list-style: none;
         padding: 0;
         margin: 0;
     }
-    
+
     .remarks-list li {
-        padding: 8px;
-        border-bottom: 1px solid #ddd;
-        font-size: 11px;
+        padding: 8px 14px;
+        border-bottom: 1px solid #f1f5f9;
+        font-size: 12px;
+        color: #334155;
     }
-    
+
     .remarks-list li:last-child {
         border-bottom: none;
     }
-    
+
     .status-badge {
         padding: 3px 6px;
         border: 1px solid #000;
@@ -817,7 +843,7 @@ require_once __DIR__ . '/../partials/header.php';
     
     @media print {
         @page {
-            size: legal portrait;
+            size: A4 portrait;
             margin: 0.5in 0.4in;
         }
 
@@ -867,11 +893,11 @@ require_once __DIR__ . '/../partials/header.php';
             margin: 0 !important; padding: 0 !important;
         }
 
-        .header { text-align: center !important; border-bottom: 2px solid #000 !important; padding: 6px 0 !important; margin: 0 0 8px 0 !important; }
-        .header h1 { font-size: 16px !important; font-weight: 700 !important; color: #000 !important; margin: 0 0 3px 0 !important; text-transform: uppercase !important; }
-        .header p { font-size: 10px !important; color: #000 !important; margin: 2px 0 !important; }
+        .header { text-align: center !important; border-bottom: none !important; padding: 4px 0 8px 0 !important; margin: 0 0 10px 0 !important; }
+        .header h1 { font-size: 16px !important; font-weight: 800 !important; color: #000 !important; margin: 0 0 4px 0 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; }
+        .header p, .header div { font-size: 10px !important; color: #000 !important; margin: 2px 0 !important; }
 
-        .section-title { font-size: 12px !important; font-weight: 700 !important; margin: 10px 0 4px 0 !important; padding-bottom: 3px !important; border-bottom: 2px solid #000 !important; text-transform: uppercase !important; color: #000 !important; page-break-after: avoid !important; }
+        .section-title { font-size: 11px !important; font-weight: 800 !important; margin: 12px 0 4px 0 !important; padding-bottom: 3px !important; border-bottom: 2px solid #000 !important; text-transform: uppercase !important; color: #000 !important; page-break-after: avoid !important; }
 
         .table-container { 
             overflow: hidden !important; 
@@ -886,45 +912,47 @@ require_once __DIR__ . '/../partials/header.php';
             width: 100% !important; 
             max-width: 100% !important; 
             border-collapse: collapse !important; 
-            font-size: 8px !important; 
-            table-layout: fixed !important; 
+            font-size: 8.5px !important; 
+            table-layout: auto !important; 
             margin: 0 auto 8px auto !important; 
         }
         thead { display: table-header-group !important; }
         tbody { display: table-row-group !important; }
         tr { page-break-inside: avoid !important; }
         th { 
+            font-size: 8.5px !important; 
+            padding: 5px 3px !important; 
+            border: 1px solid #000 !important; 
+            background: #002F70 !important; 
+            color: #ffffff !important; 
+            font-weight: 800 !important; 
+            text-align: center !important; 
+            white-space: nowrap !important; 
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        td { 
             font-size: 8px !important; 
             padding: 4px 3px !important; 
             border: 1px solid #000 !important; 
-            background: #fff !important; 
-            color: #000 !important; 
-            font-weight: 700 !important; 
-            text-align: center !important; 
-            white-space: nowrap !important; 
-            overflow: hidden !important; 
-            text-overflow: ellipsis !important; 
-        }
-        td { 
-            font-size: 7px !important; 
-            padding: 3px 2px !important; 
-            border: 1px solid #000 !important; 
-            white-space: nowrap !important; 
-            vertical-align: top !important; 
-            overflow: hidden !important; 
-            text-overflow: ellipsis !important; 
-            word-wrap: break-word !important; 
-        }
-
-        .shift-summary { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 6px !important; margin: 6px 0 !important; page-break-inside: avoid !important; }
-        .shift-box { border: 1px solid #000 !important; padding: 5px !important; page-break-inside: avoid !important; }
-        .shift-box h3 { font-size: 10px !important; font-weight: 700 !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px 0 !important; color: #000 !important; }
-        .shift-box table { width: auto !important; margin: 0 !important; }
-        .shift-box td { padding: 3px !important; font-size: 9px !important; border: none !important; border-bottom: 1px solid #ddd !important; }
-
-        .remarks-section { border: 1px solid #000 !important; padding: 5px !important; margin-top: 6px !important; page-break-inside: avoid !important; }
-        .remarks-section h3 { font-size: 8px !important; font-weight: 700 !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px 0 !important; }
+            white-space: normal !important; 
+            word-break: break-word !important; 
+            vertical-align: middle !important; 
             color: #000 !important;
+            background: #fff !important;
+        }
+
+        .shift-summary { display: flex !important; flex-direction: column !important; gap: 8px !important; margin: 8px 0 !important; page-break-inside: avoid !important; }
+        .shift-box { border: 1px solid #000 !important; page-break-inside: avoid !important; width: 100% !important; overflow: hidden !important; border-radius: 4px !important; }
+        .shift-box h3 { font-size: 9px !important; font-weight: 700 !important; margin: 0 !important; padding: 4px 8px !important; color: #fff !important; background: #002F70 !important; text-transform: uppercase !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        .shift-box table { width: 100% !important; margin: 0 !important; border-collapse: collapse !important; }
+        .shift-box td { padding: 4px 8px !important; font-size: 9px !important; border: none !important; border-bottom: 1px solid #eee !important; color: #000 !important; }
+        .shift-box tr:last-child td { font-weight: 700 !important; border-bottom: none !important; }
+
+        .remarks-section { border: 1px solid #000 !important; margin-top: 8px !important; page-break-inside: avoid !important; overflow: hidden !important; border-radius: 4px !important; }
+        .remarks-section h3 { font-size: 9px !important; font-weight: 700 !important; margin: 0 !important; padding: 4px 8px !important; color: #fff !important; background: #002F70 !important; text-transform: uppercase !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        .remarks-list { margin: 0 !important; padding: 0 !important; list-style: none !important; }
+        .remarks-list li { font-size: 8px !important; padding: 4px 8px !important; border-bottom: 1px solid #eee !important; color: #000 !important;
         }
 
         .remarks-list li {
@@ -982,8 +1010,13 @@ require_once __DIR__ . '/../partials/header.php';
     <div class="container">
         <div class="header">
             <h1>DELIVERIES REPORT</h1>
-            <p><?= htmlspecialchars($station_name) ?></p>
-            <p>Period: <?= date('F d, Y', strtotime($date_start)) ?> - <?= date('F d, Y', strtotime($date_end)) ?></p>
+            <p style="font-weight:700;font-size:12px;margin-bottom:4px;"><?= htmlspecialchars($station_name) ?></p>
+            <div style="font-size:11px;color:#334155;font-weight:600;display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-top:4px;">
+                <span><strong>Period:</strong> <?= date('M d, Y', strtotime($date_start)) ?> - <?= date('M d, Y', strtotime($date_end)) ?></span>
+                <span>•</span>
+                <span><strong>Shift:</strong> <?= $user_shift_number === 1 ? 'Shift 1 (6AM - 2PM)' : ($user_shift_number === 2 ? 'Shift 2 (2PM - 10PM)' : 'All Shifts (Shift 1 & Shift 2)') ?></span>
+
+            </div>
         </div>
         
         <div class="content">
@@ -1047,80 +1080,9 @@ require_once __DIR__ . '/../partials/header.php';
                     </table>
                 </div>
                 
-                <!-- Shift Summary -->
-                <div class="section-title">SHIFT SUMMARY & REMARKS</div>
-                <div class="shift-summary">
-                    <?php if ($user_shift_number !== 2): // Hide Shift 1 for Shift 2 staff ?>
-                    <div class="shift-box">
-                        <h3>SHIFT 1 (6AM - 2PM)</h3>
-                        <table>
-                            <tr>
-                                <td style="width: 70%;">Total Deliveries:</td>
-                                <td class="text-right font-bold">
-                                    <?php
-                                    $shift1_count = count(array_filter($fuel_deliveries, function($d) {
-                                        $shift = strtolower($d['shift'] ?? '');
-                                        return strpos($shift, 'shift 1') !== false || strpos($shift, '1') !== false;
-                                    }));
-                                    echo $shift1_count;
-                                    ?>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>Total Amount:</td>
-                                <td class="text-right font-bold">₱<?= number_format($fuel_shift1_total, 2) ?></td>
-                            </tr>
-                        </table>
-                    </div>
-                    <?php endif; ?>
-                    
-                    <?php if ($user_shift_number !== 1): // Hide Shift 2 for Shift 1 staff ?>
-                    <div class="shift-box">
-                        <h3>SHIFT 2 (2PM - 10PM)</h3>
-                        <table>
-                            <tr>
-                                <td style="width: 70%;">Total Deliveries:</td>
-                                <td class="text-right font-bold">
-                                    <?php
-                                    $shift2_count = count(array_filter($fuel_deliveries, function($d) {
-                                        $shift = strtolower($d['shift'] ?? '');
-                                        return strpos($shift, 'shift 2') !== false || strpos($shift, '2') !== false;
-                                    }));
-                                    echo $shift2_count;
-                                    ?>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>Total Amount:</td>
-                                <td class="text-right font-bold">₱<?= number_format($fuel_shift2_total, 2) ?></td>
-                            </tr>
-                        </table>
-                    </div>
-                    <?php endif; ?>
-                </div>
+                <!-- Shift Summary removed -->
                 
-                <!-- Remarks Section -->
-                <div class="remarks-section">
-                    <h3>DELIVERY REMARKS & ISSUES</h3>
-                    <ul class="remarks-list">
-                        <?php
-                        $has_remarks = false;
-                        foreach ($fuel_deliveries as $delivery) {
-                            if (!empty($delivery['remarks']) && $delivery['remarks'] !== '—') {
-                                $has_remarks = true;
-                                echo '<li>';
-                                echo '<strong>' . htmlspecialchars($delivery['delivery_id']) . '</strong> - ';
-                                echo htmlspecialchars($delivery['remarks']);
-                                echo ' <small>(' . date('M d, Y', strtotime($delivery['delivery_date'])) . ')</small>';
-                                echo '</li>';
-                            }
-                        }
-                        if (!$has_remarks) {
-                            echo '<li>No remarks or issues reported for this period.</li>';
-                        }
-                        ?>
-                    </ul>
-                </div>
+                <!-- Remarks Section removed -->
                 
             <!-- MERCHANDISE DELIVERIES SECTION -->
             <div class="section-title" style="margin-top: 50px;">MERCHANDISE DELIVERIES</div>
@@ -1182,80 +1144,21 @@ require_once __DIR__ . '/../partials/header.php';
                     </table>
                 </div>
                 
-                <!-- Shift Summary -->
-                <div class="section-title">SHIFT SUMMARY & REMARKS</div>
-                <div class="shift-summary">
-                    <?php if ($user_shift_number !== 2): // Hide Shift 1 for Shift 2 staff ?>
-                    <div class="shift-box">
-                        <h3>SHIFT 1 (6AM - 2PM)</h3>
-                        <table>
-                            <tr>
-                                <td style="width: 70%;">Total Deliveries:</td>
-                                <td class="text-right font-bold">
-                                    <?php
-                                    $shift1_count = count(array_filter($merchandise_deliveries, function($d) {
-                                        $shift = strtolower($d['shift'] ?? '');
-                                        return strpos($shift, 'shift 1') !== false || strpos($shift, '1') !== false;
-                                    }));
-                                    echo $shift1_count;
-                                    ?>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>Total Amount:</td>
-                                <td class="text-right font-bold">₱<?= number_format($merch_shift1_total, 2) ?></td>
-                            </tr>
-                        </table>
-                    </div>
-                    <?php endif; ?>
-                    
-                    <?php if ($user_shift_number !== 1): // Hide Shift 2 for Shift 1 staff ?>
-                    <div class="shift-box">
-                        <h3>SHIFT 2 (2PM - 10PM)</h3>
-                        <table>
-                            <tr>
-                                <td style="width: 70%;">Total Deliveries:</td>
-                                <td class="text-right font-bold">
-                                    <?php
-                                    $shift2_count = count(array_filter($merchandise_deliveries, function($d) {
-                                        $shift = strtolower($d['shift'] ?? '');
-                                        return strpos($shift, 'shift 2') !== false || strpos($shift, '2') !== false;
-                                    }));
-                                    echo $shift2_count;
-                                    ?>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>Total Amount:</td>
-                                <td class="text-right font-bold">₱<?= number_format($merch_shift2_total, 2) ?></td>
-                            </tr>
-                        </table>
-                    </div>
-                    <?php endif; ?>
-                </div>
-                
-                <!-- Remarks Section -->
-                <div class="remarks-section">
-                    <h3>DELIVERY REMARKS & ISSUES</h3>
-                    <ul class="remarks-list">
-                        <?php
-                        $has_remarks = false;
-                        foreach ($merchandise_deliveries as $delivery) {
-                            if (!empty($delivery['remarks']) && $delivery['remarks'] !== '—') {
-                                $has_remarks = true;
-                                echo '<li>';
-                                echo '<strong>' . htmlspecialchars($delivery['delivery_id']) . '</strong> - ';
-                                echo htmlspecialchars($delivery['remarks']);
-                                echo ' <small>(' . date('M d, Y', strtotime($delivery['delivery_date'])) . ')</small>';
-                                echo '</li>';
-                            }
-                        }
-                        if (!$has_remarks) {
-                            echo '<li>No remarks or issues reported for this period.</li>';
-                        }
-                        ?>
-                    </ul>
-                </div>
+                <!-- Shift Summary & Remarks removed -->
+
+                <!-- PREPARED BY SIGNATURE -->
+                <table class="print-only-signature" style="width:100%; margin-top:30px; page-break-inside:avoid; border:none; border-collapse:collapse;">
+                    <tr>
+                        <td style="border:none;"></td>
+                        <td style="border:none; width:240px; text-align:center;">
+                            <div style="font-size:10px; font-weight:700; color:#000; margin-bottom:30px; text-transform:uppercase;">PREPARED BY:</div>
+                            <div style="border-top:1.5px solid #000; padding-top:4px; font-weight:700; font-size:11px; color:#000;">
+                                <?= htmlspecialchars(trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? '')) ?: ($me['username'] ?? 'System User')) ?>
+                            </div>
+                            <div style="font-size:9.5px; color:#444; margin-top:2px;"><?= htmlspecialchars(ucfirst($role)) ?></div>
+                        </td>
+                    </tr>
+                </table>
             
         </div>
     </div>

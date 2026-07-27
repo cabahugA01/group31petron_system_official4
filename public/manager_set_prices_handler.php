@@ -66,6 +66,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         } catch (Exception $e) { echo json_encode(['success'=>false,'message'=>$e->getMessage()]); exit; }
     }
 
+    if ($action === 'get_product_batches') {
+        $id = (int)($_GET['id'] ?? 0);
+        if ($id <= 0) { echo json_encode(['success'=>false,'message'=>'Invalid ID']); exit; }
+        try {
+            // 1. Try merchandise_batches
+            $stmt = $pdo->prepare("
+                SELECT mb.id,
+                       COALESCE(NULLIF(mb.batch_number, ''), CONCAT('BT-', DATE_FORMAT(mb.created_at, '%Y%m%d'), '-', LPAD(mb.id, 4, '0'))) AS batch_number,
+                       mb.quantity_received,
+                       mb.remaining_qty,
+                       mb.unit_cost,
+                       mb.selling_price,
+                       mb.date_received,
+                       mb.status,
+                       mb.supplier,
+                       mb.notes,
+                       COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.name, u.username, 'System') AS encoded_by
+                FROM merchandise_batches mb
+                LEFT JOIN users u ON u.id = mb.encoded_by
+                WHERE mb.product_id = ?
+                ORDER BY mb.date_received ASC, mb.id ASC
+            ");
+            $stmt->execute([$id]);
+            $batches = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // 2. Fallback to merchandise_stock_in if no records in merchandise_batches
+            if (empty($batches)) {
+                $stmt2 = $pdo->prepare("
+                    SELECT msi.id,
+                           COALESCE(NULLIF(msi.batch_ref, ''), CONCAT('BT-', DATE_FORMAT(msi.encoded_at, '%Y%m%d'), '-', LPAD(msi.id, 4, '0'))) AS batch_number,
+                           msi.qty_received AS quantity_received,
+                           msi.qty_received AS remaining_qty,
+                           msi.unit_cost,
+                           msi.selling_price,
+                           DATE(msi.encoded_at) AS date_received,
+                           'active' AS status,
+                           'Petron Corporation' AS supplier,
+                           msi.remarks AS notes,
+                           COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.name, u.username, 'System') AS encoded_by
+                    FROM merchandise_stock_in msi
+                    LEFT JOIN users u ON u.id = msi.encoded_by
+                    WHERE msi.product_id = ?
+                    ORDER BY msi.encoded_at ASC, msi.id ASC
+                ");
+                $stmt2->execute([$id]);
+                $batches = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+            }
+
+            echo json_encode(['success'=>true,'batches'=>$batches]); exit;
+        } catch (Exception $e) {
+            echo json_encode(['success'=>false,'message'=>$e->getMessage()]); exit;
+        }
+    }
+
     if ($action === 'get_service_details') {
         $id = (int)($_GET['id'] ?? 0);
         if ($id <= 0) { echo json_encode(['success'=>false,'message'=>'Invalid ID']); exit; }
@@ -322,31 +376,37 @@ try {
             
         // ══════════════════════════════════════════════════════════════════════
         case 'add_merchandise':
-            $product_name = trim($_POST['product_name'] ?? '');
-            $category     = trim($_POST['category'] ?? '');
-            $unit_cost    = (float)($_POST['unit_cost'] ?? 0);
-            $unit_price   = (float)($_POST['unit_price'] ?? 0);
-            $sku          = trim($_POST['sku'] ?? '');
-            $size         = trim($_POST['size'] ?? '');
-            
+            $product_name  = trim($_POST['product_name'] ?? '');
+            $category      = trim($_POST['category'] ?? '');
+            $brand         = trim($_POST['brand'] ?? '');
+            $unit_cost     = (float)($_POST['unit_cost'] ?? 0);
+            $unit_price    = (float)($_POST['unit_price'] ?? 0);
+            $sku           = trim($_POST['sku'] ?? '');
+            $size          = trim($_POST['size'] ?? '');
+            $barcode       = trim($_POST['barcode'] ?? '');
+            $reorder_level = (int)($_POST['reorder_level'] ?? 24);
+            $critical_level= (int)($_POST['critical_level'] ?? 10);
+
             if (empty($product_name) || empty($category)) {
                 echo json_encode(['success' => false, 'message' => 'Product name and category are required']);
                 exit;
             }
-            
-            if ($unit_cost < 0 || $unit_price < 0) {
-                echo json_encode(['success' => false, 'message' => 'Invalid values provided']);
+
+            if ($unit_price < 0) {
+                echo json_encode(['success' => false, 'message' => 'Invalid price value']);
                 exit;
             }
-            
+
             $new_id = 0;
             try {
                 $stmt = $pdo->prepare("
-                    INSERT INTO inventory_products 
-                    (product_name, category, unit_cost, unit_price, sku, size, stock_quantity, status, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, 0, 'active', NOW())
+                    INSERT INTO inventory_products
+                    (product_name, category, brand, unit_cost, unit_price, sku, barcode, size,
+                     reorder_level, critical_level, stock_quantity, status, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'active', NOW())
                 ");
-                $stmt->execute([$product_name, $category, $unit_cost, $unit_price, $sku, $size]);
+                $stmt->execute([$product_name, $category, $brand, $unit_cost, $unit_price,
+                                $sku, $barcode ?: null, $size, $reorder_level, $critical_level]);
                 $new_id = (int)$pdo->lastInsertId();
             } catch (Exception $legacy_error) {
                 $category_id = ensure_product_category_id($pdo, $category);
@@ -354,9 +414,10 @@ try {
                 $stmt = $pdo->prepare("
                     INSERT INTO products
                     (sku, name, description, category_id, cost, price, created_at, updated_at, min_stock_level, max_stock_level, station_id, current_stock, unit, capacity, status)
-                    VALUES (?, ?, '', ?, ?, ?, NOW(), NOW(), 24, 480, ?, 0, ?, 480, 'active')
+                    VALUES (?, ?, '', ?, ?, ?, NOW(), NOW(), ?, ?, ?, 0, ?, 480, 'active')
                 ");
-                $stmt->execute([$sku, $product_name, $category_id ?: null, $unit_cost, $unit_price, $station_id, $unit_value]);
+                $stmt->execute([$sku, $product_name, $category_id ?: null, $unit_cost, $unit_price,
+                                $reorder_level, $reorder_level * 20, $station_id, $unit_value]);
                 $new_id = (int)$pdo->lastInsertId();
             }
 
@@ -366,18 +427,16 @@ try {
                     $stmt = $pdo->prepare("SELECT id FROM station_inventory WHERE station_id=? AND product_id=? LIMIT 1");
                     $stmt->execute([$station_id, $new_id]);
                     if (!$stmt->fetchColumn()) {
-                        $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, unit, cost, price, status, last_updated) VALUES (?, ?, 0, ?, ?, ?, 'active', NOW())")
-                            ->execute([$station_id, $new_id, $unit_value, $unit_cost, $unit_price]);
+                        $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, unit, cost, price, reorder_level, critical_level, status, last_updated) VALUES (?, ?, 0, ?, ?, ?, ?, ?, 'active', NOW())")
+                            ->execute([$station_id, $new_id, $unit_value, $unit_cost, $unit_price, $reorder_level, $critical_level]);
                     }
-                } catch (Exception $e) {
-                    // Display still works from products if station inventory is created later.
-                }
+                } catch (Exception $e) {}
             }
-            
+
             log_activity($pdo, $me['id'], 'Add Merchandise',
                 "Manager added new merchandise: {$product_name}");
-            
-            echo json_encode(['success' => true, 'message' => 'Merchandise added successfully']);
+
+            echo json_encode(['success' => true, 'message' => 'Product added successfully']);
             break;
             
         // ══════════════════════════════════════════════════════════════════════
@@ -439,17 +498,19 @@ try {
             }
             break;
 
-        // ══════════════════════════════════════════════════════════════════════
-        // EDIT MERCHANDISE — FULL (name, sku, category, size, cost, price)
-        // ══════════════════════════════════════════════════════════════════════
         case 'edit_merchandise_full':
-            $id           = (int)($_POST['id'] ?? 0);
-            $product_name = trim($_POST['product_name'] ?? '');
-            $sku          = trim($_POST['sku'] ?? '');
-            $category     = trim($_POST['category'] ?? '');
-            $size         = trim($_POST['size'] ?? '');
-            $unit_cost    = (float)($_POST['unit_cost'] ?? 0);
-            $unit_price   = (float)($_POST['unit_price'] ?? 0);
+            $id             = (int)($_POST['id'] ?? 0);
+            $product_name   = trim($_POST['product_name'] ?? '');
+            $sku            = trim($_POST['sku'] ?? '');
+            $category       = trim($_POST['category'] ?? '');
+            $brand          = trim($_POST['brand'] ?? '');
+            $size           = trim($_POST['size'] ?? '');
+            $barcode        = trim($_POST['barcode'] ?? '');
+            $unit_cost      = (float)($_POST['unit_cost'] ?? 0);
+            $unit_price     = (float)($_POST['unit_price'] ?? 0);
+            $reorder_level  = (int)($_POST['reorder_level'] ?? 24);
+            $critical_level = (int)($_POST['critical_level'] ?? 10);
+            $prod_status    = in_array($_POST['status'] ?? '', ['active','inactive']) ? $_POST['status'] : 'active';
 
             if ($id <= 0 || empty($product_name) || empty($category)) {
                 echo json_encode(['success'=>false,'message'=>'Name and category are required']);
@@ -457,84 +518,55 @@ try {
             }
 
             $old = find_merchandise_pricing_item($pdo, (int)$station_id, $id);
-            if (!$old) { echo json_encode(['success'=>false,'message'=>'Merchandise not found']); exit; }
+            if (!$old) { echo json_encode(['success'=>false,'message'=>'Product not found']); exit; }
 
-            $old_cost = (float)$old['unit_cost'];
-            $old_price = (float)$old['unit_price'];
+            $old_price   = (float)$old['unit_price'];
             $category_id = ensure_product_category_id($pdo, $category);
-            $unit_value = $size !== '' ? $size : ($old['unit'] ?? 'pcs');
+            $unit_value  = $size !== '' ? $size : ($old['unit'] ?? 'pcs');
 
-            $updateProductBasics = function () use ($pdo, $id, $product_name, $sku, $category_id, $unit_value) {
+            // Update inventory_products (primary source)
+            try {
+                $stmt = $pdo->prepare("
+                    UPDATE inventory_products
+                    SET product_name=?, sku=?, barcode=?, category=?, brand=?, size=?,
+                        unit_price=?, reorder_level=?, critical_level=?, status=?, updated_at=NOW()
+                    WHERE id=?
+                ");
+                $stmt->execute([$product_name, $sku, $barcode ?: null, $category, $brand,
+                                $size, $unit_price, $reorder_level, $critical_level, $prod_status, $id]);
+            } catch (Exception $e) {}
+
+            // Update products table (legacy source)
+            try {
                 if ($category_id > 0) {
-                    $stmt = $pdo->prepare("UPDATE products SET name=?, sku=?, category_id=?, unit=?, updated_at=NOW() WHERE id=?");
-                    $stmt->execute([$product_name, $sku, $category_id, $unit_value, $id]);
+                    $stmt = $pdo->prepare("UPDATE products SET name=?, sku=?, category_id=?, unit=?, price=?, updated_at=NOW() WHERE id=?");
+                    $stmt->execute([$product_name, $sku, $category_id, $unit_value, $unit_price, $id]);
                 } else {
-                    $stmt = $pdo->prepare("UPDATE products SET name=?, sku=?, unit=?, updated_at=NOW() WHERE id=?");
-                    $stmt->execute([$product_name, $sku, $unit_value, $id]);
+                    $stmt = $pdo->prepare("UPDATE products SET name=?, sku=?, unit=?, price=?, updated_at=NOW() WHERE id=?");
+                    $stmt->execute([$product_name, $sku, $unit_value, $unit_price, $id]);
                 }
-            };
+            } catch (Exception $e) {}
 
-            $upsertStationPricing = function ($cost, $price) use ($pdo, $station_id, $id, $unit_value) {
+            // Upsert station_inventory
+            try {
                 $stmt = $pdo->prepare("SELECT id FROM station_inventory WHERE station_id=? AND product_id=? LIMIT 1");
                 $stmt->execute([$station_id, $id]);
                 $si_id = (int)($stmt->fetchColumn() ?: 0);
                 if ($si_id > 0) {
-                    $stmt = $pdo->prepare("UPDATE station_inventory SET unit=?, cost=?, price=?, last_updated=NOW() WHERE id=?");
-                    $stmt->execute([$unit_value, $cost, $price, $si_id]);
+                    $pdo->prepare("UPDATE station_inventory SET unit=?, price=?, reorder_level=?, critical_level=?, status=?, last_updated=NOW() WHERE id=?")
+                        ->execute([$unit_value, $unit_price, $reorder_level, $critical_level, $prod_status, $si_id]);
                 } else {
-                    $stmt = $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, unit, cost, price, status, last_updated) VALUES (?, ?, 0, ?, ?, ?, 'active', NOW())");
-                    $stmt->execute([$station_id, $id, $unit_value, $cost, $price]);
+                    $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, unit, price, reorder_level, critical_level, status, last_updated) VALUES (?, ?, 0, ?, ?, ?, ?, ?, NOW())")
+                        ->execute([$station_id, $id, $unit_value, $unit_price, $reorder_level, $critical_level, $prod_status]);
                 }
-            };
+            } catch (Exception $e) {}
 
-            if ($old_cost != $unit_cost || $old_price != $unit_price) {
-                try {
-                    $stmt = $pdo->prepare("UPDATE inventory_products SET product_name=?, sku=?, category=?, size=?, updated_at=NOW() WHERE id=?");
-                    $stmt->execute([$product_name, $sku, $category, $size, $id]);
-                } catch (Exception $legacy_error) {
-                    // Current inventory source uses products + station_inventory.
-                }
-                $updateProductBasics();
-                $upsertStationPricing($old_cost, $old_price);
-
-                $pdo->prepare("DELETE FROM pending_price_approvals WHERE station_id=? AND product_type='merchandise' AND product_id=? AND status='pending'")
-                    ->execute([$station_id, $id]);
-
-                $stmt = $pdo->prepare("
-                    INSERT INTO pending_price_approvals 
-                    (station_id, product_type, product_id, old_cost, new_cost, old_price, new_price, manager_id, status, created_at)
-                    VALUES (?, 'merchandise', ?, ?, ?, ?, ?, ?, 'pending', NOW())
-                ");
-                $stmt->execute([
-                    $station_id,
-                    $id,
-                    $old_cost,
-                    $unit_cost,
-                    $old_price,
-                    $unit_price,
-                    $me['id']
-                ]);
-
-                log_activity($pdo, $me['id'], 'Edit Merchandise', "Manager requested price change for {$product_name}");
-                echo json_encode(['success'=>true,'message'=>'Product details updated. Price/cost change submitted for Admin approval.']);
-            } else {
-                try {
-                    $stmt = $pdo->prepare("UPDATE inventory_products SET product_name=?, sku=?, category=?, size=?, unit_cost=?, unit_price=?, updated_at=NOW() WHERE id=?");
-                    $stmt->execute([$product_name, $sku, $category, $size, $unit_cost, $unit_price, $id]);
-                } catch (Exception $legacy_error) {
-                    // Current inventory source uses products + station_inventory.
-                }
-                $updateProductBasics();
-                $stmt = $pdo->prepare("UPDATE products SET cost=?, price=?, updated_at=NOW() WHERE id=?");
-                $stmt->execute([$unit_cost, $unit_price, $id]);
-                $upsertStationPricing($unit_cost, $unit_price);
-
-                log_activity($pdo, $me['id'], 'Edit Merchandise', "Manager updated merchandise: {$product_name}");
-                echo json_encode(['success'=>true,'message'=>'Merchandise updated successfully']);
-            }
+            log_activity($pdo, $me['id'], 'Edit Merchandise', "Manager updated product: {$product_name}");
+            echo json_encode(['success'=>true,'message'=>'Product updated successfully']);
             break;
 
         // (Legacy - price only, kept for backward compat)
+
         case 'edit_merchandise_price':
             $id        = (int)($_POST['id'] ?? 0);
             $new_price = (float)($_POST['price'] ?? 0);

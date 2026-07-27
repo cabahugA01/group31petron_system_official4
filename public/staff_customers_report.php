@@ -518,6 +518,20 @@ require_once __DIR__ . '/../partials/header.php';
                     </tbody>
                 </table>
             </div>
+
+            <!-- PREPARED BY SIGNATURE -->
+            <table style="width:100%; margin-top:25px; page-break-inside:avoid; border:none; border-collapse:collapse;">
+                <tr>
+                    <td style="border:none;"></td>
+                    <td style="border:none; width:220px; text-align:center;">
+                        <div style="font-size:10px; font-weight:700; color:#333; margin-bottom:25px;">PREPARED BY:</div>
+                        <div style="border-top:1px solid #000; padding-top:4px; font-weight:700; font-size:11px; color:#000;">
+                            <?= staff_customer_report_h($generated_by) ?>
+                        </div>
+                        <div style="font-size:9.5px; color:#555; margin-top:2px;"><?= staff_customer_report_h(ucfirst($role)) ?></div>
+                    </td>
+                </tr>
+            </table>
         </div>
     </div>
 </div>

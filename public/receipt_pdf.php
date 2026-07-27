@@ -58,6 +58,7 @@ function rp_row(string $label, $value, bool $bold = false, string $extra = ''): 
     return '<tr class="kv ' . $extra . '"><td class="key">' . rp_e($label) . '</td><td class="val' . $strong . '">' . $value . '</td></tr>';
 }
 
+if (!function_exists('rp_qr_png')) {
 function rp_qr_gf_mul(int $x, int $y): int
 {
     $z = 0;
@@ -267,6 +268,7 @@ function rp_qr_png(string $text): string
     imagepng($img);
     imagedestroy($img);
     return (string) ob_get_clean();
+}
 }
 
 $txn_type_label = $txn_type_label ?? 'MERCHANDISE/SERVICE TRANSACTION';

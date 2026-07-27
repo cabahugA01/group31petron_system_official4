@@ -699,8 +699,8 @@ require_once __DIR__ . '/../partials/header.php';
     
     @media print {
         @page {
-            size: A4 portrait;
-            margin: 0.5in 0.4in;
+            size: A4 landscape;
+            margin: 0.4in 0.4in;
         }
 
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -708,8 +708,8 @@ require_once __DIR__ . '/../partials/header.php';
         body * { visibility: hidden !important; }
         .print-area, .print-area * { visibility: visible !important; }
         .print-area {
-            position: fixed !important;
-            top: 0 !important; left: 0 !important;
+            position: static !important;
+            top: auto !important; left: auto !important;
             width: 100% !important; margin: 0 !important; padding: 0 !important;
             background: white !important;
         }
@@ -731,12 +731,26 @@ require_once __DIR__ . '/../partials/header.php';
 
         .table-container { overflow: visible !important; margin-bottom: 6px !important; width: 100% !important; text-align: center !important; }
 
-        table { width: 95% !important; max-width: 100% !important; border-collapse: collapse !important; font-size: 10px !important; table-layout: auto !important; margin: 0 auto 8px auto !important; }
+        table { width: 100% !important; max-width: 100% !important; border-collapse: collapse !important; font-size: 9px !important; table-layout: fixed !important; margin: 0 0 8px 0 !important; }
         thead { display: table-header-group !important; }
         tbody { display: table-row-group !important; }
-        tr { page-break-inside: avoid !important; }
-        th { font-size: 10px !important; padding: 6px 8px !important; border: 1px solid #000 !important; background-color: #003366 !important; color: #fff !important; font-weight: 700 !important; text-align: center !important; white-space: nowrap !important; }
-        td { font-size: 9px !important; padding: 5px 8px !important; border: 1px solid #000 !important; white-space: nowrap !important; vertical-align: top !important; }
+        tr { page-break-inside: auto !important; }
+        th { font-size: 9px !important; padding: 5px 6px !important; border: 1px solid #000 !important; background-color: #003366 !important; color: #fff !important; font-weight: 700 !important; text-align: center !important; white-space: normal !important; word-wrap: break-word !important; overflow-wrap: break-word !important; }
+        td { font-size: 8.5px !important; padding: 4px 6px !important; border: 1px solid #ccc !important; white-space: normal !important; word-wrap: break-word !important; overflow-wrap: break-word !important; vertical-align: top !important; }
+
+        /* Column widths for the activity log table */
+        .print-area table th:nth-child(1),
+        .print-area table td:nth-child(1) { width: 4% !important; }
+        .print-area table th:nth-child(2),
+        .print-area table td:nth-child(2) { width: 14% !important; }
+        .print-area table th:nth-child(3),
+        .print-area table td:nth-child(3) { width: 42% !important; }
+        .print-area table th:nth-child(4),
+        .print-area table td:nth-child(4) { width: 13% !important; }
+        .print-area table th:nth-child(5),
+        .print-area table td:nth-child(5) { width: 10% !important; }
+        .print-area table th:nth-child(6),
+        .print-area table td:nth-child(6) { width: 17% !important; }
     }
 </style>
 

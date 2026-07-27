@@ -180,26 +180,32 @@
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  color: #334155;
-  transition: background 0.15s;
+  border: 1.5px solid #003d7a !important;
+  background: #ffffff !important;
+  color: #003d7a !important;
+  transition: all 0.15s;
+  text-decoration: none;
+  white-space: nowrap;
 }
 .btn-view-act {
-  border-color: #002F70;
-  color: #002F70;
+  border-color: #003d7a !important;
+  background: #ffffff !important;
+  color: #003d7a !important;
 }
 .btn-view-act:hover {
-  background: #002F70;
-  color: #fff;
+  background: #f0f7ff !important;
+  color: #00264D !important;
+  border-color: #00264D !important;
 }
 .btn-print-act {
-  border-color: #64748b;
-  color: #64748b;
+  border-color: #003d7a !important;
+  background: #ffffff !important;
+  color: #003d7a !important;
 }
 .btn-print-act:hover {
-  background: #64748b;
-  color: #fff;
+  background: #f0f7ff !important;
+  color: #00264D !important;
+  border-color: #00264D !important;
 }
 </style>
 

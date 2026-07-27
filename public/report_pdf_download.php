@@ -103,6 +103,23 @@ class SimpleReportPdf {
             $this->table($sectionTitle, $headers, $cleanRows);
             $this->y -= 10;
         }
+
+        // PREPARED BY SIGNATURE BLOCK
+        if ($this->y < 65.0) {
+            $this->addPage();
+        }
+        $this->y -= 10;
+        $sigX = $this->width - $this->margin - 180;
+        $u = current_user();
+        $prepared_by_name = trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? '')) ?: ($u['username'] ?? 'System User');
+        $user_role_label  = function_exists('role_key') ? ucfirst(role_key($u['role'] ?? 'staff')) : 'Staff';
+
+        $this->lineText('PREPARED BY:', 9, 'F2', [0.2, 0.2, 0.2]);
+        $this->line($sigX, $this->y - 4, $sigX + 180, $this->y - 4, [0, 0, 0], 1.0);
+        $this->y -= 14;
+        $this->lineText($prepared_by_name, 10, 'F2', [0, 0, 0]);
+        $this->y -= 10;
+        $this->lineText($user_role_label, 8.5, 'F1', [0.35, 0.35, 0.35]);
     }
 
     public function output(): string {

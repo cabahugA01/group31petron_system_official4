@@ -24,62 +24,88 @@ if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
 
 $merch_inventory = [];
 $msg = '';
+
+// ── Backfill station_inventory for inventory_products ────────
+try {
+    $pdo->prepare("
+        INSERT INTO station_inventory (product_id, station_id, stock_level, status, last_updated)
+        SELECT ip.id, ?, COALESCE(ip.stock, 0), 'active', NOW()
+        FROM inventory_products ip
+        LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
+        WHERE si.id IS NULL
+          AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
+    ")->execute([$station_id, $station_id]);
+} catch (Exception $e) {}
+// ── Backfill station_inventory for products table ────────────
+try {
+    $pdo->prepare("
+        INSERT INTO station_inventory (product_id, station_id, stock_level, status, last_updated)
+        SELECT p.id, ?, COALESCE(p.current_stock, 0), 'active', NOW()
+        FROM products p
+        LEFT JOIN product_categories pc ON pc.id = p.category_id
+        LEFT JOIN station_inventory si ON si.product_id = p.id AND si.station_id = ?
+        WHERE si.id IS NULL
+          AND LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
+          AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
+    ")->execute([$station_id, $station_id]);
+} catch (Exception $e) {}
+
+// ── Main catalog — UNION of inventory_products + products (same as Manager/Admin) ──
 try {
     $stmt = $pdo->prepare("
-        SELECT ip.id,
-               ip.product_name AS name,
-               ip.category     AS category_name,
-               ip.unit_price   AS price,
-               ip.sku,
-               ip.status,
-               COALESCE(si.unit, ip.size, 'pcs')     AS unit,
-               COALESCE(si.stock_level, ip.stock, 0) AS stock_level,
-               COALESCE(si.capacity, 480)            AS capacity,
-               COALESCE(si.reorder_level, 24)         AS reorder_level,
-               COALESCE(si.critical_level, 10)         AS critical_level,
-               si.physical_count,
-               si.variance,
-               si.last_updated AS last_updated
+        SELECT
+            ip.id,
+            ip.product_name                              AS name,
+            COALESCE(ip.category,'Merchandise')          AS category_name,
+            ip.description,
+            COALESCE(ip.unit_price, 0)                   AS price,
+            COALESCE(NULLIF(ip.sku,''), CONCAT('P', LPAD(ip.id,4,'0'))) AS sku,
+            COALESCE(ip.status,'active')                 AS status,
+            COALESCE(si.unit, ip.size, 'pcs')            AS unit,
+            COALESCE(si.stock_level, ip.stock, 0)        AS stock_level,
+            COALESCE(si.capacity, ip.max_stock, 480)     AS capacity,
+            COALESCE(si.reorder_level, ip.min_stock, 24) AS reorder_level,
+            COALESCE(si.critical_level, 10)              AS critical_level,
+            si.physical_count,
+            si.variance,
+            COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated
         FROM inventory_products ip
-        LEFT JOIN station_inventory si
-               ON si.product_id = ip.id AND si.station_id = ?
-        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
-        ORDER BY ip.category, ip.product_name
+        LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
+        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
+
+        UNION
+
+        SELECT
+            p.id,
+            p.name                                       AS name,
+            COALESCE(pc.name,'General')                  AS category_name,
+            p.description,
+            COALESCE(si2.price, p.price, 0)              AS price,
+            COALESCE(NULLIF(p.sku,''), CONCAT('P', LPAD(p.id,4,'0'))) AS sku,
+            COALESCE(NULLIF(si2.status,''), NULLIF(p.status,''), 'active') AS status,
+            COALESCE(NULLIF(p.unit,''), NULLIF(si2.unit,''), 'pcs') AS unit,
+            COALESCE(si2.stock_level, p.current_stock, 0) AS stock_level,
+            COALESCE(NULLIF(si2.capacity,0), NULLIF(p.capacity,0), NULLIF(p.max_stock_level,0), 480) AS capacity,
+            COALESCE(NULLIF(si2.reorder_level,0), NULLIF(p.min_stock_level,0), 24) AS reorder_level,
+            COALESCE(NULLIF(si2.critical_level,0), 10)   AS critical_level,
+            si2.physical_count,
+            si2.variance,
+            COALESCE(si2.last_updated, p.updated_at, p.created_at) AS last_updated
+        FROM products p
+        LEFT JOIN product_categories pc ON pc.id = p.category_id
+        LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND si2.station_id = ?
+        WHERE LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
+          AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
+          AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products'))
+
+        ORDER BY category_name, name
     ");
-    $stmt->execute([$station_id]);
+    $stmt->execute([$station_id, $station_id]);
     $merch_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    try {
-        $stmt = $pdo->prepare("
-            SELECT p.id,
-                   p.name AS name,
-                   COALESCE(pc.name, 'General') AS category_name,
-                   p.description,
-                   COALESCE(si.price, p.price, si.cost, p.cost, 0) AS price,
-                   COALESCE(NULLIF(p.sku, ''), CONCAT('P', LPAD(p.id, 4, '0'))) AS sku,
-                   COALESCE(NULLIF(si.status, ''), NULLIF(p.status, ''), 'active') AS status,
-                   COALESCE(NULLIF(p.unit, ''), NULLIF(si.unit, ''), 'pcs') AS unit,
-                   COALESCE(si.stock_level, p.current_stock, 0) AS stock_level,
-                   COALESCE(NULLIF(si.capacity, 0), NULLIF(p.capacity, 0), NULLIF(p.max_stock_level, 0), 480) AS capacity,
-                   COALESCE(NULLIF(si.reorder_level, 0), NULLIF(p.min_stock_level, 0), 24) AS reorder_level,
-                   COALESCE(NULLIF(si.critical_level, 0), 10) AS critical_level,
-                   si.physical_count,
-                   si.variance,
-                   COALESCE(si.last_updated, p.updated_at, p.created_at) AS last_updated
-            FROM products p
-            LEFT JOIN product_categories pc
-                   ON pc.id = p.category_id
-            LEFT JOIN station_inventory si
-                   ON si.product_id = p.id AND si.station_id = ?
-            WHERE LOWER(COALESCE(pc.name, '')) NOT IN ('fuel', 'fuel products', 'services')
-            ORDER BY COALESCE(pc.name, 'General'), p.name
-        ");
-        $stmt->execute([$station_id]);
-        $merch_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $fallback_error) {
-        $msg = 'Error loading merchandise: ' . $fallback_error->getMessage();
-    }
+    $msg = 'Error loading merchandise: ' . $e->getMessage();
 }
+
 
 // ── Last movement per product ─────────────────────────────────
 $last_movements = [];
@@ -153,7 +179,7 @@ foreach ($merch_inventory as $item) {
     $js_items[] = [
         'id'         => $pid,
         'name'       => $item['name'],
-        'sku'        => $item['sku'] ?? '',
+        'sku'        => (!empty($item['sku']) && $item['sku'] !== '-') ? $item['sku'] : ('P' . str_pad((string)$pid, 4, '0', STR_PAD_LEFT)),
         'category'   => $cat_label,
         'brand'      => $brand,
         'unit'       => $uom,
@@ -231,7 +257,7 @@ body,html{overflow-x:hidden;max-width:100%;}
 .fd-select.fd-open .fd-select-menu{display:block;}
 .fd-select-option{padding:9px 14px;font-size:13px;color:#1e293b;cursor:pointer;white-space:nowrap;}
 .fd-select-option:hover{background:#f1f5f9;}
-.fd-select-option.fd-active{font-weight:700;color:#fff;background:#1a6fd4;}
+.fd-select-option.fd-active{font-weight:700;color:#002F70;background:#f0f4ff;}
 
 /* ── Custom Dropdown (always opens downward) ── */
 .cdd-wrap{position:relative;display:inline-block;}
@@ -245,7 +271,7 @@ body,html{overflow-x:hidden;max-width:100%;}
 .cdd-wrap.cdd-open .cdd-menu{display:block;}
 .cdd-item{padding:9px 14px;font-size:13px;color:#374151;cursor:pointer;white-space:nowrap;}
 .cdd-item:hover{background:#f1f5f9;}
-.cdd-item.cdd-active{font-weight:700;color:#fff;background:#1a6fd4;}
+.cdd-item.cdd-active{font-weight:700;color:#002F70;background:#f0f4ff;}
 
 /* ── Main card ── */
 .inv-card{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;overflow:visible;}
@@ -272,7 +298,7 @@ body,html{overflow-x:hidden;max-width:100%;}
 
 /* ── Table ── */
 .table-wrap{overflow-x:auto;width:100%;-webkit-overflow-scrolling:touch;}
-#merchTable{width:100%;border-collapse:collapse;table-layout:fixed;}
+#merchTable{width:100%;border-collapse:collapse;table-layout:auto;}
 #merchTable thead th{background:#002F70;color:#fff;padding:10px 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 #merchTable tbody td{padding:8px;font-size:12px;border-bottom:1px solid #f1f5f9;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;}
 #merchTable tbody tr:hover td{background:#f8faff;}
@@ -537,18 +563,17 @@ body.modal-open .main {
             <table id="merchTable">
                 <thead>
                     <tr>
-                        <th style="width:90px;">SKU</th>
-                        <th style="width:160px;">Product Name</th>
-                        <th style="text-align:center;width:110px;">Category</th>
-                        <th style="text-align:center;width:55px;">UOM</th>
-                        <th style="text-align:center;width:70px;">Cap.</th>
-                        <th style="width:150px;">Stock / Reorder</th>
-                        <th style="text-align:right;width:80px;">Phys. Count</th>
-                        <th style="text-align:right;width:70px;">Variance</th>
-                        <th style="text-align:center;width:100px;">Status</th>
-                        <th style="text-align:center;width:90px;">Last Mvmt</th>
-                        <th style="width:90px;">Updated</th>
-                        <th style="text-align:center;width:75px;">Actions</th>
+                        <th>SKU</th>
+                        <th>Product Name</th>
+                        <th style="text-align:center;">Category</th>
+                        <th style="text-align:center;">UOM</th>
+                        <th style="text-align:center;">Cap.</th>
+                        <th>Stock / Reorder</th>
+                        <th style="text-align:right;">Phys. Count</th>
+                        <th style="text-align:right;">Variance</th>
+                        <th style="text-align:center;">Status</th>
+                        <th style="text-align:center;">Last Mvmt</th>
+                        <th>Updated</th>
                     </tr>
                 </thead>
                 <tbody id="merchTableBody">
@@ -600,7 +625,7 @@ body.modal-open .main {
                         data-stock="<?php echo $it['stock']; ?>"
                         data-updated="<?php echo htmlspecialchars($it['last_updated']); ?>"
                         data-idx="<?php echo htmlspecialchars(json_encode($it)); ?>">
-                        <td><code style="font-size:11px;font-weight:600;"><?php echo htmlspecialchars($it['sku'] ?: '-'); ?></code></td>
+                        <td><code style="font-size:11px;font-weight:600;"><?php echo htmlspecialchars($it['sku']); ?></code></td>
                         <td style="white-space:normal;"><strong><?php echo htmlspecialchars($it['name']); ?></strong></td>
                         <td style="text-align:center;"><?php echo htmlspecialchars($it['category']); ?></td>
                         <td style="text-align:center;font-weight:600;color:#475569;"><?php echo htmlspecialchars($it['unit']); ?></td>
@@ -627,11 +652,7 @@ body.modal-open .main {
                             <?php endif; ?>
                         </td>
                         <td style="font-size:11px;color:#64748b;"><?php echo $ts; ?></td>
-                        <td style="text-align:center;">
-                            <button class="txn-btn info sm" onclick='viewDetails(<?php echo htmlspecialchars(json_encode($it),ENT_QUOTES); ?>)'>
-                                <i class="fas fa-eye"></i> View
-                            </button>
-                        </td>
+
                     </tr>
                     <?php endforeach; ?>
                     <?php endforeach; ?>

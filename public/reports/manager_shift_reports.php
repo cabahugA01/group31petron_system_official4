@@ -1194,6 +1194,21 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
     <?php endforeach; // end shifts loop
     endif; // end merchandise / other-tabs condition
     ?>
+
+    <!-- PREPARED BY SIGNATURE -->
+    <table style="width:100%; margin-top:25px; page-break-inside:avoid; border:none; border-collapse:collapse;">
+        <tr>
+            <td style="border:none;"></td>
+            <td style="border:none; width:220px; text-align:center;">
+                <div style="font-size:10px; font-weight:700; color:#333; margin-bottom:25px;">PREPARED BY:</div>
+                <div style="border-top:1px solid #000; padding-top:4px; font-weight:700; font-size:11px; color:#000;">
+                    <?= htmlspecialchars(trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? '')) ?: ($me['username'] ?? 'System User')) ?>
+                </div>
+                <div style="font-size:9.5px; color:#555; margin-top:2px;"><?= htmlspecialchars(ucfirst($role ?? 'Manager')) ?></div>
+            </td>
+        </tr>
+    </table>
+
 </div>
 <?php endforeach; ?>
 

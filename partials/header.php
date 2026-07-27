@@ -581,6 +581,12 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     button, .btn, .ss-btn-primary {
         background-color: <?php echo htmlspecialchars($theme_button_color); ?> !important;
     }
+    /* Prevent theme button color from bleeding into custom dropdown triggers */
+    button.fd-select-trigger,
+    button.cdd-trigger {
+        background-color: #fff !important;
+        color: #374151 !important;
+    }
     <?php if ($theme_high_contrast): ?>
     body, html, div, p, span, table, td, th, a, button, input, select {
         filter: contrast(1.15) !important;
@@ -3171,67 +3177,61 @@ require_once __DIR__ . '/rbac_menu.php';
       }
   }
 
-  // ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-  // AGGREGATE ALL BADGES FOR NOTIFICATION BELL COUNT
-  // Must be AFTER all badge calculations (including fuel_sub_badges)
-  // ═══════════════════════════════════════════════════════════════
-  $total_badge_count = 0;
+  // ── Sync Sidebar Drawer Badges directly with Notifications table unread counts ──
+  if ($__uid > 0) {
+      try {
+          $un_stmt = $pdo->prepare(
+              "SELECT event_type, COUNT(*) as cnt FROM notifications WHERE user_id = ? AND status = 'unread' GROUP BY event_type"
+          );
+          $un_stmt->execute([$__uid]);
+          $un_rows = $un_stmt->fetchAll(PDO::FETCH_ASSOC);
 
-  // Add all main badges
-  if (isset($badges) && is_array($badges)) {
-      foreach ($badges as $key => $count) {
-          $exclude_badges = [
-              'total',
-              'variance_anomaly_count',
-              'reports',
-              'reports_admin',
-              'admin_transactions_oversight',
-              'pos',
-              'transactions',
-              'joborder',
-              'staff_stock_in',
-              'staff_stock_requests',
+          $notif_cat = [
+              'transactions' => 0,
+              'fuel'         => 0,
+              'inventory'    => 0,
+              'customers'    => 0
           ];
-          if (!in_array($key, $exclude_badges)) {
-              $total_badge_count += (int)$count;
+          foreach ($un_rows as $ur) {
+              $e = strtolower($ur['event_type'] ?? '');
+              $c = (int)$ur['cnt'];
+              if (in_array($e, ['transaction', 'job_order', 'joborder'])) {
+                  $notif_cat['transactions'] += $c;
+              } elseif (in_array($e, ['fuel_management', 'fuel'])) {
+                  $notif_cat['fuel'] += $c;
+              } elseif (in_array($e, ['inventory', 'stock_in', 'delivery', 'stock_request'])) {
+                  $notif_cat['inventory'] += $c;
+              } elseif ($e === 'customer') {
+                  $notif_cat['customers'] += $c;
+              }
           }
-      }
+
+          // Override top-level badges for Transactions, Fuel Management, Inventory, Customers
+          $badges['transactions'] = $notif_cat['transactions'];
+          $badges['fuel']         = $notif_cat['fuel'];
+          $badges['inventory']    = $notif_cat['inventory'];
+          $badges['customers']    = $notif_cat['customers'];
+
+      } catch (Exception $e) {}
   }
 
-  // Add sub-badges (fuel management sub-items)
-  if (isset($fuel_sub_badges) && is_array($fuel_sub_badges)) {
-      foreach ($fuel_sub_badges as $key => $count) {
-          $total_badge_count += (int)$count;
-      }
+  // Calculate Header Bell Unread Count
+  $header_unread_count = 0;
+  if ($__uid > 0) {
+      try {
+          $h_cnt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'");
+          $h_cnt->execute([$__uid]);
+          $header_unread_count = (int)$h_cnt->fetchColumn();
+      } catch (Exception $e) {}
   }
-
-  // Use the total sidebar badge count as the header bell badge count
-  // so the bell reflects the same actionable items shown in the sidebar.
-  $header_unread_count = $total_badge_count;
-
-  // Sub-item descriptions for Fuel Management
-  $fuel_sub_desc = [
-      'fuel_transactions'   => 'View all staff submissions â€” validate, approve, reject or adjust',
-      'fuel_deliveries'     => 'Validate delivery receipts encoded by staff',
-      'fuel_adjustments'    => 'Encode corrections for stock discrepancies (logs old vs new + remarks)',
-      'fuel_daily_ops'      => 'Monitor daily pump readings and reconcile liters vs sales',
-      'fuel_pump_master'    => 'Encode/update calibration values per pump (weekly variance)',
-      // Reports sidebar
-      'fuel_vol_sales'      => 'Consolidated liters sold per fuel type',
-      'fuel_vol_amount'     => 'Liters + peso totals per fuel type',
-      'fuel_variance_report'=> 'Short/over analysis â€” discrepancies between sales vs stock',
-      'fuel_meter_reading'  => 'Validated meter reading table after Manager approval',
-  ];
 
   foreach($items as $it){
-    // Dashboard â€” render with role-correct href (hidden for manager, admin, and superadmin)
     if (($it['id'] ?? '') === 'dashboard') {
         if (in_array($role, ['manager','supervisor','admin','superadmin'])) {
-            continue; // Dashboard removed from manager, admin, and superadmin sidebar
+            continue;
         }
         $dash_href = '/group31petron_system_official4/public/';
         if (in_array($role, ['staff','cashier','pump_attendant'])) $dash_href .= 'staff_dashboard.php';
-        elseif ($role === 'admin') $dash_href .= 'dashboard.php';
         else $dash_href .= 'dashboard.php';
         $dash_active = in_array($page_id, ['dashboard','staff_dashboard','manager_dashboard']) ? 'active' : '';
         echo '<div class="nav-item-wrapper">';
@@ -3247,138 +3247,43 @@ require_once __DIR__ . '/rbac_menu.php';
     $active = '';
     $parent_active = false;
 
-    // Check if main item is active (more specific detection)
-    if (!$has_sub && (
-        $page_id === ($it['id'] ?? '') ||
-        (($it['id'] ?? '') === 'dashboard' && in_array($page_id, ['staff_dashboard','manager_dashboard','dashboard'], true) && !(isset($_GET['view']) && $_GET['view'] === 'job_orders')) ||
-        (($it['id'] ?? '') === 'manager_dashboard' && $page_id === 'manager_dashboard') ||
-        (($it['id'] ?? '') === 'job_orders' && $page_id === 'manager_dashboard' && isset($_GET['view']) && $_GET['view'] === 'job_orders')
-    )) {
+    if (!$has_sub && $page_id === ($it['id'] ?? '')) {
         $active = 'active';
     }
-    
-    // Prevent manager inventory sub-items from activating other menu items
-    if (in_array($page_id, ['mgr_inv_fuel', 'mgr_inv_merch', 'mgr_inv_requests', 'pm_fuel', 'pm_merchandise']) && !$has_sub) {
-        $active = ''; // Don't highlight other menu items when on manager inventory/product sub-pages
-    }
 
-    // Check if any sub-item is active (for auto-expand only, NOT for parent highlight)
     if ($has_sub) {
         foreach ($it['sub_items'] as $sub) {
-            $sub_fragment = ltrim(parse_url($sub['href'], PHP_URL_FRAGMENT) ?? '', '#');
-            $sub_query    = parse_url($sub['href'], PHP_URL_QUERY) ?? '';
-            $sub_file     = basename(parse_url($sub['href'], PHP_URL_PATH) ?? '');
-
-            // page_id exact match
             if ($page_id === ($sub['id'] ?? '')) {
-                $parent_active = true;
-                break;
-            }
-            // Hash-based match
-            if ($sub_fragment !== '' && $current_hash === $sub_fragment) {
-                $parent_active = true;
-                break;
-            }
-            // Query-param match â€” most specific: file + all query params must match
-            if ($sub_file !== '' && $current_url === $sub_file && $sub_query !== '') {
-                parse_str($sub_query, $sub_params);
-                $match = true;
-                foreach ($sub_params as $k => $v) {
-                    if (($k === 'section' ? ($_GET['section'] ?? '') : ($_GET[$k] ?? '')) !== $v) {
-                        $match = false; break;
-                    }
-                }
-                if ($match) { $parent_active = true; break; }
-            }
-            // Direct file match ONLY when sub-item has no query string and no fragment
-            // (avoids false matches when multiple parents share the same file)
-            if ($sub_fragment === '' && $sub_query === '' && $sub_file !== '' && $current_url === $sub_file) {
-                $parent_active = true;
-                break;
+                $parent_active = true; break;
             }
         }
-        // Special case for fuel management page
-        if ($page_id === 'manager_fuel_management' && ($it['id'] ?? '') === 'fuel') $parent_active = true;
     }
 
     echo '<div class="nav-item-wrapper">';
 
     if ($has_sub) {
-        // Parent item â€” toggles sub-menu (don't highlight parent red for Manager Inventory)
-        $expanded = $parent_active ? 'expanded' : '';
-        // Don't highlight parent red for these items â€” only their sub-items should be red
-        $should_highlight_parent = $parent_active && !in_array(($it['id'] ?? ''), ['inventory_manager', 'job_orders', 'product_management_main', 'transactions', 'fuel', 'inventory', 'customers', 'mgr_customers', 'reports']);
-        $parent_cls = $should_highlight_parent ? 'nav-item active' : 'nav-item';
+        $parent_cls = $parent_active ? 'nav-item active' : 'nav-item';
         echo '<a class="'.$parent_cls.' has-submenu" href="'.htmlspecialchars($it['href']).'" data-tooltip="'.htmlspecialchars($it['label']).'" onclick="toggleSidebarSub(event,\'sub-'.htmlspecialchars($it['id']).'\')">';
         echo '<span class="ico" style="margin-right:10px;width:24px;text-align:center;flex-shrink:0;"><i class="'.htmlspecialchars($it['ico']).'"></i></span>';
         echo '<span style="flex-grow:1;font-size:13px;font-weight:500;">'.htmlspecialchars($it['label']).'</span>';
-        // Parent badge = sum of sub badges
-        $parent_badge = 0;
-        foreach ($it['sub_items'] as $sub) {
-            $parent_badge += $fuel_sub_badges[$sub['id'] ?? ''] ?? 0;
+        
+        $p_badge = $badges[$it['id']] ?? 0;
+        if ($p_badge <= 0 && !empty($it['sub_items'])) {
+            foreach ($it['sub_items'] as $sub) {
+                $p_badge += $fuel_sub_badges[$sub['id'] ?? ''] ?? 0;
+            }
         }
-        if ($parent_badge > 0) {
-            echo '<span data-badge style="background:#E30613;color:white;padding:0 6px;border-radius:10px;font-size:11px;font-weight:bold;min-width:20px;height:20px;display:flex;align-items:center;justify-content:center;margin-right:6px;">'.$parent_badge.'</span>';
-        }
+        $p_disp = $p_badge > 0 ? 'display:flex;' : 'display:none;';
+        echo '<span data-sidebar-badge="'.htmlspecialchars($it['id']).'" data-badge style="background:#E30613;color:white;padding:0 6px;border-radius:10px;font-size:11px;font-weight:bold;min-width:20px;height:20px;'.$p_disp.'align-items:center;justify-content:center;margin-right:6px;">'.($p_badge > 0 ? $p_badge : '').'</span>';
         echo '<i class="fas fa-chevron-down" style="font-size:10px;transition:transform .3s;'.($parent_active?'transform:rotate(180deg)':'').'"></i>';
         echo '</a>';
 
-        // Sub-menu
         $display = $parent_active ? 'block' : 'none';
         echo '<div id="sub-'.htmlspecialchars($it['id']).'" style="display:'.$display.';background:transparent;border-left:3px solid rgba(255,255,255,.2);margin-left:0;padding-left:0;">';
         foreach ($it['sub_items'] as $sub) {
-            // Active if hash matches this sub-item's fragment OR if current page matches the sub-item href
-            $sub_fragment = ltrim(parse_url($sub['href'], PHP_URL_FRAGMENT) ?? '', '#');
-            $sub_query    = parse_url($sub['href'], PHP_URL_QUERY) ?? '';
-            $sub_file     = basename(parse_url($sub['href'], PHP_URL_PATH) ?? '');
-            $sub_active   = '';
-
-            // Hash-based navigation (Staff Inventory) — only match if hash is non-empty
-            if ($sub_fragment !== '' && $current_hash === $sub_fragment) {
-                $sub_active = 'active';
-            }
-            // page_id match (Product Management sub-items with ?tab= params)
-            elseif ($page_id === ($sub['id'] ?? '')) {
-                $sub_active = 'active';
-            }
-            // Query-param match — e.g. ?section=fuel on staff_transactions_hub.php
-            elseif ($sub_file !== '' && $current_url === $sub_file && $sub_query !== '') {
-                parse_str($sub_query, $sub_params);
-                $match = true;
-                foreach ($sub_params as $k => $v) {
-                    if (($k === 'section' ? ($_GET['section'] ?? '') : ($_GET[$k] ?? '')) !== $v) {
-                        $match = false;
-                        break;
-                    }
-                }
-                if ($match) $sub_active = 'active';
-            }
-            // Direct file navigation (Manager Inventory) — exact filename match only
-            // Skip if any sibling sub-item has a query string that matches the current URL's query params
-            // (prevents both "Pending Transactions" and "Validated Transactions" lighting up simultaneously)
-            elseif ($sub_fragment === '' && $sub_query === '' && $current_url !== '' && $current_url === $sub_file) {
-                // Check if any sibling sub-item with a query string matches the current request
-                $sibling_matches = false;
-                foreach (($it['sub_items'] ?? []) as $sibling) {
-                    if (($sibling['id'] ?? '') === ($sub['id'] ?? '')) continue; // skip self
-                    $sib_query = parse_url($sibling['href'], PHP_URL_QUERY) ?? '';
-                    $sib_file  = basename(parse_url($sibling['href'], PHP_URL_PATH) ?? '');
-                    if ($sib_file === $sub_file && $sib_query !== '') {
-                        parse_str($sib_query, $sib_params);
-                        $sib_match = true;
-                        foreach ($sib_params as $k => $v) {
-                            if (($_GET[$k] ?? '') !== $v) { $sib_match = false; break; }
-                        }
-                        if ($sib_match) { $sibling_matches = true; break; }
-                    }
-                }
-                if (!$sibling_matches) {
-                    $sub_active = 'active';
-                }
-            }
+            $sub_active = ($page_id === ($sub['id'] ?? '')) ? 'active' : '';
             $sub_badge = $fuel_sub_badges[$sub['id'] ?? ''] ?? 0;
-
-            echo '<a class="nav-item sidebar-sub-item '.$sub_active.'" href="'.htmlspecialchars($sub['href']).'" style="padding:6px 15px 6px 47px;min-height:auto;" data-tooltip="'.htmlspecialchars($sub['label'] ?? '').'" data-tab="'.htmlspecialchars($sub_fragment).'">';
+            echo '<a class="nav-item sidebar-sub-item '.$sub_active.'" href="'.htmlspecialchars($sub['href']).'" style="padding:6px 15px 6px 47px;min-height:auto;" data-tooltip="'.htmlspecialchars($sub['label'] ?? '').'">';
             echo '<span class="ico" style="margin-right:8px;width:14px;text-align:center;flex-shrink:0;"><i class="fas fa-circle" style="font-size:4px;opacity:.5;"></i></span>';
             echo '<span style="flex-grow:1;line-height:1.2;">';
             echo '<span style="display:block;font-size:12px;font-weight:500;">'.htmlspecialchars($sub['label'] ?? '').'</span>';
@@ -3391,17 +3296,16 @@ require_once __DIR__ . '/rbac_menu.php';
         echo '</div>';
 
     } else {
-        // Regular item — direct link
         echo '<a class="nav-item '.$active.'" href="'.htmlspecialchars($it['href']).'" data-tooltip="'.htmlspecialchars($it['label']).'">';
         echo '<span class="ico" style="margin-right:10px;width:24px;text-align:center;flex-shrink:0;"><i class="'.htmlspecialchars($it['ico']).'"></i></span>';
         echo '<span style="flex-grow:1;font-size:13px;font-weight:500;">'.htmlspecialchars($it['label']).'</span>';
-        if (isset($badges[$it['id']]) && $badges[$it['id']] > 0) {
-            echo '<span data-badge style="background:#E30613;color:white;padding:0 6px;border-radius:10px;font-size:11px;font-weight:bold;min-width:20px;height:20px;display:flex;align-items:center;justify-content:center;margin-left:10px;">'.$badges[$it['id']].'</span>';
-        }
+        $r_b = $badges[$it['id']] ?? 0;
+        $r_disp = $r_b > 0 ? 'display:flex;' : 'display:none;';
+        echo '<span data-sidebar-badge="'.htmlspecialchars($it['id']).'" data-badge style="background:#E30613;color:white;padding:0 6px;border-radius:10px;font-size:11px;font-weight:bold;min-width:20px;height:20px;'.$r_disp.'align-items:center;justify-content:center;margin-left:10px;">'.($r_b > 0 ? $r_b : '').'</span>';
         echo '</a>';
     }
 
-    echo '</div>'; // end wrapper
+    echo '</div>';
   }
   ?>
       </nav>
@@ -5002,7 +4906,14 @@ require_once __DIR__ . '/rbac_menu.php';
                 try {
                     const res  = await fetch(API_LIST + '?action=unread_count');
                     const data = await res.json();
-                    if (data.success) updateBadge(data.unread_count || 0);
+                    if (data.success) {
+                        // Use bell_unread_count for the bell badge (actual unread notifications)
+                        // unread_count is the sidebar action badge count (separate)
+                        const bellCount = (typeof data.bell_unread_count !== 'undefined')
+                            ? data.bell_unread_count
+                            : (data.unread_count || 0);
+                        updateBadge(bellCount);
+                    }
                 } catch (e) {}
             }
 
@@ -5147,22 +5058,47 @@ require_once __DIR__ . '/rbac_menu.php';
                 return Math.floor(diff / 86400) + 'd ago';
             }
 
-            function updateBadge(count) {
+            function updateBadge(count, categoryCounts) {
                 const badge = document.getElementById('notificationBadge');
-                if (!badge) return;
-                if (count > 0) {
-                    badge.textContent = count > 99 ? '99+' : count;
-                    badge.style.display = 'block';
-                } else {
-                    badge.style.display = 'none';
+                if (badge) {
+                    if (count > 0) {
+                        badge.textContent = count > 99 ? '99+' : count;
+                        badge.style.display = 'block';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                }
+                if (categoryCounts) {
+                    updateSidebarDrawerBadges(categoryCounts);
                 }
             }
 
-            // â”€â”€ Load & render notifications (fast â€” no generator wait) â”€â”€â”€â”€â”€â”€â”€â”€
+            function updateSidebarDrawerBadges(categoryCounts) {
+                if (!categoryCounts) return;
+                const map = {
+                    'transactions': categoryCounts.transactions || 0,
+                    'fuel':         categoryCounts.fuel || 0,
+                    'inventory':    categoryCounts.inventory || 0,
+                    'customers':    categoryCounts.customers || 0
+                };
+                for (const [key, cnt] of Object.entries(map)) {
+                    const els = document.querySelectorAll(`[data-sidebar-badge="${key}"]`);
+                    els.forEach(el => {
+                        if (cnt > 0) {
+                            el.textContent = cnt > 99 ? '99+' : cnt;
+                            el.style.display = 'flex';
+                        } else {
+                            el.style.display = 'none';
+                        }
+                    });
+                }
+            }
+
+            // ── Load & render notifications (fast — no generator wait) ────────
             async function loadNotifications() {
                 const el = document.getElementById('notificationList');
                 if (!el) return;
-                el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px;"><i class="fas fa-spinner fa-spin"></i> Loadingâ€¦</div>';
+                el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px;"><i class="fas fa-spinner fa-spin"></i> Loading…</div>';
                 try {
                     const ctrl = new AbortController();
                     const tid  = setTimeout(() => ctrl.abort(), 8000); // 8s timeout
@@ -5208,10 +5144,10 @@ require_once __DIR__ . '/rbac_menu.php';
                                     </div>`;
                         });
                         el.innerHTML = html;
-                        updateBadge(data.unread_count || 0);
+                        updateBadge(data.unread_count || 0, data.category_counts);
                     } else if (data.success) {
                         el.innerHTML = '<div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px;"><i class="fas fa-bell-slash" style="font-size:22px;margin-bottom:8px;display:block;"></i>No notifications yet.</div>';
-                        updateBadge(0);
+                        updateBadge(0, data.category_counts);
                     } else {
                         el.innerHTML = '<div style="padding:16px;text-align:center;color:#dc3545;font-size:12px;"><i class="fas fa-exclamation-circle"></i> Could not load notifications.</div>';
                     }
@@ -5221,7 +5157,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 }
             }
 
-            // â”€â”€ Fetch unread count only (lightweight) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Fetch unread count only (lightweight) ─────────────────────────
             async function fetchUnreadCount() {
                 try {
                     const ctrl = new AbortController();
@@ -5234,11 +5170,16 @@ require_once __DIR__ . '/rbac_menu.php';
                     clearTimeout(tid);
                     if (!res.ok) throw new Error('HTTP ' + res.status);
                     const data = await res.json();
-                    if (data.success) updateBadge(data.unread_count || 0);
+                    if (data.success) {
+                        const bellCount = (typeof data.bell_unread_count !== 'undefined')
+                            ? data.bell_unread_count
+                            : (data.unread_count || 0);
+                        updateBadge(bellCount, data.category_counts);
+                    }
                 } catch (e) {}
             }
 
-            // â”€â”€ Run generator silently in background (fire-and-forget) â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Run generator silently in background (fire-and-forget) ────────
             function runGeneratorBackground() {
                 const ctrl = new AbortController();
                 const tid = setTimeout(() => ctrl.abort(), 8000);
@@ -5264,12 +5205,16 @@ require_once __DIR__ . '/rbac_menu.php';
                     });
             }
 
-            // â”€â”€ Mark one notification as read â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Mark one notification as read ─────────────────────────────────
             window.staffMarkRead = async function (id, url) {
                 try {
                     const fd = new FormData();
                     fd.append('notification_id', id);
-                    await fetch(API_LIST + '?action=mark_read', { method: 'POST', body: fd, credentials: 'same-origin' });
+                    const res = await fetch(API_LIST + '?action=mark_read', { method: 'POST', body: fd, credentials: 'same-origin' });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        updateBadge(data.bell_unread_count || 0, data.category_counts);
+                    }
                 } catch (e) {}
                 if (url && url !== '#' && url !== '') {
                     window.location.href = window.resolveRedirectUrl(url);
@@ -5278,13 +5223,17 @@ require_once __DIR__ . '/rbac_menu.php';
                 }
             };
 
-            // â”€â”€ Mark all read â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Mark all read ──────────────────────────────────────────────────
             const markAllBtn = document.getElementById('markAllReadBtn');
             if (markAllBtn) {
                 markAllBtn.addEventListener('click', async function (e) {
                     e.stopPropagation();
                     try {
-                        await fetch(API_LIST + '?action=mark_all_read', { method: 'POST', credentials: 'same-origin' });
+                        const res = await fetch(API_LIST + '?action=mark_all_read', { method: 'POST', credentials: 'same-origin' });
+                        const data = await res.json();
+                        if (data && data.success) {
+                            updateBadge(0, data.category_counts);
+                        }
                     } catch (e) {}
                     loadNotifications();
                 });

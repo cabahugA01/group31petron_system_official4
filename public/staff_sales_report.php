@@ -774,7 +774,7 @@ require_once __DIR__ . '/../partials/header.php';
     
     @media print {
         @page {
-            size: legal portrait;
+            size: A4 portrait;
             margin: 0.5in 0.4in;
         }
 

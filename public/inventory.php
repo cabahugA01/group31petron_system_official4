@@ -37,7 +37,7 @@ try {
     $stmt = $pdo->query("SELECT id, product_name as name, category as category_name, unit_price as price, unit_cost as cost, unit_price, sku, stock_quantity as stock_level,
                            10 as reorder_level,
                            null as inventory_id
-                           FROM inventory_products WHERE category NOT IN ('Fuel') ORDER BY category, product_name");
+                           FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products') ORDER BY category, product_name");
     $merch_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Format merchandise inventory for display

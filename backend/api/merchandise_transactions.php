@@ -1015,6 +1015,47 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             if ($deductStmt->rowCount() > 0) {
                 $deducted_inventory = true;
 
+                // ── FIFO Batch Deduction ──────────────────────────────────────────
+                try {
+                    $bStmt = $pdo->prepare("
+                        SELECT id, batch_number, remaining_qty
+                        FROM merchandise_batches
+                        WHERE station_id = ? AND product_id = ? AND status = 'active' AND remaining_qty > 0
+                        ORDER BY date_received ASC, id ASC
+                        FOR UPDATE
+                    ");
+                    $bStmt->execute([$station_id, $product_id]);
+                    $active_batches = $bStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                    $needed_qty = $qty;
+                    $first_batch_id = null;
+
+                    foreach ($active_batches as $bRow) {
+                        if ($needed_qty <= 0) break;
+                        $bid  = (int)$bRow['id'];
+                        $brem = (float)$bRow['remaining_qty'];
+                        if ($first_batch_id === null) {
+                            $first_batch_id = $bid;
+                        }
+
+                        $deductBatch = min($needed_qty, $brem);
+                        $newRem      = max(0, $brem - $deductBatch);
+                        $newBStatus  = ($newRem <= 0) ? 'depleted' : 'active';
+
+                        $pdo->prepare("UPDATE merchandise_batches SET remaining_qty = ?, status = ?, updated_at = NOW() WHERE id = ?")
+                            ->execute([$newRem, $newBStatus, $bid]);
+
+                        $needed_qty -= $deductBatch;
+                    }
+
+                    if ($first_batch_id !== null && $hasItem('batch_id')) {
+                        $pdo->prepare("UPDATE merchandise_transaction_items SET batch_id = ? WHERE transaction_id = ? AND product_id = ? AND (batch_id IS NULL OR batch_id = 0)")
+                            ->execute([$first_batch_id, $merch_transaction_id, $product_id]);
+                    }
+                } catch (Exception $fifoErr) {
+                    error_log("FIFO batch deduction notice: " . $fifoErr->getMessage());
+                }
+
                 // Log to inventory_logs
                 try {
                     $qtyBefore = (float)$stockLevel;

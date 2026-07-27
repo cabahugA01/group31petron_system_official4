@@ -1144,7 +1144,7 @@ body .main,
             </div>
             <div class="summary-icon bg-total"><i class="fas fa-truck"></i></div>
         </a>
-        <a href="manager_inventory_history.php" class="summary-card" style="text-decoration: none; color: inherit;">
+        <a href="admin_inventory_history.php" class="summary-card" style="text-decoration: none; color: inherit;">
             <div>
                 <div class="summary-card-label">Completed</div>
                 <div class="summary-card-value" style="color: #16a34a;"><?= number_format($cnt_completed) ?></div>

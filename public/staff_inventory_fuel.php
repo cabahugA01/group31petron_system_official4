@@ -355,7 +355,17 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     position:relative;
     z-index:2;
 }
-.inv-filter-bar select { cursor:pointer; }
+.inv-filter-bar select {
+    cursor:pointer;
+    appearance:none;
+    -webkit-appearance:none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2394a3b8' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
+}
+.inv-filter-bar select option { background:#fff; color:#374151; }
+.inv-filter-bar select option:checked { background:#f1f5f9; color:#002F70; font-weight:600; }
 .inv-filter-bar input[type=text] { cursor:text; }
 .fuel-filter-actions { display:flex; align-items:center; gap:8px; }
 
@@ -725,15 +735,14 @@ body, html { overflow-x: hidden !important; }
             <table class="fuel-table" id="fuelTable">
                 <colgroup>
                     <col style="width:8%">
-                    <col style="width:14%">
+                    <col style="width:15%">
+                    <col style="width:13%">
                     <col style="width:12%">
                     <col style="width:11%">
+                    <col style="width:12%">
                     <col style="width:10%">
-                    <col style="width:11%">
+                    <col style="width:10%">
                     <col style="width:9%">
-                    <col style="width:9%">
-                    <col style="width:11%">
-                    <col style="width:5%">
                 </colgroup>
                 <thead>
                     <tr>
@@ -746,13 +755,12 @@ body, html { overflow-x: hidden !important; }
                         <th>Price/L</th>
                         <th>Status</th>
                         <th>Last Updated</th>
-                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                 <?php if (empty($rows)): ?>
                     <tr>
-                        <td colspan="10" style="text-align:center;padding:32px;color:#6c757d;font-size:14px;">
+                        <td colspan="9" style="text-align:center;padding:32px;color:#6c757d;font-size:14px;">
                             No fuel inventory data available.
                         </td>
                     </tr>
@@ -789,18 +797,11 @@ body, html { overflow-x: hidden !important; }
                             </span>
                         </td>
                         <td style="color:#64748b; font-size:11px;"><?= $ts_str ?></td>
-                        <td>
-                            <div style="display:flex; flex-direction:column; gap:4px; width:100%;">
-                                <button class="int-btn-outline" onclick="viewTankDetails(<?= htmlspecialchars(json_encode($r)) ?>)" title="View Details">
-                                    <i class="fas fa-eye" style="width:14px;"></i> View
-                                </button>
-                            </div>
-                        </td>
                     </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
                     <tr id="fuelNoResultsRow" class="no-paginate" style="display:none;">
-                        <td colspan="10" style="text-align:center;padding:32px;color:#64748b;font-size:14px;">
+                        <td colspan="9" style="text-align:center;padding:32px;color:#64748b;font-size:14px;">
                             No fuel tanks match the selected filters.
                         </td>
                     </tr>

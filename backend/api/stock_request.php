@@ -215,8 +215,26 @@ function handle_create($pdo, $me, $role, $station_id) {
                 $item_category = $db_item['category'] ?? '';
             }
 
-            $dup = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE staff_id = ? AND item_id = ? AND status IN ('Pending', 'Pending Manager Review')");
-            $dup->execute([$me['id'], $item_id]);
+            // Only store item_id when it references inventory_products.
+            // If the product was resolved from the fallback `products` table, using
+            // that ID would violate the FK fk_stock_req_item → inventory_products(id).
+            $safe_item_id = null;
+            try {
+                $chk = $pdo->prepare("SELECT id FROM inventory_products WHERE id = ? LIMIT 1");
+                $chk->execute([$item_id]);
+                if ($chk->fetchColumn() !== false) {
+                    $safe_item_id = $item_id;
+                }
+            } catch (Throwable $ignored) {}
+
+            // Dup-check: use item_name when item_id is NULL to avoid false negatives
+            if ($safe_item_id !== null) {
+                $dup = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE staff_id = ? AND item_id = ? AND status IN ('Pending', 'Pending Manager Review')");
+                $dup->execute([$me['id'], $safe_item_id]);
+            } else {
+                $dup = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE staff_id = ? AND item_name = ? AND item_id IS NULL AND status IN ('Pending', 'Pending Manager Review')");
+                $dup->execute([$me['id'], $item_name]);
+            }
             if ((int)$dup->fetchColumn() > 0) {
                 $skipped_items[] = $item_name;
                 continue;
@@ -229,7 +247,7 @@ function handle_create($pdo, $me, $role, $station_id) {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Manager Review', NOW())
             ");
             $stmt->execute([
-                $request_no, $me['id'], $station_id, $item_id, $sku,
+                $request_no, $me['id'], $station_id, $safe_item_id, $sku,
                 $item_name, $item_category, $current_stock,
                 $requested_quantity, $remarks
             ]);
@@ -547,8 +565,22 @@ function handle_approve($pdo, $me, $role, $station_id) {
         ")->execute([$approved_quantity, $me['id'], $manager_notes, $pr_id, $request_id]);
 
         // Auto-generate PO with status 'Pending Admin Validation'
-        $po_number    = 'PO-' . date('Ymd') . '-SR' . str_pad($request_id, 4, '0', STR_PAD_LEFT);
-        $unit_price   = sr_resolve_merch_unit_price($pdo, (int)$req['item_id']);
+        $po_number = 'PO-' . date('Ymd') . '-SR' . str_pad($request_id, 4, '0', STR_PAD_LEFT);
+        
+        // Resolve unit price — use the item from the request if item_id is NULL
+        $product_id_for_po = (int)($req['item_id'] ?: 0);
+        if ($product_id_for_po > 0) {
+            $unit_price = sr_resolve_merch_unit_price($pdo, $product_id_for_po);
+        } else {
+            // Fallback: product is from `products` table (no FK reference)
+            $unit_price = 0;
+            try {
+                $priceStmt = $pdo->prepare("SELECT COALESCE(price, cost, 0) FROM products WHERE name = ? LIMIT 1");
+                $priceStmt->execute([$req['item_name']]);
+                $unit_price = (float)($priceStmt->fetchColumn() ?: 0);
+            } catch (Throwable $ignored) {}
+        }
+        
         $total_amount = round($unit_price * $approved_quantity, 2);
         $po_remarks   = "Auto-generated from Stock Request #{$request_id}. Purchase Request: {$pr_id}. Manager: {$me['name']}.";
         if ($manager_notes) $po_remarks .= " Notes: {$manager_notes}";
@@ -576,7 +608,7 @@ function handle_approve($pdo, $me, $role, $station_id) {
                     (po_id, product_id, item_name, quantity, quantity_ordered, unit_price, total_price)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             ")->execute([
-                $po_id, $req['item_id'], $req['item_name'], $approved_quantity, $approved_quantity, $unit_price, $total_amount
+                $po_id, $product_id_for_po, $req['item_name'], $approved_quantity, $approved_quantity, $unit_price, $total_amount
             ]);
         } else {
             $po_id = $existing_po['id'];
@@ -589,8 +621,8 @@ function handle_approve($pdo, $me, $role, $station_id) {
             ")->execute([$req['item_name'], $approved_quantity, $unit_price, $total_amount, $po_remarks, $request_id]);
 
             // Sync/update purchase_order_items
-            $stmt_item = $pdo->prepare("SELECT id FROM purchase_order_items WHERE po_id = ? AND product_id = ?");
-            $stmt_item->execute([$po_id, $req['item_id']]);
+            $stmt_item = $pdo->prepare("SELECT id FROM purchase_order_items WHERE po_id = ? AND (product_id = ? OR (product_id IS NULL AND item_name = ?))");
+            $stmt_item->execute([$po_id, $product_id_for_po, $req['item_name']]);
             $item_exists_id = $stmt_item->fetchColumn();
             if ($item_exists_id) {
                 $pdo->prepare("
@@ -604,7 +636,7 @@ function handle_approve($pdo, $me, $role, $station_id) {
                         (po_id, product_id, item_name, quantity, quantity_ordered, unit_price, total_price)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 ")->execute([
-                    $po_id, $req['item_id'], $req['item_name'], $approved_quantity, $approved_quantity, $unit_price, $total_amount
+                    $po_id, $product_id_for_po, $req['item_name'], $approved_quantity, $approved_quantity, $unit_price, $total_amount
                 ]);
             }
         }

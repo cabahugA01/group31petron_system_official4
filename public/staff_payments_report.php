@@ -691,7 +691,7 @@ require_once __DIR__ . '/../partials/header.php';
     .summary-grid-container .shift-box { flex: 1; }
     
     @media print {
-        @page { size: legal portrait; margin: 0.5in 0.4in; }
+        @page { size: A4 portrait; margin: 0.5in 0.4in; }
 
         /* Hide everything, show only print-area */
         body * { visibility: hidden !important; }

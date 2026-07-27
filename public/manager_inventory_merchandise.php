@@ -35,7 +35,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_product_details') {
                     ip.unit_price                                AS price,
                     ip.unit_cost                                 AS cost,
                     ip.sku,
-                    ip.supplier,
+                    COALESCE(ip.brand, 'Petron Corporation')      AS supplier,
                     ip.status                                    AS product_status,
                     COALESCE(ip.min_stock, 0)                    AS min_stock,
                     COALESCE(ip.max_stock, 0)                    AS max_stock,
@@ -486,7 +486,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $merch_inventory = [];
 $msg = '';
 
-// Backfill station_inventory
+// Backfill station_inventory for inventory_products
 try {
     $pdo->prepare("
         INSERT INTO station_inventory (product_id, station_id, stock_level, status, last_updated)
@@ -494,22 +494,35 @@ try {
         FROM inventory_products ip
         LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
         WHERE si.id IS NULL
-          AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
+          AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
+    ")->execute([$station_id, $station_id]);
+} catch (Exception $e) {}
+// Backfill station_inventory for products table
+try {
+    $pdo->prepare("
+        INSERT INTO station_inventory (product_id, station_id, stock_level, status, last_updated)
+        SELECT p.id, ?, COALESCE(p.current_stock, 0), 'active', NOW()
+        FROM products p
+        LEFT JOIN product_categories pc ON pc.id = p.category_id
+        LEFT JOIN station_inventory si ON si.product_id = p.id AND si.station_id = ?
+        WHERE si.id IS NULL
+          AND LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
+          AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
     ")->execute([$station_id, $station_id]);
 } catch (Exception $e) {}
 
-// Main catalog query
+// Main catalog query — UNION of inventory_products + products (excluding fuel/service)
 try {
     $stmt = $pdo->prepare("
         SELECT
             ip.id,
             ip.product_name                              AS name,
-            ip.category                                  AS category_name,
-            ip.unit_price                                AS price,
-            ip.unit_cost                                 AS cost,
+            COALESCE(ip.category,'Merchandise')          AS category_name,
+            COALESCE(ip.unit_price, 0)                   AS price,
+            COALESCE(ip.unit_cost, 0)                    AS cost,
             ip.sku,
-            ip.supplier,
-            ip.status                                    AS product_status,
+            COALESCE(ip.brand,'Petron Corporation')      AS supplier,
+            COALESCE(ip.status,'active')                 AS product_status,
             COALESCE(ip.min_stock, 0)                    AS min_stock,
             COALESCE(ip.max_stock, 0)                    AS max_stock,
             COALESCE(si.stock_level, ip.stock, 0)        AS stock_level,
@@ -517,50 +530,47 @@ try {
             COALESCE(si.reorder_level, ip.min_stock, 24) AS reorder_level,
             COALESCE(si.critical_level, 10)              AS critical_level,
             COALESCE(si.unit, ip.size, 'pcs')            AS unit,
-            si.last_updated                              AS last_updated,
+            COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated,
             si.physical_count,
             si.variance
         FROM inventory_products ip
         LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
-        ORDER BY ip.category, ip.product_name
+        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
+
+        UNION
+
+        SELECT
+            p.id,
+            p.name                                       AS name,
+            COALESCE(pc.name,'General')                  AS category_name,
+            COALESCE(si2.price, p.price, 0)              AS price,
+            COALESCE(p.cost, si2.cost, 0)                AS cost,
+            COALESCE(NULLIF(p.sku,''), CONCAT('P', LPAD(p.id,4,'0'))) AS sku,
+            'Petron Corporation'                         AS supplier,
+            COALESCE(NULLIF(si2.status,''), NULLIF(p.status,''), 'active') AS product_status,
+            COALESCE(p.min_stock_level, 0)               AS min_stock,
+            COALESCE(p.max_stock_level, 0)               AS max_stock,
+            COALESCE(si2.stock_level, p.current_stock, 0) AS stock_level,
+            COALESCE(NULLIF(si2.capacity,0), NULLIF(p.capacity,0), NULLIF(p.max_stock_level,0), 480) AS capacity,
+            COALESCE(NULLIF(si2.reorder_level,0), NULLIF(p.min_stock_level,0), 24) AS reorder_level,
+            COALESCE(NULLIF(si2.critical_level,0), 10)   AS critical_level,
+            COALESCE(NULLIF(p.unit,''), NULLIF(si2.unit,''), 'pcs') AS unit,
+            COALESCE(si2.last_updated, p.updated_at, p.created_at) AS last_updated,
+            si2.physical_count,
+            si2.variance
+        FROM products p
+        LEFT JOIN product_categories pc ON pc.id = p.category_id
+        LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND si2.station_id = ?
+        WHERE LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
+          AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
+          AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products'))
+
+        ORDER BY category_name, name
     ");
-    $stmt->execute([$station_id]);
+    $stmt->execute([$station_id, $station_id]);
     $merch_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    try {
-        $stmt = $pdo->prepare("
-            SELECT
-                p.id,
-                p.name AS name,
-                COALESCE(pc.name, 'General') AS category_name,
-                p.description,
-                COALESCE(si.price, p.price, si.cost, p.cost, 0) AS price,
-                COALESCE(p.cost, si.cost, 0) AS cost,
-                COALESCE(NULLIF(p.sku, ''), CONCAT('P', LPAD(p.id, 4, '0'))) AS sku,
-                '' AS supplier,
-                COALESCE(NULLIF(si.status, ''), NULLIF(p.status, ''), 'active') AS product_status,
-                COALESCE(NULLIF(p.min_stock_level, 0), 0) AS min_stock,
-                COALESCE(NULLIF(p.max_stock_level, 0), 0) AS max_stock,
-                COALESCE(si.stock_level, p.current_stock, 0) AS stock_level,
-                COALESCE(NULLIF(si.capacity, 0), NULLIF(p.capacity, 0), NULLIF(p.max_stock_level, 0), 480) AS capacity,
-                COALESCE(NULLIF(si.reorder_level, 0), NULLIF(p.min_stock_level, 0), 24) AS reorder_level,
-                COALESCE(NULLIF(si.critical_level, 0), 10) AS critical_level,
-                COALESCE(NULLIF(p.unit, ''), NULLIF(si.unit, ''), 'pcs') AS unit,
-                COALESCE(si.last_updated, p.updated_at, p.created_at) AS last_updated,
-                si.physical_count,
-                si.variance
-            FROM products p
-            LEFT JOIN product_categories pc ON pc.id = p.category_id
-            LEFT JOIN station_inventory si ON si.product_id = p.id AND si.station_id = ?
-            WHERE LOWER(COALESCE(pc.name, '')) NOT IN ('fuel', 'fuel products', 'services')
-            ORDER BY COALESCE(pc.name, 'General'), p.name
-        ");
-        $stmt->execute([$station_id]);
-        $merch_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $fallback_error) {
-        $msg = 'Error loading merchandise: ' . $fallback_error->getMessage();
-    }
+    $msg = 'Error loading merchandise: ' . $e->getMessage();
 }
 
 foreach ($merch_inventory as &$item) {
@@ -1129,7 +1139,6 @@ body { overflow-x: hidden; }
                     <th style="text-align:center;">Status</th>
                     <th style="text-align:center;">Last Movement</th>
                     <th>Last Updated</th>
-                    <th style="text-align:center;">Actions</th>
                 </tr>
             </thead>
             <tbody id="merchTableBody">
@@ -1234,18 +1243,6 @@ body { overflow-x: hidden; }
                         <?php endif; ?>
                     </td>
                     <td style="font-size:11px;color:#64748b;"><?php echo $timestamp; ?></td>
-                    <td style="text-align:center;">
-                        <div style="display:flex; flex-direction:column; gap:4px; align-items:center;">
-                            <button class="int-btn-outline" onclick="viewDetails(<?= (int)$item['id'] ?>, 'info')" title="View Details" style="font-size:11px; padding:6px 12px; height:30px; width:100px;">
-                                <i class="fas fa-eye"></i> View
-                            </button>
-                            <?php if ($has_variance): ?>
-                            <button class="int-btn-outline" style="border-color:#28a745; color:#28a745; font-size:11px; padding:6px 12px; height:30px; width:100px;" onclick="openAdjustmentModal(<?= (int)$item['id'] ?>, '<?= htmlspecialchars(addslashes($item['name'])) ?>', <?= (float)$stock ?>, '<?= htmlspecialchars(addslashes($unit)) ?>')" title="Adjust Stock">
-                                <i class="fas fa-balance-scale"></i> Adjust
-                            </button>
-                            <?php endif; ?>
-                        </div>
-                    </td>
                 </tr>
                 <?php endforeach; ?>
             <?php endforeach; ?>

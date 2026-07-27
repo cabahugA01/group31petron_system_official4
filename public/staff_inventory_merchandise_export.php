@@ -42,28 +42,53 @@ $user_role = $me['role'] ?? 'Staff';
 $merch_inventory = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT ip.id,
-               ip.product_name AS name,
-               ip.category     AS category_name,
-               ip.unit_price   AS price,
-               ip.sku,
-               ip.status,
-               COALESCE(si.unit, 'pcs')     AS unit,
-               COALESCE(si.stock_level, ip.stock, 0) AS stock_level,
-               COALESCE(si.capacity, 0)              AS capacity,
-               COALESCE(si.reorder_level, 10)        AS reorder_level,
+        SELECT p.id,
+               p.name AS name,
+               COALESCE(pc.name, 'General') AS category_name,
+               p.description,
+               COALESCE(si.price, p.price, si.cost, p.cost, 0) AS price,
+               COALESCE(NULLIF(p.sku, ''), CONCAT('P', LPAD(p.id, 4, '0'))) AS sku,
+               COALESCE(NULLIF(si.status, ''), NULLIF(p.status, ''), 'active') AS status,
+               COALESCE(NULLIF(p.unit, ''), NULLIF(si.unit, ''), 'pcs') AS unit,
+               COALESCE(si.stock_level, p.current_stock, 0) AS stock_level,
+               COALESCE(NULLIF(si.capacity, 0), NULLIF(p.capacity, 0), NULLIF(p.max_stock_level, 0), 480) AS capacity,
+               COALESCE(NULLIF(si.reorder_level, 0), NULLIF(p.min_stock_level, 0), 10) AS reorder_level,
                si.last_updated AS last_updated
-        FROM inventory_products ip
+        FROM products p
+        LEFT JOIN product_categories pc
+               ON pc.id = p.category_id
         LEFT JOIN station_inventory si
-               ON si.product_id = ip.id AND si.station_id = ?
-        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
-          AND LOWER(ip.status) = 'active'
-        ORDER BY ip.category, ip.product_name
+               ON si.product_id = p.id AND si.station_id = ?
+        WHERE LOWER(COALESCE(pc.name, '')) NOT IN ('fuel', 'fuel products', 'services')
+        ORDER BY COALESCE(pc.name, 'General'), p.name
     ");
     $stmt->execute([$station_id]);
     $merch_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    die('Error loading merchandise: ' . $e->getMessage());
+    try {
+        $stmt = $pdo->prepare("
+            SELECT ip.id,
+                   ip.product_name AS name,
+                   ip.category     AS category_name,
+                   ip.unit_price   AS price,
+                   COALESCE(NULLIF(ip.sku, ''), CONCAT('P', LPAD(ip.id, 4, '0'))) AS sku,
+                   ip.status,
+                   COALESCE(si.unit, 'pcs')     AS unit,
+                   COALESCE(si.stock_level, ip.stock, 0) AS stock_level,
+                   COALESCE(si.capacity, 0)              AS capacity,
+                   COALESCE(si.reorder_level, 10)        AS reorder_level,
+                   si.last_updated AS last_updated
+            FROM inventory_products ip
+            LEFT JOIN station_inventory si
+                   ON si.product_id = ip.id AND si.station_id = ?
+            WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
+            ORDER BY ip.category, ip.product_name
+        ");
+        $stmt->execute([$station_id]);
+        $merch_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $fallback_err) {
+        die('Error loading merchandise: ' . $fallback_err->getMessage());
+    }
 }
 
 // Calculate statistics

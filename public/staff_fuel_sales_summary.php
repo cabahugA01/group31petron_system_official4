@@ -2041,7 +2041,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
         <style>
             @page {
                 size: A4 portrait;
-                margin: 15mm 10mm;
+                margin: 10mm 12mm;
             }
             @media print {
                 body { margin: 0; padding: 0; }
@@ -2049,11 +2049,14 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
                 table { page-break-inside: avoid; }
                 .page-break { page-break-after: always; }
             }
+            /* Hide signature on screen — only show on print */
+            .print-only-signature { display: none; }
+            @media print { .print-only-signature { display: table !important; } }
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { 
                 font-family: 'Courier New', monospace; 
-                font-size: 10pt;
-                line-height: 1.2;
+                font-size: 11pt;
+                line-height: 1.3;
             }
             
             /* Header Section */
@@ -2514,6 +2517,9 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         margin: 3px 0;
     }
     
+    /* Hide prepared-by on screen, only show on print */
+    .print-only-signature { display: none !important; }
+
     .controls {
         padding: 12px 20px;
         background: #fff;
@@ -2772,112 +2778,201 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         font-weight: 700;
     }
     
-    /* ── Print styles ── */
+    /* ── Print styles — matched to PO invoice (print_supplier_invoice.php) ── */
     @media print {
         @page {
-            size: legal portrait;
-            margin: 0.25in;
+            size: A4 portrait;
+            margin: 10mm 12mm;
         }
 
         * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
-            background-image: none !important;
             box-shadow: none !important;
+            text-shadow: none !important;
+            background-image: none !important;
         }
 
-        /* Hide the whole page UI */
         html, body {
             margin: 0 !important;
             padding: 0 !important;
             background: #fff !important;
             overflow: visible !important;
             height: auto !important;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+            font-size: 11px !important;
+            color: #333 !important;
         }
 
-        /* JS adds .sfss-printing-fuel or .sfss-printing-merchandise to <body>
-           and we show only the matching tab, hiding everything else */
+        /* Hide all page UI — keep only sfss-print-only */
+        body > *:not(.sfss-print-only) {
+            display: none !important;
+        }
+
         .stock-page .controls,
         .stock-page .tab-navigation,
-        #toggleScrollBtn,
-        .toggle-scroll-btn,
-        .fixed-footer,
-        .footer-sidebar-area,
-        .footer-content,
-        .toast,
-        .toast-container,
-        .si-toast-container,
-        .sf-toast-container,
-        [class*="watermark"],
-        [id*="watermark"],
+        #toggleScrollBtn, .toggle-scroll-btn,
+        .fixed-footer, .footer-sidebar-area, .footer-content,
+        .toast, .toast-container, .si-toast-container, .sf-toast-container,
+        [class*="watermark"], [id*="watermark"],
         nav, header, footer, aside,
         .sidebar, .main-sidebar, .main-header,
         .navbar, .topbar {
             display: none !important;
         }
 
-        /* Hide non-print elements on the body */
-        body > *:not(.sfss-print-only) {
-            display: none !important;
-        }
-
-        /* The injected print container */
+        /* ── Print container ── */
         .sfss-print-only {
             display: block !important;
             position: static !important;
             width: 100% !important;
+            max-width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #fff !important;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+            font-size: 11px !important;
+            color: #333 !important;
         }
 
-        .sfss-print-only *,
-        .sfss-print-only *::before,
-        .sfss-print-only *::after {
+        .sfss-print-only *, .sfss-print-only *::before, .sfss-print-only *::after {
             box-shadow: none !important;
             text-shadow: none !important;
             background-image: none !important;
         }
 
+        /* Hide icons and watermarks inside print container */
         .sfss-print-only img,
         .sfss-print-only canvas,
         .sfss-print-only i,
         .sfss-print-only svg,
-        .sfss-print-only .fas,
-        .sfss-print-only .far,
-        .sfss-print-only .fab,
-        .sfss-print-only .fa,
+        .sfss-print-only .fas, .sfss-print-only .far,
+        .sfss-print-only .fab, .sfss-print-only .fa,
         .sfss-print-only [class*="fa-"],
         .sfss-print-only [class*="watermark"],
         .sfss-print-only [id*="watermark"] {
             display: none !important;
-            width: 0 !important;
-            height: 0 !important;
-            font-size: 0 !important;
-            margin: 0 !important;
-            padding: 0 !important;
+            width: 0 !important; height: 0 !important;
+            font-size: 0 !important; margin: 0 !important; padding: 0 !important;
         }
 
-        .sfss-print-only .header { text-align: center !important; border-bottom: none !important; padding: 0 !important; margin: 0 0 4px 0 !important; }
-        .sfss-print-only .header h1 { display: block !important; font-size: 12px !important; line-height: 1.05 !important; font-weight: 700 !important; color: #000 !important; margin: 0 0 1px 0 !important; }
-        .sfss-print-only .header p { display: block !important; font-size: 7.5px !important; color: #000 !important; margin: 1px 0 !important; }
-        .sfss-print-only .section-title { display: block !important; font-size: 8px !important; line-height: 1.05 !important; font-weight: 700 !important; margin: 4px 0 1px 0 !important; padding: 2px 4px !important; border: none !important; border-bottom: 1px solid #000 !important; background: #fff !important; color: #000 !important; page-break-after: avoid !important; text-transform: uppercase !important; }
-        .sfss-print-only .table-container { overflow: visible !important; width: 100% !important; margin: 0 0 3px 0 !important; }
-        .sfss-print-only table { width: 100% !important; border-collapse: collapse !important; font-size: 7.5px !important; line-height: 1.05 !important; margin: 0 !important; table-layout: fixed !important; }
+        /* ── Header — same as PO ── */
+        .sfss-print-only .header {
+            text-align: center !important;
+            border-bottom: none !important;
+            padding: 0 !important;
+            margin: 0 0 6px 0 !important;
+        }
+        .sfss-print-only .header h1 {
+            display: block !important;
+            font-size: 14px !important;
+            line-height: 1.2 !important;
+            font-weight: 700 !important;
+            color: #000 !important;
+            margin: 0 0 2px 0 !important;
+        }
+        .sfss-print-only .header p {
+            display: block !important;
+            font-size: 10px !important;
+            color: #333 !important;
+            margin: 1px 0 !important;
+        }
+
+        /* ── Section titles ── */
+        .sfss-print-only .section-title {
+            display: block !important;
+            font-size: 10px !important;
+            line-height: 1.2 !important;
+            font-weight: 700 !important;
+            margin: 6px 0 2px 0 !important;
+            padding: 3px 6px !important;
+            border: none !important;
+            border-bottom: 1px solid #000 !important;
+            background: #fff !important;
+            color: #000 !important;
+            page-break-after: avoid !important;
+            text-transform: uppercase !important;
+        }
+
+        /* ── Tables — same as PO items-table ── */
+        .sfss-print-only .table-container {
+            overflow: visible !important;
+            width: 100% !important;
+            margin: 0 0 5px 0 !important;
+        }
+        .sfss-print-only table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            font-size: 10px !important;
+            line-height: 1.3 !important;
+            margin: 0 !important;
+        }
         .sfss-print-only thead { display: table-header-group !important; }
         .sfss-print-only tbody { display: table-row-group !important; }
         .sfss-print-only tr { display: table-row !important; page-break-inside: avoid !important; }
-        .sfss-print-only th { display: table-cell !important; font-size: 7px !important; line-height: 1.05 !important; padding: 2px 3px !important; border: 1px solid #000 !important; background: #f3f4f6 !important; color: #000 !important; font-weight: 700 !important; text-align: center !important; overflow-wrap: anywhere !important; }
-        .sfss-print-only td { display: table-cell !important; font-size: 7px !important; line-height: 1.05 !important; padding: 2px 3px !important; border: 1px solid #000 !important; vertical-align: top !important; color: #000 !important; overflow-wrap: anywhere !important; }
-        .sfss-print-only .container { display: block !important; margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
-        .sfss-print-only .content { display: block !important; margin: 0 !important; padding: 0 !important; }
+        .sfss-print-only th {
+            display: table-cell !important;
+            font-size: 10px !important;
+            line-height: 1.3 !important;
+            padding: 5px 7px !important;
+            border: 1px solid #000 !important;
+            background: #002F6C !important;
+            color: #fff !important;
+            font-weight: 600 !important;
+            text-align: center !important;
+        }
+        .sfss-print-only td {
+            display: table-cell !important;
+            font-size: 10px !important;
+            line-height: 1.3 !important;
+            padding: 4px 7px !important;
+            border-bottom: 1px solid #e2e8f0 !important;
+            vertical-align: top !important;
+            color: #0f172a !important;
+        }
+
+        /* Layout helpers */
+        .sfss-print-only .container { display: block !important; margin: 0 !important; padding: 0 !important; max-width: 100% !important; height: auto !important; min-height: 0 !important; }
+        .sfss-print-only .content   { display: block !important; margin: 0 !important; padding: 0 !important; height: auto !important; min-height: 0 !important; }
         .sfss-print-only .sfss-empty-print-hide { display: none !important; }
-        .sfss-print-only .font-bold { font-weight: 700 !important; }
+        .sfss-print-only .font-bold  { font-weight: 700 !important; }
         .sfss-print-only .text-right { text-align: right !important; }
-        .sfss-print-only div { display: block !important; }
+        .sfss-print-only div  { display: block !important; height: auto !important; min-height: 0 !important; }
         .sfss-print-only span { display: inline !important; }
+        /* Kill all min-height / fixed heights that cause blank space */
+        .sfss-print-only, .sfss-print-only * {
+            min-height: 0 !important;
+            height: auto !important;
+        }
+        .sfss-print-only .page,
+        .sfss-print-only .stock-page,
+        .sfss-print-only .tab-content,
+        .sfss-print-only .tab-content.active,
+        .sfss-print-only #fuel-tab,
+        .sfss-print-only #merchandise-tab {
+            min-height: 0 !important;
+            height: auto !important;
+            padding-bottom: 0 !important;
+            margin-bottom: 0 !important;
+        }
+        /* Allow table inside prepared-by to render correctly */
+        .sfss-print-only table { display: table !important; height: auto !important; }
+        .sfss-print-only table tr { display: table-row !important; }
+        .sfss-print-only table td { display: table-cell !important; }
+        /* Show signature only on print */
+        .print-only-signature { display: none !important; }
+        .sfss-print-only .print-only-signature { display: table !important; }
+
+        /* Grand total row emphasis */
+        .sfss-print-only .grand-total td,
+        .sfss-print-only tr.grand-total td {
+            font-weight: 700 !important;
+            border-top: 2px solid #000 !important;
+            font-size: 11px !important;
+        }
     }
 </style>
+
 
 <div class="stock-page">
 <!-- CONTROLS - OUTSIDE PRINTABLE AREA -->
@@ -2927,36 +3022,16 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     <!-- FUEL TAB CONTENT -->
     <div id="fuel-tab" class="tab-content <?= $active_tab === 'fuel' ? 'active' : '' ?>">
         <div class="container">
-            <div class="header">
-                <h1>FUEL SALES REPORT</h1>
-                <h1 style="font-size: 18px; margin-top: 5px;"><?= htmlspecialchars($shift_label_display) ?></h1>
-                <p><?= htmlspecialchars($station_name) ?><?= $station_location ? ' — ' . htmlspecialchars($station_location) : '' ?></p>
-            </div>
-
-            <!-- Report Metadata -->
-            <div class="table-container" style="margin-bottom:18px;">
-                <table style="width:100%;border-collapse:collapse;">
-                    <tbody>
-                        <tr>
-                            <td style="padding:5px 10px;width:18%;font-weight:700;border:1px solid #ddd;">Shift</td>
-                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= htmlspecialchars($shift_label_display) ?></td>
-                            <td style="padding:5px 10px;width:18%;font-weight:700;border:1px solid #ddd;">Date Range</td>
-                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= htmlspecialchars($report_period_label) ?></td>
-                        </tr>
-                        <tr>
-                            <td style="padding:5px 10px;font-weight:700;border:1px solid #ddd;">Cashier</td>
-                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= htmlspecialchars($cashier_name) ?></td>
-                            <td style="padding:5px 10px;font-weight:700;border:1px solid #ddd;">Time Generated</td>
-                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= date('h:i A') ?></td>
-                        </tr>
-                        <tr>
-                            <td style="padding:5px 10px;font-weight:700;border:1px solid #ddd;">Generated By</td>
-                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= htmlspecialchars($cashier_name) ?></td>
-                            <td style="padding:5px 10px;font-weight:700;border:1px solid #ddd;">Prepared By</td>
-                            <td style="padding:5px 10px;border:1px solid #ddd;color:#999;">________________________</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="header" style="text-align:center; margin-bottom:14px; border-bottom:2px solid #002F6C; padding-bottom:8px;">
+                <h1 style="font-size:16px; font-weight:800; color:#002F6C; margin:0 0 3px 0; letter-spacing:0.5px; font-family:'Segoe UI', sans-serif;">FUEL SALES REPORT</h1>
+                <div style="font-size:12px; font-weight:700; color:#1e293b; margin-bottom:5px;">
+                    <?= htmlspecialchars($station_name) ?><?= $station_location ? ' — ' . htmlspecialchars($station_location) : '' ?>
+                </div>
+                <div style="font-size:11px; color:#334155; font-weight:600; display:flex; justify-content:center; gap:16px; flex-wrap:wrap;">
+                    <span><strong>Date:</strong> <?= htmlspecialchars($report_period_label) ?></span>
+                    <span>•</span>
+                    <span><strong>Shift:</strong> <?= htmlspecialchars($shift_label_display) ?></span>
+                </div>
             </div>
 
         <div class="content">
@@ -3271,6 +3346,20 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             </div>
             <?php endif; ?>
 
+            <!-- PREPARED BY SIGNATURE -->
+            <table class="print-only-signature" style="width:100%; margin-top:15px; page-break-inside:avoid; border:none; border-collapse:collapse;">
+                <tr>
+                    <td style="border:none;"></td>
+                    <td style="border:none; width:220px; text-align:center;">
+                        <div style="font-size:10px; font-weight:700; color:#333; margin-bottom:25px;">PREPARED BY:</div>
+                        <div style="border-top:1px solid #000; padding-top:4px; font-weight:700; font-size:11px; color:#000;">
+                            <?= htmlspecialchars($cashier_name) ?>
+                        </div>
+                        <div style="font-size:9.5px; color:#555; margin-top:2px;">Staff</div>
+                    </td>
+                </tr>
+            </table>
+
             </div>
         </div>
     </div>
@@ -3280,30 +3369,16 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     <!-- MERCHANDISE TAB CONTENT -->
     <div id="merchandise-tab" class="tab-content <?= $active_tab === 'merchandise' ? 'active' : '' ?>">
         <div class="container">
-            <div class="header">
-                <h1>MERCHANDISE & SERVICE SALES REPORT</h1>
-                <h1 style="font-size: 18px; margin-top: 5px;"><?= htmlspecialchars($shift_label_display) ?></h1>
-                <p><?= htmlspecialchars($station_name) ?><?= $station_location ? ' — ' . htmlspecialchars($station_location) : '' ?></p>
-            </div>
-
-            <!-- Report Metadata -->
-            <div class="table-container" style="margin-bottom:18px;">
-                <table style="width:100%;border-collapse:collapse;">
-                    <tbody>
-                        <tr>
-                            <td style="padding:5px 10px;width:18%;font-weight:700;border:1px solid #ddd;">Shift</td>
-                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= htmlspecialchars($shift_label_display) ?></td>
-                            <td style="padding:5px 10px;width:18%;font-weight:700;border:1px solid #ddd;">Date Range</td>
-                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= htmlspecialchars($report_period_label) ?></td>
-                        </tr>
-                        <tr>
-                            <td style="padding:5px 10px;font-weight:700;border:1px solid #ddd;">Cashier</td>
-                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= htmlspecialchars($cashier_name) ?></td>
-                            <td style="padding:5px 10px;font-weight:700;border:1px solid #ddd;">Time Generated</td>
-                            <td style="padding:5px 10px;border:1px solid #ddd;"><?= date('h:i A') ?></td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="header" style="text-align:center; margin-bottom:14px; border-bottom:2px solid #002F6C; padding-bottom:8px;">
+                <h1 style="font-size:16px; font-weight:800; color:#002F6C; margin:0 0 3px 0; letter-spacing:0.5px; font-family:'Segoe UI', sans-serif;">MERCHANDISE & SERVICE SALES REPORT</h1>
+                <div style="font-size:12px; font-weight:700; color:#1e293b; margin-bottom:5px;">
+                    <?= htmlspecialchars($station_name) ?><?= $station_location ? ' — ' . htmlspecialchars($station_location) : '' ?>
+                </div>
+                <div style="font-size:11px; color:#334155; font-weight:600; display:flex; justify-content:center; gap:16px; flex-wrap:wrap;">
+                    <span><strong>Date:</strong> <?= htmlspecialchars($report_period_label) ?></span>
+                    <span>•</span>
+                    <span><strong>Shift:</strong> <?= htmlspecialchars($shift_label_display) ?></span>
+                </div>
             </div>
 
             <div class="content">
@@ -3417,6 +3492,20 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                         </tbody>
                     </table>
                 </div>
+
+                <!-- PREPARED BY SIGNATURE -->
+                <table class="print-only-signature" style="width:100%; margin-top:15px; page-break-inside:avoid; border:none; border-collapse:collapse;">
+                    <tr>
+                        <td style="border:none;"></td>
+                        <td style="border:none; width:220px; text-align:center;">
+                            <div style="font-size:10px; font-weight:700; color:#333; margin-bottom:25px;">PREPARED BY:</div>
+                            <div style="border-top:1px solid #000; padding-top:4px; font-weight:700; font-size:11px; color:#000;">
+                                <?= htmlspecialchars($cashier_name) ?>
+                            </div>
+                            <div style="font-size:9.5px; color:#555; margin-top:2px;">Staff</div>
+                        </td>
+                    </tr>
+                </table>
 
             </div><!-- end .content -->
         </div><!-- end .container -->
@@ -3613,6 +3702,10 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
         document.body.appendChild(printDiv);
 
+        // Hide floating elements like scroll button during print
+        var scrollBtn = document.getElementById('toggleScrollBtn');
+        if (scrollBtn) scrollBtn.style.setProperty('display', 'none', 'important');
+
         setTimeout(function() {
             window.print();
 
@@ -3620,6 +3713,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 var p = document.querySelector('.sfss-print-only');
                 if (p) p.remove();
                 document.title = origTitle;
+                if (scrollBtn) scrollBtn.style.setProperty('display', 'flex', 'important');
                 window.removeEventListener('afterprint', cleanup);
                 if (typeof afterPrint === 'function') afterPrint();
             };

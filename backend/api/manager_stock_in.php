@@ -3,8 +3,8 @@
  * Manager Stock-In API
  * Finalizes pending merchandise and fuel deliveries recorded by staff.
  */
-require_once '../lib.php';
-require_once '../../public/db_connect.php';
+require_once __DIR__ . '/../lib.php';
+require_once __DIR__ . '/../../public/db_connect.php';
 
 header('Content-Type: application/json');
 
@@ -203,15 +203,24 @@ function approve_merchandise_stock_in(PDO $pdo, array $me, int $station_id, arra
     $total_received = 0;
     $records = [];
 
+    // Determine if inventory_products table is usable (once per call)
+    $inv_products_exists = false;
+    try {
+        $pdo->query("SELECT COUNT(*) FROM inventory_products LIMIT 1");
+        $inv_products_exists = true;
+    } catch (Exception $ignored) {
+        $inv_products_exists = false;
+    }
+
     $pdo->beginTransaction();
     try {
         foreach ($rows as $row) {
             $delivery_id = (int)$row['delivery_id'];
             $posted = $items[$delivery_id];
             $product_id = (int)$row['product_id'];
-            
+
             if ($product_id <= 0) {
-                $product_id = resolve_or_create_merchandise_product($pdo, $station_id, $row, $posted);
+                $product_id = resolve_or_create_merchandise_product($pdo, $station_id, $row, $posted, $inv_products_exists);
             }
 
             $qty_ordered = (int)round((float)($row['expected_quantity'] ?: $row['quantity']));
@@ -225,7 +234,7 @@ function approve_merchandise_stock_in(PDO $pdo, array $me, int $station_id, arra
             }
 
             $unit_cost = round((float)($row['cost_price'] ?? 0), 2);
-            $stock_before = merchandise_stock_before($pdo, $station_id, $product_id);
+            $stock_before = merchandise_stock_before($pdo, $station_id, $product_id, $inv_products_exists);
             $stock_after = $stock_before + $qty_received;
             $qty_variance = $qty_received - $qty_ordered;
             $condition = condition_from_variance($qty_received, $qty_ordered, (float)($row['damaged_quantity'] ?? 0));
@@ -233,15 +242,32 @@ function approve_merchandise_stock_in(PDO $pdo, array $me, int $station_id, arra
             $total_cost = round($qty_received * $unit_cost, 2);
 
             upsert_station_inventory($pdo, $station_id, $product_id, $qty_received, $unit_cost, $selling_price, $row['unit_display'] ?: $row['unit']);
-            $pdo->prepare("
-                UPDATE inventory_products
-                SET stock = COALESCE(stock, 0) + ?,
-                    stock_quantity = COALESCE(stock_quantity, 0) + ?,
-                    unit_cost = ?,
-                    unit_price = ?,
-                    updated_at = NOW()
-                WHERE id = ?
-            ")->execute([$qty_received, $qty_received, $unit_cost, $selling_price, $product_id]);
+
+            // Update inventory_products only if the table exists
+            if ($inv_products_exists && $product_id > 0) {
+                try {
+                    $pdo->prepare("
+                        UPDATE inventory_products
+                        SET stock = COALESCE(stock, 0) + ?,
+                            stock_quantity = COALESCE(stock_quantity, 0) + ?,
+                            unit_cost = ?,
+                            unit_price = ?,
+                            updated_at = NOW()
+                        WHERE id = ?
+                    ")->execute([$qty_received, $qty_received, $unit_cost, $selling_price, $product_id]);
+                } catch (Exception $ignored) {}
+            } else {
+                // Update products table as fallback
+                try {
+                    $pdo->prepare("
+                        UPDATE products
+                        SET current_stock = COALESCE(current_stock, 0) + ?,
+                            price = CASE WHEN ? > 0 THEN ? ELSE price END,
+                            updated_at = NOW()
+                        WHERE id = ?
+                    ")->execute([$qty_received, $selling_price, $selling_price, $product_id]);
+                } catch (Exception $ignored) {}
+            }
 
             // Insert inventory log (optional - don't fail the entire transaction if this fails)
             try {
@@ -261,7 +287,6 @@ function approve_merchandise_stock_in(PDO $pdo, array $me, int $station_id, arra
                     "Manager Stock-In | Batch: {$batch_id} | PO: {$po_key}"
                 ]);
             } catch (Exception $log_error) {
-                // Log the error but don't fail the transaction
                 error_log("Inventory log insert failed for product {$product_id}: " . $log_error->getMessage());
             }
 
@@ -318,7 +343,7 @@ function approve_merchandise_stock_in(PDO $pdo, array $me, int $station_id, arra
 
         mark_deliveries_complete($pdo, $ids, $station_id, (int)$me['id'], $batch_id);
         update_merchandise_po_status($pdo, $station_id, $po_key, $completed_status, (int)$me['id']);
-        notify_stock_in_users($pdo, $station_id, $staff_ids, 'Merchandise Stock-In Completed', "PO {$po_key} has been stocked in. Batch {$batch_id}.", 'manager_inventory_history.php?tab=stock_in');
+        notify_stock_in_users($pdo, $station_id, $staff_ids, 'Merchandise Stock-In Completed', "PO {$po_key} has been stocked in. Batch {$batch_id}.", 'admin_inventory_history.php?tab=stock_in');
         audit_stock_in($pdo, $me, 'Merchandise Stock-In', "Approved merchandise stock-in for {$po_key}; batch {$batch_id}; total qty {$total_received}.", 'deliveries_oversight', $ids[0] ?? null);
 
         if (function_exists('log_activity')) {
@@ -418,7 +443,7 @@ function approve_fuel_stock_in(PDO $pdo, array $me, int $station_id, array $inpu
         }
 
         mark_deliveries_complete($pdo, $ids, $station_id, (int)$me['id'], $batch_id);
-        notify_stock_in_users($pdo, $station_id, $staff_ids, 'Fuel Stock-In Completed', "Fuel PO {$po_key} has been stocked in. Batch {$batch_id}.", 'manager_inventory_history.php?tab=stock_in');
+        notify_stock_in_users($pdo, $station_id, $staff_ids, 'Fuel Stock-In Completed', "Fuel PO {$po_key} has been stocked in. Batch {$batch_id}.", 'admin_inventory_history.php?tab=stock_in');
         audit_stock_in($pdo, $me, 'Fuel Stock-In', "Approved fuel stock-in for {$po_key}; batch {$batch_id}; total liters {$total_received}.", 'deliveries_oversight', $ids[0] ?? null);
 
         if (function_exists('log_activity')) {
@@ -463,55 +488,107 @@ function pending_stock_in_status_sql(): string
 
 function fetch_pending_merchandise_rows(PDO $pdo, int $station_id, array $delivery_ids): array
 {
+    // Check if inventory_products table is usable (not just exists but also accessible)
+    $inv_products_exists = false;
+    try {
+        $pdo->query("SELECT COUNT(*) FROM inventory_products LIMIT 1");
+        $inv_products_exists = true;
+    } catch (Exception $ignored) {
+        $inv_products_exists = false;
+    }
+
     $placeholders = implode(',', array_fill(0, count($delivery_ids), '?'));
-    $sql = "
-        SELECT
-            do2.id AS delivery_id,
-            do2.delivery_ref,
-            COALESCE(NULLIF(do2.source_ref, ''), do2.delivery_ref) AS po_key,
-            do2.source_ref,
-            do2.supplier,
-            do2.product,
-            do2.quantity,
-            do2.expected_quantity,
-            do2.actual_quantity,
-            do2.damaged_quantity,
-            do2.unit,
-            do2.unit_price,
-            do2.unit_cost,
-            do2.delivery_date,
-            do2.dr_number,
-            do2.encoded_by,
-            ip.id AS product_id,
-            ip.sku,
-            ip.category,
-            COALESCE(si.unit, ip.size, do2.unit, 'pcs') AS unit_display,
-            COALESCE(do2.unit_cost, do2.unit_price,
-                (SELECT po.unit_price FROM purchase_orders po
+
+    if ($inv_products_exists) {
+        $sql = "
+            SELECT
+                do2.id AS delivery_id,
+                do2.delivery_ref,
+                COALESCE(NULLIF(do2.source_ref, ''), do2.delivery_ref) AS po_key,
+                do2.source_ref,
+                do2.supplier,
+                do2.product,
+                do2.quantity,
+                do2.expected_quantity,
+                do2.actual_quantity,
+                do2.damaged_quantity,
+                do2.unit,
+                do2.unit_price,
+                do2.unit_cost,
+                do2.delivery_date,
+                do2.dr_number,
+                do2.encoded_by,
+                ip.id AS product_id,
+                ip.sku,
+                ip.category,
+                COALESCE(si.unit, ip.size, do2.unit, 'pcs') AS unit_display,
+                COALESCE(do2.unit_cost, do2.unit_price,
+                    (SELECT po.unit_price FROM purchase_orders po
+                     WHERE po.station_id = do2.station_id
+                       AND (po.po_number = do2.source_ref OR po.batch_id = do2.source_ref)
+                       AND LOWER(TRIM(po.product_name)) = LOWER(TRIM(do2.product))
+                     ORDER BY po.id DESC LIMIT 1),
+                    ip.unit_cost, 0
+                ) AS cost_price,
+                (SELECT po.id FROM purchase_orders po
                  WHERE po.station_id = do2.station_id
                    AND (po.po_number = do2.source_ref OR po.batch_id = do2.source_ref)
                    AND LOWER(TRIM(po.product_name)) = LOWER(TRIM(do2.product))
-                 ORDER BY po.id DESC LIMIT 1),
-                ip.unit_cost, 0
-            ) AS cost_price,
-            (SELECT po.id FROM purchase_orders po
-             WHERE po.station_id = do2.station_id
-               AND (po.po_number = do2.source_ref OR po.batch_id = do2.source_ref)
-               AND LOWER(TRIM(po.product_name)) = LOWER(TRIM(do2.product))
-             ORDER BY po.id DESC LIMIT 1) AS po_id
-        FROM deliveries_oversight do2
-        LEFT JOIN inventory_products ip
-               ON ip.station_id = do2.station_id
-              AND LOWER(TRIM(ip.product_name)) = LOWER(TRIM(do2.product))
-              AND LOWER(COALESCE(ip.category, '')) NOT IN ('fuel','fuels')
-        LEFT JOIN station_inventory si
-               ON si.product_id = ip.id AND si.station_id = do2.station_id
-        WHERE do2.id IN ({$placeholders})
-          AND do2.station_id = ?
-          AND do2.delivery_type = 'merchandise'
-          AND do2.status IN (" . pending_stock_in_status_sql() . ")
-        ORDER BY do2.id ASC
-    ";
+                 ORDER BY po.id DESC LIMIT 1) AS po_id
+            FROM deliveries_oversight do2
+            LEFT JOIN inventory_products ip
+                   ON ip.station_id = do2.station_id
+                  AND LOWER(TRIM(ip.product_name)) = LOWER(TRIM(do2.product))
+                  AND LOWER(COALESCE(ip.category, '')) NOT IN ('fuel','fuels')
+            LEFT JOIN station_inventory si
+                   ON si.product_id = ip.id AND si.station_id = do2.station_id
+            WHERE do2.id IN ({$placeholders})
+              AND do2.station_id = ?
+              AND do2.delivery_type = 'merchandise'
+              AND do2.status IN (" . pending_stock_in_status_sql() . ")
+            ORDER BY do2.id ASC
+        ";
+    } else {
+        $sql = "
+            SELECT
+                do2.id AS delivery_id,
+                do2.delivery_ref,
+                COALESCE(NULLIF(do2.source_ref, ''), do2.delivery_ref) AS po_key,
+                do2.source_ref,
+                do2.supplier,
+                do2.product,
+                do2.quantity,
+                do2.expected_quantity,
+                do2.actual_quantity,
+                do2.damaged_quantity,
+                do2.unit,
+                do2.unit_price,
+                do2.unit_cost,
+                do2.delivery_date,
+                do2.dr_number,
+                do2.encoded_by,
+                COALESCE(p.id, 0) AS product_id,
+                '' AS sku,
+                COALESCE(pc.name, 'Merchandise') AS category,
+                COALESCE(p.unit, do2.unit, 'pcs') AS unit_display,
+                COALESCE(do2.unit_cost, do2.unit_price, p.cost, 0) AS cost_price,
+                (SELECT po.id FROM purchase_orders po
+                 WHERE po.station_id = do2.station_id
+                   AND (po.po_number = do2.source_ref OR po.batch_id = do2.source_ref)
+                   AND LOWER(TRIM(po.product_name)) = LOWER(TRIM(do2.product))
+                 ORDER BY po.id DESC LIMIT 1) AS po_id
+            FROM deliveries_oversight do2
+            LEFT JOIN products p
+                   ON LOWER(TRIM(p.name)) = LOWER(TRIM(do2.product))
+            LEFT JOIN product_categories pc ON p.category_id = pc.id
+            WHERE do2.id IN ({$placeholders})
+              AND do2.station_id = ?
+              AND do2.delivery_type = 'merchandise'
+              AND do2.status IN (" . pending_stock_in_status_sql() . ")
+            ORDER BY do2.id ASC
+        ";
+    }
+
     $stmt = $pdo->prepare($sql);
     $stmt->execute(array_merge($delivery_ids, [$station_id]));
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -638,7 +715,7 @@ function condition_from_variance(float $received, float $ordered, float $damaged
     return 'Good';
 }
 
-function resolve_or_create_merchandise_product(PDO $pdo, int $station_id, array $row, array $posted): int
+function resolve_or_create_merchandise_product(PDO $pdo, int $station_id, array $row, array $posted, bool $inv_products_exists = true): int
 {
     $name = trim((string)($row['product'] ?? ''));
     if ($name === '') {
@@ -659,54 +736,86 @@ function resolve_or_create_merchandise_product(PDO $pdo, int $station_id, array 
     $cost = round((float)($row['cost_price'] ?? 0), 2);
     $price = round((float)($posted['selling_price'] ?? 0), 2);
 
-    $find = $pdo->prepare("
-        SELECT id
-        FROM inventory_products
-        WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(?))
-          AND LOWER(COALESCE(category, '')) NOT IN ('fuel', 'fuels')
-        ORDER BY
-          CASE WHEN station_id = ? THEN 0 ELSE 1 END,
-          CASE WHEN LOWER(TRIM(COALESCE(category, ''))) = LOWER(TRIM(?)) THEN 0 ELSE 1 END,
-          CASE WHEN LOWER(TRIM(COALESCE(size, ''))) = LOWER(TRIM(?)) THEN 0 ELSE 1 END,
-          id ASC
-        LIMIT 1
-    ");
-    $find->execute([$name, $station_id, $category, $unit]);
-    $existing_id = (int)($find->fetchColumn() ?: 0);
+    // Try inventory_products first (if available)
+    if ($inv_products_exists) {
+        try {
+            $find = $pdo->prepare("
+                SELECT id
+                FROM inventory_products
+                WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(?))
+                  AND LOWER(COALESCE(category, '')) NOT IN ('fuel', 'fuels')
+                ORDER BY
+                  CASE WHEN station_id = ? THEN 0 ELSE 1 END,
+                  CASE WHEN LOWER(TRIM(COALESCE(category, ''))) = LOWER(TRIM(?)) THEN 0 ELSE 1 END,
+                  id ASC
+                LIMIT 1
+            ");
+            $find->execute([$name, $station_id, $category]);
+            $existing_id = (int)($find->fetchColumn() ?: 0);
 
-    if ($existing_id > 0) {
+            if ($existing_id > 0) {
+                $pdo->prepare("
+                    UPDATE inventory_products
+                    SET sku = COALESCE(NULLIF(?, ''), sku),
+                        unit_cost = CASE WHEN ? > 0 THEN ? ELSE unit_cost END,
+                        unit_price = CASE WHEN ? > 0 THEN ? ELSE unit_price END,
+                        updated_at = NOW()
+                    WHERE id = ?
+                ")->execute([$sku, $cost, $cost, $price, $price, $existing_id]);
+                return $existing_id;
+            }
+
+            $pdo->prepare("
+                INSERT INTO inventory_products
+                    (station_id, product_name, sku, category, stock, stock_quantity, unit_cost, unit_price, size, updated_at)
+                VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE
+                    id = LAST_INSERT_ID(id),
+                    sku = COALESCE(NULLIF(VALUES(sku), ''), sku),
+                    unit_cost = CASE WHEN VALUES(unit_cost) > 0 THEN VALUES(unit_cost) ELSE unit_cost END,
+                    unit_price = CASE WHEN VALUES(unit_price) > 0 THEN VALUES(unit_price) ELSE unit_price END,
+                    updated_at = NOW()
+            ")->execute([$station_id, $name, $sku, $category, $cost, $price, $unit]);
+
+            $product_id = (int)$pdo->lastInsertId();
+            if ($product_id > 0) {
+                return $product_id;
+            }
+        } catch (Exception $ignored) {}
+    }
+
+    // Fallback: use products table
+    try {
+        $find = $pdo->prepare("
+            SELECT p.id FROM products p
+            LEFT JOIN product_categories pc ON p.category_id = pc.id
+            WHERE LOWER(TRIM(p.name)) = LOWER(TRIM(?))
+              AND LOWER(COALESCE(pc.name, '')) NOT IN ('fuel', 'fuel products', 'services')
+            LIMIT 1
+        ");
+        $find->execute([$name]);
+        $existing_id = (int)($find->fetchColumn() ?: 0);
+        if ($existing_id > 0) {
+            return $existing_id;
+        }
+
+        // Create new product in products table
         $pdo->prepare("
-            UPDATE inventory_products
-            SET sku = COALESCE(NULLIF(?, ''), sku),
-                unit_cost = CASE WHEN ? > 0 THEN ? ELSE unit_cost END,
-                unit_price = CASE WHEN ? > 0 THEN ? ELSE unit_price END,
-                updated_at = NOW()
-            WHERE id = ?
-        ")->execute([$sku, $cost, $cost, $price, $price, $existing_id]);
-        return $existing_id;
+            INSERT INTO products (name, price, cost, unit, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'active', NOW(), NOW())
+        ")->execute([$name, $price, $cost, $unit]);
+        $product_id = (int)$pdo->lastInsertId();
+        if ($product_id > 0) {
+            return $product_id;
+        }
+    } catch (Exception $e) {
+        error_log("resolve_or_create_merchandise_product fallback failed: " . $e->getMessage());
     }
 
-    $pdo->prepare("
-        INSERT INTO inventory_products
-            (station_id, product_name, sku, category, stock, stock_quantity, unit_cost, unit_price, size, updated_at)
-        VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?, NOW())
-        ON DUPLICATE KEY UPDATE
-            id = LAST_INSERT_ID(id),
-            sku = COALESCE(NULLIF(VALUES(sku), ''), sku),
-            unit_cost = CASE WHEN VALUES(unit_cost) > 0 THEN VALUES(unit_cost) ELSE unit_cost END,
-            unit_price = CASE WHEN VALUES(unit_price) > 0 THEN VALUES(unit_price) ELSE unit_price END,
-            updated_at = NOW()
-    ")->execute([$station_id, $name, $sku, $category, $cost, $price, $unit]);
-
-    $product_id = (int)$pdo->lastInsertId();
-    if ($product_id <= 0) {
-        throw new Exception("Failed to create or locate product '{$name}' in inventory.");
-    }
-
-    return $product_id;
+    throw new Exception("Failed to create or locate product '{$name}' in inventory.");
 }
 
-function merchandise_stock_before(PDO $pdo, int $station_id, int $product_id): int
+function merchandise_stock_before(PDO $pdo, int $station_id, int $product_id, bool $inv_products_exists = true): int
 {
     $stmt = $pdo->prepare("SELECT stock_level FROM station_inventory WHERE station_id = ? AND product_id = ? LIMIT 1 FOR UPDATE");
     $stmt->execute([$station_id, $product_id]);
@@ -715,9 +824,21 @@ function merchandise_stock_before(PDO $pdo, int $station_id, int $product_id): i
         return (int)round((float)$stock);
     }
 
-    $stmt = $pdo->prepare("SELECT COALESCE(stock, 0) FROM inventory_products WHERE id = ? LIMIT 1 FOR UPDATE");
-    $stmt->execute([$product_id]);
-    return (int)round((float)($stmt->fetchColumn() ?: 0));
+    if ($inv_products_exists) {
+        try {
+            $stmt = $pdo->prepare("SELECT COALESCE(stock, 0) FROM inventory_products WHERE id = ? LIMIT 1 FOR UPDATE");
+            $stmt->execute([$product_id]);
+            return (int)round((float)($stmt->fetchColumn() ?: 0));
+        } catch (Exception $ignored) {}
+    }
+
+    try {
+        $stmt = $pdo->prepare("SELECT COALESCE(current_stock, 0) FROM products WHERE id = ? LIMIT 1 FOR UPDATE");
+        $stmt->execute([$product_id]);
+        return (int)round((float)($stmt->fetchColumn() ?: 0));
+    } catch (Exception $ignored) {}
+
+    return 0;
 }
 
 function upsert_station_inventory(PDO $pdo, int $station_id, int $product_id, int $qty, float $cost, float $price, string $unit): void

@@ -763,7 +763,6 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
                     <th style="text-align:right;">Price/L</th>
                     <th style="text-align:center;">Status</th>
                     <th>Last Updated</th>
-                    <th style="text-align:center;width:100px;">Actions</th>
                 </tr>
             </thead>
             <tbody id="fuelTableBody">
@@ -798,11 +797,6 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
                         </span>
                     </td>
                     <td style="font-size:11px;color:#64748b;"><?= $ts_str ?></td>
-                    <td style="text-align:center;">
-                        <button class="int-btn-outline" onclick="viewTankDetails(<?= htmlspecialchars(json_encode($r)) ?>)" title="View Details" style="font-size:11px; padding:6px 16px;">
-                            <i class="fas fa-eye"></i> View
-                        </button>
-                    </td>
                 </tr>
             <?php endforeach; ?>
             </tbody>

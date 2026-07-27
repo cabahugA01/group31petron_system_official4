@@ -168,7 +168,7 @@ try {
             $category_f = trim($_GET['category'] ?? '');
             $search_f   = trim($_GET['search']   ?? '');
 
-            $where  = "WHERE ip.category NOT IN ('Fuel')";
+            $where  = "WHERE ip.category NOT IN ('fuel', 'fuel products')";
             $params = [];
 
             if ($category_f !== '') {
@@ -219,7 +219,7 @@ try {
             $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             // Distinct categories
-            $catStmt = $pdo->query("SELECT DISTINCT category FROM inventory_products WHERE category NOT IN ('Fuel') ORDER BY category");
+            $catStmt = $pdo->query("SELECT DISTINCT category FROM inventory_products WHERE category NOT IN ('fuel', 'fuel products') ORDER BY category");
             $categories = $catStmt->fetchAll(PDO::FETCH_COLUMN);
 
             echo json_encode([

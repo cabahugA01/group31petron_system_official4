@@ -58,7 +58,7 @@ try {
         FROM inventory_products ip
         LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
         WHERE si.id IS NULL
-          AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
+          AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
     ")->execute([$station_id, $station_id]);
 } catch (Exception $e) {}
 
@@ -88,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             try {
                 // Check duplicate
-                $chk = $pdo->prepare("SELECT id FROM inventory_products WHERE LOWER(TRIM(product_name))=LOWER(TRIM(?)) AND LOWER(COALESCE(category,'')) NOT IN ('fuel') LIMIT 1");
+                $chk = $pdo->prepare("SELECT id FROM inventory_products WHERE LOWER(TRIM(product_name))=LOWER(TRIM(?)) AND LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products') LIMIT 1");
                 $chk->execute([$name]);
                 if ($chk->fetchColumn()) {
                     $_SESSION['error'] = "Product '$name' already exists.";
@@ -338,7 +338,7 @@ try {
             WHERE station_id = ?
             GROUP BY product_id
         ) ba ON ba.product_id = ip.id
-        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel')
+        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
         ORDER BY ip.category, ip.product_name
     ");
     $stmt->execute([$station_id, $station_id]);
@@ -365,7 +365,7 @@ try {
 // ── Dynamic categories from DB ─────────────────────────────────────────────
 $categories = [];
 try {
-    $catStmt = $pdo->query("SELECT DISTINCT category FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel') AND category IS NOT NULL AND category <> '' ORDER BY category");
+    $catStmt = $pdo->query("SELECT DISTINCT category FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products') AND category IS NOT NULL AND category <> '' ORDER BY category");
     $categories = $catStmt->fetchAll(PDO::FETCH_COLUMN);
 } catch (Exception $e) {}
 
@@ -585,16 +585,15 @@ include __DIR__ . '/../partials/header.php';
             <table class="table pm-table" id="mainTable">
                 <thead>
                     <tr>
-                        <th>ID</th>
-                        <th>Name</th>
+                        <th>SKU / Code</th>
+                        <th>Product Name</th>
                         <th>Category</th>
-                        <th>SKU</th>
-                        <th>Unit Cost</th>
-                        <th>Unit Price</th>
-                        <th>Stock</th>
-                        <th>Batch ID</th>
+                        <th>Brand / Supplier</th>
+                        <th>UOM</th>
+                        <th>Default Selling Price</th>
+                        <th>Total Stock</th>
                         <th>Status</th>
-                        <th class="no-print" style="">Actions</th>
+                        <th class="no-print" style="text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="merchTableBody">
@@ -606,6 +605,9 @@ include __DIR__ . '/../partials/header.php';
                     $stockColor  = $stock <= 0 ? '#dc3545' : ($stock <= (int)($p['min_stock'] ?? 10) ? '#ff9500' : '#28a745');
                     $statusColor = $isActive ? '#28a745' : ($isPending ? '#fd7e14' : '#dc3545');
                     $pid_batches = $product_batches[(int)$p['id']] ?? [];
+                    $bCount      = count($pid_batches);
+                    $uom         = htmlspecialchars($p['unit'] ?? $p['size'] ?? 'pcs');
+                    $brand       = htmlspecialchars($p['brand'] ?? $p['supplier'] ?? 'Petron Corporation');
                 ?>
                 <tr class="product-row"
                     data-id="<?php echo (int)$p['id']; ?>"
@@ -613,8 +615,8 @@ include __DIR__ . '/../partials/header.php';
                     data-sku="<?php echo strtolower(htmlspecialchars($p['sku'] ?? '')); ?>"
                     data-cat="<?php echo strtolower(htmlspecialchars($p['category'] ?? '')); ?>">
 
-                    <!-- 1. ID -->
-                    <td style="color:#6c757d;font-size:12px;">#<?php echo (int)$p['id']; ?></td>
+                    <!-- 1. SKU -->
+                    <td style="color:#002F70;font-size:12px;font-family:monospace;font-weight:700;"><?php echo htmlspecialchars($p['sku'] ?? ('P' . str_pad((string)$p['id'], 4, '0', STR_PAD_LEFT))); ?></td>
 
                     <!-- 2. Name -->
                     <td><strong><?php echo htmlspecialchars($p['product_name']); ?></strong></td>
@@ -622,40 +624,15 @@ include __DIR__ . '/../partials/header.php';
                     <!-- 3. Category -->
                     <td><span class="badge-cat"><?php echo htmlspecialchars($p['category'] ?? 'Merchandise'); ?></span></td>
 
-                    <!-- 4. SKU -->
-                    <td style="color:#6c757d;font-size:12px;font-family:monospace;"><?php echo htmlspecialchars($p['sku'] ?? '—'); ?></td>
+                    <!-- 4. Brand / Supplier -->
+                    <td style="color:#475569;font-size:13px;"><?php echo $brand; ?></td>
 
-                    <!-- 5. Unit Cost -->
-                    <td style="color:#6c757d;">₱<?php echo number_format((float)$p['unit_cost'], 2); ?></td>
+                    <!-- 5. UOM -->
+                    <td style="font-weight:600;color:#64748b;"><?php echo $uom; ?></td>
 
-                    <!-- 6. Unit Price -->
+                    <!-- 6. Default Selling Price -->
                     <td style="color:#28a745;font-weight:700;">₱<?php echo number_format((float)$p['unit_price'], 2); ?></td>
 
-                    <!-- 7. Stock -->
-                    <td>
-                        <span style="color:<?php echo $stockColor; ?>;font-weight:700;"><?php echo number_format($stock); ?></span>
-                    </td>
-
-                    <!-- 8. Batch ID -->
-                    <td>
-                        <?php if (!empty($pid_batches)): ?>
-                        <div class="batch-id-list" onclick="toggleBatchRow(<?php echo (int)$p['id']; ?>)" title="Click to expand batch details">
-                            <?php foreach ($pid_batches as $pb):
-                                $bActive  = $pb['status'] === 'active';
-                                $bColor   = $bActive ? '#5b21b6' : '#9ca3af';
-                                $bBg      = $bActive ? '#ede9fe' : '#f3f4f6';
-                                $bBorder  = $bActive ? '#c4b5fd' : '#e5e7eb';
-                            ?>
-                            <span class="batch-id-tag" style="background:<?php echo $bBg; ?>;color:<?php echo $bColor; ?>;border-color:<?php echo $bBorder; ?>;">
-                                <?php echo htmlspecialchars($pb['batch_number']); ?>
-                                <span class="batch-id-qty"><?php echo number_format((int)$pb['remaining_qty']); ?> pcs</span>
-                            </span>
-                            <?php endforeach; ?>
-                            <span class="batch-expand-hint"><i class="fas fa-chevron-down"></i> details</span>
-                        </div>
-                        <?php else: ?>
-                        <span class="batch-pill"><i class="fas fa-truck" style="opacity:.4;"></i> Via delivery</span>
-                        <?php endif; ?>
                     </td>
 
                     <!-- 9. Status -->

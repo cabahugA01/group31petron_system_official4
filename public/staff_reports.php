@@ -2546,7 +2546,7 @@ require_once __DIR__ . '/../partials/header.php';
     @media print{
         /* Set page size and hide system elements */
         @page {
-            size: legal portrait;
+            size: A4 portrait;
             margin: 0.3in 0.4in;
         }
         
@@ -2905,7 +2905,7 @@ require_once __DIR__ . '/../partials/header.php';
     @media print{
         /* Set page size and hide system elements */
         @page {
-            size: legal portrait;
+            size: A4 portrait;
             margin: 0.3in 0.4in;
         }
         

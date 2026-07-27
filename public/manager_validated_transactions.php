@@ -2506,7 +2506,7 @@ function exportTable(format) {
         doc.open();
         doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Validated Transactions Report</title>
         <style>
-            @page{size:legal landscape;margin:.3in .4in;}
+            @page{size: A4 landscape;margin:.3in .4in;}
             *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;box-sizing:border-box;}
             body{font-family:Arial,sans-serif;font-size:11px;color:#000;background:white;margin:0;padding:20px;}
             .header-container{display:flex;align-items:center;gap:15px;border-bottom:2px solid #002F70;padding-bottom:12px;margin-bottom:15px;}

@@ -828,57 +828,237 @@ $qr_customer_disp = $customer !== 'Walk-in Customer' ? $customer : 'Walk-in';
 $http_host = $_SERVER['HTTP_HOST'] ?? 'localhost';
 $scheme    = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) ? 'https' : 'http';
 
-// Check if we are accessed via localhost
-$is_localhost = in_array(strtolower(explode(':', $http_host)[0]), ['localhost', '127.0.0.1', '::1']);
+// Check for explicit public domain / base URL config from environment, constants, GET parameter, or system database
+$custom_public_base = defined('PUBLIC_BASE_URL') ? PUBLIC_BASE_URL : (getenv('PUBLIC_BASE_URL') ?: (getenv('SYSTEM_PUBLIC_URL') ?: ($_GET['public_url'] ?? '')));
 
-$qr_host = $http_host;
+if (!empty($custom_public_base)) {
+    $verify_base_url = rtrim($custom_public_base, '/');
+} else {
+    // Check if accessed via localhost/127.0.0.1
+    $is_localhost = in_array(strtolower(explode(':', $http_host)[0]), ['localhost', '127.0.0.1', '::1']);
+    $qr_host = $http_host;
 
-// If accessed via localhost, try to replace with actual LAN IP so phones can scan it
-if ($is_localhost) {
-    $lan_ip = '';
-    
-    // First attempt: reliable socket approach (finds the IP used to reach the internet)
-    try {
-        $sock = @fsockopen('8.8.8.8', 53, $en, $es, 0.5);
-        if ($sock) {
-            $lan_ip = explode(':', stream_socket_get_name($sock, false))[0];
-            fclose($sock);
+    if ($is_localhost) {
+        $lan_ip = '';
+
+        // 1. Try Windows PowerShell Get-NetIPAddress to fetch real physical Wi-Fi/Ethernet IPv4 address
+        if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+            try {
+                $ps_cmd = 'powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.IPAddress -notlike \'127.*\' -and $_.IPAddress -notlike \'169.254.*\' -and $_.IPAddress -notlike \'192.168.56.*\'}).IPAddress" 2>NUL';
+                $ps_out = shell_exec($ps_cmd);
+                if (!empty($ps_out)) {
+                    $ips = array_filter(array_map('trim', explode("\n", $ps_out)));
+                    foreach ($ips as $ip_candidate) {
+                        if (filter_var($ip_candidate, FILTER_VALIDATE_IP)) {
+                            $lan_ip = $ip_candidate;
+                            break;
+                        }
+                    }
+                }
+            } catch (Exception $e) {}
         }
-    } catch (Exception $e) {}
 
-    // Second attempt: DNS lookup
-    if (empty($lan_ip) || str_starts_with($lan_ip, '127.') || str_starts_with($lan_ip, '169.254.')) {
-        try {
-            $host_ips = gethostbynamel(gethostname());
-            if (is_array($host_ips)) {
-                foreach ($host_ips as $ip) {
-                    if (!str_starts_with($ip, '127.') && !str_starts_with($ip, '169.254.') && filter_var($ip, FILTER_VALIDATE_IP)) {
-                        $lan_ip = $ip;
-                        break;
+        // 2. Socket approach (finds default gateway interface IP)
+        if (empty($lan_ip)) {
+            try {
+                $sock = @fsockopen('8.8.8.8', 53, $en, $es, 0.5);
+                if ($sock) {
+                    $lan_ip = explode(':', stream_socket_get_name($sock, false))[0];
+                    fclose($sock);
+                }
+            } catch (Exception $e) {}
+        }
+
+        // 3. DNS Hostname lookup
+        if (empty($lan_ip) || str_starts_with($lan_ip, '127.') || str_starts_with($lan_ip, '169.254.')) {
+            try {
+                $host_ips = gethostbynamel(gethostname());
+                if (is_array($host_ips)) {
+                    foreach ($host_ips as $ip) {
+                        if (!str_starts_with($ip, '127.') && !str_starts_with($ip, '169.254.') && !str_starts_with($ip, '192.168.56.') && filter_var($ip, FILTER_VALIDATE_IP)) {
+                            $lan_ip = $ip;
+                            break;
+                        }
+                    }
+                }
+            } catch (Exception $e) {}
+        }
+
+        if (!empty($lan_ip) && !str_starts_with($lan_ip, '169.254.')) {
+            $port_suffix = str_contains($http_host, ':') ? (':' . explode(':', $http_host)[1]) : '';
+            $qr_host = $lan_ip . $port_suffix;
+        }
+    }
+
+    $script_path = $_SERVER['SCRIPT_NAME'] ?? '/public/receipt.php';
+    $base_dir    = rtrim(dirname($script_path), '/\\');
+    $verify_base_url = $scheme . '://' . $qr_host . $base_dir;
+}
+
+$verify_type = $sale['transaction_type'] ?? 'merchandise';
+$verify_url  = $verify_base_url . '/verify.php?id=' . urlencode($txn_id);
+
+// ── Native Local Pure PHP PNG QR Code Generator (Version 5-L, Ultra-Fast Scanning) ────────
+if (!function_exists('rp_qr_png')) {
+    function rp_qr_gf_mul(int $x, int $y): int {
+        $z = 0;
+        for ($i = 7; $i >= 0; $i--) {
+            $z = (($z << 1) ^ (($z >> 7) * 0x11D)) & 0xFF;
+            if ((($y >> $i) & 1) !== 0) $z ^= $x;
+        }
+        return $z;
+    }
+    function rp_qr_rs_generator(int $degree): array {
+        $result = array_fill(0, $degree, 0);
+        $result[$degree - 1] = 1;
+        $root = 1;
+        for ($i = 0; $i < $degree; $i++) {
+            for ($j = 0; $j < $degree; $j++) {
+                $result[$j] = rp_qr_gf_mul($result[$j], $root);
+                if ($j + 1 < $degree) $result[$j] ^= $result[$j + 1];
+            }
+            $root = rp_qr_gf_mul($root, 0x02);
+        }
+        return $result;
+    }
+    function rp_qr_rs_remainder(array $data, int $degree): array {
+        $gen = rp_qr_rs_generator($degree);
+        $rem = array_fill(0, $degree, 0);
+        foreach ($data as $byte) {
+            $factor = $byte ^ $rem[0];
+            array_shift($rem);
+            $rem[] = 0;
+            for ($i = 0; $i < $degree; $i++) {
+                $rem[$i] ^= rp_qr_gf_mul($gen[$i], $factor);
+            }
+        }
+        return $rem;
+    }
+    function rp_qr_set(array &$modules, array &$reserved, int $x, int $y, bool $dark, bool $is_function = true): void {
+        $size = count($modules);
+        if ($x < 0 || $y < 0 || $x >= $size || $y >= $size) return;
+        $modules[$y][$x] = $dark;
+        if ($is_function) $reserved[$y][$x] = true;
+    }
+    function rp_qr_finder(array &$modules, array &$reserved, int $x, int $y): void {
+        for ($dy = -1; $dy <= 7; $dy++) {
+            for ($dx = -1; $dx <= 7; $dx++) {
+                $dark = $dx >= 0 && $dx <= 6 && $dy >= 0 && $dy <= 6 && ($dx === 0 || $dx === 6 || $dy === 0 || $dy === 6 || ($dx >= 2 && $dx <= 4 && $dy >= 2 && $dy <= 4));
+                rp_qr_set($modules, $reserved, $x + $dx, $y + $dy, $dark);
+            }
+        }
+    }
+    function rp_qr_alignment(array &$modules, array &$reserved, int $cx, int $cy): void {
+        for ($dy = -2; $dy <= 2; $dy++) {
+            for ($dx = -2; $dx <= 2; $dx++) {
+                rp_qr_set($modules, $reserved, $cx + $dx, $cy + $dy, max(abs($dx), abs($dy)) !== 1);
+            }
+        }
+    }
+    function rp_qr_append_bits(array &$bits, int $value, int $length): void {
+        for ($i = $length - 1; $i >= 0; $i--) $bits[] = (($value >> $i) & 1) !== 0;
+    }
+    function rp_qr_format_bits(): int {
+        $data = 1 << 3; $rem = $data;
+        for ($i = 0; $i < 10; $i++) {
+            $rem <<= 1;
+            if ((($rem >> 10) & 1) !== 0) $rem ^= 0x537;
+        }
+        return (($data << 10) | ($rem & 0x3FF)) ^ 0x5412;
+    }
+    function rp_qr_png(string $text): string {
+        if (!function_exists('imagecreatetruecolor')) return '';
+        $size = 37; $data_codewords = 108; $ecc_codewords = 26;
+        $text = substr($text, 0, 106);
+        $bits = [];
+        rp_qr_append_bits($bits, 0x4, 4);
+        rp_qr_append_bits($bits, strlen($text), 8);
+        for ($i = 0, $n = strlen($text); $i < $n; $i++) rp_qr_append_bits($bits, ord($text[$i]), 8);
+        $capacity_bits = $data_codewords * 8;
+        for ($i = 0, $n = min(4, $capacity_bits - count($bits)); $i < $n; $i++) $bits[] = false;
+        while ((count($bits) % 8) !== 0) $bits[] = false;
+        $data = [];
+        for ($i = 0; $i < count($bits); $i += 8) {
+            $byte = 0;
+            for ($j = 0; $j < 8; $j++) $byte = ($byte << 1) | ($bits[$i + $j] ? 1 : 0);
+            $data[] = $byte;
+        }
+        for ($pad = 0xEC; count($data) < $data_codewords; $pad ^= 0xFD) $data[] = $pad;
+        $codewords = array_merge($data, rp_qr_rs_remainder($data, $ecc_codewords));
+        $modules = array_fill(0, $size, array_fill(0, $size, false));
+        $reserved = array_fill(0, $size, array_fill(0, $size, false));
+        rp_qr_finder($modules, $reserved, 0, 0);
+        rp_qr_finder($modules, $reserved, $size - 7, 0);
+        rp_qr_finder($modules, $reserved, 0, $size - 7);
+        rp_qr_alignment($modules, $reserved, 30, 30);
+
+        for ($i = 8; $i < $size - 8; $i++) {
+            rp_qr_set($modules, $reserved, 6, $i, $i % 2 === 0);
+            rp_qr_set($modules, $reserved, $i, 6, $i % 2 === 0);
+        }
+        for ($i = 0; $i < 9; $i++) {
+            if ($i !== 6) { rp_qr_set($modules, $reserved, 8, $i, false); rp_qr_set($modules, $reserved, $i, 8, false); }
+        }
+        for ($i = 0; $i < 8; $i++) {
+            rp_qr_set($modules, $reserved, $size - 1 - $i, 8, false);
+            rp_qr_set($modules, $reserved, 8, $size - 1 - $i, false);
+        }
+        rp_qr_set($modules, $reserved, 8, $size - 8, true);
+        $data_bits = [];
+        foreach ($codewords as $byte) {
+            for ($i = 7; $i >= 0; $i--) $data_bits[] = (($byte >> $i) & 1) !== 0;
+        }
+        $bit_index = 0; $dir = -1;
+        for ($right = $size - 1; $right >= 1; $right -= 2) {
+            if ($right === 6) $right--;
+            for ($vert = 0; $vert < $size; $vert++) {
+                $y = $dir === 1 ? $vert : $size - 1 - $vert;
+                for ($j = 0; $j < 2; $j++) {
+                    $x = $right - $j;
+                    if (!$reserved[$y][$x]) {
+                        $bit = $data_bits[$bit_index++] ?? false;
+                        $modules[$y][$x] = $bit ^ (($x + $y) % 2 === 0);
                     }
                 }
             }
-        } catch (Exception $e) {}
-    }
+            $dir = -$dir;
+        }
+        $format = rp_qr_format_bits();
+        for ($i = 0; $i <= 5; $i++) rp_qr_set($modules, $reserved, 8, $i, (($format >> $i) & 1) !== 0);
+        rp_qr_set($modules, $reserved, 8, 7, (($format >> 6) & 1) !== 0);
+        rp_qr_set($modules, $reserved, 8, 8, (($format >> 7) & 1) !== 0);
+        rp_qr_set($modules, $reserved, 7, 8, (($format >> 8) & 1) !== 0);
+        for ($i = 9; $i < 15; $i++) rp_qr_set($modules, $reserved, 14 - $i, 8, (($format >> $i) & 1) !== 0);
+        for ($i = 0; $i < 8; $i++) rp_qr_set($modules, $reserved, $size - 1 - $i, 8, (($format >> $i) & 1) !== 0);
+        for ($i = 8; $i < 15; $i++) rp_qr_set($modules, $reserved, 8, $size - 15 + $i, (($format >> $i) & 1) !== 0);
 
-    // Final fallback
-    if (!empty($lan_ip) && !str_starts_with($lan_ip, '169.254.')) {
-        $port_suffix = str_contains($http_host, ':') ? (':' . explode(':', $http_host)[1]) : '';
-        $qr_host = $lan_ip . $port_suffix;
+        $scale = 7; $border = 4;
+        $pixels = ($size + $border * 2) * $scale;
+        $img = imagecreatetruecolor($pixels, $pixels);
+        $white = imagecolorallocate($img, 255, 255, 255);
+        $black = imagecolorallocate($img, 0, 0, 0);
+        imagefill($img, 0, 0, $white);
+        for ($y = 0; $y < $size; $y++) {
+            for ($x = 0; $x < $size; $x++) {
+                if ($modules[$y][$x]) {
+                    imagefilledrectangle($img, ($x + $border) * $scale, ($y + $border) * $scale, ($x + $border + 1) * $scale - 1, ($y + $border + 1) * $scale - 1, $black);
+                }
+            }
+        }
+        ob_start();
+        imagepng($img);
+        imagedestroy($img);
+        return (string) ob_get_clean();
     }
 }
 
-// Build the verify URL (this will be an online URL if accessed via ngrok/public domain)
-// Use the actual transaction type from the sale data
-$verify_type = $sale['transaction_type'] ?? 'merchandise';
-$verify_url = $scheme . '://' . $qr_host . '/group31petron_system_official4/public/verify.php'
-            . '?id=' . urlencode($txn_id) . '&type=' . urlencode($verify_type);
-
-// Generate human-readable text for fallback (in case image fails to load)
-$qr_data = "TXN: {$txn_id}\nURL: {$verify_url}";
-
-// QR image — encodes the verify URL with real LAN IP (scannable from phone)
-$qr_url = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&ecc=M&data=' . urlencode($verify_url);
+// Generate pure local high-resolution PNG QR Code Data URI (100% offline & online working)
+$local_qr_png = rp_qr_png($verify_url);
+if (!empty($local_qr_png)) {
+    $qr_url = 'data:image/png;base64,' . base64_encode($local_qr_png);
+} else {
+    $qr_url = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&ecc=L&margin=4&data=' . urlencode($verify_url);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -1304,17 +1484,19 @@ $qr_url = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&ecc=M&data='
   <?php endif; ?>
 
   <!-- ══ QR CODE ═══════════════════════════════════════════════════════════════ -->
-  <div class="jo-r-qr">
-    <div class="jo-r-qr-lbl">Scan QR to verify this transaction</div>
-    <img src="<?php echo htmlspecialchars($qr_url); ?>"
-         alt="QR Code"
-         width="120" height="120"
-         onerror="this.style.display='none';document.getElementById('qr_fallback').style.display='block'">
-    <div id="qr_fallback" style="display:none;font-size:7.5px;color:#555;word-break:break-all;
-         background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:6px;
-         text-align:left;margin-top:4px;white-space:pre-wrap;font-family:monospace;"><?php echo htmlspecialchars($qr_data); ?></div>
-    <div class="jo-r-qr-lbl" style="margin-top:4px;font-size:8px;color:#94a3b8;">
-      <?php echo htmlspecialchars($txn_id); ?> &nbsp;·&nbsp; <?php echo strtoupper($pay_status_norm ?? 'paid'); ?>
+  <div class="jo-r-qr" style="text-align:center;margin:12px 0 8px 0;">
+    <div class="jo-r-qr-lbl" style="font-weight:700;color:#0f172a;font-size:9.5px;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">
+      Scan QR Code to Verify
+    </div>
+    <div style="display:inline-block;background:#ffffff;padding:4px;">
+      <img id="main_qr_img"
+           src="<?php echo htmlspecialchars($qr_url); ?>"
+           alt="QR Code"
+           width="165" height="165"
+           style="margin:0 auto;display:block;image-rendering:pixelated;">
+    </div>
+    <div class="jo-r-qr-lbl" style="margin-top:6px;font-size:8.5px;font-weight:600;color:#475569;">
+      <?php echo htmlspecialchars($txn_id); ?> &nbsp;·&nbsp; <?php echo strtoupper($pay_status_norm ?? 'PAID'); ?>
     </div>
   </div>
 

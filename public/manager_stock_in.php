@@ -780,7 +780,7 @@ function approveStockIn(type, groupId, poKey) {
             .then(function(data) {
                 if (data.success) {
                     showStockToast(data.message || ('Approved ' + label + ' stock-in! Opening printable invoice...'), 'ok');
-                    var invoiceUrl = 'print_supplier_invoice.php?batch_id=' + encodeURIComponent(data.batch_id || poKey) + '&type=' + encodeURIComponent(type) + '&print=1';
+                    var invoiceUrl = 'print_supplier_invoice.php?batch_id=' + encodeURIComponent(data.batch_id || poKey) + '&type=' + encodeURIComponent(type);
                     window.open(invoiceUrl, '_blank');
                     setTimeout(function() { window.location.reload(); }, 1800);
                 } else {

@@ -419,7 +419,7 @@ require_once __DIR__ . '/../partials/header.php';
 }
 @media print{
     @page{
-        size:legal landscape;
+        size: A4 landscape;
         margin:.3in .4in;
         /* Suppress browser-injected URL/date headers and footers */
         @top-left{content:none;}

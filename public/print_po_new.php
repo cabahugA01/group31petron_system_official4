@@ -29,6 +29,38 @@ if (!$po_id && !$po_date && $batch_id === '') {
 $station_id = (int)user_station_id();
 $po_items   = [];
 
+// ── Check if inventory_products table exists ──────────────────────────────
+$inv_products_exists = false;
+try {
+    $pdo->query("SELECT 1 FROM inventory_products LIMIT 1");
+    $inv_products_exists = true;
+} catch (Exception $e) {
+    $inv_products_exists = false;
+}
+
+// Helper: build the inventory_products join fragment based on table availability
+$ip_join_on_sku_or_name = $inv_products_exists
+    ? "LEFT JOIN inventory_products ip ON (sr.item_sku = ip.sku OR po.product_name = ip.product_name)"
+    : "-- inventory_products not available";
+$ip_join_on_id = $inv_products_exists
+    ? "LEFT JOIN inventory_products ip ON poi.product_id = ip.id"
+    : "-- inventory_products not available";
+$ip_join_sr_sku = $inv_products_exists
+    ? "LEFT JOIN inventory_products ip ON sr.item_sku = ip.sku"
+    : "-- inventory_products not available";
+$ip_category_coalesce = $inv_products_exists
+    ? "COALESCE(ip.category, pc.name, 'Lubricant')"
+    : "COALESCE(pc.name, 'Lubricant')";
+$ip_unit_cost_coalesce = $inv_products_exists
+    ? "COALESCE(ip.unit_cost, p.cost, p.price, 0)"
+    : "COALESCE(p.cost, p.price, 0)";
+$ip_line_sku_coalesce = $inv_products_exists
+    ? "COALESCE(ip.sku, '')"
+    : "''";
+$ip_line_category_coalesce = $inv_products_exists
+    ? "COALESCE(ip.category, pc.name, 'Merchandise')"
+    : "COALESCE(pc.name, 'Merchandise')";
+
 // ── Fetch PO with all related data ────────────────────────────────────────
 try {
     // Helper select columns for sup and st
@@ -87,7 +119,7 @@ try {
                        sr.manager_notes      AS sr_manager_notes,
                        staff_u.name          AS staff_name,
                        mgr_u.name            AS manager_name,
-                       COALESCE(ip.category, 'Lubricant') AS product_category,
+                       {$ip_category_coalesce} AS product_category,
                        $select_fields
                 FROM purchase_orders po
                 LEFT JOIN stations st ON po.station_id = st.id
@@ -97,7 +129,9 @@ try {
                 LEFT JOIN stock_requests sr ON po.request_id = sr.id
                 LEFT JOIN users staff_u ON sr.staff_id = staff_u.id
                 LEFT JOIN users mgr_u ON sr.manager_id = mgr_u.id
-                LEFT JOIN inventory_products ip ON (sr.item_sku = ip.sku OR po.product_name = ip.product_name)
+                {$ip_join_on_sku_or_name}
+                LEFT JOIN products p ON (sr.item_id = p.id OR po.product_name = p.name)
+                LEFT JOIN product_categories pc ON p.category_id = pc.id
                 WHERE (po.batch_id = ? OR po.po_number = ?)
                 ORDER BY po.id ASC
             ");
@@ -124,10 +158,12 @@ try {
                            COALESCE(poi.quantity_ordered, poi.quantity, 0) AS line_quantity,
                            poi.unit_price AS line_unit_price,
                            poi.total_price AS line_total_amount,
-                           COALESCE(ip.sku, '') AS line_sku,
-                           COALESCE(ip.category, 'Merchandise') AS line_category
+                           {$ip_line_sku_coalesce} AS line_sku,
+                           {$ip_line_category_coalesce} AS line_category
                     FROM purchase_order_items poi
-                    LEFT JOIN inventory_products ip ON poi.product_id = ip.id
+                    {$ip_join_on_id}
+                    LEFT JOIN products p ON poi.product_id = p.id
+                    LEFT JOIN product_categories pc ON p.category_id = pc.id
                     WHERE poi.po_id IN ($ph)
                     ORDER BY poi.id ASC
                 ");
@@ -187,10 +223,10 @@ try {
                     SELECT sr.id,
                            sr.request_no AS po_number,
                            sr.item_name AS product_name,
-                           COALESCE(ip.category, 'Lubricant') AS product_category,
+                           {$ip_category_coalesce} AS product_category,
                            sr.approved_quantity AS quantity,
-                           COALESCE(ip.unit_cost, 0) AS unit_price,
-                           (sr.approved_quantity * COALESCE(ip.unit_cost, 0)) AS total_amount,
+                           {$ip_unit_cost_coalesce} AS unit_price,
+                           (sr.approved_quantity * {$ip_unit_cost_coalesce}) AS total_amount,
                            sr.created_at AS created_at,
                            sr.processed_at AS approved_at,
                            sr.manager_notes AS remarks,
@@ -208,7 +244,9 @@ try {
                     LEFT JOIN stations st ON sr.station_id = st.id
                     LEFT JOIN users u_staff ON sr.staff_id = u_staff.id
                     LEFT JOIN users u_mgr ON sr.manager_id = u_mgr.id
-                    LEFT JOIN inventory_products ip ON sr.item_sku = ip.sku
+                    {$ip_join_sr_sku}
+                    LEFT JOIN products p ON sr.item_id = p.id
+                    LEFT JOIN product_categories pc ON p.category_id = pc.id
                     WHERE sr.request_no = ? AND sr.station_id = ?
                 ");
                 $stmt->execute([$batch_id, $station_id]);
@@ -260,7 +298,7 @@ try {
                        sr.manager_notes      AS sr_manager_notes,
                        staff_u.name          AS staff_name,
                        mgr_u.name            AS manager_name,
-                       COALESCE(ip.category, 'Lubricant') AS product_category,
+                       {$ip_category_coalesce} AS product_category,
                        $select_fields
                 FROM purchase_orders po
                 LEFT JOIN stations st ON po.station_id = st.id
@@ -270,7 +308,9 @@ try {
                 LEFT JOIN stock_requests sr ON po.request_id = sr.id
                 LEFT JOIN users staff_u ON sr.staff_id = staff_u.id
                 LEFT JOIN users mgr_u ON sr.manager_id = mgr_u.id
-                LEFT JOIN inventory_products ip ON (sr.item_sku = ip.sku OR po.product_name = ip.product_name)
+                {$ip_join_on_sku_or_name}
+                LEFT JOIN products p ON (sr.item_id = p.id OR po.product_name = p.name)
+                LEFT JOIN product_categories pc ON p.category_id = pc.id
                 WHERE po.station_id = ? AND DATE(po.created_at) = ? AND po.type = 'merch'
                 ORDER BY po.id ASC
             ");
@@ -330,7 +370,7 @@ try {
                        sr.manager_notes      AS sr_manager_notes,
                        staff_u.name          AS staff_name,
                        mgr_u.name            AS manager_name,
-                       COALESCE(ip.category, 'Lubricant') AS product_category,
+                       {$ip_category_coalesce} AS product_category,
                        $select_fields
                 FROM purchase_orders po
                 LEFT JOIN stations st ON po.station_id = st.id
@@ -340,7 +380,9 @@ try {
                 LEFT JOIN stock_requests sr ON po.request_id = sr.id
                 LEFT JOIN users staff_u ON sr.staff_id = staff_u.id
                 LEFT JOIN users mgr_u ON sr.manager_id = mgr_u.id
-                LEFT JOIN inventory_products ip ON (sr.item_sku = ip.sku OR po.product_name = ip.product_name)
+                {$ip_join_on_sku_or_name}
+                LEFT JOIN products p ON (sr.item_id = p.id OR po.product_name = p.name)
+                LEFT JOIN product_categories pc ON p.category_id = pc.id
                 WHERE po.id = ?
                 LIMIT 1
             ");
@@ -522,7 +564,7 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:11px;
     <?php if (!$is_staff_view): ?>
     <button type="button" onclick="window.print()" class="btn-print">Print PDF</button>
     <?php endif; ?>
-    <button type="button" onclick="window.close()" class="btn-print btn-back">&#x2190; Close</button>
+    <button type="button" onclick="window.history.length > 1 ? window.history.back() : window.close();" class="btn-print btn-back">&#x2190; Close</button>
 </div>
 
 <div class="po-document">

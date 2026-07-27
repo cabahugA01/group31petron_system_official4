@@ -56,6 +56,38 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (Throwable $e) {}
 
+/**
+ * Category breakdown helper for sidebar drawer badges
+ */
+function get_category_unread_counts(PDO $pdo, int $user_id): array {
+    $categories = [
+        'transactions' => 0,
+        'fuel'         => 0,
+        'inventory'    => 0,
+        'customers'    => 0,
+    ];
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT event_type, COUNT(*) as cnt FROM notifications WHERE user_id = ? AND status = 'unread' GROUP BY event_type"
+        );
+        $stmt->execute([$user_id]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $c) {
+            $evt = strtolower($c['event_type'] ?? '');
+            $cnt = (int)$c['cnt'];
+            if (in_array($evt, ['transaction', 'job_order', 'joborder'])) {
+                $categories['transactions'] += $cnt;
+            } elseif (in_array($evt, ['fuel_management', 'fuel'])) {
+                $categories['fuel'] += $cnt;
+            } elseif (in_array($evt, ['inventory', 'stock_in', 'delivery', 'stock_request'])) {
+                $categories['inventory'] += $cnt;
+            } elseif ($evt === 'customer') {
+                $categories['customers'] += $cnt;
+            }
+        }
+    } catch (Throwable $e) {}
+    return $categories;
+}
+
 // ── Route ─────────────────────────────────────────────────────
 $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? '';
@@ -102,11 +134,15 @@ try {
                 $cnt_stmt->execute([$user_id]);
                 $unread = (int)$cnt_stmt->fetchColumn();
 
+                // Category breakdown for sidebar badges
+                $cat_counts = get_category_unread_counts($pdo, $user_id);
+
                 echo json_encode([
-                    'success'       => true,
-                    'notifications' => $rows,
-                    'unread_count'  => $unread,
-                    'total'         => count($rows),
+                    'success'         => true,
+                    'notifications'   => $rows,
+                    'unread_count'    => $unread,
+                    'total'           => count($rows),
+                    'category_counts' => $cat_counts,
                 ]);
                 break;
 
@@ -230,9 +266,19 @@ try {
                     );
                 }
 
+                // Also fetch actual bell unread count from notifications table
+                $bell_stmt = $pdo->prepare(
+                    "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'"
+                );
+                $bell_stmt->execute([$user_id]);
+                $bell_unread = (int)$bell_stmt->fetchColumn();
+                $cat_counts  = get_category_unread_counts($pdo, $user_id);
+
                 echo json_encode([
-                    'success'      => true,
-                    'unread_count' => $action_count,
+                    'success'           => true,
+                    'unread_count'      => $action_count,      // sidebar badge counts
+                    'bell_unread_count' => $bell_unread,       // bell icon badge count
+                    'category_counts'   => $cat_counts,        // sidebar drawer category counts
                 ]);
                 break;
 
@@ -259,9 +305,12 @@ try {
                     "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'"
                 );
                 $cnt->execute([$user_id]);
+                $cat_counts = get_category_unread_counts($pdo, $user_id);
                 echo json_encode([
-                    'success'      => true,
-                    'unread_count' => (int)$cnt->fetchColumn(),
+                    'success'           => true,
+                    'unread_count'      => (int)$cnt->fetchColumn(),
+                    'bell_unread_count' => (int)$cnt->fetchColumn(),
+                    'category_counts'   => $cat_counts,
                 ]);
                 break;
 
@@ -274,8 +323,15 @@ try {
                 );
                 $stmt->execute([$user_id]);
                 echo json_encode([
-                    'success'      => true,
-                    'unread_count' => 0,
+                    'success'           => true,
+                    'unread_count'      => 0,
+                    'bell_unread_count' => 0,
+                    'category_counts'   => [
+                        'transactions' => 0,
+                        'fuel'         => 0,
+                        'inventory'    => 0,
+                        'customers'    => 0,
+                    ],
                 ]);
                 break;
 

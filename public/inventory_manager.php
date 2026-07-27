@@ -45,7 +45,7 @@ try {
                            unit_price, sku, stock as stock_level,
                            10 as reorder_level,
                            null as inventory_id
-                           FROM inventory_products WHERE category NOT IN ('Fuel') ORDER BY category, product_name");
+                           FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products') ORDER BY category, product_name");
     $stmt->execute();
     $merch_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
     

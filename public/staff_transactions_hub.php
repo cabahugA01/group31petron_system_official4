@@ -2497,43 +2497,47 @@ input[list] {
 }
 
 .txn-btn.primary {
-    background: white !important;
+    background: #ffffff !important;
     color: #00264D !important;
     border-color: #00264D !important;
 }
 .txn-btn.primary:hover {
-    background: #00264D !important;
-    color: white !important;
+    background: #f0f7ff !important;
+    color: #001A33 !important;
+    border-color: #001A33 !important;
 }
 
 .txn-btn.success {
-    background: white !important;
+    background: #ffffff !important;
     color: #16a34a !important;
     border-color: #16a34a !important;
 }
 .txn-btn.success:hover {
-    background: #16a34a !important;
-    color: white !important;
+    background: #f0fdf4 !important;
+    color: #15803d !important;
+    border-color: #15803d !important;
 }
 
 .txn-btn.secondary {
-    background: white !important;
+    background: #ffffff !important;
     color: #475569 !important;
     border-color: #475569 !important;
 }
 .txn-btn.secondary:hover {
-    background: #475569 !important;
-    color: white !important;
+    background: #f8fafc !important;
+    color: #334155 !important;
+    border-color: #334155 !important;
 }
 
 .txn-btn.danger {
-    background: white !important;
+    background: #ffffff !important;
     color: #dc2626 !important;
     border-color: #dc2626 !important;
 }
 .txn-btn.danger:hover {
-    background: #dc2626 !important;
-    color: white !important;
+    background: #fef2f2 !important;
+    color: #b91c1c !important;
+    border-color: #b91c1c !important;
 }
 
 .txn-btn:disabled {
@@ -5107,7 +5111,7 @@ input[list] {
                                 No merchandise transactions found.
                             </div>
                             <?php else: ?>
-                            <div style="width:100%;overflow-x:auto;">
+                            <div style="width:100%;overflow-x:hidden;">
                             <style>
                             #mhHistoryTable th { padding: 8px 10px; }
                             #mhHistoryTable td { padding: 8px 10px; }
@@ -8751,38 +8755,38 @@ input[list] {
                     No job orders found.
                 </div>
                 <?php else: ?>
-                <div style="overflow-x:auto;">
+                <div style="width:100%;overflow-x:hidden;">
                 <table class="txn-table" id="joUnifiedTable" style="table-layout:fixed;word-wrap:break-word;width:100%;">
                     <colgroup>
-                        <col style="width:6%;"><!-- JO Number -->
-                        <col style="width:7%;"><!-- OR No. -->
-                        <col style="width:9%;"><!-- Customer -->
-                        <col style="width:7%;"><!-- Plate No. -->
+                        <col style="width:3%;"><!-- JO Number -->
+                        <col style="width:6.5%;"><!-- OR No. -->
+                        <col style="width:10%;"><!-- Customer -->
+                        <col style="width:5%;"><!-- Plate No. -->
                         <col style="width:7%;"><!-- Vehicle -->
                         <col style="width:9%;"><!-- Service Type -->
-                        <col style="width:8%;"><!-- Mechanic -->
+                        <col style="width:9.5%;"><!-- Mechanic -->
                         <col style="width:6%;"><!-- Service Fee -->
-                        <col style="width:8%;"><!-- Status -->
-                        <col style="width:7%;"><!-- Pay Status -->
-                        <col style="width:7%;"><!-- Est. Completion -->
-                        <col style="width:7%;"><!-- Date Created -->
-                        <col style="width:12%;"><!-- Actions -->
+                        <col style="width:6%;"><!-- Status -->
+                        <col style="width:5%;"><!-- Pay Status -->
+                        <col style="width:10%;"><!-- Est. Completion -->
+                        <col style="width:8%;"><!-- Date Created -->
+                        <col style="width:14%;"><!-- Actions -->
                     </colgroup>
                     <thead>
                         <tr>
-                            <th style="font-size:11px;text-align:left;padding:8px 10px;">JO Number</th>
-                            <th style="font-size:11px;text-align:left;padding:8px 10px;">OR No.</th>
-                            <th style="font-size:11px;text-align:left;padding:8px 10px;">Customer</th>
-                            <th style="font-size:11px;text-align:left;padding:8px 10px;">Plate No.</th>
-                            <th style="font-size:11px;text-align:left;padding:8px 10px;">Vehicle</th>
-                            <th style="font-size:11px;text-align:left;padding:8px 10px;">Service Type</th>
-                            <th style="font-size:11px;text-align:left;padding:8px 10px;">Assigned Mechanic</th>
-                            <th style="font-size:11px;text-align:right;padding:8px 10px;">Service Fee</th>
-                            <th style="font-size:11px;text-align:left;padding:8px 10px;">Status</th>
-                            <th style="font-size:11px;text-align:left;padding:8px 10px;">Pay Status</th>
-                            <th style="font-size:11px;text-align:left;padding:8px 10px;">Est. Completion</th>
-                            <th style="font-size:11px;text-align:left;padding:8px 10px;">Date Created</th>
-                            <th style="font-size:11px;text-align:center;padding:8px 10px;">Actions</th>
+                            <th style="font-size:10.5px;text-align:left;padding:6px 3px;white-space:normal;line-height:1.15;">JO #</th>
+                            <th style="font-size:10.5px;text-align:left;padding:6px 3px;white-space:normal;line-height:1.15;">OR No.</th>
+                            <th style="font-size:10.5px;text-align:left;padding:6px 3px;white-space:normal;line-height:1.15;">Customer</th>
+                            <th style="font-size:10.5px;text-align:left;padding:6px 3px;white-space:normal;line-height:1.15;">Plate No.</th>
+                            <th style="font-size:10.5px;text-align:left;padding:6px 3px;white-space:normal;line-height:1.15;">Vehicle</th>
+                            <th style="font-size:10.5px;text-align:left;padding:6px 3px;white-space:normal;line-height:1.15;">Service Type</th>
+                            <th style="font-size:10.5px;text-align:left;padding:6px 3px;white-space:normal;line-height:1.15;">Assigned Mechanic</th>
+                            <th style="font-size:10.5px;text-align:right;padding:6px 3px;white-space:normal;line-height:1.15;">Service Fee</th>
+                            <th style="font-size:10.5px;text-align:left;padding:6px 3px;white-space:normal;line-height:1.15;">Status</th>
+                            <th style="font-size:10.5px;text-align:left;padding:6px 3px;white-space:normal;line-height:1.15;">Pay Status</th>
+                            <th style="font-size:10.5px;text-align:left;padding:6px 3px;white-space:normal;line-height:1.15;">Est. Completion</th>
+                            <th style="font-size:10.5px;text-align:left;padding:6px 3px;white-space:normal;line-height:1.15;">Date Created</th>
+                            <th style="font-size:10.5px;text-align:center;padding:6px 3px;white-space:normal;line-height:1.15;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -8966,15 +8970,45 @@ input[list] {
                         <td style="padding:10px;font-size:11px;color:#64748b;white-space:nowrap;">
                             <?php
                             $est_comp = $job['due_date'] ?? null;
-                            if ($est_comp && $est_comp !== '0000-00-00') {
-                                $comp_ts = strtotime($est_comp);
-                                $today_ts = strtotime(date('Y-m-d'));
-                                $color = ($comp_ts < $today_ts && !in_array($wf_status, ['Completed'])) ? '#dc2626' : '#64748b';
-                                echo '<span style="color:' . $color . ';">' . date('M j, Y', $comp_ts) . '</span>';
-                            } elseif (!empty($job['estimated_duration'])) {
-                                echo '<span style="color:#94a3b8;">' . (int)$job['estimated_duration'] . ' mins</span>';
-                            } else {
-                                echo '<span style="color:#cbd5e1;">—</span>';
+                            $created_time = !empty($job['created_at']) ? strtotime($job['created_at']) : time();
+                            $est_disp = '';
+                            $est_sub = '';
+
+                            if ($est_comp && $est_comp !== '0000-00-00' && $est_comp !== '0000-00-00 00:00:00') {
+                                $ts = strtotime($est_comp);
+                                if ($ts && $ts > 0) {
+                                    $est_disp = date('M j, Y', $ts);
+                                    $est_sub = date('h:i A', $ts);
+                                }
+                            }
+
+                            if (empty($est_disp)) {
+                                $duration_mins = (int)($job['estimated_duration'] ?? 0);
+                                if ($duration_mins <= 0) {
+                                    $svc_name = strtolower($job['service_type'] ?? '');
+                                    if (str_contains($svc_name, 'oil') || str_contains($svc_name, 'additive')) {
+                                        $duration_mins = 45;
+                                    } elseif (str_contains($svc_name, 'atf') || str_contains($svc_name, 'transmission')) {
+                                        $duration_mins = 60;
+                                    } elseif (str_contains($svc_name, 'brake')) {
+                                        $duration_mins = 90;
+                                    } elseif (str_contains($svc_name, 'wash')) {
+                                        $duration_mins = 45;
+                                    } else {
+                                        $duration_mins = 60;
+                                    }
+                                }
+                                $completion_ts = $created_time + ($duration_mins * 60);
+                                $est_disp = date('M j, Y', $completion_ts);
+                                $est_sub = date('h:i A', $completion_ts) . ' (' . $duration_mins . 'm)';
+                            }
+
+                            $comp_ts = strtotime($est_disp);
+                            $today_ts = strtotime(date('Y-m-d'));
+                            $color = ($comp_ts < $today_ts && !in_array($wf_status ?? '', ['Completed'])) ? '#dc2626' : '#475569';
+                            echo '<span style="color:' . $color . ';font-weight:600;">' . htmlspecialchars($est_disp) . '</span>';
+                            if ($est_sub) {
+                                echo '<br><span style="font-size:10px;color:#0284c7;font-weight:500;">' . htmlspecialchars($est_sub) . '</span>';
                             }
                             ?>
                         </td>
@@ -8986,7 +9020,7 @@ input[list] {
                         </td>
 
 
-                        <td style="padding:8px 10px;min-width:120px;">
+                        <td style="padding:6px 3px;text-align:center;">
                             <?php
                                 $jo_total   = (float)($job['total_cost'] ?? $job['estimated_cost'] ?? 0);
                                 $jo_paid    = (float)($job['amount_paid'] ?? 0);
@@ -9015,14 +9049,14 @@ input[list] {
                                     'estimated_duration' => (int)($job['estimated_duration'] ?? 0)
                                 ]);
                             ?>
-                            <div style="display:flex;flex-direction:column;gap:4px;">
+                            <div style="display:flex;flex-direction:column;gap:3px;width:100%;">
                                 <!-- Row 1: View + Update Status + Adjust -->
-                                <div style="display:flex;gap:3px;flex-wrap:wrap;">
+                                <div style="display:flex;gap:3px;flex-wrap:nowrap;width:100%;">
                                     <!-- View Button (Always visible) - DARK BLUE -->
                                     <button type="button"
                                             onclick='viewJobOrderDetails(<?= htmlspecialchars($jo_data, ENT_QUOTES) ?>)'
                                             class="txn-btn primary" 
-                                            >
+                                            style="flex:1;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
                                         <i class="fas fa-eye"></i> View
                                     </button>
                                     
@@ -9031,7 +9065,7 @@ input[list] {
                                     <button type="button"
                                             onclick='openAdjustJobOrderModal(<?= htmlspecialchars($jo_data, ENT_QUOTES) ?>)'
                                             class="txn-btn secondary" 
-                                            >
+                                            style="flex:1;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
                                         <i class="fas fa-edit"></i> Adjust
                                     </button>
                                     <?php endif; ?>
@@ -9041,14 +9075,14 @@ input[list] {
                                 <?php if ($wf_status === 'Rejected'): ?>
                                     <!-- Rejected: Re-encode - GRAY -->
                                     <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise" 
-                                       class="txn-btn secondary">
+                                       class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
                                         <i class="fas fa-redo"></i> Re-encode
                                     </a>
                                     
                                 <?php elseif ($val_status === 'Pending Validation'): ?>
                                     <!-- Pending: Awaiting approval -->
-                                    <span style="font-size:12px;color:#94a3b8;font-style:italic;text-align:center;padding:4px 0;">
-                                        <i class="fas fa-clock"></i> Awaiting manager approval
+                                    <span style="font-size:11px;color:#94a3b8;font-style:italic;text-align:center;padding:2px 0;">
+                                        <i class="fas fa-clock"></i> Awaiting approval
                                     </span>
                                     
                                 <?php elseif ($wf_status === 'Completed'): ?>
@@ -9057,17 +9091,17 @@ input[list] {
                                         <!-- Paid = COMPLETE, Print Receipt Only (NO re-issue) - GRAY -->
                                         <button type="button"
                                                 onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
-                                                class="txn-btn secondary" style="white-space:nowrap;font-size:11px;">
+                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
                                             <i class="fas fa-print"></i> Print Receipt
                                         </button>
-                                        <span style="font-size:11px;color:#16a34a;font-weight:600;text-align:center;padding:4px 0;display:flex;align-items:center;justify-content:center;gap:4px;">
+                                        <span style="font-size:10.5px;color:#16a34a;font-weight:600;text-align:center;padding:2px 0;display:flex;align-items:center;justify-content:center;gap:3px;">
                                             <i class="fas fa-check-circle"></i> Paid & Complete
                                         </span>
                                     <?php else: ?>
                                         <!-- Pending/Partial = Settle Balance - GREEN -->
                                         <button type="button"
                                                 onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',false,'tracker')"
-                                                class="txn-btn success">
+                                                class="txn-btn success" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
                                             <i class="fas fa-money-bill-wave"></i>
                                             <?= in_array($pay_status, ['Partially Paid','Partial Payment','Partial']) ? 'Settle Balance' : 'Mark Paid' ?>
                                         </button>
@@ -9077,12 +9111,12 @@ input[list] {
                                     <!-- Approved / In Progress: Workflow progression -->
                                     <?php if ($wf_status !== 'In Progress'): ?>
                                     <!-- Start In Progress - DARK BLUE -->
-                                    <form method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="margin:0;">
+                                    <form method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="margin:0;width:100%;">
                                         <input type="hidden" name="jo_action" value="set_in_progress">
                                         <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
                                         <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
                                         <button type="submit" 
-                                                class="txn-btn primary">
+                                                class="txn-btn primary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
                                             <i class="fas fa-play"></i> Start In Progress
                                         </button>
                                     </form>
@@ -9090,12 +9124,12 @@ input[list] {
                                     
                                     <!-- IF PAID: Just mark Complete (no payment modal) -->
                                     <?php if ($pay_status === 'Paid'): ?>
-                                    <form method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="margin:0;">
+                                    <form method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="margin:0;width:100%;">
                                         <input type="hidden" name="jo_action" value="set_completed">
                                         <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
                                         <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
                                         <button type="submit" 
-                                                class="txn-btn success">
+                                                class="txn-btn success" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
                                             <i class="fas fa-check"></i> Mark Complete
                                         </button>
                                     </form>
@@ -9103,7 +9137,7 @@ input[list] {
                                     <!-- ELSE: Complete with payment - GREEN -->
                                     <button type="button"
                                             onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',true,'tracker')"
-                                            class="txn-btn success">
+                                            class="txn-btn success" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
                                         <i class="fas fa-check"></i> Complete & Settle
                                     </button>
                                     <?php endif; ?>
