@@ -290,87 +290,28 @@ try {
     // Use a two-pass approach: run after shift detection (we'll re-run below after shift is known)
     // Store a deferred closure pattern — actually set a flag, then run after shift variables are set
     $__fetch_prev_readings = function() use ($pdo, $station_id) {
-        global $fuel_shift_key, $last_readings_by_pump, $pump_missing_prev;
+        global $last_readings_by_pump;
 
-        if ($fuel_shift_key === 'second') {
-            $prev_shift = 'first';
-        } else {
-            $prev_shift = 'second';
-        }
-
-        // 1. Get the date of the most recent transaction for the previous shift (not rejected)
-        $target_date = null;
         try {
-            $date_stmt = $pdo->prepare("
-                SELECT DATE(transaction_date) 
-                FROM fuel_transactions 
-                WHERE station_id = ? 
-                  AND shift_period = ? 
-                  AND (LOWER(status) NOT IN ('rejected','voided','cancelled','canceled') OR status IS NULL)
-                ORDER BY transaction_date DESC, id DESC LIMIT 1
-            ");
-            $date_stmt->execute([$station_id, $prev_shift]);
-            $target_date = $date_stmt->fetchColumn();
-        } catch (Exception $e) {}
-
-        if (!$target_date) {
-            return;
-        }
-
-        // 2. Fetch all transactions for that shift on that date (not rejected)
-        $tx_rows = [];
-        try {
-            $stmt = $pdo->prepare("
+            // Fetch latest present_reading (ending meter) for each pump in descending order
+            $latest_stmt = $pdo->prepare("
                 SELECT ft.id, COALESCE(fp.pump_number, ft.fuel_type) AS pump_label, ft.fuel_type, ft.present_reading
                 FROM fuel_transactions ft
                 LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
                 WHERE ft.station_id = ?
                   AND (LOWER(ft.status) NOT IN ('rejected','voided','cancelled','canceled') OR ft.status IS NULL)
-                  AND ft.shift_period = ?
-                  AND DATE(ft.transaction_date) = ?
-                ORDER BY ft.id ASC
+                ORDER BY ft.transaction_date DESC, ft.id DESC
             ");
-            $stmt->execute([$station_id, $prev_shift, $target_date]);
-            $tx_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (Exception $e) {}
+            $latest_stmt->execute([$station_id]);
+            $latest_rows = $latest_stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // 3. Map to pump labels
-        $nozzle_lists = [
-            'xcs plus' => ['XCS PLUS - 1', 'XCS PLUS - 2', 'XCS PLUS - 3', 'XCS PLUS - 4'],
-            'turbo diesel' => ['TURBO DIESEL - 1', 'TURBO DIESEL - 2'],
-            'xtra unl' => ['XTRA UNL 1 - 1', 'XTRA UNL 1 - 2', 'XTRA UNL 2 - 3', 'XTRA UNL 2 - 4'],
-            'diesel' => ['DIESEL 1 - 1', 'DIESEL 1 - 2', 'DIESEL 1 - 3', 'DIESEL 1 - 4', 'DIESEL 2 - 5', 'DIESEL 2 - 6'],
-            'kerosene' => ['KEROSENE - 1']
-        ];
-
-        $generic_counts = [];
-        foreach ($tx_rows as $row) {
-            $lbl = strtoupper(trim($row['pump_label'] ?? ''));
-            $fuel_type_lower = strtolower(trim($row['fuel_type'] ?? ''));
-
-            if (strpos($lbl, ' - ') !== false) {
-                $last_readings_by_pump[$lbl] = (float)$row['present_reading'];
-            } else {
-                $matched_key = null;
-                foreach ($nozzle_lists as $key => $list) {
-                    if (str_contains($fuel_type_lower, $key)) {
-                        $matched_key = $key;
-                        break;
-                    }
-                }
-                if ($matched_key !== null) {
-                    if (!isset($generic_counts[$matched_key])) {
-                        $generic_counts[$matched_key] = 0;
-                    }
-                    $idx = $generic_counts[$matched_key];
-                    if (isset($nozzle_lists[$matched_key][$idx])) {
-                        $target_nozzle = $nozzle_lists[$matched_key][$idx];
-                        $last_readings_by_pump[strtoupper($target_nozzle)] = (float)$row['present_reading'];
-                        $generic_counts[$matched_key]++;
-                    }
+            foreach ($latest_rows as $row) {
+                $lbl = strtoupper(trim($row['pump_label'] ?? ''));
+                if ($lbl !== '' && !isset($last_readings_by_pump[$lbl])) {
+                    $last_readings_by_pump[$lbl] = (float)$row['present_reading'];
                 }
             }
-        }
+        } catch (Exception $e) {}
     };
 } catch (Exception $e) {}
 
@@ -3213,33 +3154,20 @@ input[list] {
                                        style="width:110px;padding:8px;font-size:12px;border:1px solid #86efac;border-radius:4px;text-align:right;background:#f0fdf4;font-weight:700;color:#15803d;cursor:not-allowed;"
                                        value="<?= number_format($pump_prev_reading, 2, '.', ',') ?>"
                                        readonly
-                                       title="Auto-fetched from previous validated shift. Cannot be edited."
+                                       title="Auto-fetched from previous meter reading. Cannot be edited."
                                        data-pump="<?= htmlspecialchars($display_name) ?>">
-                            <?php elseif ($shift_already_submitted): ?>
-                                <!-- Shift already submitted — reset to 0, no block -->
+                            <?php else: ?>
+                                <!-- Initial meter reading / first shift — default to 0.00 -->
                                 <input type="text"
                                        form="fuelForm_<?= $ft_id ?>"
                                        name="beginning_reading"
                                        id="beginning_<?= $ft_id ?>"
-                                       style="width:110px;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;background:#f8fafc;font-weight:600;color:#64748b;cursor:not-allowed;"
+                                       style="width:110px;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;background:#f8fafc;font-weight:600;color:#334155;cursor:not-allowed;"
                                        value="0.00"
                                        readonly
                                        placeholder="0.00"
-                                       title="Readings already submitted for this shift."
+                                       title="Initial meter reading (0.00)."
                                        data-pump="<?= htmlspecialchars($display_name) ?>">
-                            <?php else: ?>
-                                <!-- No validated previous reading — block submission -->
-                                <input type="text"
-                                       form="fuelForm_<?= $ft_id ?>"
-                                       name="beginning_reading"
-                                       id="beginning_<?= $ft_id ?>"
-                                       style="width:110px;padding:8px;font-size:12px;border:1.5px solid #fca5a5;border-radius:4px;text-align:center;background:#fff1f1;font-size:10px;color:#b91c1c;cursor:not-allowed;"
-                                       value=""
-                                       readonly
-                                       placeholder="No prev. validated reading"
-                                       title="Previous validated meter reading not found. Cannot submit until available."
-                                       data-pump="<?= htmlspecialchars($display_name) ?>"
-                                       data-missing="1">
                             <?php endif; ?>
                         </td>
 
@@ -3643,13 +3571,10 @@ input[list] {
 
             if (!form) return false;
 
-            // ── Guard: beginning reading missing (no previous shift reading found at all) ──
+            // ── Beginning reading default fallback ──
             const beginningEl = document.getElementById('beginning_' + ftId);
-            if (beginningEl && beginningEl.dataset.missing === '1') {
-                const pumpName = beginningEl.dataset.pump || ftId;
-                showRowMsg(msgEl, 'error',
-                    `⚠️ Cannot submit <strong>${pumpName}</strong>: No previous shift meter reading found. Please ensure the previous shift has submitted their readings.`);
-                return false;
+            if (beginningEl && (!beginningEl.value || beginningEl.value === '')) {
+                beginningEl.value = '0.00';
             }
 
             // Build FormData from the form
@@ -3897,11 +3822,9 @@ input[list] {
                 const msgEl       = document.getElementById('cardMsg_' + ftId);
                 const pumpLabel   = (beginningEl?.dataset?.pump || ftId).replace(/_/g, ' ').toUpperCase();
 
-                // Skip: previous validated reading missing
-                if (beginningEl && beginningEl.dataset.missing === '1') {
-                    skippedForms.push({ ftId, reason: `No previous validated reading` });
-                    if (msgEl) showRowMsg(msgEl, 'error', 'Previous validated meter reading not found — skipped.');
-                    return; // skip this row
+                // Default beginning value to 0.00 if empty
+                if (beginningEl && (!beginningEl.value || beginningEl.value === '')) {
+                    beginningEl.value = '0.00';
                 }
 
                 const endingValue    = parseFloat((endingEl?.value    || '0').replace(/,/g, ''));
