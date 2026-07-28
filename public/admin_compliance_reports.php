@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Admin Compliance Reports
  * Activity Logs | Audit Trail | Calendar & Schedule
@@ -42,7 +42,9 @@ function crAdminTrackerServiceWhere(string $alias = 'mt'): string {
 }
 
 // ACTIVITY LOGS — from audit_logs (API-level) + activity_logs (lib-level log_activity calls)
-$activity_rows = [];
+$activity_rows_a = [];
+$activity_rows_b = [];
+
 try {
     // Source A: audit_logs (richer — has entity_type, log_type, action_details)
     $q = $pdo->prepare("
@@ -51,18 +53,18 @@ try {
                      u.username, CONCAT('User #', al.user_id))  AS staff_name,
             al.action_type                                        AS action_type,
             al.created_at                                         AS timestamp,
-            UPPER(COALESCE(al.log_type,'SYSTEM'))                 AS module_affected,
+            UPPER(COALESCE(al.log_type,'USER'))                   AS module_affected,
             COALESCE(al.action_details,'')                        AS remarks
         FROM audit_logs al
         LEFT JOIN users u ON al.user_id = u.id
-        WHERE u.station_id = ?
+        WHERE (u.station_id = ? OR u.station_id IS NULL OR ? = 0 OR LOWER(u.role) IN ('admin','superadmin'))
           AND DATE(al.created_at) BETWEEN ? AND ?
         ORDER BY al.created_at DESC
         LIMIT 400
     ");
-    $q->execute([$station_id, $date_from, $date_to]);
-    $activity_rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
-} catch (Exception $e) { $activity_rows = []; }
+    $q->execute([$station_id, $station_id, $date_from, $date_to]);
+    $activity_rows_a = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+} catch (Exception $e) { $activity_rows_a = []; }
 
 // Source B: activity_logs (from log_activity() calls in lib.php)
 try {
@@ -80,23 +82,47 @@ try {
                   OR LOWER(al.action) LIKE '%stock%'       THEN 'INVENTORY'
                 WHEN LOWER(al.action) LIKE '%job%'         THEN 'JOB_ORDER'
                 WHEN LOWER(al.action) LIKE '%user%'
-                  OR LOWER(al.action) LIKE '%login%'       THEN 'USER'
+                  OR LOWER(al.action) LIKE '%login%'
+                  OR LOWER(al.action) LIKE '%logout%'      THEN 'USER'
                 ELSE 'SYSTEM'
             END                                                   AS module_affected,
             COALESCE(al.details,'')                               AS remarks
         FROM activity_logs al
         LEFT JOIN users u ON al.user_id = u.id
-        WHERE u.station_id = ?
+        WHERE (u.station_id = ? OR u.station_id IS NULL OR ? = 0 OR LOWER(u.role) IN ('admin','superadmin'))
           AND DATE(al.created_at) BETWEEN ? AND ?
         ORDER BY al.created_at DESC
-        LIMIT 300
+        LIMIT 400
     ");
-    $q2->execute([$station_id, $date_from, $date_to]);
-    $al_rows = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
-    $activity_rows = array_merge($activity_rows, $al_rows);
-    usort($activity_rows, fn($a,$b) => strtotime($b['timestamp']) - strtotime($a['timestamp']));
-    $activity_rows = array_slice($activity_rows, 0, 600);
-} catch (Exception $e) { /* keep source A results */ }
+    $q2->execute([$station_id, $station_id, $date_from, $date_to]);
+    $activity_rows_b = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
+} catch (Exception $e) { $activity_rows_b = []; }
+
+// Smart Deduplication of Login/Logout entries between Source A and Source B
+$seen_events = [];
+$unique_other_rows = [];
+
+foreach (array_merge($activity_rows_a, $activity_rows_b) as $row) {
+    $act_lower = strtolower(trim((string)$row['action_type']));
+    $is_login_logout = in_array($act_lower, ['login', 'logout', 'clock in', 'clock out'], true);
+    if ($is_login_logout) {
+        $ts_bucket = floor(strtotime($row['timestamp']) / 5); // 5-second window
+        $key = strtolower(trim((string)$row['staff_name'])) . '_' . $act_lower . '_' . $ts_bucket;
+        if (isset($seen_events[$key])) {
+            // Keep entry with richer/longer remarks
+            if (strlen($row['remarks']) > strlen($seen_events[$key]['remarks'])) {
+                $seen_events[$key] = $row;
+            }
+            continue;
+        }
+        $seen_events[$key] = $row;
+    } else {
+        $unique_other_rows[] = $row;
+    }
+}
+$activity_rows = array_merge(array_values($seen_events), $unique_other_rows);
+usort($activity_rows, fn($a,$b) => strtotime($b['timestamp']) - strtotime($a['timestamp']));
+$activity_rows = array_slice($activity_rows, 0, 600);
 
 // AUDIT TRAIL — fetch from ALL audit sources: audit_logs + audit_trail + merchandise_transaction_audit
 $audit_rows = [];

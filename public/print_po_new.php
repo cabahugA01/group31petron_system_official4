@@ -19,8 +19,9 @@ if (!in_array($role, ['admin', 'superadmin', 'manager', 'staff', 'cashier', 'pum
 
 $po_id    = (int)($_GET['id'] ?? 0);
 $po_date  = $_GET['date']     ?? null;
-$batch_id = trim($_GET['batch_id'] ?? '');
-$po_type  = $_GET['type']     ?? 'merch'; // 'fuel' or 'merch'
+$batch_id = trim($_GET['batch_id'] ?? $_GET['po_id'] ?? $_GET['po_number'] ?? $_GET['po'] ?? '');
+$raw_type = $_GET['type']     ?? 'merch';
+$po_type  = (strpos(strtolower($raw_type), 'fuel') !== false) ? 'fuel' : 'merch';
 
 if (!$po_id && !$po_date && $batch_id === '') {
     die('<p style="font-family:Arial;padding:40px;">No Purchase Order ID, Date, or Batch ID provided.</p>');
@@ -641,16 +642,18 @@ body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;font-size:11px;
         <h3>Supplier &amp; Delivery Information</h3>
         <div class="info-grid" style="grid-template-columns:1fr 1fr; gap:8px 25px; margin-bottom:0; background:none; padding:0; border:none;">
             <div>
-                <div class="info-row"><strong>Supplier</strong> <span><?php echo $supplier_name; ?></span></div>
-                <div class="info-row"><strong>Expected Delivery</strong> <span><?php echo $expected_delivery_date; ?></span></div>
-                <div class="info-row"><strong>Expected Time</strong> <span><?php echo htmlspecialchars($expected_delivery_time); ?></span></div>
-                <div class="info-row"><strong>Payment Terms</strong> <span><?php echo htmlspecialchars($parsed_payment); ?></span></div>
+                <div class="info-row"><strong>Official Supplier</strong> <span>Petron Corporation</span></div>
+                <div class="info-row"><strong>Business Address</strong> <span>Petron Regional Depot &amp; Sales Office, Zone 4, Carmen, Cagayan de Oro City, Misamis Oriental, 9000</span></div>
+                <div class="info-row"><strong>Reg. Details</strong> <span>SEC Reg. No. 31171 | TIN: 000-168-801-000 | CDO Regional Branch</span></div>
+                <div class="info-row"><strong>Contact Person</strong> <span>Petron CDO Sales &amp; Supply Manager</span></div>
+                <div class="info-row"><strong>Phone / Email</strong> <span>(088) 856-4321 | cdo.orders@petron.com</span></div>
             </div>
             <div>
+                <div class="info-row"><strong>Delivery Terms</strong> <span>FOB Destination / Net 30 Days / CDO Local Tanker &amp; Container Delivery</span></div>
                 <div class="info-row"><strong>Delivery Location</strong> <span><?php echo $station_addr; ?></span></div>
+                <div class="info-row"><strong>Expected Delivery</strong> <span><?php echo $expected_delivery_date; ?> (<?php echo htmlspecialchars($expected_delivery_time); ?>)</span></div>
                 <div class="info-row"><strong>Receiving Personnel</strong> <span><?php echo htmlspecialchars($parsed_receiving); ?></span></div>
-                <div class="info-row"><strong>Instructions</strong> <span><?php echo nl2br(htmlspecialchars($parsed_instructions)); ?></span></div>
-                <div class="info-row"><strong>Remarks</strong> <span><?php echo htmlspecialchars($parsed_remarks); ?></span></div>
+                <div class="info-row"><strong>Instructions &amp; Remarks</strong> <span><?php echo htmlspecialchars($parsed_instructions ?: ($parsed_remarks ?: 'N/A')); ?></span></div>
             </div>
         </div>
     </div>

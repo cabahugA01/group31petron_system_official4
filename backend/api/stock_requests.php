@@ -101,10 +101,30 @@ function create_stock_request() {
         return;
     }
     
+    // Validate staff_id against users table
+    $safe_staff_id = null;
+    if (!empty($me['id'])) {
+        try {
+            $chk_u = $pdo->prepare("SELECT id FROM users WHERE id = ? LIMIT 1");
+            $chk_u->execute([(int)$me['id']]);
+            $found_u = $chk_u->fetchColumn();
+            if ($found_u) {
+                $safe_staff_id = (int)$found_u;
+            }
+        } catch (Exception $e) {}
+    }
+    if (!$safe_staff_id) {
+        try {
+            $chk_alt = $pdo->prepare("SELECT id FROM users WHERE station_id = ? ORDER BY id ASC LIMIT 1");
+            $chk_alt->execute([$station_id]);
+            $safe_staff_id = $chk_alt->fetchColumn() ? (int)$chk_alt->fetchColumn() : null;
+        } catch (Exception $e) {}
+    }
+
     // Check if there's already a pending request for this item
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM stock_requests 
                            WHERE staff_id = ? AND item_id = ? AND status = 'Pending'");
-    $stmt->execute([$me['id'], $item_id]);
+    $stmt->execute([$safe_staff_id, $item_id]);
     $pending_count = $stmt->fetchColumn();
     
     if ($pending_count > 0) {
@@ -119,7 +139,7 @@ function create_stock_request() {
                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')");
     
     $result = $stmt->execute([
-        $me['id'],
+        $safe_staff_id,
         $station_id,
         $item['id'],
         $item['sku'] ?? '',

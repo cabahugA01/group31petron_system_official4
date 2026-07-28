@@ -15,8 +15,9 @@ if (!in_array($role, ['manager', 'admin', 'superadmin'], true)) {
 }
 
 $station_id = (int)user_station_id();
-$batch_id = trim($_GET['batch_id'] ?? $_GET['po_number'] ?? $_GET['delivery_ref'] ?? '');
-$type = $_GET['type'] ?? ''; // 'merch' or 'fuel'
+$batch_id = trim($_GET['batch_id'] ?? $_GET['po_id'] ?? $_GET['po_number'] ?? $_GET['delivery_ref'] ?? '');
+$raw_type = $_GET['type'] ?? '';
+$type     = (strpos(strtolower($raw_type), 'fuel') !== false) ? 'fuel' : 'merch';
 
 if ($batch_id === '') {
     die('<p style="font-family:Arial;padding:40px;">Missing invoice reference parameters.</p>');

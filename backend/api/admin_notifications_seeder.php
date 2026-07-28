@@ -294,7 +294,7 @@ if ($action === 'seed') {
             'event_type'  => 'general',
             'severity'    => 'low',
             'source_key'  => "no_shifts_".date('Y-m-d')."_{$station_id}",
-            'redirect_url'=> '/public/admin_staff_oversight.php',
+            'redirect_url'=> '/public/users.php',
         ]);
     } else {
         try {

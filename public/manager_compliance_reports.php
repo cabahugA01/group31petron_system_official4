@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Manager Compliance Reports - Real Report Format
  * Activity Logs, Audit Trail, Calendar & Schedule
@@ -438,13 +438,13 @@ require_once __DIR__ . '/../partials/header.php';
                             COALESCE(u.role,'unknown')                                                 AS staff_role
                         FROM audit_logs al
                         LEFT JOIN users u ON al.user_id = u.id
-                        WHERE u.station_id = ?
+                        WHERE (u.station_id = ? OR u.station_id IS NULL OR ? = 0 OR LOWER(u.role) IN ('admin','superadmin','manager'))
                           AND DATE(al.created_at) BETWEEN ? AND ?
                         ORDER BY al.created_at DESC
                         LIMIT 400
                     ");
-                    $q->execute([$station_id, $date_start, $date_end]);
-                    $activity_rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                    $q->execute([$station_id, $station_id, $date_start, $date_end]);
+                    $act_a = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
                     // Source B: activity_logs (lib.php log_activity() calls)
                     $q2 = $pdo->prepare("
@@ -458,14 +458,33 @@ require_once __DIR__ . '/../partials/header.php';
                             COALESCE(u.role,'unknown')                                                 AS staff_role
                         FROM activity_logs al2
                         LEFT JOIN users u ON al2.user_id = u.id
-                        WHERE u.station_id = ?
+                        WHERE (u.station_id = ? OR u.station_id IS NULL OR ? = 0 OR LOWER(u.role) IN ('admin','superadmin','manager'))
                           AND DATE(al2.created_at) BETWEEN ? AND ?
                         ORDER BY al2.created_at DESC
-                        LIMIT 300
+                        LIMIT 400
                     ");
-                    $q2->execute([$station_id, $date_start, $date_end]);
-                    $al2_rows = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                    $activity_rows = array_merge($activity_rows, $al2_rows);
+                    $q2->execute([$station_id, $station_id, $date_start, $date_end]);
+                    $act_b = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+                    $seen = [];
+                    $other = [];
+                    foreach (array_merge($act_a, $act_b) as $row) {
+                        $act_lower = strtolower(trim((string)$row['action']));
+                        if (in_array($act_lower, ['login', 'logout', 'clock in', 'clock out'], true)) {
+                            $ts_bucket = floor(strtotime($row['created_at']) / 5);
+                            $key = strtolower(trim((string)$row['staff_name'])) . '_' . $act_lower . '_' . $ts_bucket;
+                            if (isset($seen[$key])) {
+                                if (strlen($row['details']) > strlen($seen[$key]['details'])) {
+                                    $seen[$key] = $row;
+                                }
+                                continue;
+                            }
+                            $seen[$key] = $row;
+                        } else {
+                            $other[] = $row;
+                        }
+                    }
+                    $activity_rows = array_merge(array_values($seen), $other);
                     usort($activity_rows, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['created_at']));
                     $activity_rows = array_slice($activity_rows, 0, 600);
                 } catch (Exception $e) {

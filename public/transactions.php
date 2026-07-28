@@ -1347,6 +1347,7 @@ include __DIR__ . '/../partials/header.php';
         </table>
     </div>
 </div>
+<?php endif; ?>
 
 <div id="transaction-history"></div>
 

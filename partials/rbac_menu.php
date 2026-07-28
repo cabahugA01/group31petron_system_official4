@@ -122,15 +122,6 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 'permissions' => ['manage_all_users', 'manage_users_station'],
                 'station_specific' => false,
             ],
-            // 3. Staff Oversight
-            [
-                'id' => 'staff_oversight_admin',
-                'label' => 'Staff Oversight',
-                'ico' => 'fas fa-users-cog',
-                'href' => 'admin_staff_oversight.php',
-                'permissions' => ['manage_staff_oversight', 'view_all_reports', 'view_dashboard'],
-                'station_specific' => true,
-            ],
             // 4. Transactions — Admin Oversight with sub-menu
             [
                 'id'               => 'admin_transactions',
@@ -378,7 +369,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 $filtered_item['sub_items'] = [
                     ['id' => 'mgr_inv_merch',    'label' => 'Merchandise Inventory',  'href' => 'manager_inventory_merchandise.php',      'ico' => 'fas fa-box',              'permissions' => ['manage_inventory', 'view_inventory']],
                     ['id' => 'mgr_inv_fuel',     'label' => 'Fuel Inventory',         'href' => 'manager_inventory_fuel.php',             'ico' => 'fas fa-gas-pump',         'permissions' => ['manage_inventory', 'view_inventory']],
-                    ['id' => 'mgr_stock_review', 'label' => 'Purchase Request',   'href' => 'manager_stock_request_review.php',       'ico' => 'fas fa-clipboard-check',  'permissions' => ['manage_inventory', 'view_inventory']],
+                    ['id' => 'mgr_stock_review', 'label' => 'Purchase Management',   'href' => 'manager_stock_request_review.php',       'ico' => 'fas fa-clipboard-check',  'permissions' => ['manage_inventory', 'view_inventory']],
                     ['id' => 'mgr_stock_in',     'label' => 'Stock-In',           'href' => 'manager_stock_in.php',                   'ico' => 'fas fa-download',         'permissions' => ['manage_inventory', 'view_inventory']],
                 ];
                 $filtered_menu[] = $filtered_item;

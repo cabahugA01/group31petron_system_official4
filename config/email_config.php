@@ -151,7 +151,7 @@ function sendPasswordResetOTP($to_email, $otp) {
     }
     
     // DEBUG LOG - Force logging to see what's happening
-    error_log("🔥 PASSWORD RESET OTP SENDING: Email={$to_email}, OTP={$otp}, Time={$timestamp}");
+    error_log("PASSWORD RESET OTP SENDING: Email={$to_email}, OTP={$otp}, Time={$timestamp}");
 
     // Original Petron OTP email template.
     $logo_path = __DIR__ . '/../assets/img/Petron Logo.png';
@@ -360,7 +360,7 @@ function sendAdminCredentialsEmail($to_email, $full_name, $station_name, $userna
             <div style='background:#ffffff;padding:40px 35px;'>
 
                 <!-- Greeting -->
-                <h2 style='color:#002F6C;font-size:22px;font-weight:700;margin:0 0 8px;'>Hello, {$full_name}! 👋</h2>
+                <h2 style='color:#002F6C;font-size:22px;font-weight:700;margin:0 0 8px;'>Hello, {$full_name}!</h2>
                 <p style='color:#475569;font-size:15px;line-height:1.7;margin:0 0 24px;'>
                     Your account on the <strong style='color:#002F6C;'>Petron Station Management System</strong> has been successfully
                     created by the {$creator_label} for <strong>{$station_name}</strong>.<br>
@@ -370,7 +370,7 @@ function sendAdminCredentialsEmail($to_email, $full_name, $station_name, $userna
                 <!-- Credentials Card -->
                 <div style='background:linear-gradient(135deg,#f0f9ff 0%,#e0f2fe 100%);border:2px solid #0ea5e9;border-radius:12px;padding:28px;margin:0 0 28px;'>
                     <p style='margin:0 0 18px;font-size:14px;font-weight:800;color:#0369a1;text-transform:uppercase;letter-spacing:1px;'>
-                        📋 Your Login Credentials
+                        Your Login Credentials
                     </p>
                     <table style='width:100%;border-collapse:collapse;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);'>
                         <tbody>
@@ -405,7 +405,7 @@ function sendAdminCredentialsEmail($to_email, $full_name, $station_name, $userna
 
                 <!-- Warning Notice -->
                 <div style='background:#fffbeb;border-left:5px solid #f59e0b;border-radius:8px;padding:18px 20px;margin:0 0 28px;'>
-                    <p style='margin:0 0 8px;font-size:14px;font-weight:800;color:#92400e;'>⚠️ IMPORTANT — Security Reminder:</p>
+                    <p style='margin:0 0 8px;font-size:14px;font-weight:800;color:#92400e;'>IMPORTANT — Security Reminder:</p>
                     <ul style='margin:0;padding-left:20px;color:#78350f;font-size:13px;line-height:1.9;'>
                         <li>You are required to <strong>change your password</strong> upon your first login.</li>
                         <li>Do not share your password with anyone.</li>
@@ -418,7 +418,7 @@ function sendAdminCredentialsEmail($to_email, $full_name, $station_name, $userna
                 <div style='text-align:center;margin:0 0 32px;'>
                     <a href='http://localhost/group31petron_system_official4/public/login.php'
                        style='background:linear-gradient(135deg,#002F6C 0%,#004a9e 100%);color:#ffffff;padding:15px 44px;text-decoration:none;border-radius:10px;display:inline-block;font-weight:800;font-size:16px;letter-spacing:0.5px;box-shadow:0 4px 14px rgba(0,47,108,0.35);'>
-                        🚀 Log In to the System
+                        Log In to the System
                     </a>
                 </div>
 

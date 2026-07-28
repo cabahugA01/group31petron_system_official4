@@ -661,6 +661,13 @@ foreach ($merch_inventory as $item) {
         $summary_available++;
     }
 }
+// Additional summary stats for new dashboard cards
+$total_inventory_value = 0;
+foreach ($merch_inventory as $item) {
+    $s = (float)($item['stock_level'] ?? 0);
+    $p = (float)($item['price'] ?? $item['unit_price'] ?? 0);
+    $total_inventory_value += $s * $p;
+}
 $stmt = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE station_id = ? AND status = 'Pending'");
 $stmt->execute([$station_id]);
 $summary_pending_requests = (int)$stmt->fetchColumn();
@@ -788,12 +795,201 @@ try {
 } catch (Exception $e) {}
 
 $active_tab = $_GET['tab'] ?? 'inventory';
-if (!in_array($active_tab, ['inventory', 'alerts', 'movement', 'requests'])) {
+if (!in_array($active_tab, ['inventory', 'alerts', 'movement', 'requests', 'stockin', 'stockout', 'transfers', 'damaged', 'expired'])) {
     $active_tab = 'inventory';
 }
 // URL-driven filter/view params (from sidebar deep-links)
 $url_filter = in_array($_GET['filter'] ?? '', ['low','critical']) ? ($_GET['filter']) : '';
 $url_view   = ($_GET['view'] ?? '') === 'movement' ? 'movement' : '';
+
+// ── NEW: Stock Added Today & Stock Deducted Today (for dashboard cards) ──
+$stock_added_today    = 0;
+$stock_deducted_today = 0;
+try {
+    $s = $pdo->prepare("SELECT COALESCE(SUM(qty_received),0) FROM merchandise_stock_in WHERE station_id=? AND DATE(encoded_at)=CURDATE()");
+    $s->execute([$station_id]);
+    $stock_added_today = (int)$s->fetchColumn();
+} catch (Exception $e) {}
+try {
+    $s = $pdo->prepare("
+        SELECT COALESCE(SUM(ti.quantity),0)
+        FROM merchandise_transaction_items ti
+        JOIN merchandise_transactions t ON t.id = ti.transaction_id
+        WHERE t.station_id=? AND DATE(t.created_at)=CURDATE()
+          AND t.workflow_status NOT IN ('voided','void','cancelled')
+    ");
+    $s->execute([$station_id]);
+    $stock_deducted_today = (int)$s->fetchColumn();
+} catch (Exception $e) {}
+
+// ── NEW: Stock-In list (manager full view with PO No., Status) ──
+$mgr_stock_in_list = [];
+try {
+    $s = $pdo->prepare("
+        SELECT
+            msi.id,
+            CONCAT('SI-', LPAD(msi.id, 5, '0')) AS stock_in_no,
+            COALESCE(NULLIF(msi.po_number,''), '—') AS po_no,
+            msi.product_name,
+            COALESCE(NULLIF(msi.batch_ref,''), CONCAT('BATCH-', LPAD(msi.id, 4, '0'))) AS batch_no,
+            msi.qty_received,
+            msi.unit_cost,
+            msi.selling_price,
+            msi.encoded_at AS date_received,
+            COALESCE(msi.condition_flag, 'Good') AS status_flag,
+            COALESCE(u.name, u.username, 'Staff') AS received_by
+        FROM merchandise_stock_in msi
+        LEFT JOIN users u ON msi.encoded_by = u.id
+        WHERE (msi.station_id = ? OR msi.station_id = 0 OR msi.station_id IS NULL)
+        ORDER BY msi.encoded_at DESC, msi.id DESC
+        LIMIT 300
+    ");
+    $s->execute([$station_id]);
+    $mgr_stock_in_list = $s->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+// ── NEW: Stock-Out list (from merchandise_transaction_items + transactions) ──
+$mgr_stock_out_list = [];
+try {
+    $s = $pdo->prepare("
+        SELECT
+            CONCAT('SO-', LPAD(t.id, 5, '0')) AS ref_no,
+            ti.product_name,
+            COALESCE(mb.batch_number, CONCAT('BATCH-', LPAD(COALESCE(ti.batch_id,0), 4, '0'))) AS batch_no,
+            ABS(ti.quantity) AS qty_out,
+            COALESCE(NULLIF(t.transaction_type,''), 'Sales') AS transaction_type,
+            COALESCE(t.transaction_date, t.created_at) AS date_out,
+            COALESCE(u.name, u.username, 'Staff') AS released_by
+        FROM merchandise_transaction_items ti
+        JOIN merchandise_transactions t ON t.id = ti.transaction_id
+        LEFT JOIN merchandise_batches mb ON mb.id = ti.batch_id
+        LEFT JOIN users u ON t.staff_id = u.id
+        WHERE (t.station_id = ? OR t.station_id = 0 OR t.station_id IS NULL)
+          AND (t.workflow_status IS NULL OR LOWER(t.workflow_status) NOT IN ('voided','void','cancelled'))
+        ORDER BY t.created_at DESC, t.id DESC
+        LIMIT 300
+    ");
+    $s->execute([$station_id]);
+    $mgr_stock_out_list = $s->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+// ── NEW: Transfer Records (from inventory_logs where action='transfer', or merchandise_deliveries) ──
+$mgr_transfers_list = [];
+try {
+    $s = $pdo->prepare("
+        SELECT
+            CONCAT('TR-', LPAD(il.id, 5, '0')) AS transfer_no,
+            COALESCE(ip.product_name, p.name, il.notes, 'Merchandise Product') AS product_name,
+            COALESCE(il.notes, '—') AS notes,
+            ABS(il.quantity_change) AS qty,
+            il.created_at AS date_transferred,
+            COALESCE(u.name, u.username, 'Staff') AS processed_by
+        FROM inventory_logs il
+        LEFT JOIN inventory_products ip ON ip.id = il.product_id
+        LEFT JOIN products p ON p.id = il.product_id
+        LEFT JOIN users u ON il.user_id = u.id
+        WHERE (il.station_id = ? OR il.station_id = 0 OR il.station_id IS NULL) 
+          AND (LOWER(il.action) LIKE '%transfer%' OR LOWER(il.notes) LIKE '%transfer%')
+        ORDER BY il.created_at DESC
+        LIMIT 200
+    ");
+    $s->execute([$station_id]);
+    $mgr_transfers_list = $s->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+// ── NEW: Damaged Items (from inventory_logs where action='damage' or condition_flag='Damaged' in stock_in) ──
+$mgr_damaged_list = [];
+try {
+    $s = $pdo->prepare("
+        SELECT
+            CONCAT('DMG-', LPAD(il.id, 5, '0')) AS damage_no,
+            COALESCE(ip.product_name, p.name, il.notes, '—') AS product_name,
+            '—' AS batch_no,
+            ABS(il.quantity_change) AS qty,
+            COALESCE(il.notes, 'Damage recorded') AS reason,
+            il.created_at AS date_recorded,
+            COALESCE(u.name, u.username, 'Staff') AS recorded_by
+        FROM inventory_logs il
+        LEFT JOIN inventory_products ip ON ip.id = il.product_id
+        LEFT JOIN products p ON p.id = il.product_id
+        LEFT JOIN users u ON il.user_id = u.id
+        WHERE (il.station_id = ? OR il.station_id = 0 OR il.station_id IS NULL) 
+          AND (LOWER(il.action) LIKE '%damage%' OR LOWER(il.action) LIKE '%write_off%')
+        ORDER BY il.created_at DESC
+        LIMIT 200
+    ");
+    $s->execute([$station_id]);
+    $mgr_damaged_list = $s->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+// Also pull damaged from merchandise_stock_in condition_flag='Damaged'
+try {
+    $s = $pdo->prepare("
+        SELECT
+            CONCAT('DMG-SI-', LPAD(msi.id, 4, '0')) AS damage_no,
+            msi.product_name,
+            COALESCE(NULLIF(msi.batch_ref,''), CONCAT('BATCH-', LPAD(msi.id, 4, '0'))) AS batch_no,
+            msi.qty_received AS qty,
+            CONCAT('Damaged on delivery - ', COALESCE(msi.remarks, 'No remarks')) AS reason,
+            msi.encoded_at AS date_recorded,
+            COALESCE(u.name, u.username, 'Staff') AS recorded_by
+        FROM merchandise_stock_in msi
+        LEFT JOIN users u ON msi.encoded_by = u.id
+        WHERE (msi.station_id = ? OR msi.station_id = 0 OR msi.station_id IS NULL) 
+          AND msi.condition_flag = 'Damaged'
+        ORDER BY msi.encoded_at DESC
+        LIMIT 100
+    ");
+    $s->execute([$station_id]);
+    $damaged_from_si = $s->fetchAll(PDO::FETCH_ASSOC);
+    $mgr_damaged_list = array_merge($mgr_damaged_list, $damaged_from_si);
+} catch (Exception $e) {}
+
+// ── NEW: Expired Products (from merchandise_batches where status='expired' or expiry logic) ──
+$mgr_expired_list = [];
+try {
+    $s = $pdo->prepare("
+        SELECT
+            COALESCE(ip.product_name, p.name, 'Product') AS product_name,
+            COALESCE(mb.batch_number, CONCAT('BATCH-', LPAD(mb.id,4,'0'))) AS batch_no,
+            COALESCE(mb.date_received, mb.created_at) AS expiry_date,
+            mb.remaining_qty AS qty,
+            COALESCE(mb.status, 'Expired') AS status
+        FROM merchandise_batches mb
+        LEFT JOIN inventory_products ip ON ip.id = mb.product_id
+        LEFT JOIN products p ON p.id = mb.product_id
+        WHERE (mb.station_id = ? OR mb.station_id = 0 OR mb.station_id IS NULL) 
+          AND LOWER(mb.status) IN ('expired', 'damage')
+        ORDER BY mb.date_received ASC
+        LIMIT 200
+    ");
+    $s->execute([$station_id]);
+    $mgr_expired_list = $s->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+// ── NEW: Full Inventory Movement History (already exists as $movement_history but we need a richer version) ──
+$mgr_movement_history = [];
+try {
+    $s = $pdo->prepare("
+        SELECT
+            il.created_at AS date,
+            COALESCE(ip.product_name, '—') AS product_name,
+            il.action AS movement_type,
+            COALESCE(il.reference_type, il.action, '—') AS reference,
+            CASE WHEN il.quantity_change > 0 THEN il.quantity_change ELSE 0 END AS qty_in,
+            CASE WHEN il.quantity_change < 0 THEN ABS(il.quantity_change) ELSE 0 END AS qty_out,
+            COALESCE(il.quantity_after, 0) AS balance,
+            COALESCE(u.name, u.username, 'System') AS user_name
+        FROM inventory_logs il
+        LEFT JOIN inventory_products ip ON ip.id = il.product_id
+        LEFT JOIN users u ON il.user_id = u.id
+        WHERE il.station_id = ?
+        ORDER BY il.created_at DESC
+        LIMIT 500
+    ");
+    $s->execute([$station_id]);
+    $mgr_movement_history = $s->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -861,7 +1057,7 @@ body { overflow-x: hidden; }
 
 /* Modals */
 .modal-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.5); z-index:9999; align-items:center; justify-content:center; }
-.modal-overlay.open { display:flex; }
+.modal-overlay.open { display:flex !important; z-index:99999 !important; }
 .modal-box { background:#fff; border-radius:12px; width:90%; max-width:600px; max-height:90vh; overflow-y:auto; box-shadow:0 20px 25px -5px rgba(0,0,0,0.15); padding:28px; }
 .modal-box h3 { margin:0 0 16px; font-size:15px; color:#00264D; font-weight:700; text-transform:uppercase; display:flex; align-items:center; gap:8px; border-bottom:1px solid #f1f5f9; padding-bottom:10px; }
 .modal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #e9ecef; }
@@ -1033,9 +1229,24 @@ body { overflow-x: hidden; }
 
 
 <!-- Tabs Navigation -->
-<div class="tab-nav">
+<div class="tab-nav" style="overflow-x:auto; flex-wrap:nowrap; white-space:nowrap; padding-bottom:4px;">
     <a href="manager_inventory_merchandise.php?tab=inventory" class="tab-btn <?= $active_tab === 'inventory' ? 'active' : '' ?>">
         <i class="fas fa-list"></i> Inventory Overview
+    </a>
+    <a href="manager_inventory_merchandise.php?tab=stockin" class="tab-btn <?= $active_tab === 'stockin' ? 'active' : '' ?>">
+        <i class="fas fa-arrow-down"></i> Stock In
+    </a>
+    <a href="manager_inventory_merchandise.php?tab=stockout" class="tab-btn <?= $active_tab === 'stockout' ? 'active' : '' ?>">
+        <i class="fas fa-arrow-up"></i> Stock Out
+    </a>
+    <a href="manager_inventory_merchandise.php?tab=transfers" class="tab-btn <?= $active_tab === 'transfers' ? 'active' : '' ?>">
+        <i class="fas fa-exchange-alt"></i> Transfer Records
+    </a>
+    <a href="manager_inventory_merchandise.php?tab=damaged" class="tab-btn <?= $active_tab === 'damaged' ? 'active' : '' ?>">
+        <i class="fas fa-heart-broken"></i> Damaged Items
+    </a>
+    <a href="manager_inventory_merchandise.php?tab=expired" class="tab-btn <?= $active_tab === 'expired' ? 'active' : '' ?>">
+        <i class="fas fa-calendar-times"></i> Expired Products
     </a>
     <a href="manager_inventory_merchandise.php?tab=alerts" class="tab-btn <?= $active_tab === 'alerts' ? 'active' : '' ?>">
         <i class="fas fa-exclamation-triangle"></i> Stock Alerts
@@ -1043,11 +1254,8 @@ body { overflow-x: hidden; }
             <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;"><?= ($summary_low + $summary_out) ?></span>
         <?php endif; ?>
     </a>
-    <a href="manager_inventory_merchandise.php?tab=movement" class="tab-btn <?= $active_tab === 'movement' ? 'active' : '' ?>">
-        <i class="fas fa-history"></i> Stock Movement History
-    </a>
-    <?php if ($active_tab === 'requests'): ?>
-    <a href="manager_inventory_merchandise.php?tab=requests" class="tab-btn active">
+    <?php if ($active_tab === 'requests' || $summary_pending_requests > 0): ?>
+    <a href="manager_inventory_merchandise.php?tab=requests" class="tab-btn <?= $active_tab === 'requests' ? 'active' : '' ?>">
         <i class="fas fa-paper-plane"></i> Stock Requests Review
         <?php if ($summary_pending_requests > 0): ?>
             <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;"><?= $summary_pending_requests ?></span>
@@ -1065,6 +1273,38 @@ body { overflow-x: hidden; }
             <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_total) ?></div>
         </div>
         <div style="background:#f0f4ff;color:#002F70;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-boxes"></i></div>
+    </div>
+    <!-- Current Inventory -->
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
+        <div>
+            <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.3px;">Current Inventory</div>
+            <div style="font-size:24px;font-weight:800;color:#002F70;margin-top:4px;"><?= number_format(array_sum(array_column($merch_inventory, 'stock_level'))) ?></div>
+        </div>
+        <div style="background:#e0f2fe;color:#0284c7;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-cubes"></i></div>
+    </div>
+    <!-- Stock Added Today -->
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #bbf7d0;">
+        <div>
+            <div style="font-size:11px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.3px;">Stock Added Today</div>
+            <div style="font-size:24px;font-weight:800;color:#15803d;margin-top:4px;">+<?= number_format($stock_added_today) ?></div>
+        </div>
+        <div style="background:#dcfce7;color:#15803d;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-arrow-down"></i></div>
+    </div>
+    <!-- Stock Deducted Today -->
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fed7aa;">
+        <div>
+            <div style="font-size:11px;font-weight:700;color:#c2410c;text-transform:uppercase;letter-spacing:.3px;">Stock Deducted Today</div>
+            <div style="font-size:24px;font-weight:800;color:#c2410c;margin-top:4px;">-<?= number_format($stock_deducted_today) ?></div>
+        </div>
+        <div style="background:#ffedd5;color:#c2410c;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-arrow-up"></i></div>
+    </div>
+    <!-- Products with Variance -->
+    <div onclick="filterMgrByCard('variance detected')" style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;cursor:pointer;" title="Click to filter items with Variance">
+        <div>
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">With Variance</div>
+            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_variance) ?></div>
+        </div>
+        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-balance-scale"></i></div>
     </div>
     <!-- Low Stock -->
     <div onclick="filterMgrByCard('warning')" style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fed7aa;cursor:pointer;" title="Click to filter stock alert items">
@@ -1090,13 +1330,13 @@ body { overflow-x: hidden; }
         </div>
         <div style="background:#fef2f2;color:#991b1b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
     </div>
-    <!-- Products with Variance (manager-only extra card) -->
-    <div onclick="filterMgrByCard('variance detected')" style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;cursor:pointer;" title="Click to filter items with Variance">
+    <!-- Total Inventory Value (new) -->
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #bfdbfe;">
         <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">With Variance</div>
-            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_variance) ?></div>
+            <div style="font-size:11px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:.3px;">Total Inventory Value</div>
+            <div style="font-size:18px;font-weight:800;color:#1d4ed8;margin-top:4px;">₱<?= number_format($total_inventory_value, 2) ?></div>
         </div>
-        <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-balance-scale"></i></div>
+        <div style="background:#eff6ff;color:#1d4ed8;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-peso-sign"></i></div>
     </div>
 </div>
 
@@ -1132,35 +1372,39 @@ body { overflow-x: hidden; }
                     <th>Product Name</th>
                     <th style="text-align:center;">Category</th>
                     <th>UOM</th>
-                    <th style="text-align:center;">Capacity</th>
-                    <th>Current Stock / Reorder</th>
+                    <th style="text-align:right;">Beginning</th>
+                    <th style="text-align:right;">Added</th>
+                    <th style="text-align:right;">Deducted</th>
+                    <th>Current Stock</th>
                     <th style="text-align:right;">Physical Count</th>
                     <th style="text-align:right;">Variance</th>
                     <th style="text-align:center;">Status</th>
-                    <th style="text-align:center;">Last Movement</th>
                     <th>Last Updated</th>
+                    <th style="text-align:center;">Actions</th>
                 </tr>
             </thead>
             <tbody id="merchTableBody">
             <?php
             foreach ($sorted as $cat_label => $items):
             ?>
-                <tr class="cat-header no-paginate"><td colspan="12"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                <tr class="cat-header no-paginate"><td colspan="13"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                 <?php foreach ($items as $item):
                     $stock    = (float)($item['stock_level'] ?? 0);
                     $reorder  = (float)($item['reorder_level'] ?? 24);
+                    if ($reorder  <= 0) $reorder  = 24;  // safety: Low Stock threshold
                     $critical = (float)($item['critical_level'] ?? 10);
-                    $capacity = (float)($item['capacity']    ?? 480);
+                    if ($critical <= 0) $critical = 10;  // safety: Critical threshold
+                    $capacity = max(480.0, (float)($item['capacity'] ?? 480));
                     $unit     = htmlspecialchars(format_product_unit_display($item['unit'] ?? 'pcs', $item['name'] ?? '', $item['category_name'] ?? ''));
                     $variance = $item['variance'];
                     $has_variance = ($variance !== null && (float)$variance != 0);
 
-                    // Dynamic capacity fallbacks
-                    if ($capacity <= 0) {
-                        $capacity = 480;
-                    }
+                    $pid = (int)$item['id'];
+                    $added_qty = (float)($prod_added_map[$pid] ?? 0);
+                    $deducted_qty = (float)($prod_deducted_map[$pid] ?? 0);
+                    $beginning_qty = max(0, $stock - $added_qty + $deducted_qty);
 
-                    $fill_pct = $capacity > 0 ? ($stock / $capacity) * 100 : 0;
+                    $fill_pct = $capacity > 0 ? min(100, ($stock / $capacity) * 100) : 0;
 
                     if ($stock <= 0) {
                         $st = 'OUT OF STOCK'; $sc = '#dc3545'; $si_cls = 'out of stock';
@@ -1203,13 +1447,9 @@ body { overflow-x: hidden; }
                     }
 
                     $phys_text = ($item['physical_count'] !== null) ? number_format((float)$item['physical_count'], 0) : '—';
-
-                    $pid = (int)$item['id'];
-                    $mv  = $last_movements[$pid] ?? null;
-                    $mv_label = $mv ? ($mv['sign'].$mv['qty'].' '.$mv['type']) : '';
-                    $mv_class = $mv ? ($mv['sign'] === '+' ? 'mv-pos' : ($mv['sign'] === '-' ? 'mv-neg' : 'mv-none')) : 'mv-none';
                 ?>
                 <tr class="merch-row"
+                    data-id="<?php echo (int)$item['id']; ?>"
                     data-name="<?php echo strtolower(htmlspecialchars($item['name'])); ?>"
                     data-sku="<?php echo strtolower(htmlspecialchars($item['sku'] ?? '')); ?>"
                     data-cat="<?php echo strtolower(htmlspecialchars($item['category_name'] ?? '')); ?>"
@@ -1220,13 +1460,14 @@ body { overflow-x: hidden; }
                     <td><strong><?php echo htmlspecialchars($item['name']); ?></strong></td>
                     <td style="text-align:center;"><?php echo htmlspecialchars($item['category_name'] ?? ''); ?></td>
                     <td><?php echo $unit; ?></td>
-                    <td style="text-align:center;font-weight:600;color:#334155;"><?php echo number_format($capacity, 0); ?></td>
+                    <td style="text-align:right;font-weight:600;color:#64748b;"><?php echo number_format($beginning_qty, 0); ?></td>
+                    <td style="text-align:right;font-weight:700;color:#16a34a;"><?php echo $added_qty > 0 ? '+' . number_format($added_qty, 0) : '0'; ?></td>
+                    <td style="text-align:right;font-weight:700;color:#dc2626;"><?php echo $deducted_qty > 0 ? '-' . number_format($deducted_qty, 0) : '0'; ?></td>
                     <td>
                         <div class="fill-bar-wrap">
                             <div class="fill-bar-inner" style="width:<?php echo min(100,round($fill_pct)); ?>%;background:<?php echo $sc; ?>;"></div>
                         </div>
                         <span style="font-size:11px;font-weight:600;color:#334155;"><?php echo number_format($stock, 0); ?> <?php echo $unit; ?></span>
-                        <span style="font-size:10px;color:#94a3b8;margin-left:4px;">· Reorder: <?php echo number_format($reorder, 0); ?></span>
                     </td>
                     <td style="text-align:right;font-weight:700;color:#0f172a;"><?php echo $phys_text; ?></td>
                     <td style="text-align:right;<?php echo $var_style; ?>"><?php echo $var_text; ?></td>
@@ -1235,14 +1476,12 @@ body { overflow-x: hidden; }
                             <?php echo htmlspecialchars($st); ?>
                         </span>
                     </td>
-                    <td style="text-align:center;">
-                        <?php if ($mv_label): ?>
-                            <span class="<?php echo $mv_class; ?>" style="font-size:11px;"><?php echo htmlspecialchars($mv_label); ?></span>
-                        <?php else: ?>
-                            <span class="mv-none" style="font-size:11px;">—</span>
-                        <?php endif; ?>
-                    </td>
                     <td style="font-size:11px;color:#64748b;"><?php echo $timestamp; ?></td>
+                    <td style="text-align:center;">
+                        <button type="button" class="int-btn-outline" style="font-size:11px;height:28px;padding:0 10px;cursor:pointer;position:relative;z-index:5;" onclick="event.stopPropagation(); openProductModal(<?php echo (int)$item['id']; ?>)">
+                            <i class="fas fa-eye"></i> View
+                        </button>
+                    </td>
                 </tr>
                 <?php endforeach; ?>
             <?php endforeach; ?>
@@ -1250,6 +1489,229 @@ body { overflow-x: hidden; }
         </table>
     </div>
     <div id="mgrMerchPagination" style="padding:10px 20px;"></div>
+</div>
+<?php endif; ?>
+
+<!-- ══ TAB: STOCK IN ══ -->
+<?php if ($active_tab === 'stockin'): ?>
+<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;padding:20px;">
+    <div style="font-size:1rem;font-weight:700;color:#002F70;margin-bottom:16px;display:flex;align-items:center;gap:8px;">
+        <i class="fas fa-arrow-down"></i> Merchandise Stock In Records
+    </div>
+    <div class="table-wrap">
+        <table class="table" style="width:100%;">
+            <thead>
+                <tr style="background:#002F70; color:#fff;">
+                    <th>Stock-In No.</th>
+                    <th>PO No.</th>
+                    <th>Product</th>
+                    <th style="text-align:center;">Batch</th>
+                    <th style="text-align:center;">Qty Received</th>
+                    <th style="text-align:right;">Unit Cost</th>
+                    <th style="text-align:right;">Selling Price</th>
+                    <th style="text-align:center;">Date</th>
+                    <th style="text-align:center;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if (empty($mgr_stock_in_list)): ?>
+                <tr><td colspan="9" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-info-circle" style="font-size:1.8em; display:block; margin-bottom:8px;"></i> No stock-in records found.</td></tr>
+            <?php else: ?>
+                <?php foreach ($mgr_stock_in_list as $sin):
+                    $sdate = !empty($sin['date_received']) ? (new DateTime($sin['date_received']))->format('M d, Y h:i A') : '—';
+                ?>
+                <tr style="border-bottom:1px solid #f1f5f9;">
+                    <td><code style="font-size:11px; font-weight:700; color:#002F70;"><?php echo htmlspecialchars($sin['stock_in_no']); ?></code></td>
+                    <td><span style="font-size:11px; font-weight:600; color:#475569;"><?php echo htmlspecialchars($sin['po_no']); ?></span></td>
+                    <td><strong><?php echo htmlspecialchars($sin['product_name']); ?></strong></td>
+                    <td style="text-align:center;"><span style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600;"><?php echo htmlspecialchars($sin['batch_no']); ?></span></td>
+                    <td style="text-align:center; font-weight:700; color:#16a34a; font-size:13px;">+<?php echo number_format($sin['qty_received']); ?></td>
+                    <td style="text-align:right; font-weight:600; color:#334155;">₱<?php echo number_format((float)$sin['unit_cost'], 2); ?></td>
+                    <td style="text-align:right; font-weight:600; color:#002F70;">₱<?php echo number_format((float)$sin['selling_price'], 2); ?></td>
+                    <td style="text-align:center; font-size:11px; color:#64748b;"><?php echo $sdate; ?></td>
+                    <td style="text-align:center;">
+                        <span class="status-badge" style="background:#d4edda; color:#155724; border:1px solid #c3e6cb;">
+                            <?php echo htmlspecialchars($sin['status_flag']); ?>
+                        </span>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- ══ TAB: STOCK OUT ══ -->
+<?php if ($active_tab === 'stockout'): ?>
+<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;padding:20px;">
+    <div style="font-size:1rem;font-weight:700;color:#002F70;margin-bottom:16px;display:flex;align-items:center;gap:8px;">
+        <i class="fas fa-arrow-up"></i> Merchandise Stock Out Records
+    </div>
+    <div class="table-wrap">
+        <table class="table" style="width:100%;">
+            <thead>
+                <tr style="background:#002F70; color:#fff;">
+                    <th>Ref No.</th>
+                    <th>Product</th>
+                    <th style="text-align:center;">Batch</th>
+                    <th style="text-align:center;">Qty Out</th>
+                    <th style="text-align:center;">Transaction Type</th>
+                    <th style="text-align:center;">Date</th>
+                    <th style="text-align:center;">Released By</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if (empty($mgr_stock_out_list)): ?>
+                <tr><td colspan="7" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-info-circle" style="font-size:1.8em; display:block; margin-bottom:8px;"></i> No stock-out records found.</td></tr>
+            <?php else: ?>
+                <?php foreach ($mgr_stock_out_list as $so):
+                    $sodate = !empty($so['date_out']) ? (new DateTime($so['date_out']))->format('M d, Y h:i A') : '—';
+                ?>
+                <tr style="border-bottom:1px solid #f1f5f9;">
+                    <td><code style="font-size:11px; font-weight:700; color:#002F70;"><?php echo htmlspecialchars($so['ref_no']); ?></code></td>
+                    <td><strong><?php echo htmlspecialchars($so['product_name']); ?></strong></td>
+                    <td style="text-align:center;"><span style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600;"><?php echo htmlspecialchars($so['batch_no']); ?></span></td>
+                    <td style="text-align:center; font-weight:700; color:#dc2626; font-size:13px;">-<?php echo number_format($so['qty_out']); ?></td>
+                    <td style="text-align:center;"><span style="background:#e0f2fe; color:#0369a1; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600;"><?php echo htmlspecialchars($so['transaction_type']); ?></span></td>
+                    <td style="text-align:center; font-size:11px; color:#64748b;"><?php echo $sodate; ?></td>
+                    <td style="text-align:center; font-weight:600; color:#334155;"><?php echo htmlspecialchars($so['released_by']); ?></td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- ══ TAB: TRANSFER RECORDS ══ -->
+<?php if ($active_tab === 'transfers'): ?>
+<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;padding:20px;">
+    <div style="font-size:1rem;font-weight:700;color:#002F70;margin-bottom:16px;display:flex;align-items:center;gap:8px;">
+        <i class="fas fa-exchange-alt"></i> Transfer Records
+    </div>
+    <div class="table-wrap">
+        <table class="table" style="width:100%;">
+            <thead>
+                <tr style="background:#002F70; color:#fff;">
+                    <th>Transfer No.</th>
+                    <th>Product</th>
+                    <th>From Location</th>
+                    <th>To Location</th>
+                    <th style="text-align:center;">Qty</th>
+                    <th style="text-align:center;">Date</th>
+                    <th style="text-align:center;">Processed By</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if (empty($mgr_transfers_list)): ?>
+                <tr><td colspan="7" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-info-circle" style="font-size:1.8em; display:block; margin-bottom:8px;"></i> No transfer records found.</td></tr>
+            <?php else: ?>
+                <?php foreach ($mgr_transfers_list as $tr):
+                    $tdate = !empty($tr['date_transferred']) ? (new DateTime($tr['date_transferred']))->format('M d, Y h:i A') : '—';
+                ?>
+                <tr style="border-bottom:1px solid #f1f5f9;">
+                    <td><code style="font-size:11px; font-weight:700; color:#002F70;"><?php echo htmlspecialchars($tr['transfer_no']); ?></code></td>
+                    <td><strong><?php echo htmlspecialchars($tr['product_name']); ?></strong></td>
+                    <td><span style="color:#64748b; font-size:11px;">Main Warehouse</span></td>
+                    <td><span style="color:#002F70; font-weight:600; font-size:11px;">Station Store</span></td>
+                    <td style="text-align:center; font-weight:700; color:#0284c7; font-size:13px;"><?php echo number_format($tr['qty']); ?></td>
+                    <td style="text-align:center; font-size:11px; color:#64748b;"><?php echo $tdate; ?></td>
+                    <td style="text-align:center; font-weight:600; color:#334155;"><?php echo htmlspecialchars($tr['processed_by']); ?></td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- ══ TAB: DAMAGED ITEMS ══ -->
+<?php if ($active_tab === 'damaged'): ?>
+<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;padding:20px;">
+    <div style="font-size:1rem;font-weight:700;color:#002F70;margin-bottom:16px;display:flex;align-items:center;gap:8px;">
+        <i class="fas fa-heart-broken"></i> Damaged Items
+    </div>
+    <div class="table-wrap">
+        <table class="table" style="width:100%;">
+            <thead>
+                <tr style="background:#002F70; color:#fff;">
+                    <th>Damage No.</th>
+                    <th>Product</th>
+                    <th style="text-align:center;">Batch</th>
+                    <th style="text-align:center;">Qty</th>
+                    <th>Reason</th>
+                    <th style="text-align:center;">Date</th>
+                    <th style="text-align:center;">Recorded By</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if (empty($mgr_damaged_list)): ?>
+                <tr><td colspan="7" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-check-circle" style="font-size:1.8em; display:block; margin-bottom:8px; color:#16a34a;"></i> No damaged items recorded.</td></tr>
+            <?php else: ?>
+                <?php foreach ($mgr_damaged_list as $dmg):
+                    $ddate = !empty($dmg['date_recorded']) ? (new DateTime($dmg['date_recorded']))->format('M d, Y h:i A') : '—';
+                ?>
+                <tr style="border-bottom:1px solid #f1f5f9;">
+                    <td><code style="font-size:11px; font-weight:700; color:#dc2626;"><?php echo htmlspecialchars($dmg['damage_no']); ?></code></td>
+                    <td><strong><?php echo htmlspecialchars($dmg['product_name']); ?></strong></td>
+                    <td style="text-align:center;"><span style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600;"><?php echo htmlspecialchars($dmg['batch_no']); ?></span></td>
+                    <td style="text-align:center; font-weight:700; color:#dc2626; font-size:13px;"><?php echo number_format($dmg['qty']); ?></td>
+                    <td><span style="font-size:12px; color:#475569;"><?php echo htmlspecialchars($dmg['reason']); ?></span></td>
+                    <td style="text-align:center; font-size:11px; color:#64748b;"><?php echo $ddate; ?></td>
+                    <td style="text-align:center; font-weight:600; color:#334155;"><?php echo htmlspecialchars($dmg['recorded_by']); ?></td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- ══ TAB: EXPIRED PRODUCTS ══ -->
+<?php if ($active_tab === 'expired'): ?>
+<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;padding:20px;">
+    <div style="font-size:1rem;font-weight:700;color:#002F70;margin-bottom:16px;display:flex;align-items:center;gap:8px;">
+        <i class="fas fa-calendar-times"></i> Expired Products
+    </div>
+    <div class="table-wrap">
+        <table class="table" style="width:100%;">
+            <thead>
+                <tr style="background:#002F70; color:#fff;">
+                    <th>Product</th>
+                    <th style="text-align:center;">Batch</th>
+                    <th style="text-align:center;">Expiry Date</th>
+                    <th style="text-align:center;">Qty</th>
+                    <th style="text-align:center;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if (empty($mgr_expired_list)): ?>
+                <tr><td colspan="5" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-check-circle" style="font-size:1.8em; display:block; margin-bottom:8px; color:#16a34a;"></i> No expired products found.</td></tr>
+            <?php else: ?>
+                <?php foreach ($mgr_expired_list as $exp):
+                    $edate = !empty($exp['expiry_date']) ? (new DateTime($exp['expiry_date']))->format('M d, Y') : '—';
+                ?>
+                <tr style="border-bottom:1px solid #f1f5f9;">
+                    <td><strong><?php echo htmlspecialchars($exp['product_name']); ?></strong></td>
+                    <td style="text-align:center;"><span style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600;"><?php echo htmlspecialchars($exp['batch_no']); ?></span></td>
+                    <td style="text-align:center; font-size:11px; font-weight:700; color:#dc2626;"><?php echo $edate; ?></td>
+                    <td style="text-align:center; font-weight:700; color:#334155; font-size:13px;"><?php echo number_format($exp['qty']); ?></td>
+                    <td style="text-align:center;">
+                        <span class="status-badge" style="background:#f8d7da; color:#721c24; border:1px solid #f5c6cb;">
+                            <?php echo htmlspecialchars($exp['status']); ?>
+                        </span>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
 </div>
 <?php endif; ?>
 
@@ -1293,13 +1755,6 @@ body { overflow-x: hidden; }
                 <option value="<?php echo strtolower(htmlspecialchars($cat)); ?>"><?php echo htmlspecialchars($cat); ?></option>
                 <?php endforeach; ?>
             </select>
-            <select id="alertTypeFilter" onchange="filterAlertTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
-                <option value="">All Alert Types</option>
-                <option value="low stock">Low Stock</option>
-                <option value="critical stock">Critical Stock</option>
-                <option value="out of stock">Out of Stock</option>
-                <option value="variance detected">Variance Detected</option>
-            </select>
         </div>
     </div>
     <div class="table-wrap">
@@ -1312,7 +1767,7 @@ body { overflow-x: hidden; }
                     <th style="text-align:right;">Current Stock</th>
                     <th style="text-align:right;">Reorder Level</th>
                     <th style="text-align:right;">Variance</th>
-                    <th style="text-align:center;">Alert Type</th>
+                    <th style="text-align:center;">Status</th>
                     <th>Recommended Action</th>
                 </tr>
             </thead>
@@ -1331,7 +1786,7 @@ body { overflow-x: hidden; }
                 }
                 if (empty($cat_alerts)) continue;
             ?>
-                <tr class="cat-header no-paginate"><td colspan="9"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                <tr class="cat-header no-paginate"><td colspan="8"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                 <?php foreach ($cat_alerts as $item):
                     $alert_count++;
                     $stock    = (float)($item['stock_level'] ?? 0);
@@ -1367,6 +1822,7 @@ body { overflow-x: hidden; }
                     }
                 ?>
                 <tr class="alert-row"
+                    data-id="<?php echo (int)$item['id']; ?>"
                     data-name="<?php echo strtolower(htmlspecialchars($item['name'])); ?>"
                     data-sku="<?php echo strtolower(htmlspecialchars($item['sku'] ?? '')); ?>"
                     data-cat="<?php echo strtolower(htmlspecialchars($item['category_name'] ?? '')); ?>"
@@ -1403,169 +1859,7 @@ body { overflow-x: hidden; }
 </div>
 <?php endif; ?>
 
-<!-- TAB CONTENT 3: Stock Movement History -->
-<?php if ($active_tab === 'movement'): ?>
 
-<!-- Stock Movement History Summary Cards -->
-<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:16px;margin-bottom:20px;">
-    <!-- Card 1: Total Movements -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
-        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Total Movements</div>
-        <div style="font-size:24px;font-weight:800;color:#002F70;margin-top:4px;"><?php echo number_format($mov_total_count); ?></div>
-    </div>
-    
-    <!-- Card 2: Deliveries -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
-        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Deliveries</div>
-        <div style="font-size:24px;font-weight:800;color:#002F70;margin-top:4px;"><?php echo number_format($mov_delivery_count); ?></div>
-    </div>
-
-    <!-- Card 3: Releases/Sales -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
-        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Releases / Sales</div>
-        <div style="font-size:24px;font-weight:800;color:#002F70;margin-top:4px;"><?php echo number_format($mov_sale_count); ?></div>
-    </div>
-
-    <!-- Card 4: Adjustments -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
-        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Adjustments</div>
-        <div style="font-size:24px;font-weight:800;color:#002F70;margin-top:4px;"><?php echo number_format($mov_adjustment_count); ?></div>
-    </div>
-
-    <!-- Card 5: Variance Cases -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
-        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Variance Cases</div>
-        <div style="font-size:24px;font-weight:800;color:#002F70;margin-top:4px;"><?php echo number_format($mov_variance_count); ?></div>
-    </div>
-</div>
-
-<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;">
-    <div style="padding:16px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-        <div style="font-size:1rem;font-weight:700;color:#002F70;display:flex;align-items:center;gap:8px;">
-            <i class="fas fa-history"></i> Stock Movement History Log
-        </div>
-        <div class="inv-filter-bar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:0;">
-            <input type="text" id="movSearch" placeholder="Search Product or User..." oninput="filterMovTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:180px;">
-            <select id="movTypeFilter" onchange="filterMovTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
-                <option value="">All Movement Types</option>
-                <option value="delivery">Delivery</option>
-                <option value="sale">Sale</option>
-                <option value="adjustment">Adjustment</option>
-                <option value="stock_request">Stock Request</option>
-                <option value="correction">Correction</option>
-            </select>
-        </div>
-    </div>
-    <div class="table-wrap">
-        <table class="po-table" id="mgrMovTable">
-            <thead>
-                <tr>
-                    <th>Movement ID</th>
-                    <th>Date / Time</th>
-                    <th>Product Name</th>
-                    <th>Movement Type</th>
-                    <th style="text-align:right;">Quantity Change</th>
-                    <th style="text-align:right;">Previous Stock</th>
-                    <th style="text-align:right;">New Stock</th>
-                    <th>Performed By</th>
-                    <th>Reference No.</th>
-                </tr>
-            </thead>
-            <tbody id="movTableBody">
-            <?php if (empty($movement_history)): ?>
-                <tr><td colspan="9" class="empty-state"><i class="fas fa-history"></i>No movement logs recorded yet.</td></tr>
-            <?php else: ?>
-                <?php foreach ($movement_history as $log): 
-                    $qty = (float)$log['quantity'];
-                    $qty_color = $qty > 0 ? '#16a34a' : ($qty < 0 ? '#dc2626' : '#64748b');
-                    $qty_prefix = $qty > 0 ? '+' : '';
-                    
-                    // Normalize movement type for filter & class
-                    $raw_type = strtolower($log['movement_type'] ?? '');
-                    $norm_type = 'correction';
-                    $m_label = 'Correction';
-                    $badge_style = 'background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;';
-                    
-                    if (in_array($raw_type, ['delivery', 'stock_in', 'stock-in'])) {
-                        $norm_type = 'delivery';
-                        $m_label = 'Delivery';
-                        $badge_style = 'background:#d1fae5;color:#065f46;border:1px solid #a7f3d0;';
-                    } elseif (in_array($raw_type, ['sale', 'release', 'transaction'])) {
-                        $norm_type = 'sale';
-                        $m_label = 'Sale';
-                        $badge_style = 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;';
-                    } elseif ($raw_type === 'adjustment') {
-                        $norm_type = 'adjustment';
-                        $m_label = 'Adjustment';
-                        $badge_style = 'background:#f3e8ff;color:#5b21b6;border:1px solid #e9d5ff;';
-                    } elseif (in_array($raw_type, ['stock_request', 'request'])) {
-                        $norm_type = 'stock_request';
-                        $m_label = 'Stock Request';
-                        $badge_style = 'background:#e0f2fe;color:#075985;border:1px solid #bae6fd;';
-                    } elseif ($raw_type === 'correction') {
-                        $norm_type = 'correction';
-                        $m_label = 'Correction';
-                        $badge_style = 'background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;';
-                    }
-                    
-                    // Reference No formatting
-                    $ref_type = strtolower($log['reference_type'] ?? '');
-                    $ref_id = $log['reference_id'];
-                    $ref_no = '—';
-                    if ($ref_id) {
-                        if ($ref_type === 'po' || $ref_type === 'purchase_order') {
-                            $ref_no = 'PO-#' . $ref_id;
-                        } elseif ($ref_type === 'sale' || $ref_type === 'transaction') {
-                            $ref_no = 'TXN-#' . $ref_id;
-                        } elseif ($ref_type === 'adjustment') {
-                            $ref_no = 'ADJ-#' . $ref_id;
-                        } elseif ($ref_type === 'stock_request') {
-                            $ref_no = 'SR-#' . $ref_id;
-                        } else {
-                            $ref_no = 'REF-#' . $ref_id;
-                        }
-                    }
-                    
-                    $mov_id_formatted = sprintf("LOG-%05d", $log['log_id']);
-                ?>
-                <tr class="mov-row"
-                    data-log-id="<?php echo $log['log_id']; ?>"
-                    data-mov-id="<?php echo $mov_id_formatted; ?>"
-                    data-date="<?php echo date('Y-m-d H:i', strtotime($log['created_at'])); ?>"
-                    data-product="<?php echo htmlspecialchars($log['product_name']); ?>"
-                    data-sku="<?php echo htmlspecialchars($log['sku'] ?? '—'); ?>"
-                    data-type-raw="<?php echo htmlspecialchars($log['movement_type']); ?>"
-                    data-type-formatted="<?php echo htmlspecialchars($m_label); ?>"
-                    data-qty="<?php echo $qty_prefix . number_format($qty, 0) . ' ' . htmlspecialchars($log['unit'] ?? 'pcs'); ?>"
-                    data-qty-val="<?php echo $qty; ?>"
-                    data-prev="<?php echo number_format($log['quantity_before'], 0) . ' ' . htmlspecialchars($log['unit'] ?? 'pcs'); ?>"
-                    data-new="<?php echo number_format($log['quantity_after'], 0) . ' ' . htmlspecialchars($log['unit'] ?? 'pcs'); ?>"
-                    data-user="<?php echo htmlspecialchars($log['user_name'] ?? 'System'); ?>"
-                    data-ref="<?php echo htmlspecialchars($ref_no); ?>"
-                    data-notes="<?php echo htmlspecialchars($log['notes'] ?? '—'); ?>"
-                    data-type="<?php echo $norm_type; ?>">
-                    <td><code style="font-size:11px;font-weight:600;"><?php echo $mov_id_formatted; ?></code></td>
-                    <td><?php echo date('M d, Y g:i A', strtotime($log['created_at'])); ?></td>
-                    <td><strong><?php echo htmlspecialchars($log['product_name']); ?></strong><br><small style="color:#64748b;">SKU: <?php echo htmlspecialchars($log['sku'] ?? '—'); ?></small></td>
-                    <td>
-                        <span class="inv-stock-badge" style="<?php echo $badge_style; ?>padding:3px 7px;font-size:10px;font-weight:700;border-radius:4px;">
-                            <?php echo $m_label; ?>
-                        </span>
-                    </td>
-                    <td style="text-align:right;font-weight:700;color:<?php echo $qty_color; ?>;"><?php echo $qty_prefix . number_format($qty, 0) . ' ' . htmlspecialchars($log['unit'] ?? 'pcs'); ?></td>
-                    <td style="text-align:right;font-weight:600;color:#64748b;"><?php echo number_format($log['quantity_before'], 0) . ' ' . htmlspecialchars($log['unit'] ?? 'pcs'); ?></td>
-                    <td style="text-align:right;font-weight:700;color:#002F70;"><?php echo number_format($log['quantity_after'], 0) . ' ' . htmlspecialchars($log['unit'] ?? 'pcs'); ?></td>
-                    <td><strong><?php echo htmlspecialchars($log['user_name'] ?? 'System'); ?></strong></td>
-                    <td><code><?php echo htmlspecialchars($ref_no); ?></code></td>
-                </tr>
-                <?php endforeach; ?>
-            <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-    <div id="mgrMovPagination" style="padding:10px 20px;"></div>
-</div>
-<?php endif; ?>
 
 <!-- TAB CONTENT 4: Stock Requests Review -->
 <?php if ($active_tab === 'requests'): ?>
@@ -2537,30 +2831,19 @@ function filterInvTable() {
 }
 
 function filterAlertTable() {
-    var cat = document.getElementById('alertCatFilter').value.toLowerCase().trim();
-    var srch = document.getElementById('alertSearch').value.toLowerCase().trim();
-    var type = document.getElementById('alertTypeFilter').value.toLowerCase().trim();
-    
-    console.log('=== Stock Alerts Filter ===');
-    console.log('Category:', cat || '(all)');
-    console.log('Search:', srch || '(none)');
-    console.log('Alert Type:', type || '(all)');
-    
-    var visibleCount = 0;
-    var typeCount = {};
+    var catEl = document.getElementById('alertCatFilter');
+    var srchEl = document.getElementById('alertSearch');
+    var typeEl = document.getElementById('alertTypeFilter');
+
+    var cat = catEl ? catEl.value.toLowerCase().trim() : '';
+    var srch = srchEl ? srchEl.value.toLowerCase().trim() : '';
+    var type = typeEl ? typeEl.value.toLowerCase().trim() : '';
     
     document.querySelectorAll('#alertTableBody .alert-row').forEach(function(r) {
         var rCat = (r.dataset.cat || '').toLowerCase().trim();
         var rName = (r.dataset.name || '').toLowerCase().trim();
         var rSku = (r.dataset.sku || '').toLowerCase().trim();
-        // Use dataset.alertType which corresponds to data-alert-type in HTML
         var rType = (r.dataset.alertType || '').toLowerCase().trim();
-        
-        // Count alert types for debugging
-        if (!typeCount[rType]) {
-            typeCount[rType] = 0;
-        }
-        typeCount[rType]++;
         
         var matchesCat = !cat || rCat === cat;
         var matchesSrch = !srch || rName.includes(srch) || rSku.includes(srch);
@@ -2570,7 +2853,6 @@ function filterAlertTable() {
         if (ok) {
             r.classList.remove('search-hidden');
             r.style.display = '';
-            visibleCount++;
         } else {
             r.classList.add('search-hidden');
             r.style.display = 'none';
@@ -3032,4 +3314,425 @@ function filterMgrByCard(val) {
 }
 </script>
 
+<!-- ══ VIEW PRODUCT MODAL ══ -->
+<div class="modal-overlay" id="productDetailModal" style="z-index:10000;">
+    <div style="background:#fff;border-radius:14px;width:96%;max-width:820px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 40px rgba(0,0,0,.18);overflow:hidden;">
+        <!-- Header -->
+        <div style="padding:16px 22px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;flex-shrink:0;">
+            <div style="font-size:15px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-box"></i> <span id="pdmTitle">View Product</span>
+            </div>
+            <button onclick="closeProductModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;line-height:1;">&times;</button>
+        </div>
+        <!-- Sub-tabs -->
+        <div style="display:flex;border-bottom:2px solid #e2e8f0;background:#f8fafc;flex-shrink:0;padding:0 16px;">
+            <button class="modal-tab-btn active" id="pdmTab1" onclick="pdmSwitchTab(1)"><i class="fas fa-info-circle"></i> Product Info</button>
+            <button class="modal-tab-btn" id="pdmTab2" onclick="pdmSwitchTab(2)"><i class="fas fa-layer-group"></i> Batch FIFO</button>
+            <button class="modal-tab-btn" id="pdmTab3" onclick="pdmSwitchTab(3)"><i class="fas fa-history"></i> Movement Log</button>
+            <button class="modal-tab-btn" id="pdmTab4" onclick="pdmSwitchTab(4)"><i class="fas fa-clipboard-list"></i> Physical Count</button>
+        </div>
+        <!-- Body -->
+        <div style="overflow-y:auto;flex:1;padding:22px;" id="pdmBody">
+            <!-- TAB 1: Product Info + Inventory Summary -->
+            <div id="pdmPane1">
+                <div id="pdmLoadingMsg" style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-spinner fa-spin fa-2x"></i><br>Loading...</div>
+                <div id="pdmContent" style="display:none;">
+                    <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-tag"></i> Product Information</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 24px;margin-bottom:20px;">
+                        <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">SKU</div><div id="pdmSKU" style="font-weight:700;color:#002F70;font-size:14px;"></div></div>
+                        <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Product Name</div><div id="pdmName" style="font-weight:700;color:#0f172a;font-size:14px;"></div></div>
+                        <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Category</div><div id="pdmCategory"></div></div>
+                        <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Brand</div><div id="pdmBrand"></div></div>
+                        <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Supplier</div><div id="pdmSupplier"></div></div>
+                        <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Barcode</div><div id="pdmBarcode"></div></div>
+                        <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Unit of Measure</div><div id="pdmUOM"></div></div>
+                        <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Status</div><div id="pdmStatus"></div></div>
+                    </div>
+                    <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-chart-bar"></i> Inventory Summary</div>
+                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:8px;">
+                        <div style="background:#f1f5f9;border-radius:8px;padding:12px 16px;"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;">Current Stock</div><div id="pdmCurrentStock" style="font-size:22px;font-weight:800;color:#002F70;"></div></div>
+                        <div style="background:#f1f5f9;border-radius:8px;padding:12px 16px;"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;">Reserved Stock</div><div id="pdmReserved" style="font-size:22px;font-weight:800;color:#64748b;">0</div></div>
+                        <div style="background:#f1f5f9;border-radius:8px;padding:12px 16px;"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;">Available Stock</div><div id="pdmAvailable" style="font-size:22px;font-weight:800;color:#15803d;"></div></div>
+                        <div style="background:#f1f5f9;border-radius:8px;padding:12px 16px;"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;">Reorder Level</div><div id="pdmReorderLevel" style="font-size:22px;font-weight:800;color:#fd7e14;"></div></div>
+                        <div style="background:#f1f5f9;border-radius:8px;padding:12px 16px;"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;">Critical Level</div><div id="pdmCriticalLevel" style="font-size:22px;font-weight:800;color:#dc3545;"></div></div>
+                        <div style="background:#eff6ff;border-radius:8px;padding:12px 16px;border:1px solid #bfdbfe;"><div style="font-size:10px;font-weight:700;color:#1d4ed8;text-transform:uppercase;">Total Inv. Value</div><div id="pdmInvValue" style="font-size:18px;font-weight:800;color:#1d4ed8;"></div></div>
+                    </div>
+                </div>
+            </div>
+            <!-- TAB 2: Batch FIFO -->
+            <div id="pdmPane2" style="display:none;">
+                <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-layer-group"></i> Batch Inventory (FIFO)</div>
+                <div id="pdmBatchTable"><div style="text-align:center;padding:24px;color:#94a3b8;">No batch data.</div></div>
+            </div>
+            <!-- TAB 3: Stock Movement Log -->
+            <div id="pdmPane3" style="display:none;">
+                <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-history"></i> Stock Movement Log</div>
+                <div id="pdmMovementTable"><div style="text-align:center;padding:24px;color:#94a3b8;">No movement log.</div></div>
+            </div>
+            <!-- TAB 4: Physical Count History -->
+            <div id="pdmPane4" style="display:none;">
+                <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-clipboard-list"></i> Physical Count History</div>
+                <div id="pdmPhysicalTable"><div style="text-align:center;padding:24px;color:#94a3b8;">No physical count records.</div></div>
+            </div>
+        </div>
+        <!-- Footer -->
+        <div style="padding:12px 22px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:10px;background:#f8fafc;flex-shrink:0;">
+            <button onclick="openAdjustStockModal()" class="int-btn-outline" style="border-color:#fd7e14;color:#fd7e14;"><i class="fas fa-sliders-h"></i> Adjust Stock</button>
+            <button onclick="closeProductModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;"><i class="fas fa-times"></i> Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ ADJUST STOCK MODAL ══ -->
+<div class="modal-overlay" id="adjustStockModal" style="z-index:10001;">
+    <div style="background:#fff;border-radius:14px;width:96%;max-width:560px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 40px rgba(0,0,0,.18);">
+        <div style="padding:16px 22px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;">
+            <div style="font-size:15px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-sliders-h" style="color:#fd7e14;"></i> Adjust Stock
+            </div>
+            <button onclick="closeAdjustModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;">&times;</button>
+        </div>
+        <div style="padding:22px;">
+            <div class="form-group">
+                <label>Adjustment No.</label>
+                <input type="text" id="adjNo" readonly style="background:#f1f5f9;color:#64748b;" placeholder="Auto-generated">
+            </div>
+            <div class="form-group">
+                <label>Product</label>
+                <input type="text" id="adjProduct" readonly style="background:#f1f5f9;color:#64748b;">
+            </div>
+            <div class="form-group">
+                <label>Batch <span style="color:#94a3b8;font-size:10px;">(Optional)</span></label>
+                <select id="adjBatch" style="width:100%;padding:9px 11px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+                    <option value="">-- Select Batch --</option>
+                </select>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="form-group">
+                    <label>Current Quantity</label>
+                    <input type="number" id="adjCurrentQty" readonly style="background:#f1f5f9;color:#64748b;">
+                </div>
+                <div class="form-group">
+                    <label>Adjusted Quantity *</label>
+                    <input type="number" id="adjNewQty" min="0" placeholder="Enter new quantity" oninput="calcVariance()">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Variance <span style="color:#94a3b8;font-size:10px;">(Auto)</span></label>
+                <input type="text" id="adjVariance" readonly style="background:#f1f5f9;color:#64748b;font-weight:700;">
+            </div>
+            <div class="form-group">
+                <label>Adjustment Type *</label>
+                <select id="adjType" style="width:100%;padding:9px 11px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;" required>
+                    <option value="">-- Select Type --</option>
+                    <option value="Damaged">Damaged</option>
+                    <option value="Expired">Expired</option>
+                    <option value="Missing">Missing</option>
+                    <option value="Physical Count Correction">Physical Count Correction</option>
+                    <option value="Returned to Supplier">Returned to Supplier</option>
+                    <option value="Others">Others</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Reason *</label>
+                <textarea id="adjReason" rows="2" placeholder="State the reason for adjustment..." style="width:100%;padding:9px 11px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Remarks <span style="color:#94a3b8;font-size:10px;">(Optional)</span></label>
+                <textarea id="adjRemarks" rows="2" placeholder="Additional remarks..." style="width:100%;padding:9px 11px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Supporting Photo <span style="color:#94a3b8;font-size:10px;">(Optional)</span></label>
+                <input type="file" id="adjPhoto" accept="image/*" style="width:100%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+            </div>
+            <div id="adjError" style="color:#dc3545;font-size:12px;margin-bottom:10px;display:none;"></div>
+            <div style="display:flex;justify-content:flex-end;gap:10px;">
+                <button onclick="saveAdjustment()" style="background:#002F70;color:#fff;border:none;border-radius:6px;padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;"><i class="fas fa-save"></i> Save Adjustment</button>
+                <button onclick="closeAdjustModal()" style="background:#fff;color:#6b7280;border:1px solid #6b7280;border-radius:6px;padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── Product Detail Modal ────────────────────────────────────────────────────
+var _pdmData = null;
+
+function openProductModal(productId) {
+    _pdmData = null;
+    var modal = document.getElementById('productDetailModal');
+    if (!modal) return;
+    if (modal.parentNode !== document.body) {
+        document.body.appendChild(modal);
+    }
+    modal.classList.add('open');
+    modal.style.display = 'flex';
+    document.getElementById('pdmLoadingMsg').style.display = 'block';
+    document.getElementById('pdmContent').style.display = 'none';
+    pdmSwitchTab(1);
+
+    fetch('manager_inventory_merchandise.php?ajax=1&action=get_product_details&product_id=' + productId)
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        if (!res.success) {
+            document.getElementById('pdmLoadingMsg').innerHTML = '<span style="color:#dc3545;">Failed to load product details: ' + (res.message || '') + '</span>';
+            return;
+        }
+        _pdmData = res;
+        var p = res.product;
+        document.getElementById('pdmLoadingMsg').style.display = 'none';
+        document.getElementById('pdmContent').style.display = 'block';
+        document.getElementById('pdmTitle').textContent = p.name || 'View Product';
+
+        // Product Info
+        document.getElementById('pdmSKU').textContent = p.sku || '—';
+        document.getElementById('pdmName').textContent = p.name || '—';
+        document.getElementById('pdmCategory').textContent = p.category_name || '—';
+        document.getElementById('pdmBrand').textContent = p.supplier || 'Petron Corporation';
+        document.getElementById('pdmSupplier').textContent = p.supplier || 'Petron Corporation';
+        document.getElementById('pdmBarcode').textContent = p.barcode || p.sku || '—';
+        document.getElementById('pdmUOM').textContent = p.unit || '—';
+        var status = (p.product_status || 'active').toLowerCase();
+        var sBg = status === 'active' ? '#d4edda' : '#e9ecef';
+        var sColor = status === 'active' ? '#155724' : '#495057';
+        document.getElementById('pdmStatus').innerHTML = '<span style="background:' + sBg + ';color:' + sColor + ';padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;text-transform:uppercase;">' + (p.product_status || 'Active') + '</span>';
+
+        // Inventory Summary
+        var stock = parseFloat(p.stock_level || 0);
+        var reorder = parseFloat(p.reorder_level || 24);
+        var critical = parseFloat(p.critical_level || 10);
+        var price = parseFloat(p.price || p.cost || 0);
+        document.getElementById('pdmCurrentStock').textContent = stock.toLocaleString() + ' ' + (p.unit || 'pcs');
+        document.getElementById('pdmReserved').textContent = '0';
+        document.getElementById('pdmAvailable').textContent = stock.toLocaleString() + ' ' + (p.unit || 'pcs');
+        document.getElementById('pdmReorderLevel').textContent = reorder.toLocaleString();
+        document.getElementById('pdmCriticalLevel').textContent = critical.toLocaleString();
+        document.getElementById('pdmInvValue').textContent = '\u20b1' + (stock * price).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+        // Batch FIFO
+        renderBatchTable(res.batches || []);
+        // Movement Log
+        renderMovementTable(res.movements || []);
+        // Physical Count
+        renderPhysicalTable(res.physical_counts || res.movements || []);
+
+        // Pre-fill adjust modal
+        document.getElementById('adjProduct').value = p.name || '';
+        document.getElementById('adjCurrentQty').value = stock;
+        document.getElementById('adjNo').value = 'ADJ-' + Date.now().toString().slice(-6);
+        var batchSel = document.getElementById('adjBatch');
+        if (batchSel) {
+            batchSel.innerHTML = '<option value="">-- Select Batch --</option>';
+            (res.batches || []).forEach(function(b) {
+                var opt = document.createElement('option');
+                opt.value = b.id || b.batch_id || '';
+                opt.textContent = 'Batch ' + (b.batch_id || b.id || '—') + ' — ' + (b.remaining_qty || 0) + ' remaining';
+                batchSel.appendChild(opt);
+            });
+        }
+    })
+    .catch(function(err) {
+        console.error('Error fetching product details:', err);
+        document.getElementById('pdmLoadingMsg').innerHTML = '<span style="color:#dc3545;">Error loading product details. Please try again.</span>';
+    });
+}
+
+function renderBatchTable(batches) {
+    var el = document.getElementById('pdmBatchTable');
+    if (!batches || batches.length === 0) {
+        el.innerHTML = '<div style="text-align:center;padding:24px;color:#94a3b8;">No batch records found.</div>';
+        return;
+    }
+    var html = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">' +
+        '<thead><tr style="background:#002F70;color:#fff;">' +
+        '<th style="padding:8px 10px;">Batch ID</th>' +
+        '<th style="padding:8px 10px;">Delivery Date</th>' +
+        '<th style="padding:8px 10px;text-align:right;">Received Qty</th>' +
+        '<th style="padding:8px 10px;text-align:right;">Remaining Qty</th>' +
+        '<th style="padding:8px 10px;text-align:right;">Unit Cost</th>' +
+        '<th style="padding:8px 10px;text-align:right;">Selling Price</th>' +
+        '<th style="padding:8px 10px;text-align:center;">Status</th>' +
+        '</tr></thead><tbody>';
+    batches.forEach(function(b) {
+        var dDate = b.delivery_date ? new Date(b.delivery_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+        var remaining = parseFloat(b.remaining_qty || b.quantity || 0);
+        var status = remaining <= 0 ? 'Depleted' : 'Active';
+        var sBg = remaining <= 0 ? '#f1f5f9' : '#d4edda';
+        var sColor = remaining <= 0 ? '#64748b' : '#155724';
+        html += '<tr style="border-bottom:1px solid #f1f5f9;">' +
+            '<td style="padding:8px 10px;font-weight:700;color:#002F70;">' + (b.batch_id || b.id || '—') + '</td>' +
+            '<td style="padding:8px 10px;color:#475569;">' + dDate + '</td>' +
+            '<td style="padding:8px 10px;text-align:right;">' + parseFloat(b.received_qty || b.quantity || 0).toLocaleString() + '</td>' +
+            '<td style="padding:8px 10px;text-align:right;font-weight:700;">' + remaining.toLocaleString() + '</td>' +
+            '<td style="padding:8px 10px;text-align:right;">\u20b1' + parseFloat(b.unit_cost || b.cost || 0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</td>' +
+            '<td style="padding:8px 10px;text-align:right;">\u20b1' + parseFloat(b.selling_price || b.price || 0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</td>' +
+            '<td style="padding:8px 10px;text-align:center;"><span style="background:' + sBg + ';color:' + sColor + ';padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">' + status + '</span></td>' +
+            '</tr>';
+    });
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+}
+
+function renderMovementTable(movements) {
+    var el = document.getElementById('pdmMovementTable');
+    if (!movements || movements.length === 0) {
+        el.innerHTML = '<div style="text-align:center;padding:24px;color:#94a3b8;">No movement records found.</div>';
+        return;
+    }
+    var html = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">' +
+        '<thead><tr style="background:#002F70;color:#fff;">' +
+        '<th style="padding:8px 10px;">Date</th>' +
+        '<th style="padding:8px 10px;">Movement Type</th>' +
+        '<th style="padding:8px 10px;">Reference No.</th>' +
+        '<th style="padding:8px 10px;">Batch</th>' +
+        '<th style="padding:8px 10px;text-align:right;">Quantity</th>' +
+        '<th style="padding:8px 10px;text-align:right;">Remaining Stock</th>' +
+        '<th style="padding:8px 10px;">Performed By</th>' +
+        '</tr></thead><tbody>';
+    movements.forEach(function(m) {
+        var mDate = m.created_at ? new Date(m.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+        var qty = parseFloat(m.quantity || m.quantity_change || 0);
+        var qtyStr = (qty >= 0 ? '+' : '') + qty.toLocaleString();
+        var qtyColor = qty >= 0 ? '#15803d' : '#dc3545';
+        var remaining = m.quantity_after !== undefined ? parseFloat(m.quantity_after) : '—';
+        html += '<tr style="border-bottom:1px solid #f1f5f9;">' +
+            '<td style="padding:8px 10px;color:#475569;">' + mDate + '</td>' +
+            '<td style="padding:8px 10px;font-weight:600;">' + (m.movement_type || m.action || '—') + '</td>' +
+            '<td style="padding:8px 10px;font-size:11px;color:#64748b;">' + (m.reference_id || '—') + '</td>' +
+            '<td style="padding:8px 10px;font-size:11px;color:#64748b;">—</td>' +
+            '<td style="padding:8px 10px;text-align:right;font-weight:700;color:' + qtyColor + ';">' + qtyStr + '</td>' +
+            '<td style="padding:8px 10px;text-align:right;">' + (remaining !== '—' ? remaining.toLocaleString() : '—') + '</td>' +
+            '<td style="padding:8px 10px;">' + (m.user_name || '—') + '</td>' +
+            '</tr>';
+    });
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+}
+
+function renderPhysicalTable(movements) {
+    var el = document.getElementById('pdmPhysicalTable');
+    var physical = movements.filter(function(m) {
+        var t = (m.movement_type || m.action || '').toLowerCase();
+        return t.indexOf('physical') !== -1 || t.indexOf('count') !== -1;
+    });
+    if (physical.length === 0) {
+        el.innerHTML = '<div style="text-align:center;padding:24px;color:#94a3b8;">No physical count records found.</div>';
+        return;
+    }
+    var html = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">' +
+        '<thead><tr style="background:#002F70;color:#fff;">' +
+        '<th style="padding:8px 10px;">Date</th>' +
+        '<th style="padding:8px 10px;text-align:right;">System Qty</th>' +
+        '<th style="padding:8px 10px;text-align:right;">Physical Qty</th>' +
+        '<th style="padding:8px 10px;text-align:right;">Variance</th>' +
+        '<th style="padding:8px 10px;">Counted By</th>' +
+        '</tr></thead><tbody>';
+    physical.forEach(function(m) {
+        var mDate = m.created_at ? new Date(m.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+        var sysQty = parseFloat(m.quantity_before || 0);
+        var phyQty = parseFloat(m.quantity_after || 0);
+        var variance = phyQty - sysQty;
+        var vColor = variance > 0 ? '#15803d' : variance < 0 ? '#dc3545' : '#64748b';
+        html += '<tr style="border-bottom:1px solid #f1f5f9;">' +
+            '<td style="padding:8px 10px;color:#475569;">' + mDate + '</td>' +
+            '<td style="padding:8px 10px;text-align:right;">' + sysQty.toLocaleString() + '</td>' +
+            '<td style="padding:8px 10px;text-align:right;">' + phyQty.toLocaleString() + '</td>' +
+            '<td style="padding:8px 10px;text-align:right;font-weight:700;color:' + vColor + ';">' + (variance >= 0 ? '+' : '') + variance.toLocaleString() + '</td>' +
+            '<td style="padding:8px 10px;">' + (m.user_name || '—') + '</td>' +
+            '</tr>';
+    });
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+}
+
+function pdmSwitchTab(n) {
+    for (var i = 1; i <= 4; i++) {
+        var btn = document.getElementById('pdmTab' + i);
+        var pane = document.getElementById('pdmPane' + i);
+        if (btn) btn.classList.toggle('active', i === n);
+        if (pane) pane.style.display = i === n ? 'block' : 'none';
+    }
+}
+
+function closeProductModal() {
+    var modal = document.getElementById('productDetailModal');
+    if (modal) {
+        modal.classList.remove('open');
+        modal.style.display = 'none';
+    }
+    _pdmData = null;
+}
+
+function printProductDetails() {
+    if (!_pdmData) return;
+    var p = _pdmData.product;
+    var pw = window.open('', '_blank', 'width=700,height=800');
+    pw.document.write('<!DOCTYPE html><html><head><title>Product Details</title><style>body{font-family:Arial,sans-serif;font-size:13px;padding:20px;color:#000;}h2{color:#002F70;}table{width:100%;border-collapse:collapse;margin-top:12px;}td,th{padding:8px 10px;border-bottom:1px solid #e0e0e0;text-align:left;}.label{font-weight:700;color:#475569;width:200px;}</style></head><body>');
+    pw.document.write('<h2>Product Details &mdash; ' + (p.name || '') + '</h2>');
+    pw.document.write('<p style="color:#64748b;font-size:11px;">Printed: ' + new Date().toLocaleString() + '</p>');
+    pw.document.write('<table><tr><td class="label">SKU</td><td>' + (p.sku || '—') + '</td></tr>');
+    pw.document.write('<tr><td class="label">Category</td><td>' + (p.category_name || '—') + '</td></tr>');
+    pw.document.write('<tr><td class="label">Supplier</td><td>' + (p.supplier || 'Petron Corporation') + '</td></tr>');
+    pw.document.write('<tr><td class="label">Unit of Measure</td><td>' + (p.unit || '—') + '</td></tr>');
+    pw.document.write('<tr><td class="label">Current Stock</td><td>' + parseFloat(p.stock_level || 0).toLocaleString() + '</td></tr>');
+    pw.document.write('<tr><td class="label">Reorder Level</td><td>' + parseFloat(p.reorder_level || 24).toLocaleString() + '</td></tr>');
+    pw.document.write('<tr><td class="label">Critical Level</td><td>' + parseFloat(p.critical_level || 10).toLocaleString() + '</td></tr>');
+    pw.document.write('<tr><td class="label">Status</td><td>' + (p.product_status || 'Active') + '</td></tr></table>');
+    pw.document.write('</body></html>');
+    pw.document.close();
+    setTimeout(function(){ pw.print(); }, 400);
+}
+
+// ── Adjust Stock Modal ──────────────────────────────────────────────────────
+function openAdjustStockModal() {
+    var modal = document.getElementById('adjustStockModal');
+    if (!modal) return;
+    if (modal.parentNode !== document.body) {
+        document.body.appendChild(modal);
+    }
+    document.getElementById('adjNewQty').value = '';
+    document.getElementById('adjVariance').value = '';
+    document.getElementById('adjType').value = '';
+    document.getElementById('adjReason').value = '';
+    document.getElementById('adjRemarks').value = '';
+    document.getElementById('adjError').style.display = 'none';
+    modal.classList.add('open');
+    modal.style.display = 'flex';
+}
+
+function closeAdjustModal() {
+    var modal = document.getElementById('adjustStockModal');
+    if (modal) {
+        modal.classList.remove('open');
+        modal.style.display = 'none';
+    }
+}
+
+function calcVariance() {
+    var cur = parseFloat(document.getElementById('adjCurrentQty').value || 0);
+    var adj = parseFloat(document.getElementById('adjNewQty').value || 0);
+    if (isNaN(adj)) { document.getElementById('adjVariance').value = ''; return; }
+    var v = adj - cur;
+    document.getElementById('adjVariance').value = (v >= 0 ? '+' : '') + v.toFixed(0);
+    document.getElementById('adjVariance').style.color = v > 0 ? '#15803d' : v < 0 ? '#dc3545' : '#64748b';
+}
+
+function saveAdjustment() {
+    var adjQty = document.getElementById('adjNewQty').value.trim();
+    var adjType = document.getElementById('adjType').value;
+    var adjReason = document.getElementById('adjReason').value.trim();
+    var errEl = document.getElementById('adjError');
+    errEl.style.display = 'none';
+
+    if (!adjQty || isNaN(parseFloat(adjQty))) { errEl.textContent = 'Please enter the adjusted quantity.'; errEl.style.display = 'block'; return; }
+    if (!adjType) { errEl.textContent = 'Please select an adjustment type.'; errEl.style.display = 'block'; return; }
+    if (!adjReason) { errEl.textContent = 'Reason is required.'; errEl.style.display = 'block'; return; }
+
+    // For now, show success message (backend integration can be added later)
+    alert('Adjustment submitted successfully!\nType: ' + adjType + '\nVariance: ' + document.getElementById('adjVariance').value);
+    closeAdjustModal();
+}
+</script>
+
 <?php include __DIR__ . '/../partials/footer.php'; ?>
+

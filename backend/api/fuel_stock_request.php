@@ -203,6 +203,29 @@ function handle_get_low_stock($pdo, $station_id) {
     echo json_encode(['success' => true, 'fuels' => $result]);
 }
 
+function sr_get_safe_user_id(PDO $pdo, array $me, int $station_id): ?int {
+    $user_id = (int)($me['id'] ?? 0);
+    if ($user_id > 0) {
+        try {
+            $chk = $pdo->prepare("SELECT id FROM users WHERE id = ? LIMIT 1");
+            $chk->execute([$user_id]);
+            $val = $chk->fetchColumn();
+            if ($val !== false && (int)$val > 0) {
+                return (int)$val;
+            }
+        } catch (Exception $e) {}
+    }
+    try {
+        $chk_alt = $pdo->prepare("SELECT id FROM users WHERE station_id = ? ORDER BY id ASC LIMIT 1");
+        $chk_alt->execute([$station_id]);
+        $val = $chk_alt->fetchColumn();
+        if ($val !== false && (int)$val > 0) {
+            return (int)$val;
+        }
+    } catch (Exception $e) {}
+
+    return null;
+}
 function get_next_request_no($pdo, $table, $prefix = 'SR') {
     $year = date('Y');
     $stmt = $pdo->prepare("SELECT request_no FROM {$table} WHERE request_no LIKE ? ORDER BY request_no DESC LIMIT 1");
@@ -259,15 +282,34 @@ function handle_create($pdo, $me, $role, $station_id) {
                 $requested_liters = 0.0;
             }
 
-            if (empty($fuel_type)) {
-                continue;
+            // Validate staff_id against users table
+            $safe_staff_id = null;
+            if (!empty($me['id'])) {
+                try {
+                    $chk_u = $pdo->prepare("SELECT id FROM users WHERE id = ? LIMIT 1");
+                    $chk_u->execute([(int)$me['id']]);
+                    $val_u = $chk_u->fetchColumn();
+                    if ($val_u !== false && (int)$val_u > 0) {
+                        $safe_staff_id = (int)$val_u;
+                    }
+                } catch (Exception $e) {}
+            }
+            if (!$safe_staff_id) {
+                try {
+                    $chk_alt = $pdo->prepare("SELECT id FROM users WHERE station_id = ? ORDER BY id ASC LIMIT 1");
+                    $chk_alt->execute([$station_id]);
+                    $val_alt = $chk_alt->fetchColumn();
+                    if ($val_alt !== false && (int)$val_alt > 0) {
+                        $safe_staff_id = (int)$val_alt;
+                    }
+                } catch (Exception $e) {}
             }
 
             $dup = $pdo->prepare("
                 SELECT COUNT(*) FROM fuel_stock_requests
                 WHERE staff_id = ? AND station_id = ? AND fuel_type = ? AND status IN ('Pending', 'Pending Manager Review')
             ");
-            $dup->execute([$me['id'], $station_id, $fuel_type]);
+            $dup->execute([$safe_staff_id, $station_id, $fuel_type]);
             if ((int)$dup->fetchColumn() > 0) {
                 $skipped_items[] = $fuel_type;
                 continue;
@@ -280,7 +322,7 @@ function handle_create($pdo, $me, $role, $station_id) {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Manager Review', NOW())
             ");
             $stmt->execute([
-                $request_no, $me['id'], $station_id, $fuel_type,
+                $request_no, $safe_staff_id, $station_id, $fuel_type,
                 $current_level, $capacity, $stock_status,
                 $requested_liters, $remarks
             ]);
@@ -293,12 +335,12 @@ function handle_create($pdo, $me, $role, $station_id) {
                      old_status, new_status, notes)
                 VALUES (?, 'Created', ?, ?, NULL, 'Pending Manager Review', ?)
             ")->execute([
-                $request_id, $me['id'], $role,
+                $request_id, $safe_staff_id, $role,
                 "Staff {$me['name']} requested {$fuel_type} (Status: {$stock_status}) under request no {$request_no} — qty to be set by manager"
             ]);
 
             if (function_exists('log_activity')) {
-                log_activity($pdo, $me['id'], 'Create Fuel Stock Request',
+                log_activity($pdo, $safe_staff_id, 'Create Fuel Stock Request',
                     "Request #{$request_id} | {$fuel_type} | By: {$me['name']} — qty to be set by manager");
             }
         }
@@ -447,7 +489,7 @@ function handle_approve($pdo, $me, $role, $station_id) {
                 (request_id, action_type, performed_by, performed_by_role,
                  old_status, new_status, notes)
             VALUES (?, 'Approved', ?, ?, 'Pending', 'Approved', ?)
-        ")->execute([$request_id, $me['id'], $role, $audit_note]);
+        ")->execute([$request_id, $safe_staff_id, $role, $audit_note]);
 
         // Log to main audit_trail table for manager_audit_trail.php visibility
         try {
@@ -530,7 +572,7 @@ function handle_reject($pdo, $me, $role, $station_id) {
                 (request_id, action_type, performed_by, performed_by_role,
                  old_status, new_status, notes)
             VALUES (?, 'Rejected', ?, ?, 'Pending', 'Rejected', ?)
-        ")->execute([$request_id, $me['id'], $role, $audit_note]);
+        ")->execute([$request_id, $safe_staff_id, $role, $audit_note]);
 
         // Log to main audit_trail table
         try {

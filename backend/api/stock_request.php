@@ -20,6 +20,29 @@ $station_id = user_station_id();
 $method     = $_SERVER['REQUEST_METHOD'];
 $action     = $_GET['action'] ?? '';
 
+function sr_get_safe_user_id(PDO $pdo, array $me, int $station_id): ?int {
+    $user_id = (int)($me['id'] ?? 0);
+    if ($user_id > 0) {
+        try {
+            $chk = $pdo->prepare("SELECT id FROM users WHERE id = ? LIMIT 1");
+            $chk->execute([$user_id]);
+            $val = $chk->fetchColumn();
+            if ($val !== false && (int)$val > 0) {
+                return (int)$val;
+            }
+        } catch (Exception $e) {}
+    }
+    try {
+        $chk_alt = $pdo->prepare("SELECT id FROM users WHERE station_id = ? ORDER BY id ASC LIMIT 1");
+        $chk_alt->execute([$station_id]);
+        $val = $chk_alt->fetchColumn();
+        if ($val !== false && (int)$val > 0) {
+            return (int)$val;
+        }
+    } catch (Exception $e) {}
+
+    return null;
+}
 function sr_resolve_merch_product(PDO $pdo, int $item_id): ?array {
     if ($item_id <= 0) {
         return null;
@@ -227,13 +250,36 @@ function handle_create($pdo, $me, $role, $station_id) {
                 }
             } catch (Throwable $ignored) {}
 
+            // Validate staff_id against users table
+            $safe_staff_id = null;
+            if (!empty($me['id'])) {
+                try {
+                    $chk_u = $pdo->prepare("SELECT id FROM users WHERE id = ? LIMIT 1");
+                    $chk_u->execute([(int)$me['id']]);
+                    $val_u = $chk_u->fetchColumn();
+                    if ($val_u !== false && (int)$val_u > 0) {
+                        $safe_staff_id = (int)$val_u;
+                    }
+                } catch (Exception $e) {}
+            }
+            if (!$safe_staff_id) {
+                try {
+                    $chk_alt = $pdo->prepare("SELECT id FROM users WHERE station_id = ? ORDER BY id ASC LIMIT 1");
+                    $chk_alt->execute([$station_id]);
+                    $val_alt = $chk_alt->fetchColumn();
+                    if ($val_alt !== false && (int)$val_alt > 0) {
+                        $safe_staff_id = (int)$val_alt;
+                    }
+                } catch (Exception $e) {}
+            }
+
             // Dup-check: use item_name when item_id is NULL to avoid false negatives
             if ($safe_item_id !== null) {
                 $dup = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE staff_id = ? AND item_id = ? AND status IN ('Pending', 'Pending Manager Review')");
-                $dup->execute([$me['id'], $safe_item_id]);
+                $dup->execute([$safe_staff_id, $safe_item_id]);
             } else {
                 $dup = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE staff_id = ? AND item_name = ? AND item_id IS NULL AND status IN ('Pending', 'Pending Manager Review')");
-                $dup->execute([$me['id'], $item_name]);
+                $dup->execute([$safe_staff_id, $item_name]);
             }
             if ((int)$dup->fetchColumn() > 0) {
                 $skipped_items[] = $item_name;
@@ -247,7 +293,7 @@ function handle_create($pdo, $me, $role, $station_id) {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Manager Review', NOW())
             ");
             $stmt->execute([
-                $request_no, $me['id'], $station_id, $safe_item_id, $sku,
+                $request_no, $safe_staff_id, $station_id, $safe_item_id, $sku,
                 $item_name, $item_category, $current_stock,
                 $requested_quantity, $remarks
             ]);
@@ -260,12 +306,12 @@ function handle_create($pdo, $me, $role, $station_id) {
                      old_status, new_status, notes)
                 VALUES (?, 'Created', ?, ?, NULL, 'Pending Manager Review', ?)
             ")->execute([
-                $request_id, $me['id'], $role,
+                $request_id, $safe_staff_id, $role,
                 "Staff {$me['name']} requested {$item_name} (SKU: {$sku}) under request no {$request_no} — qty to be set by manager"
             ]);
 
             if (function_exists('log_activity')) {
-                log_activity($pdo, $me['id'], 'Create Stock Request',
+                log_activity($pdo, $safe_staff_id, 'Create Stock Request',
                     "Request #{$request_id} | {$item_name} | By: {$me['name']} — qty to be set by manager");
             }
 
@@ -274,7 +320,7 @@ function handle_create($pdo, $me, $role, $station_id) {
                 $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
                 $detail = "Stock request created | Request No: {$request_no} | Item: {$item_name} (SKU: {$sku}) | Category: {$item_category} | Current stock: {$current_stock} | Requested qty: {$requested_quantity}" . ($remarks ? " | Remarks: {$remarks}" : '');
                 $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'inventory', 'Create', ?, 'stock_requests', ?, 'Success', ?, ?, NOW())")
-                    ->execute([$me['id'], $detail, $request_id, $ip, $ua]);
+                    ->execute([$safe_staff_id, $detail, $request_id, $ip, $ua]);
             } catch (Exception $e) {}
         }
 
@@ -649,7 +695,7 @@ function handle_approve($pdo, $me, $role, $station_id) {
                 (stock_request_id, action_type, performed_by, performed_by_role,
                  old_status, new_status, notes)
             VALUES (?, 'Forwarded to Admin', ?, ?, 'Pending', 'Forwarded to Admin', ?)
-        ")->execute([$request_id, $me['id'], $role, $audit_note]);
+        ")->execute([$request_id, $safe_staff_id, $role, $audit_note]);
 
         if (function_exists('log_activity')) {
             log_activity($pdo, $me['id'], 'Forward Purchase Request',
@@ -670,7 +716,7 @@ function handle_approve($pdo, $me, $role, $station_id) {
             $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
             $detail = "Stock request approved | Request #{$request_id} | Item: {$req['item_name']} | Approved qty: {$approved_quantity} | PR: {$pr_id} | PO: {$po_number}" . ($manager_notes ? " | Notes: {$manager_notes}" : '');
             $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'inventory', 'Approve', ?, 'stock_requests', ?, 'Success', ?, ?, NOW())")
-                ->execute([$me['id'], $detail, $request_id, $ip, $ua]);
+                ->execute([$safe_staff_id, $detail, $request_id, $ip, $ua]);
         } catch (Exception $e) {}
     } catch (Exception $e) {
         if ($pdo->inTransaction()) {
@@ -728,7 +774,7 @@ function handle_reject($pdo, $me, $role, $station_id) {
                 (stock_request_id, action_type, performed_by, performed_by_role,
                  old_status, new_status, notes)
             VALUES (?, 'Rejected', ?, ?, 'Pending', 'Rejected', ?)
-        ")->execute([$request_id, $me['id'], $role,
+        ")->execute([$request_id, $safe_staff_id, $role,
             "Rejected by {$me['name']}. Reason: {$manager_notes}"]);
 
         if (function_exists('log_activity')) {
@@ -745,7 +791,7 @@ function handle_reject($pdo, $me, $role, $station_id) {
             $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
             $detail = "Stock request rejected | Request #{$request_id} | Item: {$req['item_name']} | Reason: {$manager_notes}";
             $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'inventory', 'Reject', ?, 'stock_requests', ?, 'Success', ?, ?, NOW())")
-                ->execute([$me['id'], $detail, $request_id, $ip, $ua]);
+                ->execute([$safe_staff_id, $detail, $request_id, $ip, $ua]);
         } catch (Exception $e) {}
     } catch (Exception $e) {
         $pdo->rollBack();

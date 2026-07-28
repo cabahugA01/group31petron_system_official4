@@ -226,17 +226,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // Activity logging
                 try {
+                    $user_full_name  = trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')) ?: ($user['username'] ?? 'User');
+                    $login_role_disp = ucfirst(strtolower($user['role'] ?? 'staff'));
+                    $login_detail    = "{$user_full_name} ({$login_role_disp}) logged in via {$login_type}";
+
                     $tables = $pdo->query("SHOW TABLES LIKE 'activity_logs'")->fetchAll();
                     if (!empty($tables)) {
                         $logStmt = $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, 'Login', ?, ?)");
-                        $logStmt->execute([$user['user_id'], "User logged in via {$login_type}", $_SERVER['REMOTE_ADDR']]);
+                        $logStmt->execute([$user['user_id'], $login_detail, $_SERVER['REMOTE_ADDR']]);
                     }
 
                     $tables = $pdo->query("SHOW TABLES LIKE 'audit_logs'")->fetchAll();
                     if (!empty($tables)) {
-                        $login_name   = $user['first_name'] ?? $user['username'] ?? 'Unknown';
-                        $login_role   = ucfirst(strtolower($user['role'] ?? 'staff'));
-                        $login_detail = "{$login_name} ({$login_role}) logged in via {$login_type}";
                         $auditStmt = $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'user', 'Login', ?, 'users', ?, 'Success', ?, ?, NOW())");
                         $auditStmt->execute([
                             $user['user_id'],

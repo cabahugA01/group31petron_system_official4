@@ -1147,14 +1147,16 @@ async function initJobOrder(){
 let customerCache = [];
 
 async function loadCustomers(){
-  const res = await api('../backend/customers.php');
-  customerCache = res.data?.customers || res.customers || [];
-  // metrics
-  $('#cTotal').textContent = String(customerCache.length);
-  const credits = customerCache.filter(c=>String(c.type||'').toLowerCase()==='credit');
-  $('#cCredit').textContent = String(credits.length);
-  const outstanding = customerCache.reduce((a,c)=>a+Number(c.current_balance||c.balance||0),0);
-  $('#cOutstanding').textContent = fmtMoney(outstanding);
+  try {
+    const res = await api('../backend/customers.php');
+    if (!res) return;
+    customerCache = res.data?.customers || res.customers || [];
+    if ($('#cTotal')) $('#cTotal').textContent = String(customerCache.length);
+    const credits = customerCache.filter(c=>String(c.type||'').toLowerCase()==='credit');
+    if ($('#cCredit')) $('#cCredit').textContent = String(credits.length);
+    const outstanding = customerCache.reduce((a,c)=>a+Number(c.current_balance||c.balance||0),0);
+    if ($('#cOutstanding')) $('#cOutstanding').textContent = fmtMoney(outstanding);
+  } catch(e) {}
 }
 
 function renderCustomers(){

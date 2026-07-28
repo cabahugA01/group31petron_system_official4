@@ -1,10 +1,10 @@
 <?php
 // ============================================================
-// Manager Inventory Procurement Workflow â€” manager_stock_request_review.php
+// Manager Inventory Procurement Workflow Ã¢â‚¬â€ manager_stock_request_review.php
 // Handles: Pending Requests, Waiting Delivery, Pending Stock-In, Completed
 // ============================================================
 $page_id = 'mgr_stock_review';
-$page_title = 'Purchase Request';
+$page_title = 'Purchase Management';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
@@ -175,7 +175,7 @@ function manager_notify_users(PDO $pdo, array $user_ids, string $title, string $
 
 manager_procurement_prepare_schema($pdo);
 
-// â”€â”€ Handle POST Actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Handle POST Actions Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
@@ -566,7 +566,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// â”€â”€ Summary Card Counts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Summary Card Counts Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 $cnt_pending_sr_merch = (int)$pdo->query("SELECT COUNT(*) FROM stock_requests WHERE station_id = $station_id AND status IN ('Pending', 'Pending Manager Review') AND LOWER(COALESCE(item_category, '')) != 'fuel'")->fetchColumn();
 $cnt_pending_sr_fuel  = (int)$pdo->query("SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id = $station_id AND status IN ('Pending', 'Pending Manager Review')")->fetchColumn();
 $cnt_pending_pr       = $cnt_pending_sr_merch + $cnt_pending_sr_fuel;
@@ -580,7 +580,7 @@ $cnt_pending_delivery = (int)$pdo->query("SELECT COUNT(DISTINCT po_number) FROM 
 
 $cnt_completed = (int)$pdo->query("SELECT COUNT(DISTINCT delivery_ref) FROM deliveries_oversight WHERE station_id = $station_id AND status = 'Stock-In Complete'")->fetchColumn();
 
-// â”€â”€ Always Fetch Pending PRs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Always Fetch Pending PRs Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Merchandise pending requests
 $_inv_accessible = false;
 try { $pdo->query("SELECT 1 FROM inventory_products LIMIT 1"); $_inv_accessible = true; } catch (Throwable $_e) {}
@@ -662,6 +662,166 @@ try {
     $fuel_inventory_list = $fi->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
+// ── Purchase History Data Fetching ─────────────────────────────────────────────────────────
+$purchase_history_list = [];
+try {
+    // 1. Fetch Merchandise POs
+    $stmt_m = $pdo->prepare("
+        SELECT 
+            po.id,
+            po.po_number,
+            po.batch_id,
+            'merchandise' AS category_type,
+            'Merchandise' AS category_label,
+            COALESCE(s.name, 'Petron Corporation') AS supplier_name,
+            po.created_at AS date_ordered,
+            COALESCE(po.stock_in_at, po.updated_at) AS date_received,
+            po.total_amount,
+            po.status,
+            COALESCE(u_req.name, u_req.username, 'Manager') AS requested_by_name,
+            COALESCE(u_app.name, u_app.username, 'Admin') AS approved_by_name,
+            po.remarks
+        FROM purchase_orders po
+        LEFT JOIN suppliers s ON po.supplier_id = s.id
+        LEFT JOIN users u_req ON po.created_by = u_req.id
+        LEFT JOIN users u_app ON po.approved_by = u_app.id
+        WHERE po.station_id = ?
+        ORDER BY po.created_at DESC
+    ");
+    $stmt_m->execute([$station_id]);
+    $merch_pos = $stmt_m->fetchAll(PDO::FETCH_ASSOC);
+
+    // Group by batch_id so multi-item POs appear as one entry
+    $merch_batches = [];
+    foreach ($merch_pos as $mpo) {
+        $key = !empty($mpo['batch_id']) ? $mpo['batch_id'] : $mpo['po_number'];
+        if (!isset($merch_batches[$key])) {
+            $merch_batches[$key] = $mpo;
+            $merch_batches[$key]['po_number'] = $key;
+            $merch_batches[$key]['_po_ids'] = [];
+        } else {
+            $merch_batches[$key]['total_amount'] += $mpo['total_amount'];
+        }
+        $merch_batches[$key]['_po_ids'][] = $mpo['id'];
+    }
+
+    foreach ($merch_batches as &$mpo) {
+        // Fetch ALL items for all PO IDs in this batch
+        $po_ids = $mpo['_po_ids'];
+        $placeholders = implode(',', array_fill(0, count($po_ids), '?'));
+        $stmt_items = $pdo->prepare("
+            SELECT
+                poi.id,
+                poi.po_id,
+                COALESCE(ip.sku, 'N/A') AS sku,
+                poi.item_name AS product_name,
+                poi.quantity,
+                COALESCE(ip.size, ip.unit, 'pcs') AS unit,
+                poi.unit_price,
+                poi.total_price
+            FROM purchase_order_items poi
+            LEFT JOIN inventory_products ip ON poi.product_id = ip.id
+            WHERE poi.po_id IN ($placeholders)
+            ORDER BY poi.id ASC
+        ");
+        $stmt_items->execute($po_ids);
+        $raw_items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
+        // Clean garbled product names (??? from charset issues)
+        foreach ($raw_items as &$ri) {
+            $ri['product_name'] = trim(preg_replace('/\?{2,}/', ' ', $ri['product_name']));
+            $ri['product_name'] = preg_replace('/\s+/', ' ', $ri['product_name']);
+        }
+        unset($ri);
+        $mpo['items'] = $raw_items;
+
+        try {
+            $stmt_del = $pdo->prepare("
+                SELECT dr_number, sales_invoice_no, COALESCE(received_by_name, 'Staff') AS received_by_name, delivery_date
+                FROM deliveries_oversight
+                WHERE (source_ref = ? OR delivery_ref LIKE ?) AND station_id = ?
+                LIMIT 1
+            ");
+            $stmt_del->execute([$mpo['po_number'], '%' . $mpo['_po_ids'][0], $station_id]);
+            $del_info = $stmt_del->fetch(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            $del_info = null;
+        }
+        $mpo['dr_number']        = $del_info['dr_number']        ?? 'N/A';
+        $mpo['sales_invoice_no'] = $del_info['sales_invoice_no'] ?? 'N/A';
+        $mpo['received_by_name'] = $del_info['received_by_name'] ?? ($mpo['requested_by_name'] ?: 'Staff');
+        $mpo['delivery_date']    = $del_info['delivery_date']    ?? $mpo['date_received'];
+
+        $purchase_history_list[] = $mpo;
+    }
+    unset($mpo);
+
+    // 2. Fetch Fuel POs
+    $stmt_f = $pdo->prepare("
+        SELECT 
+            fpo.id,
+            fpo.po_number,
+            'fuel' AS category_type,
+            'Fuel' AS category_label,
+            COALESCE(s.name, 'Petron Corporation') AS supplier_name,
+            fpo.created_at AS date_ordered,
+            COALESCE(fpo.delivery_date, fpo.updated_at) AS date_received,
+            fpo.total_amount,
+            fpo.status,
+            COALESCE(u_req.name, u_req.username, 'Manager') AS requested_by_name,
+            COALESCE(u_app.name, u_app.username, 'Admin') AS approved_by_name,
+            fpo.notes AS remarks,
+            ft.name AS fuel_type,
+            fpo.volume AS liters,
+            fpo.unit_price AS cost_per_liter
+        FROM fuel_purchase_orders fpo
+        LEFT JOIN suppliers s ON fpo.supplier_id = s.id
+        LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id
+        LEFT JOIN users u_req ON fpo.created_by = u_req.id
+        LEFT JOIN users u_app ON fpo.approved_by = u_app.id
+        WHERE fpo.station_id = ?
+        ORDER BY fpo.created_at DESC
+    ");
+    $stmt_f->execute([$station_id]);
+    $fuel_pos = $stmt_f->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($fuel_pos as &$fpo) {
+        $fpo['items'] = [[
+            'fuel_type' => $fpo['fuel_type'] ?: 'Fuel',
+            'liters' => (float)$fpo['liters'],
+            'cost_per_liter' => (float)$fpo['cost_per_liter'],
+            'total_price' => (float)$fpo['total_amount']
+        ]];
+
+        $stmt_del = $pdo->prepare("
+            SELECT dr_number, sales_invoice_no, COALESCE(received_by_name, 'Staff') AS received_by_name, delivery_date
+            FROM deliveries_oversight
+            WHERE (source_ref = ? OR batch_id = ?) AND station_id = ? AND delivery_type = 'fuel'
+            LIMIT 1
+        ");
+        $stmt_del->execute([$fpo['po_number'], $fpo['po_number'], $station_id]);
+        $del_info = $stmt_del->fetch(PDO::FETCH_ASSOC);
+        $fpo['dr_number'] = $del_info['dr_number'] ?? 'N/A';
+        $fpo['sales_invoice_no'] = $del_info['sales_invoice_no'] ?? 'N/A';
+        $fpo['received_by_name'] = $del_info['received_by_name'] ?? ($fpo['requested_by_name'] ?: 'Staff');
+        $fpo['delivery_date'] = $del_info['delivery_date'] ?? $fpo['date_received'];
+
+        $purchase_history_list[] = $fpo;
+    }
+    unset($fpo);
+
+    usort($purchase_history_list, function($a, $b) {
+        return strtotime($b['date_ordered']) - strtotime($a['date_ordered']);
+    });
+} catch (Exception $e) {
+    error_log("Error fetching purchase history: " . $e->getMessage());
+}
+
+$cnt_hist_total = count($purchase_history_list);
+$cnt_hist_fuel = count(array_filter($purchase_history_list, fn($r) => $r['category_type'] === 'fuel'));
+$cnt_hist_merch = count(array_filter($purchase_history_list, fn($r) => $r['category_type'] === 'merchandise'));
+$cnt_hist_completed = count(array_filter($purchase_history_list, fn($r) => in_array(strtolower($r['status']), ['completed', 'received', 'stock-in complete'])));
+$cnt_hist_cancelled = count(array_filter($purchase_history_list, fn($r) => in_array(strtolower($r['status']), ['cancelled', 'rejected', 'withdrawn'])));
+
 include __DIR__ . '/../partials/header.php';
 ?>
 
@@ -689,7 +849,7 @@ body .main,
     color: #002F6C;
     margin: 0 0 4px 0;
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     gap: 12px;
 }
 .pr-subtitle {
@@ -710,7 +870,7 @@ body .main,
     padding: 22px;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: space-between;
     transition: transform 0.15s ease;
 }
@@ -735,7 +895,7 @@ body .main,
     height: 48px;
     border-radius: 50%;
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: center;
     font-size: 20px;
 }
@@ -763,7 +923,7 @@ body .main,
     transition: all 0.2s;
     text-decoration: none;
     display: inline-flex;
-    align-items: center;
+    align-items: flex-end;
     gap: 8px;
 }
 .tab-btn:hover {
@@ -817,7 +977,7 @@ body .main,
 }
 .status-badge {
     display: inline-flex;
-    align-items: center;
+    align-items: flex-end;
     padding: 4px 10px;
     border-radius: 9999px;
     font-size: 11px;
@@ -836,7 +996,7 @@ body .main,
     top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(15, 23, 42, 0.65);
     display: none;
-    align-items: center; /* Centered vertically */
+    align-items: flex-end; /* Centered vertically */
     justify-content: center; /* Centered horizontally */
     z-index: 10005;
     padding: 20px;
@@ -867,7 +1027,7 @@ body .main,
     color: #fff;
     border-radius: 16px 16px 0 0;
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: space-between;
     flex-shrink: 0;
 }
@@ -876,7 +1036,7 @@ body .main,
     font-weight: 800;
     margin: 0;
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     gap: 10px;
     color: #ffffff !important; /* Force title text to be white */
 }
@@ -943,7 +1103,7 @@ body .main,
     font-weight: 700;
     cursor: pointer;
     display: inline-flex;
-    align-items: center;
+    align-items: flex-end;
     gap: 8px;
     border: 1px solid transparent;
     transition: all 0.15s;
@@ -994,7 +1154,7 @@ body .main,
 }
 .pr-expand-icon {
     display: inline-flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: center;
     width: 22px;
     height: 22px;
@@ -1066,7 +1226,7 @@ body .main,
     font-weight: 700;
     cursor: pointer;
     display: inline-flex;
-    align-items: center;
+    align-items: flex-end;
     gap: 8px;
     transition: all 0.15s;
 }
@@ -1081,7 +1241,7 @@ body .main,
     font-weight: 700;
     cursor: pointer;
     display: inline-flex;
-    align-items: center;
+    align-items: flex-end;
     gap: 8px;
     transition: background 0.15s;
 }
@@ -1103,26 +1263,34 @@ body .main,
 <div class="pr-container">
 
     <!-- Header -->
-    <div style="margin-bottom: 28px;">
+    <div style="margin-bottom: 20px;">
         <h1 class="pr-title">
-            <i class="fas fa-clipboard-list" style="color: #002F6C;"></i> Purchase Requests
+            <i class="fas fa-clipboard-list" style="color: #002F6C;"></i> Purchase Management
         </h1>
     </div>
 
     <!-- Alert Notifications -->
     <?php if (!empty($_SESSION['success'])): ?>
-        <div style="background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; padding: 14px 18px; border-radius: 10px; margin-bottom: 20px; font-weight: 600; display: flex; align-items: center; gap: 10px;">
+        <div style="background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; padding: 14px 18px; border-radius: 10px; margin-bottom: 20px; font-weight: 600; display: flex; align-items: flex-end; gap: 10px;">
             <i class="fas fa-check-circle" style="font-size: 18px;"></i> <?= $_SESSION['success']; unset($_SESSION['success']); ?>
         </div>
     <?php endif; ?>
     <?php if (!empty($_SESSION['error'])): ?>
-        <div style="background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; padding: 14px 18px; border-radius: 10px; margin-bottom: 20px; font-weight: 600; display: flex; align-items: center; gap: 10px;">
+        <div style="background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; padding: 14px 18px; border-radius: 10px; margin-bottom: 20px; font-weight: 600; display: flex; align-items: flex-end; gap: 10px;">
             <i class="fas fa-exclamation-circle" style="font-size: 18px;"></i> <?= $_SESSION['error']; unset($_SESSION['error']); ?>
         </div>
     <?php endif; ?>
-
-    <!-- Summary Cards -->
-    <div class="summary-grid">
+        <!-- Main Page Tabs -->
+    <div class="main-page-tabs" style="display: flex; gap: 10px; margin-bottom: 24px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px;">
+        <button type="button" id="mainTabPrBtn" onclick="switchPendingSubTab('pr')" style="padding: 10px 24px; font-size: 14px; font-weight: 700; color: #ffffff !important; background-color: #002F6C !important; border: 1.5px solid #002F6C !important; cursor: pointer; border-radius: 8px; display: inline-flex; align-items: flex-end; gap: 8px; transition: all 0.2s;">
+            <i class="fas fa-clipboard-check"></i> Purchase Request
+        </button>
+        <button type="button" id="mainTabHistoryBtn" onclick="switchPendingSubTab('history')" style="padding: 10px 24px; font-size: 14px; font-weight: 700; color: #475569 !important; background-color: #f8fafc !important; border: 1.5px solid #cbd5e1 !important; cursor: pointer; border-radius: 8px; display: inline-flex; align-items: flex-end; gap: 8px; transition: all 0.2s;">
+            <i class="fas fa-history"></i> Purchase History
+        </button>
+    </div>
+    <!-- PR Summary Cards -->
+    <div class="summary-grid" id="prSummaryCardsGrid">
         <a href="manager_stock_request_review.php" class="summary-card" style="text-decoration: none; color: inherit;">
             <div>
                 <div class="summary-card-label">Pending Requests</div>
@@ -1153,14 +1321,54 @@ body .main,
         </a>
     </div>
 
-    <!-- Sub-tabs -->
-    <div class="sub-tab-nav" style="display: flex; gap: 8px; margin-bottom: 20px;">
-        <button type="button" id="subtabMerchBtn" onclick="switchPendingSubTab('merch')" style="padding: 9px 20px; font-size: 13px; font-weight: 600; color: #002F6C !important; border: 1.5px solid #002F6C !important; background: #eff6ff !important; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 7px; border-radius: 8px;">
+    <!-- Purchase History Summary Cards -->
+    <div class="summary-grid" id="historySummaryCardsGrid" style="display: none; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+        <div class="summary-card">
+            <div>
+                <div class="summary-card-label">Total Purchase Orders</div>
+                <div class="summary-card-value"><?= number_format($cnt_hist_total) ?></div>
+            </div>
+            <div class="summary-icon bg-total"><i class="fas fa-shopping-cart"></i></div>
+        </div>
+        <div class="summary-card">
+            <div>
+                <div class="summary-card-label">Fuel Purchases</div>
+                <div class="summary-card-value" style="color: #1d4ed8;"><?= number_format($cnt_hist_fuel) ?></div>
+            </div>
+            <div class="summary-icon" style="background:#eff6ff; color:#1d4ed8;"><i class="fas fa-gas-pump"></i></div>
+        </div>
+        <div class="summary-card">
+            <div>
+                <div class="summary-card-label">Merchandise Purchases</div>
+                <div class="summary-card-value" style="color: #9333ea;"><?= number_format($cnt_hist_merch) ?></div>
+            </div>
+            <div class="summary-icon" style="background:#faf5ff; color:#9333ea;"><i class="fas fa-boxes"></i></div>
+        </div>
+        <div class="summary-card">
+            <div>
+                <div class="summary-card-label">Completed Purchases</div>
+                <div class="summary-card-value" style="color: #16a34a;"><?= number_format($cnt_hist_completed) ?></div>
+            </div>
+            <div class="summary-icon bg-completed"><i class="fas fa-check-circle"></i></div>
+        </div>
+        <div class="summary-card">
+            <div>
+                <div class="summary-card-label">Cancelled Purchases</div>
+                <div class="summary-card-value" style="color: #dc2626;"><?= number_format($cnt_hist_cancelled) ?></div>
+            </div>
+            <div class="summary-icon" style="background:#fef2f2; color:#dc2626;"><i class="fas fa-times-circle"></i></div>
+        </div>
+    </div>
+
+    <!-- Sub-tabs Navigation -->
+    <div id="pendingCategoryNav" class="sub-tab-nav" style="display: flex; gap: 8px; margin-bottom: 20px;">
+        <button type="button" id="subtabMerchBtn" onclick="switchPendingSubTab('merch')" style="padding: 9px 20px; font-size: 13px; font-weight: 600; color: #002F6C !important; border: 1.5px solid #002F6C !important; background: #eff6ff !important; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: flex-end; gap: 7px; border-radius: 8px;">
             <i class="fas fa-boxes"></i> Merchandise
         </button>
-        <button type="button" id="subtabFuelBtn" onclick="switchPendingSubTab('fuel')" style="padding: 9px 20px; font-size: 13px; font-weight: 600; color: #64748b !important; border: 1.5px solid #e2e8f0 !important; background: #fff !important; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 7px; border-radius: 8px;">
+        <button type="button" id="subtabFuelBtn" onclick="switchPendingSubTab('fuel')" style="padding: 9px 20px; font-size: 13px; font-weight: 600; color: #64748b !important; border: 1.5px solid #e2e8f0 !important; background: #fff !important; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: flex-end; gap: 7px; border-radius: 8px;">
             <i class="fas fa-gas-pump"></i> Fuel
         </button>
+
     </div>
 
     <!-- Merchandise Section -->
@@ -1256,7 +1464,7 @@ body .main,
                     <tr id="detail_<?= $safe_key ?>" class="pr-inline-detail">
                         <td colspan="6">
                             <div class="pr-inline-panel" style="padding: 24px 28px 32px 28px; background: #f8fafc; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
-                                <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
+                                <div style="margin-bottom: 16px; display: flex; align-items: flex-end; gap: 10px;">
                                     <i class="fas fa-boxes" style="color: #002F6C; font-size: 18px;"></i>
                                     <span style="font-size: 15px; font-weight: 800; color: #002F6C;">Purchase Request Details</span>
                                 </div>
@@ -1469,7 +1677,7 @@ body .main,
                             <div class="pr-inline-panel" style="padding: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
 
                                 <!-- PR Header Bar -->
-                                <div style="background: #002F6C; padding: 16px 24px; display: flex; align-items: center; gap: 10px;">
+                                <div style="background: #002F6C; padding: 16px 24px; display: flex; align-items: flex-end; gap: 10px;">
                                     <i class="fas fa-gas-pump" style="color: #fff; font-size: 18px;"></i>
                                     <span style="font-size: 14px; font-weight: 800; color: #fff; letter-spacing: 0.3px;">Purchase Request Details</span>
                                 </div>
@@ -1621,6 +1829,204 @@ body .main,
         <?php endif; ?>
     </div>
 
+    
+    <!-- Purchase History Section -->
+    <div id="purchaseHistorySection" class="procurement-section" style="display: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 20px; margin-bottom: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.04);">
+        <!-- Filter Bar -->
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; margin-bottom: 20px;">
+            <div style="display: flex; flex-wrap: nowrap; gap: 8px; align-items: flex-end; overflow-x: auto;">
+                <!-- Search -->
+                <div style="flex: 1 1 160px; min-width: 140px;">
+                    <label style="display: block; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 4px; white-space: nowrap;">Search PO / DR / Invoice</label>
+                    <input type="text" id="histSearchPo" onkeyup="filterPurchaseHistory()" placeholder="Search PO, DR, invoice..." style="width: 100%; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                </div>
+
+                <!-- Category -->
+                <div style="flex: 0 0 130px;">
+                    <label style="display: block; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 4px; white-space: nowrap;">Category</label>
+                    <select id="histCategoryFilter" onchange="filterPurchaseHistory()" style="width: 100%; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px;">
+                        <option value="">All Categories</option>
+                        <option value="fuel">Fuel</option>
+                        <option value="merchandise">Merchandise</option>
+                    </select>
+                </div>
+
+                <!-- Supplier -->
+                <div style="flex: 0 0 150px;">
+                    <label style="display: block; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 4px; white-space: nowrap;">Supplier</label>
+                    <select id="histSupplierFilter" onchange="filterPurchaseHistory()" style="width: 100%; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px;">
+                        <option value="">All Suppliers</option>
+                        <option value="Petron Corporation">Petron Corporation</option>
+                    </select>
+                </div>
+
+                <!-- From Date -->
+                <div style="flex: 0 0 auto;">
+                    <label style="display: block; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 4px; white-space: nowrap;">From Date</label>
+                    <input type="date" id="histStartDate" onchange="filterPurchaseHistory()" style="padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; width: 130px;">
+                </div>
+
+                <span style="color: #94a3b8; font-weight: 700; padding-bottom: 8px; flex-shrink: 0;">–</span>
+
+                <!-- To Date -->
+                <div style="flex: 0 0 auto;">
+                    <label style="display: block; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 4px; white-space: nowrap;">To Date</label>
+                    <input type="date" id="histEndDate" onchange="filterPurchaseHistory()" style="padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; width: 130px;">
+                </div>
+
+                <!-- Status -->
+                <div style="flex: 0 0 140px;">
+                    <label style="display: block; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 4px; white-space: nowrap;">Status</label>
+                    <select id="histStatusFilter" onchange="filterPurchaseHistory()" style="width: 100%; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px;">
+                        <option value="">All Statuses</option>
+                        <option value="Completed">Received / Completed</option>
+                        <option value="Pending">Approved / Pending Delivery</option>
+                        <option value="Cancelled">Cancelled / Rejected</option>
+                    </select>
+                </div>
+
+                <!-- Buttons — inline with inputs -->
+                <div style="display: flex; gap: 6px; flex-shrink: 0; padding-bottom: 1px;">
+                    <button type="button" onclick="filterPurchaseHistory()" style="height: 34px; padding: 0 14px; background: #002F6C; color: #fff; border: none; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;">
+                        <i class="fas fa-filter"></i> Filter
+                    </button>
+                    <button type="button" onclick="resetHistoryFilter()" style="height: 34px; padding: 0 14px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;">
+                        <i class="fas fa-undo"></i> Reset
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Purchase History Table -->
+
+        <div style="overflow-x: auto;">
+            <table class="table-pr" id="purchaseHistoryTable">
+                <thead>
+                    <tr style="background: #002F6C; color: #fff;">
+                        <th style="color: #fff;">PO No.</th>
+                        <th style="color: #fff;">Category</th>
+                        <th style="color: #fff;">Supplier</th>
+                        <th style="color: #fff;">Date Ordered</th>
+                        <th style="color: #fff;">Date Received</th>
+                        <th style="color: #fff;">Total Amount</th>
+                        <th style="color: #fff;">Status</th>
+                        <th style="color: #fff; text-align: center;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="purchaseHistoryTbody">
+                    <?php if (empty($purchase_history_list)): ?>
+                        <tr>
+                            <td colspan="8" style="text-align: center; padding: 40px; color: #94a3b8;">No purchase history records found.</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($purchase_history_list as $ph_item): ?>
+                        <tr data-po="<?= htmlspecialchars($ph_item['po_number']) ?>" data-category="<?= $ph_item['category_type'] ?>" data-supplier="<?= htmlspecialchars($ph_item['supplier_name']) ?>" data-status="<?= htmlspecialchars($ph_item['status']) ?>" data-date="<?= date('Y-m-d', strtotime($ph_item['date_ordered'])) ?>">
+                            <td style="font-weight: 800; color: #002F6C; font-family: monospace; font-size: 14px;">
+                                <?= htmlspecialchars($ph_item['po_number']) ?>
+                            </td>
+                            <td>
+                                <?php if ($ph_item['category_type'] === 'fuel'): ?>
+                                    <span style="background:#eff6ff; color:#1d4ed8; font-weight:700; padding:4px 10px; border-radius:12px; font-size:12px;"><i class="fas fa-gas-pump"></i> Fuel</span>
+                                <?php else: ?>
+                                    <span style="background:#f0fdf4; color:#16a34a; font-weight:700; padding:4px 10px; border-radius:12px; font-size:12px;"><i class="fas fa-box"></i> Merchandise</span>
+                                <?php endif; ?>
+                            </td>
+                            <td style="font-weight: 600; color: #334155;"><?= htmlspecialchars($ph_item['supplier_name']) ?></td>
+                            <td style="color: #64748b; white-space: nowrap;"><?= date('M d, Y', strtotime($ph_item['date_ordered'])) ?></td>
+                            <td style="color: #64748b; white-space: nowrap;"><?= !empty($ph_item['date_received']) && $ph_item['date_received'] !== '0000-00-00 00:00:00' ? date('M d, Y', strtotime($ph_item['date_received'])) : '—' ?></td>
+                            <td style="font-weight: 800; color: #002F6C;">₱<?= number_format((float)$ph_item['total_amount'], 2) ?></td>
+                            <td>
+                                <?php
+                                $st = strtolower($ph_item['status']);
+                                $badge_class = 'status-pending';
+                                if (in_array($st, ['completed', 'received', 'stock-in complete'])) $badge_class = 'status-approved';
+                                elseif (in_array($st, ['cancelled', 'rejected', 'withdrawn'])) $badge_class = 'status-cancelled';
+                                ?>
+                                <span class="status-badge <?= $badge_class ?>"><?= htmlspecialchars($ph_item['status']) ?></span>
+                            </td>
+                            <td style="text-align: center; white-space: nowrap;">
+                                <a href="print_po_new.php?po_id=<?= urlencode($ph_item['po_number']) ?>&batch_id=<?= urlencode($ph_item['po_number']) ?>&type=<?= urlencode($ph_item['category_type']) ?>" target="_blank" class="btn-pr btn-outline-pr" title="Print Purchase Order" style="padding:5px 12px; font-size:12px; text-decoration:none;">
+                                    <i class="fas fa-print"></i> Print PO
+                                </a>
+                                <a href="print_supplier_invoice.php?po_id=<?= urlencode($ph_item['po_number']) ?>&batch_id=<?= urlencode($ph_item['po_number']) ?>&type=<?= urlencode($ph_item['category_type']) ?>" target="_blank" class="btn-pr btn-outline-pr" title="Print Invoice" style="padding:5px 12px; font-size:12px; text-decoration:none;">
+                                    <i class="fas fa-file-invoice"></i> Invoice
+                                </a>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- View Purchase History Modal -->
+    <div id="viewPurchaseHistoryModal" class="modal-overlay">
+        <div class="modal-box" style="max-width: 900px;">
+            <div class="modal-header" style="background: #002F6C; color: #fff; padding: 18px 24px; display: flex; justify-content: space-between; align-items: flex-end; border-radius: 16px 16px 0 0;">
+                <h3 style="margin: 0; font-size: 18px; font-weight: 800; display: flex; align-items: flex-end; gap: 10px;">
+                    <i class="fas fa-file-invoice"></i> <span id="modalPoTitle">Purchase History Details</span>
+                </h3>
+                <button type="button" onclick="closePurchaseHistoryModal()" style="background: none; border: none; color: #fff; font-size: 20px; cursor: pointer;"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <div class="modal-body" style="padding: 24px; overflow-y: auto; max-height: calc(100vh - 180px);">
+                <!-- Section 1: Purchase Information -->
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px; margin-bottom: 20px;">
+                    <h4 style="margin: 0 0 14px 0; color: #002F6C; font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; display: flex; align-items: flex-end; gap: 8px;">
+                        <i class="fas fa-info-circle"></i> Purchase Information
+                    </h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 20px; font-size: 13px;">
+                        <div><strong style="color:#64748b; font-size:11px; text-transform:uppercase; display:block;">Purchase Order No.</strong> <span id="mPoNo" style="font-weight:700; color:#002F6C;">-</span></div>
+                        <div><strong style="color:#64748b; font-size:11px; text-transform:uppercase; display:block;">Category</strong> <span id="mCategory" style="font-weight:700;">-</span></div>
+                        <div><strong style="color:#64748b; font-size:11px; text-transform:uppercase; display:block;">Supplier</strong> <span id="mSupplier" style="font-weight:700;">-</span></div>
+                        <div><strong style="color:#64748b; font-size:11px; text-transform:uppercase; display:block;">Requested By</strong> <span id="mRequestedBy">-</span></div>
+                        <div><strong style="color:#64748b; font-size:11px; text-transform:uppercase; display:block;">Approved By</strong> <span id="mApprovedBy">-</span></div>
+                        <div><strong style="color:#64748b; font-size:11px; text-transform:uppercase; display:block;">Date Ordered</strong> <span id="mDateOrdered">-</span></div>
+                        <div><strong style="color:#64748b; font-size:11px; text-transform:uppercase; display:block;">Date Received</strong> <span id="mDateReceived">-</span></div>
+                        <div><strong style="color:#64748b; font-size:11px; text-transform:uppercase; display:block;">Status</strong> <span id="mStatus">-</span></div>
+                    </div>
+                </div>
+
+                <!-- Section 2: Ordered Items -->
+                <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px; margin-bottom: 20px;">
+                    <h4 style="margin: 0 0 14px 0; color: #002F6C; font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; display: flex; align-items: flex-end; gap: 8px;">
+                        <i class="fas fa-boxes"></i> Ordered Items
+                    </h4>
+                    <div id="modalItemsTableContainer" style="overflow-x: auto;">
+                        <!-- Dynamically renders Merchandise or Fuel Table -->
+                    </div>
+                </div>
+
+                <!-- Section 3: Delivery Information -->
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px;">
+                    <h4 style="margin: 0 0 14px 0; color: #002F6C; font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; display: flex; align-items: flex-end; gap: 8px;">
+                        <i class="fas fa-truck-loading"></i> Delivery Information
+                    </h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 20px; font-size: 13px;">
+                        <div><strong style="color:#64748b; font-size:11px; text-transform:uppercase; display:block;">Delivery Receipt No. (DR)</strong> <span id="mDrNo" style="font-weight:700; color:#002F6C;">-</span></div>
+                        <div><strong style="color:#64748b; font-size:11px; text-transform:uppercase; display:block;">Sales Invoice No.</strong> <span id="mInvoiceNo" style="font-weight:700; color:#16a34a;">-</span></div>
+                        <div><strong style="color:#64748b; font-size:11px; text-transform:uppercase; display:block;">Received By</strong> <span id="mReceivedBy">-</span></div>
+                        <div><strong style="color:#64748b; font-size:11px; text-transform:uppercase; display:block;">Delivery Date</strong> <span id="mDeliveryDate">-</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer" style="padding: 16px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; border-radius: 0 0 16px 16px; display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" id="modalPrintPoBtn" class="btn-pr btn-outline-pr" onclick="printModalPO()">
+                    <i class="fas fa-print"></i> Print Purchase Order
+                </button>
+                <button type="button" id="modalPrintInvoiceBtn" class="btn-pr btn-primary-pr" onclick="printModalInvoice()">
+                    <i class="fas fa-file-invoice-dollar"></i> Print Sales Invoice
+                </button>
+                <button type="button" class="btn-pr btn-outline-pr" onclick="closePurchaseHistoryModal()">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    
     <!-- Return Request Modal -->
     <div class="modal-overlay" id="returnPrModal" style="z-index: 10030;">
         <div class="modal-box" style="max-width: 480px;">
@@ -1647,36 +2053,103 @@ body .main,
         </div>
     </div>
 </div>
+
 <script>
-// Sub-tab switching
+var currentPoItemForModal = null;
+
 function switchPendingSubTab(type) {
+    var mainPrBtn   = document.getElementById('mainTabPrBtn');
+    var mainHistBtn = document.getElementById('mainTabHistoryBtn');
+
     var merchBtn = document.getElementById('subtabMerchBtn');
     var fuelBtn  = document.getElementById('subtabFuelBtn');
-    var merchSec = document.getElementById('pendingMerchSection');
-    var fuelSec  = document.getElementById('pendingFuelSection');
+    var catNav   = document.getElementById('pendingCategoryNav');
+    
+    var merchSec  = document.getElementById('pendingMerchSection');
+    var fuelSec   = document.getElementById('pendingFuelSection');
+    var histSec   = document.getElementById('purchaseHistorySection');
 
-    if (type === 'merch') {
-        merchBtn.style.setProperty('color', '#002F6C', 'important');
-        merchBtn.style.setProperty('background-color', '#eff6ff', 'important');
-        merchBtn.style.setProperty('border', '1.5px solid #002F6C', 'important');
-        fuelBtn.style.setProperty('color', '#64748b', 'important');
-        fuelBtn.style.setProperty('background-color', '#fff', 'important');
-        fuelBtn.style.setProperty('border', '1.5px solid #e2e8f0', 'important');
-        if (merchSec) merchSec.style.display = 'block';
-        if (fuelSec)  fuelSec.style.display  = 'none';
+    var prCards   = document.getElementById('prSummaryCardsGrid');
+    var histCards = document.getElementById('historySummaryCardsGrid');
+
+    if (type === 'history') {
+        if (mainHistBtn) {
+            mainHistBtn.style.setProperty('color', '#ffffff', 'important');
+            mainHistBtn.style.setProperty('background-color', '#002F6C', 'important');
+            mainHistBtn.style.setProperty('border', '1.5px solid #002F6C', 'important');
+        }
+        if (mainPrBtn) {
+            mainPrBtn.style.setProperty('color', '#475569', 'important');
+            mainPrBtn.style.setProperty('background-color', '#f8fafc', 'important');
+            mainPrBtn.style.setProperty('border', '1.5px solid #cbd5e1', 'important');
+        }
+        if (histSec)   histSec.style.setProperty('display', 'block', 'important');
+        if (merchSec)  merchSec.style.setProperty('display', 'none', 'important');
+        if (fuelSec)   fuelSec.style.setProperty('display', 'none', 'important');
+        if (catNav)    catNav.style.setProperty('display', 'none', 'important');
+        if (prCards)   prCards.style.setProperty('display', 'none', 'important');
+        if (histCards) histCards.style.setProperty('display', 'none', 'important');
+        filterPurchaseHistory();
     } else {
-        fuelBtn.style.setProperty('color', '#002F6C', 'important');
-        fuelBtn.style.setProperty('background-color', '#eff6ff', 'important');
-        fuelBtn.style.setProperty('border', '1.5px solid #002F6C', 'important');
-        merchBtn.style.setProperty('color', '#64748b', 'important');
-        merchBtn.style.setProperty('background-color', '#fff', 'important');
-        merchBtn.style.setProperty('border', '1.5px solid #e2e8f0', 'important');
-        if (fuelSec)  fuelSec.style.display  = 'block';
-        if (merchSec) merchSec.style.display  = 'none';
+        if (mainPrBtn) {
+            mainPrBtn.style.setProperty('color', '#ffffff', 'important');
+            mainPrBtn.style.setProperty('background-color', '#002F6C', 'important');
+            mainPrBtn.style.setProperty('border', '1.5px solid #002F6C', 'important');
+        }
+        if (mainHistBtn) {
+            mainHistBtn.style.setProperty('color', '#475569', 'important');
+            mainHistBtn.style.setProperty('background-color', '#f8fafc', 'important');
+            mainHistBtn.style.setProperty('border', '1.5px solid #cbd5e1', 'important');
+        }
+        if (prCards)  prCards.style.setProperty('display', 'grid', 'important');
+        if (histCards) histCards.style.setProperty('display', 'none', 'important');
+        if (histSec)  histSec.style.setProperty('display', 'none', 'important');
+        if (catNav)   catNav.style.setProperty('display', 'flex', 'important');
+
+        if (type === 'fuel') {
+            if (fuelBtn) {
+                fuelBtn.style.setProperty('color', '#002F6C', 'important');
+                fuelBtn.style.setProperty('background-color', '#eff6ff', 'important');
+                fuelBtn.style.setProperty('border', '1.5px solid #002F6C', 'important');
+            }
+            if (merchBtn) {
+                merchBtn.style.setProperty('color', '#64748b', 'important');
+                merchBtn.style.setProperty('background-color', '#fff', 'important');
+                merchBtn.style.setProperty('border', '1.5px solid #e2e8f0', 'important');
+            }
+            if (fuelSec)  fuelSec.style.setProperty('display', 'block', 'important');
+            if (merchSec) merchSec.style.setProperty('display', 'none', 'important');
+        } else {
+            // default 'pr' or 'merch'
+            if (merchBtn) {
+                merchBtn.style.setProperty('color', '#002F6C', 'important');
+                merchBtn.style.setProperty('background-color', '#eff6ff', 'important');
+                merchBtn.style.setProperty('border', '1.5px solid #002F6C', 'important');
+            }
+            if (fuelBtn) {
+                fuelBtn.style.setProperty('color', '#64748b', 'important');
+                fuelBtn.style.setProperty('background-color', '#fff', 'important');
+                fuelBtn.style.setProperty('border', '1.5px solid #e2e8f0', 'important');
+            }
+            if (merchSec) merchSec.style.setProperty('display', 'block', 'important');
+            if (fuelSec)  fuelSec.style.setProperty('display', 'none', 'important');
+        }
     }
-    // Persist the active tab so it survives page refreshes
-    try { localStorage.setItem('pr_review_active_subtab', type); } catch(e) {}
+
+    try {
+        var url = new URL(window.location);
+        url.searchParams.set('tab', type);
+        window.history.replaceState({}, '', url);
+        localStorage.setItem('pr_review_active_subtab', type);
+    } catch(e) {}
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    var urlParams = new URLSearchParams(window.location.search);
+    var tabParam = urlParams.get('tab');
+    var savedTab = tabParam || localStorage.getItem('pr_review_active_subtab') || 'merch';
+    switchPendingSubTab(savedTab);
+});
 
 // Inline accordion toggle
 var _openPrKey = null;
@@ -1714,13 +2187,19 @@ function openReturnPrModal(prNo, type, reqIds) {
 }
 
 function openModal(id) {
-    document.getElementById(id).classList.add('open');
-    document.body.style.overflow = 'hidden';
+    var el = document.getElementById(id);
+    if (el) {
+        el.classList.add('open');
+        document.body.style.overflow = 'hidden';
+    }
 }
 
 function closeModal(id) {
-    document.getElementById(id).classList.remove('open');
-    document.body.style.overflow = '';
+    var el = document.getElementById(id);
+    if (el) {
+        el.classList.remove('open');
+        document.body.style.overflow = '';
+    }
 }
 
 function formatMoney(value) {
@@ -1734,118 +2213,174 @@ function updateMerchSummary(key) {
     var form = document.getElementById('form_' + key);
     if (!form) return;
     var qtyInputs = form.querySelectorAll('.merch-qty-input');
-    var total = 0;
-    var selected = 0;
-    qtyInputs.forEach(function (qtyInput) {
-        var row = qtyInput.closest('tr');
-        var costInput = row ? row.querySelector('.merch-cost-input') : null;
-        var qty = parseFloat(qtyInput.value);
-        var cost = costInput ? parseFloat(costInput.value) : 0;
-        if (!isNaN(qty) && qty > 0) {
-            selected++;
-            if (!isNaN(cost) && cost > 0) {
-                total += qty * cost;
-            }
+    var totalQty = 0;
+    var grandTotal = 0;
+
+    qtyInputs.forEach(function(input) {
+        var qty = parseFloat(input.value) || 0;
+        var cost = parseFloat(input.dataset.unitCost) || 0;
+        var rowTotal = qty * cost;
+        totalQty += qty;
+        grandTotal += rowTotal;
+        var rowTotalEl = document.getElementById('total_' + input.dataset.itemId);
+        if (rowTotalEl) {
+            rowTotalEl.textContent = formatMoney(rowTotal);
         }
     });
-    var countSpan = document.getElementById('merch_count_' + key);
-    var totalSpan = document.getElementById('merch_total_' + key);
-    if (countSpan) countSpan.textContent = selected || qtyInputs.length;
-    if (totalSpan) totalSpan.textContent = formatMoney(total);
+
+    var countEl = document.getElementById('summary_count_' + key);
+    var totalEl = document.getElementById('summary_total_' + key);
+    if (countEl) countEl.textContent = totalQty;
+    if (totalEl) totalEl.textContent = formatMoney(grandTotal);
 }
 
 function updateFuelSummary(key) {
     var form = document.getElementById('form_' + key);
     if (!form) return;
-    var qtyInputs = form.querySelectorAll('.fuel-qty-input');
-    var totalLiters = 0;
-    var totalAmount = 0;
-    var selected = 0;
-    qtyInputs.forEach(function (qtyInput) {
-        var row = qtyInput.closest('tr');
-        var costInput = row ? row.querySelector('.fuel-cost-input') : null;
-        var liters = parseFloat(qtyInput.value);
-        var cost = costInput ? parseFloat(costInput.value) : 0;
-        if (!isNaN(liters) && liters > 0) {
-            selected++;
-            totalLiters += liters;
-            if (!isNaN(cost) && cost > 0) {
-                totalAmount += liters * cost;
-            }
-        }
-    });
-    var totalSpan = document.getElementById('total_liters_' + key);
-    if (totalSpan) {
-        totalSpan.textContent = totalLiters.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' L';
-    }
-    var countSpan = document.getElementById('fuel_count_' + key);
-    var amountSpan = document.getElementById('fuel_total_' + key);
-    if (countSpan) countSpan.textContent = selected || qtyInputs.length;
-    if (amountSpan) amountSpan.textContent = formatMoney(totalAmount);
+    var litersInput = form.querySelector('.fuel-liters-input');
+    var liters = parseFloat(litersInput ? litersInput.value : 0) || 0;
+    var cost = parseFloat(litersInput ? litersInput.dataset.costPerLiter : 0) || 0;
+    var total = liters * cost;
+
+    var calcEl = document.getElementById('calc_total_' + key);
+    var summaryEl = document.getElementById('summary_total_' + key);
+    if (calcEl) calcEl.textContent = formatMoney(total);
+    if (summaryEl) summaryEl.textContent = formatMoney(total);
 }
 
-// Validate that at least 1 qty is filled before submitting
-document.addEventListener('DOMContentLoaded', function () {
-    // Restore last active sub-tab from localStorage; honour #fuel URL hash too
-    var savedTab = 'merch';
-    try { savedTab = localStorage.getItem('pr_review_active_subtab') || 'merch'; } catch(e) {}
-    if (window.location.hash === '#fuel') { savedTab = 'fuel'; }
-    switchPendingSubTab(savedTab);
+function filterPurchaseHistory() {
+    var search = (document.getElementById('histSearchPo')?.value || '').toLowerCase().trim();
+    var cat = (document.getElementById('histCategoryFilter')?.value || '').toLowerCase();
+    var supp = (document.getElementById('histSupplierFilter')?.value || '').toLowerCase();
+    var start = document.getElementById('histStartDate')?.value || '';
+    var end = document.getElementById('histEndDate')?.value || '';
+    var status = (document.getElementById('histStatusFilter')?.value || '').toLowerCase();
 
-    // Validate merch inline forms
-    document.querySelectorAll('.merch-inline-form').forEach(function (form) {
-        form.addEventListener('submit', function (e) {
-            var inputs = form.querySelectorAll('input[name^="quantities["]');
-            var anyFilled = Array.from(inputs).some(function (inp) {
-                return inp.value && parseFloat(inp.value) > 0;
-            });
-            if (!anyFilled) {
-                e.preventDefault();
-                alert('Please enter Qty to Order for at least one product before generating a PO.');
-                return;
-            }
-            var missingCost = Array.from(inputs).some(function (inp) {
-                var qty = parseFloat(inp.value);
-                if (isNaN(qty) || qty <= 0) return false;
-                var row = inp.closest('tr');
-                var costInput = row ? row.querySelector('.merch-cost-input') : null;
-                var cost = costInput ? parseFloat(costInput.value) : 0;
-                return isNaN(cost) || cost <= 0;
-            });
-            if (missingCost) {
-                e.preventDefault();
-                alert('Please enter Unit Cost for every product with Qty to Order.');
-            }
-        });
-    });
+    var rows = document.querySelectorAll('#purchaseHistoryTbody tr');
+    rows.forEach(function(r) {
+        if (!r.getAttribute('data-po')) return;
+        var po = (r.getAttribute('data-po') || '').toLowerCase();
+        var rCat = (r.getAttribute('data-category') || '').toLowerCase();
+        var rSupp = (r.getAttribute('data-supplier') || '').toLowerCase();
+        var rStatus = (r.getAttribute('data-status') || '').toLowerCase();
+        var rDate = r.getAttribute('data-date') || '';
+        var text = r.innerText.toLowerCase();
 
-    // Validate fuel inline forms
-    document.querySelectorAll('.fuel-inline-form').forEach(function (form) {
-        form.addEventListener('submit', function (e) {
-            var inputs = form.querySelectorAll('input[name^="fuel_quantities["]');
-            var anyFilled = Array.from(inputs).some(function (inp) {
-                return inp.value && parseFloat(inp.value) > 0;
-            });
-            if (!anyFilled) {
-                e.preventDefault();
-                alert('Please enter Liters to Order for at least one fuel type before generating a PO.');
-                return;
-            }
-            var missingCost = Array.from(inputs).some(function (inp) {
-                var liters = parseFloat(inp.value);
-                if (isNaN(liters) || liters <= 0) return false;
-                var row = inp.closest('tr');
-                var costInput = row ? row.querySelector('.fuel-cost-input') : null;
-                var cost = costInput ? parseFloat(costInput.value) : 0;
-                return isNaN(cost) || cost <= 0;
-            });
-            if (missingCost) {
-                e.preventDefault();
-                alert('Please enter Cost per Liter for every fuel type with Liters to Order.');
-            }
-        });
+        var show = true;
+        if (search && !text.includes(search)) show = false;
+        if (cat && rCat !== cat) show = false;
+        if (supp && !rSupp.includes(supp)) show = false;
+        if (status && !rStatus.includes(status)) show = false;
+        if (start && rDate < start) show = false;
+        if (end && rDate > end) show = false;
+
+        r.style.display = show ? '' : 'none';
     });
-});
+}
+
+function resetHistoryFilter() {
+    ['histSearchPo', 'histCategoryFilter', 'histSupplierFilter', 'histStartDate', 'histEndDate', 'histStatusFilter'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    filterPurchaseHistory();
+}
+
+function openPurchaseHistoryModal(item) {
+    currentPoItemForModal = item;
+    
+    document.getElementById('modalPoTitle').innerText = 'Purchase History - ' + (item.po_number || 'N/A');
+    document.getElementById('mPoNo').innerText = item.po_number || 'N/A';
+    document.getElementById('mCategory').innerHTML = item.category_type === 'fuel' ? '<i class="fas fa-gas-pump"></i> Fuel' : '<i class="fas fa-box"></i> Merchandise';
+    document.getElementById('mSupplier').innerText = item.supplier_name || 'Petron Corporation';
+    document.getElementById('mRequestedBy').innerText = item.requested_by_name || 'Manager';
+    document.getElementById('mApprovedBy').innerText = item.approved_by_name || 'Admin';
+    document.getElementById('mDateOrdered').innerText = item.date_ordered ? item.date_ordered.substring(0, 10) : '—';
+    document.getElementById('mDateReceived').innerText = item.date_received && item.date_received !== '0000-00-00 00:00:00' ? item.date_received.substring(0, 10) : '—';
+    document.getElementById('mStatus').innerHTML = '<span class="status-badge status-approved">' + (item.status || 'Completed') + '</span>';
+
+    // Delivery Info
+    document.getElementById('mDrNo').innerText = item.dr_number || 'N/A';
+    document.getElementById('mInvoiceNo').innerText = item.sales_invoice_no || 'N/A';
+    document.getElementById('mReceivedBy').innerText = item.received_by_name || 'Staff';
+    document.getElementById('mDeliveryDate').innerText = item.delivery_date || item.date_received || '—';
+
+    // Items table
+    var container = document.getElementById('modalItemsTableContainer');
+    var html = '';
+
+    if (item.category_type === 'merchandise') {
+        html += '<table style="width:100%; border-collapse:collapse; font-size:13px;">';
+        html += '<thead><tr style="background:#f8fafc; border-bottom:1.5px solid #e2e8f0; color:#475569; font-size:11px; text-transform:uppercase;">';
+        html += '<th style="padding:10px 12px; text-align:left;">SKU</th>';
+        html += '<th style="padding:10px 12px; text-align:left;">Product</th>';
+        html += '<th style="padding:10px 12px; text-align:center;">Qty</th>';
+        html += '<th style="padding:10px 12px; text-align:center;">UOM</th>';
+        html += '<th style="padding:10px 12px; text-align:right;">Unit Cost</th>';
+        html += '<th style="padding:10px 12px; text-align:right;">Total</th>';
+        html += '</tr></thead><tbody>';
+
+        if (item.items && item.items.length > 0) {
+            item.items.forEach(function(it) {
+                var uCost = parseFloat(it.unit_price || 0);
+                var tCost = parseFloat(it.total_price || (uCost * (it.quantity || 1)));
+                html += '<tr style="border-bottom:1px solid #f1f5f9;">';
+                html += '<td style="padding:10px 12px; font-family:monospace; color:#002F6C; font-weight:700;">' + (it.sku || 'N/A') + '</td>';
+                html += '<td style="padding:10px 12px; font-weight:600; color:#334155;">' + (it.product_name || 'Item') + '</td>';
+                html += '<td style="padding:10px 12px; text-align:center; font-weight:700;">' + (it.quantity || 1) + '</td>';
+                html += '<td style="padding:10px 12px; text-align:center; color:#64748b;">' + (it.unit || 'pcs') + '</td>';
+                html += '<td style="padding:10px 12px; text-align:right;">₱' + uCost.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) + '</td>';
+                html += '<td style="padding:10px 12px; text-align:right; font-weight:700; color:#002F6C;">₱' + tCost.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) + '</td>';
+                html += '</tr>';
+            });
+        } else {
+            html += '<tr><td colspan="6" style="padding:15px; text-align:center; color:#94a3b8;">No items detailed</td></tr>';
+        }
+        html += '</tbody></table>';
+    } else {
+        // Fuel
+        html += '<table style="width:100%; border-collapse:collapse; font-size:13px;">';
+        html += '<thead><tr style="background:#f8fafc; border-bottom:1.5px solid #e2e8f0; color:#475569; font-size:11px; text-transform:uppercase;">';
+        html += '<th style="padding:10px 12px; text-align:left;">Fuel Type</th>';
+        html += '<th style="padding:10px 12px; text-align:center;">Liters</th>';
+        html += '<th style="padding:10px 12px; text-align:right;">Cost/Liter</th>';
+        html += '<th style="padding:10px 12px; text-align:right;">Total</th>';
+        html += '</tr></thead><tbody>';
+
+        if (item.items && item.items.length > 0) {
+            item.items.forEach(function(it) {
+                var cPerL = parseFloat(it.cost_per_liter || 0);
+                var ltrs = parseFloat(it.liters || 0);
+                var tCost = parseFloat(it.total_price || (cPerL * ltrs));
+                html += '<tr style="border-bottom:1px solid #f1f5f9;">';
+                html += '<td style="padding:10px 12px; font-weight:700; color:#002F6C;">' + (it.fuel_type || 'Fuel') + '</td>';
+                html += '<td style="padding:10px 12px; text-align:center; font-weight:700;">' + ltrs.toLocaleString() + ' L</td>';
+                html += '<td style="padding:10px 12px; text-align:right;">₱' + cPerL.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) + '</td>';
+                html += '<td style="padding:10px 12px; text-align:right; font-weight:700; color:#002F6C;">₱' + tCost.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) + '</td>';
+                html += '</tr>';
+            });
+        }
+        html += '</tbody></table>';
+    }
+
+    container.innerHTML = html;
+
+    openModal('viewPurchaseHistoryModal');
+}
+
+function closePurchaseHistoryModal() {
+    closeModal('viewPurchaseHistoryModal');
+}
+
+function printModalPO() {
+    if (!currentPoItemForModal) return;
+    window.open('print_po_new.php?po_id=' + encodeURIComponent(currentPoItemForModal.po_number) + '&type=' + encodeURIComponent(currentPoItemForModal.category_type), '_blank');
+}
+
+function printModalInvoice() {
+    if (!currentPoItemForModal) return;
+    window.open('print_supplier_invoice.php?po_id=' + encodeURIComponent(currentPoItemForModal.po_number) + '&type=' + encodeURIComponent(currentPoItemForModal.category_type), '_blank');
+}
 </script>
-
 <?php include __DIR__ . '/../partials/footer.php'; ?>
+

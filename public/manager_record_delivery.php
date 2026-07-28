@@ -72,6 +72,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
             try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN manager_action_at DATETIME DEFAULT NULL"); } catch (Exception $ae) {}
             try { $pdo->exec("ALTER TABLE deliveries_oversight ADD COLUMN manager_notes TEXT DEFAULT NULL"); } catch (Exception $ae) {}
 
+            // Validate user ID against users table to prevent FK constraint violations
+            $encoded_by_fk = null;
+            if (!empty($me['id'])) {
+                try {
+                    $chk_u = $pdo->prepare("SELECT id FROM users WHERE id = ? LIMIT 1");
+                    $chk_u->execute([(int)$me['id']]);
+                    $found_u = $chk_u->fetchColumn();
+                    if ($found_u) {
+                        $encoded_by_fk = (int)$found_u;
+                    }
+                } catch (Exception $e) {}
+            }
+
             /* INSERT delivery record */
             $pdo->prepare("
                 INSERT INTO deliveries_oversight
@@ -82,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
             ")->execute([
                 $delivery_type, $delivery_ref, $supplier_name, $product_name,
                 $quantity, $unit, $delivery_date, $dr_number,
-                $me['id'], $station_id, $remarks
+                $encoded_by_fk, $station_id, $remarks
             ]);
 
             /* Bootstrap and INSERT into audit_trail */

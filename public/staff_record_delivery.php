@@ -128,6 +128,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
             $pdo->beginTransaction();
             $recorded_count = 0;
 
+            // Validate user ID against users table to prevent FK constraint violations
+            $encoded_by_fk = null;
+            if (!empty($me['id'])) {
+                try {
+                    $chk_u = $pdo->prepare("SELECT id FROM users WHERE id = ? LIMIT 1");
+                    $chk_u->execute([(int)$me['id']]);
+                    $found_u = $chk_u->fetchColumn();
+                    if ($found_u) {
+                        $encoded_by_fk = (int)$found_u;
+                    }
+                } catch (Exception $e) {}
+            }
+
             foreach ($po_ids as $pr_id) {
                 if ($pr_id <= 0) continue;
 
@@ -208,7 +221,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                         $delivery_time,             // delivery_time
                         $dr_number,                 // dr_number
                         $invoice_number,            // sales_invoice_no
-                        $me['id'],                  // encoded_by
+                        $encoded_by_fk,             // encoded_by (validated FK)
                         $station_id,                // station_id
                         $full_remarks,              // remarks
                         $received_shift,            // received_shift
@@ -223,7 +236,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                             received_quantity = received_quantity + ?,
                             received_at = NOW(), received_by = ?
                         WHERE id = ?
-                    ")->execute([$actual_qty, $actual_qty, $me['id'], $item_id]);
+                    ")->execute([$actual_qty, $actual_qty, $encoded_by_fk, $item_id]);
 
                     $recorded_count++;
                 }
@@ -294,7 +307,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                         $delivery_time,             // delivery_time
                         $dr_number,                 // dr_number
                         $invoice_number,            // sales_invoice_no
-                        $me['id'],                  // encoded_by
+                        $encoded_by_fk,             // encoded_by (validated FK)
                         $station_id,                // station_id
                         $full_remarks,              // remarks
                         $received_shift,            // received_shift
@@ -361,6 +374,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
         try {
             $pdo->beginTransaction();
 
+            // Validate user ID against users table to prevent FK constraint violations
+            $encoded_by_fk = null;
+            if (!empty($me['id'])) {
+                try {
+                    $chk_u = $pdo->prepare("SELECT id FROM users WHERE id = ? LIMIT 1");
+                    $chk_u->execute([(int)$me['id']]);
+                    $found_u = $chk_u->fetchColumn();
+                    if ($found_u) {
+                        $encoded_by_fk = (int)$found_u;
+                    }
+                } catch (Exception $e) {}
+            }
+
             // Fetch fuel PO rows for this po_number
             $stmt = $pdo->prepare("
                 SELECT fpo.*, ft.name as fuel_type, s.name as supplier_name 
@@ -422,7 +448,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                     $delivery_time,            // delivery_time
                     $dr_number,                // dr_number
                     $invoice_number,           // sales_invoice_no
-                    $me['id'],                 // encoded_by
+                    $encoded_by_fk,            // encoded_by (validated FK)
                     $station_id,               // station_id
                     $full_remarks,             // remarks
                     $received_shift,           // received_shift

@@ -312,7 +312,7 @@ if (!$has_staff_activity) {
         'event_type'  => 'general',
         'severity'    => 'low',
         'source_key'  => "no_shifts_".date('Y-m-d')."_{$station_id}",
-        'redirect_url'=> '/public/admin_staff_oversight.php',
+        'redirect_url'=> '/public/users.php',
     ]);
 } else {
     // If staff are active today, remove any stale "No Active Shifts Today" notifications for today

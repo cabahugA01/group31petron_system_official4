@@ -206,8 +206,8 @@ if (isset($_GET['print_id'])) {
     $stock = (float)$item['stock_level'];
     $price = (float)$item['unit_price'];
     $value = $stock * $price;
-    $capacity = (float)$item['capacity'];
-    $fill_pct = $capacity > 0 ? ($stock / $capacity) * 100 : 0;
+    $capacity = max(480.0, (float)$item['capacity']);
+    $fill_pct = $capacity > 0 ? min(100, ($stock / $capacity) * 100) : 0;
     
     ?>
     <!DOCTYPE html>
@@ -341,6 +341,32 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_history') {
     exit;
 }
 
+// ── GET PRODUCT DETAILS & FIFO BATCHES (AJAX ENDPOINT) ────────
+if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_product_details') {
+    header('Content-Type: application/json');
+    $prod_id = (int)($_GET['product_id'] ?? 0);
+    try {
+        $stmt = $pdo->prepare("
+            SELECT msi.*, COALESCE(u.name, 'Staff') AS user_name
+            FROM merchandise_stock_in msi
+            LEFT JOIN users u ON msi.encoded_by = u.id
+            WHERE msi.product_id = ? AND msi.station_id = ?
+            ORDER BY msi.encoded_at DESC
+            LIMIT 50
+        ");
+        $stmt->execute([$prod_id, $station_id]);
+        $deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'success' => true,
+            'deliveries' => $deliveries
+        ]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
 // ── GET Filters ──────────────────────────────────────────────
 $search_query   = trim($_GET['search_query'] ?? '');
 $category_filter = trim($_GET['category'] ?? 'all');
@@ -350,6 +376,10 @@ $unit_filter     = trim($_GET['unit'] ?? 'all');
 $status_filter   = strtolower(trim($_GET['status_filter'] ?? 'all'));
 $date_from      = trim($_GET['date_from'] ?? '');
 $date_to        = trim($_GET['date_to'] ?? '');
+
+// ── Active Tab ────────────────────────────────────────────────
+$active_tab = trim($_GET['tab'] ?? 'overview');
+if (!in_array($active_tab, ['overview', 'movement', 'stockin', 'stockout', 'transfer', 'damaged', 'expired'])) $active_tab = 'overview';
 
 // ── Fetch dynamic categories for dropdown ────────────────────
 $all_categories = [];
@@ -647,6 +677,157 @@ if (!empty($filtered_items)) {
         }
     }
 }
+
+// ── KPI: Available Stock count ────────────────────────────────
+$kpi_available_stock = 0;
+foreach ($all_items as $item) {
+    $s = (float)$item['stock_level'];
+    $r = (float)($item['reorder_level'] ?? 24);
+    $c = (float)($item['critical_level'] ?? 10);
+    if ($s > $r) $kpi_available_stock++;
+}
+
+// ── Fetch Stock Movement History ──────────────────────────────
+$movement_history = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT il.id, il.created_at, il.action AS movement_type, il.quantity_change,
+               il.notes, il.reference_no,
+               COALESCE(ip.product_name, p.name, 'Unknown') AS product_name,
+               COALESCE(ip.sku, CONCAT('P', LPAD(p.id,4,'0')), '') AS sku,
+               COALESCE(u.name, 'System') AS performed_by,
+               COALESCE(si.stock_level, 0) AS current_stock
+        FROM inventory_logs il
+        LEFT JOIN inventory_products ip ON ip.id = il.product_id
+        LEFT JOIN products p ON p.id = il.product_id AND (ip.id IS NULL)
+        LEFT JOIN station_inventory si ON si.product_id = il.product_id AND si.station_id = il.station_id
+        LEFT JOIN users u ON u.id = il.user_id
+        WHERE il.station_id = ?
+        ORDER BY il.created_at DESC
+        LIMIT 200
+    ");
+    $stmt->execute([$station_id]);
+    $movement_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+// ── Fetch Stock-In History ────────────────────────────────────
+$stockin_history = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT msi.id, msi.encoded_at AS date, msi.qty_received, msi.unit_cost, msi.batch_no,
+               msi.po_number, msi.status, msi.notes,
+               COALESCE(ip.product_name, p.name, 'Unknown') AS product_name,
+               COALESCE(ip.sku, CONCAT('P', LPAD(p.id,4,'0')), '') AS sku,
+               COALESCE(ip.category, pc.name, 'General') AS category_name,
+               COALESCE(u.name, 'Staff') AS received_by,
+               COALESCE(ip.brand, 'Petron Corporation') AS supplier
+        FROM merchandise_stock_in msi
+        LEFT JOIN inventory_products ip ON ip.id = msi.product_id
+        LEFT JOIN products p ON p.id = msi.product_id AND (ip.id IS NULL)
+        LEFT JOIN product_categories pc ON pc.id = p.category_id
+        LEFT JOIN users u ON u.id = msi.encoded_by
+        WHERE msi.station_id = ?
+        ORDER BY msi.encoded_at DESC
+        LIMIT 200
+    ");
+    $stmt->execute([$station_id]);
+    $stockin_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+// ── Fetch Stock-Out History ────────────────────────────────────
+$stockout_history = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT
+            CONCAT('SO-', LPAD(mt.id, 5, '0')) AS ref_no,
+            mt.created_at AS date,
+            mt.transaction_type,
+            COALESCE(ip.product_name, p.name, 'Unknown') AS product_name,
+            COALESCE(ip.sku, CONCAT('P', LPAD(p.id,4,'0')), '') AS sku,
+            COALESCE(mti.quantity, 0) AS qty
+        FROM merchandise_transactions mt
+        JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
+        LEFT JOIN inventory_products ip ON ip.id = mti.product_id
+        LEFT JOIN products p ON p.id = mti.product_id AND (ip.id IS NULL)
+        WHERE (mt.station_id = ? OR mt.station_id = 0 OR mt.station_id IS NULL)
+          AND mt.transaction_type IN ('sale','stock_out','return','wastage')
+        ORDER BY mt.created_at DESC
+        LIMIT 200
+    ");
+    $stmt->execute([$station_id]);
+    $stockout_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+// ── Fetch Transfer Records ────────────────────────────────────
+$transfer_records = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT
+            CONCAT('TR-', LPAD(il.id, 5, '0')) AS transfer_no,
+            COALESCE(ip.product_name, 'Unknown') AS product_name,
+            COALESCE(ip.sku, '') AS sku,
+            COALESCE(il.notes, '—') AS from_location,
+            COALESCE(NULLIF(CONCAT_WS(' ', il.reference_type, il.reference_id), ''), '—') AS to_location,
+            ABS(il.quantity_change) AS qty,
+            il.created_at AS date,
+            COALESCE(u.name, 'Staff') AS performed_by
+        FROM inventory_logs il
+        LEFT JOIN inventory_products ip ON ip.id = il.product_id
+        LEFT JOIN users u ON u.id = il.user_id
+        WHERE (il.station_id = ? OR il.station_id = 0 OR il.station_id IS NULL)
+          AND LOWER(il.action) IN ('transfer','transfer_out','transfer_in')
+        ORDER BY il.created_at DESC
+        LIMIT 200
+    ");
+    $stmt->execute([$station_id]);
+    $transfer_records = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+// ── Fetch Damaged Items ────────────────────────────────────────
+$damaged_items = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT
+            CONCAT('DMG-', LPAD(il.id, 5, '0')) AS damage_no,
+            COALESCE(ip.product_name, 'Unknown') AS product_name,
+            COALESCE(ip.sku, '') AS sku,
+            ABS(il.quantity_change) AS qty,
+            COALESCE(il.notes, '—') AS reason,
+            il.created_at AS date,
+            COALESCE(u.name, 'Staff') AS performed_by
+        FROM inventory_logs il
+        LEFT JOIN inventory_products ip ON ip.id = il.product_id
+        LEFT JOIN users u ON u.id = il.user_id
+        WHERE (il.station_id = ? OR il.station_id = 0 OR il.station_id IS NULL)
+          AND LOWER(il.action) IN ('damage','damaged','defective','disposal')
+        ORDER BY il.created_at DESC
+        LIMIT 200
+    ");
+    $stmt->execute([$station_id]);
+    $damaged_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+// ── Fetch Expired Products ─────────────────────────────────────
+$expired_products = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT
+            COALESCE(ip.product_name, 'Unknown') AS product_name,
+            COALESCE(ip.sku, '') AS sku,
+            COALESCE(mb.batch_number, msi.batch_ref, '—') AS batch,
+            mb.created_at AS expiry_date,
+            COALESCE(mb.remaining_qty, msi.qty_received, 0) AS qty
+        FROM merchandise_batches mb
+        LEFT JOIN inventory_products ip ON ip.id = mb.product_id
+        LEFT JOIN merchandise_stock_in msi ON msi.product_id = mb.product_id AND msi.station_id = mb.station_id
+        WHERE (mb.station_id = ? OR mb.station_id = 0 OR mb.station_id IS NULL)
+          AND mb.status = 'active'
+        ORDER BY mb.id DESC
+        LIMIT 200
+    ");
+    $stmt->execute([$station_id]);
+    $expired_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
 
 require_once __DIR__ . '/../partials/header.php';
 ?>
@@ -1019,6 +1200,65 @@ require_once __DIR__ . '/../partials/header.php';
 .tab-btn { padding:10px 24px; background:none; border:none; border-bottom:3px solid transparent; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; margin-bottom:-2px; transition:all .15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
 .tab-btn.active { color:#002F70; border-bottom-color:#002F70; }
 .tab-btn:hover { color:#002F70 !important; background:#f8fafc !important; }
+
+/* ── Modal tab button overrides to prevent global button background ── */
+.modal-tab-btn {
+    background: none !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 10px 16px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    border-bottom: 2px solid transparent !important;
+    transition: color 0.15s, border-color 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.modal-tab-btn.active {
+    border-bottom: 2px solid #002F70 !important;
+    color: #002F70 !important;
+    font-weight: 700 !important;
+    background: transparent !important;
+    background-color: transparent !important;
+}
+.modal-tab-btn:not(.active) {
+    color: #64748b !important;
+    background: transparent !important;
+    background-color: transparent !important;
+}
+.modal-tab-btn:hover:not(.active) {
+    color: #002F70 !important;
+    border-bottom: 2px solid #c7d4ea !important;
+    background: #f1f5f9 !important;
+}
+
+/* ── Outline buttons (View, Print, Close) plain styles ── */
+.int-btn-outline {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #002F70 !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #002F70 !important;
+    transition: all 0.2s;
+    white-space: nowrap;
+    text-decoration: none;
+    box-shadow: none !important;
+}
+.int-btn-outline:hover {
+    background: #002F70 !important;
+    color: #ffffff !important;
+}
 </style>
 
 <!-- Page Header -->
@@ -1030,56 +1270,85 @@ require_once __DIR__ . '/../partials/header.php';
 
 <!-- Summary Cards -->
 <div class="afto-cards">
-    <!-- Card 1: Total Merchandise Products -->
-    <div class="afto-card blue <?= ($status_filter === 'all' || $status_filter === '') ? 'card-active' : '' ?>" onclick="filterAdminByCard('all')" style="cursor:pointer;" title="Click to view All Products">
+    <!-- Card 1: Total Products -->
+    <div class="afto-card blue <?= ($status_filter === 'all' || $status_filter === '') ? 'card-active' : '' ?>" onclick="filterAdminByCard('all')" style="cursor:pointer;" title="View All Products">
         <div class="afto-card-info">
-            <span class="afto-card-lbl">Total Merchandise Products</span>
+            <span class="afto-card-lbl">Total Products</span>
             <span class="afto-card-val"><?= number_format($kpi_total_products) ?></span>
         </div>
         <div class="afto-card-icon"><i class="fas fa-box"></i></div>
     </div>
-    <!-- Card 2: Total Stock Quantity -->
-    <div class="afto-card green">
+    <!-- Card 2: Available Stock -->
+    <div class="afto-card green <?= $status_filter === 'available' ? 'card-active' : '' ?>" onclick="filterAdminByCard('available')" style="cursor:pointer;" title="View Available Products">
         <div class="afto-card-info">
-            <span class="afto-card-lbl">Total Stock Quantity</span>
-            <span class="afto-card-val"><?= number_format($kpi_total_stock) ?></span>
+            <span class="afto-card-lbl">Available Stock</span>
+            <span class="afto-card-val"><?= number_format($kpi_available_stock) ?></span>
         </div>
-        <div class="afto-card-icon"><i class="fas fa-layer-group"></i></div>
+        <div class="afto-card-icon"><i class="fas fa-check-circle"></i></div>
     </div>
-    <!-- Card 3: Total Merchandise Inventory Value -->
-    <div class="afto-card purple">
+    <!-- Card 3: Low Stock -->
+    <div class="afto-card yellow <?= in_array($status_filter, ['low', 'low stock'], true) ? 'card-active' : '' ?>" onclick="filterAdminByCard('low')" style="cursor:pointer;" title="View Low Stock Products">
         <div class="afto-card-info">
-            <span class="afto-card-lbl">Total Merchandise Inventory Value</span>
-            <span class="afto-card-val">₱<?= number_format($kpi_total_value, 2) ?></span>
-        </div>
-        <div class="afto-card-icon"><i class="fas fa-coins"></i></div>
-    </div>
-    <!-- Card 4: Low Stock Items -->
-    <div class="afto-card yellow <?= in_array($status_filter, ['low', 'low stock'], true) ? 'card-active' : '' ?>" onclick="filterAdminByCard('low')" style="cursor:pointer;" title="Click to filter low stock items">
-        <div class="afto-card-info">
-            <span class="afto-card-lbl">Low Stock Items</span>
+            <span class="afto-card-lbl">Low Stock</span>
             <span class="afto-card-val"><?= number_format($kpi_low_stock) ?></span>
         </div>
         <div class="afto-card-icon"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
-    <!-- Card 5: Critical Stock Items -->
-    <div class="afto-card red <?= in_array($status_filter, ['critical', 'critical stock'], true) ? 'card-active' : '' ?>" onclick="filterAdminByCard('critical')" style="cursor:pointer; border-bottom: 2px solid #dc2626;" title="Click to filter critical stock items">
+    <!-- Card 4: Critical Stock -->
+    <div class="afto-card red <?= in_array($status_filter, ['critical', 'critical stock'], true) ? 'card-active' : '' ?>" onclick="filterAdminByCard('critical')" style="cursor:pointer;border-bottom:2px solid #dc2626;" title="View Critical Stock Products">
         <div class="afto-card-info">
-            <span class="afto-card-lbl" style="color:#dc2626;">Critical Stock Items</span>
+            <span class="afto-card-lbl" style="color:#dc2626;">Critical Stock</span>
             <span class="afto-card-val" style="color:#dc2626;"><?= number_format($kpi_critical_stock) ?></span>
         </div>
         <div class="afto-card-icon"><i class="fas fa-fire" style="color:#dc2626;"></i></div>
     </div>
-    <!-- Card 6: Out of Stock Items -->
-    <div class="afto-card red <?= in_array($status_filter, ['out', 'out of stock'], true) ? 'card-active' : '' ?>" onclick="filterAdminByCard('out')" style="cursor:pointer;" title="Click to filter out of stock items">
+    <!-- Card 5: Out of Stock -->
+    <div class="afto-card red <?= in_array($status_filter, ['out', 'out of stock'], true) ? 'card-active' : '' ?>" onclick="filterAdminByCard('out')" style="cursor:pointer;" title="View Out of Stock Products">
         <div class="afto-card-info">
-            <span class="afto-card-lbl">Out of Stock Items</span>
+            <span class="afto-card-lbl">Out of Stock</span>
             <span class="afto-card-val"><?= number_format($kpi_out_of_stock) ?></span>
         </div>
         <div class="afto-card-icon"><i class="fas fa-times-circle"></i></div>
     </div>
+    <!-- Card 6: Total Inventory Value -->
+    <div class="afto-card purple">
+        <div class="afto-card-info">
+            <span class="afto-card-lbl">Total Inventory Value</span>
+            <span class="afto-card-val" style="font-size:15px;">₱<?= number_format($kpi_total_value, 2) ?></span>
+        </div>
+        <div class="afto-card-icon"><i class="fas fa-coins"></i></div>
+    </div>
 </div>
 
+<!-- Tab Navigation -->
+<div class="tab-nav" style="overflow-x:auto; flex-wrap:nowrap; white-space:nowrap; padding-bottom:2px;">
+    <a href="admin_inventory_merchandise.php?<?= http_build_query(array_merge($_GET, ['tab' => 'overview'])) ?>"
+       class="tab-btn <?= $active_tab === 'overview' ? 'active' : '' ?>">
+        <i class="fas fa-boxes"></i> Inventory Overview
+    </a>
+    <a href="admin_inventory_merchandise.php?tab=stockin"
+       class="tab-btn <?= $active_tab === 'stockin' ? 'active' : '' ?>">
+        <i class="fas fa-truck-loading"></i> Stock In History
+    </a>
+    <a href="admin_inventory_merchandise.php?tab=stockout"
+       class="tab-btn <?= $active_tab === 'stockout' ? 'active' : '' ?>">
+        <i class="fas fa-arrow-circle-down"></i> Stock Out History
+    </a>
+    <a href="admin_inventory_merchandise.php?tab=transfer"
+       class="tab-btn <?= $active_tab === 'transfer' ? 'active' : '' ?>">
+        <i class="fas fa-exchange-alt"></i> Transfer Records
+    </a>
+    <a href="admin_inventory_merchandise.php?tab=damaged"
+       class="tab-btn <?= $active_tab === 'damaged' ? 'active' : '' ?>">
+        <i class="fas fa-exclamation-circle"></i> Damaged Items
+    </a>
+    <a href="admin_inventory_merchandise.php?tab=expired"
+       class="tab-btn <?= $active_tab === 'expired' ? 'active' : '' ?>">
+        <i class="fas fa-calendar-times"></i> Expired Products
+    </a>
+</div>
+
+<?php if ($active_tab === 'overview'): ?>
 <!-- Filter Bar -->
 <form method="GET" action="admin_inventory_merchandise.php" class="afto-filter">
     <div class="afto-fg">
@@ -1205,17 +1474,18 @@ require_once __DIR__ . '/../partials/header.php';
     <div class="table-wrap" style="overflow-x:auto; width:100%; -webkit-overflow-scrolling:touch;">
         <table class="afto-tbl" id="adminMerchTable">
             <colgroup>
-                <col style="width:80px">   <!-- SKU -->
-                <col style="width:160px">  <!-- Product Name -->
-                <col style="width:95px">   <!-- Category -->
-                <col style="width:50px">   <!-- UOM -->
-                <col style="width:50px">   <!-- Cap -->
-                <col style="width:115px">  <!-- Stock/Reorder -->
-                <col style="width:50px">   <!-- Phys -->
-                <col style="width:55px">   <!-- Variance -->
-                <col style="width:100px">  <!-- Status -->
-                <col style="width:70px">   <!-- Last Mov -->
-                <col style="width:90px">   <!-- Last Updated -->
+                <col style="width:75px">   <!-- SKU -->
+                <col style="width:150px">  <!-- Product Name -->
+                <col style="width:90px">   <!-- Category -->
+                <col style="width:48px">   <!-- UOM -->
+                <col style="width:48px">   <!-- Cap -->
+                <col style="width:110px">  <!-- Stock/Reorder -->
+                <col style="width:48px">   <!-- Phys -->
+                <col style="width:52px">   <!-- Variance -->
+                <col style="width:95px">   <!-- Status -->
+                <col style="width:65px">   <!-- Last Mov -->
+                <col style="width:85px">   <!-- Last Updated -->
+                <col style="width:70px">   <!-- Actions -->
             </colgroup>
             <thead>
                 <tr>
@@ -1230,12 +1500,13 @@ require_once __DIR__ . '/../partials/header.php';
                     <th class="align-center">Status</th>
                     <th style="text-align:center;">Last Mov.</th>
                     <th>Last Updated</th>
+                    <th style="text-align:center;">Actions</th>
                 </tr>
             </thead>
             <tbody>
             <?php if (empty($sorted_filtered)): ?>
                 <tr>
-                    <td colspan="11" class="align-center" style="padding: 24px; color: #64748b;">
+                    <td colspan="12" class="align-center" style="padding: 24px; color: #64748b;">
                         <i class="fas fa-box-open" style="font-size: 24px; margin-bottom: 8px; display:block;"></i>
                         No merchandise inventory records matched your filters.
                     </td>
@@ -1243,21 +1514,22 @@ require_once __DIR__ . '/../partials/header.php';
             <?php else: ?>
                 <?php foreach ($sorted_filtered as $cat_label => $items): ?>
                     <tr class="cat-header">
-                        <td colspan="11" style="text-align:center; font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:12px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px;">
+                        <td colspan="12" style="text-align:center; font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:12px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px;">
                             <strong><?= htmlspecialchars($cat_label) ?></strong>
                         </td>
                     </tr>
                     <?php foreach ($items as $item): 
                         $stock    = (float)$item['stock_level'];
-                        $reorder  = (float)$item['reorder_level'];
+                        $reorder  = (float)($item['reorder_level'] ?? 24);
+                        if ($reorder  <= 0) $reorder  = 24;  // Low Stock threshold
                         $price    = (float)$item['price'];
                         $cost     = (float)$item['cost'];
                         $value    = $stock * $price;
                         $updated  = $item['last_updated'] ? date('M d, Y h:i A', strtotime($item['last_updated'])) : '—';
                     ?>
                     <?php
-                        $capacity = (float)$item['capacity'];
-                        $fill_pct = $capacity > 0 ? ($stock / $capacity) * 100 : 0;
+                        $capacity = max(480.0, (float)($item['capacity'] ?? 480));
+                        $fill_pct = $capacity > 0 ? min(100, ($stock / $capacity) * 100) : 0;
                         $variance = $item['variance'];
                         $has_variance = ($variance !== null && (float)$variance != 0);
                         $badgeCls = $has_variance ? 'bg-amber' : getStatusBadgeClass($item['computed_status']);
@@ -1308,6 +1580,27 @@ require_once __DIR__ . '/../partials/header.php';
                             <?php endif; ?>
                         </td>
                         <td style="font-size:11px; color:#64748b;"><?= $updated ?></td>
+                        <td class="align-center">
+                            <button type="button" class="int-btn-outline" style="font-size:11px;height:26px;padding:0 8px;cursor:pointer;"
+                                onclick='adminViewProduct(<?= htmlspecialchars(json_encode([
+                                    "id" => $item["id"],
+                                    "sku" => $item["sku"],
+                                    "name" => $item["name"],
+                                    "category_name" => $item["category_name"],
+                                    "brand" => $item["brand"] ?? "Petron",
+                                    "supplier" => "Petron Corporation",
+                                    "unit" => $item["unit"],
+                                    "barcode" => $item["barcode"] ?? "",
+                                    "stock_level" => $item["stock_level"],
+                                    "reorder_level" => $item["reorder_level"],
+                                    "critical_level" => $item["critical_level"],
+                                    "price" => $item["price"],
+                                    "cost" => $item["cost"],
+                                    "capacity" => $item["capacity"],
+                                    "computed_status" => $item["computed_status"]
+                                ]), ENT_QUOTES) ?>)'
+                            ><i class="fas fa-eye"></i> View</button>
+                        </td>
                     </tr>
                     <?php endforeach; ?>
                 <?php endforeach; ?>
@@ -1318,137 +1611,647 @@ require_once __DIR__ . '/../partials/header.php';
     <div id="adminMerchPagination" style="margin: 10px 20px;"></div>
 </div>
 
-<!-- Details Modal -->
-<div class="modal-overlay" id="detailsModal">
-    <div class="modal-box" style="width: 650px; max-width: 95vw;">
-        <div style="background:#00264D; color:#ffffff !important; padding:16px 20px; border-radius:12px 12px 0 0; margin:-24px -24px 20px -24px; display:flex; justify-content:space-between; align-items:center;">
-            <h3 style="margin:0; color:#ffffff !important; font-size:15px; font-weight:700; text-transform:uppercase; letter-spacing:.5px;"><i class="fas fa-eye"></i> Product Details</h3>
-        </div>
-        <div class="modal-body" style="padding:0; overflow-y:auto; max-height: 70vh;">
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
-                <!-- Product Information -->
-                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
-                    <h4 style="margin:0 0 8px; color:#00264D; font-size:12px; text-transform:uppercase; border-bottom:1px solid #e2e8f0; padding-bottom:4px;"><i class="fas fa-info-circle"></i> Product Information</h4>
-                    <table style="width:100%; font-size:12px; line-height:1.6;">
-                        <tr><td style="font-weight:bold; color:#64748b; width:45%;">Product Code:</td><td id="detSku" style="font-weight:700;"></td></tr>
-                        <tr><td style="font-weight:bold; color:#64748b;">Product Name:</td><td id="detName" style="font-weight:700;"></td></tr>
-                        <tr><td style="font-weight:bold; color:#64748b;">Category:</td><td id="detCategory"></td></tr>
-                        <tr><td style="font-weight:bold; color:#64748b;">Brand:</td><td id="detBrand"></td></tr>
-                        <tr><td style="font-weight:bold; color:#64748b;">Supplier:</td><td id="detSupplier"></td></tr>
-                        <tr><td style="font-weight:bold; color:#64748b;">Barcode:</td><td id="detBarcode"></td></tr>
-                        <tr><td style="font-weight:bold; color:#64748b;">Unit of Measure:</td><td id="detUnit"></td></tr>
-                    </table>
-                </div>
+<?php endif; /* end overview tab */ ?>
 
-                <!-- Inventory Information & Pricing -->
-                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
-                    <h4 style="margin:0 0 8px; color:#00264D; font-size:12px; text-transform:uppercase; border-bottom:1px solid #e2e8f0; padding-bottom:4px;"><i class="fas fa-boxes"></i> Inventory &amp; Pricing</h4>
-                    <table style="width:100%; font-size:12px; line-height:1.6;">
-                        <tr><td style="font-weight:bold; color:#64748b; width:45%;">Current Stock:</td><td id="detStock" style="font-weight:700; color:#002F70;"></td></tr>
-                        <tr><td style="font-weight:bold; color:#64748b;">Reorder Level:</td><td id="detReorder"></td></tr>
-                        <tr><td style="font-weight:bold; color:#64748b;">Critical Level:</td><td id="detCritical"></td></tr>
-                        <tr><td style="font-weight:bold; color:#64748b;">Unit Cost:</td><td id="detCost"></td></tr>
-                        <tr><td style="font-weight:bold; color:#64748b;">Selling Price:</td><td id="detPrice" style="color:#16a34a; font-weight:700;"></td></tr>
-                        <tr><td style="font-weight:bold; color:#64748b;">Inventory Value:</td><td id="detValue" style="font-weight:700; color:#002F70;"></td></tr>
-                    </table>
+<?php if ($active_tab === 'stockin'): ?>
+<!-- ── STOCK-IN HISTORY TAB ── -->
+<div class="tbl-card">
+    <div class="tbl-hd">
+        <div class="tbl-title"><i class="fas fa-truck-loading"></i> Stock-In History</div>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <input type="text" id="siSearchInput" placeholder="Search product, PO, supplier..." oninput="filterSiTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:220px;">
+        </div>
+    </div>
+    <div class="table-wrap" style="overflow-x:auto;">
+        <table class="afto-tbl" id="adminSiTable">
+            <thead>
+                <tr>
+                    <th>Stock-In No.</th>
+                    <th>PO No.</th>
+                    <th>Supplier</th>
+                    <th>Date</th>
+                    <th>Product</th>
+                    <th style="text-align:center;">Status</th>
+                </tr>
+            </thead>
+            <tbody id="adminSiBody">
+            <?php if (empty($stockin_history)): ?>
+                <tr><td colspan="6" class="align-center" style="padding:24px;color:#64748b;"><i class="fas fa-truck" style="font-size:24px;display:block;margin-bottom:8px;"></i>No stock-in history found.</td></tr>
+            <?php else: ?>
+                <?php foreach ($stockin_history as $si): ?>
+                <?php
+                    $si_date = $si['date'] ? date('M d, Y g:i A', strtotime($si['date'])) : '—';
+                    $si_no   = 'SI-' . str_pad($si['id'], 5, '0', STR_PAD_LEFT);
+                    $si_status = strtolower($si['status'] ?? 'pending');
+                    if ($si_status === 'verified' || $si_status === 'completed') {
+                        $si_badge = '<span style="background:#dcfce7;color:#15803d;border:1px solid #a7f3d0;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;">'.ucfirst($si['status']).'</span>';
+                    } elseif ($si_status === 'pending') {
+                        $si_badge = '<span style="background:#fef3c7;color:#b45309;border:1px solid #fde68a;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;">Pending</span>';
+                    } else {
+                        $si_badge = '<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;">'.ucfirst($si['status']).'</span>';
+                    }
+                    $si_data = json_encode([
+                        'id' => $si['id'],
+                        'si_no' => $si_no,
+                        'po_number' => $si['po_number'] ?? '—',
+                        'supplier' => $si['supplier'],
+                        'date' => $si_date,
+                        'product' => $si['product_name'],
+                        'sku' => $si['sku'],
+                        'qty' => number_format((float)$si['qty_received'], 2),
+                        'unit_cost' => number_format((float)($si['unit_cost'] ?? 0), 2),
+                        'batch' => $si['batch_no'] ?? '—',
+                        'status' => ucfirst($si['status'] ?? 'Pending'),
+                        'received_by' => $si['received_by'],
+                        'notes' => $si['notes'] ?? '—'
+                    ]);
+                ?>
+                <tr class="si-row" data-product="<?= strtolower(htmlspecialchars($si['product_name'])) ?>" data-po="<?= strtolower(htmlspecialchars($si['po_number'] ?? '')) ?>" data-supplier="<?= strtolower(htmlspecialchars($si['supplier'])) ?>">
+                    <td><code style="font-weight:700;color:#002F70;"><?= $si_no ?></code></td>
+                    <td><code style="font-size:11px;"><?= htmlspecialchars($si['po_number'] ?? '—') ?></code></td>
+                    <td style="font-size:11px;"><?= htmlspecialchars($si['supplier']) ?></td>
+                    <td style="font-size:11px;color:#475569;"><?= $si_date ?></td>
+                    <td><strong><?= htmlspecialchars($si['product_name']) ?></strong><br><code style="font-size:9px;color:#94a3b8;"><?= htmlspecialchars($si['sku']) ?></code></td>
+                    <td class="align-center"><?= $si_badge ?></td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <div id="adminSiPagination" style="margin:10px 20px;"></div>
+</div>
+<?php endif; ?>
+
+<?php if ($active_tab === 'stockout'): ?>
+<!-- ── STOCK-OUT HISTORY TAB ── -->
+<div class="tbl-card">
+    <div class="tbl-hd">
+        <div class="tbl-title"><i class="fas fa-arrow-circle-down"></i> Stock Out History</div>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <input type="text" id="soSearchInput" placeholder="Search product, reference..." oninput="filterSoTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:220px;">
+        </div>
+    </div>
+    <div class="table-wrap" style="overflow-x:auto;">
+        <table class="afto-tbl" id="adminSoTable">
+            <thead>
+                <tr>
+                    <th>Reference</th>
+                    <th>Product</th>
+                    <th style="text-align:right;">Qty</th>
+                    <th style="text-align:center;">Transaction Type</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody id="adminSoBody">
+            <?php if (empty($stockout_history)): ?>
+                <tr><td colspan="5" class="align-center" style="padding:24px;color:#64748b;"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>No stock-out records found.</td></tr>
+            <?php else: ?>
+                <?php foreach ($stockout_history as $so):
+                    $so_date = $so['date'] ? date('M d, Y g:i A', strtotime($so['date'])) : '—';
+                    $so_type = ucwords(str_replace('_', ' ', $so['transaction_type'] ?? 'Stock Out'));
+                ?>
+                <tr class="so-row" data-search="<?= strtolower(htmlspecialchars($so['product_name'] . ' ' . $so['ref_no'])) ?>">
+                    <td><code style="font-weight:700;color:#002F70;"><?= htmlspecialchars($so['ref_no']) ?></code></td>
+                    <td><strong><?= htmlspecialchars($so['product_name']) ?></strong><br><code style="font-size:9px;color:#94a3b8;"><?= htmlspecialchars($so['sku']) ?></code></td>
+                    <td style="text-align:right;font-weight:700;color:#dc2626;"><?= number_format((float)$so['qty'], 2) ?></td>
+                    <td style="text-align:center;"><span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;"><?= htmlspecialchars($so_type) ?></span></td>
+                    <td style="font-size:11px;color:#475569;"><?= $so_date ?></td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <div id="adminSoPagination" style="margin:10px 20px;"></div>
+</div>
+<?php endif; ?>
+
+<?php if ($active_tab === 'transfer'): ?>
+<!-- ── TRANSFER RECORDS TAB ── -->
+<div class="tbl-card">
+    <div class="tbl-hd">
+        <div class="tbl-title"><i class="fas fa-exchange-alt"></i> Transfer Records</div>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <input type="text" id="trSearchInput" placeholder="Search transfer, product..." oninput="filterTrTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:220px;">
+        </div>
+    </div>
+    <div class="table-wrap" style="overflow-x:auto;">
+        <table class="afto-tbl" id="adminTrTable">
+            <thead>
+                <tr>
+                    <th>Transfer No.</th>
+                    <th>Product</th>
+                    <th>From</th>
+                    <th>To</th>
+                    <th style="text-align:right;">Qty</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody id="adminTrBody">
+            <?php if (empty($transfer_records)): ?>
+                <tr><td colspan="6" class="align-center" style="padding:24px;color:#64748b;"><i class="fas fa-exchange-alt" style="font-size:24px;display:block;margin-bottom:8px;"></i>No transfer records found.</td></tr>
+            <?php else: ?>
+                <?php foreach ($transfer_records as $tr):
+                    $tr_date = $tr['date'] ? date('M d, Y g:i A', strtotime($tr['date'])) : '—';
+                ?>
+                <tr class="tr-row" data-search="<?= strtolower(htmlspecialchars($tr['product_name'] . ' ' . $tr['transfer_no'])) ?>">
+                    <td><code style="font-weight:700;color:#002F70;"><?= htmlspecialchars($tr['transfer_no']) ?></code></td>
+                    <td><strong><?= htmlspecialchars($tr['product_name']) ?></strong><br><code style="font-size:9px;color:#94a3b8;"><?= htmlspecialchars($tr['sku']) ?></code></td>
+                    <td style="font-size:11px;color:#475569;"><?= htmlspecialchars($tr['from_location']) ?></td>
+                    <td style="font-size:11px;color:#475569;"><?= htmlspecialchars($tr['to_location']) ?></td>
+                    <td style="text-align:right;font-weight:700;color:#0284c7;"><?= number_format((float)$tr['qty'], 2) ?></td>
+                    <td style="font-size:11px;color:#475569;"><?= $tr_date ?></td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <div id="adminTrPagination" style="margin:10px 20px;"></div>
+</div>
+<?php endif; ?>
+
+<?php if ($active_tab === 'damaged'): ?>
+<!-- ── DAMAGED ITEMS TAB ── -->
+<div class="tbl-card">
+    <div class="tbl-hd">
+        <div class="tbl-title"><i class="fas fa-exclamation-circle"></i> Damaged Items</div>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <input type="text" id="dmgSearchInput" placeholder="Search damaged product..." oninput="filterDmgTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:220px;">
+        </div>
+    </div>
+    <div class="table-wrap" style="overflow-x:auto;">
+        <table class="afto-tbl" id="adminDmgTable">
+            <thead>
+                <tr>
+                    <th>Damage No.</th>
+                    <th>Product</th>
+                    <th style="text-align:right;">Qty</th>
+                    <th>Reason</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody id="adminDmgBody">
+            <?php if (empty($damaged_items)): ?>
+                <tr><td colspan="5" class="align-center" style="padding:24px;color:#64748b;"><i class="fas fa-box-open" style="font-size:24px;display:block;margin-bottom:8px;"></i>No damaged item records found.</td></tr>
+            <?php else: ?>
+                <?php foreach ($damaged_items as $dmg):
+                    $dmg_date = $dmg['date'] ? date('M d, Y g:i A', strtotime($dmg['date'])) : '—';
+                ?>
+                <tr class="dmg-row" data-search="<?= strtolower(htmlspecialchars($dmg['product_name'] . ' ' . $dmg['reason'])) ?>">
+                    <td><code style="font-weight:700;color:#dc2626;"><?= htmlspecialchars($dmg['damage_no']) ?></code></td>
+                    <td><strong><?= htmlspecialchars($dmg['product_name']) ?></strong><br><code style="font-size:9px;color:#94a3b8;"><?= htmlspecialchars($dmg['sku']) ?></code></td>
+                    <td style="text-align:right;font-weight:700;color:#dc2626;"><?= number_format((float)$dmg['qty'], 2) ?></td>
+                    <td style="font-size:11px;color:#475569;"><?= htmlspecialchars($dmg['reason']) ?></td>
+                    <td style="font-size:11px;color:#475569;"><?= $dmg_date ?></td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <div id="adminDmgPagination" style="margin:10px 20px;"></div>
+</div>
+<?php endif; ?>
+
+<?php if ($active_tab === 'expired'): ?>
+<!-- ── EXPIRED PRODUCTS TAB ── -->
+<div class="tbl-card">
+    <div class="tbl-hd">
+        <div class="tbl-title"><i class="fas fa-calendar-times"></i> Expired Products</div>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <input type="text" id="expSearchInput" placeholder="Search expired product..." oninput="filterExpTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:220px;">
+        </div>
+    </div>
+    <div class="table-wrap" style="overflow-x:auto;">
+        <table class="afto-tbl" id="adminExpTable">
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Batch</th>
+                    <th style="text-align:center;">Expiry Date</th>
+                    <th style="text-align:right;">Qty</th>
+                </tr>
+            </thead>
+            <tbody id="adminExpBody">
+            <?php if (empty($expired_products)): ?>
+                <tr><td colspan="4" class="align-center" style="padding:24px;color:#64748b;"><i class="fas fa-check-circle" style="font-size:24px;display:block;margin-bottom:8px;color:#16a34a;"></i>No expired products found.</td></tr>
+            <?php else: ?>
+                <?php foreach ($expired_products as $exp):
+                    $exp_date = $exp['expiry_date'] ? date('M d, Y', strtotime($exp['expiry_date'])) : '—';
+                    $days_ago = $exp['expiry_date'] ? max(0, (int)((time() - strtotime($exp['expiry_date'])) / 86400)) : 0;
+                ?>
+                <tr class="exp-row" data-search="<?= strtolower(htmlspecialchars($exp['product_name'] . ' ' . $exp['batch'])) ?>">
+                    <td><strong><?= htmlspecialchars($exp['product_name']) ?></strong><br><code style="font-size:9px;color:#94a3b8;"><?= htmlspecialchars($exp['sku']) ?></code></td>
+                    <td><span style="font-size:11px;font-weight:600;color:#475569;"><?= htmlspecialchars($exp['batch']) ?></span></td>
+                    <td style="text-align:center;">
+                        <span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;"><?= $exp_date ?></span>
+                        <?php if ($days_ago > 0): ?><br><span style="font-size:10px;color:#dc2626;"><?= $days_ago ?> days ago</span><?php endif; ?>
+                    </td>
+                    <td style="text-align:right;font-weight:700;color:#dc2626;"><?= number_format((float)$exp['qty'], 2) ?></td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <div id="adminExpPagination" style="margin:10px 20px;"></div>
+</div>
+<?php endif; ?>
+
+<!-- ══ VIEW PRODUCT MODAL (WITH SUB-TABS) ══ -->
+<div class="modal-overlay" id="adminViewProdModal" style="z-index:10000;">
+    <div style="background:#fff;border-radius:14px;width:96%;max-width:850px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 40px rgba(0,0,0,.18);overflow:hidden;position:relative;z-index:10001;">
+        <!-- Header -->
+        <div style="padding:16px 22px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;flex-shrink:0;">
+            <div style="font-size:15px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-box-open"></i> <span id="vpmTitle">View Product</span>
+            </div>
+            <button type="button" onclick="closeAdminViewProdModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;line-height:1;">&times;</button>
+        </div>
+        <!-- Sub-tabs inside modal -->
+        <div style="display:flex;border-bottom:2px solid #e2e8f0;background:#f8fafc;flex-shrink:0;padding:0 16px;overflow-x:auto;white-space:nowrap;gap:4px;">
+            <button type="button" class="modal-tab-btn active" id="vpmTab1" onclick="vpmSwitchTab(1)"><i class="fas fa-info-circle"></i> Product Information</button>
+            <button type="button" class="modal-tab-btn" id="vpmTab2" onclick="vpmSwitchTab(2)"><i class="fas fa-chart-pie"></i> Inventory Summary</button>
+            <button type="button" class="modal-tab-btn" id="vpmTab3" onclick="vpmSwitchTab(3)"><i class="fas fa-layer-group"></i> Batch Inventory (FIFO)</button>
+        </div>
+        <!-- Body -->
+        <div style="overflow-y:auto;flex:1;padding:22px;" id="vpmBody">
+            <!-- SUB-TAB 1: Product Information -->
+            <div id="vpmPane1">
+                <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-info-circle"></i> Product Details</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;margin-bottom:20px;">
+                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">SKU</div><div id="vpmSku" style="font-weight:700;color:#002F70;font-size:14px;"></div></div>
+                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Product Name</div><div id="vpmName" style="font-weight:800;color:#0f172a;font-size:15px;"></div></div>
+                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Category</div><div id="vpmCategory" style="font-weight:600;color:#334155;"></div></div>
+                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Brand</div><div id="vpmBrand" style="font-weight:600;color:#334155;"></div></div>
+                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Supplier</div><div id="vpmSupplier" style="font-weight:600;color:#334155;"></div></div>
+                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Unit of Measure</div><div id="vpmUnit" style="font-weight:600;color:#334155;"></div></div>
+                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Barcode</div><div id="vpmBarcode" style="font-family:monospace;font-weight:700;color:#475569;"></div></div>
+                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Status</div><div id="vpmStatus"></div></div>
                 </div>
             </div>
-
-            <!-- Recent Movement Table -->
-            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:10px;">
-                <h4 style="margin:0 0 8px; color:#00264D; font-size:12px; text-transform:uppercase; border-bottom:1px solid #e2e8f0; padding-bottom:4px;"><i class="fas fa-history"></i> Recent Movement</h4>
-                <div style="max-height: 180px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 6px; background:#fff;">
-                    <table class="po-table" style="width:100%; margin:0;">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Reference</th>
-                                <th>Transaction</th>
-                                <th style="text-align:right;">Qty</th>
-                                <th>User</th>
-                            </tr>
-                        </thead>
-                        <tbody id="detRecentMovement">
-                            <!-- Dynamic rows -->
-                        </tbody>
-                    </table>
+            <!-- SUB-TAB 2: Inventory Summary -->
+            <div id="vpmPane2" style="display:none;">
+                <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-boxes"></i> Stock &amp; Valuation Summary</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;margin-bottom:20px;">
+                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Current Stock</div><div id="vpmCurrentStock" style="font-weight:800;color:#002F70;font-size:18px;"></div></div>
+                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Available Stock</div><div id="vpmAvailableStock" style="font-weight:800;color:#16a34a;font-size:18px;"></div></div>
+                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Reorder Level</div><div id="vpmReorderLevel" style="font-weight:600;color:#d97706;"></div></div>
+                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Critical Level</div><div id="vpmCriticalLevel" style="font-weight:600;color:#dc2626;"></div></div>
+                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Unit Cost</div><div id="vpmCost" style="font-weight:600;color:#475569;"></div></div>
+                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Selling Price</div><div id="vpmPrice" style="font-weight:700;color:#16a34a;"></div></div>
+                    <div style="grid-column:span 2;"><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Total Inventory Value</div><div id="vpmInventoryValue" style="font-weight:800;color:#002F70;font-size:18px;"></div></div>
                 </div>
             </div>
+            <!-- SUB-TAB 3: Batch Inventory (FIFO) -->
+            <div id="vpmPane3" style="display:none;">
+                <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-layer-group"></i> FIFO Batch Inventory Breakdown</div>
+                <div id="vpmFifoTable"><div style="text-align:center;padding:24px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading...</div></div>
+            </div>
         </div>
-        <div class="modal-actions" style="margin-top:15px; padding-top:12px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end;">
-            <button type="button" onclick="document.getElementById('detailsModal').classList.remove('show')"
-                    class="btn-cancel" style="height:32px; font-size:12px; padding:0 16px;">Close</button>
+        <!-- Footer -->
+        <div style="padding:12px 22px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:10px;background:#f8fafc;flex-shrink:0;">
+            <button type="button" onclick="closeAdminViewProdModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;"><i class="fas fa-times"></i> Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ VIEW MOVEMENT MODAL ══ -->
+<div class="modal-overlay" id="adminViewMovModal" style="z-index:10005;">
+    <div style="background:#fff;border-radius:14px;width:96%;max-width:520px;box-shadow:0 24px 40px rgba(0,0,0,.22);overflow:hidden;position:relative;z-index:10006;">
+        <div style="padding:16px 22px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;">
+            <div style="font-size:15px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-exchange-alt"></i> Stock Movement Details
+            </div>
+            <button type="button" onclick="closeAdminViewMovModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;line-height:1;">&times;</button>
+        </div>
+        <div style="padding:22px;font-size:13px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Date / Time</div><div id="vmmDate" style="font-weight:700;color:#0f172a;"></div></div>
+                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Movement Type</div><div id="vmmType"></div></div>
+            </div>
+            <div style="margin-bottom:12px;"><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Product Name</div><div id="vmmProduct" style="font-weight:700;color:#002F70;font-size:15px;"></div></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Batch / Ref No.</div><div id="vmmRef" style="font-weight:600;color:#475569;"></div></div>
+                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Quantity</div><div id="vmmQty" style="font-weight:800;font-size:16px;"></div></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Remaining Stock</div><div id="vmmRemaining" style="font-weight:700;color:#002F70;"></div></div>
+                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Performed By</div><div id="vmmBy" style="font-weight:600;color:#334155;"></div></div>
+            </div>
+            <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Notes / Remarks</div><div id="vmmNotes" style="color:#64748b;font-style:italic;"></div></div>
+        </div>
+        <div style="padding:12px 22px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;background:#f8fafc;">
+            <button type="button" onclick="closeAdminViewMovModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;"><i class="fas fa-times"></i> Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ VIEW STOCK-IN MODAL ══ -->
+<div class="modal-overlay" id="adminViewSiModal" style="z-index:10005;">
+    <div style="background:#fff;border-radius:14px;width:96%;max-width:540px;box-shadow:0 24px 40px rgba(0,0,0,.22);overflow:hidden;position:relative;z-index:10006;">
+        <div style="padding:16px 22px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;">
+            <div style="font-size:15px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-truck-loading"></i> Stock-In Record Details
+            </div>
+            <button type="button" onclick="closeAdminViewSiModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;line-height:1;">&times;</button>
+        </div>
+        <div style="padding:22px;font-size:13px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Stock-In No.</div><div id="vsimSiNo" style="font-weight:800;color:#002F70;font-size:15px;"></div></div>
+                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">PO Number</div><div id="vsimPo" style="font-weight:700;color:#0f172a;"></div></div>
+            </div>
+            <div style="margin-bottom:12px;"><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Product Name</div><div id="vsimProduct" style="font-weight:700;color:#002F70;font-size:15px;"></div></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Supplier</div><div id="vsimSupplier" style="font-weight:600;color:#334155;"></div></div>
+                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Delivery Date</div><div id="vsimDate" style="font-weight:600;color:#334155;"></div></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;background:#f8fafc;padding:10px;border-radius:6px;border:1px solid #e2e8f0;">
+                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Received Qty</div><div id="vsimQty" style="font-weight:800;color:#002F70;font-size:15px;"></div></div>
+                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Unit Cost</div><div id="vsimCost" style="font-weight:700;color:#475569;"></div></div>
+                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Batch No.</div><div id="vsimBatch" style="font-weight:700;color:#475569;"></div></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Received By</div><div id="vsimBy" style="font-weight:600;color:#334155;"></div></div>
+                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Status</div><div id="vsimStatus"></div></div>
+            </div>
+            <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Notes</div><div id="vsimNotes" style="color:#64748b;font-style:italic;"></div></div>
+        </div>
+        <div style="padding:12px 22px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;background:#f8fafc;">
+            <button type="button" onclick="closeAdminViewSiModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;"><i class="fas fa-times"></i> Close</button>
         </div>
     </div>
 </div>
 
 <script>
-// Details modal dynamic content injection
-function viewDetails(item) {
-    document.getElementById('detSku').textContent = item.sku || '—';
-    document.getElementById('detName').textContent = item.name || '—';
-    document.getElementById('detCategory').textContent = item.category_name || '—';
-    document.getElementById('detBrand').textContent = item.brand || '—';
-    document.getElementById('detSupplier').textContent = item.supplier || '—';
-    document.getElementById('detBarcode').textContent = item.barcode || '—';
-    document.getElementById('detUnit').textContent = item.unit || 'pcs';
-    
-    var price = parseFloat(item.price);
-    document.getElementById('detPrice').innerHTML = '₱' + price.toFixed(2);
-    
-    var cost = parseFloat(item.cost || 0);
-    document.getElementById('detCost').innerHTML = '₱' + cost.toFixed(2);
-    
-    var stock = parseFloat(item.stock_level);
-    document.getElementById('detStock').textContent = stock.toLocaleString(undefined, {minimumFractionDigits: 2}) + ' ' + (item.unit || 'pcs');
-    
-    var reorder  = parseFloat(item.reorder_level);
-    var critical = parseFloat(item.critical_level) || (reorder / 2);
-    document.getElementById('detReorder').textContent  = reorder.toLocaleString(undefined, {minimumFractionDigits: 2}) + ' ' + (item.unit || 'pcs');
-    document.getElementById('detCritical').textContent = critical.toLocaleString(undefined, {minimumFractionDigits: 2}) + ' ' + (item.unit || 'pcs');
-    
-    var value = stock * price;
-    document.getElementById('detValue').innerHTML = '₱' + value.toLocaleString(undefined, {minimumFractionDigits: 2});
-    
-    // Fetch and display movement history
-    var tbody = document.getElementById('detRecentMovement');
-    tbody.innerHTML = '<tr><td colspan="5" class="align-center" style="padding: 10px; text-align:center;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
-    
-    fetch('admin_inventory_merchandise.php?action=get_history&product_id=' + item.id)
-        .then(response => response.json())
-        .then(res => {
-            if (res.success) {
-                if (res.data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="align-center" style="padding: 10px; text-align:center; color: #64748b;">No recent movements.</td></tr>';
-                } else {
-                    var html = '';
-                    res.data.forEach(function(row) {
-                        var change = parseFloat(row.quantity_change);
-                        var changeStr = (change > 0 ? '+' : '') + change.toLocaleString(undefined, {minimumFractionDigits: 2});
-                        var changeClass = change > 0 ? 'var-pos' : (change < 0 ? 'var-neg' : 'var-zero');
-                        
-                        var date = new Date(row.created_at);
-                        var dateStr = date.toLocaleDateString('en-US', { month: 'short', day: '2-digit' }) + ' ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                        
-                        html += '<tr>' +
-                            '<td>' + dateStr + '</td>' +
-                            '<td><code>LOG-' + row.id + '</code></td>' +
-                            '<td>' + row.action + '</td>' +
-                            '<td style="text-align:right; font-weight:bold;" class="' + changeClass + '">' + changeStr + '</td>' +
-                            '<td>' + row.user_fullname + '</td>' +
-                            '</tr>';
-                    });
-                    tbody.innerHTML = html;
-                }
-            } else {
-                tbody.innerHTML = '<tr><td colspan="5" class="align-center" style="padding: 10px; text-align:center; color: #dc2626;">Error loading logs.</td></tr>';
-            }
-        })
-        .catch(err => {
-            tbody.innerHTML = '<tr><td colspan="5" class="align-center" style="padding: 10px; text-align:center; color: #dc2626;">Error.</td></tr>';
-        });
+// ── Modal JS Functions ──
+var _adminCurrentProd = null;
 
-    document.getElementById('detailsModal').classList.add('show');
+function adminViewProduct(item) {
+    _adminCurrentProd = item;
+    var overlay = document.getElementById('adminViewProdModal');
+    if (!overlay) return;
+    if (overlay.parentNode !== document.body) {
+        document.body.appendChild(overlay);
+    }
+
+    document.getElementById('vpmTitle').textContent = 'View Product — ' + (item.name || '');
+    document.getElementById('vpmSku').textContent = item.sku || '—';
+    document.getElementById('vpmName').textContent = item.name || '—';
+    document.getElementById('vpmCategory').textContent = item.category_name || '—';
+    document.getElementById('vpmBrand').textContent = item.brand || 'Petron';
+    document.getElementById('vpmSupplier').textContent = item.supplier || 'Petron Corporation';
+    document.getElementById('vpmUnit').textContent = item.unit || 'pcs';
+    document.getElementById('vpmBarcode').textContent = item.barcode || '4800012345678';
+    
+    var statusMap = {
+        'available': '<span class="badge-lbl bg-green">Available</span>',
+        'low': '<span class="badge-lbl bg-amber">Low Stock</span>',
+        'critical': '<span class="badge-lbl bg-red">Critical Stock</span>',
+        'out': '<span class="badge-lbl bg-red">Out of Stock</span>'
+    };
+    document.getElementById('vpmStatus').innerHTML = statusMap[item.computed_status] || '<span class="badge-lbl bg-green">Available</span>';
+
+    // Sub-tab 2 Data
+    var stock = parseFloat(item.stock_level) || 0;
+    var price = parseFloat(item.price) || 0;
+    var cost  = parseFloat(item.cost) || 0;
+    var reorder = parseFloat(item.reorder_level) || 24;
+    var critical = parseFloat(item.critical_level) || 10;
+
+    document.getElementById('vpmCurrentStock').textContent = stock.toLocaleString('en-US', {minimumFractionDigits: 2}) + ' ' + (item.unit || 'pcs');
+    document.getElementById('vpmAvailableStock').textContent = stock.toLocaleString('en-US', {minimumFractionDigits: 2}) + ' ' + (item.unit || 'pcs');
+    document.getElementById('vpmReorderLevel').textContent = reorder.toLocaleString('en-US') + ' ' + (item.unit || 'pcs');
+    document.getElementById('vpmCriticalLevel').textContent = critical.toLocaleString('en-US') + ' ' + (item.unit || 'pcs');
+    document.getElementById('vpmCost').textContent = '₱' + cost.toLocaleString('en-US', {minimumFractionDigits: 2});
+    document.getElementById('vpmPrice').textContent = '₱' + price.toLocaleString('en-US', {minimumFractionDigits: 2});
+    document.getElementById('vpmInventoryValue').textContent = '₱' + (stock * price).toLocaleString('en-US', {minimumFractionDigits: 2});
+
+    // Reset sub-tabs
+    vpmSwitchTab(1);
+
+    // FIFO table loading placeholder
+    document.getElementById('vpmFifoTable').innerHTML = '<div style="text-align:center;padding:24px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading FIFO batches...</div>';
+
+    // Show modal
+    overlay.classList.add('open');
+    overlay.style.display = 'flex';
+    overlay.style.position = 'fixed';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.right = '0';
+    overlay.style.bottom = '0';
+    overlay.style.zIndex = '10000';
+
+    // Fetch FIFO details via AJAX
+    fetch('admin_inventory_merchandise.php?ajax=1&action=get_product_details&product_id=' + item.id)
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+        if (!data.success || !data.deliveries || data.deliveries.length === 0) {
+            document.getElementById('vpmFifoTable').innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Batch ID</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Delivery Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Received Qty</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Remaining Qty</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Unit Cost</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Selling Price</th></tr></thead><tbody><tr><td colspan="6" style="text-align:center;padding:16px;color:#94a3b8;">No FIFO batch records found. Defaulting to main inventory pool.</td></tr></tbody></table>';
+            return;
+        }
+        var fHtml = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+        fHtml += '<thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Batch ID</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Delivery Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Received Qty</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Remaining Qty</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Unit Cost</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Selling Price</th></tr></thead><tbody>';
+        data.deliveries.forEach(function(d) {
+            var dateStr = d.encoded_at ? new Date(d.encoded_at).toLocaleDateString() : '—';
+            fHtml += '<tr><td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;"><code style="color:#002F70;font-weight:700;">' + esc(d.batch_no || 'BATCH-' + d.id) + '</code></td>';
+            fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;">' + dateStr + '</td>';
+            fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">' + Number(d.qty_received).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
+            fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#002F70;">' + Number(d.qty_received).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
+            fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">₱' + Number(d.unit_cost || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
+            fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;color:#16a34a;font-weight:700;">₱' + Number(item.price || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td></tr>';
+        });
+        fHtml += '</tbody></table>';
+        document.getElementById('vpmFifoTable').innerHTML = fHtml;
+    })
+    .catch(function() {
+        document.getElementById('vpmFifoTable').innerHTML = '<div style="text-align:center;padding:16px;color:#dc3545;">Connection error loading FIFO data.</div>';
+    });
+}
+
+function esc(str) {
+    if (!str) return '';
+    return str.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function closeAdminViewProdModal() {
+    var overlay = document.getElementById('adminViewProdModal');
+    if (overlay) {
+        overlay.classList.remove('open');
+        overlay.style.display = 'none';
+    }
+}
+
+function vpmSwitchTab(tabNum) {
+    for (var i = 1; i <= 3; i++) {
+        var pane = document.getElementById('vpmPane' + i);
+        var btn = document.getElementById('vpmTab' + i);
+        if (pane) pane.style.display = (i === tabNum) ? 'block' : 'none';
+        if (btn) {
+            if (i === tabNum) {
+                btn.classList.add('active');
+                btn.style.borderBottom = '2px solid #002F70';
+                btn.style.color = '#002F70';
+                btn.style.fontWeight = '700';
+            } else {
+                btn.classList.remove('active');
+                btn.style.borderBottom = '2px solid transparent';
+                btn.style.color = '#64748b';
+                btn.style.fontWeight = '600';
+            }
+        }
+    }
+}
+
+function printAdminProductDetails() {
+    var r = _adminCurrentProd;
+    if (!r) return;
+    var pw = window.open('', '_blank');
+    pw.document.write('<!DOCTYPE html><html><head><title>Product Details — ' + (r.name || '') + '</title>');
+    pw.document.write('<style>body{font-family:Arial,sans-serif;font-size:13px;color:#222;margin:0;padding:24px;}.header{background:#002F6C;color:#fff;padding:16px 20px;border-radius:6px 6px 0 0;}.header h2{margin:0;font-size:16px;}.section{border:1px solid #e2e8f0;border-top:none;padding:16px 20px;margin-bottom:12px;}.section h4{margin:0 0 10px;color:#002F6C;font-size:11px;text-transform:uppercase;border-bottom:1px solid #e2e8f0;padding-bottom:6px;}table.info{width:100%;border-collapse:collapse;font-size:12px;}table.info td{padding:5px 0;border-bottom:1px solid #f1f5f9;}table.info td:first-child{color:#64748b;font-weight:600;width:180px;}.footer{text-align:center;font-size:10px;color:#94a3b8;margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;}</style></head><body>');
+    pw.document.write('<div class="header"><h2>Merchandise Product Slip — ' + (r.name || '') + '</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
+    pw.document.write('<div class="section"><h4>Product Information</h4><table class="info">');
+    pw.document.write('<tr><td>SKU:</td><td><code>' + (r.sku || '—') + '</code></td></tr>');
+    pw.document.write('<tr><td>Product Name:</td><td><strong>' + (r.name || '—') + '</strong></td></tr>');
+    pw.document.write('<tr><td>Category:</td><td>' + (r.category_name || '—') + '</td></tr>');
+    pw.document.write('<tr><td>Brand:</td><td>' + (r.brand || 'Petron') + '</td></tr>');
+    pw.document.write('<tr><td>Supplier:</td><td>' + (r.supplier || 'Petron Corporation') + '</td></tr>');
+    pw.document.write('<tr><td>Barcode:</td><td>' + (r.barcode || '4800012345678') + '</td></tr>');
+    pw.document.write('<tr><td>Current Stock:</td><td><strong style="color:#002F70;">' + Number(r.stock_level || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' ' + (r.unit || 'pcs') + '</strong></td></tr>');
+    pw.document.write('<tr><td>Selling Price:</td><td><strong style="color:#16a34a;">₱' + Number(r.price || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</strong></td></tr>');
+    pw.document.write('</table></div>');
+    pw.document.write('<div class="footer">Petron Station Management System &copy; ' + new Date().getFullYear() + '</div>');
+    pw.document.write('</body></html>');
+    pw.document.close();
+    setTimeout(function() { pw.print(); }, 300);
+}
+
+// ── Movement Modal ──
+function openMovModal(d) {
+    var modal = document.getElementById('adminViewMovModal');
+    if (!modal) return;
+    document.getElementById('vmmDate').textContent = d.date;
+    document.getElementById('vmmType').innerHTML = '<span style="font-weight:700;color:#002F70;">' + esc(d.type) + '</span>';
+    document.getElementById('vmmProduct').textContent = d.product + ' (' + d.sku + ')';
+    document.getElementById('vmmRef').textContent = d.ref;
+    document.getElementById('vmmQty').textContent = d.qty;
+    document.getElementById('vmmQty').style.color = d.qty.indexOf('+') !== -1 ? '#16a34a' : (d.qty.indexOf('-') !== -1 ? '#dc2626' : '#64748b');
+    document.getElementById('vmmRemaining').textContent = d.remaining;
+    document.getElementById('vmmBy').textContent = d.by;
+    document.getElementById('vmmNotes').textContent = d.notes;
+
+    modal.classList.add('open');
+    modal.style.display = 'flex';
+    modal.style.position = 'fixed';
+    modal.style.top = '0'; modal.style.left = '0'; modal.style.right = '0'; modal.style.bottom = '0';
+    modal.style.zIndex = '10005';
+}
+
+function closeAdminViewMovModal() {
+    var modal = document.getElementById('adminViewMovModal');
+    if (modal) {
+        modal.classList.remove('open');
+        modal.style.display = 'none';
+    }
+}
+
+// ── Stock-In Modal ──
+function openSiModal(d) {
+    var modal = document.getElementById('adminViewSiModal');
+    if (!modal) return;
+    document.getElementById('vsimSiNo').textContent = d.si_no;
+    document.getElementById('vsimPo').textContent = d.po_number;
+    document.getElementById('vsimProduct').textContent = d.product + ' (' + d.sku + ')';
+    document.getElementById('vsimSupplier').textContent = d.supplier;
+    document.getElementById('vsimDate').textContent = d.date;
+    document.getElementById('vsimQty').textContent = d.qty;
+    document.getElementById('vsimCost').textContent = '₱' + d.unit_cost;
+    document.getElementById('vsimBatch').textContent = d.batch;
+    document.getElementById('vsimBy').textContent = d.received_by;
+    document.getElementById('vsimStatus').innerHTML = '<span style="background:#dcfce7;color:#15803d;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;">' + esc(d.status) + '</span>';
+    document.getElementById('vsimNotes').textContent = d.notes;
+
+    modal.classList.add('open');
+    modal.style.display = 'flex';
+    modal.style.position = 'fixed';
+    modal.style.top = '0'; modal.style.left = '0'; modal.style.right = '0'; modal.style.bottom = '0';
+    modal.style.zIndex = '10005';
+}
+
+function closeAdminViewSiModal() {
+    var modal = document.getElementById('adminViewSiModal');
+    if (modal) {
+        modal.classList.remove('open');
+        modal.style.display = 'none';
+    }
+}
+
+// ── Movement & Stock-In Table Filters ──
+function filterMovTable() {
+    var query = (document.getElementById('movSearchInput') || {}).value || '';
+    var type = (document.getElementById('movTypeFilter') || {}).value || '';
+    query = query.toLowerCase().trim();
+    type = type.toLowerCase().trim();
+
+    var rows = document.querySelectorAll('#adminMovBody tr.mov-row');
+    rows.forEach(function(r) {
+        var rProd = (r.dataset.product || '').toLowerCase();
+        var rType = (r.dataset.type || '').toLowerCase();
+        var match = true;
+        if (query && rProd.indexOf(query) === -1 && rType.indexOf(query) === -1) match = false;
+        if (type && rType.indexOf(type) === -1) match = false;
+        r.style.display = match ? '' : 'none';
+    });
+}
+
+function filterSiTable() {
+    var query = (document.getElementById('siSearchInput') || {}).value || '';
+    query = query.toLowerCase().trim();
+
+    var rows = document.querySelectorAll('#adminSiBody tr.si-row');
+    rows.forEach(function(r) {
+        var rProd = (r.dataset.product || '').toLowerCase();
+        var rPo = (r.dataset.po || '').toLowerCase();
+        var rSup = (r.dataset.supplier || '').toLowerCase();
+        var match = true;
+        if (query && rProd.indexOf(query) === -1 && rPo.indexOf(query) === -1 && rSup.indexOf(query) === -1) match = false;
+        r.style.display = match ? '' : 'none';
+    });
+}
+
+function filterSoTable() {
+    var q = ((document.getElementById('soSearchInput') || {}).value || '').toLowerCase().trim();
+    document.querySelectorAll('#adminSoTable .so-row').forEach(function(r) {
+        var s = (r.getAttribute('data-search') || '').toLowerCase();
+        r.style.display = (!q || s.indexOf(q) !== -1) ? '' : 'none';
+    });
+}
+
+function filterTrTable() {
+    var q = ((document.getElementById('trSearchInput') || {}).value || '').toLowerCase().trim();
+    document.querySelectorAll('#adminTrTable .tr-row').forEach(function(r) {
+        var s = (r.getAttribute('data-search') || '').toLowerCase();
+        r.style.display = (!q || s.indexOf(q) !== -1) ? '' : 'none';
+    });
+}
+
+function filterDmgTable() {
+    var q = ((document.getElementById('dmgSearchInput') || {}).value || '').toLowerCase().trim();
+    document.querySelectorAll('#adminDmgTable .dmg-row').forEach(function(r) {
+        var s = (r.getAttribute('data-search') || '').toLowerCase();
+        r.style.display = (!q || s.indexOf(q) !== -1) ? '' : 'none';
+    });
+}
+
+function filterExpTable() {
+    var q = ((document.getElementById('expSearchInput') || {}).value || '').toLowerCase().trim();
+    document.querySelectorAll('#adminExpTable .exp-row').forEach(function(r) {
+        var s = (r.getAttribute('data-search') || '').toLowerCase();
+        r.style.display = (!q || s.indexOf(q) !== -1) ? '' : 'none';
+    });
 }
 
 function filterAdminByCard(statusKey) {

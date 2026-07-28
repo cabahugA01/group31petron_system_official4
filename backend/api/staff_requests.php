@@ -22,7 +22,18 @@ if (!$me) {
 
 $role = role_key($me['role'] ?? '');
 $station_id = user_station_id();
-$user_id = (int)$me['id'];
+$user_id = (int)($me['id'] ?? 0);
+if ($user_id > 0) {
+    try {
+        $chk_u = $pdo->prepare("SELECT id FROM users WHERE id = ? LIMIT 1");
+        $chk_u->execute([$user_id]);
+        if (!$chk_u->fetchColumn()) {
+            $chk_alt = $pdo->prepare("SELECT id FROM users WHERE station_id = ? AND role = 'staff' LIMIT 1");
+            $chk_alt->execute([$station_id]);
+            $user_id = (int)($chk_alt->fetchColumn() ?: $user_id);
+        }
+    } catch (Exception $e) {}
+}
 
 // Only staff can access this API
 if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {

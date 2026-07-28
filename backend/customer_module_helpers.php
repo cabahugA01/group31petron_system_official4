@@ -49,6 +49,7 @@ if (!function_exists('customer_ensure_optional_columns')) {
             'last_name'              => "VARCHAR(100) NULL DEFAULT NULL",
             'contact_number'         => "VARCHAR(50) NULL DEFAULT NULL",
             'address'                => "TEXT NULL DEFAULT NULL",
+            'email'                  => "VARCHAR(100) NULL DEFAULT NULL",
             'customer_type'          => "VARCHAR(30) NOT NULL DEFAULT 'walk-in'",
             'status'                 => "VARCHAR(30) NOT NULL DEFAULT 'active'",
             'vehicle_plate'          => "VARCHAR(50) NULL DEFAULT NULL",
@@ -57,10 +58,14 @@ if (!function_exists('customer_ensure_optional_columns')) {
             'vehicle_model'          => "VARCHAR(100) NULL DEFAULT NULL",
             'vehicle_type'           => "VARCHAR(100) NULL DEFAULT NULL",
             'credit_limit'           => "DECIMAL(15,2) NOT NULL DEFAULT 0.00",
+            'credit_terms'           => "VARCHAR(50) NULL DEFAULT '30 Days'",
             'balance'                => "DECIMAL(15,2) NOT NULL DEFAULT 0.00",
             'current_balance'        => "DECIMAL(15,2) NOT NULL DEFAULT 0.00",
             'outstanding_balance'    => "DECIMAL(15,2) NOT NULL DEFAULT 0.00",
             'gov_id_type'            => "VARCHAR(100) NULL DEFAULT NULL",
+            'gov_id_file'            => "VARCHAR(500) NULL DEFAULT NULL",
+            'cr_file'                => "VARCHAR(500) NULL DEFAULT NULL",
+            'or_file'                => "VARCHAR(500) NULL DEFAULT NULL",
             'company_name'           => "VARCHAR(255) NULL DEFAULT NULL",
             'company_address'        => "TEXT NULL DEFAULT NULL",
             'company_contact_person' => "VARCHAR(255) NULL DEFAULT NULL",
@@ -68,6 +73,10 @@ if (!function_exists('customer_ensure_optional_columns')) {
             'verification_remarks'   => "TEXT NULL DEFAULT NULL",
             'updated_by'             => "INT(11) NULL DEFAULT NULL",
             'updated_at'             => "DATETIME NULL DEFAULT NULL",
+            'archived_at'            => "DATETIME NULL DEFAULT NULL",
+            'archived_by'            => "INT(11) NULL DEFAULT NULL",
+            'archive_reason'         => "VARCHAR(255) NULL DEFAULT NULL",
+            'archive_remarks'        => "TEXT NULL DEFAULT NULL",
         ];
 
         $columns = customer_table_columns($pdo, true);
@@ -83,9 +92,35 @@ if (!function_exists('customer_ensure_optional_columns')) {
 
         try {
             $pdo->exec("ALTER TABLE customers MODIFY COLUMN customer_type VARCHAR(30) NOT NULL DEFAULT 'walk-in'");
-        } catch (Exception $e) {
-            // Older deployments may not allow ALTER. Inserts still fall back to existing columns.
-        }
+        } catch (Exception $e) {}
+
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS customer_vehicles (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                customer_id INT UNSIGNED NOT NULL,
+                plate_number VARCHAR(50) NOT NULL,
+                vehicle_type VARCHAR(100) NULL,
+                brand VARCHAR(100) NULL,
+                model VARCHAR(100) NULL,
+                year_model VARCHAR(20) NULL,
+                color VARCHAR(50) NULL,
+                engine_no VARCHAR(100) NULL,
+                chassis_no VARCHAR(100) NULL,
+                status VARCHAR(30) NOT NULL DEFAULT 'active',
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_cust (customer_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+            $pdo->exec("CREATE TABLE IF NOT EXISTS customer_timeline (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                customer_id INT UNSIGNED NOT NULL,
+                event_type VARCHAR(100) NOT NULL,
+                description TEXT NOT NULL,
+                created_by INT UNSIGNED NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_cust (customer_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Exception $e) {}
 
         customer_table_columns($pdo, true);
         $done = true;
@@ -228,8 +263,7 @@ if (!function_exists('customer_type_expr')) {
             return "'walk-in'";
         }
         return "CASE
-            WHEN LOWER(COALESCE($type,'')) IN ('credit','fleet') THEN 'credit'
-            WHEN LOWER(COALESCE($type,'')) = 'regular' THEN 'regular'
+            WHEN LOWER(COALESCE($type,'')) IN ('walk-in', 'regular', 'credit', 'fleet', 'corporate') THEN LOWER(COALESCE($type,''))
             ELSE 'walk-in'
         END";
     }
@@ -259,18 +293,28 @@ if (!function_exists('customer_vehicle_expr')) {
 
 if (!function_exists('customer_status_expr')) {
     function customer_status_expr(PDO $pdo, string $alias = 'c'): string {
+        $hasArchivedAt = customer_has_column($pdo, 'archived_at');
+        $hasArchiveReason = customer_has_column($pdo, 'archive_reason');
         $status = customer_expr_col($pdo, $alias, 'status');
         $accountStatus = customer_expr_col($pdo, $alias, 'account_status');
-        if ($status !== "NULL" && $accountStatus !== "NULL") {
-            return "COALESCE(NULLIF($status,''), NULLIF($accountStatus,''), 'active')";
+
+        $archivedConditions = [];
+        if ($hasArchivedAt) {
+            $archivedConditions[] = "{$alias}.archived_at IS NOT NULL";
+        }
+        if ($hasArchiveReason) {
+            $archivedConditions[] = "{$alias}.archive_reason IS NOT NULL AND {$alias}.archive_reason != ''";
         }
         if ($status !== "NULL") {
-            return "COALESCE(NULLIF($status,''), 'active')";
+            $archivedConditions[] = "LOWER($status) = 'archived'";
         }
         if ($accountStatus !== "NULL") {
-            return "COALESCE(NULLIF($accountStatus,''), 'active')";
+            $archivedConditions[] = "LOWER($accountStatus) = 'archived'";
         }
-        return "'active'";
+
+        $archivedClause = $archivedConditions ? implode(' OR ', $archivedConditions) : '1=0';
+
+        return "CASE WHEN ($archivedClause) THEN 'archived' ELSE COALESCE(NULLIF($status,''), NULLIF($accountStatus,''), 'active') END";
     }
 }
 
@@ -377,7 +421,7 @@ if (!function_exists('customer_user_name_expr')) {
 
 if (!function_exists('customer_can_view_all_stations')) {
     function customer_can_view_all_stations(string $role): bool {
-        return in_array($role, ['superadmin', 'developer'], true);
+        return in_array(strtolower($role), ['superadmin', 'developer', 'manager', 'admin'], true);
     }
 }
 

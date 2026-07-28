@@ -13,6 +13,9 @@ if ($user_id) {
     try {
         require_once __DIR__ . '/db_connect.php';
 
+        $user_role_disp = ucfirst(strtolower($user_role ?: 'staff'));
+        $logout_detail  = "{$user_name} ({$user_role_disp}) logged out";
+
         // Log logout to audit_logs
         $tables = $pdo->query("SHOW TABLES LIKE 'audit_logs'")->fetchAll();
         if (!empty($tables)) {
@@ -20,11 +23,18 @@ if ($user_id) {
                            VALUES (?, 'user', 'Logout', ?, 'users', ?, 'Success', ?, ?, NOW())")
                 ->execute([
                     $user_id,
-                    $user_name . ' logged out',
+                    $logout_detail,
                     $user_id,
                     $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0',
                     $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown',
                 ]);
+        }
+
+        // Log logout to activity_logs
+        $tables_act = $pdo->query("SHOW TABLES LIKE 'activity_logs'")->fetchAll();
+        if (!empty($tables_act)) {
+            $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, 'Logout', ?, ?)")
+                ->execute([$user_id, $logout_detail, $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0']);
         }
 
         // Auto Clock Out for staff roles
@@ -37,8 +47,7 @@ if ($user_id) {
             );
             $stmt->execute([$user_id]);
             if ($stmt->rowCount() > 0) {
-                $tables2 = $pdo->query("SHOW TABLES LIKE 'activity_logs'")->fetchAll();
-                if (!empty($tables2)) {
+                if (!empty($tables_act)) {
                     $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, 'Clock Out', 'Auto clock-out on logout', ?)")
                         ->execute([$user_id, $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0']);
                 }

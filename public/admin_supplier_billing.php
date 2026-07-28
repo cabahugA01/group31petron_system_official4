@@ -603,9 +603,43 @@ function sb_badge_class(string $status): string
     </div>
 </div>
 
-<?php if ($flash_msg): ?>
-    <div class="sb-alert <?= $flash_type === 'error' ? 'error' : 'success' ?>"><?= htmlspecialchars($flash_msg) ?></div>
-<?php endif; ?>
+<!-- Official Station Supplier Details Card -->
+<div style="background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:20px;margin-bottom:22px;box-shadow:0 2px 6px rgba(0,0,0,0.04);">
+    <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #002F70;padding-bottom:10px;margin-bottom:16px;">
+        <div style="font-size:15px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:10px;">
+            <i class="fas fa-building" style="color:#002F70;font-size:18px;"></i>
+            Official Station Supplier Profile
+        </div>
+        <span style="background:#002F70;color:#fff;font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;text-transform:uppercase;letter-spacing:.5px;">Exclusive Supplier</span>
+    </div>
+    
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px;">
+        <!-- Supplier Information -->
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
+            <div style="font-size:12px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+                <i class="fas fa-id-card"></i> Supplier Information
+            </div>
+            <div style="font-size:13px;color:#1e293b;line-height:1.6;">
+                <div style="margin-bottom:6px;"><strong>Official Name:</strong> Petron Corporation</div>
+                <div style="margin-bottom:6px;"><strong>Business Address:</strong> Petron Regional Depot &amp; Sales Office, Zone 4, Carmen, Cagayan de Oro City, Misamis Oriental, 9000 Philippines</div>
+                <div><strong>Registration Details:</strong> SEC Reg. No. 31171 | TIN: 000-168-801-000 | CDO Regional Branch</div>
+            </div>
+        </div>
+        
+        <!-- Contact Details -->
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
+            <div style="font-size:12px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+                <i class="fas fa-address-book"></i> Contact Details &amp; Terms
+            </div>
+            <div style="font-size:13px;color:#1e293b;line-height:1.6;">
+                <div style="margin-bottom:6px;"><strong>Contact Person:</strong> Petron CDO Sales &amp; Supply Manager</div>
+                <div style="margin-bottom:6px;"><strong>Phone Number:</strong> (088) 856-4321 / +63 917 800 7387</div>
+                <div style="margin-bottom:6px;"><strong>Email Address:</strong> cdo.orders@petron.com / contactus@petron.com</div>
+                <div><strong>Delivery Terms:</strong> FOB Destination / Net 30 Days / CDO Local Tanker Lorry &amp; Container Delivery</div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <div class="sb-cards">
     <div class="sb-card">

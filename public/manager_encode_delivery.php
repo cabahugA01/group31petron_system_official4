@@ -106,6 +106,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'encod
         }
 
         try {
+            // Validate user ID against users table to prevent FK constraint violations
+            $encoded_by_fk = null;
+            if (!empty($me['id'])) {
+                try {
+                    $chk_u = $pdo->prepare("SELECT id FROM users WHERE id = ? LIMIT 1");
+                    $chk_u->execute([(int)$me['id']]);
+                    $found_u = $chk_u->fetchColumn();
+                    if ($found_u) {
+                        $encoded_by_fk = (int)$found_u;
+                    }
+                } catch (Exception $e) {}
+            }
+
             $stmt = $pdo->prepare("
                 INSERT INTO deliveries_oversight
                     (delivery_type, delivery_ref, batch_id, supplier, product, quantity, unit,
@@ -117,7 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'encod
                 $delivery_type, $delivery_ref, $batch_id, $supplier, $product,
                 $quantity, $unit, $delivery_date,
                 $dr_number ?: null,
-                $me['id'], $station_id,
+                $encoded_by_fk, $station_id,
                 $notes ?: null,
             ]);
 

@@ -3129,8 +3129,13 @@ require_once __DIR__ . '/rbac_menu.php';
           $__low_merch = $__badge_count(
               "SELECT COUNT(*) FROM station_inventory si
                LEFT JOIN inventory_products ip ON ip.id=si.product_id
-               WHERE si.station_id=? AND COALESCE(si.stock_level,0) <= COALESCE(si.reorder_level, ip.min_stock, 10)
-               AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL)",
+               WHERE si.station_id=?
+               AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL)
+               AND (
+                   COALESCE(si.stock_level,0) <= 0
+                   OR COALESCE(si.stock_level,0) <= COALESCE(si.critical_level, ip.critical_level, 10)
+                   OR COALESCE(si.stock_level,0) <= COALESCE(si.reorder_level, ip.min_stock, 24)
+               )",
               [$myStationId]
           );
           $__badge_add('inv_merch', $__low_merch);
