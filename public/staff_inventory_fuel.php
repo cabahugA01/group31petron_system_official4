@@ -50,7 +50,7 @@ $TANK_CONFIG_17 = get_tank_config((int)$station_id);
 // ── Fetch fuel_inventory (one row per fuel_type for this station) ─────
 $fi_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated FROM fuel_inventory WHERE station_id = ?");
+    $s = $pdo->prepare("SELECT fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)");
     $s->execute([$station_id]);
     foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $fi_lookup[strtolower(trim($row['fuel_type']))] = $row;
@@ -249,7 +249,10 @@ try {
         $calibration_val = $tx ? (float)$tx['calibration'] : 0.00;
         $total_dispensed = max(0, $end_reading - $beg_reading - $calibration_val);
 
+        $ugt_no = !empty($inv['ugt_no']) ? $inv['ugt_no'] : (!empty($inv['tank_name']) ? $inv['tank_name'] : ('UGT-' . str_pad($tc['tanker_num'], 2, '0', STR_PAD_LEFT)));
+
         $rows[] = [
+            'ugt_no'          => $ugt_no,
             'fuel_type'       => $tc['fuel_type'],
             'label'           => $tc['label'],
             'tank'            => $tc['tank'],
@@ -659,71 +662,61 @@ body, html { overflow-x: hidden !important; }
 </div>
 <?php endif; ?>
 
-<!-- ══ Summary Cards ══ -->
+<!-- ══ Dashboard Cards (4 Cards ONLY) ══ -->
 <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:24px;">
-    <!-- Total Fuel Available -->
+    <!-- Card 1: Total Fuel Available -->
     <div style="background:#fff; border-radius:8px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
         <div>
-            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Fuel Available</div>
-            <div style="font-size:20px; font-weight:800; color:#0284c7; margin-top:4px;"><?= number_format($total_fuel_available, 0) ?> L</div>
+            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Fuel Available (L)</div>
+            <div style="font-size:20px; font-weight:800; color:#0284c7; margin-top:4px;"><?= number_format($total_fuel_available, 2) ?> L</div>
         </div>
         <div style="background:#e0f2fe; color:#0284c7; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-gas-pump"></i></div>
     </div>
-    <!-- Diesel Available -->
+    <!-- Card 2: Diesel Available -->
     <div style="background:#fff; border-radius:8px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
         <div>
-            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Diesel Available</div>
-            <div style="font-size:20px; font-weight:800; color:#002F6C; margin-top:4px;"><?= number_format($diesel_available, 0) ?> L</div>
+            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Diesel Available (L)</div>
+            <div style="font-size:20px; font-weight:800; color:#002F6C; margin-top:4px;"><?= number_format($diesel_available, 2) ?> L</div>
         </div>
         <div style="background:#e8f4fd; color:#002F6C; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-tint"></i></div>
     </div>
-    <!-- Premium Available -->
+    <!-- Card 3: Premium Available -->
     <div style="background:#fff; border-radius:8px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
         <div>
-            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Premium Available</div>
-            <div style="font-size:20px; font-weight:800; color:#7c3aed; margin-top:4px;"><?= number_format($premium_available, 0) ?> L</div>
+            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Premium Available (L)</div>
+            <div style="font-size:20px; font-weight:800; color:#7c3aed; margin-top:4px;"><?= number_format($premium_available, 2) ?> L</div>
         </div>
         <div style="background:#ede9fe; color:#7c3aed; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-star"></i></div>
     </div>
-    <!-- Regular Available -->
+    <!-- Card 4: Regular Available -->
     <div style="background:#fff; border-radius:8px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
         <div>
-            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Regular Available</div>
-            <div style="font-size:20px; font-weight:800; color:#059669; margin-top:4px;"><?= number_format($regular_available, 0) ?> L</div>
+            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Regular Available (L)</div>
+            <div style="font-size:20px; font-weight:800; color:#059669; margin-top:4px;"><?= number_format($regular_available, 2) ?> L</div>
         </div>
         <div style="background:#d1fae5; color:#059669; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-leaf"></i></div>
     </div>
-    <!-- Low Fuel Tanks -->
-    <div style="background:#fff; border-radius:8px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
-        <div>
-            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Low Fuel Tanks</div>
-            <div style="font-size:20px; font-weight:800; color:#fd7e14; margin-top:4px;"><?= number_format($total_low_fuel_tanks) ?></div>
-        </div>
-        <div style="background:#fff3cd; color:#fd7e14; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-exclamation-triangle"></i></div>
-    </div>
 </div>
 
-<!-- ══ Filter Bar ══ -->
+<!-- ══ Search & Filter Bar ══ -->
 <form id="fuelFilterForm" class="inv-filter-bar" onsubmit="applyFuelInventoryFilters(event)" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px;">
     <div style="position:relative;">
         <i class="fas fa-search" style="position:absolute; left:10px; top:11px; color:#94a3b8; font-size:12px;"></i>
-        <input type="text" id="sq" placeholder="Search Fuel Type..." oninput="filterFuelTable()" autocomplete="off" style="padding-left:28px;">
+        <input type="text" id="sq" placeholder="Search Fuel Type / UGT No..." oninput="filterFuelTable()" autocomplete="off" style="padding-left:28px; width:240px;">
     </div>
-    <input type="text" id="sqTank" placeholder="Tank Number..." oninput="filterFuelTable()" autocomplete="off" style="padding:8px 10px; border:1px solid #ced4da; border-radius:6px; font-size:13px; width:130px;">
     <select id="cf" onchange="filterFuelTable()">
         <option value="">All Fuel Types</option>
         <option value="diesel">Diesel</option>
         <option value="kerosene">Kerosene</option>
         <option value="turbo diesel">Turbo Diesel</option>
-        <option value="xcs plus">XCS Plus</option>
-        <option value="xtra unl">XTRA UNL</option>
+        <option value="xcs">XCS Plus</option>
+        <option value="xtra">XTRA UNL</option>
     </select>
     <select id="sf" onchange="filterFuelTable()">
         <option value="">All Statuses</option>
         <option value="normal">Normal</option>
-        <option value="low">Low</option>
-        <option value="critical">Critical</option>
-        <option value="out of stock">Out of Stock</option>
+        <option value="low">Low Fuel</option>
+        <option value="critical">Critical Fuel</option>
     </select>
     <div class="fuel-filter-actions">
         <button type="submit" class="flt-btn flt-btn-search"><i class="fas fa-search"></i> Filter</button>
@@ -733,7 +726,7 @@ body, html { overflow-x: hidden !important; }
 
 <!-- ══ Sub Tabs ══ -->
 <div style="display:flex; gap:8px; margin-bottom:16px; border-radius:6px; padding:0; width:fit-content;">
-    <button id="tabOverview" onclick="switchFuelTab('overview')" style="padding:8px 20px; font-size:13px; font-weight:600; border:1px solid #00264D; background:#00264D; color:#ffffff; border-radius:4px; cursor:pointer; transition:all .15s;">Fuel Overview</button>
+    <button id="tabOverview" onclick="switchFuelTab('overview')" style="padding:8px 20px; font-size:13px; font-weight:600; border:1px solid #00264D; background:#00264D; color:#ffffff; border-radius:4px; cursor:pointer; transition:all .15s;">Fuel Inventory Overview</button>
     <button id="tabDeliveriesList" onclick="switchFuelTab('deliveries_list')" style="padding:8px 20px; font-size:13px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; border-radius:4px; cursor:pointer; transition:all .15s;">Fuel Deliveries</button>
     <button id="tabDeliveries" onclick="switchFuelTab('deliveries')" style="padding:8px 20px; font-size:13px; font-weight:600; border:1px solid #cbd5e1; background:#ffffff; color:#475569; border-radius:4px; cursor:pointer; transition:all .15s;">
         Stock Alerts
@@ -746,10 +739,9 @@ body, html { overflow-x: hidden !important; }
 </div>
 
 <script>
-// IMMEDIATE FIX: Force enable dropdowns NOW
 (function() {
     function forceEnableNow() {
-        ['sq', 'cf', 'sf', 'df'].forEach(function(id) {
+        ['sq', 'cf', 'sf'].forEach(function(id) {
             var el = document.getElementById(id);
             if (el) {
                 el.style.pointerEvents = 'auto';
@@ -762,23 +754,14 @@ body, html { overflow-x: hidden !important; }
     }
     forceEnableNow();
     setTimeout(forceEnableNow, 100);
-    setTimeout(forceEnableNow, 500);
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', forceEnableNow);
-    }
 })();
 </script>
 
-<!-- ══ TAB: TANK OVERVIEW ══ -->
+<!-- ══ TAB: FUEL INVENTORY OVERVIEW ══ -->
 <div id="section-tank-overview">
 <div class="inv-card">
     <div class="inv-card-head">
-        <div class="inv-card-title"><i class="fas fa-gas-pump"></i> Tank Overview</div>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <button onclick="openFuelSrModal()" style="background:#ffffff !important; color:#002F70 !important; border:1px solid #002F70 !important; height:34px; padding:0 16px; font-size:12px; font-weight:700; border-radius:6px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:all .15s;">
-                <i class="fas fa-boxes"></i> Stock Request
-            </button>
-        </div>
+        <div class="inv-card-title"><i class="fas fa-gas-pump"></i> Fuel Inventory Overview</div>
     </div>
     <div class="inv-card-body">
         <div class="table-wrap">
@@ -787,9 +770,9 @@ body, html { overflow-x: hidden !important; }
                     <tr>
                         <th>UGT No.</th>
                         <th>Fuel Type</th>
-                        <th style="text-align:center;">Capacity (L)</th>
-                        <th style="text-align:center;">Current Volume</th>
-                        <th style="text-align:center;">Reorder Level</th>
+                        <th style="text-align:right;">Capacity</th>
+                        <th style="text-align:right;">Current Volume</th>
+                        <th style="text-align:right;">Available Space</th>
                         <th style="text-align:center;">Status</th>
                         <th>Last Updated</th>
                         <th style="text-align:center;">Actions</th>
@@ -804,38 +787,32 @@ body, html { overflow-x: hidden !important; }
                     </tr>
                 <?php else: ?>
                     <?php foreach ($rows as $r):
-                         $ts_str   = $r['timestamp'] ? date('M d, Y', strtotime($r['timestamp'])) : '—';
-                         $fill     = min(100, round($r['fill_pct'], 0));
-                         $fl       = $r['current_level'];
+                         $ts_str   = $r['timestamp'] ? date('M d, Y h:i A', strtotime($r['timestamp'])) : '—';
+                         $ugt_str  = 'UGT-' . str_pad($r['tanker_num'], 2, '0', STR_PAD_LEFT);
+                         $avail_space = max(0, $r['capacity'] - $r['current_level']);
                          $row_date = $r['timestamp'] ? date('Y-m-d', strtotime($r['timestamp'])) : '';
-                         $r_json   = htmlspecialchars(json_encode($r), ENT_QUOTES);
+                         $r_json   = htmlspecialchars(json_encode(array_merge($r, ['ugt_no' => $ugt_str, 'available_space' => $avail_space])), ENT_QUOTES);
+                         $st_label = ($r['status'] === 'Low') ? 'Low Fuel' : (($r['status'] === 'Critical') ? 'Critical Fuel' : $r['status']);
                     ?>
                     <tr class="fuel-row"
                         data-tank-num="<?= htmlspecialchars(strtolower((string)$r['tanker_num'])) ?>"
+                        data-ugt-no="<?= htmlspecialchars(strtolower($ugt_str)) ?>"
                         data-fuel-type="<?= htmlspecialchars(strtolower($r['fuel_type'])) ?>"
-                        data-tank-ref="<?= htmlspecialchars(strtolower($r['label'])) ?>"
                         data-status="<?= htmlspecialchars(strtolower($r['status'])) ?>"
                         data-date="<?= $row_date ?>">
-                        <td style="font-weight:700;color:#002F70;"><?= $r['tanker_num'] ?></td>
-                        <td style="font-weight:700;"><?= htmlspecialchars($r['fuel_type']) ?></td>
-                        <td style="text-align:center;font-weight:600;color:#475569;"><?= number_format($r['capacity'], 0) ?> L</td>
-                        <td style="text-align:center;">
-                            <div style="display:flex;align-items:center;gap:6px;justify-content:center;">
-                                <div style="flex:1;height:7px;background:#e0e0e0;border-radius:4px;overflow:hidden;min-width:40px;max-width:70px;">
-                                    <div style="width:<?= $fill ?>%;height:100%;background:<?= $r['status_color'] ?>;border-radius:4px;"></div>
-                                </div>
-                                <span style="font-size:12px;font-weight:700;color:#0f172a;white-space:nowrap;"><?= number_format($fl, 0) ?> L</span>
-                            </div>
-                        </td>
-                        <td style="text-align:center;font-weight:600;color:#64748b;"><?= number_format($r['reorder_level'], 0) ?> L</td>
+                        <td><code style="font-weight:700;color:#002F70;font-size:12px;"><?= htmlspecialchars($ugt_str) ?></code></td>
+                        <td style="font-weight:700;color:#0f172a;"><?= htmlspecialchars($r['fuel_type']) ?></td>
+                        <td style="text-align:right;font-weight:600;color:#475569;"><?= number_format($r['capacity'], 0) ?> L</td>
+                        <td style="text-align:right;font-weight:800;color:#002F70;"><?= number_format($r['current_level'], 2) ?> L</td>
+                        <td style="text-align:right;font-weight:700;color:#16a34a;"><?= number_format($avail_space, 2) ?> L</td>
                         <td style="text-align:center;">
                             <span class="status-pill" style="background:<?= $r['status_color'] ?>18;color:<?= $r['status_color'] ?>;border:1px solid <?= $r['status_color'] ?>40;">
-                                <?= htmlspecialchars($r['status']) ?>
+                                <?= htmlspecialchars($st_label) ?>
                             </span>
                         </td>
                         <td style="color:#64748b; font-size:11px;"><?= $ts_str ?></td>
                         <td style="text-align:center;">
-                            <button type="button" class="txn-btn primary sm" onclick='openTankModal(<?= $r_json ?>)'>
+                            <button type="button" class="int-btn-outline" onclick='openTankModal(<?= $r_json ?>)'>
                                 <i class="fas fa-eye"></i> View
                             </button>
                         </td>
@@ -850,7 +827,7 @@ body, html { overflow-x: hidden !important; }
                 </tbody>
             </table>
         </div>
-        <div id="fuelPagination"></div>
+        <div id="fuelPagination" style="padding:8px 16px;"></div>
     </div>
 </div>
 </div>
@@ -860,11 +837,6 @@ body, html { overflow-x: hidden !important; }
 <div class="inv-card">
     <div class="inv-card-head">
         <div class="inv-card-title"><i class="fas fa-bell"></i> Fuel Stock Alerts</div>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <button onclick="openFuelSrModal()" style="background:#ffffff !important; color:#002F70 !important; border:1px solid #002F70 !important; height:34px; padding:0 16px; font-size:12px; font-weight:700; border-radius:6px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:all .15s;">
-                <i class="fas fa-boxes"></i> Stock Request
-            </button>
-        </div>
     </div>
     <div class="inv-card-body">
         <?php
@@ -882,38 +854,30 @@ body, html { overflow-x: hidden !important; }
                     <tr style="background:#002F70; color:#fff;">
                         <th style="padding:10px 12px;">UGT No.</th>
                         <th style="padding:10px 12px;">Fuel Type</th>
-                        <th style="padding:10px 12px; text-align:center;">Capacity (L)</th>
-                        <th style="padding:10px 12px; text-align:center;">Current Volume (L)</th>
-                        <th style="padding:10px 12px; text-align:center;">Reorder Level (L)</th>
-                        <th style="padding:10px 12px; text-align:center;">Fill %</th>
+                        <th style="padding:10px 12px; text-align:right;">Current Volume</th>
+                        <th style="padding:10px 12px; text-align:right;">Reorder Level</th>
                         <th style="padding:10px 12px; text-align:center;">Status</th>
                     </tr>
                 </thead>
                 <tbody>
                 <?php foreach ($alert_rows as $r):
                     $status = $r['status'] ?? 'Low';
+                    $st_label = ($status === 'Low') ? 'Low Fuel' : (($status === 'Critical') ? 'Critical Fuel' : $status);
                     $sc = match($status) {
                         'Critical', 'Out of Stock' => '#dc3545',
-                        'Low' => '#fd7e14',
+                        'Low' => '#ea580c',
                         default => '#64748b'
                     };
-                    $fill_pct = $r['capacity'] > 0 ? round(($r['current_level'] / $r['capacity']) * 100, 1) : 0;
+                    $ugt_str = 'UGT-' . str_pad($r['tanker_num'], 2, '0', STR_PAD_LEFT);
                 ?>
                 <tr style="border-bottom:1px solid #f1f5f9; background:<?= $sc ?>08;">
-                    <td style="padding:10px 12px; font-weight:700; color:#002F70;"><?= htmlspecialchars($r['tanker_num']) ?></td>
+                    <td style="padding:10px 12px; font-weight:700; color:#002F70;"><?= htmlspecialchars($ugt_str) ?></td>
                     <td style="padding:10px 12px; font-weight:600;"><?= htmlspecialchars($r['fuel_type']) ?></td>
-                    <td style="padding:10px 12px; text-align:center;"><?= number_format($r['capacity'], 0) ?> L</td>
-                    <td style="padding:10px 12px; text-align:center; font-weight:700; color:<?= $sc ?>;"><?= number_format($r['current_level'], 0) ?> L</td>
-                    <td style="padding:10px 12px; text-align:center; color:#64748b;"><?= number_format($r['reorder_level'] ?? 0, 0) ?> L</td>
-                    <td style="padding:10px 12px; text-align:center;">
-                        <div style="background:#e9ecef; border-radius:20px; height:8px; min-width:80px; position:relative;">
-                            <div style="background:<?= $sc ?>; border-radius:20px; height:8px; width:<?= min($fill_pct, 100) ?>%;"></div>
-                        </div>
-                        <span style="font-size:11px; color:<?= $sc ?>; font-weight:600;"><?= $fill_pct ?>%</span>
-                    </td>
+                    <td style="padding:10px 12px; text-align:right; font-weight:800; color:#002F70;"><?= number_format($r['current_level'], 2) ?> L</td>
+                    <td style="padding:10px 12px; text-align:right; color:#d97706; font-weight:600;"><?= number_format($r['reorder_level'] ?? 0, 0) ?> L</td>
                     <td style="padding:10px 12px; text-align:center;">
                         <span style="background:<?= $sc ?>18; color:<?= $sc ?>; border:1px solid <?= $sc ?>40; border-radius:20px; padding:3px 10px; font-size:11px; font-weight:700;">
-                            <?= htmlspecialchars($status) ?>
+                            <?= htmlspecialchars($st_label) ?>
                         </span>
                     </td>
                 </tr>
@@ -939,23 +903,21 @@ body, html { overflow-x: hidden !important; }
                     <tr style="background:#002F70; color:#fff;">
                         <th style="padding:10px 12px;">Delivery No.</th>
                         <th style="padding:10px 12px;">Supplier</th>
-                        <th style="padding:10px 12px;">Fuel Type</th>
-                        <th style="padding:10px 12px; text-align:center;">Liters</th>
+                        <th style="padding:10px 12px; text-align:right;">Liters Received</th>
                         <th style="padding:10px 12px; text-align:center;">Delivery Date</th>
                     </tr>
                 </thead>
                 <tbody>
                 <?php if (empty($fuel_deliveries_list)): ?>
-                    <tr><td colspan="5" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-info-circle" style="font-size:1.8em; display:block; margin-bottom:8px;"></i> No fuel delivery records found.</td></tr>
+                    <tr><td colspan="4" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-info-circle" style="font-size:1.8em; display:block; margin-bottom:8px;"></i> No fuel delivery records found.</td></tr>
                 <?php else: ?>
                     <?php foreach ($fuel_deliveries_list as $fd):
-                        $ddate = !empty($fd['delivery_date']) ? (new DateTime($fd['delivery_date']))->format('M d, Y h:i A') : '—';
+                        $ddate = !empty($fd['delivery_date']) ? date('M d, Y h:i A', strtotime($fd['delivery_date'])) : '—';
                     ?>
                     <tr style="border-bottom:1px solid #f1f5f9;">
                         <td style="padding:10px 12px;"><code style="font-size:11px; font-weight:700; color:#002F70;"><?php echo htmlspecialchars($fd['delivery_no']); ?></code></td>
-                        <td style="padding:10px 12px;"><strong><?php echo htmlspecialchars($fd['supplier'] ?: 'Petron Depot'); ?></strong></td>
-                        <td style="padding:10px 12px; font-weight:600; color:#334155;"><?php echo htmlspecialchars($fd['fuel_type']); ?></td>
-                        <td style="padding:10px 12px; text-align:center; font-weight:700; color:#0284c7; font-size:13px;"><?php echo number_format((float)$fd['liters'], 2); ?> L</td>
+                        <td style="padding:10px 12px;"><strong><?php echo htmlspecialchars($fd['supplier'] ?: 'Petron Corporation'); ?></strong></td>
+                        <td style="padding:10px 12px; text-align:right; font-weight:700; color:#16a34a; font-size:13px;"><?php echo number_format((float)$fd['liters'], 2); ?> L</td>
                         <td style="padding:10px 12px; text-align:center; font-size:11px; color:#64748b;"><?php echo $ddate; ?></td>
                     </tr>
                     <?php endforeach; ?>
@@ -967,34 +929,34 @@ body, html { overflow-x: hidden !important; }
 </div>
 </div>
 
-<!-- ══ Tank Details Modal ══ -->
+<!-- ══ View Fuel Details Modal ══ -->
 <div class="modal-overlay" id="tankModal">
-    <div class="modal-box" style="width:580px; max-height:90vh;">
-        <div class="modal-header">
-            <h3 id="tankModalTitle">View Tank</h3>
-            <button onclick="closeTankModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;">&times;</button>
+    <div class="modal-box" style="width:640px; max-height:90vh;">
+        <div class="modal-header" style="background:#00264D;">
+            <h3 id="tankModalTitle" style="color:#ffffff !important;">View Fuel Details</h3>
+            <button onclick="closeTankModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#ffffff;">&times;</button>
         </div>
-        <div class="modal-body">
-            <!-- Tank Information -->
-            <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-info-circle"></i> Tank Information</div>
-            <table style="width:100%; font-size:13px; border-collapse:collapse; margin-bottom:20px;">
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:9px 0; color:#64748b; font-weight:600; width:160px;">Tank Number:</td><td id="detTankId" style="font-weight:700; color:#0f172a;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:9px 0; color:#64748b; font-weight:600;">Fuel Type:</td><td id="detFuelType" style="font-weight:700; color:#0f172a;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:9px 0; color:#64748b; font-weight:600;">Capacity:</td><td id="detCapacity" style="font-weight:600; color:#475569;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:9px 0; color:#64748b; font-weight:600;">Current Volume:</td><td id="detVolume" style="font-weight:700; color:#002F70; font-size:14px;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:9px 0; color:#64748b; font-weight:600;">Reorder Level:</td><td id="detReorderLevel" style="font-weight:600; color:#475569;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:9px 0; color:#64748b; font-weight:600;">Critical Level:</td><td id="detCriticalLevel" style="font-weight:600; color:#dc3545;"></td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:9px 0; color:#64748b; font-weight:600;">Status:</td><td id="detStatus" style="padding:9px 0;"></td></tr>
-                <tr><td style="padding:9px 0; color:#64748b; font-weight:600;">Last Updated:</td><td id="detUpdated" style="color:#64748b;"></td></tr>
-            </table>
-            <!-- Delivery Summary -->
-            <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-truck"></i> Delivery Summary</div>
+        <div class="modal-body" style="padding:20px;">
+            <!-- UGT Information -->
+            <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-info-circle"></i> UGT Information</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px 24px; margin-bottom:20px;">
+                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">UGT No.</div><div id="detUgtNo" style="font-weight:800; color:#002F70; font-size:15px;"></div></div>
+                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Fuel Type</div><div id="detFuelType" style="font-weight:800; color:#0f172a; font-size:15px;"></div></div>
+                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Tank Capacity</div><div id="detCapacity" style="font-weight:600; color:#475569;"></div></div>
+                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Current Volume</div><div id="detVolume" style="font-weight:800; color:#002F70; font-size:16px;"></div></div>
+                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Available Space</div><div id="detAvailableSpace" style="font-weight:700; color:#16a34a; font-size:15px;"></div></div>
+                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Status</div><div id="detStatus"></div></div>
+                <div style="grid-column:span 2;"><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Last Updated</div><div id="detUpdated" style="font-weight:600; color:#64748b;"></div></div>
+            </div>
+            <!-- Fuel Delivery History (Read Only) -->
+            <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-truck"></i> Fuel Delivery History (Read Only)</div>
             <div id="detDeliverySummary">
-                <div style="text-align:center;padding:16px;color:#94a3b8;font-size:13px;">Loading...</div>
+                <div style="text-align:center;padding:16px;color:#94a3b8;font-size:13px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
             </div>
         </div>
-        <div class="modal-footer">
-            <button onclick="closeTankModal()" class="btn-cancel" style="height:34px; font-size:12px; padding:0 14px;">Close</button>
+        <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px; background:#f8fafc; padding:12px 20px;">
+            <button type="button" onclick="printTankRecord(_currentTankData)" class="flt-btn flt-btn-csv"><i class="fas fa-print"></i> Print</button>
+            <button type="button" onclick="closeTankModal()" class="btn-cancel" style="height:36px; font-size:13px; padding:0 16px;"><i class="fas fa-times"></i> Close</button>
         </div>
     </div>
 </div>
@@ -1354,7 +1316,6 @@ function refreshFuelPagination() {
 
 function filterFuelTable() {
     var search   = fuelFilterValue('sq');
-    var tankNum  = fuelFilterValue('sqTank');
     var fuelType = fuelFilterValue('cf');
     var status   = fuelFilterValue('sf');
     var rows = document.querySelectorAll('#fuelTable tbody tr.fuel-row');
@@ -1362,15 +1323,14 @@ function filterFuelTable() {
 
     rows.forEach(function(row) {
         var rTankNum  = (row.dataset.tankNum  || '').toLowerCase();
+        var rUgtNo    = (row.dataset.ugtNo    || '').toLowerCase();
         var rFuelType = (row.dataset.fuelType || '').toLowerCase();
-        var rTankRef  = (row.dataset.tankRef  || '').toLowerCase();
         var rStatus   = (row.dataset.status   || '').toLowerCase();
         var match = true;
 
-        if (search   && rFuelType.indexOf(search)   === -1 && rTankRef.indexOf(search)   === -1) match = false;
-        if (tankNum  && rTankNum.indexOf(tankNum)   === -1) match = false;
-        if (fuelType && rFuelType !== fuelType)             match = false;
-        if (status   && rStatus !== status)                 match = false;
+        if (search && rFuelType.indexOf(search) === -1 && rUgtNo.indexOf(search) === -1 && rTankNum.indexOf(search) === -1) match = false;
+        if (fuelType && rFuelType.indexOf(fuelType) === -1) match = false;
+        if (status && rStatus.indexOf(status) === -1) match = false;
 
         row.classList.toggle('search-hidden', !match);
         row.style.display = match ? '' : 'none';
@@ -1391,7 +1351,7 @@ function applyFuelInventoryFilters(e) {
     return false;
 }
 function resetFuelInventoryFilters() {
-    ['sq', 'sqTank', 'cf', 'sf'].forEach(function(id) {
+    ['sq', 'cf', 'sf'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.value = '';
     });
@@ -1435,53 +1395,55 @@ function switchFuelTab(tab) {
 var _currentTankData = null;
 function openTankModal(r) {
     _currentTankData = r;
-    document.getElementById('tankModalTitle').textContent = 'View Tank — UGT No. ' + (r.tanker_num || '—');
-    document.getElementById('detTankId').textContent = r.tanker_num || '—';
-    document.getElementById('detFuelType').textContent = r.fuel_type || '—';
-    document.getElementById('detCapacity').textContent = Number(r.capacity || 0).toLocaleString() + ' L';
-    document.getElementById('detVolume').textContent = Number(r.current_level || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
-    document.getElementById('detReorderLevel').textContent = Number(r.reorder_level || 0).toLocaleString() + ' L';
-    var critLvl = r.capacity > 0 ? Math.round(r.capacity * 0.15) : 0;
-    document.getElementById('detCriticalLevel').textContent = critLvl.toLocaleString() + ' L';
+    var ugtName = r.ugt_no || ('UGT #' + r.tanker_num);
+    var ugtTitle = r.fuel_type ? (ugtName + ' — ' + r.fuel_type) : ugtName;
+    if (document.getElementById('tankModalTitle')) document.getElementById('tankModalTitle').textContent = 'View Fuel Details — ' + ugtTitle;
+    if (document.getElementById('detUgtNo')) document.getElementById('detUgtNo').textContent = ugtName;
+    if (document.getElementById('detFuelType')) document.getElementById('detFuelType').textContent = r.fuel_type || '—';
+    if (document.getElementById('detCapacity')) document.getElementById('detCapacity').textContent = Number(r.capacity || 0).toLocaleString() + ' L';
+    if (document.getElementById('detVolume')) document.getElementById('detVolume').textContent = Number(r.current_level || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
+    var availSpace = Math.max(0, (r.capacity || 0) - (r.current_level || 0));
+    if (document.getElementById('detAvailableSpace')) document.getElementById('detAvailableSpace').textContent = Number(availSpace).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
     
-    var fill = Math.min(100, Math.max(0, Math.round(r.fill_pct || 0, 1)));
-    var statusSpan = '<span class="status-pill" style="background:' + (r.status_color || '#002F70') + '18; color:' + (r.status_color || '#002F70') + '; border:1px solid ' + (r.status_color || '#002F70') + '40;">' + (r.status || 'Normal') + ' (' + fill + '%)</span>';
-    document.getElementById('detStatus').innerHTML = statusSpan;
+    var stLabel = (r.status === 'Low') ? 'Low Fuel' : ((r.status === 'Critical') ? 'Critical Fuel' : (r.status || 'Normal'));
+    var statusSpan = '<span class="status-pill" style="background:' + (r.status_color || '#002F70') + '18; color:' + (r.status_color || '#002F70') + '; border:1px solid ' + (r.status_color || '#002F70') + '40;">' + esc(stLabel) + '</span>';
+    if (document.getElementById('detStatus')) document.getElementById('detStatus').innerHTML = statusSpan;
     
     var ts = r.timestamp ? new Date(r.timestamp).toLocaleString() : '—';
-    document.getElementById('detUpdated').textContent = ts;
+    if (document.getElementById('detUpdated')) document.getElementById('detUpdated').textContent = ts;
 
-    // Delivery Summary fetch
+    // Delivery History fetch
     var dSummary = document.getElementById('detDeliverySummary');
     if (dSummary) {
-        dSummary.innerHTML = '<div style="text-align:center;padding:12px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+        dSummary.innerHTML = '<div style="text-align:center;padding:12px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading delivery history...</div>';
         fetch('staff_inventory_fuel.php?ajax=1&action=get_fuel_details&fuel_type=' + encodeURIComponent(r.fuel_type || ''))
         .then(function(res) { return res.json(); })
         .then(function(data) {
             if (!data.success || !data.deliveries || data.deliveries.length === 0) {
-                dSummary.innerHTML = '<div style="text-align:center;padding:12px;color:#94a3b8;font-size:13px;">No delivery records found.</div>';
+                dSummary.innerHTML = '<div style="text-align:center;padding:12px;color:#94a3b8;font-size:13px;">No delivery records found for this fuel type.</div>';
                 return;
             }
             var html = '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f1f5f9;">' +
                 '<th style="padding:8px 10px;text-align:left;color:#475569;font-size:10px;text-transform:uppercase;">Delivery No.</th>' +
-                '<th style="padding:8px 10px;text-align:left;color:#475569;font-size:10px;text-transform:uppercase;">Delivery Date</th>' +
                 '<th style="padding:8px 10px;text-align:left;color:#475569;font-size:10px;text-transform:uppercase;">Supplier</th>' +
                 '<th style="padding:8px 10px;text-align:right;color:#475569;font-size:10px;text-transform:uppercase;">Liters Received</th>' +
+                '<th style="padding:8px 10px;text-align:center;color:#475569;font-size:10px;text-transform:uppercase;">Delivery Date</th>' +
                 '</tr></thead><tbody>';
             data.deliveries.slice(0, 10).forEach(function(d) {
+                var dNo = d.invoice_no || ('DEL-' + String(d.id || 0).padStart(5, '0'));
                 var dateStr = d.delivery_date ? new Date(d.delivery_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
                 html += '<tr style="border-bottom:1px solid #f1f5f9;">' +
-                    '<td style="padding:8px 10px;font-weight:600;color:#002F70;">' + esc(d.invoice_no || '—') + '</td>' +
-                    '<td style="padding:8px 10px;color:#64748b;">' + dateStr + '</td>' +
-                    '<td style="padding:8px 10px;">' + esc(d.supplier || '—') + '</td>' +
-                    '<td style="padding:8px 10px;text-align:right;font-weight:700;color:#002F6C;">' + Number(d.delivery_liters).toLocaleString() + ' L</td>' +
+                    '<td style="padding:8px 10px;font-weight:700;color:#002F70;"><code style="font-size:11px;">' + esc(dNo) + '</code></td>' +
+                    '<td style="padding:8px 10px;font-weight:600;">' + esc(d.supplier || 'Petron Corporation') + '</td>' +
+                    '<td style="padding:8px 10px;text-align:right;font-weight:700;color:#16a34a;">' + Number(d.delivery_liters || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>' +
+                    '<td style="padding:8px 10px;text-align:center;color:#64748b;">' + dateStr + '</td>' +
                     '</tr>';
             });
             html += '</tbody></table>';
             dSummary.innerHTML = html;
         })
         .catch(function() {
-            dSummary.innerHTML = '<div style="text-align:center;padding:12px;color:#dc3545;font-size:13px;">Failed to load deliveries.</div>';
+            dSummary.innerHTML = '<div style="text-align:center;padding:12px;color:#dc3545;font-size:13px;">Failed to load delivery history.</div>';
         });
     }
     

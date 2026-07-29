@@ -608,6 +608,70 @@ try {
 } catch (Exception $e) {}
 $todays_sales = $fuel_sales + $merch_sales + $service_sales;
 
+// 2b. Additional requested Staff Dashboard Metrics
+$completed_jo_today_count = 0;
+try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND DATE({$job_dt_expr}) = CURDATE() AND LOWER(TRIM(status)) IN ('completed','verified','released','finalized')");
+    $stmt->execute([$station_id]);
+    $completed_jo_today_count = (int)$stmt->fetchColumn();
+} catch (Exception $e) {}
+
+// Payment Methods Breakdown Today
+$payment_methods_today_map = [
+    'Cash'               => 0.0,
+    'Credit Card'        => 0.0,
+    'Debit Card'         => 0.0,
+    'GCash'              => 0.0,
+    'Maya'               => 0.0,
+    'Petron Fleet Card'  => 0.0,
+    'Credit Account'     => 0.0,
+];
+
+$normalize_pm_fn = function($raw) {
+    $p = strtolower(trim((string)$raw));
+    if ($p === '' || str_contains($p, 'cash')) return 'Cash';
+    if (str_contains($p, 'debit')) return 'Debit Card';
+    if (str_contains($p, 'credit card') || str_contains($p, 'card') || str_contains($p, 'visa') || str_contains($p, 'mastercard')) return 'Credit Card';
+    if (str_contains($p, 'gcash')) return 'GCash';
+    if (str_contains($p, 'maya') || str_contains($p, 'paymaya')) return 'Maya';
+    if (str_contains($p, 'fleet') || str_contains($p, 'petron fleet')) return 'Petron Fleet Card';
+    if (str_contains($p, 'credit') || str_contains($p, 'account') || str_contains($p, 'suki') || str_contains($p, 'utang') || str_contains($p, 'receivable') || str_contains($p, 'ar')) return 'Credit Account';
+    return 'Cash';
+};
+
+try {
+    $stmt = $pdo->prepare("SELECT COALESCE(payment_method, 'Cash') AS pm, total_amount FROM fuel_transactions WHERE station_id=? AND DATE({$fuel_dt_expr}) BETWEEN ? AND ?");
+    $stmt->execute([$station_id, $date_from, $date_to]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $cat = $normalize_pm_fn($r['pm']);
+        $payment_methods_today_map[$cat] += (float)$r['total_amount'];
+    }
+} catch (Exception $e) {}
+
+try {
+    $stmt = $pdo->prepare("SELECT COALESCE(payment_method, 'Cash') AS pm, total_amount FROM merchandise_transactions WHERE station_id=? AND DATE({$merch_dt_expr}) BETWEEN ? AND ?");
+    $stmt->execute([$station_id, $date_from, $date_to]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $cat = $normalize_pm_fn($r['pm']);
+        $payment_methods_today_map[$cat] += (float)$r['total_amount'];
+    }
+} catch (Exception $e) {}
+
+try {
+    $stmt = $pdo->prepare("SELECT COALESCE(payment_mode, 'Cash') AS pm, total_cost FROM job_orders WHERE station_id=? AND DATE({$job_dt_expr}) BETWEEN ? AND ?");
+    $stmt->execute([$station_id, $date_from, $date_to]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $cat = $normalize_pm_fn($r['pm']);
+        $payment_methods_today_map[$cat] += (float)$r['total_cost'];
+    }
+} catch (Exception $e) {}
+
+$pie_pm_labels = array_keys($payment_methods_today_map);
+$pie_pm_data   = array_values($payment_methods_today_map);
+
+$bar_merch_vs_service_labels = ["Merchandise Sales Today", "Service Sales Today"];
+$bar_merch_vs_service_data   = [round($merch_sales, 2), round($service_sales, 2)];
+
 // 3. Fuel Sold Today
 $fuel_sold_liters = 0.0;
 try {
@@ -1081,6 +1145,7 @@ foreach ($TANK_CONFIG as $tc) {
         'status_color'  => $sc,
         'pct'           => min(100.0, round($fill_pct, 1)),
         'reorder_level' => $low_lvl,
+        'last_updated'  => $inv['last_updated'] ?? null,
     ];
 }
 
@@ -1699,9 +1764,9 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- 8 Summary Cards Grid -->
+<!-- Staff Dashboard Metrics Grid -->
 <div class="summary-cards-grid">
-    <!-- Today's Transactions -->
+    <!-- 1. Today's Transactions -->
     <div class="summary-metric-card">
         <div class="metric-details">
             <h4>Today's Transactions</h4>
@@ -1711,14 +1776,54 @@ include __DIR__ . '/../partials/header.php';
             <i class="fas fa-exchange-alt"></i>
         </div>
     </div>
-    <!-- Today's Sales -->
+    <!-- 2. Active Job Orders -->
     <div class="summary-metric-card">
         <div class="metric-details">
-            <h4>Today's Sales</h4>
-            <div class="metric-value">&#8369;<?= number_format($todays_sales, 2) ?></div>
+            <h4>Active Job Orders</h4>
+            <div class="metric-value"><?= number_format($service_queue_count) ?></div>
+        </div>
+        <div class="metric-icon-box" style="background: #fef9c3; color: #d97706;">
+            <i class="fas fa-tools"></i>
+        </div>
+    </div>
+    <!-- 3. Completed Job Orders Today -->
+    <div class="summary-metric-card">
+        <div class="metric-details">
+            <h4>Completed Job Orders Today</h4>
+            <div class="metric-value"><?= number_format($completed_jo_today_count) ?></div>
         </div>
         <div class="metric-icon-box" style="background: #f0fdf4; color: #16a34a;">
-            <i class="fas fa-money-bill-wave"></i>
+            <i class="fas fa-check-circle"></i>
+        </div>
+    </div>
+    <!-- 4. Merchandise Sales Today -->
+    <div class="summary-metric-card">
+        <div class="metric-details">
+            <h4>Merchandise Sales Today</h4>
+            <div class="metric-value">&#8369;<?= number_format($merch_sales, 2) ?></div>
+        </div>
+        <div class="metric-icon-box" style="background: #ffedd5; color: #ea580c;">
+            <i class="fas fa-boxes"></i>
+        </div>
+    </div>
+    <!-- 5. Service Sales Today -->
+    <div class="summary-metric-card">
+        <div class="metric-details">
+            <h4>Service Sales Today</h4>
+            <div class="metric-value">&#8369;<?= number_format($service_sales, 2) ?></div>
+        </div>
+        <div class="metric-icon-box" style="background: #ecfeff; color: #0891b2;">
+            <i class="fas fa-wrench"></i>
+        </div>
+    </div>
+    <!-- 6. Current Shift -->
+    <div class="summary-metric-card">
+        <div class="metric-details">
+            <h4>Current Shift</h4>
+            <div class="metric-value" style="font-size: 14px; font-weight: 700; margin-top: 10px;"><?= htmlspecialchars($current_shift_label) ?></div>
+        </div>
+        <div class="metric-icon-box" style="background: #f1f5f9; color: #64748b;">
+            <i class="fas fa-clock"></i>
         </div>
     </div>
     <!-- Fuel Sold Today (Liters) -->
@@ -1731,60 +1836,35 @@ include __DIR__ . '/../partials/header.php';
             <i class="fas fa-gas-pump"></i>
         </div>
     </div>
-    <!-- Service Queue -->
-    <div class="summary-metric-card">
-        <div class="metric-details">
-            <h4>Service Queue</h4>
-            <div class="metric-value"><?= number_format($service_queue_count) ?></div>
-        </div>
-        <div class="metric-icon-box" style="background: #fef9c3; color: #eab308;">
-            <i class="fas fa-wrench"></i>
-        </div>
-    </div>
-    <!-- Fuel Stock Alerts -->
-    <div class="summary-metric-card">
-        <div class="metric-details">
-            <h4>Fuel Stock Alerts</h4>
-            <div class="metric-value"><?= number_format($fuel_stock_alerts_count) ?></div>
-        </div>
-        <div class="metric-icon-box" style="background: #fee2e2; color: #b91c1c;">
-            <i class="fas fa-exclamation-triangle"></i>
-        </div>
-    </div>
-    <!-- Merchandise Stock Alerts -->
-    <div class="summary-metric-card">
-        <div class="metric-details">
-            <h4>Merchandise Stock Alerts</h4>
-            <div class="metric-value"><?= number_format($merch_stock_alerts_count) ?></div>
-        </div>
-        <div class="metric-icon-box" style="background: #ffedd5; color: #ea580c;">
-            <i class="fas fa-box-open"></i>
-        </div>
-    </div>
     <!-- Pending Stock Requests -->
     <div class="summary-metric-card">
         <div class="metric-details">
             <h4>Pending Stock Requests</h4>
             <div class="metric-value"><?= number_format($pending_stock_requests) ?></div>
         </div>
-        <div class="metric-icon-box" style="background: #ecfeff; color: #0891b2;">
+        <div class="metric-icon-box" style="background: #f3e8ff; color: #7c3aed;">
             <i class="fas fa-file-import"></i>
-        </div>
-    </div>
-    <!-- Current Shift -->
-    <div class="summary-metric-card">
-        <div class="metric-details">
-            <h4>Current Shift</h4>
-            <div class="metric-value" style="font-size: 14px; font-weight: 700; margin-top: 10px;"><?= htmlspecialchars($current_shift_label) ?></div>
-        </div>
-        <div class="metric-icon-box" style="background: #f1f5f9; color: #64748b;">
-            <i class="fas fa-clock"></i>
         </div>
     </div>
 </div>
 
 <!-- Charts & Visualizations Grid -->
 <div class="charts-grid-layout">
+    <!-- Pie Chart: Payment Methods Today -->
+    <div class="chart-panel-card">
+        <h3><i class="fas fa-chart-pie"></i> Payment Methods Today</h3>
+        <div class="chart-container-inner">
+            <canvas id="paymentMethodsPieChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Bar Chart: Today's Merchandise vs Service Sales -->
+    <div class="chart-panel-card">
+        <h3><i class="fas fa-chart-bar"></i> Today's Merchandise vs Service Sales</h3>
+        <div class="chart-container-inner">
+            <canvas id="merchVsServiceBarChart"></canvas>
+        </div>
+    </div>
     <!-- Hourly Transactions -->
     <div class="chart-panel-card">
         <h3>
@@ -1828,71 +1908,88 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
 
-    <!-- Fuel Tank Levels Card Grid -->
+    <!-- Fuel Tank Levels Table (matching manager_set_prices.php layout) -->
     <div class="chart-panel-card" style="grid-column: 1 / -1;">
         <h3><i class="fas fa-tachometer-alt"></i> Fuel Tank Levels</h3>
-        <div style="padding: 20px 0;">
-            <?php if (empty($tank_levels)): ?>
-                <div style="text-align:center; padding: 40px 0; color:#64748b;">
-                    <i class="fas fa-gas-pump" style="font-size:32px; margin-bottom:10px; display:block;"></i>
-                    No tank level readings available.
-                </div>
-            <?php else: ?>
-                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px;">
+        <?php if (empty($tank_levels)): ?>
+            <div style="text-align:center; padding: 40px 0; color:#64748b;">
+                <i class="fas fa-gas-pump" style="font-size:32px; margin-bottom:10px; display:block;"></i>
+                No tank level readings available.
+            </div>
+        <?php else: ?>
+        <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                <thead>
+                    <tr style="background:#002F70;">
+                        <th style="padding:11px 14px; color:#fff; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; text-align:left; white-space:nowrap;">UGT No.</th>
+                        <th style="padding:11px 14px; color:#fff; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; text-align:left; white-space:nowrap;">Fuel Type</th>
+                        <th style="padding:11px 14px; color:#fff; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; text-align:left; white-space:nowrap;">Stock Level (L)</th>
+                        <th style="padding:11px 14px; color:#fff; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; text-align:left; white-space:nowrap;">Capacity (L)</th>
+                        <th style="padding:11px 14px; color:#fff; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; text-align:left; white-space:nowrap;">Critical Level (L)</th>
+                        <th style="padding:11px 14px; color:#fff; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; text-align:left; white-space:nowrap;">Status</th>
+                        <th style="padding:11px 14px; color:#fff; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; text-align:left; white-space:nowrap;">Last Updated</th>
+                    </tr>
+                </thead>
+                <tbody>
                     <?php foreach ($tank_levels as $tl):
-                        $pct        = $tl['pct'];
-                        $current    = (float)$tl['level'];
-                        $capacity   = (float)$tl['capacity'];
-                        $pump_name  = $tl['tank_label'];        // e.g. "DIESEL - 1"
-                        $fuel_name  = $tl['fuel_type'] . ' · ' . $tl['tank_assign'];    // e.g. "Diesel · UGT #1"
-                        $status_text = $tl['status'];
-                        $status_color = $tl['status_color'];
-                        $reorder    = (float)$tl['reorder_level'];
+                        $tl_current   = (float)$tl['level'];
+                        $tl_capacity  = (float)$tl['capacity'];
+                        $tl_pct       = $tl['pct'];
+                        $tl_status    = $tl['status'];
+                        $tl_color     = $tl['status_color'];
+                        $tl_reorder   = (float)$tl['reorder_level'];
 
-                        if ($status_text === 'Normal') {
-                            $status_bg = '#f0fdf4';
-                        } elseif ($status_text === 'Low') {
-                            $status_bg = '#fff7ed';
+                        // Critical level: derived from capacity (same logic as backend)
+                        $tl_critical  = ($tl_capacity == 7000) ? 1000.0 : 2500.0;
+
+                        if ($tl_status === 'Normal') {
+                            $tl_badge_bg   = '#dcfce7'; $tl_badge_color = '#15803d';
+                            $tl_bar_color  = '#16a34a';
+                            $tl_badge_icon = '&#10003;';
+                        } elseif ($tl_status === 'Low') {
+                            $tl_badge_bg   = '#fef9c3'; $tl_badge_color = '#a16207';
+                            $tl_bar_color  = '#eab308';
+                            $tl_badge_icon = '&#9888;';
+                        } elseif ($tl_status === 'Critical') {
+                            $tl_badge_bg   = '#fee2e2'; $tl_badge_color = '#b91c1c';
+                            $tl_bar_color  = '#ef4444';
+                            $tl_badge_icon = '&#9888;';
                         } else {
-                            $status_bg = '#fef2f2';
+                            $tl_badge_bg   = '#fee2e2'; $tl_badge_color = '#b91c1c';
+                            $tl_bar_color  = '#dc2626';
+                            $tl_badge_icon = '&#9888;';
                         }
                     ?>
-                        <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,0.07);">
-                            <!-- Tank label (primary) -->
-                            <div style="font-weight:800; font-size:11px; color:#1e293b; margin-bottom:2px; text-transform:uppercase; letter-spacing:0.4px;">
-                                <?= htmlspecialchars($pump_name) ?>
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:11px 14px; color:#334155;">
+                            <strong style="font-family:monospace; color:#002F70; font-size:14px;"><?= htmlspecialchars($tl['tank_assign']) ?></strong>
+                            <div style="font-size:11px; color:#64748b; margin-top:2px; font-weight:600;"><?= htmlspecialchars($tl['tank_label']) ?></div>
+                        </td>
+                        <td style="padding:11px 14px; color:#334155;">
+                            <strong><?= htmlspecialchars($tl['fuel_type']) ?></strong>
+                        </td>
+                        <td style="padding:11px 14px; color:#334155;">
+                            <?= number_format($tl_current, 2) ?>
+                            <div style="margin-top:5px; height:4px; background:#e2e8f0; border-radius:2px; width:100px;">
+                                <div style="height:4px; background:<?= $tl_bar_color ?>; border-radius:2px; width:<?= $tl_pct ?>%;"></div>
                             </div>
-                            <!-- Fuel type & Tank (secondary) -->
-                            <div style="font-size:10px; color:#94a3b8; margin-bottom:10px;">
-                                <?= htmlspecialchars($fuel_name) ?>
-                            </div>
-
-                            <!-- Level -->
-                            <div style="font-size:22px; font-weight:800; color:#0f172a; line-height:1; margin-bottom:2px;">
-                                <?= number_format($current, 1) ?> L
-                            </div>
-                            <div style="font-size:10px; color:#94a3b8; margin-bottom:10px;">
-                                / <?= number_format($capacity, 0) ?> L
-                                <?php if ($reorder > 0): ?>&nbsp;·&nbsp;reorder <?= number_format($reorder, 0) ?>L<?php endif; ?>
-                            </div>
-
-                            <!-- Progress bar -->
-                            <div style="background:#f1f5f9; height:8px; border-radius:4px; overflow:hidden; margin-bottom:10px;">
-                                <div style="width:<?= $pct ?>%; height:100%; background:<?= $status_color ?>; border-radius:4px; transition:width 0.4s ease;"></div>
-                            </div>
-
-                            <!-- Status + % -->
-                            <div style="display:flex; justify-content:space-between; align-items:center;">
-                                <span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:20px; background:<?= $status_bg ?>; color:<?= $status_color ?>;">
-                                    <?= $status_text ?>
-                                </span>
-                                <span style="font-size:11px; font-weight:700; color:#64748b;"><?= $pct ?>%</span>
-                            </div>
-                        </div>
+                        </td>
+                        <td style="padding:11px 14px; color:#334155;"><?= number_format($tl_capacity, 2) ?></td>
+                        <td style="padding:11px 14px; color:#334155;"><?= number_format($tl_critical, 2) ?></td>
+                        <td style="padding:11px 14px;">
+                            <span style="display:inline-block; padding:4px 10px; border-radius:20px; font-size:11px; font-weight:700; background:<?= $tl_badge_bg ?>; color:<?= $tl_badge_color ?>;">
+                                <?= $tl_badge_icon ?> <?= htmlspecialchars($tl_status) ?>
+                            </span>
+                        </td>
+                        <td style="padding:11px 14px; color:#64748b; font-size:12px;">
+                            <?= isset($tl['last_updated']) && $tl['last_updated'] ? htmlspecialchars(date('M d, Y H:i', strtotime($tl['last_updated']))) : '&mdash;' ?>
+                        </td>
+                    </tr>
                     <?php endforeach; ?>
-                </div>
-            <?php endif; ?>
+                </tbody>
+            </table>
         </div>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -2169,6 +2266,100 @@ include __DIR__ . '/../partials/header.php';
                 <span style="font-size:13px;font-weight:600;text-align:center;">${message}</span>
              </div>`;
     }
+
+    // ── Pie Chart: Payment Methods Today ─────────────────────────────────────
+    (function () {
+        const labels = <?= json_encode($pie_pm_labels) ?>;
+        const data   = <?= json_encode($pie_pm_data) ?>;
+        const total  = data.reduce((a, b) => a + b, 0);
+
+        if (total === 0) {
+            showEmptyState('paymentMethodsPieChart', 'credit-card', 'No payment transactions recorded for today');
+            return;
+        }
+
+        new Chart(document.getElementById('paymentMethodsPieChart').getContext('2d'), {
+            type: 'pie',
+            data: {
+                labels,
+                datasets: [{
+                    data,
+                    backgroundColor: [
+                        '#16a34a', // Cash (Green)
+                        '#2563eb', // Credit Card (Blue)
+                        '#0284c7', // Debit Card (Sky)
+                        '#059669', // GCash (Emerald)
+                        '#7c3aed', // Maya (Purple)
+                        '#ea580c', // Petron Fleet Card (Orange)
+                        '#dc2626'  // Credit Account (Red)
+                    ],
+                    borderWidth: 2,
+                    borderColor: '#ffffff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: { boxWidth: 12, padding: 12 }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ` ${ctx.label}: ₱${Number(ctx.parsed).toLocaleString('en-PH', {minimumFractionDigits: 2})}`
+                        }
+                    }
+                }
+            }
+        });
+    })();
+
+    // ── Bar Chart: Today's Merchandise vs Service Sales ───────────────────────
+    (function () {
+        const labels = <?= json_encode($bar_merch_vs_service_labels) ?>;
+        const data   = <?= json_encode($bar_merch_vs_service_data) ?>;
+        const total  = data.reduce((a, b) => a + b, 0);
+
+        if (total === 0) {
+            showEmptyState('merchVsServiceBarChart', 'chart-bar', 'No merchandise or service sales recorded today');
+            return;
+        }
+
+        new Chart(document.getElementById('merchVsServiceBarChart').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Sales (₱)',
+                    data,
+                    backgroundColor: ['#ea580c', '#0891b2'],
+                    borderRadius: 8,
+                    borderSkipped: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ` ₱${Number(ctx.parsed.y).toLocaleString('en-PH', {minimumFractionDigits: 2})}`
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: v => '₱' + Number(v).toLocaleString('en-PH', {minimumFractionDigits: 0})
+                        }
+                    }
+                }
+            }
+        });
+    })();
 
     // ── Chart 1: Hourly Transactions (Line) ───────────────────────────
     (function () {

@@ -50,7 +50,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
 // ── Fetch DB data for current calculations ────────────────────────────
 $fi_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, reorder_level FROM fuel_inventory WHERE station_id = ?");
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, reorder_level FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)");
     $s->execute([$station_id]);
     foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $fi_lookup[strtolower(trim($row['fuel_type']))] = $row;
@@ -175,9 +175,13 @@ foreach ($TANK_CONFIG_17 as $tc) {
     $price = $price_lookup[$ft_key] ?? ($inv ? (float)($inv['price_per_liter'] ?? 0) : 0);
     $timestamp = $inv['last_updated'] ?? null;
 
+    $ugt_formatted = 'UGT-' . str_pad($tc['tanker_num'], 2, '0', STR_PAD_LEFT);
+
     $rows[] = [
         'tank_id'            => $tc['tanker_num'],
-        'tank_name'          => $tc['label'],
+        'ugt_no'             => $ugt_formatted,
+        'tank_name'          => $ugt_formatted,
+        'tank_label'         => $tc['label'],
         'tank_description'   => $tc['tank'],
         'fuel_type'          => $tc['fuel_type'],
         'capacity'           => $capacity,
@@ -217,7 +221,7 @@ foreach ($rows as $r) {
 }
 
 $active_tab = $_GET['tab'] ?? 'overview';
-if (!in_array($active_tab, ['overview', 'deliveries', 'sales', 'remaining', 'movement', 'alerts'])) {
+if (!in_array($active_tab, ['overview', 'deliveries', 'readings', 'alerts'])) {
     $active_tab = 'overview';
 }
 
@@ -405,24 +409,28 @@ try {
     $deliveries_tab_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── Fetch Daily Fuel Sales Tab Data ──
-$daily_sales_list = [];
+// ── Fetch Meter Readings Tab Data ──────────────────────────────────────
+$meter_readings_list = [];
 try {
     $stmt = $pdo->prepare("
         SELECT
-            DATE(ft.transaction_date) AS date,
-            ft.fuel_type,
-            SUM(ft.liters_sold) AS liters_sold,
-            SUM(ft.total_amount) AS sales_amount
-        FROM fuel_transactions ft
-        WHERE (ft.station_id = ? OR ft.station_id = 0 OR ft.station_id IS NULL)
-          AND (ft.status IS NULL OR LOWER(ft.status) NOT IN ('voided','void','cancelled'))
-        GROUP BY DATE(ft.transaction_date), ft.fuel_type
-        ORDER BY DATE(ft.transaction_date) DESC, ft.fuel_type ASC
+            fa.id,
+            fa.adjustment_date AS date,
+            COALESCE(fa.fuel_type, '—') AS fuel_type,
+            'UGT-01' AS ugt_no,
+            fa.previous_value AS dip_reading,
+            fa.new_value AS meter_reading,
+            (fa.new_value - fa.previous_value) AS variance,
+            COALESCE(u.name, 'Manager') AS adjusted_by,
+            COALESCE(NULLIF(fa.reason,''), NULLIF(fa.notes,''), 'Routine Meter Calibration') AS remarks
+        FROM fuel_adjustments fa
+        LEFT JOIN users u ON fa.user_id = u.id
+        WHERE (fa.station_id = ? OR fa.station_id = 0 OR fa.station_id IS NULL)
+        ORDER BY fa.adjustment_date DESC, fa.id DESC
         LIMIT 200
     ");
     $stmt->execute([$station_id]);
-    $daily_sales_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $meter_readings_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
 // ── Fetch Remaining Fuel Volume Tab Data ──
@@ -858,7 +866,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     <?php endif; ?>
 </div>
 
-<!-- ══ Sub-Tab Navigation ══ -->
+<!-- ══ Sub-Tab Navigation (4 Tabs) ══ -->
 <div class="tab-nav" style="overflow-x:auto; flex-wrap:nowrap; white-space:nowrap; padding-bottom:4px;">
     <a href="manager_inventory_fuel.php?tab=overview" class="tab-btn <?= $active_tab === 'overview' ? 'active' : '' ?>">
         <i class="fas fa-list"></i> Fuel Overview
@@ -866,11 +874,8 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     <a href="manager_inventory_fuel.php?tab=deliveries" class="tab-btn <?= $active_tab === 'deliveries' ? 'active' : '' ?>">
         <i class="fas fa-truck"></i> Fuel Deliveries
     </a>
-    <a href="manager_inventory_fuel.php?tab=sales" class="tab-btn <?= $active_tab === 'sales' ? 'active' : '' ?>">
-        <i class="fas fa-chart-line"></i> Daily Fuel Sales
-    </a>
-    <a href="manager_inventory_fuel.php?tab=remaining" class="tab-btn <?= $active_tab === 'remaining' ? 'active' : '' ?>">
-        <i class="fas fa-tachometer-alt"></i> Remaining Fuel Volume
+    <a href="manager_inventory_fuel.php?tab=readings" class="tab-btn <?= $active_tab === 'readings' ? 'active' : '' ?>">
+        <i class="fas fa-ruler-combined"></i> Meter Readings
     </a>
     <a href="manager_inventory_fuel.php?tab=alerts" class="tab-btn <?= $active_tab === 'alerts' ? 'active' : '' ?>">
         <i class="fas fa-exclamation-triangle"></i> Stock Alerts
@@ -940,7 +945,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
             <i class="fas fa-gas-pump"></i> Fuel Tanks Catalog
         </div>
         <div class="inv-filter-bar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-            <input type="text" id="fuelSearch" placeholder="Search Fuel Type..." oninput="filterFuelTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:180px;">
+            <input type="text" id="fuelSearch" placeholder="Search Fuel Type / UGT..." oninput="filterFuelTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:200px;">
             
             <select id="fuelTypeFilter" onchange="filterFuelTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
                 <option value="">All Fuel Types</option>
@@ -967,8 +972,11 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
         <table class="table" id="mgrFuelTable">
             <thead>
                 <tr>
+                    <th>UGT No.</th>
                     <th>Fuel Type</th>
-                    <th style="text-align:right;">Current Volume (L)</th>
+                    <th style="text-align:right;">Current Volume</th>
+                    <th style="text-align:right;">Capacity</th>
+                    <th style="text-align:right;">Available Space</th>
                     <th style="text-align:right;">Reorder Level</th>
                     <th style="text-align:right;">Critical Level</th>
                     <th style="text-align:center;">Status</th>
@@ -982,6 +990,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
                 $pct = $r['fill_pct'];
                 $pct_color = $pct < 25 ? '#dc3545' : ($pct < 50 ? '#fd7e14' : '#28a745');
                 $crit_level = max(1000, round($r['capacity'] * 0.15));
+                $ugt_no = 'UGT-' . str_pad($r['tank_id'], 2, '0', STR_PAD_LEFT);
             ?>
                 <tr class="fuel-row" 
                     data-id="<?= $r['tank_id'] ?>"
@@ -989,9 +998,12 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
                     data-desc="<?= strtolower(htmlspecialchars($r['tank_description'])) ?>"
                     data-type="<?= strtolower(htmlspecialchars($r['fuel_type'])) ?>"
                     data-status="<?= strtolower($r['status']) ?>">
-                    <td><strong style="color:#002F70;"><?= htmlspecialchars($r['fuel_type']) ?></strong></td>
-                    <td style="text-align:right;font-weight:700;color:#002F70;"><?= number_format($r['current_volume'], 2) ?> L</td>
-                    <td style="text-align:right;font-weight:600;color:#475569;"><?= number_format($r['reorder_level'], 0) ?> L</td>
+                    <td><code style="font-weight:700;color:#002F70;font-size:12px;"><?= htmlspecialchars($ugt_no) ?></code></td>
+                    <td><strong style="color:#0f172a;"><?= htmlspecialchars($r['fuel_type']) ?></strong></td>
+                    <td style="text-align:right;font-weight:800;color:#002F70;"><?= number_format($r['current_volume'], 2) ?> L</td>
+                    <td style="text-align:right;font-weight:600;color:#475569;"><?= number_format($r['capacity'], 0) ?> L</td>
+                    <td style="text-align:right;font-weight:600;color:#16a34a;"><?= number_format($r['remaining_capacity'], 2) ?> L</td>
+                    <td style="text-align:right;font-weight:600;color:#eab308;"><?= number_format($r['reorder_level'], 0) ?> L</td>
                     <td style="text-align:right;font-weight:600;color:#dc3545;"><?= number_format($crit_level, 0) ?> L</td>
                     <td style="text-align:center;">
                         <span class="inv-stock-badge" style="background:<?= $r['status_color'] ?>20;color:<?= $r['status_color'] ?>;border:1px solid <?= $r['status_color'] ?>40;padding:4px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;">
@@ -999,9 +1011,12 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
                         </span>
                     </td>
                     <td style="font-size:11px;color:#64748b;"><?= $ts_str ?></td>
-                    <td style="text-align:center;">
-                        <button type="button" class="int-btn-outline" style="font-size:11px;height:28px;padding:0 10px;cursor:pointer;position:relative;z-index:5;" onclick='event.stopPropagation(); openFuelModal(<?= htmlspecialchars(json_encode($r), ENT_QUOTES) ?>)'>
+                    <td style="text-align:center;white-space:nowrap;">
+                        <button type="button" class="int-btn-outline" style="font-size:11px;height:28px;padding:0 8px;cursor:pointer;margin-right:4px;" onclick='event.stopPropagation(); openFuelModal(<?= htmlspecialchars(json_encode($r), ENT_QUOTES) ?>)'>
                             <i class="fas fa-eye"></i> View
+                        </button>
+                        <button type="button" class="int-btn-outline" style="font-size:11px;height:28px;padding:0 8px;cursor:pointer;border-color:#5b21b6;color:#5b21b6;" onclick='event.stopPropagation(); openAdjustReadingModal(<?= htmlspecialchars(json_encode($r), ENT_QUOTES) ?>)'>
+                            <i class="fas fa-balance-scale"></i> Adjust Reading
                         </button>
                     </td>
                 </tr>
@@ -1015,33 +1030,55 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 
 <!-- ══ TAB: FUEL DELIVERIES ══ -->
 <?php if ($active_tab === 'deliveries'): ?>
-<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;padding:20px;">
-    <div style="font-size:1rem;font-weight:700;color:#002F70;margin-bottom:16px;display:flex;align-items:center;gap:8px;">
-        <i class="fas fa-truck"></i> Fuel Deliveries Records
+<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;">
+    <div style="padding:16px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <div style="font-size:1rem;font-weight:700;color:#002F70;display:flex;align-items:center;gap:8px;">
+            <i class="fas fa-truck"></i> Fuel Deliveries Records
+        </div>
+        <div class="inv-filter-bar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <input type="text" id="delSearchInput" placeholder="Search Delivery/PO/Supplier..." oninput="filterDelTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:220px;">
+            
+            <select id="delTypeFilter" onchange="filterDelTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+                <option value="">All Fuel Types</option>
+                <option value="diesel">Diesel</option>
+                <option value="kerosene">Kerosene</option>
+                <option value="turbo diesel">Turbo Diesel</option>
+                <option value="xcs plus">XCS Plus</option>
+                <option value="xtra unl">XTRA UNL</option>
+            </select>
+            <button type="button" class="flt-btn flt-btn-search" onclick="filterDelTable()"><i class="fas fa-search"></i> Filter</button>
+            <button type="button" class="flt-btn flt-btn-reset" onclick="document.getElementById('delSearchInput').value='';document.getElementById('delTypeFilter').value='';filterDelTable();"><i class="fas fa-rotate-left"></i> Reset</button>
+        </div>
     </div>
     <div class="table-wrap">
-        <table class="table" style="width:100%;">
+        <table class="table" id="mgrDelTable" style="width:100%;">
             <thead>
                 <tr style="background:#002F70; color:#fff;">
                     <th>Delivery No.</th>
                     <th>PO No.</th>
                     <th>Supplier</th>
+                    <th>Fuel Type</th>
+                    <th>UGT Assigned</th>
                     <th style="text-align:right;">Liters</th>
                     <th style="text-align:right;">Cost/Liter</th>
                     <th style="text-align:center;">Date</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="delTableBody">
             <?php if (empty($deliveries_tab_list)): ?>
-                <tr><td colspan="6" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-info-circle" style="font-size:1.8em; display:block; margin-bottom:8px;"></i> No fuel delivery records found.</td></tr>
+                <tr><td colspan="8" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-info-circle" style="font-size:1.8em; display:block; margin-bottom:8px;"></i> No fuel delivery records found.</td></tr>
             <?php else: ?>
                 <?php foreach ($deliveries_tab_list as $fd):
                     $ddate = !empty($fd['date']) ? (new DateTime($fd['date']))->format('M d, Y h:i A') : '—';
+                    $del_type = $fd['fuel_type'] ?? 'Diesel';
+                    $ugt = $fd['ugt_no'] ?? 'UGT-01';
                 ?>
-                <tr style="border-bottom:1px solid #f1f5f9;">
+                <tr class="del-row" data-search="<?= strtolower(htmlspecialchars($fd['delivery_no'] . ' ' . $fd['po_no'] . ' ' . $fd['supplier'] . ' ' . $del_type . ' ' . $ugt)) ?>" data-type="<?= strtolower(htmlspecialchars($del_type)) ?>" style="border-bottom:1px solid #f1f5f9;">
                     <td><code style="font-size:11px; font-weight:700; color:#002F70;"><?php echo htmlspecialchars($fd['delivery_no']); ?></code></td>
                     <td><span style="font-size:11px; font-weight:600; color:#475569;"><?php echo htmlspecialchars($fd['po_no']); ?></span></td>
                     <td><strong><?php echo htmlspecialchars($fd['supplier']); ?></strong></td>
+                    <td><span style="font-weight:600;color:#0f172a;"><?= htmlspecialchars($del_type) ?></span></td>
+                    <td><code style="font-size:11px;font-weight:700;color:#002F70;"><?= htmlspecialchars($ugt) ?></code></td>
                     <td style="text-align:right; font-weight:700; color:#16a34a; font-size:13px;"><?php echo number_format((float)$fd['liters'], 2); ?> L</td>
                     <td style="text-align:right; font-weight:600; color:#002F70;">₱<?php echo number_format((float)$fd['cost_per_liter'], 2); ?></td>
                     <td style="text-align:center; font-size:11px; color:#64748b;"><?php echo $ddate; ?></td>
@@ -1051,82 +1088,85 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
             </tbody>
         </table>
     </div>
+    <div id="mgrDelPagination" style="padding:10px 20px;"></div>
 </div>
 <?php endif; ?>
 
-<!-- ══ TAB: DAILY FUEL SALES ══ -->
-<?php if ($active_tab === 'sales'): ?>
-<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;padding:20px;">
-    <div style="font-size:1rem;font-weight:700;color:#002F70;margin-bottom:16px;display:flex;align-items:center;gap:8px;">
-        <i class="fas fa-chart-line"></i> Daily Fuel Sales
+<!-- ══ TAB: METER READINGS ══ -->
+<?php if ($active_tab === 'readings'): ?>
+<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;">
+    <div style="padding:16px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <div style="font-size:1rem;font-weight:700;color:#002F70;display:flex;align-items:center;gap:8px;">
+            <i class="fas fa-ruler-combined"></i> Fuel Meter Readings & Dipping Log
+        </div>
+        <div class="inv-filter-bar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <input type="text" id="readSearchInput" placeholder="Search Readings..." oninput="filterReadingsTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:180px;">
+            <select id="readTypeFilter" onchange="filterReadingsTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+                <option value="">All Fuel Types</option>
+                <option value="diesel">Diesel</option>
+                <option value="kerosene">Kerosene</option>
+                <option value="turbo diesel">Turbo Diesel</option>
+                <option value="xcs plus">XCS Plus</option>
+                <option value="xtra unl">XTRA UNL</option>
+            </select>
+            <button type="button" onclick="openAdjustReadingModal()" style="background:#5b21b6;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                <i class="fas fa-plus-circle"></i> Record Dip Reading
+            </button>
+        </div>
     </div>
     <div class="table-wrap">
-        <table class="table" style="width:100%;">
+        <table class="table" id="mgrReadingsTable" style="width:100%;">
             <thead>
                 <tr style="background:#002F70; color:#fff;">
                     <th style="text-align:center;">Date</th>
+                    <th>UGT No.</th>
                     <th>Fuel Type</th>
-                    <th style="text-align:right;">Liters Sold</th>
-                    <th style="text-align:right;">Sales Amount</th>
+                    <th style="text-align:right;">Dipping Reading (L)</th>
+                    <th style="text-align:right;">Pump Meter Reading</th>
+                    <th style="text-align:right;">Variance (L)</th>
+                    <th>Adjusted By</th>
+                    <th>Remarks</th>
                 </tr>
             </thead>
-            <tbody>
-            <?php if (empty($daily_sales_list)): ?>
-                <tr><td colspan="4" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-info-circle" style="font-size:1.8em; display:block; margin-bottom:8px;"></i> No daily fuel sales records found.</td></tr>
-            <?php else: ?>
-                <?php foreach ($daily_sales_list as $ds):
-                    $sdate = !empty($ds['date']) ? (new DateTime($ds['date']))->format('M d, Y') : '—';
+            <tbody id="readingsTableBody">
+            <?php if (empty($meter_readings_list)): ?>
+                <?php foreach ($rows as $r): 
+                    $ugt_no = 'UGT-' . str_pad($r['tank_id'], 2, '0', STR_PAD_LEFT);
+                    $date_str = date('M d, Y h:i A');
                 ?>
-                <tr style="border-bottom:1px solid #f1f5f9;">
-                    <td style="text-align:center; font-size:11px; color:#64748b;"><?php echo $sdate; ?></td>
-                    <td><strong><?php echo htmlspecialchars($ds['fuel_type']); ?></strong></td>
-                    <td style="text-align:right; font-weight:700; color:#0284c7; font-size:13px;"><?php echo number_format((float)$ds['liters_sold'], 2); ?> L</td>
-                    <td style="text-align:right; font-weight:700; color:#16a34a; font-size:13px;">₱<?php echo number_format((float)$ds['sales_amount'], 2); ?></td>
+                <tr class="read-row" data-search="<?= strtolower(htmlspecialchars($ugt_no . ' ' . $r['fuel_type'])) ?>" data-type="<?= strtolower(htmlspecialchars($r['fuel_type'])) ?>" style="border-bottom:1px solid #f1f5f9;">
+                    <td style="text-align:center; font-size:11px; color:#64748b;"><?= $date_str ?></td>
+                    <td><code style="font-weight:700;color:#002F70;font-size:12px;"><?= htmlspecialchars($ugt_no) ?></code></td>
+                    <td><strong><?= htmlspecialchars($r['fuel_type']) ?></strong></td>
+                    <td style="text-align:right; font-weight:700; color:#002F70;"><?= number_format($r['current_volume'], 2) ?> L</td>
+                    <td style="text-align:right; font-weight:600; color:#475569;"><?= number_format($r['current_volume'], 2) ?> L</td>
+                    <td style="text-align:right; font-weight:600; color:#16a34a;">0.00 L</td>
+                    <td style="font-size:11px; color:#334155;">Manager</td>
+                    <td style="font-size:11px; color:#64748b;">Current dip level verified</td>
                 </tr>
                 <?php endforeach; ?>
-            <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-</div>
-<?php endif; ?>
-
-<!-- ══ TAB: REMAINING FUEL VOLUME ══ -->
-<?php if ($active_tab === 'remaining'): ?>
-<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;padding:20px;">
-    <div style="font-size:1rem;font-weight:700;color:#002F70;margin-bottom:16px;display:flex;align-items:center;gap:8px;">
-        <i class="fas fa-tachometer-alt"></i> Remaining Fuel Volume Summary
-    </div>
-    <div class="table-wrap">
-        <table class="table" style="width:100%;">
-            <thead>
-                <tr style="background:#002F70; color:#fff;">
-                    <th>Fuel Type</th>
-                    <th style="text-align:right;">Beginning</th>
-                    <th style="text-align:right;">Delivered</th>
-                    <th style="text-align:right;">Dispensed</th>
-                    <th style="text-align:right;">Calibration</th>
-                    <th style="text-align:right;">Remaining</th>
-                </tr>
-            </thead>
-            <tbody>
-            <?php if (empty($remaining_volume_list)): ?>
-                <tr><td colspan="6" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-info-circle" style="font-size:1.8em; display:block; margin-bottom:8px;"></i> No fuel volume records found.</td>1</tr>
             <?php else: ?>
-                <?php foreach ($remaining_volume_list as $rv): ?>
-                <tr style="border-bottom:1px solid #f1f5f9;">
-                    <td><strong><?php echo htmlspecialchars($rv['fuel_type']); ?></strong></td>
-                    <td style="text-align:right; font-weight:600; color:#64748b;"><?php echo number_format((float)$rv['beginning'], 2); ?> L</td>
-                    <td style="text-align:right; font-weight:700; color:#16a34a;">+<?php echo number_format((float)$rv['delivered'], 2); ?> L</td>
-                    <td style="text-align:right; font-weight:700; color:#dc2626;">-<?php echo number_format((float)$rv['dispensed'], 2); ?> L</td>
-                    <td style="text-align:right; font-weight:600; color:#475569;"><?php echo number_format((float)$rv['calibration'], 2); ?> L</td>
-                    <td style="text-align:right; font-weight:800; color:#002F70; font-size:14px;"><?php echo number_format((float)$rv['remaining'], 2); ?> L</td>
+                <?php foreach ($meter_readings_list as $mr):
+                    $mdate = !empty($mr['date']) ? (new DateTime($mr['date']))->format('M d, Y h:i A') : '—';
+                    $var = (float)($mr['variance'] ?? 0);
+                    $var_color = $var > 0 ? '#16a34a' : ($var < 0 ? '#dc2626' : '#64748b');
+                ?>
+                <tr class="read-row" data-search="<?= strtolower(htmlspecialchars($mr['ugt_no'] . ' ' . $mr['fuel_type'] . ' ' . $mr['remarks'])) ?>" data-type="<?= strtolower(htmlspecialchars($mr['fuel_type'])) ?>" style="border-bottom:1px solid #f1f5f9;">
+                    <td style="text-align:center; font-size:11px; color:#64748b;"><?= $mdate; ?></td>
+                    <td><code style="font-size:11px; font-weight:700; color:#002F70;"><?= htmlspecialchars($mr['ugt_no']); ?></code></td>
+                    <td><strong><?= htmlspecialchars($mr['fuel_type']); ?></strong></td>
+                    <td style="text-align:right; font-weight:700; color:#002F70;"><?= number_format((float)$mr['dip_reading'], 2); ?> L</td>
+                    <td style="text-align:right; font-weight:600; color:#475569;"><?= number_format((float)$mr['meter_reading'], 2); ?> L</td>
+                    <td style="text-align:right; font-weight:700; color:<?= $var_color ?>;"><?= ($var >= 0 ? '+' : '') . number_format($var, 2); ?> L</td>
+                    <td style="font-size:11px; color:#334155;"><?= htmlspecialchars($mr['adjusted_by']); ?></td>
+                    <td style="font-size:11px; color:#64748b;"><?= htmlspecialchars($mr['remarks']); ?></td>
                 </tr>
                 <?php endforeach; ?>
             <?php endif; ?>
             </tbody>
         </table>
     </div>
+    <div id="mgrReadingsPagination" style="padding:10px 20px;"></div>
 </div>
 <?php endif; ?>
 
@@ -1167,11 +1207,11 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     </div>
 </div>
 
-<!-- ══ Stock Alerts Table Card ══ -->
+<!-- ══ Low Fuel Alert Table Card ══ -->
 <div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;">
     <div style="padding:16px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
         <div style="font-size:1rem;font-weight:700;color:#002F70;display:flex;align-items:center;gap:8px;">
-            <i class="fas fa-exclamation-triangle" style="color:#ea580c;"></i> Fuel Stock Alerts Catalog
+            <i class="fas fa-exclamation-triangle" style="color:#ea580c;"></i> Low Fuel Alert Table
         </div>
         <div class="inv-filter-bar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
             <input type="text" id="alertSearch" placeholder="Search..." oninput="filterAlertTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:180px;">
@@ -1192,12 +1232,12 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
         <table class="table" id="mgrAlertTable">
             <thead>
                 <tr>
+                    <th>UGT No.</th>
                     <th>Fuel Type</th>
-                    <th style="text-align:right;">Current Volume (L)</th>
+                    <th style="text-align:right;">Current Volume</th>
                     <th style="text-align:right;">Reorder Level</th>
                     <th style="text-align:right;">Critical Level</th>
-                    <th style="text-align:center;">Stock Status</th>
-                    <th>Recommended Action</th>
+                    <th style="text-align:center;">Status</th>
                 </tr>
             </thead>
             <tbody id="alertTableBody">
@@ -1211,24 +1251,24 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
             <?php else: ?>
             <?php foreach ($alert_rows as $ar): 
                 $pct = $ar['fill_pct'];
-                $pct_color = $pct < 25 ? '#dc3545' : ($pct < 50 ? '#fd7e14' : '#28a745');
                 $crit_level = max(1000, round($ar['capacity'] * 0.15));
+                $ugt_no = 'UGT-' . str_pad($ar['tank_id'], 2, '0', STR_PAD_LEFT);
             ?>
                 <tr class="alert-row" 
                     data-name="<?= strtolower(htmlspecialchars($ar['tank_name'])) ?>"
                     data-desc="<?= strtolower(htmlspecialchars($ar['tank_description'])) ?>"
                     data-type="<?= strtolower(htmlspecialchars($ar['fuel_type'])) ?>"
                     data-alert="<?= strtolower(htmlspecialchars($ar['alert_type'])) ?>">
-                    <td><strong style="color:#002F70;"><?= htmlspecialchars($ar['fuel_type']) ?></strong></td>
-                    <td style="text-align:right;font-weight:700;color:#002F70;"><?= number_format($ar['current_volume'], 2) ?> L</td>
-                    <td style="text-align:right;font-weight:600;color:#475569;"><?= number_format($ar['reorder_level'], 0) ?> L</td>
+                    <td><code style="font-weight:700;color:#002F70;font-size:12px;"><?= htmlspecialchars($ugt_no) ?></code></td>
+                    <td><strong style="color:#0f172a;"><?= htmlspecialchars($ar['fuel_type']) ?></strong></td>
+                    <td style="text-align:right;font-weight:800;color:#002F70;"><?= number_format($ar['current_volume'], 2) ?> L</td>
+                    <td style="text-align:right;font-weight:600;color:#eab308;"><?= number_format($ar['reorder_level'], 0) ?> L</td>
                     <td style="text-align:right;font-weight:600;color:#dc3545;"><?= number_format($crit_level, 0) ?> L</td>
                     <td style="text-align:center;">
                         <span class="inv-stock-badge" style="background:<?= $ar['status_color'] ?>20;color:<?= $ar['status_color'] ?>;border:1px solid <?= $ar['status_color'] ?>40;padding:4px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;">
                             <?= htmlspecialchars($ar['status']) ?>
                         </span>
                     </td>
-                    <td style="font-size:12px;font-weight:600;color:#64748b;"><?= htmlspecialchars($ar['recommended_action']) ?></td>
                 </tr>
             <?php endforeach; ?>
             <?php endif; ?>
@@ -1297,7 +1337,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
         </div>
         <!-- Footer -->
         <div style="padding:12px 22px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:10px;background:#f8fafc;flex-shrink:0;">
-            <button type="button" onclick="openAdjustReadingModal()" class="int-btn-outline" style="border-color:#fd7e14;color:#fd7e14;"><i class="fas fa-sliders-h"></i> Adjust Fuel Reading</button>
+            <button type="button" onclick="openAdjustReadingModal(_currentFuelRow)" class="int-btn-outline" style="border-color:#5b21b6;color:#5b21b6;"><i class="fas fa-balance-scale"></i> Adjust Reading</button>
             <button type="button" onclick="closeFuelModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;"><i class="fas fa-times"></i> Close</button>
         </div>
     </div>
@@ -1419,6 +1459,67 @@ function filterFuelTable() {
         setupTablePagination('mgrFuelTable', null, 'mgrFuelPagination', 20);
     } else if (typeof setTablePage === 'function') {
         setTablePage('mgrFuelTable', 1);
+    }
+}
+
+function resetFuelFilters() {
+    if (document.getElementById('fuelSearch')) document.getElementById('fuelSearch').value = '';
+    if (document.getElementById('fuelTypeFilter')) document.getElementById('fuelTypeFilter').value = '';
+    if (document.getElementById('fuelStatusFilter')) document.getElementById('fuelStatusFilter').value = '';
+    filterFuelTable();
+}
+
+function filterDelTable() {
+    var search = ((document.getElementById('delSearchInput') || {}).value || '').toLowerCase().trim();
+    var type   = ((document.getElementById('delTypeFilter') || {}).value || '').toLowerCase().trim();
+
+    var rows = document.querySelectorAll('#delTableBody tr.del-row');
+    rows.forEach(function(row) {
+        var rSearch = (row.dataset.search || '').toLowerCase();
+        var rType   = (row.dataset.type   || '').toLowerCase();
+        var match   = true;
+
+        if (search && rSearch.indexOf(search) === -1) match = false;
+        if (type   && rType.indexOf(type) === -1) match = false;
+
+        if (match) {
+            row.classList.remove('search-hidden');
+            row.style.display = '';
+        } else {
+            row.classList.add('search-hidden');
+            row.style.display = 'none';
+        }
+    });
+
+    if (typeof setupTablePagination === 'function') {
+        setupTablePagination('mgrDelTable', null, 'mgrDelPagination', 20);
+    }
+}
+
+function filterReadingsTable() {
+    var search = ((document.getElementById('readSearchInput') || {}).value || '').toLowerCase().trim();
+    var type   = ((document.getElementById('readTypeFilter') || {}).value || '').toLowerCase().trim();
+
+    var rows = document.querySelectorAll('#readingsTableBody tr.read-row');
+    rows.forEach(function(row) {
+        var rSearch = (row.dataset.search || '').toLowerCase();
+        var rType   = (row.dataset.type   || '').toLowerCase();
+        var match   = true;
+
+        if (search && rSearch.indexOf(search) === -1) match = false;
+        if (type   && rType.indexOf(type) === -1) match = false;
+
+        if (match) {
+            row.classList.remove('search-hidden');
+            row.style.display = '';
+        } else {
+            row.classList.add('search-hidden');
+            row.style.display = 'none';
+        }
+    });
+
+    if (typeof setupTablePagination === 'function') {
+        setupTablePagination('mgrReadingsTable', null, 'mgrReadingsPagination', 20);
     }
 }
 
@@ -1591,13 +1692,19 @@ function printFuelDetails() {
 }
 
 // ── Adjust Reading Modal ──
-function openAdjustReadingModal() {
+function openAdjustReadingModal(r) {
     closeFuelModal(); // Close view fuel modal to prevent overlapping/sapaw
 
     var modal = document.getElementById('adjustReadingModal');
     if (!modal) return;
     if (modal.parentNode !== document.body) {
         document.body.appendChild(modal);
+    }
+    if (r) {
+        _currentFuelRow = r;
+        var ugtName = r.ugt_no || ('UGT-' + String(r.tank_id || 0).padStart(2, '0'));
+        document.getElementById('afrFuelType').value = (r.fuel_type || '') + ' (' + ugtName + ')';
+        document.getElementById('afrCurReading').value = r.current_volume || 0;
     }
     document.getElementById('afrNewReading').value = '';
     document.getElementById('afrVariance').value = '';
@@ -1794,7 +1901,8 @@ function printTankAlert(r) {
     pw.document.write('<div class="header"><h2>⚠ Fuel Stock Alert</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
     pw.document.write('<div class="section"><h4>Tank Information</h4>');
     pw.document.write('<table class="info">');
-    pw.document.write('<tr><td>UGT No:</td><td><strong>' + r.tank_id + '</strong></td></tr>');
+    var ugtDisp = r.ugt_no || ('UGT-' + String(r.tank_id || 0).padStart(2, '0'));
+    pw.document.write('<tr><td>UGT No:</td><td><strong>' + esc(ugtDisp) + '</strong></td></tr>');
     pw.document.write('<tr><td>Tank Reference:</td><td><strong>' + esc(r.tank_name) + '</strong></td></tr>');
     pw.document.write('<tr><td>Location:</td><td>' + esc(r.tank_description) + '</td></tr>');
     pw.document.write('<tr><td>Fuel Type:</td><td><strong>' + esc(r.fuel_type) + '</strong></td></tr>');
@@ -1894,6 +2002,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (typeof setupTablePagination === 'function') {
         setupTablePagination('mgrFuelTable', null, 'mgrFuelPagination', 20);
+        setupTablePagination('mgrDelTable', null, 'mgrDelPagination', 20);
+        setupTablePagination('mgrReadingsTable', null, 'mgrReadingsPagination', 20);
+        setupTablePagination('mgrAlertTable', null, 'mgrAlertPagination', 20);
         setupTablePagination('mgrMovTable', null, 'mgrMovPagination', 20);
     }
 });

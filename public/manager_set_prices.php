@@ -294,6 +294,7 @@ try {
         station_id INT NOT NULL DEFAULT 1,
         service_key VARCHAR(100) NOT NULL,
         service_name VARCHAR(200) NOT NULL,
+        category VARCHAR(100) DEFAULT NULL,
         service_price DECIMAL(12,2) NOT NULL DEFAULT 0,
         min_price DECIMAL(12,2) DEFAULT 0,
         max_price DECIMAL(12,2) DEFAULT 0,
@@ -310,9 +311,16 @@ try {
         INDEX idx_station (station_id),
         INDEX idx_active (active)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    
+    // Add category column if it doesn't exist (migration safety)
+    try {
+        $pdo->exec("ALTER TABLE job_order_service_types ADD COLUMN category VARCHAR(100) DEFAULT NULL AFTER service_name");
+    } catch (Exception $e) {
+        // Column already exists, ignore
+    }
 
     $stmt = $pdo->prepare("
-        SELECT s.id, s.service_name, s.service_key, s.service_price,
+        SELECT s.id, s.service_name, s.service_key, s.category, s.service_price,
                s.status, s.active,
                p.new_price AS pending_price,
                p.status    AS approval_status,
@@ -918,9 +926,27 @@ body, html { overflow-x: hidden; max-width: 100%; }
                     Found <?php echo count($service_types); ?> service type(s)
                 </div>
             </div>
-            <button onclick="openAddServiceModal()" style="background:linear-gradient(135deg,#002F6C 0%,#004494 100%);color:#fff;border:none;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 4px rgba(0,47,108,0.2);transition:all 0.2s;">
-                <i class="fas fa-plus-circle"></i> Add Service
-            </button>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <select id="serviceCategoryFilter" onchange="filterServiceTable()" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#334155;background:#fff;">
+                    <option value="">All Categories</option>
+                    <option value="Preventive Maintenance">Preventive Maintenance</option>
+                    <option value="Oil & Lubrication Services">Oil & Lubrication Services</option>
+                    <option value="Engine Services">Engine Services</option>
+                    <option value="Brake Services">Brake Services</option>
+                    <option value="Tire Services">Tire Services</option>
+                    <option value="Battery Services">Battery Services</option>
+                    <option value="Cooling System">Cooling System</option>
+                    <option value="Electrical Services">Electrical Services</option>
+                    <option value="Air Conditioning">Air Conditioning</option>
+                    <option value="Undercarriage Services">Undercarriage Services</option>
+                    <option value="Cleaning Services">Cleaning Services</option>
+                    <option value="Emergency Services">Emergency Services</option>
+                    <option value="Custom Services">Custom Services</option>
+                </select>
+                <button onclick="openAddServiceModal()" style="background:linear-gradient(135deg,#002F6C 0%,#004494 100%);color:#fff;border:none;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 4px rgba(0,47,108,0.2);transition:all 0.2s;">
+                    <i class="fas fa-plus-circle"></i> Add Service
+                </button>
+            </div>
         </div>
         
         <?php if (empty($service_types)): ?>
@@ -935,25 +961,33 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         <tr>
                             <th>Service Name</th>
                             <th>Service Key</th>
+                            <th>Category</th>
                             <th>Price (&#8369;)</th>
                             <th>Status</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="serviceTableBody">
                         <?php foreach ($service_types as $svc): 
                             $currentPrice = (float)$svc['service_price'];
                             $isServiceActive = (int)($svc['active'] ?? 1) === 1;
                             $statusDisplay = $isServiceActive ? 'Active' : 'Inactive';
                             $statusColor = $isServiceActive ? '#16a34a' : '#dc2626';
+                            $category = $svc['category'] ?? 'Uncategorized';
                         ?>
-                        <tr>
+                        <tr class="service-row" data-category="<?php echo htmlspecialchars($category); ?>">
                             <td>
                                 <strong><?php echo htmlspecialchars($svc['service_name']); ?></strong>
                             </td>
                             <td>
                                 <span style="font-family:monospace;color:#64748b;font-size:12px;">
                                     <?php echo htmlspecialchars($svc['service_key']); ?>
+                                </span>
+                            </td>
+                            <td>
+                                <span style="background:#f0f7ff;color:#003d7a;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:5px;">
+                                    <i class="fas fa-tag" style="font-size:10px;"></i>
+                                    <?php echo htmlspecialchars($category); ?>
                                 </span>
                             </td>
                             <td>
@@ -969,7 +1003,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
                             </td>
                             <td>
                                 <div class="act-btn-wrap">
-                                    <button onclick="openEditServicePriceModal(<?php echo $svc['id']; ?>, '<?php echo htmlspecialchars($svc['service_name']); ?>', <?php echo $currentPrice; ?>)" class="act-btn act-btn-edit">
+                                    <button onclick="openEditServicePriceModal(<?php echo $svc['id']; ?>, '<?php echo htmlspecialchars($svc['service_name']); ?>', <?php echo $currentPrice; ?>, '<?php echo htmlspecialchars($svc['service_key']); ?>', '<?php echo htmlspecialchars($category); ?>', <?php echo $isServiceActive ? '1' : '0'; ?>)" class="act-btn act-btn-edit">
                                         <i class="fas fa-edit"></i> Edit
                                     </button>
                                     <?php if ($isServiceActive): ?>
@@ -1088,15 +1122,48 @@ function filterTable() {
 <!-- Add Product Modal -->
 <div id="addProductModal" class="modal">
     <div style="background:#fff;border-radius:12px;width:90%;max-width:600px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.3);animation:slideDown 0.3s ease-out;">
-        <div style="background:#fff;border-bottom:2px solid #e2e8f0;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:1;">
-            <h3 style="margin:0;font-size:18px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:10px;">
-                <i class="fas fa-plus-circle" style="color:#64748b;"></i> Add New Fuel Product
+        <div style="background:#002F6C;border-radius:12px 12px 0 0;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:1;">
+            <h3 style="margin:0;font-size:18px;font-weight:700;color:#fff;display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-plus-circle"></i> Add New Fuel Product
             </h3>
         </div>
         <form id="addProductForm" style="padding:24px;">
             <div style="margin-bottom:18px;">
                 <label style="display:block;font-weight:600;margin-bottom:6px;color:#334155;font-size:13px;">FUEL TYPE <span style="color:#dc2626;">*</span></label>
-                <input type="text" id="newFuelType" required style="width:100%;padding:10px 12px;border:2px solid #e2e8f0;border-radius:6px;font-size:13px;transition:border-color 0.2s;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#e2e8f0'" placeholder="e.g. Unleaded, Diesel, Premium">
+                <?php
+                // Load fuel types not yet in this station's inventory
+                try {
+                    $ft_stmt = $pdo->prepare("
+                        SELECT ft.id, ft.name
+                        FROM fuel_types ft
+                        WHERE ft.id NOT IN (
+                            SELECT fuel_type_id FROM fuel_inventory WHERE station_id = ?
+                        )
+                        ORDER BY ft.name
+                    ");
+                    $ft_stmt->execute([$station_id]);
+                    $available_fuel_types = $ft_stmt->fetchAll(PDO::FETCH_ASSOC);
+                } catch (Exception $e) { $available_fuel_types = []; }
+                ?>
+                <?php if (empty($available_fuel_types)): ?>
+                    <div style="padding:10px 12px;background:#fef9c3;border:1px solid #fde047;border-radius:6px;font-size:13px;color:#713f12;">
+                        <i class="fas fa-info-circle"></i> All available fuel types have already been added for this station.
+                    </div>
+                    <input type="hidden" id="newFuelTypeId" name="fuel_type_id" value="">
+                    <input type="hidden" id="newFuelType" value="">
+                <?php else: ?>
+                    <select id="newFuelType" id="newFuelTypeSelect" required
+                        style="width:100%;padding:10px 12px;border:2px solid #e2e8f0;border-radius:6px;font-size:13px;transition:border-color 0.2s;background:#fff;"
+                        onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#e2e8f0'"
+                        onchange="document.getElementById('newFuelTypeId').value=this.options[this.selectedIndex].dataset.id;document.getElementById('newFuelTypeName').value=this.value;">
+                        <option value="">— Select Fuel Type —</option>
+                        <?php foreach ($available_fuel_types as $ft): ?>
+                            <option value="<?= htmlspecialchars($ft['name']) ?>" data-id="<?= $ft['id'] ?>"><?= htmlspecialchars($ft['name']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <input type="hidden" id="newFuelTypeId" value="">
+                    <input type="hidden" id="newFuelTypeName" value="">
+                <?php endif; ?>
             </div>
             <div style="margin-bottom:18px;">
                 <label style="display:block;font-weight:600;margin-bottom:6px;color:#334155;font-size:13px;">PRICE PER LITER (₱) <span style="color:#dc2626;">*</span></label>
@@ -1122,6 +1189,7 @@ function filterTable() {
     </div>
 </div>
 
+
 <!-- Edit Fuel Modal — Full Edit -->
 <div id="editPriceModal" class="modal">
   <div style="background:#fff;border-radius:12px;width:90%;max-width:580px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3);">
@@ -1130,16 +1198,24 @@ function filterTable() {
     </div>
     <form id="editPriceForm" style="padding:22px;">
       <input type="hidden" id="editFuelId">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-        <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Fuel Type <span style="color:#dc2626;">*</span></label><input type="text" id="editFuelType" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"></div>
-        <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Price / Liter (₱) <span style="color:#dc2626;">*</span></label><input type="number" id="editPrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00"></div>
+      <!-- Fuel Type: read-only display (changing it would violate DB unique constraint) -->
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Fuel Type</label>
+        <div id="editFuelTypeDisplay" style="width:100%;padding:9px 11px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;box-sizing:border-box;background:#f8fafc;color:#1e293b;font-weight:600;"></div>
+        <input type="hidden" id="editFuelType">
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+        <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Price / Liter (₱) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="editPrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00">
+          <div style="font-size:10px;color:#d97706;margin-top:4px;"><i class="fas fa-info-circle"></i> Price changes require Admin approval before taking effect.</div>
+        </div>
         <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Capacity (L) <span style="color:#dc2626;">*</span></label><input type="number" id="editFuelCapacity" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Critical Level (L) <span style="color:#dc2626;">*</span></label><input type="number" id="editFuelCritical" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00"></div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;">
-        <button type="button" onclick="closeEditPriceModal()" style="background:#f1f5f9;color:#ffffff !important;border:1px solid #e2e8f0;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
+        <button type="button" onclick="closeEditPriceModal()" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
         <button type="submit" style="background:#002F6C;color:#fff;border:none;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save"></i> Save Changes</button>
       </div>
     </form>
@@ -1451,6 +1527,25 @@ function filterTable() {
                 <input type="text" id="newServiceName" required style="width:100%;padding:10px 12px;border:2px solid #e2e8f0;border-radius:6px;font-size:13px;transition:border-color 0.2s;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#e2e8f0'" placeholder="e.g. Oil Change">
             </div>
             <div style="margin-bottom:18px;">
+                <label style="display:block;font-weight:600;margin-bottom:6px;color:#334155;font-size:13px;">Category <span style="color:#dc2626;">*</span></label>
+                <select id="newServiceCategory" required style="width:100%;padding:10px 12px;border:2px solid #e2e8f0;border-radius:6px;font-size:13px;transition:border-color 0.2s;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#e2e8f0'">
+                    <option value="">-- Select Category --</option>
+                    <option value="Preventive Maintenance">🔧 Preventive Maintenance</option>
+                    <option value="Oil & Lubrication Services">🛢️ Oil & Lubrication Services</option>
+                    <option value="Engine Services">⚙️ Engine Services</option>
+                    <option value="Brake Services">🛑 Brake Services</option>
+                    <option value="Tire Services">🛞 Tire Services</option>
+                    <option value="Battery Services">🔋 Battery Services</option>
+                    <option value="Cooling System">❄️ Cooling System</option>
+                    <option value="Electrical Services">⚡ Electrical Services</option>
+                    <option value="Air Conditioning">🌬️ Air Conditioning</option>
+                    <option value="Undercarriage Services">🔩 Undercarriage Services</option>
+                    <option value="Cleaning Services">🧼 Cleaning Services</option>
+                    <option value="Emergency Services">🚨 Emergency Services</option>
+                    <option value="Custom Services">✨ Custom Services</option>
+                </select>
+            </div>
+            <div style="margin-bottom:18px;">
                 <label style="display:block;font-weight:600;margin-bottom:6px;color:#334155;font-size:13px;">Service Key <span style="color:#dc2626;">*</span></label>
                 <input type="text" id="newServiceKey" required style="width:100%;padding:10px 12px;border:2px solid #e2e8f0;border-radius:6px;font-size:13px;transition:border-color 0.2s;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#e2e8f0'" placeholder="e.g. oil_change">
                 <small style="color:#64748b;font-size:11px;display:block;margin-top:4px;">Use lowercase letters and underscores only</small>
@@ -1480,6 +1575,25 @@ function filterTable() {
     <form id="editServicePriceForm" style="padding:22px;">
       <input type="hidden" id="editServiceId">
       <div style="margin-bottom:14px;"><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Service Name <span style="color:#dc2626;">*</span></label><input type="text" id="editServiceName" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"></div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Category <span style="color:#dc2626;">*</span></label>
+        <select id="editServiceCategory" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+          <option value="">-- Select Category --</option>
+          <option value="Preventive Maintenance">🔧 Preventive Maintenance</option>
+          <option value="Oil & Lubrication Services">🛢️ Oil & Lubrication Services</option>
+          <option value="Engine Services">⚙️ Engine Services</option>
+          <option value="Brake Services">🛑 Brake Services</option>
+          <option value="Tire Services">🛞 Tire Services</option>
+          <option value="Battery Services">🔋 Battery Services</option>
+          <option value="Cooling System">❄️ Cooling System</option>
+          <option value="Electrical Services">⚡ Electrical Services</option>
+          <option value="Air Conditioning">🌬️ Air Conditioning</option>
+          <option value="Undercarriage Services">🔩 Undercarriage Services</option>
+          <option value="Cleaning Services">🧼 Cleaning Services</option>
+          <option value="Emergency Services">🚨 Emergency Services</option>
+          <option value="Custom Services">✨ Custom Services</option>
+        </select>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Service Key <span style="color:#dc2626;">*</span></label><input type="text" id="editServiceKey" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;font-family:monospace;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"><small style="color:#94a3b8;font-size:11px;">lowercase + underscores only</small></div>
         <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Price (₱) <span style="color:#dc2626;">*</span></label><input type="number" id="editServicePrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00"></div>
@@ -1506,29 +1620,41 @@ function filterTable() {
 // ── Modal functions ─────────────────────────────────────────────────────────
 function openAddProductModal() {
     document.getElementById('addProductModal').style.display = 'flex';
-    document.getElementById('newFuelType').focus();
+    var sel = document.getElementById('newFuelType');
+    if (sel) { try { sel.focus(); } catch(e) {} }
+    // Reset hidden fields
+    var ftiEl = document.getElementById('newFuelTypeId');
+    var ftnEl = document.getElementById('newFuelTypeName');
+    if (ftiEl) ftiEl.value = '';
+    if (ftnEl) ftnEl.value = '';
 }
 
 function closeAddProductModal() {
     document.getElementById('addProductModal').style.display = 'none';
     document.getElementById('addProductForm').reset();
+    var ftiEl = document.getElementById('newFuelTypeId');
+    var ftnEl = document.getElementById('newFuelTypeName');
+    if (ftiEl) ftiEl.value = '';
+    if (ftnEl) ftnEl.value = '';
 }
 
 function openEditPriceModal(id, fuelType, currentPrice) {
     document.getElementById('editFuelId').value = id;
     document.getElementById('editFuelType').value = fuelType;
+    // Populate the read-only display div
+    var displayEl = document.getElementById('editFuelTypeDisplay');
+    if (displayEl) displayEl.textContent = fuelType;
     document.getElementById('editPrice').value = currentPrice;
-    // Fetch full details to populate capacity, critical level, status
+    // Fetch full details to populate capacity and critical level
     fetch('manager_set_prices_handler.php?action=get_fuel_details&id=' + id)
         .then(r => r.json()).then(data => {
             if (data.success && data.fuel) {
                 document.getElementById('editFuelCapacity').value = parseFloat(data.fuel.capacity || 0);
                 document.getElementById('editFuelCritical').value = parseFloat(data.fuel.critical_level || 0);
-                document.getElementById('editFuelStatus').value = data.fuel.status || 'active';
             }
-        });
+        }).catch(function(){});
     document.getElementById('editPriceModal').style.display = 'flex';
-    document.getElementById('editFuelType').focus();
+    document.getElementById('editPrice').focus();
 }
 
 function closeEditPriceModal() {
@@ -1579,59 +1705,72 @@ document.getElementById('editServicePriceModal').addEventListener('click', funct
 // ── Add Product Form Handler ────────────────────────────────────────────────
 document.getElementById('addProductForm').addEventListener('submit', function(e) {
     e.preventDefault();
-    
-    var fuelType = document.getElementById('newFuelType').value.trim();
-    var price = parseFloat(document.getElementById('newPrice').value);
-    var capacity = parseFloat(document.getElementById('newCapacity').value);
-    var criticalLevel = parseFloat(document.getElementById('newCriticalLevel').value);
-    
-    if (!fuelType || price < 0 || capacity < 0 || criticalLevel < 0) {
-        alert('Please fill all required fields with valid values.');
-        return;
+
+    var fuelTypeEl  = document.getElementById('newFuelType');
+    var fuelTypeName = (document.getElementById('newFuelTypeName') || {}).value
+                    || (fuelTypeEl ? fuelTypeEl.value : '').trim();
+    var fuelTypeId  = (document.getElementById('newFuelTypeId') || {}).value || '';
+
+    // Validate — also accept when select is used (value on the select itself)
+    if (!fuelTypeName && fuelTypeEl) fuelTypeName = fuelTypeEl.value.trim();
+    if (!fuelTypeId && fuelTypeEl && fuelTypeEl.options && fuelTypeEl.selectedIndex > 0) {
+        fuelTypeId = fuelTypeEl.options[fuelTypeEl.selectedIndex].dataset.id || '';
     }
-    
+
+    var price        = parseFloat(document.getElementById('newPrice').value);
+    var capacity     = parseFloat(document.getElementById('newCapacity').value);
+    var criticalLvl  = parseFloat(document.getElementById('newCriticalLevel').value);
+
+    if (!fuelTypeName) { alert('Please select a fuel type.'); return; }
+    if (isNaN(price) || price < 0)       { alert('Please enter a valid price.'); return; }
+    if (isNaN(capacity) || capacity <= 0) { alert('Please enter a valid capacity.'); return; }
+    if (isNaN(criticalLvl) || criticalLvl < 0) { alert('Please enter a valid critical level.'); return; }
+
     var formData = new FormData();
-    formData.append('action', 'add_fuel_product');
-    formData.append('fuel_type', fuelType);
-    formData.append('price', price);
-    formData.append('capacity', capacity);
-    formData.append('critical_level', criticalLevel);
-    
-    fetch('manager_set_prices_handler.php', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('SUCCESS: Fuel product added successfully!');
-            closeAddProductModal();
-            location.reload();
-        } else {
-            alert('Error: ' + (data.message || 'Failed to add product'));
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error adding product. Please try again.');
-    });
+    formData.append('action',         'add_fuel_product');
+    formData.append('fuel_type',      fuelTypeName);
+    formData.append('fuel_type_id',   fuelTypeId);
+    formData.append('price',          price);
+    formData.append('capacity',       capacity);
+    formData.append('critical_level', criticalLvl);
+
+    fetch('manager_set_prices_handler.php', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert('SUCCESS: Fuel product added successfully!');
+                closeAddProductModal();
+                location.reload();
+            } else {
+                alert('Error: ' + (data.message || 'Failed to add product'));
+            }
+        })
+        .catch(function(err) {
+            console.error('Add Product error:', err);
+            alert('Network error. Please try again.');
+        });
 });
 
 // ── Edit Fuel Full Form Handler ─────────────────────────────────────────────
 document.getElementById('editPriceForm').addEventListener('submit', function(e) {
     e.preventDefault();
     var fd = new FormData();
-    fd.append('action', 'edit_fuel_full');
+    fd.append('action',         'edit_fuel_full');
     fd.append('id',             document.getElementById('editFuelId').value);
-    fd.append('fuel_type',      document.getElementById('editFuelType').value.trim());
+    // fuel_type is read-only — handler reads it from DB, no need to POST it
     fd.append('price',          document.getElementById('editPrice').value);
     fd.append('capacity',       document.getElementById('editFuelCapacity').value);
     fd.append('critical_level', document.getElementById('editFuelCritical').value);
-    fetch('manager_set_prices_handler.php', {method:'POST', body:fd})
+    fetch('manager_set_prices_handler.php', { method: 'POST', body: fd })
         .then(r => r.json()).then(data => {
-            if (data.success) { alert('SUCCESS: ' + (data.message || 'Fuel product updated!')); closeEditPriceModal(); location.reload(); }
-            else alert('Error: ' + (data.message || 'Failed'));
-        }).catch(() => alert('Error updating fuel.'));
+            if (data.success) {
+                alert('SUCCESS: ' + (data.message || 'Fuel product updated!'));
+                closeEditPriceModal();
+                location.reload();
+            } else {
+                alert('Error: ' + (data.message || 'Update failed'));
+            }
+        }).catch(function() { alert('Network error. Please try again.'); });
 });
 
 // ── View Fuel Details ───────────────────────────────────────────────────────
@@ -2082,18 +2221,23 @@ function closeAddServiceModal() {
     document.getElementById('addServiceForm').reset();
 }
 
-function openEditServicePriceModal(id, serviceName, currentPrice) {
+function openEditServicePriceModal(id, serviceName, currentPrice, serviceKey, category, active) {
     document.getElementById('editServiceId').value = id;
     document.getElementById('editServiceName').value = serviceName;
+    document.getElementById('editServiceKey').value = serviceKey || '';
+    document.getElementById('editServiceCategory').value = category || '';
     document.getElementById('editServicePrice').value = currentPrice;
-    // Fetch full details
+    document.getElementById('editServiceActive').value = active ? '1' : '0';
+    
+    // Fetch full details as fallback
     fetch('manager_set_prices_handler.php?action=get_service_details&id=' + id)
         .then(r => r.json()).then(data => {
             if (data.success && data.service) {
                 var s = data.service;
-                document.getElementById('editServiceName').value   = s.service_name || serviceName;
-                document.getElementById('editServiceKey').value    = s.service_key  || '';
-                document.getElementById('editServicePrice').value  = parseFloat(s.service_price || currentPrice);
+                document.getElementById('editServiceName').value = s.service_name || serviceName;
+                document.getElementById('editServiceKey').value = s.service_key || serviceKey || '';
+                document.getElementById('editServiceCategory').value = s.category || category || '';
+                document.getElementById('editServicePrice').value = parseFloat(s.service_price || currentPrice);
                 document.getElementById('editServiceActive').value = (parseInt(s.active) === 1) ? '1' : '0';
             }
         });
@@ -2111,10 +2255,11 @@ document.getElementById('addServiceForm').addEventListener('submit', function(e)
     e.preventDefault();
     
     var name = document.getElementById('newServiceName').value.trim();
+    var category = document.getElementById('newServiceCategory').value.trim();
     var key = document.getElementById('newServiceKey').value.trim();
     var price = parseFloat(document.getElementById('newServicePrice').value);
     
-    if (!name || !key || price < 0) {
+    if (!name || !category || !key || price < 0) {
         alert('Please fill all required fields with valid values.');
         return;
     }
@@ -2122,6 +2267,7 @@ document.getElementById('addServiceForm').addEventListener('submit', function(e)
     var formData = new FormData();
     formData.append('action', 'add_service');
     formData.append('service_name', name);
+    formData.append('category', category);
     formData.append('service_key', key);
     formData.append('service_price', price);
     
@@ -2152,6 +2298,7 @@ document.getElementById('editServicePriceForm').addEventListener('submit', funct
     fd.append('action',        'edit_service_full');
     fd.append('id',            document.getElementById('editServiceId').value);
     fd.append('service_name',  document.getElementById('editServiceName').value.trim());
+    fd.append('category',      document.getElementById('editServiceCategory').value.trim());
     fd.append('service_key',   document.getElementById('editServiceKey').value.trim());
     fd.append('service_price', document.getElementById('editServicePrice').value);
     fd.append('active',        document.getElementById('editServiceActive').value);
@@ -2162,6 +2309,29 @@ document.getElementById('editServicePriceForm').addEventListener('submit', funct
         }).catch(() => alert('Error updating service.'));
 });
 
+// Service Category Filter Function
+function filterServiceTable() {
+    var categoryFilter = document.getElementById('serviceCategoryFilter').value;
+    var rows = document.querySelectorAll('#serviceTableBody .service-row');
+    var visibleCount = 0;
+    
+    rows.forEach(function(row) {
+        var rowCategory = row.getAttribute('data-category') || '';
+        var matchCategory = !categoryFilter || rowCategory === categoryFilter;
+        
+        if (matchCategory) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+    
+    // Optional: Show "no results" message if needed
+    if (visibleCount === 0) {
+        // Could add a "no results" row here if desired
+    }
+}
 function deactivateService(id, serviceName) {
     if (!confirm('Are you sure you want to deactivate "' + serviceName + '"?\n\nThis will set the service status to inactive.')) {
         return;

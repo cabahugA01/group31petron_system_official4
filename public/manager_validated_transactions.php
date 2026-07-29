@@ -147,14 +147,11 @@ $mt_shift_col  = vt_shift_display_case($mt_shift_expr);
 $mt_staff_id   = vt_has($mt_cols, 'staff_id') ? 'mt.staff_id' : 'NULL';
 $mt_validated_join = vt_has($mt_cols, 'validated_by') ? 'LEFT JOIN users v ON v.id = mt.validated_by' : '';
 
-$mt_vehicle_expr = "'' AS vehicle_plate";
-if (vt_has($mt_cols, 'vehicle_plate')) {
-    $mt_vehicle_expr = "COALESCE(NULLIF(TRIM(mt.vehicle_plate),''), '—') AS vehicle_plate";
-} elseif (vt_has($mt_cols, 'vehicle')) {
-    $mt_vehicle_expr = "COALESCE(NULLIF(TRIM(mt.vehicle),''), '—') AS vehicle_plate";
-} elseif (vt_has($mt_cols, 'job_order_vehicle_plate')) {
-    $mt_vehicle_expr = "COALESCE(NULLIF(TRIM(mt.job_order_vehicle_plate),''), '—') AS vehicle_plate";
-}
+$mt_vehicle_expr = "COALESCE(
+    NULLIF(TRIM(mt.job_order_vehicle_plate), ''),
+    NULLIF(TRIM(jo_mt.vehicle_plate), ''),
+    '—'
+) AS vehicle_plate";
 $mt_jo_service_expr = vt_has($mt_cols, 'job_order_service') ? "COALESCE(NULLIF(TRIM(mt.job_order_service),''),'')" : "''";
 
 // IMPORTANT: Show ALL transactions from staff - no validation_status filter
@@ -238,11 +235,29 @@ try {
                 NULLIF(TRIM(COALESCE(mt.rejection_reason,'')), ''),
                 ''
             ) AS validation_remarks,
-            COALESCE(NULLIF(TRIM(mt.job_order_service),''), '') AS service_type,
+            COALESCE(
+                NULLIF(TRIM(mt.job_order_service), ''),
+                jo_mt.service_type,
+                (SELECT GROUP_CONCAT(product_name SEPARATOR ', ') FROM merchandise_transaction_items WHERE transaction_id = mt.id AND (item_type = 'service' OR category LIKE '%Service%') AND category != 'Labor' AND product_name NOT LIKE '%Labor%'),
+                ''
+            ) AS service_type,
+            COALESCE(
+                jo_mt.estimated_cost,
+                (SELECT NULLIF(SUM(subtotal),0) FROM merchandise_transaction_items WHERE transaction_id = mt.id AND (item_type = 'service' OR category LIKE '%Service%') AND category != 'Labor' AND product_name NOT LIKE '%Labor%'),
+                CASE WHEN (mt.job_order_service IS NOT NULL AND TRIM(mt.job_order_service) != '') OR mt.transaction_type IN ('job_order', 'combined') THEN mt.total_amount ELSE 0 END,
+                0
+            ) AS service_fee,
+            COALESCE(
+                jo_mt.actual_labor_cost,
+                jo_mt.estimated_labor_cost,
+                (SELECT COALESCE(SUM(subtotal),0) FROM merchandise_transaction_items WHERE transaction_id = mt.id AND (category = 'Labor' OR product_name LIKE '%Labor%')),
+                0
+            ) AS labor_fee,
             {$mt_jo_service_expr} AS job_order_service
         FROM merchandise_transactions mt
         LEFT JOIN users u ON u.id = mt.staff_id
         {$mt_validated_join}
+        LEFT JOIN job_orders jo_mt ON jo_mt.id = mt.job_order_db_id
         LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id AND COALESCE(mti.item_type,'') != 'service' AND COALESCE(mti.category,'') NOT LIKE '%Service%'
         {$mt_where}
         GROUP BY mt.id
@@ -317,7 +332,10 @@ try {
             CONCAT('JO-', jo.id) AS txn_id,
             COALESCE(NULLIF(TRIM(jo.customer_name),''),'Walk-in') AS customer,
             'Job Order' AS entry_type,
-            COALESCE(jo.service_type,'Service') AS items_service,
+            COALESCE(jo.service_type,'') AS items_service,
+            COALESCE(jo.service_type,'') AS service_type,
+            COALESCE(jo.estimated_cost, 0) AS service_fee,
+            COALESCE(jo.actual_labor_cost, jo.estimated_labor_cost, 0) AS labor_fee,
             COALESCE(NULLIF(TRIM(jo.vehicle_plate),''),'N/A') AS vehicle_plate,
             {$jo_cost_col} AS amount,
             {$jo_paid_col} AS amount_paid,
@@ -951,14 +969,59 @@ include __DIR__ . '/../partials/header.php';
 .flt-btn-excel{color:#1d6f42 !important;border-color:#1d6f42 !important;} .flt-btn-excel:hover{background:#1d6f42 !important;color:#fff !important;}
 .flt-btn-pdf{color:#dc2626 !important;border-color:#dc2626 !important;} .flt-btn-pdf:hover{background:#dc2626 !important;color:#fff !important;}
 /* ── Transaction Type Badges (mirrors admin_all_transactions) ── */
-.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;line-height:1.4;white-space:nowrap;}
+.badge{display:inline-block;padding:2px 6px;border-radius:999px;font-size:9.5px;font-weight:700;line-height:1.4;white-space:nowrap;}
 .badge-green{background:#dcfce7;color:#166534;border:none;}
 .badge-blue{background:#dbeafe;color:#1e40af;border:none;}
 .badge-orange{background:#fff7ed;color:#9a3412;border:none;}
 .badge-gray{background:#f1f5f9;color:#475569;border:none;}
 .badge-red{background:#fee2e2;color:#991b1b;border:none;}
 .badge-purple{background:#f3e8ff;color:#6b21a8;border:none;}
-.badge i {margin-right:4px;}
+.badge i {margin-right:3px;}
+
+/* ── Optimized Table Layout (No scrollbar, no text clipping) ── */
+.vt-table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+}
+.vt-table thead th {
+    background: #002F70 !important;
+    color: #ffffff !important;
+    font-size: 9.5px !important;
+    font-weight: 700 !important;
+    padding: 8px 3px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    border-bottom: 2px solid #001f4d !important;
+    vertical-align: middle !important;
+}
+.vt-table tbody td {
+    padding: 6px 3px !important;
+    vertical-align: middle !important;
+    font-size: 10.5px !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+}
+.vt-table tbody tr:hover td {
+    background: #f8fafc !important;
+}
+.vt-btn-act-sm {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 3px !important;
+    padding: 2px 4px !important;
+    font-size: 9.5px !important;
+    font-weight: 600 !important;
+    border-radius: 4px !important;
+    text-decoration: none !important;
+    white-space: nowrap !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    background: transparent !important;
+}
 </style>
 
 <div class="stock-page">
@@ -1094,25 +1157,45 @@ try {
 </div>
 
 <!-- Table -->
-<div class="card" style="padding:0;overflow:hidden;">
-    <div class="table-responsive" style="width:100%;overflow-x:auto;">
-    <table class="vt-table" style="width:100%;border-collapse:collapse;">
+<div class="card" style="padding:0;width:100%;">
+    <div style="width:100%;overflow-x:hidden;">
+    <table class="vt-table" style="table-layout:fixed;width:100%;">
+        <colgroup>
+            <col style="width:6%;"><!-- OR NO. -->
+            <col style="width:5.5%;"><!-- TXN ID -->
+            <col style="width:6.5%;"><!-- CUSTOMER -->
+            <col style="width:10.5%;"><!-- TYPE -->
+            <col style="width:9%;"><!-- PRODUCTS -->
+            <col style="width:7%;"><!-- SERVICE TYPE -->
+            <col style="width:5.5%;"><!-- SVC FEE -->
+            <col style="width:5.5%;"><!-- LABOR FEE -->
+            <col style="width:5%;"><!-- PLATE NO. -->
+            <col style="width:6.5%;"><!-- TOTAL -->
+            <col style="width:5%;"><!-- PAYMENT -->
+            <col style="width:4%;"><!-- SHIFT -->
+            <col style="width:5.5%;"><!-- STAFF -->
+            <col style="width:5.5%;"><!-- STATUS -->
+            <col style="width:6.5%;"><!-- DATE & TIME -->
+            <col style="width:5.5%;"><!-- ACTIONS -->
+        </colgroup>
         <thead>
             <tr>
-                <th style="white-space:nowrap;">OR NO.</th>
-                <th style="white-space:nowrap;">TRANSACTION ID</th>
-                <th style="white-space:nowrap;">CUSTOMER NAME</th>
-                <th style="white-space:nowrap;">TRANSACTION TYPE</th>
-                <th>PRODUCTS</th>
-                <th>SERVICE TYPE</th>
-                <th>VEHICLE</th>
-                <th>AMOUNT</th>
-                <th>PAYMENT METHOD</th>
-                <th>SHIFT</th>
-                <th>STAFF ENCODER</th>
-                <th>STATUS</th>
-                <th style="white-space:nowrap;">DATE & TIME</th>
-                <th style="text-align:center;">ACTIONS</th>
+                <th style="white-space:nowrap;font-size:9.5px;">OR NO.</th>
+                <th style="white-space:nowrap;font-size:9.5px;">TXN ID</th>
+                <th style="white-space:nowrap;font-size:9.5px;">CUSTOMER</th>
+                <th style="white-space:nowrap;font-size:9.5px;">TYPE</th>
+                <th style="white-space:nowrap;font-size:9.5px;">PRODUCTS</th>
+                <th style="white-space:nowrap;font-size:9.5px;">SERVICE TYPE</th>
+                <th style="text-align:right;white-space:nowrap;font-size:9.5px;">SVC FEE</th>
+                <th style="text-align:right;white-space:nowrap;font-size:9.5px;">LABOR FEE</th>
+                <th style="text-align:center;white-space:nowrap;font-size:9.5px;">PLATE NO.</th>
+                <th style="text-align:right;white-space:nowrap;font-size:9.5px;">TOTAL</th>
+                <th style="white-space:nowrap;font-size:9.5px;">PAYMENT</th>
+                <th style="white-space:nowrap;font-size:9.5px;">SHIFT</th>
+                <th style="white-space:nowrap;font-size:9.5px;">STAFF</th>
+                <th style="text-align:center;white-space:nowrap;font-size:9.5px;">STATUS</th>
+                <th style="white-space:nowrap;font-size:9.5px;">DATE & TIME</th>
+                <th style="text-align:center;white-space:nowrap;font-size:9.5px;">ACTIONS</th>
             </tr>
         </thead>
         <tbody>
@@ -1223,9 +1306,9 @@ try {
                     $has_service = !empty(trim($r['service_type'] ?? $r['job_order_service'] ?? ''));
 
                     if ($has_items && $has_service) {
-                        $tLabel = 'Job Order + Merchandise'; $tIcon = 'fa-wrench'; $tBadge = 'badge-purple';
+                        $tLabel = 'JO + Merchandise'; $tIcon = 'fa-wrench'; $tBadge = 'badge-purple';
                     } elseif ($t === 'combined') {
-                        $tLabel = 'Job Order + Merchandise'; $tIcon = 'fa-wrench'; $tBadge = 'badge-purple';
+                        $tLabel = 'JO + Merchandise'; $tIcon = 'fa-wrench'; $tBadge = 'badge-purple';
                     } elseif ($t === 'job_order' || $t === 'job order' || $has_service) {
                         $tLabel = 'Job Order'; $tIcon = 'fa-wrench'; $tBadge = 'badge-orange';
                     } else {
@@ -1239,43 +1322,62 @@ try {
                         : 'JO-'  . $or_year . '-' . str_pad((int)$r['row_id'], 6, '0', STR_PAD_LEFT);
                 ?>
                 <tr>
-                    <td style="white-space:nowrap;">
-                        <strong><?php echo htmlspecialchars($or_no); ?></strong>
+                    <td style="white-space:nowrap;font-weight:700;font-size:10.5px;color:#0f172a;">
+                        <?php echo htmlspecialchars($or_no); ?>
                     </td>
-                    <td style="white-space:nowrap;">
-                        <span style="font-size:11px;color:#64748b;"><?php echo htmlspecialchars($r['txn_id']); ?></span>
+                    <td style="white-space:nowrap;font-size:9.5px;font-family:monospace;color:#64748b;overflow:hidden;text-overflow:ellipsis;" title="<?php echo htmlspecialchars($r['txn_id']); ?>">
+                        <?php echo htmlspecialchars($r['txn_id']); ?>
                     </td>
-                    <td style="font-size:11px;white-space:nowrap;" title="<?php echo htmlspecialchars($r['customer']); ?>"><?php echo htmlspecialchars($r['customer']); ?></td>
+                    <td style="font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#1e293b;" title="<?php echo htmlspecialchars($r['customer']); ?>">
+                        <?php echo htmlspecialchars($r['customer']); ?>
+                    </td>
                     <td style="white-space:nowrap;">
                         <span class="badge <?= $tBadge ?>"><i class="fas <?= $tIcon ?>"></i> <?= htmlspecialchars($tLabel) ?></span>
                     </td>
-                    <!-- Products column — matching admin_all_transactions -->
-                    <td style="font-size:11px;line-height:1.4;vertical-align:top;">
+                    <!-- Products column -->
+                    <td style="font-size:10px;line-height:1.2;vertical-align:middle;word-break:break-word;">
                         <?= format_transaction_items($r['items'] ?? '') ?>
                     </td>
-                    <!-- Service Type column — matching admin_all_transactions -->
-                    <td style="font-size:11px;color:#475569;vertical-align:top;">
+                    <!-- Service Type column -->
+                    <td style="font-size:10px;color:#475569;line-height:1.2;vertical-align:middle;word-break:break-word;" title="<?= htmlspecialchars(trim($r['service_type'] ?? $r['job_order_service'] ?? '')) ?>">
                         <?= htmlspecialchars(!empty(trim($r['service_type'] ?? $r['job_order_service'] ?? '')) ? trim($r['service_type'] ?? $r['job_order_service'] ?? '') : '—') ?>
                     </td>
+                    <!-- Service Fee column -->
+                    <td style="font-size:10.5px;font-weight:700;color:#2563eb;vertical-align:middle;text-align:right;white-space:nowrap;">
+                        <?php
+                        $s_cost = (float)($r['service_fee'] ?? 0);
+                        echo $s_cost > 0 ? '₱' . number_format($s_cost, 2) : '<span style="color:#cbd5e1;font-weight:400;">—</span>';
+                        ?>
+                    </td>
+                    <!-- Labor Fee column -->
+                    <td style="font-size:10.5px;font-weight:700;color:#16a34a;vertical-align:middle;text-align:right;white-space:nowrap;">
+                        <?php
+                        $l_cost = (float)($r['labor_fee'] ?? 0);
+                        echo $l_cost > 0 ? '₱' . number_format($l_cost, 2) : '<span style="color:#cbd5e1;font-weight:400;">—</span>';
+                        ?>
+                    </td>
                     <!-- Vehicle column -->
-                    <td>
+                    <td style="font-size:10.5px;text-align:center;white-space:nowrap;color:#475569;">
                       <?php
                         $veh = trim($r['vehicle_plate'] ?? '');
                         if ($veh === '' || $veh === '—' || $veh === 'N/A') {
-                            echo '<span style="color:#94a3b8;font-size:11px;">N/A</span>';
+                            echo '<span style="color:#cbd5e1;">N/A</span>';
                         } else {
                             echo htmlspecialchars($veh);
                         }
                       ?>
                     </td>
-                    <!-- Amount column -->
-                    <td style="font-weight:700;">
-                        &#8369;<?php echo number_format((float)$r['amount'], 2); ?>
+                    <!-- Total Amount column -->
+                    <td style="font-weight:700;font-size:10.5px;text-align:right;white-space:nowrap;color:#0f172a;">
+                        ₱<?php echo number_format((float)$r['amount'], 2); ?>
                     </td>
                     <!-- Payment Method column -->
-                    <td style="font-size:11px;"><?php echo htmlspecialchars($r['payment_method']); ?></td>
+                    <td style="font-size:10px;white-space:nowrap;color:#334155;">
+                        <div><?php echo htmlspecialchars($r['payment_method']); ?></div>
+                        <div style="font-size:9px;font-weight:700;color:<?= $pay_st['color'] ?? '#16a34a' ?>;"><?= htmlspecialchars($pay_st['label'] ?? 'Paid') ?></div>
+                    </td>
                     <!-- Shift column -->
-                    <td style="font-size:11px;">
+                    <td style="font-size:10px;white-space:nowrap;color:#475569;">
                         <?php 
                         $s_val = strtolower(trim($r['shift'] ?? ''));
                         $shift_time_label = match($s_val) {
@@ -1287,43 +1389,41 @@ try {
                         ?>
                     </td>
                     <!-- Staff Encoder column -->
-                    <td style="font-size:11px;color:#475569;"><?php echo htmlspecialchars($r['staff_name']); ?></td>
+                    <td style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#475569;" title="<?php echo htmlspecialchars($r['staff_name']); ?>"><?php echo htmlspecialchars($r['staff_name']); ?></td>
                     <!-- Status column with dot badge (matching Admin) -->
-                    <td>
+                    <td style="text-align:center;white-space:nowrap;">
                         <?php
                         $vst = strtolower(trim($r['validation_status'] ?? 'completed'));
                         if ($vst === 'voided') {
-                            echo '<span class="badge badge-red"><i class="fas fa-circle" style="font-size:7px;vertical-align:middle;margin-right:3px;"></i>Voided</span>';
+                            echo '<span class="badge badge-red" style="white-space:nowrap;"><i class="fas fa-circle" style="font-size:6px;vertical-align:middle;margin-right:2px;"></i>Voided</span>';
                         } elseif ($vst === 'adjusted') {
-                            echo '<span class="badge badge-orange"><i class="fas fa-circle" style="font-size:7px;vertical-align:middle;margin-right:3px;"></i>Adjusted</span>';
+                            echo '<span class="badge badge-orange" style="white-space:nowrap;"><i class="fas fa-circle" style="font-size:6px;vertical-align:middle;margin-right:2px;"></i>Adjusted</span>';
                         } else {
-                            echo '<span class="badge badge-green"><i class="fas fa-circle" style="font-size:7px;vertical-align:middle;margin-right:3px;"></i>Completed</span>';
+                            echo '<span class="badge badge-green" style="white-space:nowrap;"><i class="fas fa-circle" style="font-size:6px;vertical-align:middle;margin-right:2px;"></i>Completed</span>';
                         }
                         ?>
                     </td>
                     <!-- Date & Time column -->
-                    <td style="white-space:nowrap;font-size:11px;color:#475569;">
-                        <?php echo date('M d, Y h:i A', strtotime($r['txn_date'])); ?>
+                    <td style="white-space:nowrap;line-height:1.2;">
+                        <div style="font-size:10px;font-weight:600;color:#334155;white-space:nowrap;"><?php echo date('M d, Y', strtotime($r['txn_date'])); ?></div>
+                        <div style="font-size:9.5px;color:#64748b;white-space:nowrap;"><?php echo date('h:i A', strtotime($r['txn_date'])); ?></div>
                     </td>
                     <!-- Actions column -->
-                    <td style="text-align:center;padding:6px 4px;">
+                    <td style="text-align:center;padding:4px 2px;vertical-align:middle;white-space:nowrap;">
                         <?php if ($show_actions): ?>
                         <?php
                         $receipt_url = ($r['_source'] === 'job_orders')
                             ? 'receipt.php?id=' . urlencode((string)$r['row_id']) . '&type=job_order'
                             : 'receipt.php?id=' . urlencode((string)$r['txn_id']) . '&type=merchandise';
                         ?>
-                        <div style="display:flex;flex-direction:column;gap:3px;align-items:stretch;">
-                        <button class="vt-btn-action vt-btn-view" onclick="viewValidatedTransaction('<?php echo $r['_source']; ?>', <?php echo $r['row_id']; ?>)" title="View details" style="padding:3px 6px;font-size:9px;width:100%;">
-                            <i class="fas fa-eye"></i> View
-                        </button>
-                        <a class="vt-btn-action" href="<?= htmlspecialchars($receipt_url) ?>" target="_blank" rel="noopener" title="Reprint Receipt" style="color:#002F70;border-color:#002F70;background:white;padding:3px 6px;font-size:9px;width:100%;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:4px;">
-                            <i class="fas fa-receipt"></i> Reprint
+                        <div style="display:flex;flex-direction:column;gap:2px;align-items:stretch;">
+                        <a class="vt-btn-act-sm" href="<?= htmlspecialchars($receipt_url) ?>" target="_blank" rel="noopener" title="Reprint Receipt" style="color:#002F70;border:1px solid #002F70;background:transparent !important;">
+                            <i class="fas fa-receipt" style="font-size:8.5px;"></i> Reprint
                         </a>
                         <?php if ($vst !== 'voided'): ?>
                             <?php if ($r['_source'] === 'merchandise_transactions'): ?>
-                            <button class="vt-btn-action" style="color:#16a34a;border-color:#16a34a;background:white;padding:3px 6px;font-size:9px;width:100%;" onclick="openAdjustModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['entry_type'])) ?>', '<?= htmlspecialchars(addslashes($r['txn_date'])) ?>', '<?= htmlspecialchars(addslashes($r['staff_name'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_method'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_status'] ?? 'Paid')) ?>')" title="Adjust">
-                                <i class="fas fa-pen"></i> Adjust
+                            <button type="button" class="vt-btn-act-sm" style="color:#16a34a;border:1px solid #16a34a;background:transparent !important;cursor:pointer;" onclick="openAdjustModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['entry_type'])) ?>', '<?= htmlspecialchars(addslashes($r['txn_date'])) ?>', '<?= htmlspecialchars(addslashes($r['staff_name'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_method'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_status'] ?? 'Paid')) ?>')" title="Adjust">
+                                <i class="fas fa-pen" style="font-size:8.5px;"></i> Adjust
                             </button>
                             <?php endif; ?>
 
@@ -1334,17 +1434,17 @@ try {
                             if ($is_job_order): 
                                 if ($wf_status === 'pending'): 
                             ?>
-                                <button class="vt-btn-action" style="color:#dc2626;border-color:#dc2626;background:white;padding:3px 6px;font-size:9px;width:100%;" onclick="openVoidModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['_source'])) ?>')" title="Void">
-                                    <i class="fas fa-ban"></i> Void
+                                <button type="button" class="vt-btn-act-sm" style="color:#dc2626;border:1px solid #dc2626;background:transparent !important;cursor:pointer;" onclick="openVoidModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['_source'])) ?>')" title="Void">
+                                    <i class="fas fa-ban" style="font-size:8.5px;"></i> Void
                                 </button>
                                 <?php else: ?>
-                                <button class="vt-btn-action" style="color:#94a3b8;border-color:#cbd5e1;background:#f8fafc;padding:3px 6px;font-size:9px;width:100%;cursor:not-allowed;" disabled title="Cannot void In Progress or Completed Job Orders (Workflow status: <?= htmlspecialchars(ucwords($wf_status)) ?>)">
-                                    <i class="fas fa-ban"></i> Void
+                                <button type="button" class="vt-btn-act-sm" style="color:#94a3b8;border:1px solid #cbd5e1;background:transparent !important;cursor:not-allowed;" disabled title="Cannot void In Progress or Completed Job Orders">
+                                    <i class="fas fa-ban" style="font-size:8.5px;"></i> Void
                                 </button>
                                 <?php endif; ?>
                             <?php else: ?>
-                                <button class="vt-btn-action" style="color:#dc2626;border-color:#dc2626;background:white;padding:3px 6px;font-size:9px;width:100%;" onclick="openVoidModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['_source'])) ?>')" title="Void">
-                                    <i class="fas fa-ban"></i> Void
+                                <button type="button" class="vt-btn-act-sm" style="color:#dc2626;border:1px solid #dc2626;background:transparent !important;cursor:pointer;" onclick="openVoidModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['_source'])) ?>')" title="Void">
+                                    <i class="fas fa-ban" style="font-size:8.5px;"></i> Void
                                 </button>
                             <?php endif; ?>
                         <?php endif; ?>
@@ -1355,7 +1455,7 @@ try {
                 <?php endforeach; ?>
             <?php else: ?>
                 <tr>
-                    <td colspan="14" style="text-align:center;padding:60px 20px;color:#94a3b8;">
+                    <td colspan="16" style="text-align:center;padding:60px 20px;color:#94a3b8;">
                         <i class="fas fa-inbox" style="font-size:48px;display:block;margin-bottom:12px;opacity:0.3;"></i>
                         <div style="font-size:16px;font-weight:600;color:#64748b;margin-bottom:4px;">No Transactions Found</div>
                         <div style="font-size:13px;">No transactions found matching your filters.</div>
@@ -1619,9 +1719,32 @@ html, body {
     overflow-x: hidden !important; 
     max-width: 100vw !important;
     box-sizing: border-box !important;
+    margin: 0 !important;
+    padding: 0 !important;
 }
 * { 
     box-sizing: border-box !important; 
+}
+
+/* Add padding to prevent right side cut-off */
+.content-wrapper {
+    padding-right: 0 !important;
+    margin-right: 0 !important;
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+}
+.main-content {
+    padding-right: 0 !important;
+    margin-right: 0 !important;
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+}
+.stock-page {
+    padding-right: 0 !important;
+    padding-left: 0 !important;
+    margin-right: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
 }
 
 /* == PAGE HEADER - matches SuperAdmin page-head standard == */
@@ -1730,25 +1853,50 @@ html, body {
 .vt-btn-reset  { color:#4b5563 !important; border-color:#6b7280 !important; }
 .vt-btn-reset:hover { background:#6b7280 !important; color:#fff !important; }
 
-/* Table - SuperAdmin ato-table standard */
-.vt-table { width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed; }
-.vt-table thead th { 
-    background:#002F70;color:#fff;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;padding:7px 6px;border-bottom:2px solid #001a3d;text-align:left;vertical-align:middle;
+.vt-table { 
+    width:100%;
+    border-collapse:collapse;
+    font-size:11px;
+    table-layout:auto;
+    min-width: 1200px;
 }
-.vt-table tbody td { padding:6px 6px;border-bottom:1px solid #f1f5f9;vertical-align:middle;background:#fff;font-size:10px;word-wrap:break-word;overflow-wrap:break-word;white-space:normal;overflow:hidden; }
+.vt-table thead th { 
+    background:#002F70;color:#fff;font-size:10px;font-weight:700;text-transform:uppercase;
+    letter-spacing:.2px;padding:8px 8px;border-bottom:2px solid #001a3d;
+    text-align:left;vertical-align:middle;white-space:normal;word-wrap:break-word;
+}
+.vt-table tbody td { 
+    padding:7px 8px;
+    border-bottom:1px solid #f1f5f9;
+    vertical-align:top;
+    background:#fff;
+    font-size:11px;
+    white-space:normal;
+    word-wrap:break-word;
+    overflow:hidden;
+    line-height:1.4;
+}
 .vt-table tbody tr:hover td { background:#eff6ff; }
 
 /* Prevent horizontal scrolling on entire page */
 body { overflow-x:hidden !important; max-width:100vw !important; }
 .content-wrapper { max-width:100% !important; overflow-x:hidden !important; }
-.card { max-width:100% !important; }
+.card { max-width:100% !important; overflow:visible !important; }
+
+/* Table wrapper - allow horizontal scroll ONLY on table */
+.card > div { 
+    width:100% !important; 
+    max-width:100% !important; 
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+}
 
 /* Make filter responsive */
 .vt-filter-card form { max-width:100% !important; overflow-x:hidden !important; }
 
 /* Badges */
 .vt-badge { 
-    display:inline-block;padding:2px 6px;border-radius:3px;font-size:9px;font-weight:600;white-space:nowrap;background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;
+    display:inline-block;padding:3px 10px;border-radius:3px;font-size:11px;font-weight:600;white-space:nowrap;background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;
 }
 .vt-badge-merch { background:#f0fdf4;color:#15803d;border-color:#bbf7d0; }
 .vt-badge-jo { background:#fffbeb;color:#b45309;border-color:#fde68a; }
@@ -1758,7 +1906,7 @@ body { overflow-x:hidden !important; max-width:100vw !important; }
 .vt-badge-unpaid { background:#fef2f2;color:#991b1b;border-color:#fecaca; }
 
 /* Item chips & expand rows */
-.rc-item-chip{display:inline-flex;align-items:center;gap:3px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:600;color:#374151;margin:1px 2px 1px 0;white-space:normal;word-break:break-word;max-width:100%;cursor:pointer}
+.rc-item-chip{display:inline-flex;align-items:center;gap:3px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:3px;padding:2px 6px;font-size:11px;font-weight:600;color:#374151;margin:1px 2px 1px 0;white-space:normal;word-break:break-word;max-width:100%;cursor:pointer}
 .rc-item-chip.svc{background:#fffbeb;border-color:#fde68a;color:#92400e}
 .rc-item-chip .rc-chip-qty{background:#002F70;color:#fff;border-radius:2px;padding:0 3px;font-size:8px;margin-left:2px}
 .rc-expand-row td{background:#f8fafc;padding:0}
@@ -1770,11 +1918,12 @@ body { overflow-x:hidden !important; max-width:100vw !important; }
 .rc-row-main{cursor:pointer}
 .rc-row-main:hover td{background:#eff6ff !important}
 
-/* Action Buttons */
+/* Action Buttons - ensure they're always visible */
 .vt-btn-action { 
-    background: white !important;
+    background: transparent !important;
     width:100%;
-    min-width:60px;
+    min-width:65px;
+    max-width:100%;
     height:22px;
     border-radius:4px;
     border:1px solid transparent;
@@ -1788,6 +1937,7 @@ body { overflow-x:hidden !important; max-width:100vw !important; }
     transition:all .15s;
     padding:0 6px;
     white-space:nowrap;
+    box-sizing:border-box;
 }
 .vt-btn-view   { color:#002F70 !important; border-color:#002F70 !important; }
 .vt-btn-view:hover { background:#002F70 !important; color:#fff !important; }

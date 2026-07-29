@@ -478,13 +478,7 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
 /* ── Page-level styles ─────────────────────────────────────────────────────── */
-.ato-tab-bar { display:flex;gap:0;border-bottom:2px solid #dee2e6;margin-bottom:18px; }
-.ato-tab { display:inline-flex;align-items:center;gap:7px;padding:10px 22px;font-size:13px;font-weight:600;color:#6c757d;text-decoration:none;border-bottom:3px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap; cursor:pointer; }
-.ato-tab:hover { color:#002F6C; }
-.ato-tab.active { color:#002F6C;border-bottom-color:#002F6C;background:#f8fbff;border-radius:6px 6px 0 0; }
-.pricing-tabs { display: none; } /* replaced by dropdown */
-.tab-panel { display: none; }
-.tab-panel.active { display: block; }
+
 
 /* Summary cards */
 .summary-grid {
@@ -538,6 +532,16 @@ include __DIR__ . '/../partials/header.php';
     border-collapse: collapse !important;
     table-layout: auto !important;
     box-sizing: border-box !important;
+}
+
+/* == Tab bar styling (Matches Manager Clean Design) == */
+.ato-tab-bar { display:flex;gap:0;border-bottom:2px solid #dee2e6;margin-bottom:18px; }
+.ato-tab { display:inline-flex;align-items:center;gap:7px;padding:10px 22px;font-size:13px;font-weight:600;color:#6c757d;text-decoration:none;border-bottom:3px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap; cursor:pointer; }
+.ato-tab:hover { color:#002F6C; }
+.ato-tab.active { color:#002F6C;border-bottom-color:#002F6C;background:#f8fbff;border-radius:6px 6px 0 0; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
 /* == Action buttons — clean outline style (same as Manager) == */
 .act-btn {
     display: inline-flex;
@@ -746,7 +750,7 @@ include __DIR__ . '/../partials/header.php';
                                     <div style="font-size:11px; color:#b45309; background:#fef3c7; padding:2px 6px; border-radius:4px; margin-bottom:4px;">
                                         <strong>Proposed: ₱<?php echo number_format($f['pending_price'], 2); ?></strong>
                                     </div>
-                                    <div style="display:flex; gap:4px;">
+                                    <div style="display:flex; gap:4px; margin-bottom:4px;">
                                         <form method="POST" style="margin:0;">
                                             <input type="hidden" name="action" value="approve_price">
                                             <input type="hidden" name="approval_id" value="<?php echo $f['approval_id']; ?>">
@@ -756,9 +760,10 @@ include __DIR__ . '/../partials/header.php';
                                         <button type="button" class="btn" style="background:#fff;color:#475569;border:1px solid #cbd5e1;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;transition:all 0.2s;" onclick="openRejectModal(<?php echo $f['approval_id']; ?>, 'fuel')" onmouseover="this.style.background='#f8fafc';this.style.borderColor='#94a3b8'" onmouseout="this.style.background='#fff';this.style.borderColor='#cbd5e1'"><i class="fas fa-times"></i> Reject</button>
                                     </div>
                                 </div>
-                            <?php else: ?>
-                                <span class="muted" style="font-size:11px;">&mdash;</span>
                             <?php endif; ?>
+                            <button onclick="openAdminEditFuelModal(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars(addslashes($canonical_type)); ?>', <?php echo (float)$f['price_per_liter']; ?>, <?php echo (float)$capacity; ?>, <?php echo (float)$critical; ?>)" class="act-btn act-btn-edit">
+                                <i class="fas fa-edit"></i> Edit
+                            </button>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -1119,7 +1124,7 @@ include __DIR__ . '/../partials/header.php';
                             <!-- Action -->
                             <td style="text-align:center;vertical-align:middle;">
                                 <?php if ($hasPending): ?>
-                                    <div style="display:flex;gap:4px;justify-content:center;">
+                                    <div style="display:flex;gap:4px;justify-content:center;margin-bottom:4px;">
                                         <form method="POST" style="margin:0;">
                                             <input type="hidden" name="action" value="approve_price">
                                             <input type="hidden" name="approval_id" value="<?php echo (int)$svc['approval_id']; ?>">
@@ -1132,9 +1137,10 @@ include __DIR__ . '/../partials/header.php';
                                             <i class="fas fa-times"></i> Reject
                                         </button>
                                     </div>
-                                <?php else: ?>
-                                    <span class="muted" style="font-size:11px;">No action needed</span>
                                 <?php endif; ?>
+                                <button onclick="openAdminEditServiceModal(<?php echo $svc['id']; ?>, '<?php echo htmlspecialchars(addslashes($svc['service_name'])); ?>', '<?php echo htmlspecialchars(addslashes($svc['category']??'')); ?>', '<?php echo htmlspecialchars(addslashes($svc['service_key']??'')); ?>', <?php echo (float)$currentPrice; ?>, <?php echo (int)($svc['active']??1); ?>)" class="act-btn act-btn-edit">
+                                    <i class="fas fa-edit"></i> Edit
+                                </button>
                             </td>
                         </tr>
                         <?php endforeach; ?>
@@ -1237,16 +1243,101 @@ include __DIR__ . '/../partials/header.php';
                     </select>
                 </div>
                 <div>
-                    <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:4px;">Default Selling Price (Locked)</label>
-                    <input type="text" id="adminEditPrice" disabled style="width:100%; padding:8px 12px; border:1px solid #e2e8f0; background:#f8fafc; color:#64748b; border-radius:6px; font-size:13px; font-weight:700;">
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Default Selling Price (₱)</label>
+                    <input type="number" step="0.01" min="0" id="adminEditPrice" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#002F6C;" placeholder="0.00">
                 </div>
             </div>
-            <div style="margin-top:10px; font-size:11px; color:#64748b; background:#f1f5f9; padding:8px 10px; border-radius:6px;">
-                ℹ️ <em>Default Selling Price is managed exclusively via Manager request &amp; Admin approval workflow.</em>
+            <div style="margin-top:10px; font-size:11px; color:#1e40af; background:#eff6ff; border:1px solid #bfdbfe; padding:8px 10px; border-radius:6px;">
+                <i class="fas fa-shield-alt"></i> <em>As Admin, any price edit you save will take effect immediately.</em>
             </div>
             <div style="margin-top:20px; display:flex; justify-content:flex-end; gap:10px;">
                 <button type="button" onclick="closeAdminEditProductModal()" style="padding:8px 16px; border:1px solid #cbd5e1; background:#fff; color:#475569; border-radius:6px; cursor:pointer; font-weight:600;">Cancel</button>
-                <button type="submit" style="padding:8px 18px; border:none; background:#002F6C; color:#fff; border-radius:6px; cursor:pointer; font-weight:600;">Save Changes</button>
+                <button type="submit" style="padding:8px 18px; border:none; background:#002F6C; color:#fff; border-radius:6px; cursor:pointer; font-weight:600;"><i class="fas fa-save"></i> Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 1.1 ADMIN EDIT FUEL MODAL -->
+<div id="adminEditFuelModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:#fff; width:90%; max-width:500px; border-radius:12px; overflow:hidden; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1);">
+        <div style="background:#002F6C; color:#fff; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
+            <h4 style="margin:0; font-size:16px; font-weight:600;"><i class="fas fa-gas-pump"></i> Edit Fuel Product (Admin)</h4>
+            <button onclick="closeAdminEditFuelModal()" style="background:none; border:none; color:#fff; font-size:18px; cursor:pointer;">&times;</button>
+        </div>
+        <form id="adminEditFuelForm" style="padding:20px;">
+            <input type="hidden" id="adminEditFuelId">
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:4px;">Fuel Type</label>
+                <div id="adminEditFuelTypeDisplay" style="width:100%; padding:8px 12px; border:1px solid #e2e8f0; background:#f8fafc; color:#1e293b; font-weight:700; border-radius:6px; font-size:13px;"></div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div>
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Price / Liter (₱)</label>
+                    <input type="number" step="0.01" min="0" id="adminEditFuelPrice" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#002F6C;" placeholder="0.00">
+                </div>
+                <div>
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Capacity (L)</label>
+                    <input type="number" step="0.01" min="0" id="adminEditFuelCapacity" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;" placeholder="0.00">
+                </div>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Critical Level (L)</label>
+                <input type="number" step="0.01" min="0" id="adminEditFuelCritical" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;" placeholder="0.00">
+            </div>
+            <div style="margin-top:10px; font-size:11px; color:#1e40af; background:#eff6ff; border:1px solid #bfdbfe; padding:8px 10px; border-radius:6px;">
+                <i class="fas fa-shield-alt"></i> <em>As Admin, saving this edit will update live fuel pricing immediately.</em>
+            </div>
+            <div style="margin-top:20px; display:flex; justify-content:flex-end; gap:10px;">
+                <button type="button" onclick="closeAdminEditFuelModal()" style="padding:8px 16px; border:1px solid #cbd5e1; background:#fff; color:#475569; border-radius:6px; cursor:pointer; font-weight:600;">Cancel</button>
+                <button type="submit" style="padding:8px 18px; border:none; background:#002F6C; color:#fff; border-radius:6px; cursor:pointer; font-weight:600;"><i class="fas fa-save"></i> Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 1.2 ADMIN EDIT SERVICE MODAL -->
+<div id="adminEditServiceModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:#fff; width:90%; max-width:500px; border-radius:12px; overflow:hidden; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1);">
+        <div style="background:#002F6C; color:#fff; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
+            <h4 style="margin:0; font-size:16px; font-weight:600;"><i class="fas fa-wrench"></i> Edit Service Type (Admin)</h4>
+            <button onclick="closeAdminEditServiceModal()" style="background:none; border:none; color:#fff; font-size:18px; cursor:pointer;">&times;</button>
+        </div>
+        <form id="adminEditServiceForm" style="padding:20px;">
+            <input type="hidden" id="adminEditServiceId">
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Service Name</label>
+                <input type="text" id="adminEditServiceName" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;">
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div>
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Category</label>
+                    <input type="text" id="adminEditServiceCategory" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;">
+                </div>
+                <div>
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Service Key</label>
+                    <input type="text" id="adminEditServiceKey" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;">
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div>
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Service Price (₱)</label>
+                    <input type="number" step="0.01" min="0" id="adminEditServicePrice" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#002F6C;" placeholder="0.00">
+                </div>
+                <div>
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Status</label>
+                    <select id="adminEditServiceActive" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;">
+                        <option value="1">Active</option>
+                        <option value="0">Inactive</option>
+                    </select>
+                </div>
+            </div>
+            <div style="margin-top:10px; font-size:11px; color:#1e40af; background:#eff6ff; border:1px solid #bfdbfe; padding:8px 10px; border-radius:6px;">
+                <i class="fas fa-shield-alt"></i> <em>As Admin, saving this edit will update service pricing immediately.</em>
+            </div>
+            <div style="margin-top:20px; display:flex; justify-content:flex-end; gap:10px;">
+                <button type="button" onclick="closeAdminEditServiceModal()" style="padding:8px 16px; border:1px solid #cbd5e1; background:#fff; color:#475569; border-radius:6px; cursor:pointer; font-weight:600;">Cancel</button>
+                <button type="submit" style="padding:8px 18px; border:none; background:#002F6C; color:#fff; border-radius:6px; cursor:pointer; font-weight:600;"><i class="fas fa-save"></i> Save Changes</button>
             </div>
         </form>
     </div>
@@ -1396,7 +1487,7 @@ function openAdminEditProductModal(id) {
                 document.getElementById('adminEditReorder').value  = parseInt(i.reorder_level || 24);
                 document.getElementById('adminEditCritical').value = parseInt(i.critical_level || 10);
                 document.getElementById('adminEditStatus').value   = i.status || 'active';
-                document.getElementById('adminEditPrice').value    = '₱' + parseFloat(i.unit_price || 0).toFixed(2);
+                document.getElementById('adminEditPrice').value    = parseFloat(i.unit_price || 0).toFixed(2);
             }
         });
 }
@@ -1416,6 +1507,7 @@ document.getElementById('adminEditProductForm').addEventListener('submit', funct
     fd.append('brand',          document.getElementById('adminEditBrand').value.trim());
     fd.append('sku',            document.getElementById('adminEditSku').value.trim());
     fd.append('unit',           document.getElementById('adminEditUnit').value.trim());
+    fd.append('unit_price',     document.getElementById('adminEditPrice').value);
     fd.append('reorder_level',  document.getElementById('adminEditReorder').value);
     fd.append('critical_level', document.getElementById('adminEditCritical').value);
     fd.append('status',         document.getElementById('adminEditStatus').value);
@@ -1430,6 +1522,81 @@ document.getElementById('adminEditProductForm').addEventListener('submit', funct
                 alert('Error: ' + (data.message || 'Failed to update product'));
             }
         }).catch(() => alert('Error updating product.'));
+});
+
+// ── 1.1 Admin Edit Fuel Modal ─────────────────────────────────────────────
+function openAdminEditFuelModal(id, fuelType, price, capacity, critical) {
+    document.getElementById('adminEditFuelId').value = id;
+    document.getElementById('adminEditFuelTypeDisplay').textContent = fuelType;
+    document.getElementById('adminEditFuelPrice').value = parseFloat(price || 0).toFixed(2);
+    document.getElementById('adminEditFuelCapacity').value = parseFloat(capacity || 0).toFixed(2);
+    document.getElementById('adminEditFuelCritical').value = parseFloat(critical || 0).toFixed(2);
+    document.getElementById('adminEditFuelModal').style.display = 'flex';
+}
+
+function closeAdminEditFuelModal() {
+    document.getElementById('adminEditFuelModal').style.display = 'none';
+    document.getElementById('adminEditFuelForm').reset();
+}
+
+document.getElementById('adminEditFuelForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var fd = new FormData();
+    fd.append('action',         'admin_edit_fuel');
+    fd.append('id',             document.getElementById('adminEditFuelId').value);
+    fd.append('price',          document.getElementById('adminEditFuelPrice').value);
+    fd.append('capacity',       document.getElementById('adminEditFuelCapacity').value);
+    fd.append('critical_level', document.getElementById('adminEditFuelCritical').value);
+
+    fetch('admin_set_prices_handler.php', { method: 'POST', body: fd })
+        .then(r => r.json()).then(data => {
+            if (data.success) {
+                alert('SUCCESS: Fuel product updated!');
+                closeAdminEditFuelModal();
+                location.reload();
+            } else {
+                alert('Error: ' + (data.message || 'Failed to update fuel product'));
+            }
+        }).catch(() => alert('Error updating fuel product.'));
+});
+
+// ── 1.2 Admin Edit Service Modal ──────────────────────────────────────────
+function openAdminEditServiceModal(id, name, category, key, price, active) {
+    document.getElementById('adminEditServiceId').value = id;
+    document.getElementById('adminEditServiceName').value = name;
+    document.getElementById('adminEditServiceCategory').value = category;
+    document.getElementById('adminEditServiceKey').value = key;
+    document.getElementById('adminEditServicePrice').value = parseFloat(price || 0).toFixed(2);
+    document.getElementById('adminEditServiceActive').value = active ? '1' : '0';
+    document.getElementById('adminEditServiceModal').style.display = 'flex';
+}
+
+function closeAdminEditServiceModal() {
+    document.getElementById('adminEditServiceModal').style.display = 'none';
+    document.getElementById('adminEditServiceForm').reset();
+}
+
+document.getElementById('adminEditServiceForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var fd = new FormData();
+    fd.append('action',        'admin_edit_service');
+    fd.append('id',            document.getElementById('adminEditServiceId').value);
+    fd.append('service_name',  document.getElementById('adminEditServiceName').value.trim());
+    fd.append('category',      document.getElementById('adminEditServiceCategory').value.trim());
+    fd.append('service_key',   document.getElementById('adminEditServiceKey').value.trim());
+    fd.append('service_price', document.getElementById('adminEditServicePrice').value);
+    fd.append('active',        document.getElementById('adminEditServiceActive').value);
+
+    fetch('admin_set_prices_handler.php', { method: 'POST', body: fd })
+        .then(r => r.json()).then(data => {
+            if (data.success) {
+                alert('SUCCESS: Service type updated!');
+                closeAdminEditServiceModal();
+                location.reload();
+            } else {
+                alert('Error: ' + (data.message || 'Failed to update service type'));
+            }
+        }).catch(() => alert('Error updating service type.'));
 });
 
 // ── 2. View Request Modal ──────────────────────────────────────────────────
@@ -1637,22 +1804,40 @@ function viewAdminBatches(productId, productName) {
 function closeAdminBatchesModal() {
     document.getElementById('viewAdminBatchesModal').style.display = 'none';
 }
-</script>
 
-<?php include __DIR__ . '/../partials/footer.php'; ?>
-
-        if (count > 0) {
-            hdr.style.display = '';
-            var countSpan = hdr.querySelector('.cat-count');
-            if (countSpan) countSpan.textContent = '(' + count + ' item' + (count !== 1 ? 's' : '') + ')';
-        } else {
-            hdr.style.display = 'none';
-        }
+// ── Tab Switching ─────────────────────────────────────────────────────────
+function switchTab(tabName) {
+    // Hide all tab panels
+    document.querySelectorAll('.tab-panel').forEach(function(panel) {
+        panel.classList.remove('active');
     });
-
-    var countEl = document.getElementById('visibleCount');
-    if (countEl) countEl.textContent = 'Showing ' + visible + ' product' + (visible !== 1 ? 's' : '');
+    // Deactivate all tab buttons
+    document.querySelectorAll('.ato-tab').forEach(function(btn) {
+        btn.classList.remove('active');
+    });
+    // Activate the selected panel
+    var panel = document.getElementById('tab-' + tabName);
+    if (panel) panel.classList.add('active');
+    // Activate the selected button
+    var btn = document.getElementById('tab-btn-' + tabName);
+    if (btn) btn.classList.add('active');
+    // Update the hidden input so forms remember the active tab
+    var hidden = document.getElementById('activeSection');
+    if (hidden) hidden.value = tabName;
+    // Update rejectActiveTab hidden input if present
+    var rejectHidden = document.getElementById('rejectActiveTab');
+    if (rejectHidden) rejectHidden.value = tabName;
 }
+
+// Initialise — ensure the active tab panel is shown on page load
+(function() {
+    var activeHidden = document.getElementById('activeSection');
+    var activeTab = activeHidden ? activeHidden.value : 'fuel';
+    if (!activeTab) activeTab = 'fuel';
+    // Only switch if none are already active (PHP already sets active class)
+    var anyActive = document.querySelector('.tab-panel.active');
+    if (!anyActive) switchTab(activeTab);
+})();
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

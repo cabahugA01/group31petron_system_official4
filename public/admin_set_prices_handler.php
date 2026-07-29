@@ -37,6 +37,9 @@ try {
         // ══════════════════════════════════════════════════════════════════════
         // EDIT PRODUCT DETAILS (ADMIN) - Price is NOT editable here
         // ══════════════════════════════════════════════════════════════════════
+        // ══════════════════════════════════════════════════════════════════════
+        // EDIT PRODUCT DETAILS (ADMIN) - Admin can update price directly
+        // ══════════════════════════════════════════════════════════════════════
         case 'edit_product_admin':
             $id             = (int)($_POST['id'] ?? 0);
             $product_name   = trim($_POST['product_name'] ?? '');
@@ -44,6 +47,7 @@ try {
             $category       = trim($_POST['category'] ?? '');
             $brand          = trim($_POST['brand'] ?? '');
             $unit           = trim($_POST['unit'] ?? '');
+            $unit_price     = isset($_POST['unit_price']) ? (float)$_POST['unit_price'] : -1;
             $reorder_level  = (int)($_POST['reorder_level'] ?? 24);
             $critical_level = (int)($_POST['critical_level'] ?? 10);
             $prod_status    = in_array($_POST['status'] ?? '', ['active', 'inactive']) ? $_POST['status'] : 'active';
@@ -58,23 +62,43 @@ try {
 
             // 1. Update inventory_products
             try {
-                $stmt = $pdo->prepare("
-                    UPDATE inventory_products
-                    SET product_name=?, sku=?, category=?, brand=?, size=?,
-                        reorder_level=?, critical_level=?, status=?, updated_at=NOW()
-                    WHERE id=?
-                ");
-                $stmt->execute([$product_name, $sku, $category, $brand, $unit_value, $reorder_level, $critical_level, $prod_status, $id]);
+                if ($unit_price >= 0) {
+                    $stmt = $pdo->prepare("
+                        UPDATE inventory_products
+                        SET product_name=?, sku=?, category=?, brand=?, size=?, unit_price=?,
+                            reorder_level=?, critical_level=?, status=?, updated_at=NOW()
+                        WHERE id=?
+                    ");
+                    $stmt->execute([$product_name, $sku, $category, $brand, $unit_value, $unit_price, $reorder_level, $critical_level, $prod_status, $id]);
+                } else {
+                    $stmt = $pdo->prepare("
+                        UPDATE inventory_products
+                        SET product_name=?, sku=?, category=?, brand=?, size=?,
+                            reorder_level=?, critical_level=?, status=?, updated_at=NOW()
+                        WHERE id=?
+                    ");
+                    $stmt->execute([$product_name, $sku, $category, $brand, $unit_value, $reorder_level, $critical_level, $prod_status, $id]);
+                }
             } catch (Exception $e) {}
 
             // 2. Update products
             try {
-                if ($category_id > 0) {
-                    $stmt = $pdo->prepare("UPDATE products SET name=?, sku=?, category_id=?, brand=?, unit=?, status=?, updated_at=NOW() WHERE id=?");
-                    $stmt->execute([$product_name, $sku, $category_id, $brand, $unit_value, $prod_status, $id]);
+                if ($unit_price >= 0) {
+                    if ($category_id > 0) {
+                        $stmt = $pdo->prepare("UPDATE products SET name=?, sku=?, category_id=?, brand=?, unit=?, price=?, status=?, updated_at=NOW() WHERE id=?");
+                        $stmt->execute([$product_name, $sku, $category_id, $brand, $unit_value, $unit_price, $prod_status, $id]);
+                    } else {
+                        $stmt = $pdo->prepare("UPDATE products SET name=?, sku=?, brand=?, unit=?, price=?, status=?, updated_at=NOW() WHERE id=?");
+                        $stmt->execute([$product_name, $sku, $brand, $unit_value, $unit_price, $prod_status, $id]);
+                    }
                 } else {
-                    $stmt = $pdo->prepare("UPDATE products SET name=?, sku=?, brand=?, unit=?, status=?, updated_at=NOW() WHERE id=?");
-                    $stmt->execute([$product_name, $sku, $brand, $unit_value, $prod_status, $id]);
+                    if ($category_id > 0) {
+                        $stmt = $pdo->prepare("UPDATE products SET name=?, sku=?, category_id=?, brand=?, unit=?, status=?, updated_at=NOW() WHERE id=?");
+                        $stmt->execute([$product_name, $sku, $category_id, $brand, $unit_value, $prod_status, $id]);
+                    } else {
+                        $stmt = $pdo->prepare("UPDATE products SET name=?, sku=?, brand=?, unit=?, status=?, updated_at=NOW() WHERE id=?");
+                        $stmt->execute([$product_name, $sku, $brand, $unit_value, $prod_status, $id]);
+                    }
                 }
             } catch (Exception $e) {}
 
@@ -84,16 +108,114 @@ try {
                 $stmt->execute([$station_id, $id]);
                 $si_id = (int)($stmt->fetchColumn() ?: 0);
                 if ($si_id > 0) {
-                    $pdo->prepare("UPDATE station_inventory SET unit=?, reorder_level=?, critical_level=?, status=?, last_updated=NOW() WHERE id=?")
-                        ->execute([$unit_value, $reorder_level, $critical_level, $prod_status, $si_id]);
+                    if ($unit_price >= 0) {
+                        $pdo->prepare("UPDATE station_inventory SET unit=?, price=?, reorder_level=?, critical_level=?, status=?, last_updated=NOW() WHERE id=?")
+                            ->execute([$unit_value, $unit_price, $reorder_level, $critical_level, $prod_status, $si_id]);
+                    } else {
+                        $pdo->prepare("UPDATE station_inventory SET unit=?, reorder_level=?, critical_level=?, status=?, last_updated=NOW() WHERE id=?")
+                            ->execute([$unit_value, $reorder_level, $critical_level, $prod_status, $si_id]);
+                    }
                 } else {
-                    $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, unit, reorder_level, critical_level, status, last_updated) VALUES (?, ?, 0, ?, ?, ?, ?, NOW())")
-                        ->execute([$station_id, $id, $unit_value, $reorder_level, $critical_level, $prod_status]);
+                    $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, unit, price, reorder_level, critical_level, status, last_updated) VALUES (?, ?, 0, ?, ?, ?, ?, ?, NOW())")
+                        ->execute([$station_id, $id, $unit_value, max(0, $unit_price), $reorder_level, $critical_level, $prod_status]);
                 }
             } catch (Exception $e) {}
 
-            log_activity($pdo, $me['id'], 'Admin Edit Product', "Admin updated master details for: {$product_name}");
+            // If Admin changed price, mark any pending price requests for this product as approved
+            if ($unit_price >= 0) {
+                $pdo->prepare("UPDATE pending_price_approvals SET status='approved', admin_id=?, reviewed_by=?, reviewed_at=NOW(), updated_at=NOW() WHERE station_id=? AND product_type IN ('merchandise','product','inventory_product') AND product_id=? AND status='pending'")
+                    ->execute([$me['id'], $me['id'], $station_id, $id]);
+            }
+
+            log_activity($pdo, $me['id'], 'Admin Edit Product', "Admin updated master details for: {$product_name}" . ($unit_price >= 0 ? " (Price: ₱{$unit_price})" : ""));
             echo json_encode(['success' => true, 'message' => 'Product updated successfully!']);
+            exit;
+
+        // ══════════════════════════════════════════════════════════════════════
+        // ADMIN EDIT FUEL PRODUCT DIRECTLY
+        // ══════════════════════════════════════════════════════════════════════
+        case 'admin_edit_fuel':
+            $id             = (int)($_POST['id'] ?? 0);
+            $new_price      = (float)($_POST['price'] ?? 0);
+            $capacity       = (float)($_POST['capacity'] ?? 0);
+            $critical_level = (float)($_POST['critical_level'] ?? 0);
+
+            if ($id <= 0 || $new_price < 0 || $capacity < 0 || $critical_level < 0) {
+                echo json_encode(['success' => false, 'message' => 'Invalid parameters']);
+                exit;
+            }
+
+            $stmt = $pdo->prepare("SELECT fuel_type, price_per_liter FROM fuel_inventory WHERE id=? AND station_id=? LIMIT 1");
+            $stmt->execute([$id, $station_id]);
+            $fuel = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$fuel) { echo json_encode(['success' => false, 'message' => 'Fuel product not found']); exit; }
+
+            $old_price = (float)$fuel['price_per_liter'];
+
+            // Update fuel_inventory immediately
+            $stmt = $pdo->prepare("UPDATE fuel_inventory SET price_per_liter=?, capacity=?, critical_level=?, updated_by=?, last_updated=NOW() WHERE id=? AND station_id=?");
+            $stmt->execute([$new_price, $capacity, $critical_level, $me['id'], $id, $station_id]);
+
+            // Mark any pending price request for this fuel as approved
+            $pdo->prepare("UPDATE pending_price_approvals SET status='approved', admin_id=?, reviewed_by=?, reviewed_at=NOW(), updated_at=NOW() WHERE station_id=? AND product_type IN ('fuel','fuel_inventory') AND product_id=? AND status='pending'")
+                ->execute([$me['id'], $me['id'], $station_id, $id]);
+
+            if ($old_price != $new_price) {
+                try {
+                    $pdo->exec("
+                        CREATE TABLE IF NOT EXISTS fuel_price_history (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            fuel_id INT NOT NULL,
+                            old_price DECIMAL(10,2) NOT NULL,
+                            new_price DECIMAL(10,2) NOT NULL,
+                            reason VARCHAR(500),
+                            effective_date DATE,
+                            updated_by INT,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    ");
+                    $pdo->prepare("INSERT INTO fuel_price_history (fuel_id, old_price, new_price, reason, effective_date, updated_by, created_at) VALUES (?, ?, ?, 'Direct Admin Edit', CURDATE(), ?, NOW())")
+                        ->execute([$id, $old_price, $new_price, $me['id']]);
+                } catch (Exception $e) {}
+            }
+
+            log_activity($pdo, $me['id'], 'Admin Edit Fuel Product', "Admin updated fuel {$fuel['fuel_type']} price: ₱{$old_price} -> ₱{$new_price}, capacity: {$capacity}L");
+            echo json_encode(['success' => true, 'message' => 'Fuel product updated successfully!']);
+            exit;
+
+        // ══════════════════════════════════════════════════════════════════════
+        // ADMIN EDIT SERVICE TYPE DIRECTLY
+        // ══════════════════════════════════════════════════════════════════════
+        case 'admin_edit_service':
+            $id            = (int)($_POST['id'] ?? 0);
+            $service_name  = trim($_POST['service_name'] ?? '');
+            $category      = trim($_POST['category'] ?? '');
+            $service_key   = trim($_POST['service_key'] ?? '');
+            $service_price = (float)($_POST['service_price'] ?? 0);
+            $active        = (int)($_POST['active'] ?? 1);
+
+            if ($id <= 0 || empty($service_name) || empty($category) || empty($service_key) || $service_price < 0) {
+                echo json_encode(['success' => false, 'message' => 'Service name, category, key and price are required']);
+                exit;
+            }
+
+            $stmt = $pdo->prepare("SELECT id, service_price FROM job_order_service_types WHERE id=? LIMIT 1");
+            $stmt->execute([$id]);
+            $svc = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$svc) { echo json_encode(['success' => false, 'message' => 'Service type not found']); exit; }
+
+            $old_price = (float)$svc['service_price'];
+
+            // Update job_order_service_types immediately
+            $stmt = $pdo->prepare("UPDATE job_order_service_types SET service_name=?, category=?, service_key=?, service_price=?, active=?, updated_at=NOW() WHERE id=?");
+            $stmt->execute([$service_name, $category, $service_key, $service_price, $active, $id]);
+
+            // Mark any pending price request for this service as approved
+            $pdo->prepare("UPDATE pending_price_approvals SET status='approved', admin_id=?, reviewed_by=?, reviewed_at=NOW(), updated_at=NOW() WHERE product_type='service_type' AND product_id=? AND status='pending'")
+                ->execute([$me['id'], $me['id'], $id]);
+
+            log_activity($pdo, $me['id'], 'Admin Edit Service Type', "Admin updated service {$service_name} price: ₱{$old_price} -> ₱{$service_price}");
+            echo json_encode(['success' => true, 'message' => 'Service type updated successfully!']);
             exit;
 
         // ══════════════════════════════════════════════════════════════════════

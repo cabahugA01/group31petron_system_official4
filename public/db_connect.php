@@ -93,3 +93,40 @@ try {
     error_log("Db self-heal error: " . $db_err->getMessage());
 }
 
+// ── Self-healing Database schema for vehicle_inspection_items ────────────────
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS vehicle_inspection_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        item_name VARCHAR(100) NOT NULL UNIQUE,
+        category VARCHAR(50) DEFAULT 'General',
+        is_active TINYINT(1) DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Populate default items if empty
+    $count = (int)$pdo->query("SELECT COUNT(*) FROM vehicle_inspection_items")->fetchColumn();
+    if ($count === 0) {
+        $default_items = [
+            'Engine',
+            'Battery',
+            'Tires',
+            'Brakes',
+            'Lights',
+            'Cooling System',
+            'Suspension',
+            'Transmission Fluid',
+            'Air Filter',
+            'Wipers & Washers',
+            'Belts & Hoses',
+            'Steering System',
+            'Exhaust System'
+        ];
+        $stmt = $pdo->prepare("INSERT IGNORE INTO vehicle_inspection_items (item_name) VALUES (?)");
+        foreach ($default_items as $item) {
+            $stmt->execute([$item]);
+        }
+    }
+} catch (Exception $e) {
+    error_log("vehicle_inspection_items self-healing error: " . $e->getMessage());
+}
+

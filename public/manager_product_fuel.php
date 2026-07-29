@@ -95,8 +95,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $pdo->prepare("UPDATE fuel_inventory SET status=?, last_updated=NOW(), updated_by=? WHERE id=?");
                 $stmt->execute([$status, $me['id'], $id]);
                 
-                $pdo->prepare("INSERT INTO pending_price_approvals (station_id, product_type, product_id, old_cost, new_cost, old_price, new_price, manager_id, status) VALUES (?, 'fuel_inventory', ?, ?, ?, ?, ?, ?, 'pending')")
-                    ->execute([$station_id, $id, $old['price_per_liter'], $price_per_liter, $old['price_per_liter'], $price_per_liter, $me['id']]);
+                $pdo->prepare("INSERT INTO pending_price_approvals (station_id, product_type, product_id, product_name, field_name, old_value, new_value, old_cost, new_cost, old_price, new_price, requested_by, manager_id, status, created_at) VALUES (?, 'fuel', ?, 'Fuel Product', 'price', ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())")
+                    ->execute([$station_id, $id, $old['price_per_liter'], $price_per_liter, $old['price_per_liter'], $price_per_liter, $old['price_per_liter'], $price_per_liter, $me['id'], $me['id']]);
                 
                 $log_msg = "Fuel inventory id=$id updated status=$status. Price change submitted: {$old['price_per_liter']}->{$price_per_liter} (Pending Approval)";
                 $_SESSION['success'] = "Fuel status updated. Price change submitted for Admin approval.";

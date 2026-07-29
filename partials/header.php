@@ -581,11 +581,18 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     button, .btn, .ss-btn-primary {
         background-color: <?php echo htmlspecialchars($theme_button_color); ?> !important;
     }
-    /* Prevent theme button color from bleeding into custom dropdown triggers */
+    /* Prevent theme button color from bleeding into custom dropdown triggers, filter buttons & table action buttons */
     button.fd-select-trigger,
-    button.cdd-trigger {
-        background-color: #fff !important;
-        color: #374151 !important;
+    button.cdd-trigger,
+    button.tbl-btn,
+    a.tbl-btn,
+    .tbl-btn,
+    .btn-filter-submit,
+    .btn-filter-reset,
+    .notif-header-actions button,
+    #markAllReadBtn {
+        background-color: transparent;
+        color: inherit;
     }
     <?php if ($theme_high_contrast): ?>
     body, html, div, p, span, table, td, th, a, button, input, select {
@@ -1716,19 +1723,15 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     }
     
     .notif-item.unread {
-        background: linear-gradient(90deg, #f0f8ff 0%, #ffffff 100%);
-        border-left: 4px solid #002f70;
+        background: #f8fafc;
+        border-left: none !important;
         font-weight: 600;
     }
     
-    .notif-item.unread::before {
-        content: '';
-        position: absolute;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        width: 4px;
-        background: #002f70;
+    .notif-item.unread::before,
+    .notif-item::before {
+        display: none !important;
+        content: none !important;
     }
     
     .notif-item.read {
@@ -1798,15 +1801,8 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     }
     
     .notif-item.unread::before {
-        content: '';
-        position: absolute;
-        left: 4px;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 6px;
-        height: 6px;
-        background: #2563eb;
-        border-radius: 50%;
+        display: none !important;
+        content: none !important;
     }
     
     .notif-icon {
@@ -3103,121 +3099,146 @@ require_once __DIR__ . '/rbac_menu.php';
       }
   };
 
-  if ($myStationId || in_array($role, ['admin', 'superadmin', 'developer'], true)) {
+  // ── Role-based Sidebar Badges (Red Circles with Counts) ──
+  $badges = [
+      'dashboard'           => 0,
+      'transactions'        => 0,
+      'fuel'                => 0,
+      'inventory'           => 0,
+      'customers'           => 0,
+      'mgr_product_pricing' => 0,
+      'prod_pricing'        => 0,
+      'reports'             => 0,
+      'notifications'       => 0
+  ];
+  $fuel_sub_badges = [];
 
-      // Staff badges
-      if (in_array($role, ['staff', 'cashier', 'pump_attendant']) && $myStationId) {
-
-          $__own_merch_pending = $__badge_count(
-              "SELECT COUNT(*) FROM merchandise_transactions
-               WHERE station_id=? AND staff_id=? AND LOWER(COALESCE(validation_status,'')) IN ('pending','pending validation','pending_validation')",
-              [$myStationId, $__uid]
-          );
-          $__own_fuel_pending = $__badge_count(
-              "SELECT COUNT(*) FROM fuel_transactions
-               WHERE station_id=? AND staff_id=? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation','pending_validation')",
-              [$myStationId, $__uid]
-          );
-          $__own_jobs_active = $__badge_count(
-              "SELECT COUNT(*) FROM job_orders
-               WHERE station_id=? AND (created_by=? OR user_id=?)
-               AND LOWER(COALESCE(status,'')) IN ('pending','reviewed','in progress','awaiting parts')",
-              [$myStationId, $__uid, $__uid]
-          );
-          $__badge_add('staff_new_transaction', $__own_merch_pending + $__own_fuel_pending + $__own_jobs_active);
-
-          $__low_merch = $__badge_count(
-              "SELECT COUNT(*) FROM station_inventory si
-               LEFT JOIN inventory_products ip ON ip.id=si.product_id
-               WHERE si.station_id=?
-               AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL)
-               AND (
-                   COALESCE(si.stock_level,0) <= 0
-                   OR COALESCE(si.stock_level,0) <= COALESCE(si.critical_level, ip.critical_level, 10)
-                   OR COALESCE(si.stock_level,0) <= COALESCE(si.reorder_level, ip.min_stock, 24)
-               )",
-              [$myStationId]
-          );
-          $__badge_add('inv_merch', $__low_merch);
-
-          $__low_fuel = $__badge_count(
-              "SELECT COUNT(*) FROM fuel_inventory
-               WHERE station_id=? AND current_level >= 0 AND capacity > 0
-               AND current_level <= COALESCE(reorder_level, capacity * 0.20)",
-              [$myStationId]
-          );
-          $__badge_add('inv_fuel', $__low_fuel);
-
-          $__badge_add('fuel', $__low_fuel + $__own_fuel_pending, 'top');
-
-          $__pending_merch_pos = $__badge_count(
-               "SELECT COUNT(DISTINCT po_number) FROM purchase_orders
-                WHERE station_id=? AND status IN ('Admin Finalized', 'Approved') AND type='merch'",
-               [$myStationId]
-           );
-           $__pending_fuel_pos = $__badge_count(
-               "SELECT COUNT(DISTINCT COALESCE(NULLIF(batch_id, ''), po_number)) FROM fuel_purchase_orders
-                WHERE station_id=? AND status IN ('Approved PO', 'Approved')",
-               [$myStationId]
-           );
-           $__badge_add('inv_record_delivery', $__pending_merch_pos + $__pending_fuel_pos);
-
-          $__staff_stock_requests = $__badge_count(
-              "SELECT COUNT(*) FROM stock_requests WHERE station_id=? AND staff_id=? AND status IN ('Pending', 'Pending Manager Review')",
-              [$myStationId, $__uid]
-          ) + $__badge_count(
-              "SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id=? AND staff_id=? AND status IN ('Pending', 'Pending Manager Review')",
-              [$myStationId, $__uid]
-          );
-          $__badge_add('staff_stock_requests', $__staff_stock_requests);
-
-          $__calendar_due = $__badge_count(
-              "SELECT COUNT(*) FROM calendar_events
-               WHERE station_id=? AND staff_assigned=?
-               AND event_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
-               AND status IN ('pending','approved')",
-              [$myStationId, $__uid]
-          );
-          $__badge_add('calendar', $__calendar_due, 'top');
-      }
-  }
-
-  // ── Sync Sidebar Drawer Badges directly with Notifications table unread counts ──
+  $unread_notifs_count = 0;
   if ($__uid > 0) {
-      try {
-          $un_stmt = $pdo->prepare(
-              "SELECT event_type, COUNT(*) as cnt FROM notifications WHERE user_id = ? AND status = 'unread' GROUP BY event_type"
-          );
-          $un_stmt->execute([$__uid]);
-          $un_rows = $un_stmt->fetchAll(PDO::FETCH_ASSOC);
+      $unread_notifs_count = $__badge_count(
+          "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'",
+          [$__uid]
+      );
+  }
+  $badges['notifications'] = $unread_notifs_count;
 
-          $notif_cat = [
-              'transactions' => 0,
-              'fuel'         => 0,
-              'inventory'    => 0,
-              'customers'    => 0
-          ];
-          foreach ($un_rows as $ur) {
-              $e = strtolower($ur['event_type'] ?? '');
-              $c = (int)$ur['cnt'];
-              if (in_array($e, ['transaction', 'job_order', 'joborder'])) {
-                  $notif_cat['transactions'] += $c;
-              } elseif (in_array($e, ['fuel_management', 'fuel'])) {
-                  $notif_cat['fuel'] += $c;
-              } elseif (in_array($e, ['inventory', 'stock_in', 'delivery', 'stock_request'])) {
-                  $notif_cat['inventory'] += $c;
-              } elseif ($e === 'customer') {
-                  $notif_cat['customers'] += $c;
-              }
-          }
+  if (in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+      // SERVICE STAFF
+      // 1. Transactions: Assigned JOs + Pending JOs + My Pending Merchandise
+      $staff_assigned_jos = $__badge_count(
+          "SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND (created_by = ? OR user_id = ? OR assigned_mechanic_id = ?) AND LOWER(COALESCE(status,'')) IN ('pending','reviewed','in progress','awaiting parts')",
+          [$myStationId, $__uid, $__uid, $__uid]
+      );
+      $staff_merch_pending = $__badge_count(
+          "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id = ? AND staff_id = ? AND LOWER(COALESCE(validation_status,'')) IN ('pending','pending validation','pending_validation')",
+          [$myStationId, $__uid]
+      );
+      $badges['transactions'] = $staff_assigned_jos + $staff_merch_pending;
 
-          // Override top-level badges for Transactions, Fuel Management, Inventory, Customers
-          $badges['transactions'] = $notif_cat['transactions'];
-          $badges['fuel']         = $notif_cat['fuel'];
-          $badges['inventory']    = $notif_cat['inventory'];
-          $badges['customers']    = $notif_cat['customers'];
+      // 2. Fuel Management: Pending Fuel Readings needing entry/validation
+      $staff_fuel_pending = $__badge_count(
+          "SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND staff_id = ? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation','pending_validation')",
+          [$myStationId, $__uid]
+      );
+      $badges['fuel'] = $staff_fuel_pending;
 
-      } catch (Exception $e) {}
+      // 3. Inventory: Low stock items (reference only)
+      $staff_low_stock = $__badge_count(
+          "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.reorder_level, ip.min_stock, 24)",
+          [$myStationId]
+      );
+      $badges['inventory'] = $staff_low_stock;
+
+
+
+  } elseif (in_array($role, ['manager', 'supervisor'])) {
+      // MANAGER
+      // 1. Transactions: Pending Job Orders + Pending Merchandise Transactions + Transaction Adjustment Requests
+      $mgr_pending_jos = $__badge_count(
+          "SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation','reviewed')",
+          [$myStationId]
+      );
+      $mgr_pending_merch = $__badge_count(
+          "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id = ? AND LOWER(COALESCE(validation_status,'')) IN ('pending','pending validation')",
+          [$myStationId]
+      );
+      $mgr_pending_adj = $__badge_count(
+          "SELECT COUNT(*) FROM fuel_adjustments WHERE station_id = ? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation')",
+          [$myStationId]
+      );
+      $badges['transactions'] = $mgr_pending_jos + $mgr_pending_merch + $mgr_pending_adj;
+
+      // 2. Fuel Management: Fuel Reading Validation Required + Calibration Review Required + Low/Critical Fuel Levels
+      $mgr_fuel_validation = $__badge_count(
+          "SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation')",
+          [$myStationId]
+      );
+      $mgr_calibration_review = $__badge_count(
+          "SELECT COUNT(*) FROM fuel_adjustments WHERE station_id = ? AND LOWER(COALESCE(adjustment_type,'')) LIKE '%calibration%' AND LOWER(COALESCE(status,'')) IN ('pending','pending review')",
+          [$myStationId]
+      );
+      $mgr_low_fuel = $__badge_count(
+          "SELECT COUNT(*) FROM fuel_inventory WHERE station_id = ? AND current_level >= 0 AND capacity > 0 AND current_level <= COALESCE(reorder_level, capacity * 0.20)",
+          [$myStationId]
+      );
+      $badges['fuel'] = $mgr_fuel_validation + $mgr_calibration_review + $mgr_low_fuel;
+
+      // 3. Inventory: Low Stock + Critical Stock + Purchase Requests Waiting + Deliveries Waiting for Stock-In + Stock Variance/Damaged/Expired
+      $mgr_low_stock = $__badge_count(
+          "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.reorder_level, ip.min_stock, 24)",
+          [$myStationId]
+      );
+      $mgr_purchase_reqs = $__badge_count(
+          "SELECT COUNT(*) FROM stock_requests WHERE station_id = ? AND status IN ('Pending','Pending Manager Review')",
+          [$myStationId]
+      ) + $__badge_count(
+          "SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id = ? AND status IN ('Pending','Pending Manager Review')",
+          [$myStationId]
+      );
+      $mgr_deliv_waiting = $__badge_count(
+          "SELECT COUNT(*) FROM purchase_orders WHERE station_id = ? AND status IN ('Approved','Pending Stock-In')",
+          [$myStationId]
+      );
+      $badges['inventory'] = $mgr_low_stock + $mgr_purchase_reqs + $mgr_deliv_waiting;
+
+      // 4. Customers: Master Data Requests + Customer Requests
+      $mgr_cust_reqs = $__badge_count(
+          "SELECT COUNT(*) FROM customers WHERE station_id = ? AND LOWER(COALESCE(NULLIF(verification_status,''), NULLIF(mgr_status,''), 'verified')) IN ('pending','pending verification','for review')",
+          [$myStationId]
+      );
+      $badges['customers']     = $mgr_cust_reqs;
+      $badges['mgr_customers'] = $mgr_cust_reqs;
+  } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
+      // ADMIN
+      // 1. Inventory: Critical Stock + Purchase Orders + Inventory Variances + Damaged + Expired
+      $admin_crit_stock = $__badge_count(
+          "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.critical_level, ip.critical_level, 10)",
+          []
+      );
+      $admin_pos = $__badge_count(
+          "SELECT COUNT(*) FROM purchase_orders WHERE status IN ('Pending Admin Review', 'Submitted', 'Pending Approval')",
+          []
+      );
+      $admin_inv_total = $admin_crit_stock + $admin_pos;
+      $badges['inventory']       = $admin_inv_total;
+      $badges['admin_inventory'] = $admin_inv_total;
+
+      // 2. Product & Pricing: New Product Requests + Price Change Approvals
+      $admin_price_change = $__badge_count(
+          "SELECT COUNT(*) FROM pending_price_approvals WHERE status = 'pending'",
+          []
+      );
+      $badges['prod_pricing']          = $admin_price_change;
+      $badges['mgr_product_pricing']   = $admin_price_change;
+      $badges['admin_product_pricing'] = $admin_price_change;
+
+      // 3. Reports: System Alerts
+      $admin_system_alerts = $__badge_count(
+          "SELECT COUNT(*) FROM notifications WHERE severity IN ('critical','error') AND status = 'unread'",
+          []
+      );
+      $badges['reports']       = $admin_system_alerts;
+      $badges['admin_reports'] = $admin_system_alerts;
   }
 
   // Calculate Header Bell Unread Count
@@ -3535,56 +3556,18 @@ require_once __DIR__ . '/rbac_menu.php';
                 </div>
             </div>
         </div>
-        <div class="header-center" <?php if(!in_array($role, ['superadmin','developer','admin','manager'])): ?>style="display:none"<?php endif; ?>>
-            <!-- Global Search Bar removed per user request -->
+        <div class="header-center" style="display: flex; align-items: center; justify-content: center; flex: 1; margin: 0 20px;">
+            <div id="searchWrapper" style="position: relative; width: 100%; max-width: 440px; pointer-events: auto;">
+                <div style="position: relative; display: flex; align-items: center;">
+                    <i class="fas fa-search" style="position: absolute; left: 14px; color: #94a3b8; font-size: 14px; pointer-events: none;"></i>
+                    <input type="text" id="searchInput" placeholder="Search Customer, JO, Product, OR No..." 
+                           autocomplete="off" 
+                           style="width: 100%; padding: 8px 14px 8px 38px; border-radius: 20px; border: 1px solid #cbd5e1; font-size: 13px; outline: none; background: #ffffff; color: #0f172a; transition: all 0.15s ease;" />
+                </div>
+                <div id="searchSuggestions" style="display: none; position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; max-height: 450px; overflow-y: auto; z-index: 99999;"></div>
+            </div>
         </div>
         <div class="header-right">
-            <!-- Variance Alert Badge (Job Order Tracker) â€” shown only to staff on merchandise page -->
-            <?php if (isset($variance_alert_count) && $variance_alert_count > 0): ?>
-            <div class="notification-bell" id="varianceAlertBell" title="Variance Alerts"
-                 style="position:relative;cursor:pointer;"
-                 onclick="document.getElementById('varianceAlertDropdown').classList.toggle('show')">
-                <i class="fas fa-exclamation-triangle" style="color:#dc2626;font-size:15px;"></i>
-                <span class="badge" style="display:inline-flex;align-items:center;justify-content:center;
-                      background:#dc2626;color:#fff;border-radius:50%;width:17px;height:17px;
-                      font-size:10px;font-weight:700;position:absolute;top:-2px;right:-2px;">
-                    <?= (int)$variance_alert_count ?>
-                </span>
-                <div id="varianceAlertDropdown" class="notif-dropdown"
-                     style="min-width:320px;max-width:400px;">
-                    <div class="notif-dropdown-header" style="background:#fff3f3;border-bottom:1px solid #fecaca;">
-                        <span style="color:#dc2626;font-weight:600;">
-                            <i class="fas fa-exclamation-triangle"></i>
-                            Variance Alerts (<?= (int)$variance_alert_count ?>)
-                        </span>
-                    </div>
-                    <div style="max-height:320px;overflow-y:auto;padding:8px 0;">
-                        <?php foreach ($variance_alerts as $_va): ?>
-                        <div style="padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;">
-                            <strong style="color:#002F6C;">
-                                <?= htmlspecialchars($_va['jo_ref']) ?>
-                            </strong>
-                            <span style="margin-left:6px;padding:2px 6px;border-radius:3px;
-                                         background:<?= $_va['type']==='qty' ? '#fef3c7' : '#fee2e2' ?>;
-                                         color:<?= $_va['type']==='qty' ? '#92400e' : '#991b1b' ?>;
-                                         font-size:11px;font-weight:600;">
-                                <?= $_va['type']==='qty' ? 'Qty Mismatch' : 'Amount Mismatch' ?>
-                            </span>
-                            <div style="color:#64748b;margin-top:3px;"><?= htmlspecialchars($_va['message']) ?></div>
-                        </div>
-                        <?php endforeach; ?>
-                    </div>
-                    <div class="notif-dropdown-footer">
-                        <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker"
-                           style="display:block;text-align:center;padding:8px;font-size:12px;
-                                  color:#dc2626;text-decoration:none;border-top:1px solid #eee;">
-                            View Job Order Tracker
-                        </a>
-                    </div>
-                </div>
-            </div>
-            <?php endif; ?>
-
             <!-- Notification Bell -->
             <?php if(in_array($role, ['staff','admin','manager','superadmin','developer'])): ?>
             <div class="notification-bell" id="notificationBell" onclick="petronToggleNotif(event)" style="z-index: 99999 !important; pointer-events: auto !important; position: relative !important; cursor: pointer !important;">
@@ -4042,24 +4025,23 @@ require_once __DIR__ . '/rbac_menu.php';
     };
 
     window.resolveRedirectUrl = function(url) {
-        if (!url || url === '#' || url === '') return '#';
+        if (!url || url === '#' || url === '' || url === 'null') return '#';
         const base = window.pageData && window.pageData.appBasePath ? window.pageData.appBasePath : '';
-        // Already an absolute /public/ path
         if (url.startsWith('/public/')) {
             return base + url;
         }
-        // Relative public/ path
         if (url.startsWith('public/')) {
             return base + '/' + url;
         }
-        // Already a full URL (http/https)
         if (url.startsWith('http://') || url.startsWith('https://')) {
             return url;
         }
-        // Bare filename (e.g. "manager_job_orders.php", "manager_reports.php?tab=foo")
-        // â†’ resolve to /public/<filename>
-        if (url.match(/^[a-zA-Z0-9_\-]+\.php/)) {
-            return base + '/public/' + url;
+        if (url.includes('.php')) {
+            const cleanUrl = url.startsWith('/') ? url : '/' + url;
+            if (!cleanUrl.startsWith('/public/')) {
+                return base + '/public' + cleanUrl;
+            }
+            return base + cleanUrl;
         }
         return url;
     };
@@ -4645,6 +4627,7 @@ require_once __DIR__ . '/rbac_menu.php';
             const TYPE_META = {
                 'Transaction'   : { icon: 'fas fa-shopping-cart',   color: '#3b82f6' },
                 'Customer'      : { icon: 'fas fa-user',             color: '#10b981' },
+                'Vehicle'       : { icon: 'fas fa-car',              color: '#0284c7' },
                 'Product'       : { icon: 'fas fa-box',              color: '#f59e0b' },
                 'Job Order'     : { icon: 'fas fa-wrench',           color: '#8b5cf6' },
                 'Delivery'      : { icon: 'fas fa-truck',            color: '#ef4444' },
@@ -4671,7 +4654,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 // Show loading state
                 searchSuggestions.innerHTML =
                     '<div style="padding:14px 16px;color:#94a3b8;font-size:13px;text-align:center;">' +
-                    '<i class="fas fa-spinner fa-spin"></i> Searchingâ€¦</div>';
+                    '<i class="fas fa-spinner fa-spin"></i> Searching…</div>';
                 searchSuggestions.style.display = 'block';
 
                 debounceTimer = setTimeout(() => {
@@ -4760,9 +4743,16 @@ require_once __DIR__ . '/rbac_menu.php';
                 }, 280);
             });
 
-            // Keyboard: Escape closes dropdown
+            // Keyboard: Enter searches, Escape closes dropdown
             searchInput.addEventListener('keydown', function (e) {
-                if (e.key === 'Escape') {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const query = this.value.trim();
+                    if (query) {
+                        const _sb = (window.pageData && window.pageData.appBasePath) ? window.pageData.appBasePath : '';
+                        window.location.href = _sb + '/public/search.php?q=' + encodeURIComponent(query);
+                    }
+                } else if (e.key === 'Escape') {
                     searchSuggestions.style.display = 'none';
                     this.blur();
                 }
@@ -5081,10 +5071,15 @@ require_once __DIR__ . '/rbac_menu.php';
             function updateSidebarDrawerBadges(categoryCounts) {
                 if (!categoryCounts) return;
                 const map = {
-                    'transactions': categoryCounts.transactions || 0,
-                    'fuel':         categoryCounts.fuel || 0,
-                    'inventory':    categoryCounts.inventory || 0,
-                    'customers':    categoryCounts.customers || 0
+                    'transactions':        categoryCounts.transactions || 0,
+                    'fuel':                categoryCounts.fuel || 0,
+                    'inventory':           categoryCounts.inventory || 0,
+                    'customers':           categoryCounts.customers || 0,
+                    'mgr_customers':       categoryCounts.mgr_customers || categoryCounts.customers || 0,
+                    'mgr_product_pricing': categoryCounts.prod_pricing || 0,
+                    'prod_pricing':        categoryCounts.prod_pricing || 0,
+                    'reports':             categoryCounts.reports || 0,
+                    'notifications':       categoryCounts.notifications || 0
                 };
                 for (const [key, cnt] of Object.entries(map)) {
                     const els = document.querySelectorAll(`[data-sidebar-badge="${key}"]`);
@@ -5107,7 +5102,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 try {
                     const ctrl = new AbortController();
                     const tid  = setTimeout(() => ctrl.abort(), 8000); // 8s timeout
-                    const res  = await fetch(API_LIST + '?action=list&limit=15&status=all', {
+                    const res  = await fetch(API_LIST + '?action=list&limit=8&status=all', {
                         signal: ctrl.signal,
                         credentials: 'same-origin',
                         cache: 'no-store'
@@ -5123,14 +5118,16 @@ require_once __DIR__ . '/rbac_menu.php';
                             const color  = TYPE_COLOR[n.type]     || '#17a2b8';
                             const unread = n.status === 'unread';
                             const bg     = unread ? 'rgba(0,47,108,0.04)' : 'transparent';
-                            const url    = escapeJsString(n.redirect_url || '');
+                            const rawUrl = n.redirect_url || '';
+                            const targetUrl = (rawUrl && rawUrl !== '#' && rawUrl !== 'null') 
+                                ? (window.resolveRedirectUrl ? window.resolveRedirectUrl(rawUrl) : rawUrl)
+                                : 'javascript:void(0)';
                             const title  = escapeHtml(n.title || 'Notification');
                             const msg    = escapeHtml(n.message || '');
                             const ago    = escapeHtml(n.time_ago || timeAgo(n.created_at));
-                            // Facebook-like notification styling
                             const hoverClass = unread ? 'notif-item unread' : 'notif-item';
-                            html += `<div class="${hoverClass}" style="padding:12px 16px;cursor:pointer;display:flex;align-items:flex-start;gap:12px;text-decoration:none;"
-                                          onclick="staffMarkRead(${n.id},'${url}')">
+                            html += `<a href="${targetUrl}" class="${hoverClass}" style="padding:12px 16px;cursor:pointer;display:flex;align-items:flex-start;gap:12px;text-decoration:none !important;"
+                                          onclick="staffMarkRead(${n.id})">
                                         <div style="width:48px;height:48px;border-radius:50%;background:${color}15;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid ${color}30;">
                                             <i class="${icon}" style="color:${color};font-size:20px;"></i>
                                         </div>
@@ -5146,7 +5143,7 @@ require_once __DIR__ . '/rbac_menu.php';
                                             </div>
                                         </div>
                                         ${unread ? '<div style="width:10px;height:10px;border-radius:50%;background:#002F6C;flex-shrink:0;margin-top:20px;"></div>' : ''}
-                                    </div>`;
+                                    </a>`;
                         });
                         el.innerHTML = html;
                         updateBadge(data.unread_count || 0, data.category_counts);
@@ -5211,20 +5208,13 @@ require_once __DIR__ . '/rbac_menu.php';
             }
 
             // ── Mark one notification as read ─────────────────────────────────
-            window.staffMarkRead = async function (id, url) {
-                try {
-                    const fd = new FormData();
-                    fd.append('notification_id', id);
-                    const res = await fetch(API_LIST + '?action=mark_read', { method: 'POST', body: fd, credentials: 'same-origin' });
-                    const data = await res.json();
-                    if (data && data.success) {
-                        updateBadge(data.bell_unread_count || 0, data.category_counts);
-                    }
-                } catch (e) {}
-                if (url && url !== '#' && url !== '') {
-                    window.location.href = window.resolveRedirectUrl(url);
-                } else {
-                    loadNotifications();
+            window.staffMarkRead = function (id) {
+                if (id) {
+                    try {
+                        const fd = new FormData();
+                        fd.append('notification_id', id);
+                        fetch(API_LIST + '?action=mark_read', { method: 'POST', body: fd, credentials: 'same-origin' }).catch(e => {});
+                    } catch (e) {}
                 }
             };
 

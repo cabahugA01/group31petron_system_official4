@@ -356,21 +356,28 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_details') {
 
 // Get summary stats for panels
 $summary_stats = [
-    'today_events' => 0,
-    'today_shifts' => 0,
-    'today_deliveries' => 0,
-    'today_job_orders' => 0,
-    'week_pending' => 0,
-    'week_in_progress' => 0,
-    'week_completed' => 0,
-    'upcoming_count' => 0,
-    'conflicts' => [],
-    'pending_validations' => 0,
-    'compliance_deadlines' => 0,
-    'overdue_reports' => 0,
-    'critical_stock' => 0,
+    'today_events'            => 0,
+    'today_shifts'            => 0,
+    'today_deliveries'        => 0,
+    'today_job_orders'        => 0,
+    'week_pending'            => 0,
+    'week_in_progress'        => 0,
+    'week_completed'          => 0,
+    'upcoming_count'          => 0,
+    'conflicts'               => [],
+    'pending_validations'     => 0,
+    'compliance_deadlines'    => 0,
+    'overdue_reports'         => 0,
+    'critical_stock'          => 0,
     'high_value_transactions' => 0,
-    'stations_overview' => []
+    'stations_overview'       => [],
+    // Quick-list panels
+    'upcoming_deliveries'     => [],
+    'upcoming_purchase_orders'=> [],
+    'scheduled_jobs'          => [],
+    'upcoming_shifts'         => [],
+    'all_staff_list'          => [],
+    'holidays'                => [],
 ];
 
 try {
@@ -525,6 +532,78 @@ try {
         LIMIT 20");
     $stmt->execute($conflict_params);
     $summary_stats['conflicts'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // ── QUICK LIST: Upcoming Deliveries (next 7 days) ─────────────────
+    try {
+        $del_params = [$today_date, date('Y-m-d', strtotime('+7 days'))];
+        $del_where  = '';
+        if ($filter_station > 0) { $del_where = ' AND d.station_id = ?'; $del_params[] = $filter_station; }
+        $stmt = $pdo->prepare("SELECT d.id, d.supplier, d.product, d.status, DATE(d.delivery_date) AS del_date, s.name AS station_name
+            FROM deliveries_oversight d JOIN stations s ON d.station_id = s.id
+            WHERE DATE(d.delivery_date) BETWEEN ? AND ? $del_where ORDER BY d.delivery_date ASC LIMIT 5");
+        $stmt->execute($del_params);
+        $summary_stats['upcoming_deliveries'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+
+    // ── QUICK LIST: Purchase Orders (pending) ─────────────────────────
+    try {
+        $po_where  = $filter_station > 0 ? 'AND po.station_id = ?' : '';
+        $po_params = $filter_station > 0 ? [$filter_station] : [];
+        $stmt = $pdo->prepare("SELECT po.id, po.supplier_name AS supplier, po.status, DATE(po.order_date) AS po_date, s.name AS station_name
+            FROM purchase_orders po JOIN stations s ON po.station_id = s.id
+            WHERE po.status IN ('Pending','Approved','Processing') $po_where ORDER BY po.order_date DESC LIMIT 5");
+        $stmt->execute($po_params);
+        $summary_stats['upcoming_purchase_orders'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+
+    // ── QUICK LIST: Scheduled Jobs (pending/in-progress JOs) ─────────
+    try {
+        $jo_where  = $filter_station > 0 ? 'AND jo.station_id = ?' : '';
+        $jo_params = $filter_station > 0 ? [$filter_station] : [];
+        $stmt = $pdo->prepare("SELECT jo.id, jo.service_type, jo.customer_name, jo.plate_number, jo.status, s.name AS station_name
+            FROM job_orders jo JOIN stations s ON jo.station_id = s.id
+            WHERE jo.status IN ('Pending','Reviewed','In Progress') $jo_where ORDER BY jo.created_at DESC LIMIT 5");
+        $stmt->execute($jo_params);
+        $summary_stats['scheduled_jobs'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+
+    // ── QUICK LIST: Upcoming Shifts (today + next 3 days) ────────────
+    try {
+        $sh_params = [$today_date, date('Y-m-d', strtotime('+3 days'))];
+        $sh_join   = '';
+        $sh_where  = '';
+        if ($filter_station > 0) { $sh_join = 'JOIN users u ON ss.user_id = u.id'; $sh_where = 'AND u.station_id = ?'; $sh_params[] = $filter_station; }
+        else { $sh_join = 'JOIN users u ON ss.user_id = u.id'; }
+        $stmt = $pdo->prepare("SELECT ss.id, ss.scheduled_date, ss.shift_name, u.name AS staff_name, st.name AS station_name
+            FROM staff_schedules ss $sh_join JOIN stations st ON u.station_id = st.id
+            WHERE ss.scheduled_date BETWEEN ? AND ? $sh_where ORDER BY ss.scheduled_date ASC LIMIT 5");
+        $stmt->execute($sh_params);
+        $summary_stats['upcoming_shifts'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+
+    // ── QUICK LIST: All staff for filter dropdown ─────────────────────
+    try {
+        if ($filter_station > 0) {
+            $stmt = $pdo->prepare("SELECT id, name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant','manager','supervisor','mechanic') AND status = 'Active' ORDER BY name");
+            $stmt->execute([$filter_station]);
+        } else {
+            $stmt = $pdo->prepare("SELECT id, name FROM users WHERE role IN ('staff','cashier','pump_attendant','manager','supervisor','mechanic') AND status = 'Active' ORDER BY name LIMIT 100");
+            $stmt->execute();
+        }
+        $summary_stats['all_staff_list'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+
+    // ── QUICK LIST: Holidays (PHP national holidays for current month) ─
+    $summary_stats['holidays'] = [
+        ['date' => date('Y') . '-01-01', 'name' => "New Year's Day"],
+        ['date' => date('Y') . '-06-12', 'name' => 'Independence Day'],
+        ['date' => date('Y') . '-08-26', 'name' => 'National Heroes Day'],
+        ['date' => date('Y') . '-11-01', 'name' => "All Saints' Day"],
+        ['date' => date('Y') . '-11-02', 'name' => "All Souls' Day"],
+        ['date' => date('Y') . '-12-25', 'name' => 'Christmas Day'],
+        ['date' => date('Y') . '-12-30', 'name' => "Rizal Day"],
+        ['date' => date('Y') . '-12-31', 'name' => "New Year's Eve"],
+    ];
 } catch (Exception $e) {}
 
 // Month navigation
@@ -972,7 +1051,15 @@ include __DIR__ . '/../partials/header.php';
 <style>
 /* Google Calendar Style */
 .cal-layout { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff; display: flex; min-height: calc(100vh - 60px); }
-.cal-layout * { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; box-sizing: border-box; }
+.cal-layout *:not(i):not([class*="fa-"]) { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; box-sizing: border-box; }
+
+/* Font Awesome Icon Override */
+i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
+    font-family: "Font Awesome 6 Free", "Font Awesome 5 Free", "FontAwesome" !important;
+    font-style: normal !important;
+    font-weight: 900 !important;
+    display: inline-block !important;
+}
 
 /* Sidebar */
 .cal-sidebar { width: 256px; border-right: 1px solid #dadce0; padding: 8px 0; overflow-y: visible; flex-shrink: 0; }
@@ -1006,8 +1093,8 @@ include __DIR__ . '/../partials/header.php';
 .cal-menu-btn:hover { background: #f1f3f4; }
 .cal-month-title { font-size: 22px; font-weight: 400; color: #3c4043; }
 .cal-header-right { display: flex; align-items: center; gap: 8px; }
-.cal-view-btn { background: #fff; border: 1px solid #dadce0; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; color: #3c4043; display: flex; align-items: center; gap: 6px; position: relative; text-decoration: none; }
-.cal-view-btn:hover { background: #f1f3f4; }
+.cal-view-btn { background: #fff !important; border: 1px solid #dadce0 !important; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; color: #3c4043 !important; display: flex; align-items: center; gap: 6px; position: relative; text-decoration: none; }
+.cal-view-btn:hover { background: #f1f3f4 !important; }
 
 /* View dropdown */
 .cal-view-dropdown { position: absolute; top: 100%; right: 0; margin-top: 4px; background: #fff; border: 1px solid #dadce0; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.2); z-index: 100; display: none; }
@@ -1051,169 +1138,256 @@ include __DIR__ . '/../partials/header.php';
 
 <div class="cal-layout">
     <!-- Sidebar -->
-    <div class="cal-sidebar">
-        <!-- Summary Panels -->
-        <div style="padding: 0 12px 20px; border-bottom: 1px solid #dadce0;">
-            <!-- Today's Events -->
-            <div style="background: #e8f0fe; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                <div style="font-size: 12px; color: #1a73e8; font-weight: 600; margin-bottom: 8px;">TODAY'S EVENTS</div>
-                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
-                    <div style="text-align: center;">
-                        <div style="font-size: 20px; font-weight: 600; color: #1a73e8;"><?= $summary_stats['today_shifts'] ?></div>
-                        <div style="font-size: 10px; color: #5f6368;">Shifts</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div style="font-size: 20px; font-weight: 600; color: #1a73e8;"><?= $summary_stats['today_job_orders'] ?></div>
-                        <div style="font-size: 10px; color: #5f6368;">Job Orders</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div style="font-size: 20px; font-weight: 600; color: #1a73e8;"><?= $summary_stats['today_deliveries'] ?></div>
-                        <div style="font-size: 10px; color: #5f6368;">Deliveries</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div style="font-size: 20px; font-weight: 600; color: #1a73e8;"><?= $summary_stats['today_events'] ?></div>
-                        <div style="font-size: 10px; color: #5f6368;">Other</div>
-                    </div>
-                </div>
-            </div>
+    <div class="cal-sidebar" id="adminSidebar" style="width:270px; overflow-y:auto; max-height:calc(100vh - 60px);">
 
-            <!-- This Week Status -->
-            <div style="background: #f1f3f4; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                <div style="font-size: 12px; color: #5f6368; font-weight: 600; margin-bottom: 8px;">THIS WEEK STATUS</div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                    <span style="font-size: 11px; color: #5f6368;">Pending</span>
-                    <span style="font-size: 11px; font-weight: 600; color: #f9ab00;"><?= $summary_stats['week_pending'] ?></span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                    <span style="font-size: 11px; color: #5f6368;">Approved</span>
-                    <span style="font-size: 11px; font-weight: 600; color: #1a73e8;"><?= $summary_stats['week_in_progress'] ?></span>
-                </div>
-                <div style="display: flex; justify-content: space-between;">
-                    <span style="font-size: 11px; color: #5f6368;">Completed</span>
-                    <span style="font-size: 11px; font-weight: 600; color: #188038;"><?= $summary_stats['week_completed'] ?></span>
-                </div>
+        <!-- ── SEARCH ───────────────────────────────────────── -->
+        <div style="padding:12px; border-bottom:1px solid #dadce0;">
+            <div style="font-size:12px; font-weight:600; color:#3c4043; margin-bottom:8px;"><i class="fas fa-search" style="color:#1a73e8;"></i> SEARCH CALENDAR</div>
+            <input type="text" id="adminSearchInput" placeholder="Customer, Product, Staff, JO#, Delivery#..."
+                   onkeyup="filterAdminCalendar()"
+                   style="width:100%; padding:7px 10px; font-size:12px; border:1px solid #dadce0; border-radius:20px; outline:none; background:#f8f9fa;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px; margin-top:6px; font-size:10px; color:#70757a; text-align:center;">
+                <span>Customer</span><span>Product</span>
+                <span>Staff / Mechanic</span><span>JO# / Delivery#</span>
             </div>
+        </div>
 
-            <!-- Upcoming (3 days) -->
-            <div style="background: #fef7e0; border-radius: 8px; padding: 12px;">
-                <div style="font-size: 12px; color: #ea8600; font-weight: 600; margin-bottom: 4px;">UPCOMING (3 DAYS)</div>
-                <div style="font-size: 24px; font-weight: 600; color: #ea8600;"><?= $summary_stats['upcoming_count'] ?></div>
-                <div style="font-size: 10px; color: #5f6368;">events scheduled</div>
-            </div>
+        <!-- ── FILTERS ──────────────────────────────────────── -->
+        <div style="padding:12px; border-bottom:1px solid #dadce0;">
+            <div style="font-size:12px; font-weight:600; color:#3c4043; margin-bottom:8px;"><i class="fas fa-filter" style="color:#1a73e8;"></i> FILTERS</div>
+            <div style="display:grid; gap:6px;">
+                <select id="adminFilterStatus" onchange="filterAdminCalendar()" style="width:100%; padding:6px; font-size:11px; border:1px solid #dadce0; border-radius:4px;">
+                    <option value="">All Statuses</option>
+                    <option value="pending">Pending / Flagged</option>
+                    <option value="approved">Approved / Verified</option>
+                    <option value="completed">Completed</option>
+                    <option value="rejected">Rejected / Cancelled</option>
+                    <option value="urgent">Urgent / Critical</option>
+                </select>
 
-            <?php if (count($summary_stats['conflicts']) > 0): ?>
-            <!-- Conflicts Warning -->
-            <div style="background: #fce8e6; border-radius: 8px; padding: 12px; margin-top: 12px;">
-                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                    <i class="fas fa-exclamation-triangle" style="color: #d93025;"></i>
-                    <span style="font-size: 12px; color: #d93025; font-weight: 600;">SCHEDULE CONFLICTS</span>
-                </div>
-                <div style="font-size: 11px; color: #5f6368;"><?= count($summary_stats['conflicts']) ?> overlapping event(s) detected. Click to review.</div>
-                <button onclick="showConflicts()" style="margin-top: 8px; padding: 6px 12px; background: #d93025; color: #fff; border: none; border-radius: 4px; font-size: 11px; cursor: pointer; width: 100%;">
-                    Review Conflicts
-                </button>
+                <select id="adminFilterType" onchange="filterAdminCalendar()" style="width:100%; padding:6px; font-size:11px; border:1px solid #dadce0; border-radius:4px;">
+                    <option value="">All Event Types</option>
+                    <option value="job_order">🟢 Job Orders</option>
+                    <option value="customer_appointment">🔵 Customer Appointments</option>
+                    <option value="staff_shift">🟣 Staff Shifts</option>
+                    <option value="merchandise_delivery">🟡 Merchandise Deliveries</option>
+                    <option value="fuel_delivery">🟤 Fuel Deliveries</option>
+                    <option value="purchase_order">⚫ Purchase Orders</option>
+                    <option value="holiday">🔴 Holidays</option>
+                </select>
+
+                <select id="adminFilterStaff" onchange="filterAdminCalendar()" style="width:100%; padding:6px; font-size:11px; border:1px solid #dadce0; border-radius:4px;">
+                    <option value="">All Staff / Mechanics</option>
+                    <?php foreach ($summary_stats['all_staff_list'] as $sl): ?>
+                    <option value="<?= $sl['id'] ?>"><?= htmlspecialchars($sl['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+
+                <input type="date" id="adminFilterDate" onchange="filterAdminCalendar()"
+                       style="width:100%; padding:6px; font-size:11px; border:1px solid #dadce0; border-radius:4px;">
             </div>
+        </div>
+
+        <!-- ── EVENT TYPE LEGEND ────────────────────────────── -->
+        <div style="padding:12px; border-bottom:1px solid #dadce0;">
+            <div style="font-size:12px; font-weight:600; color:#3c4043; margin-bottom:8px;"><i class="fas fa-palette" style="color:#1a73e8;"></i> EVENTS</div>
+            <div style="display:flex; flex-direction:column; gap:5px; font-size:11px; color:#3c4043;">
+                <div style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleCategory('job_order')">
+                    <span>🟢</span><span>Job Orders</span>
+                    <div class="cal-calendar-checkbox checked" id="cb_cat_job_order" style="background:#33b679; border-color:#33b679; margin-left:auto; width:16px; height:16px;"></div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleCategory('customer_appointment')">
+                    <span>🔵</span><span>Customer Appointments</span>
+                    <div class="cal-calendar-checkbox checked" id="cb_cat_customer_appointment" style="background:#039be5; border-color:#039be5; margin-left:auto; width:16px; height:16px;"></div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleCategory('staff_shift')">
+                    <span>🟣</span><span>Staff Shifts</span>
+                    <div class="cal-calendar-checkbox checked" id="cb_cat_staff_shift" style="background:#8e24aa; border-color:#8e24aa; margin-left:auto; width:16px; height:16px;"></div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleCategory('merchandise_delivery')">
+                    <span>🟡</span><span>Merchandise Deliveries</span>
+                    <div class="cal-calendar-checkbox checked" id="cb_cat_merchandise_delivery" style="background:#f6bf26; border-color:#f6bf26; margin-left:auto; width:16px; height:16px;"></div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleCategory('fuel_delivery')">
+                    <span>🟤</span><span>Fuel Deliveries</span>
+                    <div class="cal-calendar-checkbox checked" id="cb_cat_fuel_delivery" style="background:#795548; border-color:#795548; margin-left:auto; width:16px; height:16px;"></div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleCategory('purchase_order')">
+                    <span>⚫</span><span>Purchase Orders</span>
+                    <div class="cal-calendar-checkbox checked" id="cb_cat_purchase_order" style="background:#607d8b; border-color:#607d8b; margin-left:auto; width:16px; height:16px;"></div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleCategory('holiday')">
+                    <span>🔴</span><span>Holidays</span>
+                    <div class="cal-calendar-checkbox checked" id="cb_cat_holiday" style="background:#d93025; border-color:#d93025; margin-left:auto; width:16px; height:16px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── UPCOMING EVENTS ──────────────────────────────── -->
+        <!-- Deliveries -->
+        <div style="padding:12px; border-bottom:1px solid #dadce0;">
+            <div style="font-size:12px; font-weight:600; color:#b06000; margin-bottom:6px;"><i class="fas fa-truck"></i> DELIVERIES (<?= count($summary_stats['upcoming_deliveries']) ?> upcoming)</div>
+            <?php if (empty($summary_stats['upcoming_deliveries'])): ?>
+                <div style="font-size:11px; color:#5f6368;">No deliveries in the next 7 days</div>
+            <?php else: ?>
+                <div style="max-height:110px; overflow-y:auto;">
+                    <?php foreach($summary_stats['upcoming_deliveries'] as $d): ?>
+                    <div style="font-size:11px; border-bottom:1px solid #feefc3; padding:4px 0;">
+                        <div style="font-weight:600; color:#b06000;"><?= htmlspecialchars($d['supplier'] ?? 'Supplier') ?></div>
+                        <div style="color:#5f6368; font-size:10px;"><?= htmlspecialchars($d['product'] ?? '') ?> · <?= $d['del_date'] ?> · <em><?= htmlspecialchars($d['station_name'] ?? '') ?></em></div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
             <?php endif; ?>
         </div>
 
-        <!-- Staff color legend -->
+        <!-- Purchase Orders -->
+        <div style="padding:12px; border-bottom:1px solid #dadce0;">
+            <div style="font-size:12px; font-weight:600; color:#3c4043; margin-bottom:6px;"><i class="fas fa-file-invoice"></i> PURCHASE ORDERS (<?= count($summary_stats['upcoming_purchase_orders']) ?>)</div>
+            <?php if (empty($summary_stats['upcoming_purchase_orders'])): ?>
+                <div style="font-size:11px; color:#5f6368;">No pending purchase orders</div>
+            <?php else: ?>
+                <div style="max-height:110px; overflow-y:auto;">
+                    <?php foreach($summary_stats['upcoming_purchase_orders'] as $po): ?>
+                    <div style="font-size:11px; border-bottom:1px solid #e0e0e0; padding:4px 0;">
+                        <div style="font-weight:600; color:#3c4043;">PO#<?= $po['id'] ?> — <?= htmlspecialchars($po['supplier'] ?? 'Supplier') ?></div>
+                        <div style="color:#5f6368; font-size:10px;"><?= $po['po_date'] ?> · <?= htmlspecialchars($po['station_name'] ?? '') ?> · <span style="color:<?= strtolower($po['status']) === 'pending' ? '#ea8600' : '#188038' ?>;"><?= $po['status'] ?></span></div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- Scheduled Jobs -->
+        <div style="padding:12px; border-bottom:1px solid #dadce0;">
+            <div style="font-size:12px; font-weight:600; color:#137333; margin-bottom:6px;"><i class="fas fa-wrench"></i> SCHEDULED JOBS (<?= count($summary_stats['scheduled_jobs']) ?>)</div>
+            <?php if (empty($summary_stats['scheduled_jobs'])): ?>
+                <div style="font-size:11px; color:#5f6368;">No active job orders</div>
+            <?php else: ?>
+                <div style="max-height:110px; overflow-y:auto;">
+                    <?php foreach($summary_stats['scheduled_jobs'] as $jo): ?>
+                    <div style="font-size:11px; border-bottom:1px solid #ceead6; padding:4px 0;">
+                        <div style="font-weight:600; color:#137333;">JO#<?= $jo['id'] ?> — <?= htmlspecialchars($jo['service_type'] ?? '') ?></div>
+                        <div style="color:#5f6368; font-size:10px;"><?= htmlspecialchars($jo['customer_name'] ?? 'Walk-in') ?> (<?= htmlspecialchars($jo['plate_number'] ?? 'N/A') ?>) · <?= htmlspecialchars($jo['station_name'] ?? '') ?></div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- Staff Shifts -->
+        <div style="padding:12px; border-bottom:1px solid #dadce0;">
+            <div style="font-size:12px; font-weight:600; color:#5f6368; margin-bottom:6px;"><i class="fas fa-user-clock"></i> STAFF SHIFTS (next 3 days)</div>
+            <?php if (empty($summary_stats['upcoming_shifts'])): ?>
+                <div style="font-size:11px; color:#5f6368;">No shifts scheduled</div>
+            <?php else: ?>
+                <div style="max-height:110px; overflow-y:auto;">
+                    <?php foreach($summary_stats['upcoming_shifts'] as $sh): ?>
+                    <div style="font-size:11px; border-bottom:1px solid #e0e0e0; padding:4px 0;">
+                        <div style="font-weight:600; color:#5f6368;"><?= htmlspecialchars($sh['staff_name'] ?? '') ?></div>
+                        <div style="color:#70757a; font-size:10px;"><?= $sh['scheduled_date'] ?> · <?= htmlspecialchars($sh['shift_name'] ?? 'Regular') ?> · <em><?= htmlspecialchars($sh['station_name'] ?? '') ?></em></div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- ── TODAY'S STATS ─────────────────────────────────── -->
+        <div style="padding:12px; border-bottom:1px solid #dadce0;">
+            <div style="font-size:12px; font-weight:600; color:#1a73e8; margin-bottom:8px;"><i class="fas fa-calendar-day"></i> TODAY'S EVENTS</div>
+            <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:8px; text-align:center;">
+                <div><div style="font-size:20px; font-weight:700; color:#1a73e8;"><?= $summary_stats['today_shifts'] ?></div><div style="font-size:10px; color:#5f6368;">Shifts</div></div>
+                <div><div style="font-size:20px; font-weight:700; color:#33b679;"><?= $summary_stats['today_job_orders'] ?></div><div style="font-size:10px; color:#5f6368;">Job Orders</div></div>
+                <div><div style="font-size:20px; font-weight:700; color:#b06000;"><?= $summary_stats['today_deliveries'] ?></div><div style="font-size:10px; color:#5f6368;">Deliveries</div></div>
+                <div><div style="font-size:20px; font-weight:700; color:#5f6368;"><?= $summary_stats['today_events'] ?></div><div style="font-size:10px; color:#5f6368;">Other</div></div>
+            </div>
+        </div>
+
+        <!-- ── THIS WEEK STATUS ─────────────────────────────── -->
+        <div style="padding:12px; border-bottom:1px solid #dadce0;">
+            <div style="font-size:12px; font-weight:600; color:#5f6368; margin-bottom:8px;"><i class="fas fa-chart-bar"></i> THIS WEEK STATUS</div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                <span style="font-size:11px; color:#5f6368;">Pending</span><span style="font-size:11px; font-weight:700; color:#f9ab00;"><?= $summary_stats['week_pending'] ?></span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                <span style="font-size:11px; color:#5f6368;">Approved</span><span style="font-size:11px; font-weight:700; color:#1a73e8;"><?= $summary_stats['week_in_progress'] ?></span>
+            </div>
+            <div style="display:flex; justify-content:space-between;">
+                <span style="font-size:11px; color:#5f6368;">Completed</span><span style="font-size:11px; font-weight:700; color:#188038;"><?= $summary_stats['week_completed'] ?></span>
+            </div>
+        </div>
+
+        <!-- ── CONFLICTS ─────────────────────────────────────── -->
+        <?php if (count($summary_stats['conflicts']) > 0): ?>
+        <div style="padding:12px; border-bottom:1px solid #dadce0; background:#fce8e6;">
+            <div style="font-size:12px; font-weight:600; color:#d93025; margin-bottom:6px;"><i class="fas fa-exclamation-triangle"></i> SCHEDULE CONFLICTS</div>
+            <div style="font-size:11px; color:#5f6368;"><?= count($summary_stats['conflicts']) ?> overlapping event(s) detected.</div>
+            <button onclick="showConflicts()" style="margin-top:8px; padding:6px 12px; background:#d93025; color:#fff; border:none; border-radius:4px; font-size:11px; cursor:pointer; width:100%;">Review Conflicts</button>
+        </div>
+        <?php endif; ?>
+
+
+
+        <!-- ── STAFF (Color Filter) ──────────────────────────── -->
         <div class="cal-calendars">
-            <div class="cal-calendars-title">Staff</div>
+            <div class="cal-calendars-title">Staff (Color Filter)</div>
             <?php foreach($staff_list as $staff_id => $staff): ?>
             <div class="cal-calendar-item" onclick="toggleStaff(<?= $staff_id ?>)">
                 <div class="cal-calendar-checkbox checked" style="background: <?= htmlspecialchars($staff['color']) ?>; border-color: <?= htmlspecialchars($staff['color']) ?>;"></div>
-                <div><?= htmlspecialchars($staff['name']) ?></div>
+                <div style="font-size:13px;"><?= htmlspecialchars($staff['name']) ?></div>
             </div>
             <?php endforeach; ?>
         </div>
 
-        <!-- Event Categories -->
-        <div class="cal-calendars" style="border-top: 1px solid #dadce0; margin-top: 16px; padding-top: 8px;">
-            <div class="cal-calendars-title">Event Categories</div>
-            
-            <div class="cal-calendar-item" onclick="toggleCategory('staff_shift')">
-                <div class="cal-calendar-checkbox checked" id="cb_cat_staff_shift" style="background: #1a73e8; border-color: #1a73e8;"></div>
-                <div>Shifts</div>
-            </div>
-            <div class="cal-calendar-item" onclick="toggleCategory('job_order')">
-                <div class="cal-calendar-checkbox checked" id="cb_cat_job_order" style="background: #1a73e8; border-color: #1a73e8;"></div>
-                <div>Job Orders</div>
-            </div>
-            <div class="cal-calendar-item" onclick="toggleCategory('merchandise_delivery')">
-                <div class="cal-calendar-checkbox checked" id="cb_cat_merchandise_delivery" style="background: #1a73e8; border-color: #1a73e8;"></div>
-                <div>Deliveries</div>
-            </div>
-            <div class="cal-calendar-item" onclick="toggleCategory('compliance_deadline')">
-                <div class="cal-calendar-checkbox checked" id="cb_cat_compliance_deadline" style="background: #1a73e8; border-color: #1a73e8;"></div>
-                <div>Compliance</div>
-            </div>
-            <div class="cal-calendar-item" onclick="toggleCategory('validation_task')">
-                <div class="cal-calendar-checkbox checked" id="cb_cat_validation_task" style="background: #1a73e8; border-color: #1a73e8;"></div>
-                <div>Val. Tasks</div>
-            </div>
-            <div class="cal-calendar-item" onclick="toggleCategory('critical_stock')">
-                <div class="cal-calendar-checkbox checked" id="cb_cat_critical_stock" style="background: #1a73e8; border-color: #1a73e8;"></div>
-                <div>Critical Stock</div>
-            </div>
-        </div>
-
-        <!-- Event Statuses -->
-        <div class="cal-calendars" style="border-top: 1px solid #dadce0; margin-top: 16px; padding-top: 8px; margin-bottom: 20px;">
-            <div class="cal-calendars-title">Status Filters</div>
-            
-            <div class="cal-calendar-item" onclick="toggleStatus('pending')">
-                <div class="cal-calendar-checkbox checked" id="cb_stat_pending" style="background: #ea8600; border-color: #ea8600;"></div>
-                <div>Pending / Flagged</div>
-            </div>
-            <div class="cal-calendar-item" onclick="toggleStatus('approved')">
-                <div class="cal-calendar-checkbox checked" id="cb_stat_approved" style="background: #188038; border-color: #188038;"></div>
-                <div>Approved / Verified</div>
-            </div>
-            <div class="cal-calendar-item" onclick="toggleStatus('completed')">
-                <div class="cal-calendar-checkbox checked" id="cb_stat_completed" style="background: #1a73e8; border-color: #1a73e8;"></div>
-                <div>Completed</div>
-            </div>
-            <div class="cal-calendar-item" onclick="toggleStatus('rejected')">
-                <div class="cal-calendar-checkbox checked" id="cb_stat_rejected" style="background: #d93025; border-color: #d93025;"></div>
-                <div>Rejected / Cancelled</div>
-            </div>
-        </div>
     </div>
 
     <!-- Main calendar -->
     <div class="cal-main">
         <!-- Header -->
-        <div class="cal-header">
-            <div class="cal-header-left">
-                <h1 class="cal-month-title"><?= htmlspecialchars($view_title) ?></h1>
+        <div class="cal-header" style="background:#fff; padding:12px 20px; border-bottom:1px solid #dadce0; display:flex; align-items:center; justify-content:space-between;">
+            <div class="cal-header-left" style="display:flex; align-items:center; gap:16px;">
+                <h1 class="cal-month-title" style="margin:0; font-size:22px; font-weight:600; color:#202124; font-family:'Google Sans', sans-serif;">
+                    <?= htmlspecialchars($view_title) ?>
+                </h1>
             </div>
-            <div class="cal-header-right">
-                <a href="admin_calendar.php?view=<?= $current_view ?>&month_offset=<?= $prev_offset ?><?= $filter_station > 0 ? '&station='.$filter_station : '' ?>" class="cal-icon-btn" title="Previous">
-                    <i class="fas fa-chevron-left"></i>
+            <div class="cal-header-right" style="display:flex; align-items:center; gap:10px;">
+                <button type="button" onclick="showEventModal(null)" style="padding:8px 16px; background:#1a73e8; color:#fff; border:none; border-radius:4px; font-weight:500; font-size:13px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; margin-right:8px;">
+                    <i class="fas fa-plus"></i> Create Event
+                </button>
+                <a href="admin_calendar.php?view=<?= $current_view ?>&month_offset=<?= $prev_offset ?><?= $filter_station > 0 ? '&station='.$filter_station : '' ?>" 
+                   class="cal-icon-btn" title="Previous Month/Week/Day"
+                   style="width:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; border:1px solid #dadce0; border-radius:50%; color:#5f6368; text-decoration:none; transition:background 0.2s;">
+                    <i class="fas fa-chevron-left" style="font-size:14px;"></i>
                 </a>
-                <a href="admin_calendar.php?view=<?= $current_view ?>&month_offset=0<?= $filter_station > 0 ? '&station='.$filter_station : '' ?>" class="cal-view-btn">Today</a>
-                <a href="admin_calendar.php?view=<?= $current_view ?>&month_offset=<?= $next_offset ?><?= $filter_station > 0 ? '&station='.$filter_station : '' ?>" class="cal-icon-btn" title="Next">
-                    <i class="fas fa-chevron-right"></i>
+                <a href="admin_calendar.php?view=<?= $current_view ?>&month_offset=0<?= $filter_station > 0 ? '&station='.$filter_station : '' ?>" 
+                   class="cal-view-btn" 
+                   style="padding:8px 16px; border:1px solid #dadce0; border-radius:4px; background:#fff; color:#3c4043; font-weight:500; font-size:13px; text-decoration:none;">
+                    Today
+                </a>
+                <a href="admin_calendar.php?view=<?= $current_view ?>&month_offset=<?= $next_offset ?><?= $filter_station > 0 ? '&station='.$filter_station : '' ?>" 
+                   class="cal-icon-btn" title="Next Month/Week/Day"
+                   style="width:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; border:1px solid #dadce0; border-radius:50%; color:#5f6368; text-decoration:none; transition:background 0.2s;">
+                    <i class="fas fa-chevron-right" style="font-size:14px;"></i>
                 </a>
                 <div style="position: relative;">
-                    <button class="cal-view-btn" onclick="toggleViewDropdown(event)">
-                        <?= ucfirst($current_view) ?> <i class="fas fa-chevron-down"></i>
+                    <button class="cal-view-btn" onclick="toggleViewDropdown(event)" style="padding:8px 14px; border:1px solid #dadce0; border-radius:4px; background:#fff; color:#3c4043; font-weight:500; font-size:13px; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                        <?= ucfirst($current_view) ?> <i class="fas fa-chevron-down" style="font-size:11px; margin-left:4px;"></i>
                     </button>
                     <div class="cal-view-dropdown" id="viewDropdown">
                         <div class="cal-view-option <?= $current_view === 'day' ? 'active' : '' ?>" onclick="selectView('day')">
-                            <span>Day</span>
+                            <span>Day View</span>
                             <span class="shortcut">D</span>
                         </div>
                         <div class="cal-view-option <?= $current_view === 'week' ? 'active' : '' ?>" onclick="selectView('week')">
-                            <span>Week</span>
+                            <span>Week View</span>
                             <span class="shortcut">W</span>
                         </div>
                         <div class="cal-view-option <?= $current_view === 'month' ? 'active' : '' ?>" onclick="selectView('month')">
-                            <span>Month</span>
+                            <span>Month View</span>
                             <span class="shortcut">M</span>
                         </div>
                         <div class="cal-view-option <?= $current_view === 'year' ? 'active' : '' ?>" onclick="selectView('year')">
-                            <span>Year</span>
+                            <span>Year View</span>
                             <span class="shortcut">Y</span>
                         </div>
                     </div>
@@ -1926,6 +2100,53 @@ function applyCalendarFilters() {
             evt.style.setProperty('display', 'none', 'important');
         }
     });
+}
+
+// ── LIVE SEARCH + MULTI-FILTER ────────────────────────────────────────
+function filterAdminCalendar() {
+    const searchVal  = (document.getElementById('adminSearchInput')?.value  || '').toLowerCase().trim();
+    const statusVal  = (document.getElementById('adminFilterStatus')?.value || '').toLowerCase().trim();
+    const typeVal    = (document.getElementById('adminFilterType')?.value   || '').toLowerCase().trim();
+    const staffVal   = (document.getElementById('adminFilterStaff')?.value  || '').trim();
+    const dateVal    = (document.getElementById('adminFilterDate')?.value   || '').trim();
+
+    document.querySelectorAll('.cal-event').forEach(evt => {
+        const text   = (evt.innerText || '').toLowerCase();
+        const type   = (evt.getAttribute('data-type')   || '').toLowerCase();
+        const status = (evt.getAttribute('data-status') || '').toLowerCase();
+        const staff  = (evt.getAttribute('data-staff')  || '');
+
+        let match = true;
+
+        if (searchVal && !text.includes(searchVal)) match = false;
+
+        if (statusVal) {
+            if (statusVal === 'pending'   && !['pending','flagged','urgent'].includes(status)) match = false;
+            else if (statusVal === 'approved'  && !['approved','verified','in_progress'].includes(status)) match = false;
+            else if (statusVal === 'completed' && status !== 'completed') match = false;
+            else if (statusVal === 'rejected'  && !['rejected','cancelled'].includes(status)) match = false;
+            else if (statusVal === 'urgent'    && status !== 'urgent') match = false;
+        }
+
+        if (typeVal && type !== typeVal) match = false;
+        if (staffVal && staff !== staffVal) match = false;
+
+        if (dateVal) {
+            const dayCell = evt.closest('.cal-day');
+            const dayDate = dayCell ? dayCell.getAttribute('data-date') : null;
+            if (dayDate && dayDate !== dateVal) match = false;
+        }
+
+        evt.style.display = match ? 'flex' : 'none';
+    });
+}
+
+// ── PRINT CALENDAR ────────────────────────────────────────────────────
+function printAdminCalendar() {
+    const sidebar = document.getElementById('adminSidebar');
+    if (sidebar) sidebar.style.display = 'none';
+    window.print();
+    if (sidebar) sidebar.style.display = '';
 }
 
 // Mini calendar navigation

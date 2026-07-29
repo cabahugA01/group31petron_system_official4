@@ -59,33 +59,122 @@ try {
 /**
  * Category breakdown helper for sidebar drawer badges
  */
-function get_category_unread_counts(PDO $pdo, int $user_id): array {
-    $categories = [
-        'transactions' => 0,
-        'fuel'         => 0,
-        'inventory'    => 0,
-        'customers'    => 0,
+/**
+ * Category breakdown helper for sidebar drawer badges
+ */
+function get_category_unread_counts(PDO $pdo, int $user_id, string $role = '', int $station_id = 0): array {
+    $counts = [
+        'transactions'  => 0,
+        'fuel'          => 0,
+        'inventory'     => 0,
+        'customers'     => 0,
+        'prod_pricing'  => 0,
+        'reports'       => 0,
+        'notifications' => 0
     ];
-    try {
-        $stmt = $pdo->prepare(
-            "SELECT event_type, COUNT(*) as cnt FROM notifications WHERE user_id = ? AND status = 'unread' GROUP BY event_type"
+
+    $safe_count = function(string $sql, array $params = []) use ($pdo) {
+        try {
+            $s = $pdo->prepare($sql);
+            $s->execute($params);
+            return (int)$s->fetchColumn();
+        } catch (Throwable $e) { return 0; }
+    };
+
+    $counts['notifications'] = $safe_count("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'", [$user_id]);
+
+    if (in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+        // SERVICE STAFF
+        $counts['transactions'] = $safe_count(
+            "SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND (created_by = ? OR user_id = ? OR assigned_mechanic_id = ?) AND LOWER(COALESCE(status,'')) IN ('pending','reviewed','in progress','awaiting parts')",
+            [$station_id, $user_id, $user_id, $user_id]
+        ) + $safe_count(
+            "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id = ? AND staff_id = ? AND LOWER(COALESCE(validation_status,'')) IN ('pending','pending validation','pending_validation')",
+            [$station_id, $user_id]
         );
-        $stmt->execute([$user_id]);
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $c) {
-            $evt = strtolower($c['event_type'] ?? '');
-            $cnt = (int)$c['cnt'];
-            if (in_array($evt, ['transaction', 'job_order', 'joborder'])) {
-                $categories['transactions'] += $cnt;
-            } elseif (in_array($evt, ['fuel_management', 'fuel'])) {
-                $categories['fuel'] += $cnt;
-            } elseif (in_array($evt, ['inventory', 'stock_in', 'delivery', 'stock_request'])) {
-                $categories['inventory'] += $cnt;
-            } elseif ($evt === 'customer') {
-                $categories['customers'] += $cnt;
-            }
-        }
-    } catch (Throwable $e) {}
-    return $categories;
+
+        $counts['fuel'] = $safe_count(
+            "SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND staff_id = ? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation','pending_validation')",
+            [$station_id, $user_id]
+        );
+
+        $counts['inventory'] = $safe_count(
+            "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.reorder_level, ip.min_stock, 24)",
+            [$station_id]
+        );
+
+    } elseif (in_array($role, ['manager', 'supervisor'])) {
+        // MANAGER
+        $counts['transactions'] = $safe_count(
+            "SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation','reviewed')",
+            [$station_id]
+        ) + $safe_count(
+            "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id = ? AND LOWER(COALESCE(validation_status,'')) IN ('pending','pending validation')",
+            [$station_id]
+        ) + $safe_count(
+            "SELECT COUNT(*) FROM fuel_adjustments WHERE station_id = ? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation')",
+            [$station_id]
+        );
+
+        $counts['fuel'] = $safe_count(
+            "SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation')",
+            [$station_id]
+        ) + $safe_count(
+            "SELECT COUNT(*) FROM fuel_adjustments WHERE station_id = ? AND LOWER(COALESCE(adjustment_type,'')) LIKE '%calibration%' AND LOWER(COALESCE(status,'')) IN ('pending','pending review')",
+            [$station_id]
+        );
+
+        $counts['inventory'] = $safe_count(
+            "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.reorder_level, ip.min_stock, 24)",
+            [$station_id]
+        ) + $safe_count(
+            "SELECT COUNT(*) FROM stock_requests WHERE station_id = ? AND status IN ('Pending','Pending Manager Review')",
+            [$station_id]
+        ) + $safe_count(
+            "SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id = ? AND status IN ('Pending','Pending Manager Review')",
+            [$station_id]
+        ) + $safe_count(
+            "SELECT COUNT(*) FROM purchase_orders WHERE station_id = ? AND status IN ('Approved','Pending Stock-In')",
+            [$station_id]
+        );
+
+        $counts['customers']     = $safe_count(
+            "SELECT COUNT(*) FROM customers WHERE station_id = ? AND LOWER(COALESCE(NULLIF(verification_status,''), NULLIF(mgr_status,''), 'verified')) IN ('pending','pending verification','for review')",
+            [$station_id]
+        );
+        $counts['mgr_customers'] = $counts['customers'];
+
+    } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
+        // ADMIN
+        $admin_crit_stock = $safe_count(
+            "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.critical_level, ip.critical_level, 10)",
+            []
+        );
+        $admin_pos = $safe_count(
+            "SELECT COUNT(*) FROM purchase_orders WHERE status IN ('Pending Admin Review', 'Submitted', 'Pending Approval')",
+            []
+        );
+        $admin_inv_total = $admin_crit_stock + $admin_pos;
+        $counts['inventory']       = $admin_inv_total;
+        $counts['admin_inventory'] = $admin_inv_total;
+
+        $admin_price_change = $safe_count(
+            "SELECT COUNT(*) FROM pending_price_approvals WHERE status = 'pending'",
+            []
+        );
+        $counts['prod_pricing']          = $admin_price_change;
+        $counts['mgr_product_pricing']   = $admin_price_change;
+        $counts['admin_product_pricing'] = $admin_price_change;
+
+        $admin_system_alerts = $safe_count(
+            "SELECT COUNT(*) FROM notifications WHERE severity IN ('critical','error') AND status = 'unread'",
+            []
+        );
+        $counts['reports']       = $admin_system_alerts;
+        $counts['admin_reports'] = $admin_system_alerts;
+    }
+
+    return $counts;
 }
 
 // ── Route ─────────────────────────────────────────────────────
@@ -98,16 +187,43 @@ try {
 
             // ── List notifications ────────────────────────────
             case 'list':
-                $status = $_GET['status'] ?? 'all';
-                $limit  = min((int)($_GET['limit'] ?? 20), 50);
-                $offset = (int)($_GET['offset'] ?? 0);
+                $status    = $_GET['status'] ?? 'all';
+                $type_f    = $_GET['type'] ?? 'all';
+                $sev_f     = $_GET['severity'] ?? 'all';
+                $search    = trim($_GET['search'] ?? '');
+                $date_from = trim($_GET['date_from'] ?? '');
+                $date_to   = trim($_GET['date_to'] ?? '');
+                $limit     = min((int)($_GET['limit'] ?? 20), 500);
+                $offset    = (int)($_GET['offset'] ?? 0);
 
                 $where  = 'WHERE n.user_id = ?';
                 $params = [$user_id];
 
-                if ($status !== 'all') {
+                if ($status !== 'all' && $status !== '') {
                     $where   .= ' AND n.status = ?';
                     $params[] = $status;
+                }
+                if ($type_f !== 'all' && $type_f !== '') {
+                    $where   .= ' AND (n.event_type = ? OR n.type = ?)';
+                    $params[] = $type_f;
+                    $params[] = $type_f;
+                }
+                if ($sev_f !== 'all' && $sev_f !== '') {
+                    $where   .= ' AND n.severity = ?';
+                    $params[] = $sev_f;
+                }
+                if ($search !== '') {
+                    $where   .= ' AND (n.title LIKE ? OR n.message LIKE ?)';
+                    $params[] = '%' . $search . '%';
+                    $params[] = '%' . $search . '%';
+                }
+                if ($date_from !== '') {
+                    $where   .= ' AND DATE(n.created_at) >= ?';
+                    $params[] = $date_from;
+                }
+                if ($date_to !== '') {
+                    $where   .= ' AND DATE(n.created_at) <= ?';
+                    $params[] = $date_to;
                 }
 
                 $stmt = $pdo->prepare(
@@ -135,14 +251,34 @@ try {
                 $unread = (int)$cnt_stmt->fetchColumn();
 
                 // Category breakdown for sidebar badges
-                $cat_counts = get_category_unread_counts($pdo, $user_id);
+                $myStationId = (int)($me['station_id'] ?? 0);
+                $cat_counts  = get_category_unread_counts($pdo, $user_id, $role, $myStationId);
+
+                // Overall Stats breakdown for cards
+                $stats_stmt = $pdo->prepare(
+                    "SELECT 
+                        COUNT(*) as total,
+                        SUM(CASE WHEN status = 'unread' THEN 1 ELSE 0 END) as unread,
+                        SUM(CASE WHEN status = 'read' THEN 1 ELSE 0 END) as read_count,
+                        SUM(CASE WHEN status = 'archived' THEN 1 ELSE 0 END) as archived
+                     FROM notifications WHERE user_id = ?"
+                );
+                $stats_stmt->execute([$user_id]);
+                $stats = $stats_stmt->fetch(PDO::FETCH_ASSOC) ?: ['total'=>0, 'unread'=>0, 'read_count'=>0, 'archived'=>0];
 
                 echo json_encode([
-                    'success'         => true,
-                    'notifications'   => $rows,
-                    'unread_count'    => $unread,
-                    'total'           => count($rows),
-                    'category_counts' => $cat_counts,
+                    'success'           => true,
+                    'notifications'     => $rows,
+                    'unread_count'      => $unread,
+                    'bell_unread_count' => $unread,
+                    'total'             => (int)($stats['total'] ?? count($rows)),
+                    'stats'             => [
+                        'total'    => (int)($stats['total'] ?? 0),
+                        'unread'   => (int)($stats['unread'] ?? 0),
+                        'read'     => (int)($stats['read_count'] ?? 0),
+                        'archived' => (int)($stats['archived'] ?? 0),
+                    ],
+                    'category_counts'   => $cat_counts,
                 ]);
                 break;
 
@@ -272,7 +408,7 @@ try {
                 );
                 $bell_stmt->execute([$user_id]);
                 $bell_unread = (int)$bell_stmt->fetchColumn();
-                $cat_counts  = get_category_unread_counts($pdo, $user_id);
+                $cat_counts  = get_category_unread_counts($pdo, $user_id, $role, $myStationId);
 
                 echo json_encode([
                     'success'           => true,
@@ -306,6 +442,31 @@ try {
                 );
                 $cnt->execute([$user_id]);
                 $cat_counts = get_category_unread_counts($pdo, $user_id);
+                echo json_encode([
+                    'success'           => true,
+                    'unread_count'      => (int)$cnt->fetchColumn(),
+                    'bell_unread_count' => (int)$cnt->fetchColumn(),
+                    'category_counts'   => $cat_counts,
+                ]);
+                break;
+
+            // ── Archive one notification ──────────────────────
+            case 'archive':
+                $notif_id = (int)($_POST['notification_id'] ?? 0);
+                if ($notif_id > 0) {
+                    $stmt = $pdo->prepare(
+                        "UPDATE notifications
+                         SET status = 'archived'
+                         WHERE id = ? AND user_id = ?"
+                    );
+                    $stmt->execute([$notif_id, $user_id]);
+                }
+                $myStationId = (int)($me['station_id'] ?? 0);
+                $cnt = $pdo->prepare(
+                    "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'"
+                );
+                $cnt->execute([$user_id]);
+                $cat_counts = get_category_unread_counts($pdo, $user_id, $role, $myStationId);
                 echo json_encode([
                     'success'           => true,
                     'unread_count'      => (int)$cnt->fetchColumn(),

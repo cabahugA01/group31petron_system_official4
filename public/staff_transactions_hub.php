@@ -803,7 +803,7 @@ if ($section === 'history' || $section === 'fuel_history') {
         $mt_txnid_col = isset($mt_cols['transaction_id'])   ? 'mt.transaction_id'   : 'mt.id';
         $mt_pstat_col = isset($mt_cols['payment_status'])   ? 'mt.payment_status'   : "'Pending'";
         $mt_type_col  = isset($mt_cols['transaction_type']) ? 'mt.transaction_type' : "'merchandise'";
-        $mt_plate_col = isset($mt_cols['job_order_vehicle_plate']) ? 'mt.job_order_vehicle_plate' : 'NULL';
+        $mt_plate_col = "COALESCE(NULLIF(TRIM(mt.job_order_vehicle_plate),''), '—')";
         $mt_vtype_col = isset($mt_cols['job_order_vehicle_type'])  ? 'mt.job_order_vehicle_type'  : 'NULL';
         $mt_mech_col  = isset($mt_cols['job_order_mechanic_name']) ? 'mt.job_order_mechanic_name' : 'NULL';
         $mt_cont_col  = isset($mt_cols['job_order_contact'])       ? 'mt.job_order_contact'       : 'NULL';
@@ -918,9 +918,22 @@ if ($section === 'history' || $section === 'fuel_history') {
                    mt.quantity,
                    mt.unit_price,
                    $mt_valstat_col AS validation_status,
-                   COALESCE(NULLIF(TRIM(mt.job_order_service),''),'') AS job_order_service
+                   COALESCE(NULLIF(TRIM(mt.job_order_service),''),'') AS job_order_service,
+                   COALESCE(
+                       jo_mt.estimated_cost,
+                       (SELECT NULLIF(SUM(subtotal),0) FROM merchandise_transaction_items WHERE transaction_id = mt.id AND (item_type = 'service' OR category LIKE '%Service%') AND category != 'Labor' AND product_name NOT LIKE '%Labor%'),
+                       CASE WHEN (mt.job_order_service IS NOT NULL AND TRIM(mt.job_order_service) != '') OR COALESCE($mt_type_col,'merchandise') IN ('job_order', 'combined') THEN mt.total_amount ELSE 0 END,
+                       0
+                   ) AS service_fee,
+                   COALESCE(
+                       jo_mt.actual_labor_cost,
+                       jo_mt.estimated_labor_cost,
+                       (SELECT COALESCE(SUM(subtotal),0) FROM merchandise_transaction_items WHERE transaction_id = mt.id AND (category = 'Labor' OR product_name LIKE '%Labor%')),
+                       0
+                   ) AS labor_fee
             FROM merchandise_transactions mt
             LEFT JOIN users u ON u.id = mt.staff_id
+            LEFT JOIN job_orders jo_mt ON jo_mt.id = mt.job_order_db_id
             $merch_where2
             ORDER BY $mt_date_col DESC
         ");
@@ -1334,6 +1347,9 @@ if ($section === 'merchandise') {
                     } elseif ($jo_action === 'set_completed') {
                         $pdo->prepare("UPDATE merchandise_transactions SET workflow_status='Completed', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
                         $_SESSION['success'] = 'Job Order marked as Completed.';
+                    } elseif ($jo_action === 'release_job_order' || $jo_action === 'set_released') {
+                        $pdo->prepare("UPDATE merchandise_transactions SET workflow_status='Released', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $_SESSION['success'] = 'Vehicle marked as Released to customer.';
                     } elseif ($jo_action === 'set_paid') {
                         $pdo->prepare("UPDATE merchandise_transactions SET payment_status='Paid', balance_due=0, updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
                         $_SESSION['success'] = 'Payment recorded as Paid.';
@@ -1357,7 +1373,7 @@ if ($section === 'merchandise') {
                             $_SESSION['success'] = 'Staff remark saved.';
                         }
                     } elseif ($jo_action === 'update_status') {
-                        $allowed = ['In Progress', 'Completed', 'Rejected'];
+                        $allowed = ['Pending', 'Waiting for Parts', 'In Progress', 'Completed', 'Released', 'Rejected'];
                         $new_status = trim($_POST['new_status'] ?? '');
                         $rej_remarks = trim($_POST['rejection_remarks'] ?? '');
                         if (in_array($new_status, $allowed)) {
@@ -1412,6 +1428,9 @@ if ($section === 'merchandise') {
                     } elseif ($jo_action === 'set_completed') {
                         $pdo->prepare("UPDATE job_orders SET status='Completed', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
                         $_SESSION['success'] = 'Job Order marked as Completed.';
+                    } elseif ($jo_action === 'release_job_order' || $jo_action === 'set_released') {
+                        $pdo->prepare("UPDATE job_orders SET status='Released', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $_SESSION['success'] = 'Vehicle marked as Released to customer.';
                     } elseif ($jo_action === 'set_paid') {
                         $pdo->prepare("UPDATE job_orders SET payment_status='Paid', balance_due=0, updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
                         $_SESSION['success'] = 'Payment recorded as Paid.';
@@ -1435,7 +1454,7 @@ if ($section === 'merchandise') {
                             $_SESSION['success'] = 'Staff remark saved.';
                         }
                     } elseif ($jo_action === 'update_status') {
-                        $allowed = ['In Progress', 'Completed', 'Rejected'];
+                        $allowed = ['Pending', 'Waiting for Parts', 'In Progress', 'Completed', 'Released', 'Rejected'];
                         $new_status = trim($_POST['new_status'] ?? '');
                         $rej_remarks = trim($_POST['rejection_remarks'] ?? '');
                         if (in_array($new_status, $allowed)) {
@@ -1557,11 +1576,24 @@ if ($section === 'merchandise') {
                     mt.customer_name,
                     mt.transaction_type,
                     COALESCE($mt_col_est_duration, 0) AS estimated_duration,
-                    COALESCE(mt.job_order_service, 'Service') AS service_type,
+                    COALESCE(
+                        NULLIF(TRIM(mt.job_order_service), ''),
+                        (SELECT GROUP_CONCAT(product_name SEPARATOR ', ') FROM merchandise_transaction_items WHERE transaction_id = mt.id AND (item_type = 'service' OR category LIKE '%Service%') AND category != 'Labor' AND product_name NOT LIKE '%Labor%'),
+                        'Service'
+                    ) AS service_type,
                     '' AS service_description,
                     COALESCE(mt.workflow_status, mt.validation_status, 'Pending') AS status,
                     COALESCE(mt.validation_status, 'Pending') AS validation_status,
-                    mt.total_amount AS estimated_cost,
+                    COALESCE(
+                        (SELECT NULLIF(SUM(subtotal),0) FROM merchandise_transaction_items WHERE transaction_id = mt.id AND (item_type = 'service' OR category LIKE '%Service%') AND category != 'Labor' AND product_name NOT LIKE '%Labor%'),
+                        mt.total_amount
+                    ) AS service_fee,
+                    COALESCE(
+                        (SELECT NULLIF(SUM(subtotal),0) FROM merchandise_transaction_items WHERE transaction_id = mt.id AND (item_type = 'service' OR category LIKE '%Service%') AND category != 'Labor' AND product_name NOT LIKE '%Labor%'),
+                        mt.total_amount
+                    ) AS estimated_cost,
+                    (SELECT COALESCE(SUM(subtotal),0) FROM merchandise_transaction_items WHERE transaction_id = mt.id AND (category = 'Labor' OR product_name LIKE '%Labor%')) AS actual_labor_cost,
+                    (SELECT COALESCE(SUM(subtotal),0) FROM merchandise_transaction_items WHERE transaction_id = mt.id AND (category = 'Labor' OR product_name LIKE '%Labor%')) AS estimated_labor_cost,
                     mt.total_amount AS total_cost,
                     COALESCE($mt_col_staff_remarks, mt.remarks, '') AS notes,
                     COALESCE(mt.job_order_vehicle_plate, '') AS vehicle_plate,
@@ -1832,7 +1864,14 @@ if ($section === 'merchandise') {
 $mechanics = [];
 if ($section === 'merchandise') {
     try {
-        $stmt = $pdo->query("SELECT id, full_name, specialization FROM mechanics WHERE status = 'active' ORDER BY full_name");
+        $mech_where = "status = 'active' AND COALESCE(archived, 0) = 0";
+        $mech_params = [];
+        if ($station_id > 0) {
+            $mech_where .= " AND (station_id = ? OR station_id IS NULL)";
+            $mech_params[] = $station_id;
+        }
+        $stmt = $pdo->prepare("SELECT id, full_name, specialization FROM mechanics WHERE {$mech_where} ORDER BY full_name");
+        $stmt->execute($mech_params);
         $mechanics = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) { $mechanics = []; }
 }
@@ -3042,7 +3081,16 @@ input[list] {
             ?>
 
             <div class="fet-wrap" style="overflow:hidden;">
-                <table class="fet" style="width:100%;border-collapse:collapse;">
+                <table class="fet" style="width:100%;border-collapse:collapse;table-layout:fixed;">
+                    <colgroup>
+                        <col style="width:16%;"><!-- NAME -->
+                        <col style="width:14%;"><!-- BEGINNING -->
+                        <col style="width:14%;"><!-- ENDING -->
+                        <col style="width:12%;"><!-- CALIBRATION -->
+                        <col style="width:14%;"><!-- PRICE / LITER -->
+                        <col style="width:15%;"><!-- NET VOLUME SOLD -->
+                        <col style="width:15%;"><!-- TOTAL AMOUNT -->
+                    </colgroup>
                     <thead>
                         <tr style="background:#002F70;">
                             <th rowspan="2" style="border:1px solid #001f4d;padding:12px;vertical-align:middle;font-weight:700;font-size:13px;color:#fff;">NAME</th>
@@ -3151,7 +3199,7 @@ input[list] {
                                        form="fuelForm_<?= $ft_id ?>"
                                        name="beginning_reading"
                                        id="beginning_<?= $ft_id ?>"
-                                       style="width:110px;padding:8px;font-size:12px;border:1px solid #86efac;border-radius:4px;text-align:right;background:#f0fdf4;font-weight:700;color:#15803d;cursor:not-allowed;"
+                                       style="width:100%;box-sizing:border-box;padding:8px;font-size:12px;border:1px solid #86efac;border-radius:4px;text-align:right;background:#f0fdf4;font-weight:700;color:#15803d;cursor:not-allowed;"
                                        value="<?= number_format($pump_prev_reading, 2, '.', ',') ?>"
                                        readonly
                                        title="Auto-fetched from previous meter reading. Cannot be edited."
@@ -3162,7 +3210,7 @@ input[list] {
                                        form="fuelForm_<?= $ft_id ?>"
                                        name="beginning_reading"
                                        id="beginning_<?= $ft_id ?>"
-                                       style="width:110px;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;background:#f8fafc;font-weight:600;color:#334155;cursor:not-allowed;"
+                                       style="width:100%;box-sizing:border-box;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;background:#f8fafc;font-weight:600;color:#334155;cursor:not-allowed;"
                                        value="0.00"
                                        readonly
                                        placeholder="0.00"
@@ -3177,7 +3225,7 @@ input[list] {
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="ending_reading"
                                    id="ending_<?= $ft_id ?>"
-                                   style="width:110px;padding:8px;font-size:12px;border:2px solid #3b82f6;border-radius:4px;text-align:right;font-weight:700;"
+                                   style="width:100%;box-sizing:border-box;padding:8px;font-size:12px;border:2px solid #3b82f6;border-radius:4px;text-align:right;font-weight:700;"
                                    placeholder="0.00"
                                    required
                                    autocomplete="off"
@@ -3192,7 +3240,7 @@ input[list] {
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="calibration"
                                    id="cal_<?= $ft_id ?>"
-                                   style="width:90px;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;"
+                                   style="width:100%;box-sizing:border-box;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;"
                                    value="0.00"
                                    placeholder="0.00"
                                    autocomplete="off"
@@ -3205,7 +3253,7 @@ input[list] {
                         <!-- PRICE / LITER Column (Auto — read-only, from fuel_inventory) -->
                         <td style="border:1px solid #e2e8f0;padding:6px;background:#f8fafc;">
                             <span id="price_display_<?= $ft_id ?>"
-                                  style="display:block;width:85px;padding:8px;font-size:13px;font-weight:700;color:#334155;text-align:right;">
+                                  style="display:block;width:100%;box-sizing:border-box;padding:8px;font-size:13px;font-weight:700;color:#334155;text-align:right;">
                                 ₱<?= number_format($price_per_liter, 2) ?>
                             </span>
                             <input type="hidden"
@@ -3219,7 +3267,7 @@ input[list] {
                         <td style="border:1px solid #e2e8f0;padding:6px;background:#f0fdf4;">
                             <input type="text"
                                    id="volume_<?= $ft_id ?>"
-                                   style="width:95px;padding:8px;font-size:12px;background:transparent;border:1px solid #86efac;border-radius:4px;text-align:right;font-weight:700;color:#15803d;"
+                                   style="width:100%;box-sizing:border-box;padding:8px;font-size:12px;background:transparent;border:1px solid #86efac;border-radius:4px;text-align:right;font-weight:700;color:#15803d;"
                                    value="0.00"
                                    readonly
                                    title="Net Volume Sold = (Ending - Beginning) - Calibration">
@@ -3234,7 +3282,7 @@ input[list] {
                         <td style="border:1px solid #e2e8f0;padding:6px;background:#eff6ff;">
                             <input type="text"
                                    id="amount_<?= $ft_id ?>"
-                                   style="width:115px;padding:8px;font-size:12px;background:transparent;border:1px solid #93c5fd;border-radius:4px;text-align:right;font-weight:800;color:#1d4ed8;"
+                                   style="width:100%;box-sizing:border-box;padding:8px;font-size:12px;background:transparent;border:1px solid #93c5fd;border-radius:4px;text-align:right;font-weight:800;color:#1d4ed8;"
                                    value="₱0.00"
                                    readonly
                                    title="Total Amount = Net Volume Sold × Price per Liter">
@@ -3386,12 +3434,22 @@ input[list] {
             <div style="background:#ffffff; padding:20px; display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:16px; border-bottom:1px solid #f1f5f9;">
                 <!-- Local Filter Inputs -->
                 <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:center;">
-                    <!-- Date Filter -->
+                    <!-- From Date Filter -->
                     <div style="display:flex; flex-direction:column; gap:6px;">
-                        <label for="subtab_date" style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.5px;">
-                            <i class="fas fa-calendar-alt" style="color:var(--petron-blue); margin-right:4px;"></i>Filter by Date
+                        <label for="subtab_date_from" style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.5px;">
+                            <i class="fas fa-calendar-alt" style="color:var(--petron-blue); margin-right:4px;"></i>From Date
                         </label>
-                        <input type="date" id="subtab_date" value="<?= date('Y-m-d') ?>" onchange="loadTodayEntries();"
+                        <input type="date" id="subtab_date_from" value="<?= date('Y-m-01') ?>" onchange="loadTodayEntries();"
+                               style="padding:8px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13px; color:#0f172a; outline:none; background:#ffffff; height:38px; box-sizing:border-box; transition:border-color 0.15s ease-in-out;"
+                               onfocus="this.style.borderColor='var(--petron-blue)'" onblur="this.style.borderColor='#cbd5e1'">
+                    </div>
+
+                    <!-- To Date Filter -->
+                    <div style="display:flex; flex-direction:column; gap:6px;">
+                        <label for="subtab_date_to" style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.5px;">
+                            <i class="fas fa-calendar-alt" style="color:var(--petron-blue); margin-right:4px;"></i>To Date
+                        </label>
+                        <input type="date" id="subtab_date_to" value="<?= date('Y-m-d') ?>" onchange="loadTodayEntries();"
                                style="padding:8px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13px; color:#0f172a; outline:none; background:#ffffff; height:38px; box-sizing:border-box; transition:border-color 0.15s ease-in-out;"
                                onfocus="this.style.borderColor='var(--petron-blue)'" onblur="this.style.borderColor='#cbd5e1'">
                     </div>
@@ -4006,14 +4064,15 @@ input[list] {
             if (icon) icon.className = 'fas fa-spinner fa-spin';
 
             try {
-                // Read local sub-tab date and shift filter values
-                const dateVal  = document.getElementById('subtab_date')?.value || '<?= date('Y-m-d') ?>';
-                const shiftVal = document.getElementById('subtab_shift')?.value || '';
+                // Read local sub-tab date range and shift filter values
+                const dateFromVal = document.getElementById('subtab_date_from')?.value || '<?= date('Y-m-01') ?>';
+                const dateToVal   = document.getElementById('subtab_date_to')?.value || '<?= date('Y-m-d') ?>';
+                const shiftVal    = document.getElementById('subtab_shift')?.value || '';
 
                 const params = new URLSearchParams({ 
                     action: 'summary', 
-                    date_from: dateVal, 
-                    date_to: dateVal, 
+                    date_from: dateFromVal, 
+                    date_to: dateToVal, 
                     auth_user_id: '<?= (int)$me['id'] ?>' 
                 });
                 if (shiftVal) params.set('shift', shiftVal);
@@ -4296,10 +4355,11 @@ input[list] {
                 alert('No data available to export.');
                 return;
             }
-            const dateVal = document.getElementById('subtab_date')?.value || '<?= date('Y-m-d') ?>';
-            const shiftVal = document.getElementById('subtab_shift')?.value || 'all_shifts';
-            const filename = `meter_readings_history_${dateVal}_${shiftVal}`;
-            const title = `Petron Fuel Meter Readings History Report (${dateVal} - Shift: ${shiftVal.toUpperCase()})`;
+            const dateFromVal = document.getElementById('subtab_date_from')?.value || '<?= date('Y-m-01') ?>';
+            const dateToVal   = document.getElementById('subtab_date_to')?.value || '<?= date('Y-m-d') ?>';
+            const shiftVal    = document.getElementById('subtab_shift')?.value || 'all_shifts';
+            const filename    = `meter_readings_history_${dateFromVal}_to_${dateToVal}_${shiftVal}`;
+            const title       = `Petron Fuel Meter Readings History Report (${dateFromVal} to ${dateToVal} - Shift: ${shiftVal.toUpperCase()})`;
             
             if (format === 'excel') {
                 if (typeof exportTableToExcel === 'function') {
@@ -4427,6 +4487,10 @@ input[list] {
                         <input type="hidden" name="joCustomerType" value="registered" id="joCustomerTypeRegistered">
 
                         <!-- Customer Input Fields -->
+                        <div id="joCustomerLockedBanner" style="display:none;background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:12px;color:#065f46;display:none;align-items:center;gap:8px;">
+                            <i class="fas fa-lock"></i>
+                            <span>Customer info locked. <button type="button" onclick="clearSelectedCustomerFull('jo')" style="background:none;border:none;color:#002F70;font-weight:700;cursor:pointer;font-size:12px;text-decoration:underline;">Change</button></span>
+                        </div>
                         <div class="txn-form-grid" style="margin-bottom:14px;">
                             <div class="txn-field" style="position:relative;">
                                 <label>First Name <span style="color:#dc2626;">*</span></label>
@@ -4435,7 +4499,7 @@ input[list] {
                                        class="txn-input"
                                        placeholder="Type to search customer..."
                                        autocomplete="off"
-                                       oninput="clearSelectedCustomer('jo'); searchCustomerByName('jo')"
+                                       oninput="unlockCustomerIfNeeded('jo'); searchCustomerByName('jo')"
                                        onfocus="searchCustomerByName('jo')">
                                 <!-- First Name Dropdown -->
                                 <div id="joFirstNameResults" 
@@ -4491,9 +4555,9 @@ input[list] {
                                     </div>
                                     <button type="button"
                                             onclick="openAddVehicleModal()"
-                                            title="Add a new vehicle type"
+                                            title="Request new vehicle"
                                             class="txn-icon-btn blue"
-                                            style="position:relative;z-index:10;">
+                                            style="position:relative;z-index:10;width:38px;height:38px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:16px;">
                                         +
                                     </button>
                                 </div>
@@ -4522,105 +4586,197 @@ input[list] {
                                        autocomplete="off">
                             </div>
                         </div>
+                        <!-- Year Model + Odometer -->
+                        <div class="txn-form-grid" style="margin-bottom:14px;">
+                            <div class="txn-field">
+                                <label>Year Model <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
+                                <input type="number" id="joYearModel" class="txn-input"
+                                       placeholder="e.g. 2020" min="1900" max="2099"
+                                       autocomplete="off">
+                            </div>
+                            <div class="txn-field">
+                                <label>Odometer Reading</label>
+                                <input type="text" id="joOdometer" class="txn-input"
+                                       placeholder="e.g. 35,000 km"
+                                       autocomplete="off">
+                            </div>
+                        </div>
+
+                        <!-- ── STEP 3: JOB ORDER INFORMATION ─────────────────── -->
+                        <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:6px;padding-top:12px;border-top:1px solid #fde68a;">
+                            <i class="fas fa-file-alt" style="margin-right:5px;"></i>Job Order Information
+                        </div>
+                        <div class="txn-form-grid" style="margin-bottom:14px;">
+                            <div class="txn-field">
+                                <label>JO Number</label>
+                                <input type="text" id="joNumber" class="txn-input"
+                                       placeholder="Auto-Generated" readonly
+                                       style="background:#f8fafc;color:#64748b;font-style:italic;cursor:not-allowed;">
+                            </div>
+                            <div class="txn-field">
+                                <label>JO Date</label>
+                                <input type="date" id="joDate" class="txn-input"
+                                       value="<?php echo date('Y-m-d'); ?>">
+                            </div>
+                        </div>
+                        <div class="txn-form-grid" style="margin-bottom:14px;">
+                            <div class="txn-field">
+                                <label>Priority</label>
+                                <div style="display:flex;gap:20px;padding:10px 12px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;align-items:center;">
+                                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-weight:600;font-size:13px;">
+                                        <input type="radio" name="joPriority" id="joPriorityNormal" value="Normal" checked
+                                               style="accent-color:#002F70;width:15px;height:15px;">
+                                        <span style="color:#334155;">Normal</span>
+                                    </label>
+                                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-weight:600;font-size:13px;">
+                                        <input type="radio" name="joPriority" id="joPriorityUrgent" value="Urgent"
+                                               style="accent-color:#dc2626;width:15px;height:15px;">
+                                        <span style="color:#dc2626;">Urgent</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="txn-field">
+                                <label>Expected Release Date</label>
+                                <input type="date" id="joExpectedRelease" class="txn-input">
+                            </div>
+                        </div>
+
+                        <!-- ── STEP 5: VEHICLE INSPECTION ─────────────────────── -->
+                        <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:6px;padding-top:12px;border-top:1px solid #fde68a;">
+                            <i class="fas fa-clipboard-check" style="margin-right:5px;"></i>Vehicle Inspection
+                        </div>
+                        <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:14px 16px;margin-bottom:14px;">
+                            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px 16px;margin-bottom:12px;">
+                                <?php
+                                try {
+                                    $db_insp_stmt = $pdo->query("SELECT item_name FROM vehicle_inspection_items WHERE is_active=1 ORDER BY id ASC");
+                                    $inspection_items = $db_insp_stmt->fetchAll(PDO::FETCH_COLUMN);
+                                } catch (Exception $e) {
+                                    $inspection_items = [];
+                                }
+                                if (empty($inspection_items)) {
+                                    $inspection_items = ['Engine','Battery','Tires','Brakes','Lights','Cooling System','Suspension','Transmission Fluid','Air Filter','Wipers & Washers','Belts & Hoses','Steering System','Exhaust System','Others'];
+                                }
+                                foreach ($inspection_items as $insp_item):
+                                    $insp_id = 'joInspect_' . str_replace([' ', '&', '/'], '_', $insp_item);
+                                ?>
+                                <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12.5px;font-weight:500;color:#334155;padding:6px 8px;border-radius:6px;background:#fff;border:1px solid #e2e8f0;transition:background .15s;"
+                                       onmouseover="this.style.background='#fef9c3'" onmouseout="this.style.background='#fff'">
+                                    <input type="checkbox" id="<?= $insp_id ?>" name="jo_inspection[]" value="<?= htmlspecialchars($insp_item) ?>"
+                                           style="accent-color:#b45309;width:15px;height:15px;flex-shrink:0;">
+                                    <?= htmlspecialchars($insp_item) ?>
+                                </label>
+                                <?php endforeach; ?>
+                            </div>
+                            <div>
+                                <label style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:5px;">Remarks</label>
+                                <textarea id="joInspectionRemarks" class="txn-input" rows="2"
+                                          placeholder="Inspection remarks or findings..."
+                                          style="resize:vertical;min-height:56px;font-size:13px;"></textarea>
+                            </div>
+                        </div>
+
+                        <!-- ── STEP 6: CUSTOMER COMPLAINT ─────────────────────── -->
+                        <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-top:12px;border-top:1px solid #fde68a;">
+                            <i class="fas fa-comment-dots" style="margin-right:5px;"></i>Customer Complaint
+                        </div>
+                        <div style="margin-bottom:14px;">
+                            <textarea id="joCustomerComplaint" class="txn-input" rows="3"
+                                      placeholder="Describe the customer's complaint or concern..."
+                                      style="resize:vertical;min-height:72px;font-size:13px;"></textarea>
+                        </div>
+
+                        <!-- ── STEP 7: INITIAL ASSESSMENT ─────────────────── -->
+                        <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-top:12px;border-top:1px solid #fde68a;">
+                            <i class="fas fa-stethoscope" style="margin-right:5px;"></i>Initial Assessment
+                            <span style="font-size:10px;font-weight:400;color:#92400e;text-transform:none;letter-spacing:0;margin-left:8px;">(Manager may update later)</span>
+                        </div>
+                        <div style="margin-bottom:14px;">
+                            <textarea id="joRepairRecommendation" class="txn-input" rows="3"
+                                      placeholder="Staff initial assessment or findings..."
+                                      style="resize:vertical;min-height:72px;font-size:13px;"></textarea>
+                        </div>
 
                         <!-- Service Details -->
-                        <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">
+                        <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-top:12px;border-top:1px solid #fde68a;">
                             <i class="fas fa-wrench" style="margin-right:5px;"></i>Service Details
                         </div>
 
-                        <!-- Service Category -->
-                        <div class="txn-form-grid" style="margin-bottom:14px;">
-                            <div class="txn-field">
-                                <label>Service Category</label>
-                                <select id="joServiceCategory" class="txn-select auto-pull" onchange="onServiceCategoryChange()">
-                                    <option value="">-- Select Category --</option>
-                                    <option value="Lubrication">Lubrication</option>
-                                    <option value="PMS">PMS</option>
-                                    <option value="Engine">Engine</option>
-                                    <option value="Fuel System">Fuel System</option>
-                                    <option value="Cooling System">Cooling System</option>
-                                    <option value="Transmission">Transmission</option>
-                                    <option value="Brake">Brake</option>
-                                    <option value="Suspension">Suspension</option>
-                                    <option value="Steering">Steering</option>
-                                    <option value="Tire Services">Tire Services</option>
-                                    <option value="Battery Services">Battery Services</option>
-                                    <option value="Electrical">Electrical</option>
-                                    <option value="Air Conditioning">Air Conditioning</option>
-                                    <option value="Diagnostics">Diagnostics</option>
-                                    <option value="Inspection">Inspection</option>
-                                    <option value="Others">Others</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="txn-form-grid" style="margin-bottom:14px;">
-                            <div class="txn-field">
-                                <label>Service Type <span style="color:#dc2626;">*</span></label>
-                                <div style="display:flex;gap:6px;align-items:flex-start;">
-                                    <!-- Filterable Service Type Input -->
-                                    <div style="flex:1;position:relative;">
-                                        <input type="text" 
-                                               id="joServiceType" 
-                                               class="txn-select" 
-                                               placeholder="Type to search service..."
-                                               autocomplete="off"
-                                               style="width:100%;padding-right:30px;"
-                                               oninput="filterServiceTypes()"
-                                               onfocus="showServiceDropdown()"
-                                               onblur="setTimeout(() => hideServiceDropdown(), 200)">
-                                        <input type="hidden" id="joServiceTypeValue" value="">
-                                        <i class="fas fa-chevron-down" 
-                                           style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
-                                                  color:#94a3b8;font-size:12px;pointer-events:none;"></i>
-                                        <!-- Dropdown list -->
-                                        <div id="joServiceTypeDropdown" 
-                                             style="display:none;position:absolute;top:100%;left:0;right:0;
-                                                    background:white;border:1px solid #e2e8f0;border-radius:6px;
-                                                    box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);
-                                                    max-height:240px;overflow-y:auto;z-index:1000;margin-top:2px;">
-                                            <div id="joServiceTypeList"></div>
-                                        </div>
+                        <!-- Service Type with auto-info panel -->
+                        <div style="margin-bottom:14px;">
+                            <label style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:6px;">Service Type <span style="color:#dc2626;">*</span></label>
+                            <div style="display:flex;gap:6px;align-items:flex-start;">
+                                <div style="flex:1;position:relative;">
+                                    <input type="text" 
+                                           id="joServiceType" 
+                                           class="txn-select" 
+                                           placeholder="Type to search service..."
+                                           autocomplete="off"
+                                           style="width:100%;padding-right:30px;"
+                                           oninput="filterServiceTypes()"
+                                           onfocus="showServiceDropdown()"
+                                           onblur="setTimeout(() => hideServiceDropdown(), 200)">
+                                    <input type="hidden" id="joServiceTypeValue" value="">
+                                    <i class="fas fa-chevron-down" 
+                                       style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
+                                              color:#94a3b8;font-size:12px;pointer-events:none;"></i>
+                                    <div id="joServiceTypeDropdown" 
+                                         style="display:none;position:absolute;top:100%;left:0;right:0;
+                                                background:white;border:1px solid #e2e8f0;border-radius:6px;
+                                                box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);
+                                                max-height:240px;overflow-y:auto;z-index:1000;margin-top:2px;">
+                                        <div id="joServiceTypeList"></div>
                                     </div>
-                                     <button type="button"
-                                             onclick="addServiceFromFormToCart()"
-                                             title="Add Job Order Service to Cart"
-                                             class="txn-icon-btn blue">
-                                         <i class="fas fa-cart-plus"></i>
-                                     </button>
-                                     <button type="button"
-                                             onclick="openAddServiceModal()"
-                                             title="Add a new service type"
-                                             class="txn-icon-btn blue">
-                                         +
-                                     </button>
-
-
-
-
-
-
-
-
-
-
-
-
-
                                 </div>
-                                <!-- Pricing notes (shown when service type selected) -->
-                                <div id="joServicePriceNotes" style="display:none;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-top:8px;font-size:12px;color:#92400e;">
-                                    <i class="fas fa-lightbulb" style="margin-right:6px;"></i>
-                                    <span id="joServicePriceNotesText"></span>
+                                <button type="button"
+                                        onclick="openAddServiceModal()"
+                                        title="Request new service type"
+                                        class="txn-btn primary"
+                                        style="padding:6px 12px;height:38px;align-self:stretch;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:16px;">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </div>
+
+                            <!-- Auto-display service info (shown when service type selected) -->
+                            <div id="joServiceAutoInfo" style="display:none;margin-top:10px;background:#f0f7ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:10px 16px;">
+                                <div>
+                                    <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Category</div>
+                                    <div id="joServiceAutoCategory" style="font-size:13px;font-weight:600;color:#1e40af;">—</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Service Price + Labor — separate editable fields -->
+                        <div class="txn-form-grid" style="margin-bottom:14px;">
+                            <div class="txn-field">
+                                <label>Service Price <span style="color:#dc2626;">*</span>
+                                    <span style="font-size:10px;font-weight:400;color:#64748b;">(Auto-filled, editable)</span>
+                                </label>
+                                <div style="position:relative;">
+                                    <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#374151;font-size:14px;">₱</span>
+                                    <input type="number" id="joServicePrice" class="txn-input"
+                                           step="0.01" min="0" placeholder="0.00"
+                                           style="padding-left:26px;font-weight:700;"
+                                           oninput="onJoServicePriceInput()">
                                 </div>
                             </div>
                             <div class="txn-field">
-                                <label>Service Fee</label>
-                                <input type="number" id="joServicePrice" class="txn-input auto-pull"
-                                       step="0.01" min="0" placeholder="—"
-                                       oninput="onJoServicePriceInput()">
+                                <label>Labor Charge
+                                    <span style="font-size:10px;font-weight:400;color:#64748b;">(Optional, separate)</span>
+                                </label>
+                                <div style="position:relative;">
+                                    <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#374151;font-size:14px;">₱</span>
+                                    <input type="number" id="joLaborCharge" class="txn-input"
+                                           step="0.01" min="0" placeholder="0.00"
+                                           style="padding-left:26px;font-weight:700;"
+                                           oninput="onJoLaborChargeInput()">
+                                </div>
                             </div>
                         </div>
+
+                        <!-- Hidden price notes + hidden category -->
+                        <select id="joServiceCategory" style="display:none;"></select>
+                        <div id="joServicePriceNotes" style="display:none;"><span id="joServicePriceNotesText"></span></div>
 
                         <!-- Assigned Mechanic + Notes -->
                         <div class="txn-form-grid cols-3" style="margin-bottom:6px;">
@@ -4681,13 +4837,16 @@ input[list] {
                             </div>
                         </div>
 
-                        <!-- Add Service to Cart button with Reset -->
-                        <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;">
-                            <button type="button" class="txn-btn secondary" onclick="resetJobOrderForm()" title="Reset job order fields">
-                                <i class="fas fa-undo"></i> Reset Form
+
+
+
+                        <!-- Bottom Action Buttons -->
+                        <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end;flex-wrap:wrap;">
+                            <button type="button" class="txn-btn secondary" onclick="resetJobOrderForm()" title="Reset all job order fields">
+                                <i class="fas fa-undo"></i> Reset
                             </button>
-                            <button type="button" class="txn-btn success" onclick="addServiceFromFormToCart()" id="joAddServiceBtn">
-                                <i class="fas fa-plus"></i> Add Service
+                            <button type="button" class="txn-btn success" onclick="submitJobOrder()" id="joSubmitBtn">
+                                <i class="fas fa-paper-plane"></i> Submit Job Order
                             </button>
                         </div>
 
@@ -4728,8 +4887,9 @@ input[list] {
                             <i class="fas fa-spinner fa-spin" style="color:#b45309;"></i> Fetching parts…
                         </span>
 
-                    </div>
+                    </div><!-- /txn-card-body -->
                 </div><!-- /joCard -->
+
 
                 <!-- ══ MERCHANDISE SECTION (BOTTOM) ════════════════════════ -->
                 <div class="txn-card">
@@ -4835,14 +4995,14 @@ input[list] {
                                                 <i class="fas fa-chevron-down" id="productArrowIcon"></i>
                                             </span>
                                         </div>
-                                        <!-- Add Selected to Cart -->
-                                        <button type="button" onclick="addProductFromFormToCart()" title="Add selected product to cart" 
-                                                class="txn-icon-btn green">
-                                            <i class="fas fa-cart-plus"></i>
+                                        <!-- Request New Product plus button -->
+                                        <button type="button"
+                                                onclick="openAddProductModal()"
+                                                title="Request new product"
+                                                class="txn-btn primary"
+                                                style="padding:6px 12px;height:38px;align-self:stretch;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:16px;">
+                                            <i class="fas fa-plus"></i>
                                         </button>
-                                        <!-- Register brand new product -->
-                                        <button type="button" onclick="openAddProductModal()" title="Add new product to database" 
-                                                class="txn-icon-btn green">+</button>
                                     </div>
                                     <!-- Dropdown list -->
                                     <div id="productDropdownList"
@@ -4932,20 +5092,24 @@ input[list] {
 
                         <div class="txn-form-grid" style="margin-top:14px;">
                             <div class="txn-field">
-                                <label>Category</label>
-                                <input type="text" id="itemCategory" class="txn-input auto-pull" readonly placeholder="—">
+                                <label>SKU / Product Code <span style="font-size:10px;color:#64748b;font-weight:400;">(Auto)</span></label>
+                                <input type="text" id="itemSku" class="txn-input auto-pull" readonly placeholder="—" style="background:#f8fafc;font-weight:600;color:#002F70;">
                             </div>
                             <div class="txn-field">
-                                <label>Unit Price</label>
-                                <input type="number" id="itemUnitPrice" class="txn-input auto-pull"
-                                       step="0.01" readonly placeholder="—">
+                                <label>Category</label>
+                                <input type="text" id="itemCategory" class="txn-input auto-pull" readonly placeholder="—">
                             </div>
                         </div>
 
                         <div class="txn-form-grid" style="margin-top:14px;">
                             <div class="txn-field">
+                                <label>Unit Price</label>
+                                <input type="number" id="itemUnitPrice" class="txn-input auto-pull"
+                                       step="0.01" readonly placeholder="—">
+                            </div>
+                            <div class="txn-field">
                                 <label>Stock Available</label>
-                                <input type="text" id="itemStock" class="txn-input readonly-field" readonly placeholder="—">
+                                <input type="text" id="itemStock" class="txn-input readonly-field" readonly placeholder="—" style="font-weight:600;">
                             </div>
                         </div>
 
@@ -5034,10 +5198,12 @@ input[list] {
                                 No merchandise transactions found.
                             </div>
                             <?php else: ?>
-                            <div style="width:100%;overflow-x:hidden;">
+                            <div style="width:100%;overflow-x:hidden !important;">
                             <style>
                             #mhHistoryTable th { padding: 8px 10px; }
                             #mhHistoryTable td { padding: 8px 10px; }
+                            #mhHistoryTable { table-layout: fixed !important; width: 100% !important; }
+                            #mhHistoryTable td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
                             </style>
 
                             <!-- ── Merchandise KPI Snapshot ─────────────────── -->
@@ -5117,16 +5283,16 @@ input[list] {
 
                             <table class="txn-table" id="mhHistoryTable" style="width:100%; table-layout:fixed;">
                                 <colgroup>
-                                    <col style="width:10%;">
-                                    <col style="width:13%;">
-                                    <col style="width:12%;">
-                                    <col style="width:16%;">
-                                    <col style="width:5%;">
-                                    <col style="width:6%;">
-                                    <col style="width:9%;">
-                                    <col style="width:9%;">
-                                    <col style="width:11%;">
-                                    <col style="width:9%;">
+                                    <col style="width:9%;"><!-- OR No. -->
+                                    <col style="width:11%;"><!-- Transaction ID -->
+                                    <col style="width:11%;"><!-- Customer -->
+                                    <col style="width:15%;"><!-- Product -->
+                                    <col style="width:5%;"><!-- Qty -->
+                                    <col style="width:5%;"><!-- UOM -->
+                                    <col style="width:9%;"><!-- Unit Price -->
+                                    <col style="width:9%;"><!-- Total -->
+                                    <col style="width:13%;"><!-- Date Released -->
+                                    <col style="width:13%;"><!-- Actions -->
                                 </colgroup>
                                 <thead>
                                     <tr>
@@ -5139,7 +5305,7 @@ input[list] {
                                         <th style="font-size:12px;text-align:right;padding:10px;">Unit Price</th>
                                         <th style="font-size:12px;text-align:right;padding:10px;">Total</th>
                                         <th style="font-size:12px;text-align:left;padding:10px;">Date Released</th>
-                                        <th style="font-size:12px;text-align:center;padding:10px;">Receipt</th>
+                                        <th style="font-size:12px;text-align:center;padding:10px;">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="mhTableBody">
@@ -5185,15 +5351,22 @@ input[list] {
                                     <td style="font-size:12px;text-align:right;font-weight:700;color:var(--petron-blue);padding:10px;white-space:nowrap;">
                                         ₱<?= number_format($item_total, 2) ?>
                                     </td>
-                                    <td style="font-size:11px;color:#64748b;padding:10px;white-space:nowrap;">
+                                    <td style="font-size:11px;color:#64748b;padding:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                                         <?= $date_released ?>
                                     </td>
-                                    <td style="font-size:11px;text-align:center;padding:10px;">
-                                        <a href="receipt.php?id=<?= urlencode($txn['transaction_id'] ?? '') ?>&type=merchandise" target="_blank"
-                                           onclick="event.stopPropagation();"
-                                           style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid #002F70;border-radius:5px;color:#002F70;font-size:10px;font-weight:600;text-decoration:none;white-space:nowrap;">
-                                            <i class="fas fa-receipt"></i> View
-                                        </a>
+                                    <td style="padding:6px;text-align:center;">
+                                        <div style="display:flex;flex-direction:column;gap:4px;align-items:stretch;">
+                                            <a href="receipt.php?id=<?= urlencode($txn['transaction_id'] ?? '') ?>&type=merchandise" target="_blank"
+                                               onclick="event.stopPropagation();"
+                                               style="display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:4px 8px;border:1px solid #002F70;border-radius:5px;color:#002F70;background:#fff;font-size:10px;font-weight:600;text-decoration:none;white-space:nowrap;">
+                                                <i class="fas fa-receipt"></i> Reprint
+                                            </a>
+                                            <button type="button"
+                                                    onclick="event.stopPropagation();viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? '') ?>');"
+                                                    style="display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:4px 8px;border:1px solid #16a34a;border-radius:5px;color:#16a34a;background:#fff;font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap;">
+                                                <i class="fas fa-eye"></i> View
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>
@@ -5686,7 +5859,7 @@ input[list] {
                         <i class="fas fa-wrench" style="color:#b45309;font-size:15px;"></i>
                     </div>
                     <div>
-                        <div style="font-size:14px;font-weight:700;color:#1e293b;">Add New Service Type</div>
+                        <div style="font-size:14px;font-weight:700;color:#1e293b;">Request New Service Type</div>
                         <div style="font-size:11px;color:#64748b;">Submitted for manager approval</div>
                     </div>
                 </div>
@@ -5820,7 +5993,7 @@ input[list] {
                         <i class="fas fa-car" style="color:#003d7a;font-size:15px;"></i>
                     </div>
                     <div>
-                        <div style="font-size:14px;font-weight:700;color:#1e293b;">Add New Vehicle Type</div>
+                        <div style="font-size:14px;font-weight:700;color:#1e293b;">Request New Vehicle</div>
                         <div style="font-size:11px;color:#64748b;">Submitted for manager approval</div>
                     </div>
                     <button onclick="closeAddVehicleModal()"
@@ -5945,7 +6118,7 @@ input[list] {
                         <i class="fas fa-box-open" style="font-size:18px;color:#166534;"></i>
                     </div>
                     <div>
-                        <div style="font-size:14px;font-weight:700;color:#1e293b;">Add New Product</div>
+                        <div style="font-size:14px;font-weight:700;color:#1e293b;">Request New Product</div>
                         <div style="font-size:11px;color:#64748b;">Submitted for manager approval</div>
                     </div>
                     <button type="button" onclick="closeAddProductModal()"
@@ -6005,6 +6178,31 @@ input[list] {
                            maxlength="50"
                            style="font-size:13px;text-transform:uppercase;"
                            autocomplete="off">
+                </div>
+
+                <!-- Unit -->
+                <div style="margin-bottom:14px;">
+                    <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
+                        Unit <span style="color:#dc2626;">*</span>
+                    </label>
+                    <input type="text" id="newProductUnit" class="txn-input"
+                           list="productUnitList"
+                           placeholder="e.g. pcs, bottle, pack, box..."
+                           maxlength="30"
+                           style="font-size:13px;"
+                           autocomplete="off">
+                    <datalist id="productUnitList">
+                        <option value="pcs">
+                        <option value="bottle">
+                        <option value="pack">
+                        <option value="box">
+                        <option value="can">
+                        <option value="bag">
+                        <option value="liter">
+                        <option value="kg">
+                        <option value="pair">
+                        <option value="set">
+                    </datalist>
                 </div>
 
                 <!-- Unit Price -->
@@ -6175,12 +6373,37 @@ input[list] {
             };
             const search = document.getElementById('productSearch');
             if (search) search.value = selectedProduct.name + (selectedProduct.size ? ' · ' + selectedProduct.size : '');
+            const sku   = document.getElementById('itemSku');
             const cat   = document.getElementById('itemCategory');
             const price = document.getElementById('itemUnitPrice');
             const stock = document.getElementById('itemStock');
-            if (cat)   cat.value   = selectedProduct.cat;
+            
+            if (sku)   sku.value   = selectedProduct.sku || '—';
+            if (cat)   cat.value   = selectedProduct.cat || '—';
             if (price) price.value = selectedProduct.price.toFixed(2);
-            if (stock) stock.value = selectedProduct.stock > 0 ? selectedProduct.stock + ' in stock' : 'Out of stock';
+            
+            // Format stock display according to Unit of Measure (UOM)
+            let rawUnit = (selectedProduct.unit || 'pc').toLowerCase();
+            let uomLabel = 'pcs';
+            if (rawUnit.includes('bottle')) uomLabel = 'Bottles';
+            else if (rawUnit.includes('liter') || rawUnit.includes('litre')) uomLabel = 'Liters';
+            else if (rawUnit.includes('can')) uomLabel = 'Cans';
+            else if (rawUnit.includes('box')) uomLabel = 'Boxes';
+            else if (rawUnit.includes('set')) uomLabel = 'Sets';
+            else if (rawUnit.includes('pack')) uomLabel = 'Packs';
+            else if (rawUnit.includes('pair')) uomLabel = 'Pairs';
+            else if (rawUnit.includes('pc') || rawUnit.includes('piece')) uomLabel = 'pcs';
+            else uomLabel = selectedProduct.unit || 'pcs';
+
+            if (stock) {
+                if (selectedProduct.stock > 0) {
+                    stock.value = selectedProduct.stock + ' ' + uomLabel + ' available';
+                    stock.style.color = '#065f46';
+                } else {
+                    stock.value = 'Out of stock (0 ' + uomLabel + ')';
+                    stock.style.color = '#dc2626';
+                }
+            }
             closeProductDropdown();
         }
 
@@ -6323,23 +6546,48 @@ input[list] {
         //   1. Auto-fill the service fee from cached data
         //   2. Show pricing notes
         //   3. Fetch suggested parts from DB and preview them
-        //   4. Auto-fill the Category dropdown to match the selected service type
+        // Helper: sync category dropdown selection case-insensitively
+        function syncServiceCategory(cat) {
+            const categorySelect = document.getElementById('joServiceCategory');
+            if (!categorySelect || !cat) return;
+            const target = String(cat).toLowerCase().trim();
+            let found = false;
+            for (let i = 0; i < categorySelect.options.length; i++) {
+                const optVal = categorySelect.options[i].value.toLowerCase().trim();
+                const optTxt = categorySelect.options[i].text.toLowerCase().trim();
+                if (optVal === target || optTxt === target) {
+                    categorySelect.selectedIndex = i;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                for (let i = 0; i < categorySelect.options.length; i++) {
+                    if (categorySelect.options[i].value === 'Others') {
+                        categorySelect.selectedIndex = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // ── JO Service type change ────────────────────────────────────────────
         function onJoServiceTypeChange() {
             const input      = document.getElementById('joServiceType');
             const hidden     = document.getElementById('joServiceTypeValue');
             const notesWrap  = document.getElementById('joServicePriceNotes');
             const notesText  = document.getElementById('joServicePriceNotesText');
             const priceInput = document.getElementById('joServicePrice');
-            const categorySelect = document.getElementById('joServiceCategory');
+            const autoInfo   = document.getElementById('joServiceAutoInfo');
+            const autoCategory = document.getElementById('joServiceAutoCategory');
+            const autoPrice    = document.getElementById('joServiceAutoPrice');
+            const autoDuration = document.getElementById('joServiceAutoDuration');
             if (!hidden) return;
             
-            // Allow matching typed name if hidden value is empty
             const val = hidden.value || (input ? input.value : '');
 
-            // Auto-fill price from cached service data
             const svc = (window.JO_SERVICE_TYPES || []).find(s => s.name.toLowerCase() === val.toLowerCase());
             if (svc) {
-                // Sync values
                 if (hidden && hidden.value !== svc.name) hidden.value = svc.name;
                 if (input && input.value !== svc.name) input.value = svc.name;
                 
@@ -6353,19 +6601,28 @@ input[list] {
                     notesWrap.style.display = 'none';
                 }
                 
-                // Auto-fill category dropdown
-                if (categorySelect) {
-                    const computedCat = getServiceCategory(svc);
-                    categorySelect.value = computedCat;
+                // Auto-fetch category
+                const computedCat = getServiceCategory(svc);
+                syncServiceCategory(computedCat);
+
+                // Populate the visible auto-info panel (Category only)
+                if (autoInfo) {
+                    if (autoCategory) autoCategory.textContent = computedCat || '—';
+                    autoInfo.style.display = 'block';
                 }
 
-                // Fetch suggested parts for this service
+                // Pre-fill the visible Service Price editable field
+                if (priceInput) {
+                    priceInput.value = svc.price > 0 ? svc.price.toFixed(2) : '';
+                }
+
                 if (svc.key) fetchServiceParts(svc.key);
             } else {
                 if (notesWrap) notesWrap.style.display = 'none';
-                if (val && categorySelect) {
-                    // Fallback for typed custom names
-                    categorySelect.value = getServiceCategory({ name: val });
+                if (autoInfo) autoInfo.style.display = 'none';
+                if (val) {
+                    const computedCat = getServiceCategory({ name: val });
+                    syncServiceCategory(computedCat);
                 }
                 clearSuggestedParts();
             }
@@ -6376,14 +6633,12 @@ input[list] {
             const input = document.getElementById('joServiceType');
             const list = document.getElementById('joServiceTypeList');
             const dropdown = document.getElementById('joServiceTypeDropdown');
-            const selectedCat = (document.getElementById('joServiceCategory')?.value || '').trim().toLowerCase();
             
             if (!input || !list) return;
             
             const filter = input.value.toLowerCase().trim();
             const types = window.JO_SERVICE_TYPES || [];
 
-            // If the user types an exact match, sync hidden value and trigger change
             const hidden = document.getElementById('joServiceTypeValue');
             const exactMatch = types.find(t => t.name.toLowerCase() === filter);
             if (exactMatch) {
@@ -6392,20 +6647,11 @@ input[list] {
                     onJoServiceTypeChange();
                 }
             } else {
-                // If it doesn't match a standard service type but they typed a custom value,
-                // trigger change to run fallback category inference
                 onJoServiceTypeChange();
             }
             
-            // Filter matching types (by text search AND by selected category, if a category is selected)
-            const filtered = types.filter(t => {
-                const nameMatches = t.name.toLowerCase().includes(filter);
-                const tCategory = getServiceCategory(t).toLowerCase();
-                const catMatches = !selectedCat || tCategory === selectedCat;
-                return nameMatches && catMatches;
-            });
+            const filtered = types.filter(t => t.name.toLowerCase().includes(filter));
             
-            // Render dropdown list
             if (filtered.length === 0) {
                 list.innerHTML = '<div style="padding:10px;color:#94a3b8;font-size:13px;text-align:center;">No services found</div>';
             } else {
@@ -6543,10 +6789,11 @@ input[list] {
         //      — skips parts that are out of stock (warns user)
         //      — skips parts already in cart (merges quantity)
         async function applyJobOrderToCart() {
-            const svcType  = (document.getElementById('joServiceTypeValue')?.value || '').trim();
-            const svcPrice = parseFloat(document.getElementById('joServicePrice')?.value || 0);
+            const svcType   = (document.getElementById('joServiceTypeValue')?.value || '').trim();
+            const svcPrice  = parseFloat(document.getElementById('joServicePrice')?.value || 0);
+            const laborCharge = parseFloat(document.getElementById('joLaborCharge')?.value || 0);
 
-            if (!svcType || svcPrice <= 0) return; // caller already validated
+            if (!svcType || svcPrice < 0) return; // caller already validated
 
             // ── 1. Add / update service fee line item ─────────────────────────
             const existingSvc = cart.find(i => i.item_type === 'service' && i.product_name === svcType);
@@ -6562,6 +6809,28 @@ input[list] {
                     quantity:     1,
                     unit_price:   svcPrice,
                 });
+            }
+
+            // ── 1b. Add labor charge as separate line item (if > 0) ───────────
+            if (laborCharge > 0) {
+                const laborLabel = 'Labor Charge';
+                const existingLabor = cart.find(i => i.item_type === 'service' && (i.product_name === laborLabel || i.category === 'Labor'));
+                if (existingLabor) {
+                    existingLabor.product_name = laborLabel;
+                    existingLabor.unit_price = laborCharge;
+                } else {
+                    cart.push({
+                        item_type:    'service',
+                        product_name: laborLabel,
+                        category:     'Labor',
+                        size_variant: '',
+                        product_id:   null,
+                        quantity:     1,
+                        unit_price:   laborCharge,
+                    });
+                }
+            } else {
+                cart = cart.filter(i => i.category !== 'Labor' && i.product_name !== 'Labor Charge');
             }
 
             // ── 2. Add suggested parts as merchandise items ───────────────────
@@ -6762,7 +7031,43 @@ input[list] {
         });
 
         function onJoServicePriceInput() {
-            // Price manually entered — nothing extra needed
+            // Price manually entered — live update cart if already added
+            const svcType  = (document.getElementById('joServiceTypeValue')?.value || '').trim();
+            const svcPrice = parseFloat(document.getElementById('joServicePrice')?.value || 0);
+            if (svcType) {
+                const existingSvc = cart.find(i => i.item_type === 'service' && i.product_name === svcType);
+                if (existingSvc) {
+                    existingSvc.unit_price = Math.max(0, svcPrice);
+                    renderCart();
+                }
+            }
+        }
+
+        function onJoLaborChargeInput() {
+            const laborCharge = parseFloat(document.getElementById('joLaborCharge')?.value || 0);
+            const laborLabel = 'Labor Charge';
+            const existingLabor = cart.find(i => i.item_type === 'service' && (i.product_name === laborLabel || i.category === 'Labor'));
+            if (laborCharge > 0) {
+                if (existingLabor) {
+                    existingLabor.unit_price = laborCharge;
+                } else {
+                    const hasServiceInCart = cart.some(i => i.item_type === 'service');
+                    if (hasServiceInCart) {
+                        cart.push({
+                            item_type:    'service',
+                            product_name: laborLabel,
+                            category:     'Labor',
+                            size_variant: '',
+                            product_id:   null,
+                            quantity:     1,
+                            unit_price:   laborCharge,
+                        });
+                    }
+                }
+            } else if (existingLabor) {
+                cart = cart.filter(i => i.category !== 'Labor' && i.product_name !== laborLabel);
+            }
+            renderCart();
         }
 
         // ── Customer data for search and autocomplete ─────────────────────────────
@@ -7036,6 +7341,44 @@ input[list] {
             if (Object.prototype.hasOwnProperty.call(selectedCustomerIds, prefix)) {
                 selectedCustomerIds[prefix] = null;
             }
+            // Unlock customer fields for 'jo' prefix (but do NOT clear values — user may be typing)
+            if (prefix === 'jo') {
+                const fields = ['joFirstName','joLastName','joContactNumber'];
+                fields.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) {
+                        el.removeAttribute('readonly');
+                        el.style.background = '';
+                        el.style.cursor = '';
+                        el.style.color = '';
+                    }
+                });
+                const banner = document.getElementById('joCustomerLockedBanner');
+                if (banner) banner.style.display = 'none';
+            }
+        }
+
+        // Full reset — clears all fields (used by reset button only)
+        function clearSelectedCustomerFull(prefix) {
+            clearSelectedCustomer(prefix);
+            if (prefix === 'jo') {
+                const fn = document.getElementById('joFirstName');
+                if (fn) fn.value = '';
+                const ln = document.getElementById('joLastName');
+                if (ln) ln.value = '';
+                const cn = document.getElementById('joContactNumber');
+                if (cn) cn.value = '';
+            }
+        }
+
+        // Called on oninput \u2014 only unlocks the field if it was locked (readonly), never clears values
+        function unlockCustomerIfNeeded(prefix) {
+            const fn = document.getElementById(prefix + 'FirstName');
+            if (fn && fn.hasAttribute('readonly')) {
+                // User is editing a locked field \u2014 clear the selected customer and unlock
+                clearSelectedCustomer(prefix);
+            }
+            // else: field is already unlocked (fresh entry), just let typing happen normally
         }
 
         function searchCustomer(prefix) {
@@ -7253,13 +7596,26 @@ input[list] {
             if (vehicleBrand) vehicleBrand.value = customer.vehicle_brand || '';
             if (vehicleModel) vehicleModel.value = customer.vehicle_model || '';
             if (vehiclePlate) vehiclePlate.value = customer.plate_number || '';
+
+            // Lock customer fields (jo prefix only)
+            if (prefix === 'jo') {
+                const lockFields = [firstNameInput, lastNameInput, contactInput];
+                lockFields.forEach(el => {
+                    if (!el) return;
+                    el.setAttribute('readonly', true);
+                    el.style.background = '#f0fdf4';
+                    el.style.cursor = 'not-allowed';
+                    el.style.color = '#15803d';
+                });
+                const banner = document.getElementById('joCustomerLockedBanner');
+                if (banner) banner.style.display = 'flex';
+            }
             
             // Automatically fill loyalty fields if customer matches
             const loyaltyCardNoInput = document.getElementById('loyaltyCardNo');
             if (loyaltyCardNoInput) {
                 const cardVal = customer.customer_id || customer.id_number || '';
                 loyaltyCardNoInput.value = cardVal;
-                // Dispatch input event to trigger autocomplete
                 loyaltyCardNoInput.dispatchEvent(new Event('input'));
             }
 
@@ -7491,11 +7847,13 @@ input[list] {
             const nameEl   = document.getElementById('newProductName');
             const catEl    = document.getElementById('newProductCategory');
             const skuEl    = document.getElementById('newProductSKU');
+            const unitEl   = document.getElementById('newProductUnit');
             const priceEl  = document.getElementById('newProductPrice');
             const reasonEl = document.getElementById('newProductReason');
             if (nameEl)   nameEl.value   = '';
             if (catEl)    catEl.value    = '';
             if (skuEl)    skuEl.value    = '';
+            if (unitEl)   unitEl.value   = '';
             if (priceEl)  priceEl.value  = '';
             if (reasonEl) reasonEl.value = '';
             setAddProductError('');
@@ -7521,6 +7879,7 @@ input[list] {
             const name     = (document.getElementById('newProductName')?.value     || '').trim();
             const category = (document.getElementById('newProductCategory')?.value || '').trim();
             const sku      = (document.getElementById('newProductSKU')?.value      || '').trim().toUpperCase();
+            const unit     = (document.getElementById('newProductUnit')?.value     || '').trim();
             const price    = parseFloat(document.getElementById('newProductPrice')?.value || 0);
             const reason   = (document.getElementById('newProductReason')?.value   || '').trim();
             const btn      = document.getElementById('addProductSubmitBtn');
@@ -7529,6 +7888,7 @@ input[list] {
             if (!category) { setAddProductError('Please enter or select a category.'); return; }
             if (!name)     { setAddProductError('Please enter the product name.'); return; }
             if (name.length > 150) { setAddProductError('Name is too long (max 150 characters).'); return; }
+            if (!unit)     { setAddProductError('Please enter the unit (e.g. pcs, bottle, pack).'); return; }
             if (price <= 0) { setAddProductError('Please enter a valid price greater than zero.'); return; }
             if (!reason)   { setAddProductError('Please explain why you need this product added.'); return; }
             if (reason.length < 10) { setAddProductError('Please provide a more detailed reason (minimum 10 characters).'); return; }
@@ -7546,9 +7906,10 @@ input[list] {
                             product_name: name,
                             category: category,
                             sku: sku || null,
-                            unit_price: price
-                        },
-                        reason: reason
+                            unit: unit,
+                            unit_price: price,
+                            reason: reason
+                        }
                     })
                 });
                 const data = await res.json();
@@ -7602,9 +7963,25 @@ input[list] {
             if (isNaN(qty) || qty < 1) { showTxnAlert('Quantity must be at least 1.', 'warning'); return; }
 
             const stock = parseInt(selectedProduct.stock) || 0;
-            if (stock <= 0) { showTxnAlert('This product is out of stock.', 'warning'); return; }
+            let rawUnit = (selectedProduct.unit || 'pc').toLowerCase();
+            let uomLabel = 'pcs';
+            if (rawUnit.includes('bottle')) uomLabel = 'Bottles';
+            else if (rawUnit.includes('liter') || rawUnit.includes('litre')) uomLabel = 'Liters';
+            else if (rawUnit.includes('can')) uomLabel = 'Cans';
+            else if (rawUnit.includes('box')) uomLabel = 'Boxes';
+            else if (rawUnit.includes('set')) uomLabel = 'Sets';
+            else if (rawUnit.includes('pack')) uomLabel = 'Packs';
+            else if (rawUnit.includes('pair')) uomLabel = 'Pairs';
+            else if (rawUnit.includes('pc') || rawUnit.includes('piece')) uomLabel = 'pcs';
+            else uomLabel = selectedProduct.unit || 'pcs';
+
+            if (stock <= 0) { 
+                showTxnAlert(`❌ Insufficient stock.\nAvailable: 0 ${uomLabel}`, 'warning'); 
+                return; 
+            }
             if (qty > stock) {
-                showTxnAlert(`Only ${stock} unit(s) available in stock.`, 'warning'); return;
+                showTxnAlert(`❌ Insufficient stock.\nAvailable: ${stock} ${uomLabel}`, 'warning'); 
+                return;
             }
 
             const pid = String(selectedProduct.id);
@@ -7612,7 +7989,8 @@ input[list] {
             if (existing) {
                 const newQty = existing.quantity + qty;
                 if (newQty > stock) {
-                    showTxnAlert(`Cannot add ${qty} more — only ${stock - existing.quantity} unit(s) left.`, 'warning'); return;
+                    showTxnAlert(`❌ Insufficient stock.\nAvailable: ${stock} ${uomLabel} (${existing.quantity} already in cart)`, 'warning'); 
+                    return;
                 }
                 existing.quantity = newQty;
             } else {
@@ -7631,6 +8009,7 @@ input[list] {
             renderCart();
             updateCheckoutBtn();
             resetMerchandiseForm();
+            showTxnAlert(`✔ Item successfully added to cart.`, 'success');
         }
 
         // ── Quick Add selected product directly from dropdown list option ───
@@ -7814,31 +8193,41 @@ input[list] {
         // ── Reset Job Order form fields only ─────────────────────────────────
         function resetJobOrderForm() {
             selectedCustomerIds.jo = null;
-            // Customer fields remain readonly - must search for customer
-            // (Walk-in option removed - all customers must be registered)
-            
+
             // Clear customer details
-            const joFirstName = document.getElementById('joFirstName');
-            const joLastName = document.getElementById('joLastName');
-            const joContactNumber = document.getElementById('joContactNumber');
-            if (joFirstName) joFirstName.value = '';
-            if (joLastName) joLastName.value = '';
-            if (joContactNumber) joContactNumber.value = '';
-            
-            // Hide customer results if open
-            const firstNameResults = document.getElementById('joFirstNameResults');
-            if (firstNameResults) firstNameResults.style.display = 'none';
-            
+            ['joFirstName','joLastName','joContactNumber'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            const fnResults = document.getElementById('joFirstNameResults');
+            if (fnResults) fnResults.style.display = 'none';
+
             // Clear vehicle details
-            const joVehicleType = document.getElementById('joVehicleType');
-            const joVehicleBrand = document.getElementById('joVehicleBrand');
-            const joVehicleModel = document.getElementById('joVehicleModel');
-            const joVehiclePlate = document.getElementById('joVehiclePlate');
-            if (joVehicleType) joVehicleType.value = '';
-            if (joVehicleBrand) joVehicleBrand.value = '';
-            if (joVehicleModel) joVehicleModel.value = '';
-            if (joVehiclePlate) joVehiclePlate.value = '';
-            
+            ['joVehicleType','joVehicleBrand','joVehicleModel','joVehiclePlate','joYearModel','joOdometer'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+
+            // Clear JO Information
+            const joDate = document.getElementById('joDate');
+            if (joDate) joDate.value = new Date().toISOString().split('T')[0];
+            const joExpectedRelease = document.getElementById('joExpectedRelease');
+            if (joExpectedRelease) joExpectedRelease.value = '';
+            // Reset priority to Normal
+            const priNormal = document.getElementById('joPriorityNormal');
+            if (priNormal) priNormal.checked = true;
+
+            // Clear Vehicle Inspection
+            document.querySelectorAll('input[name="jo_inspection[]"]').forEach(cb => cb.checked = false);
+            const inspRemarks = document.getElementById('joInspectionRemarks');
+            if (inspRemarks) inspRemarks.value = '';
+
+            // Clear Complaint & Recommendation
+            const joComplaint = document.getElementById('joCustomerComplaint');
+            if (joComplaint) joComplaint.value = '';
+            const joRec = document.getElementById('joRepairRecommendation');
+            if (joRec) joRec.value = '';
+
             // Clear service details
             const joServiceCategory = document.getElementById('joServiceCategory');
             const joServiceType = document.getElementById('joServiceType');
@@ -7846,12 +8235,16 @@ input[list] {
             const joServicePrice = document.getElementById('joServicePrice');
             const joNotes = document.getElementById('joNotes');
             const joEstimatedDuration = document.getElementById('joEstimatedDuration');
-            
             if (joServiceCategory) joServiceCategory.selectedIndex = 0;
             if (joServiceType) joServiceType.value = '';
             if (joServiceTypeValue) joServiceTypeValue.value = '';
             if (joServicePrice) joServicePrice.value = '';
-            // Reset mechanic typeahead
+            const joLaborCharge = document.getElementById('joLaborCharge');
+            if (joLaborCharge) joLaborCharge.value = '';
+            if (joNotes) joNotes.value = '';
+            if (joEstimatedDuration) joEstimatedDuration.value = '';
+
+            // Reset mechanic
             const joMechanic = document.getElementById('joMechanic');
             if (joMechanic) joMechanic.value = '';
             const joMechanicId = document.getElementById('joMechanicId');
@@ -7859,31 +8252,353 @@ input[list] {
             const joMechanicName = document.getElementById('joMechanicName');
             if (joMechanicName) joMechanicName.value = '';
             hideMechanicDropdown();
-            if (joNotes) joNotes.value = '';
-            if (joEstimatedDuration) joEstimatedDuration.value = '';
-            
-            // Hide pricing notes and suggested parts
+
+            // Hide previews/warnings
             const notesWrap = document.getElementById('joServicePriceNotes');
             const partsWrap = document.getElementById('joSuggestedParts');
             if (notesWrap) notesWrap.style.display = 'none';
             if (partsWrap) partsWrap.style.display = 'none';
-            
-            // Hide mechanic busy warning
             const mechanicBusyWarn = document.getElementById('joMechanicBusyWarn');
             if (mechanicBusyWarn) mechanicBusyWarn.style.display = 'none';
-            
-            // Clear suggested parts
+
             window._joSuggestedParts = [];
-            
-            // Hide service dropdown if open
             hideServiceDropdown();
-            
-            // Hide vehicle dropdown if open
             hideVehicleDropdown();
-            
-            // Hide customer results if open
             const customerResults = document.getElementById('joCustomerResults');
             if (customerResults) customerResults.style.display = 'none';
+
+            // Reset parts & merchandise list
+            joResetParts();
+            const merchList = document.getElementById('joMerchandiseList');
+            if (merchList) merchList.innerHTML = '';
+            const merchHidden = document.getElementById('joMerchandiseData');
+            if (merchHidden) merchHidden.value = '[]';
+        }
+
+        // ── Save Job Order as Draft ──────────────────────────────────────────
+        function saveJobOrderDraft() {
+            const firstName = document.getElementById('joFirstName')?.value?.trim();
+            const plate     = document.getElementById('joVehiclePlate')?.value?.trim();
+            if (!firstName) {
+                showTxnAlert('Please enter the customer\'s first name before saving draft.', 'warning');
+                return;
+            }
+            // Store draft in sessionStorage for persistence
+            const draftData = collectJobOrderData();
+            draftData.status = 'Draft';
+            try {
+                sessionStorage.setItem('jo_draft', JSON.stringify(draftData));
+                showTxnAlert('Job Order draft saved! You can continue editing before submitting.', 'success');
+            } catch (e) {
+                showTxnAlert('Could not save draft: ' + e.message, 'warning');
+            }
+        }
+
+        // ── Submit Job Order ─────────────────────────────────────────────────
+        function submitJobOrder() {
+            const firstName = document.getElementById('joFirstName')?.value?.trim();
+            const plate     = document.getElementById('joVehiclePlate')?.value?.trim();
+            if (!firstName) {
+                showTxnAlert('Please enter the customer\'s first name in the Job Order section.', 'warning');
+                return;
+            }
+            if (!plate) {
+                showTxnAlert('Please enter the vehicle plate number.', 'warning');
+                return;
+            }
+            const serviceType = document.getElementById('joServiceType')?.value?.trim();
+            if (!serviceType) {
+                showTxnAlert('Please select a service type before submitting the Job Order.', 'warning');
+                return;
+            }
+            // Delegate to the existing cart-based flow
+            addServiceFromFormToCart();
+        }
+
+        // ── Collect Job Order form data as object ────────────────────────────
+        function collectJobOrderData() {
+            const inspected = [];
+            document.querySelectorAll('input[name="jo_inspection[]"]:checked').forEach(cb => inspected.push(cb.value));
+            let merchData = [];
+            try {
+                merchData = JSON.parse(document.getElementById('joMerchandiseData')?.value || '[]');
+            } catch (e) { merchData = []; }
+            
+            return {
+                customer_first_name:   document.getElementById('joFirstName')?.value?.trim() || '',
+                customer_last_name:    document.getElementById('joLastName')?.value?.trim() || '',
+                contact_number:        document.getElementById('joContactNumber')?.value?.trim() || '',
+                vehicle_type:          document.getElementById('joVehicleType')?.value?.trim() || '',
+                plate_number:          document.getElementById('joVehiclePlate')?.value?.trim() || '',
+                vehicle_brand:         document.getElementById('joVehicleBrand')?.value?.trim() || '',
+                vehicle_model:         document.getElementById('joVehicleModel')?.value?.trim() || '',
+                year_model:            document.getElementById('joYearModel')?.value || '',
+                odometer:              document.getElementById('joOdometer')?.value?.trim() || '',
+                jo_date:               document.getElementById('joDate')?.value || '',
+                priority:              document.querySelector('input[name="joPriority"]:checked')?.value || 'Normal',
+                expected_release:      document.getElementById('joExpectedRelease')?.value || '',
+                inspection_items:      inspected,
+                inspection_remarks:    document.getElementById('joInspectionRemarks')?.value?.trim() || '',
+                customer_complaint:    document.getElementById('joCustomerComplaint')?.value?.trim() || '',
+                repair_recommendation: document.getElementById('joRepairRecommendation')?.value?.trim() || '',
+                service_category:      document.getElementById('joServiceCategory')?.value || '',
+                service_type:          document.getElementById('joServiceType')?.value?.trim() || '',
+                service_fee:           document.getElementById('joServicePrice')?.value || '',
+                mechanic_id:           document.getElementById('joMechanicId')?.value || '',
+                mechanic_name:         document.getElementById('joMechanicName')?.value || '',
+                estimated_duration:    document.getElementById('joEstimatedDuration')?.value || '',
+                notes:                 document.getElementById('joNotes')?.value?.trim() || '',
+                parts:                 window._joPartsList || [],
+                merchandise_used:      merchData,
+                status:                'Pending',
+            };
+        }
+
+        // ── Merchandise Used (Optional) in Job Order Form ───────────────────
+        window.merchandiseProducts = <?php echo json_encode($merch_products ?? []); ?>;
+
+        function addMerchandiseRow(productName = '', qty = 1, price = 0) {
+            const list = document.getElementById('joMerchandiseList');
+            if (!list) return;
+
+            const rowId = 'merchRow_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+            const row = document.createElement('div');
+            row.id = rowId;
+            row.className = 'jo-merch-row';
+            row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px;background:#f8fafc;padding:8px;border-radius:8px;border:1px solid #e2e8f0;';
+
+            let optionsHtml = '<option value="">-- Select Product --</option>';
+            (window.merchandiseProducts || []).forEach(p => {
+                const pName = p.product_name || p.name || '';
+                const pPrice = parseFloat(p.unit_price || p.price || 0);
+                const selected = (pName === productName) ? 'selected' : '';
+                optionsHtml += `<option value="${escapeHtml(pName)}" data-price="${pPrice}" ${selected}>${escapeHtml(pName)} (${pPrice > 0 ? '₱'+pPrice.toFixed(2) : 'No price'})</option>`;
+            });
+
+            row.innerHTML = `
+                <div style="flex:2;">
+                    <select class="txn-select merch-prod-select" onchange="onMerchandiseRowChange('${rowId}')" style="width:100%;font-size:12px;padding:6px 8px;">
+                        ${optionsHtml}
+                    </select>
+                </div>
+                <div style="flex:1;max-width:80px;">
+                    <input type="number" class="txn-input merch-prod-qty" min="1" value="${qty}" oninput="onMerchandiseRowChange('${rowId}')" placeholder="Qty" style="font-size:12px;padding:6px 8px;text-align:center;">
+                </div>
+                <div style="flex:1;max-width:100px;">
+                    <input type="number" step="0.01" min="0" class="txn-input merch-prod-price" value="${price > 0 ? price : ''}" oninput="onMerchandiseRowChange('${rowId}')" placeholder="Price" style="font-size:12px;padding:6px 8px;text-align:right;">
+                </div>
+                <button type="button" onclick="removeMerchandiseRow('${rowId}')" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;width:30px;height:30px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;" title="Remove product">
+                    <i class="fas fa-trash-alt" style="font-size:12px;"></i>
+                </button>
+            `;
+
+            list.appendChild(row);
+            updateMerchandiseData();
+        }
+
+        function onMerchandiseRowChange(rowId) {
+            const row = document.getElementById(rowId);
+            if (!row) return;
+            const select = row.querySelector('.merch-prod-select');
+            const priceInput = row.querySelector('.merch-prod-price');
+            if (select && priceInput && select.selectedIndex > 0) {
+                const opt = select.options[select.selectedIndex];
+                const defaultPrice = parseFloat(opt.getAttribute('data-price') || 0);
+                if (!priceInput.value && defaultPrice > 0) {
+                    priceInput.value = defaultPrice.toFixed(2);
+                }
+            }
+            updateMerchandiseData();
+        }
+
+        function removeMerchandiseRow(rowId) {
+            const row = document.getElementById(rowId);
+            if (row) {
+                row.remove();
+                updateMerchandiseData();
+            }
+        }
+
+        function updateMerchandiseData() {
+            const list = document.getElementById('joMerchandiseList');
+            const hidden = document.getElementById('joMerchandiseData');
+            if (!list || !hidden) return;
+
+            const items = [];
+            list.querySelectorAll('.jo-merch-row').forEach(row => {
+                const select = row.querySelector('.merch-prod-select');
+                const qtyInput = row.querySelector('.merch-prod-qty');
+                const priceInput = row.querySelector('.merch-prod-price');
+
+                const productName = select ? select.value.trim() : '';
+                const qty = qtyInput ? (parseInt(qtyInput.value, 10) || 1) : 1;
+                const price = priceInput ? (parseFloat(priceInput.value) || 0) : 0;
+
+                if (productName) {
+                    items.push({ product_name: productName, qty: qty, price: price });
+                }
+            });
+
+            hidden.value = JSON.stringify(items);
+        }
+
+        // ── Step 8: Parts / Merchandise Used ────────────────────────────────
+        window._joPartsList = [];  // [{id, name, qty, price}]
+
+        function joPartSearchInput(q) {
+            const dropdown = document.getElementById('joPartDropdown');
+            if (!dropdown) return;
+            q = (q || '').toLowerCase().trim();
+            const products = window.allMerchData || [];
+            const filtered = q.length === 0
+                ? products.slice(0, 40)
+                : products.filter(p =>
+                    (p.name || '').toLowerCase().includes(q) ||
+                    (p.sku  || '').toLowerCase().includes(q) ||
+                    (p.category || '').toLowerCase().includes(q)
+                  ).slice(0, 40);
+
+            if (filtered.length === 0) {
+                dropdown.innerHTML = '<div style="padding:10px 14px;color:#94a3b8;font-size:12px;">No products found.</div>';
+            } else {
+                dropdown.innerHTML = filtered.map(p => {
+                    const stock = Number(p.stock || 0);
+                    const price = parseFloat(p.price || p.unit_price || 0);
+                    return `<div class="jo-part-item"
+                        data-id="${p.id}" data-name="${(p.name||'').replace(/"/g,'&quot;')}"
+                        data-price="${price}" data-stock="${stock}"
+                        onclick="joSelectPart(this)"
+                        style="padding:9px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;
+                               display:flex;justify-content:space-between;align-items:center;
+                               font-size:13px;color:#1e293b;transition:background .12s;"
+                        onmouseover="this.style.background='#fffbeb'"
+                        onmouseout="this.style.background=''"
+                    >
+                        <div>
+                            <div style="font-weight:600;">${escHtml(p.name)}</div>
+                            <div style="font-size:10px;color:#94a3b8;">${escHtml(p.sku||'')} · ${escHtml(p.category||'')} · Stock: ${stock} ${escHtml(p.unit||'pc')}</div>
+                        </div>
+                        <div style="font-weight:700;color:#b45309;font-size:13px;">₱${price.toFixed(2)}</div>
+                    </div>`;
+                }).join('');
+            }
+            dropdown.style.display = 'block';
+            // Close on outside click
+            document.addEventListener('click', joClosePartDropdown);
+        }
+
+        function joClosePartDropdown(e) {
+            const dd = document.getElementById('joPartDropdown');
+            const inp = document.getElementById('joPartSearch');
+            if (dd && inp && !dd.contains(e.target) && e.target !== inp) {
+                dd.style.display = 'none';
+                document.removeEventListener('click', joClosePartDropdown);
+            }
+        }
+
+        function escHtml(s) {
+            return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function joSelectPart(el) {
+            document.getElementById('joPartId').value    = el.dataset.id;
+            document.getElementById('joPartName').value  = el.dataset.name;
+            document.getElementById('joPartSearch').value = el.dataset.name;
+            document.getElementById('joPartPrice').value  = parseFloat(el.dataset.price || 0).toFixed(2);
+            document.getElementById('joPartQty').value    = 1;
+            const dd = document.getElementById('joPartDropdown');
+            if (dd) dd.style.display = 'none';
+        }
+
+        function joAddPart() {
+            const id    = document.getElementById('joPartId')?.value;
+            const name  = document.getElementById('joPartName')?.value?.trim()
+                       || document.getElementById('joPartSearch')?.value?.trim();
+            const qty   = parseInt(document.getElementById('joPartQty')?.value || 1);
+            const price = parseFloat(document.getElementById('joPartPrice')?.value || 0);
+
+            if (!name) {
+                showTxnAlert('Please search and select a product first.', 'warning');
+                return;
+            }
+            if (qty < 1) {
+                showTxnAlert('Quantity must be at least 1.', 'warning');
+                return;
+            }
+
+            // Check if already in list — add qty instead
+            const existing = window._joPartsList.find(p => p.id == id && id);
+            if (existing) {
+                existing.qty += qty;
+            } else {
+                window._joPartsList.push({ id: id || '', name, qty, price });
+            }
+
+            // Clear inputs
+            document.getElementById('joPartSearch').value = '';
+            document.getElementById('joPartId').value     = '';
+            document.getElementById('joPartName').value   = '';
+            document.getElementById('joPartPrice').value  = '';
+            document.getElementById('joPartQty').value    = 1;
+
+            joUpdatePartsTable();
+        }
+
+        function joRemovePart(idx) {
+            window._joPartsList.splice(idx, 1);
+            joUpdatePartsTable();
+        }
+
+        function joUpdatePartsTable() {
+            const tbody   = document.getElementById('joPartsTableBody');
+            const wrap    = document.getElementById('joPartsTableWrap');
+            const empty   = document.getElementById('joPartsEmptyNote');
+            const total   = document.getElementById('joPartsTotalCell');
+            const parts   = window._joPartsList;
+
+            if (!parts.length) {
+                if (wrap)  wrap.style.display  = 'none';
+                if (empty) empty.style.display = 'block';
+                if (total) total.textContent   = '₱0.00';
+                return;
+            }
+            if (wrap)  wrap.style.display  = 'block';
+            if (empty) empty.style.display = 'none';
+
+            let grandTotal = 0;
+            tbody.innerHTML = parts.map((p, i) => {
+                const lineTotal = p.qty * p.price;
+                grandTotal += lineTotal;
+                return `<tr style="border-bottom:1px solid #fde68a;background:${i%2===0?'#fff':'#fffbeb'};">
+                    <td style="padding:7px 10px;font-weight:600;color:#1e293b;">${escHtml(p.name)}</td>
+                    <td style="padding:7px 10px;text-align:center;font-weight:700;color:#002F70;">${p.qty}</td>
+                    <td style="padding:7px 10px;text-align:right;color:#64748b;">₱${parseFloat(p.price).toFixed(2)}</td>
+                    <td style="padding:7px 10px;text-align:right;font-weight:700;color:#b45309;">₱${lineTotal.toFixed(2)}</td>
+                    <td style="padding:7px 10px;text-align:center;">
+                        <button type="button" onclick="joRemovePart(${i})"
+                                style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px;padding:2px 5px;"
+                                title="Remove">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </td>
+                </tr>`;
+            }).join('');
+            if (total) total.textContent = '₱' + grandTotal.toFixed(2);
+        }
+
+        function joResetParts() {
+            window._joPartsList = [];
+            joUpdatePartsTable();
+            const ps = document.getElementById('joPartSearch');
+            if (ps) ps.value = '';
+            const pid = document.getElementById('joPartId');
+            if (pid) pid.value = '';
+            const pn = document.getElementById('joPartName');
+            if (pn) pn.value = '';
+            const pp = document.getElementById('joPartPrice');
+            if (pp) pp.value = '';
+            const pq = document.getElementById('joPartQty');
+            if (pq) pq.value = 1;
         }
 
         // ── Clear all payment inputs ─────────────────────────────────────────
@@ -8682,18 +9397,19 @@ input[list] {
                 <table class="txn-table" id="joUnifiedTable" style="table-layout:fixed;word-wrap:break-word;width:100%;">
                     <colgroup>
                         <col style="width:3%;"><!-- JO Number -->
-                        <col style="width:6.5%;"><!-- OR No. -->
-                        <col style="width:10%;"><!-- Customer -->
+                        <col style="width:6%;"><!-- OR No. -->
+                        <col style="width:9%;"><!-- Customer -->
                         <col style="width:5%;"><!-- Plate No. -->
-                        <col style="width:7%;"><!-- Vehicle -->
-                        <col style="width:9%;"><!-- Service Type -->
-                        <col style="width:9.5%;"><!-- Mechanic -->
-                        <col style="width:6%;"><!-- Service Fee -->
-                        <col style="width:6%;"><!-- Status -->
+                        <col style="width:6%;"><!-- Vehicle -->
+                        <col style="width:8%;"><!-- Service Type -->
+                        <col style="width:8.5%;"><!-- Mechanic -->
+                        <col style="width:5.5%;"><!-- Service Fee -->
+                        <col style="width:5.5%;"><!-- Labor Fee -->
+                        <col style="width:5.5%;"><!-- Status -->
                         <col style="width:5%;"><!-- Pay Status -->
-                        <col style="width:10%;"><!-- Est. Completion -->
-                        <col style="width:8%;"><!-- Date Created -->
-                        <col style="width:14%;"><!-- Actions -->
+                        <col style="width:9%;"><!-- Est. Completion -->
+                        <col style="width:7%;"><!-- Date Created -->
+                        <col style="width:17%;"><!-- Actions -->
                     </colgroup>
                     <thead>
                         <tr>
@@ -8705,6 +9421,7 @@ input[list] {
                             <th style="font-size:10.5px;text-align:left;padding:6px 3px;white-space:normal;line-height:1.15;">Service Type</th>
                             <th style="font-size:10.5px;text-align:left;padding:6px 3px;white-space:normal;line-height:1.15;">Assigned Mechanic</th>
                             <th style="font-size:10.5px;text-align:right;padding:6px 3px;white-space:normal;line-height:1.15;">Service Fee</th>
+                            <th style="font-size:10.5px;text-align:right;padding:6px 3px;white-space:normal;line-height:1.15;">Labor Fee</th>
                             <th style="font-size:10.5px;text-align:left;padding:6px 3px;white-space:normal;line-height:1.15;">Status</th>
                             <th style="font-size:10.5px;text-align:left;padding:6px 3px;white-space:normal;line-height:1.15;">Pay Status</th>
                             <th style="font-size:10.5px;text-align:left;padding:6px 3px;white-space:normal;line-height:1.15;">Est. Completion</th>
@@ -8719,19 +9436,19 @@ input[list] {
                         $pay_status  = $job['payment_status'] ?? 'Pending';
                         $remarks     = $job['rejection_remarks'] ?? $job['notes'] ?? $job['additional_notes'] ?? '';
 
-                        // Determine combined workflow label + badge style (plain text)
-                        if (in_array($wf_status, ['Rejected', 'Cancelled']) || $val_status === 'Rejected') {
-                            $wf_color='#dc2626'; $wf_bg='#fee2e2'; $wf_label='Cancelled'; $row_filter='rejected';
-                        } elseif ($wf_status === 'Completed' && $val_status === 'Pending Validation') {
-                            $wf_color='#0284c7'; $wf_bg='#e0f2fe'; $wf_label='Ready for Release'; $row_filter='completed';
+                        // Determine combined workflow label + badge style
+                        if ($wf_status === 'Released') {
+                            $wf_color='#475569'; $wf_bg='#f1f5f9'; $wf_label='Released'; $row_filter='released';
                         } elseif ($wf_status === 'Completed' || $val_status === 'Completed') {
                             $wf_color='#16a34a'; $wf_bg='#dcfce7'; $wf_label='Completed'; $row_filter='completed';
                         } elseif ($wf_status === 'In Progress' || $val_status === 'In Progress') {
-                            $wf_color='#d97706'; $wf_bg='#fef9c3'; $wf_label='In Progress'; $row_filter='inprogress';
-                        } elseif (in_array($val_status, ['Approved', 'Validated'])) {
-                            $wf_color='#16a34a'; $wf_bg='#dcfce7'; $wf_label='Approved'; $row_filter='approved';
+                            $wf_color='#8b5cf6'; $wf_bg='#ede9fe'; $wf_label='In Progress'; $row_filter='inprogress';
+                        } elseif ($wf_status === 'Waiting for Parts' || $wf_status === 'Waiting For Parts') {
+                            $wf_color='#2563eb'; $wf_bg='#dbeafe'; $wf_label='Waiting for Parts'; $row_filter='waiting_for_parts';
+                        } elseif (in_array($wf_status, ['Rejected', 'Cancelled']) || $val_status === 'Rejected') {
+                            $wf_color='#dc2626'; $wf_bg='#fee2e2'; $wf_label='Cancelled'; $row_filter='rejected';
                         } else {
-                            $wf_color='#64748b'; $wf_bg='#f1f5f9'; $wf_label='Pending'; $row_filter='pending';
+                            $wf_color='#d97706'; $wf_bg='#fef3c7'; $wf_label='Pending'; $row_filter='pending';
                         }
 
                         // Payment badge — supports both new and legacy status values
@@ -8850,7 +9567,6 @@ input[list] {
 
                         <!-- Service Type -->
                         <td style="padding:10px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                            title="<?= htmlspecialchars($job['service_type'] ?? '') ?>">
                             <?= htmlspecialchars($job['service_type'] ?? '—') ?>
                         </td>
 
@@ -8870,7 +9586,15 @@ input[list] {
 
                         <!-- Service Fee -->
                         <td style="padding:10px;font-size:12px;text-align:right;font-weight:700;color:var(--petron-blue);white-space:nowrap;">
-                            ₱<?= number_format((float)($job['total_cost'] ?? $job['estimated_cost'] ?? 0), 2) ?>
+                            ₱<?= number_format((float)($job['service_fee'] ?? $job['estimated_cost'] ?? $job['total_cost'] ?? 0), 2) ?>
+                        </td>
+
+                        <!-- Labor Fee -->
+                        <td style="padding:10px;font-size:12px;text-align:right;font-weight:700;color:#16a34a;white-space:nowrap;">
+                            <?php
+                            $labor_val = (float)($job['actual_labor_cost'] ?? $job['estimated_labor_cost'] ?? 0);
+                            echo $labor_val > 0 ? '₱' . number_format($labor_val, 2) : '<span style="color:#cbd5e1;">—</span>';
+                            ?>
                         </td>
 
                         <!-- Status -->
@@ -8995,7 +9719,18 @@ input[list] {
                                 </div>
                                 
                                 <!-- Row 2: Workflow Actions -->
-                                <?php if ($wf_status === 'Rejected'): ?>
+                                <?php if ($wf_status === 'Released'): ?>
+                                    <!-- Released status: Print Receipt & Badge -->
+                                    <button type="button"
+                                            onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
+                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                        <i class="fas fa-print"></i> Print Receipt
+                                    </button>
+                                    <span style="font-size:10.5px;color:#475569;font-weight:600;text-align:center;padding:2px 0;display:flex;align-items:center;justify-content:center;gap:3px;">
+                                        <i class="fas fa-check-double"></i> Released
+                                    </span>
+
+                                <?php elseif ($wf_status === 'Rejected'): ?>
                                     <!-- Rejected: Re-encode - GRAY -->
                                     <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise" 
                                        class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
@@ -9009,19 +9744,14 @@ input[list] {
                                     </span>
                                     
                                 <?php elseif ($wf_status === 'Completed'): ?>
-                                    <!-- Completed: Payment or Print Receipt -->
+                                    <!-- Completed: Payment or Print Receipt + Release Vehicle Button -->
                                     <?php if ($pay_status === 'Paid'): ?>
-                                        <!-- Paid = COMPLETE, Print Receipt Only (NO re-issue) - GRAY -->
                                         <button type="button"
                                                 onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
                                                 class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
                                             <i class="fas fa-print"></i> Print Receipt
                                         </button>
-                                        <span style="font-size:10.5px;color:#16a34a;font-weight:600;text-align:center;padding:2px 0;display:flex;align-items:center;justify-content:center;gap:3px;">
-                                            <i class="fas fa-check-circle"></i> Paid & Complete
-                                        </span>
                                     <?php else: ?>
-                                        <!-- Pending/Partial = Settle Balance - GREEN -->
                                         <button type="button"
                                                 onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',false,'tracker')"
                                                 class="txn-btn success" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
@@ -9029,6 +9759,17 @@ input[list] {
                                             <?= in_array($pay_status, ['Partially Paid','Partial Payment','Partial']) ? 'Settle Balance' : 'Mark Paid' ?>
                                         </button>
                                     <?php endif; ?>
+
+                                    <!-- RELEASE VEHICLE BUTTON -->
+                                    <form method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="margin:0;width:100%;" onsubmit="return confirm('Are you sure you want to mark this Job Order as Released to customer?');">
+                                        <input type="hidden" name="jo_action" value="release_job_order">
+                                        <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
+                                        <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
+                                        <button type="submit" 
+                                                class="txn-btn primary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;background:#002F70;color:#fff;border:none;">
+                                            <i class="fas fa-car-side"></i> Release Vehicle
+                                        </button>
+                                    </form>
                                     
                                 <?php else: ?>
                                     <!-- Approved / In Progress: Workflow progression -->
@@ -9849,8 +10590,11 @@ input[list] {
                           style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
                                  color:#1e293b;background:#fff;outline:none;cursor:pointer;">
                     <option value="">Select new status...</option>
+                    <option value="Pending">⏳ Pending</option>
+                    <option value="Waiting for Parts">📦 Waiting for Parts</option>
                     <option value="In Progress">▶ In Progress</option>
-                    <option value="Completed">✓✓ Completed</option>
+                    <option value="Completed">✓ Completed</option>
+                    <option value="Released">🚗 Released</option>
                     <option value="Rejected">✗ Rejected</option>
                   </select>
                 </div>

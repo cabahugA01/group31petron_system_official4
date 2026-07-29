@@ -53,6 +53,7 @@ if (!empty($query) && !$is_ajax) {
 $ICONS = [
     'Transaction'      => 'fas fa-shopping-cart',
     'Customer'         => 'fas fa-user',
+    'Vehicle'          => 'fas fa-car',
     'Product'          => 'fas fa-box',
     'Job Order'        => 'fas fa-wrench',
     'Delivery'         => 'fas fa-truck',
@@ -70,6 +71,7 @@ $ICONS = [
 $COLORS = [
     'Transaction'      => '#3b82f6',
     'Customer'         => '#10b981',
+    'Vehicle'          => '#0284c7',
     'Product'          => '#f59e0b',
     'Job Order'        => '#8b5cf6',
     'Delivery'         => '#ef4444',
@@ -222,7 +224,46 @@ if (!empty($query)) {
     }
 
     // ════════════════════════════════════════════════════════
-    // 3. PRODUCTS / INVENTORY
+    // 2.5 VEHICLES (Plate Number, Brand, Model)
+    // ════════════════════════════════════════════════════════
+    try {
+        $sw = $station_id ? "AND (c.station_id = {$station_id} OR c.station_id IS NULL)" : '';
+        $stmt = $pdo->prepare(
+            "SELECT cv.id, cv.plate_number, cv.brand, cv.model, cv.color,
+                    c.name AS owner_name, c.id AS owner_id
+             FROM customer_vehicles cv
+             LEFT JOIN customers c ON c.id = cv.customer_id
+             WHERE (cv.plate_number LIKE ?
+                 OR cv.brand LIKE ?
+                 OR cv.model LIKE ?
+                 OR cv.color LIKE ?)
+               {$sw}
+             ORDER BY cv.plate_number ASC LIMIT 10"
+        );
+        $stmt->execute([$like, $like, $like, $like]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $owner = $r['owner_name'] ? " · Owner: {$r['owner_name']}" : '';
+            $desc  = trim("{$r['brand']} {$r['model']} {$r['color']}");
+            if (empty($desc)) $desc = 'Vehicle';
+            
+            $veh_link = 'customers.php';
+            if ($role === 'manager') {
+                $veh_link = 'manager_customers.php';
+            } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
+                $veh_link = 'admin_customer_management.php';
+            }
+            
+            $results[] = [
+                'type'     => 'Vehicle',
+                'title'    => "Vehicle {$r['plate_number']}",
+                'subtitle' => "{$desc}{$owner}",
+                'meta'     => $r['plate_number'],
+                'link'     => $veh_link,
+                'icon'     => $ICONS['Vehicle'] ?? 'fas fa-car',
+                'color'    => $COLORS['Vehicle'] ?? '#0284c7',
+            ];
+        }
+    } catch (Exception $e) {}
     //    Fields: product_name, sku, category, stock_level
     // ════════════════════════════════════════════════════════
     if (is_module_enabled('inventory') || in_array($role, ['superadmin', 'developer'])) {

@@ -124,7 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $id = (int)($_GET['id'] ?? 0);
         if ($id <= 0) { echo json_encode(['success'=>false,'message'=>'Invalid ID']); exit; }
         try {
-            $stmt = $pdo->prepare("SELECT id,service_name,service_key,service_price,active,status FROM job_order_service_types WHERE id=? LIMIT 1");
+            $stmt = $pdo->prepare("SELECT id,service_name,category,service_key,service_price,active,status FROM job_order_service_types WHERE id=? LIMIT 1");
             $stmt->execute([$id]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!$row) { echo json_encode(['success'=>false,'message'=>'Not found']); exit; }
@@ -146,52 +146,74 @@ try {
         // ══════════════════════════════════════════════════════════════════════
         case 'add_fuel_product':
             $fuel_type      = trim($_POST['fuel_type'] ?? '');
+            $fuel_type_id   = (int)($_POST['fuel_type_id'] ?? 0);
             $price          = (float)($_POST['price'] ?? 0);
             $capacity       = (float)($_POST['capacity'] ?? 0);
             $critical_level = (float)($_POST['critical_level'] ?? 0);
-            
+
             if (empty($fuel_type)) {
                 echo json_encode(['success' => false, 'message' => 'Fuel type is required']);
                 exit;
             }
-            
-            if ($price < 0 || $capacity < 0 || $critical_level < 0) {
-                echo json_encode(['success' => false, 'message' => 'Invalid values provided']);
+
+            if ($price < 0 || $capacity <= 0 || $critical_level < 0) {
+                echo json_encode(['success' => false, 'message' => 'Invalid values provided (capacity must be > 0)']);
                 exit;
             }
-            
-            // Check if fuel type already exists for this station
-            $stmt = $pdo->prepare("
-                SELECT id FROM fuel_inventory 
-                WHERE station_id = ? AND LOWER(fuel_type) = LOWER(?)
-                LIMIT 1
-            ");
-            $stmt->execute([$station_id, $fuel_type]);
+
+            // Resolve fuel_type_id from fuel_types table if not provided
+            if ($fuel_type_id <= 0) {
+                $ft = $pdo->prepare("SELECT id FROM fuel_types WHERE LOWER(name) = LOWER(?) LIMIT 1");
+                $ft->execute([$fuel_type]);
+                $ft_row = $ft->fetch(PDO::FETCH_ASSOC);
+                if ($ft_row) {
+                    $fuel_type_id = (int)$ft_row['id'];
+                } else {
+                    // Insert into fuel_types if it's a brand-new type
+                    $ins_ft = $pdo->prepare("INSERT INTO fuel_types (name) VALUES (?)");
+                    $ins_ft->execute([$fuel_type]);
+                    $fuel_type_id = (int)$pdo->lastInsertId();
+                }
+            }
+
+            // Check if this fuel_type_id already exists for this station
+            $stmt = $pdo->prepare("SELECT id FROM fuel_inventory WHERE station_id = ? AND fuel_type_id = ? LIMIT 1");
+            $stmt->execute([$station_id, $fuel_type_id]);
             if ($stmt->fetch()) {
                 echo json_encode(['success' => false, 'message' => 'This fuel type already exists for your station']);
                 exit;
             }
-            
-            // Insert new fuel product
-            $stmt = $pdo->prepare("
-                INSERT INTO fuel_inventory 
-                (station_id, fuel_type, price_per_liter, capacity, critical_level, 
-                 current_level, status, updated_by, last_updated)
-                VALUES (?, ?, ?, ?, ?, 0, 'active', ?, NOW())
-            ");
-            $stmt->execute([
-                $station_id,
-                $fuel_type,
-                $price,
-                $capacity,
-                $critical_level,
-                $me['id']
-            ]);
-            
+
+            // Insert new fuel product (with fuel_type_id to satisfy FK)
+            try {
+                $stmt = $pdo->prepare("
+                    INSERT INTO fuel_inventory
+                    (station_id, fuel_type_id, fuel_type, price_per_liter, capacity, critical_level,
+                     current_level, current_stock, status, updated_by, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, 0, 0, 'active', ?, NOW())
+                ");
+                $stmt->execute([
+                    $station_id,
+                    $fuel_type_id,
+                    $fuel_type,
+                    $price,
+                    $capacity,
+                    $critical_level,
+                    $me['id']
+                ]);
+            } catch (PDOException $pdoe) {
+                if ($pdoe->getCode() == 23000) {
+                    echo json_encode(['success' => false, 'message' => 'This fuel type is already registered for your station.']);
+                } else {
+                    echo json_encode(['success' => false, 'message' => 'Database error: ' . $pdoe->getMessage()]);
+                }
+                exit;
+            }
+
             // Log activity
             log_activity($pdo, $me['id'], 'Add Fuel Product',
-                "Manager added new fuel product: {$fuel_type} at station {$station_id}");
-            
+                "Manager added new fuel product: {$fuel_type} (ID:{$fuel_type_id}) at station {$station_id}");
+
             echo json_encode(['success' => true, 'message' => 'Fuel product added successfully']);
             break;
             
@@ -225,46 +247,35 @@ try {
             }
             
             $old_price = (float)$fuel['price_per_liter'];
+
+            if ($old_price == $new_price) {
+                echo json_encode(['success' => true, 'message' => 'Price is unchanged.']);
+                exit;
+            }
             
-            // Create price history table if not exists
-            $pdo->exec("
-                CREATE TABLE IF NOT EXISTS fuel_price_history (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    fuel_id INT NOT NULL,
-                    old_price DECIMAL(10,2) NOT NULL,
-                    new_price DECIMAL(10,2) NOT NULL,
-                    reason VARCHAR(500),
-                    effective_date DATE,
-                    updated_by INT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    INDEX idx_fuel_id (fuel_id),
-                    INDEX idx_created_at (created_at)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-            ");
-            
-            // Insert price history record
+            // Clear any previous pending approval for this fuel
+            $pdo->prepare("DELETE FROM pending_price_approvals WHERE station_id=? AND product_type IN ('fuel','fuel_inventory') AND product_id=? AND status='pending'")
+                ->execute([$station_id, $id]);
+
+            // Submit new pending price approval (Requires Admin Approval)
             $stmt = $pdo->prepare("
-                INSERT INTO fuel_price_history 
-                (fuel_id, old_price, new_price, reason, effective_date, updated_by, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, NOW())
+                INSERT INTO pending_price_approvals
+                (station_id, product_type, product_id, product_name, field_name, old_value, new_value, old_cost, new_cost, old_price, new_price, requested_by, manager_id, status, created_at)
+                VALUES (?, 'fuel', ?, ?, 'price', ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())
             ");
-            $stmt->execute([$id, $old_price, $new_price, $reason, $effective_date, $me['id']]);
-            
-            // Update price
-            $stmt = $pdo->prepare("
-                UPDATE fuel_inventory 
-                SET price_per_liter = ?,
-                    updated_by = ?,
-                    last_updated = NOW()
-                WHERE id = ? AND station_id = ?
-            ");
-            $stmt->execute([$new_price, $me['id'], $id, $station_id]);
+            $stmt->execute([
+                $station_id, $id, $fuel['fuel_type'],
+                $old_price, $new_price,
+                $old_price, $new_price,
+                $old_price, $new_price,
+                $me['id'], $me['id']
+            ]);
             
             // Log activity
-            log_activity($pdo, $me['id'], 'Edit Fuel Price',
-                "Manager updated {$fuel['fuel_type']} price from ₱{$old_price} to ₱{$new_price}. Reason: {$reason}");
+            log_activity($pdo, $me['id'], 'Edit Fuel Price Request',
+                "Manager requested price change for {$fuel['fuel_type']} from ₱{$old_price} to ₱{$new_price}. Reason: {$reason}");
             
-            echo json_encode(['success' => true, 'message' => 'Price updated successfully']);
+            echo json_encode(['success' => true, 'message' => 'Price change submitted for Admin approval.']);
             break;
             
         // ══════════════════════════════════════════════════════════════════════
@@ -444,57 +455,65 @@ try {
         // ══════════════════════════════════════════════════════════════════════
         case 'edit_fuel_full':
             $id             = (int)($_POST['id'] ?? 0);
-            $fuel_type      = trim($_POST['fuel_type'] ?? '');
             $new_price      = (float)($_POST['price'] ?? 0);
             $capacity       = (float)($_POST['capacity'] ?? 0);
             $critical_level = (float)($_POST['critical_level'] ?? 0);
-            $status         = in_array($_POST['status'] ?? '', ['active','inactive']) ? $_POST['status'] : 'active';
 
-            if ($id <= 0 || empty($fuel_type) || $new_price < 0 || $capacity < 0 || $critical_level < 0) {
+            if ($id <= 0 || $new_price < 0 || $capacity < 0 || $critical_level < 0) {
                 echo json_encode(['success'=>false,'message'=>'Invalid parameters']);
                 exit;
             }
 
+            // Fetch current record — fuel_type is READ-ONLY, we never change it to avoid unique key violations
             $stmt = $pdo->prepare("SELECT fuel_type, price_per_liter FROM fuel_inventory WHERE id=? AND station_id=? LIMIT 1");
             $stmt->execute([$id, $station_id]);
             $fuel = $stmt->fetch(PDO::FETCH_ASSOC);
-            if (!$fuel) { echo json_encode(['success'=>false,'message'=>'Fuel not found']); exit; }
+            if (!$fuel) { echo json_encode(['success'=>false,'message'=>'Fuel product not found']); exit; }
 
+            $fuel_type = $fuel['fuel_type']; // never change fuel_type from DB
             $old_price = (float)$fuel['price_per_liter'];
 
-            if ($old_price != $new_price) {
-                // Update non-pricing fields immediately (exclude status — fuel_inventory uses 'Low Stock'/'Normal')
-                $stmt = $pdo->prepare("UPDATE fuel_inventory SET fuel_type=?, capacity=?, critical_level=?, updated_by=?, last_updated=NOW() WHERE id=? AND station_id=?");
-                $stmt->execute([$fuel_type, $capacity, $critical_level, $me['id'], $id, $station_id]);
+            try {
+                if ($old_price != $new_price) {
+                    // Update capacity + critical_level immediately; price goes to pending approval
+                    $stmt = $pdo->prepare("UPDATE fuel_inventory SET capacity=?, critical_level=?, updated_by=?, last_updated=NOW() WHERE id=? AND station_id=?");
+                    $stmt->execute([$capacity, $critical_level, $me['id'], $id, $station_id]);
 
-                // Create pending price approval
-                $pdo->prepare("DELETE FROM pending_price_approvals WHERE station_id=? AND product_type='fuel_inventory' AND product_id=? AND status='pending'")
-                    ->execute([$station_id, $id]);
+                    // Clear any previous pending approval for this fuel
+                    $pdo->prepare("DELETE FROM pending_price_approvals WHERE station_id=? AND product_type IN ('fuel','fuel_inventory') AND product_id=? AND status='pending'")
+                        ->execute([$station_id, $id]);
 
-                $stmt = $pdo->prepare("
-                    INSERT INTO pending_price_approvals 
-                    (station_id, product_type, product_id, old_cost, new_cost, old_price, new_price, manager_id, status, created_at)
-                    VALUES (?, 'fuel_inventory', ?, ?, ?, ?, ?, ?, 'pending', NOW())
-                ");
-                $stmt->execute([
-                    $station_id,
-                    $id,
-                    $old_price,
-                    $new_price,
-                    $old_price,
-                    $new_price,
-                    $me['id']
-                ]);
+                    // Submit new pending price approval
+                    $stmt = $pdo->prepare("
+                        INSERT INTO pending_price_approvals
+                        (station_id, product_type, product_id, product_name, field_name, old_value, new_value, old_cost, new_cost, old_price, new_price, requested_by, manager_id, status, created_at)
+                        VALUES (?, 'fuel', ?, ?, 'price', ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())
+                    ");
+                    $stmt->execute([
+                        $station_id, $id, $fuel_type,
+                        $old_price, $new_price,
+                        $old_price, $new_price,
+                        $old_price, $new_price,
+                        $me['id'], $me['id']
+                    ]);
 
-                log_activity($pdo, $me['id'], 'Edit Fuel Product', "Manager requested price change for {$fuel_type} (₱{$old_price} -> ₱{$new_price})");
-                echo json_encode(['success'=>true,'message'=>'Fuel details updated. Price change submitted for Admin approval.']);
-            } else {
-                // No price change — update fuel_type, capacity, critical_level directly
-                $stmt = $pdo->prepare("UPDATE fuel_inventory SET fuel_type=?, capacity=?, critical_level=?, updated_by=?, last_updated=NOW() WHERE id=? AND station_id=?");
-                $stmt->execute([$fuel_type, $capacity, $critical_level, $me['id'], $id, $station_id]);
+                    log_activity($pdo, $me['id'], 'Edit Fuel Product', "Manager requested price change for {$fuel_type} (₱{$old_price} -> ₱{$new_price}). Capacity: {$capacity}L, Critical: {$critical_level}L");
+                    echo json_encode(['success'=>true,'message'=>'Fuel details updated. Price change submitted for Admin approval.']);
+                } else {
+                    // No price change — just update capacity and critical_level
+                    $stmt = $pdo->prepare("UPDATE fuel_inventory SET capacity=?, critical_level=?, updated_by=?, last_updated=NOW() WHERE id=? AND station_id=?");
+                    $stmt->execute([$capacity, $critical_level, $me['id'], $id, $station_id]);
 
-                log_activity($pdo, $me['id'], 'Edit Fuel Product', "Manager updated fuel: {$fuel_type}");
-                echo json_encode(['success'=>true,'message'=>'Fuel product updated successfully']);
+                    log_activity($pdo, $me['id'], 'Edit Fuel Product', "Manager updated {$fuel_type}: Capacity={$capacity}L, Critical Level={$critical_level}L");
+                    echo json_encode(['success'=>true,'message'=>'Fuel product updated successfully']);
+                }
+            } catch (PDOException $pdoe) {
+                $errCode = $pdoe->getCode();
+                if ($errCode == 23000) {
+                    echo json_encode(['success'=>false,'message'=>'Update failed: duplicate fuel type entry. Please refresh and try again.']);
+                } else {
+                    echo json_encode(['success'=>false,'message'=>'Database error: ' . $pdoe->getMessage()]);
+                }
             }
             break;
 
@@ -521,51 +540,76 @@ try {
             if (!$old) { echo json_encode(['success'=>false,'message'=>'Product not found']); exit; }
 
             $old_price   = (float)$old['unit_price'];
+            $old_cost    = (float)($old['unit_cost'] ?? 0);
             $category_id = ensure_product_category_id($pdo, $category);
             $unit_value  = $size !== '' ? $size : ($old['unit'] ?? 'pcs');
 
-            // Update inventory_products (primary source)
+            // Price change requires Admin approval — keep old_price in live tables if price changed!
+            $live_price = ($old_price > 0 && $old_price != $unit_price) ? $old_price : $unit_price;
+
+            // 1. Update inventory_products (primary source)
             try {
                 $stmt = $pdo->prepare("
                     UPDATE inventory_products
                     SET product_name=?, sku=?, barcode=?, category=?, brand=?, size=?,
-                        unit_price=?, reorder_level=?, critical_level=?, status=?, updated_at=NOW()
+                        unit_cost=?, unit_price=?, reorder_level=?, critical_level=?, status=?, updated_at=NOW()
                     WHERE id=?
                 ");
                 $stmt->execute([$product_name, $sku, $barcode ?: null, $category, $brand,
-                                $size, $unit_price, $reorder_level, $critical_level, $prod_status, $id]);
+                                $size, $unit_cost, $live_price, $reorder_level, $critical_level, $prod_status, $id]);
             } catch (Exception $e) {}
 
-            // Update products table (legacy source)
+            // 2. Update products table (legacy source)
             try {
                 if ($category_id > 0) {
-                    $stmt = $pdo->prepare("UPDATE products SET name=?, sku=?, category_id=?, unit=?, price=?, updated_at=NOW() WHERE id=?");
-                    $stmt->execute([$product_name, $sku, $category_id, $unit_value, $unit_price, $id]);
+                    $stmt = $pdo->prepare("UPDATE products SET name=?, sku=?, category_id=?, unit=?, cost=?, price=?, updated_at=NOW() WHERE id=?");
+                    $stmt->execute([$product_name, $sku, $category_id, $unit_value, $unit_cost, $live_price, $id]);
                 } else {
-                    $stmt = $pdo->prepare("UPDATE products SET name=?, sku=?, unit=?, price=?, updated_at=NOW() WHERE id=?");
-                    $stmt->execute([$product_name, $sku, $unit_value, $unit_price, $id]);
+                    $stmt = $pdo->prepare("UPDATE products SET name=?, sku=?, unit=?, cost=?, price=?, updated_at=NOW() WHERE id=?");
+                    $stmt->execute([$product_name, $sku, $unit_value, $unit_cost, $live_price, $id]);
                 }
             } catch (Exception $e) {}
 
-            // Upsert station_inventory
+            // 3. Upsert station_inventory
             try {
                 $stmt = $pdo->prepare("SELECT id FROM station_inventory WHERE station_id=? AND product_id=? LIMIT 1");
                 $stmt->execute([$station_id, $id]);
                 $si_id = (int)($stmt->fetchColumn() ?: 0);
                 if ($si_id > 0) {
-                    $pdo->prepare("UPDATE station_inventory SET unit=?, price=?, reorder_level=?, critical_level=?, status=?, last_updated=NOW() WHERE id=?")
-                        ->execute([$unit_value, $unit_price, $reorder_level, $critical_level, $prod_status, $si_id]);
+                    $pdo->prepare("UPDATE station_inventory SET unit=?, cost=?, price=?, reorder_level=?, critical_level=?, status=?, last_updated=NOW() WHERE id=?")
+                        ->execute([$unit_value, $unit_cost, $live_price, $reorder_level, $critical_level, $prod_status, $si_id]);
                 } else {
-                    $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, unit, price, reorder_level, critical_level, status, last_updated) VALUES (?, ?, 0, ?, ?, ?, ?, ?, NOW())")
-                        ->execute([$station_id, $id, $unit_value, $unit_price, $reorder_level, $critical_level, $prod_status]);
+                    $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, unit, cost, price, reorder_level, critical_level, status, last_updated) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, NOW())")
+                        ->execute([$station_id, $id, $unit_value, $unit_cost, $live_price, $reorder_level, $critical_level, $prod_status]);
                 }
             } catch (Exception $e) {}
 
-            log_activity($pdo, $me['id'], 'Edit Merchandise', "Manager updated product: {$product_name}");
-            echo json_encode(['success'=>true,'message'=>'Product updated successfully']);
-            break;
+            if ($old_price != $unit_price && $old_price > 0) {
+                // Clear existing pending request for this product
+                $pdo->prepare("DELETE FROM pending_price_approvals WHERE station_id=? AND product_type IN ('merchandise','product','inventory_product') AND product_id=? AND status='pending'")
+                    ->execute([$station_id, $id]);
 
-        // (Legacy - price only, kept for backward compat)
+                // Create pending price request for Admin Approval
+                $stmt = $pdo->prepare("
+                    INSERT INTO pending_price_approvals
+                    (station_id, product_type, product_id, product_name, field_name, old_value, new_value, old_cost, new_cost, old_price, new_price, requested_by, manager_id, status, created_at)
+                    VALUES (?, 'merchandise', ?, ?, 'price', ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())
+                ");
+                $stmt->execute([
+                    $station_id, $id, $product_name,
+                    $old_price, $unit_price,
+                    $old_cost, $unit_cost,
+                    $old_price, $unit_price,
+                    $me['id'], $me['id']
+                ]);
+
+                log_activity($pdo, $me['id'], 'Edit Merchandise Price Request', "Manager requested price change for {$product_name} (₱{$old_price} -> ₱{$unit_price})");
+                echo json_encode(['success'=>true, 'message'=>'Product details updated. Price change submitted for Admin approval.']);
+            } else {
+                log_activity($pdo, $me['id'], 'Edit Merchandise', "Manager updated product: {$product_name}");
+                echo json_encode(['success'=>true, 'message'=>'Product updated successfully']);
+            }
+            break;
 
         case 'edit_merchandise_price':
             $id        = (int)($_POST['id'] ?? 0);
@@ -573,15 +617,33 @@ try {
             if ($id <= 0 || $new_price < 0) { echo json_encode(['success'=>false,'message'=>'Invalid parameters']); exit; }
             $merch = find_merchandise_pricing_item($pdo, (int)$station_id, $id);
             if (!$merch) { echo json_encode(['success'=>false,'message'=>'Merchandise not found']); exit; }
-            try {
-                $pdo->prepare("UPDATE inventory_products SET unit_price=? WHERE id=?")->execute([$new_price, $id]);
-            } catch (Exception $legacy_error) {
-                // Current inventory source uses products + station_inventory.
+            $old_price = (float)$merch['unit_price'];
+
+            if ($old_price == $new_price) {
+                echo json_encode(['success'=>true, 'message'=>'Price is unchanged.']);
+                exit;
             }
-            $pdo->prepare("UPDATE products SET price=?, updated_at=NOW() WHERE id=?")->execute([$new_price, $id]);
-            $pdo->prepare("UPDATE station_inventory SET price=?, last_updated=NOW() WHERE station_id=? AND product_id=?")->execute([$new_price, $station_id, $id]);
-            log_activity($pdo, $me['id'], 'Edit Merchandise Price', "Price updated for {$merch['product_name']}");
-            echo json_encode(['success'=>true,'message'=>'Price updated successfully']);
+
+            // Clear existing pending request
+            $pdo->prepare("DELETE FROM pending_price_approvals WHERE station_id=? AND product_type IN ('merchandise','product','inventory_product') AND product_id=? AND status='pending'")
+                ->execute([$station_id, $id]);
+
+            // Submit price change request for Admin approval
+            $stmt = $pdo->prepare("
+                INSERT INTO pending_price_approvals
+                (station_id, product_type, product_id, product_name, field_name, old_value, new_value, old_cost, new_cost, old_price, new_price, requested_by, manager_id, status, created_at)
+                VALUES (?, 'merchandise', ?, ?, 'price', ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())
+            ");
+            $stmt->execute([
+                $station_id, $id, $merch['product_name'],
+                $old_price, $new_price,
+                (float)($merch['unit_cost']??0), (float)($merch['unit_cost']??0),
+                $old_price, $new_price,
+                $me['id'], $me['id']
+            ]);
+
+            log_activity($pdo, $me['id'], 'Edit Merchandise Price Request', "Manager requested price change for {$merch['product_name']} (₱{$old_price} -> ₱{$new_price})");
+            echo json_encode(['success'=>true, 'message'=>'Price change submitted for Admin approval.']);
             break;
             
         // ══════════════════════════════════════════════════════════════════════
@@ -622,11 +684,12 @@ try {
         // ══════════════════════════════════════════════════════════════════════
         case 'add_service':
             $service_name  = trim($_POST['service_name'] ?? '');
+            $category      = trim($_POST['category'] ?? '');
             $service_key   = trim($_POST['service_key'] ?? '');
             $service_price = (float)($_POST['service_price'] ?? 0);
             
-            if (empty($service_name) || empty($service_key)) {
-                echo json_encode(['success' => false, 'message' => 'Service name and key are required']);
+            if (empty($service_name) || empty($category) || empty($service_key)) {
+                echo json_encode(['success' => false, 'message' => 'Service name, category, and key are required']);
                 exit;
             }
             
@@ -647,34 +710,35 @@ try {
                 exit;
             }
             
-            // Insert new service
+            // Insert new service with category
             $stmt = $pdo->prepare("
                 INSERT INTO job_order_service_types 
-                (service_name, service_key, service_price, status, active)
-                VALUES (?, ?, ?, 'active', 1)
+                (service_name, category, service_key, service_price, status, active)
+                VALUES (?, ?, ?, ?, 'active', 1)
             ");
-            $stmt->execute([$service_name, $service_key, $service_price]);
+            $stmt->execute([$service_name, $category, $service_key, $service_price]);
             
             // Log activity
             log_activity($pdo, $me['id'], 'Add Service Type',
-                "Manager added new service type: {$service_name}");
+                "Manager added new service type: {$service_name} ({$category})");
             
             echo json_encode(['success' => true, 'message' => 'Service type added successfully']);
             break;
             
         // ══════════════════════════════════════════════════════════════════════
-        // EDIT SERVICE — FULL (name, key, price, status)
+        // EDIT SERVICE — FULL (name, category, key, price, status)
         // ══════════════════════════════════════════════════════════════════════
         case 'edit_service_full':
             $id            = (int)($_POST['id'] ?? 0);
             $service_name  = trim($_POST['service_name'] ?? '');
+            $category      = trim($_POST['category'] ?? '');
             $service_key   = trim($_POST['service_key'] ?? '');
             $service_price = (float)($_POST['service_price'] ?? 0);
             $active        = (int)($_POST['active'] ?? 1);
             // NOTE: job_order_service_types.status is enum('approved','pending','rejected') — don't set it to active/inactive
 
-            if ($id <= 0 || empty($service_name) || empty($service_key) || $service_price < 0) {
-                echo json_encode(['success'=>false,'message'=>'Name, key and price are required']);
+            if ($id <= 0 || empty($service_name) || empty($category) || empty($service_key) || $service_price < 0) {
+                echo json_encode(['success'=>false,'message'=>'Name, category, key and price are required']);
                 exit;
             }
 
@@ -691,9 +755,9 @@ try {
             $old_price = (float)$svc['service_price'];
 
             if ($old_price != $service_price) {
-                // Update non-pricing fields immediately
-                $stmt = $pdo->prepare("UPDATE job_order_service_types SET service_name=?, service_key=?, active=?, updated_at=NOW() WHERE id=?");
-                $stmt->execute([$service_name, $service_key, $active, $id]);
+                // Update non-pricing fields immediately (including category)
+                $stmt = $pdo->prepare("UPDATE job_order_service_types SET service_name=?, category=?, service_key=?, active=?, updated_at=NOW() WHERE id=?");
+                $stmt->execute([$service_name, $category, $service_key, $active, $id]);
 
                 // Create pending price approval
                 $pdo->prepare("DELETE FROM pending_price_approvals WHERE station_id=? AND product_type='service_type' AND product_id=? AND status='pending'")
@@ -701,25 +765,29 @@ try {
 
                 $stmt = $pdo->prepare("
                     INSERT INTO pending_price_approvals 
-                    (station_id, product_type, product_id, old_cost, new_cost, old_price, new_price, manager_id, status, created_at)
-                    VALUES (?, 'service_type', ?, 0, 0, ?, ?, ?, 'pending', NOW())
+                    (station_id, product_type, product_id, product_name, field_name, old_value, new_value, old_cost, new_cost, old_price, new_price, requested_by, manager_id, status, created_at)
+                    VALUES (?, 'service', ?, ?, 'price', ?, ?, 0, 0, ?, ?, ?, ?, 'pending', NOW())
                 ");
                 $stmt->execute([
                     $station_id,
                     $id,
+                    $service_name,
                     $old_price,
                     $service_price,
+                    $old_price,
+                    $service_price,
+                    $me['id'],
                     $me['id']
                 ]);
 
-                log_activity($pdo, $me['id'], 'Edit Service Type', "Manager requested price change for service: {$service_name}");
+                log_activity($pdo, $me['id'], 'Edit Service Type', "Manager requested price change for service: {$service_name} ({$category})");
                 echo json_encode(['success'=>true,'message'=>'Service details updated. Price change submitted for Admin approval.']);
             } else {
-                // No price change, update everything immediately
-                $stmt = $pdo->prepare("UPDATE job_order_service_types SET service_name=?, service_key=?, service_price=?, active=?, updated_at=NOW() WHERE id=?");
-                $stmt->execute([$service_name, $service_key, $service_price, $active, $id]);
+                // No price change, update everything immediately (including category)
+                $stmt = $pdo->prepare("UPDATE job_order_service_types SET service_name=?, category=?, service_key=?, service_price=?, active=?, updated_at=NOW() WHERE id=?");
+                $stmt->execute([$service_name, $category, $service_key, $service_price, $active, $id]);
 
-                log_activity($pdo, $me['id'], 'Edit Service Type', "Manager updated service: {$service_name}");
+                log_activity($pdo, $me['id'], 'Edit Service Type', "Manager updated service: {$service_name} ({$category})");
                 echo json_encode(['success'=>true,'message'=>'Service type updated successfully']);
             }
             break;

@@ -33,7 +33,7 @@ $active_tab = $_GET['tab'] ?? 'activity_logs';
 
 // Active compliance sub-report
 $section = $_GET['section'] ?? 'activity_logs';
-$valid_sections = ['activity_logs', 'audit_trail', 'calendar'];
+$valid_sections = ['activity_logs'];
 if (!in_array($section, $valid_sections, true)) {
     $section = 'activity_logs';
 }
@@ -388,30 +388,16 @@ require_once __DIR__ . '/../partials/header.php';
 
         <!-- Printable Report Content -->
         <div class="rpt-printable">
-            <!-- Section Tabs -->
-            <div class="cr-section-tabs">
-                <button type="button" class="cr-section-tab <?= $section === 'activity_logs' ? 'active' : '' ?>"
-                        onclick="crSwitchSection('activity_logs', this)">
-                    <i class="fas fa-history"></i> Activity Logs
-                </button>
-                <button type="button" class="cr-section-tab <?= $section === 'audit_trail' ? 'active' : '' ?>"
-                        onclick="crSwitchSection('audit_trail', this)">
-                    <i class="fas fa-shield-alt"></i> Audit Trail
-                </button>
-                <button type="button" class="cr-section-tab <?= $section === 'calendar' ? 'active' : '' ?>"
-                        onclick="crSwitchSection('calendar', this)">
-                    <i class="fas fa-calendar-check"></i> Calendar & Schedule
-                </button>
-            </div>
+
 
             <!-- Activity Logs Section -->
-            <div id="cr-panel-activity_logs" class="cr-section-panel <?= $section === 'activity_logs' ? 'active' : '' ?>">
+            <div id="cr-panel-activity_logs" class="cr-section-panel active">
                 <div style="text-align:center;padding:22px 0 14px;border-bottom:2px solid #e2e8f0;margin-bottom:16px;">
                     <div style="font-size:20px;font-weight:800;color:#00264D;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">
-                        ACTIVITY LOGS REPORT
+                        AUDIT TRAIL REPORT
                     </div>
                     <div style="font-size:16px;font-weight:700;color:#00264D;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:8px;">
-                        STAFF ACTIONS MONITORING
+                        CONSOLIDATED COMPLIANCE & AUDIT LOGS
                     </div>
                     <div style="font-size:12px;color:#64748b;margin-bottom:2px;">
                         <?= htmlspecialchars($station_name) ?>
@@ -540,287 +526,9 @@ require_once __DIR__ . '/../partials/header.php';
                 </table>
             </div>
 
-            <!-- Audit Trail Section -->
-            <div id="cr-panel-audit_trail" class="cr-section-panel <?= $section === 'audit_trail' ? 'active' : '' ?>">
-                <div style="text-align:center;padding:22px 0 14px;border-bottom:2px solid #e2e8f0;margin-bottom:16px;">
-                    <div style="font-size:20px;font-weight:800;color:#00264D;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">
-                        AUDIT TRAIL REPORT
-                    </div>
-                    <div style="font-size:16px;font-weight:700;color:#00264D;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:8px;">
-                        CONSOLIDATED LOGS ACROSS SHIFTS
-                    </div>
-                    <div style="font-size:12px;color:#64748b;margin-bottom:2px;">
-                        <?= htmlspecialchars($station_name) ?>
-                    </div>
-                    <div style="font-size:12px;color:#334155;">
-                        <strong>Date:</strong>
-                        <?= date('F j, Y', strtotime($date_start)) ?>
-                        <?= $date_start !== $date_end ? ' – ' . date('F j, Y', strtotime($date_end)) : '' ?>
-                    </div>
-                </div>
 
-                <?php
-                // Audit trail: audit_logs + audit_trail merged, grouped by date+shift+action
-                try {
-                    // From audit_logs
-                    $q = $pdo->prepare("
-                        SELECT
-                            DATE(al.created_at)                                                         AS log_date,
-                            CASE WHEN HOUR(al.created_at)>=6 AND HOUR(al.created_at)<14 THEN 'Shift 1' ELSE 'Shift 2' END AS shift_period,
-                            al.action_type                                                              AS action,
-                            COUNT(*)                                                                    AS action_count,
-                            GROUP_CONCAT(DISTINCT COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),u.username) ORDER BY u.id SEPARATOR ', ') AS staff_list
-                        FROM audit_logs al
-                        LEFT JOIN users u ON al.user_id = u.id
-                        WHERE u.station_id = ?
-                          AND DATE(al.created_at) BETWEEN ? AND ?
-                        GROUP BY log_date, shift_period, al.action_type
-                        ORDER BY log_date DESC, shift_period, action_count DESC
-                    ");
-                    $q->execute([$station_id, $date_start, $date_end]);
-                    $audit_rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                } catch (Exception $e) {
-                    $audit_rows = [];
-                }
 
-                // Also from audit_trail (manager validation actions)
-                try {
-                    $q2 = $pdo->prepare("
-                        SELECT
-                            DATE(at2.timestamp)                                                        AS log_date,
-                            CASE WHEN HOUR(at2.timestamp)>=6 AND HOUR(at2.timestamp)<14 THEN 'Shift 1' ELSE 'Shift 2' END AS shift_period,
-                            at2.action_type                                                            AS action,
-                            COUNT(*)                                                                   AS action_count,
-                            GROUP_CONCAT(DISTINCT COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),u.username) ORDER BY u.id SEPARATOR ', ') AS staff_list
-                        FROM audit_trail at2
-                        LEFT JOIN users u ON u.id = at2.manager_id
-                        WHERE at2.station_id = ?
-                          AND DATE(at2.timestamp) BETWEEN ? AND ?
-                        GROUP BY log_date, shift_period, at2.action_type
-                        ORDER BY log_date DESC, shift_period, action_count DESC
-                    ");
-                    $q2->execute([$station_id, $date_start, $date_end]);
-                    $at_rows = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-                    // Also from activity_logs (lib.php log_activity calls at manager level)
-                    $q3 = $pdo->prepare("
-                        SELECT
-                            DATE(al.created_at)                                                        AS log_date,
-                            CASE WHEN HOUR(al.created_at)>=6 AND HOUR(al.created_at)<14 THEN 'Shift 1' ELSE 'Shift 2' END AS shift_period,
-                            al.action                                                                  AS action,
-                            COUNT(*)                                                                   AS action_count,
-                            GROUP_CONCAT(DISTINCT COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),u.username) ORDER BY u.id SEPARATOR ', ') AS staff_list
-                        FROM activity_logs al
-                        LEFT JOIN users u ON al.user_id = u.id
-                        WHERE u.station_id = ?
-                          AND DATE(al.created_at) BETWEEN ? AND ?
-                        GROUP BY log_date, shift_period, al.action
-                        ORDER BY log_date DESC, shift_period, action_count DESC
-                        LIMIT 200
-                    ");
-                    $q3->execute([$station_id, $date_start, $date_end]);
-                    $al3_rows = $q3->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-                    $audit_rows = array_merge($audit_rows, $at_rows, $al3_rows);
-                    usort($audit_rows, fn($a,$b) => strcmp($b['log_date'],$a['log_date']));
-                } catch (Exception $e2) { /* keep audit_logs results */ }
-                ?>
-
-                <table class="cr-table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Shift</th>
-                            <th>Action Type</th>
-                            <th>Count</th>
-                            <th>Staff Involved</th>
-                            <th>Validation</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php
-                        if (empty($audit_rows)) {
-                            echo '<tr><td colspan="6" class="cr-empty">No audit trail records for this period</td></tr>';
-                        } else {
-                            foreach ($audit_rows as $row) {
-                                echo '<tr>';
-                                echo '<td>' . date('M j, Y', strtotime($row['log_date'])) . '</td>';
-                                echo '<td>' . htmlspecialchars($row['shift_period']) . '</td>';
-                                echo '<td>' . htmlspecialchars($row['action']) . '</td>';
-                                echo '<td><strong>' . number_format($row['action_count']) . '</strong></td>';
-                                echo '<td>' . htmlspecialchars(substr($row['staff_list'], 0, 50)) . (strlen($row['staff_list']) > 50 ? '...' : '') . '</td>';
-                                echo '<td>Export</td>';
-                                echo '</tr>';
-                            }
-                        }
-                        ?>
-                    </tbody>
-                    <?php if (!empty($audit_rows)): ?>
-                    <tfoot>
-                        <tr>
-                            <td colspan="3" style="text-align:right;"><strong>TOTAL ACTIONS:</strong></td>
-                            <td><strong><?= number_format(array_sum(array_column($audit_rows, 'action_count'))) ?></strong></td>
-                            <td colspan="2"></td>
-                        </tr>
-                    </tfoot>
-                    <?php endif; ?>
-                </table>
-            </div>
-
-            <!-- Calendar & Schedule Section -->
-            <div id="cr-panel-calendar" class="cr-section-panel <?= $section === 'calendar' ? 'active' : '' ?>">
-                <div style="text-align:center;padding:22px 0 14px;border-bottom:2px solid #e2e8f0;margin-bottom:16px;">
-                    <div style="font-size:20px;font-weight:800;color:#00264D;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">
-                        CALENDAR & SCHEDULE REPORT
-                    </div>
-                    <div style="font-size:16px;font-weight:700;color:#00264D;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:8px;">
-                        JOB ORDERS & DELIVERIES TASKS
-                    </div>
-                    <div style="font-size:12px;color:#64748b;margin-bottom:2px;">
-                        <?= htmlspecialchars($station_name) ?>
-                    </div>
-                    <div style="font-size:12px;color:#334155;">
-                        <strong>Date:</strong>
-                        <?= date('F j, Y', strtotime($date_start)) ?>
-                        <?= $date_start !== $date_end ? ' – ' . date('F j, Y', strtotime($date_end)) : '' ?>
-                    </div>
-                </div>
-
-                <?php
-                // Fetch scheduled tasks from native job orders, service tracker rows, and fuel deliveries.
-                $calendar_rows = [];
-
-                try {
-                    $jo_q = $pdo->prepare("
-                        SELECT
-                            'Job Order' AS task_type,
-                            COALESCE(jo.job_order_number, CONCAT('JO-', jo.id)) AS task_ref,
-                            COALESCE(NULLIF(jo.service_description, ''), NULLIF(jo.service_type, ''), 'Service') AS task_description,
-                            COALESCE(jo.customer_name, c.name, 'Walk-in') AS customer_name,
-                            COALESCE(jo.status, 'Pending') AS status,
-                            jo.created_at AS scheduled_date,
-                            COALESCE(
-                                NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), ''),
-                                u.username,
-                                'Unassigned'
-                            ) AS assigned_to
-                        FROM job_orders jo
-                        LEFT JOIN customers c ON jo.customer_id = c.id
-                        LEFT JOIN users u ON jo.user_id = u.id
-                        WHERE jo.station_id = ?
-                          AND DATE(jo.created_at) BETWEEN ? AND ?
-                        ORDER BY jo.created_at DESC
-                    ");
-                    $jo_q->execute([$station_id, $date_start, $date_end]);
-                    $calendar_rows = array_merge($calendar_rows, $jo_q->fetchAll(PDO::FETCH_ASSOC) ?: []);
-                } catch (Exception $e) {}
-
-                try {
-                    $service_where = crManagerTrackerServiceWhere('mt');
-                    $tracker_q = $pdo->prepare("
-                        SELECT
-                            'Job Order' AS task_type,
-                            COALESCE(NULLIF(mt.job_order_id, ''), mt.transaction_id, CONCAT('MT-', mt.id)) AS task_ref,
-                            COALESCE(NULLIF(mt.job_order_service, ''), NULLIF(mt.job_order_description, ''), 'Service') AS task_description,
-                            COALESCE(
-                                NULLIF(TRIM(mt.customer_name), ''),
-                                NULLIF(TRIM(CONCAT(COALESCE(mt.customer_first_name, ''), ' ', COALESCE(mt.customer_last_name, ''))), ''),
-                                'Walk-in'
-                            ) AS customer_name,
-                            COALESCE(NULLIF(mt.workflow_status, ''), NULLIF(mt.validation_status, ''), 'Pending') AS status,
-                            COALESCE(mt.transaction_date, mt.created_at) AS scheduled_date,
-                            COALESCE(
-                                NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), ''),
-                                u.username,
-                                'System'
-                            ) AS assigned_to
-                        FROM merchandise_transactions mt
-                        LEFT JOIN users u ON mt.staff_id = u.id
-                        WHERE mt.station_id = ?
-                          AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
-                          AND {$service_where}
-                          AND NOT EXISTS (
-                              SELECT 1
-                              FROM job_orders jo2
-                              WHERE jo2.station_id = mt.station_id
-                                AND (
-                                    (mt.job_order_db_id IS NOT NULL AND jo2.id = mt.job_order_db_id)
-                                    OR (mt.job_order_id IS NOT NULL AND mt.job_order_id <> '' AND jo2.job_order_number = mt.job_order_id)
-                                )
-                          )
-                        ORDER BY COALESCE(mt.transaction_date, mt.created_at) DESC
-                    ");
-                    $tracker_q->execute([$station_id, $date_start, $date_end]);
-                    $calendar_rows = array_merge($calendar_rows, $tracker_q->fetchAll(PDO::FETCH_ASSOC) ?: []);
-                } catch (Exception $e) {}
-
-                try {
-                    $del_q = $pdo->prepare("
-                        SELECT
-                            'Fuel Delivery' AS task_type,
-                            COALESCE(NULLIF(fd.invoice_no, ''), CONCAT('FD-', fd.id)) AS task_ref,
-                            CONCAT(COALESCE(fd.fuel_type, 'Fuel'), ' - ', FORMAT(COALESCE(fd.delivery_liters, 0), 2), ' L') AS task_description,
-                            COALESCE(NULLIF(fd.supplier, ''), 'Unknown Supplier') AS customer_name,
-                            COALESCE(fd.status, 'Pending') AS status,
-                            COALESCE(fd.delivery_date, fd.created_at) AS scheduled_date,
-                            COALESCE(NULLIF(fd.received_by, ''), 'System') AS assigned_to
-                        FROM fuel_deliveries fd
-                        WHERE fd.station_id = ?
-                          AND DATE(COALESCE(fd.delivery_date, fd.created_at)) BETWEEN ? AND ?
-                        ORDER BY COALESCE(fd.delivery_date, fd.created_at) DESC
-                    ");
-                    $del_q->execute([$station_id, $date_start, $date_end]);
-                    $calendar_rows = array_merge($calendar_rows, $del_q->fetchAll(PDO::FETCH_ASSOC) ?: []);
-                } catch (Exception $e) {}
-
-                usort($calendar_rows, function($a, $b) {
-                    return strtotime($b['scheduled_date']) - strtotime($a['scheduled_date']);
-                });
-                ?>
-
-                <table class="cr-table">
-                    <thead>
-                        <tr>
-                            <th>Date & Time</th>
-                            <th>Task Type</th>
-                            <th>Reference</th>
-                            <th>Description</th>
-                            <th>Customer/Supplier</th>
-                            <th>Status</th>
-                            <th>Assigned To</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php
-                        if (empty($calendar_rows)) {
-                            echo '<tr><td colspan="8" class="cr-empty">No scheduled tasks for this period</td></tr>';
-                        } else {
-                            foreach ($calendar_rows as $row) {
-                                echo '<tr>';
-                                echo '<td>' . date('M j, Y H:i', strtotime($row['scheduled_date'])) . '</td>';
-                                echo '<td><span class="cr-badge">' . htmlspecialchars($row['task_type']) . '</span></td>';
-                                echo '<td>' . htmlspecialchars($row['task_ref']) . '</td>';
-                                echo '<td>' . htmlspecialchars($row['task_description']) . '</td>';
-                                echo '<td>' . htmlspecialchars($row['customer_name']) . '</td>';
-                                echo '<td>' . htmlspecialchars($row['status']) . '</td>';
-                                echo '<td>' . htmlspecialchars($row['assigned_to']) . '</td>';
-                                echo '<td>Approve</td>';
-                                echo '</tr>';
-                            }
-                        }
-                        ?>
-                    </tbody>
-                    <?php if (!empty($calendar_rows)): ?>
-                    <tfoot>
-                        <tr>
-                            <td colspan="7" style="text-align:right;"><strong>TOTAL TASKS:</strong></td>
-                            <td><strong><?= count($calendar_rows) ?></strong></td>
-                        </tr>
-                    </tfoot>
-                    <?php endif; ?>
-                </table>
-            </div>
 
         </div>
     </div>

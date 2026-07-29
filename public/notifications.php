@@ -4,517 +4,822 @@ require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
 require_login();
 
-$me = current_user();
+$me   = current_user();
 $role = role_key($me['role'] ?? 'staff');
 
-if (!in_array($role, ['staff', 'admin', 'manager', 'superadmin'])) {
+if (!in_array($role, ['staff', 'admin', 'manager', 'superadmin', 'developer'])) {
     header('Location: dashboard.php');
     exit;
 }
 
-// Handle form submissions
+// Handle POST actions (mark_all_read, mark_read, archive)
 $notice = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
+    $action   = $_POST['action'] ?? '';
+    $notif_id = intval($_POST['notification_id'] ?? 0);
+
     if ($action === 'mark_all_read') {
         $stmt = $pdo->prepare("UPDATE notifications SET status = 'read', read_at = NOW() WHERE user_id = ? AND status = 'unread'");
         $stmt->execute([$me['id']]);
-        $notice = '✅ All notifications marked as read';
+        $notice = '✅ All notifications marked as read.';
+    } elseif ($action === 'mark_read' && $notif_id > 0) {
+        $stmt = $pdo->prepare("UPDATE notifications SET status = 'read', read_at = NOW() WHERE id = ? AND user_id = ?");
+        $stmt->execute([$notif_id, $me['id']]);
+        $notice = '✅ Notification marked as read.';
+    } elseif ($action === 'archive' && $notif_id > 0) {
+        $stmt = $pdo->prepare("UPDATE notifications SET status = 'archived' WHERE id = ? AND user_id = ?");
+        $stmt->execute([$notif_id, $me['id']]);
+        $notice = '📦 Notification moved to archive.';
     }
 }
 
-$status_filter = $_GET['filter'] ?? 'all';
+// Filter parameters
+$search    = trim($_GET['search'] ?? '');
+$filter_type = trim($_GET['type'] ?? 'all');
+$filter_prio = trim($_GET['priority'] ?? 'all');
+$filter_stat = trim($_GET['status'] ?? 'all');
+$date_from   = trim($_GET['date_from'] ?? '');
+$date_to     = trim($_GET['date_to'] ?? '');
+
+// Overall Counts
+$counts = ['total' => 0, 'unread' => 0, 'read' => 0, 'archived' => 0];
+try {
+    $c_stmt = $pdo->prepare("
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'unread' THEN 1 ELSE 0 END) as unread,
+            SUM(CASE WHEN status = 'read' THEN 1 ELSE 0 END) as read_cnt,
+            SUM(CASE WHEN status = 'archived' THEN 1 ELSE 0 END) as archived_cnt
+        FROM notifications 
+        WHERE user_id = ?
+    ");
+    $c_stmt->execute([$me['id']]);
+    $res = $c_stmt->fetch(PDO::FETCH_ASSOC);
+    if ($res) {
+        $counts['total']    = (int)($res['total'] ?? 0);
+        $counts['unread']   = (int)($res['unread'] ?? 0);
+        $counts['read']     = (int)($res['read_cnt'] ?? 0);
+        $counts['archived'] = (int)($res['archived_cnt'] ?? 0);
+    }
+} catch (Exception $e) {}
+
+// Query Filter Build
+$where  = ['n.user_id = ?'];
+$params = [$me['id']];
+
+if ($filter_stat !== 'all' && $filter_stat !== '') {
+    $where[]  = 'n.status = ?';
+    $params[] = $filter_stat;
+}
+
+if ($filter_type !== 'all' && $filter_type !== '') {
+    $where[]  = '(n.event_type = ? OR n.type = ?)';
+    $params[] = $filter_type;
+    $params[] = $filter_type;
+}
+
+if ($filter_prio !== 'all' && $filter_prio !== '') {
+    $where[]  = 'n.severity = ?';
+    $params[] = $filter_prio;
+}
+
+if ($search !== '') {
+    $where[]  = '(n.title LIKE ? OR n.message LIKE ?)';
+    $params[] = '%' . $search . '%';
+    $params[] = '%' . $search . '%';
+}
+
+if ($date_from !== '') {
+    $where[]  = 'DATE(n.created_at) >= ?';
+    $params[] = $date_from;
+}
+
+if ($date_to !== '') {
+    $where[]  = 'DATE(n.created_at) <= ?';
+    $params[] = $date_to;
+}
+
+$where_clause = implode(' AND ', $where);
+
+// Pagination
+$page     = max(1, intval($_GET['page'] ?? 1));
+$per_page = 20;
+$offset   = ($page - 1) * $per_page;
 
 $notifications = [];
+$total_rows    = 0;
+
 try {
-    $sql = "SELECT n.* FROM notifications n WHERE n.user_id = ?";
-    $params = [$me['id']];
-    
-    if ($status_filter === 'unread') {
-        $sql .= " AND n.status = 'unread'";
-    }
-    
-    $page = max(1, intval($_GET['page'] ?? 1));
-    $per_page = 30;
-    $offset = ($page - 1) * $per_page;
-    
-    $sql .= " ORDER BY n.created_at DESC LIMIT $per_page OFFSET $offset";
-    
+    // Total count for current query
+    $count_sql = "SELECT COUNT(*) FROM notifications n WHERE {$where_clause}";
+    $c_stmt = $pdo->prepare($count_sql);
+    $c_stmt->execute($params);
+    $total_rows = (int)$c_stmt->fetchColumn();
+
+    // Query rows
+    $sql = "SELECT n.* FROM notifications n WHERE {$where_clause} ORDER BY n.created_at DESC LIMIT {$per_page} OFFSET {$offset}";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
 } catch (Exception $e) {
     $notifications = [];
 }
 
-$new_notifs = [];
-$earlier_notifs = [];
-$today_str = date('Y-m-d');
-
-foreach ($notifications as $n) {
-    $date_str = date('Y-m-d', strtotime($n['created_at']));
-    if ($n['status'] === 'unread' || $date_str === $today_str) {
-        $new_notifs[] = $n;
-    } else {
-        $earlier_notifs[] = $n;
-    }
-}
+$total_pages = max(1, ceil($total_rows / $per_page));
 
 include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-/* ── Notifications page ── */
-body[data-page="notifications"] .main {
-    background: #f0f2f5 !important;
+/* ── Notifications Page Styling ── */
+.notif-wrapper {
+    padding: 24px 32px 60px;
+    background: #f8fafc;
+    min-height: calc(100vh - 70px);
 }
 
-/* Reset any conflicting styles on wrapper */
-.notif-page-wrap {
-    width: 100%;
-    padding: 20px 0 60px;
-    box-sizing: border-box;
-}
-
-.notif-page-card {
-    background: #fff;
-    border-radius: 12px;
-    border: 1px solid #dde3ee;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.07);
-    width: 100%;
-    max-width: 900px;
-    margin: 0 auto;
-    min-height: 70vh;
-    overflow: hidden;
-    box-sizing: border-box;
-}
-
-/* Page header */
-.notif-page-hdr {
-    padding: 22px 28px 18px;
-    border-bottom: 2px solid #f0f2f5;
+.notif-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
     gap: 16px;
 }
 
-.notif-page-title {
+.notif-title-area h1 {
     font-size: 26px;
     font-weight: 800;
     color: #0f172a;
+    margin: 0 0 4px;
     display: flex;
     align-items: center;
     gap: 10px;
-    margin: 0;
 }
 
-.notif-page-title i {
-    color: #002F6C;
+.notif-title-area p {
+    margin: 0;
+    color: #64748b;
+    font-size: 14px;
+}
+
+/* Dashboard Cards */
+.notif-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+@media (max-width: 992px) {
+    .notif-cards-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 576px) {
+    .notif-cards-grid { grid-template-columns: 1fr; }
+}
+
+.notif-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    cursor: pointer;
+    text-decoration: none !important;
+}
+
+.notif-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.notif-card-val {
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1.1;
+}
+
+.notif-card-lbl {
+    font-size: 13px;
+    font-weight: 600;
+    color: #64748b;
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.notif-card-ico {
+    width: 50px;
+    height: 50px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font-size: 22px;
 }
 
-.notif-mark-all-btn {
-    padding: 8px 18px;
-    font-size: 13px;
-    font-weight: 600;
+/* Card Variations */
+.notif-card.card-total .notif-card-val { color: #0f172a; }
+.notif-card.card-total .notif-card-ico { background: #e2e8f0; color: #475569; }
+
+.notif-card.card-unread .notif-card-val { color: #ef4444; }
+.notif-card.card-unread .notif-card-ico { background: #fee2e2; color: #dc2626; }
+
+.notif-card.card-read .notif-card-val { color: #10b981; }
+.notif-card.card-read .notif-card-ico { background: #d1fae5; color: #059669; }
+
+.notif-card.card-archived .notif-card-val { color: #6366f1; }
+.notif-card.card-archived .notif-card-ico { background: #e0e7ff; color: #4f46e5; }
+
+/* Filter Container */
+.notif-filter-box {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.notif-filter-form {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto;
+    gap: 12px;
+    align-items: end;
+}
+
+@media (max-width: 1200px) {
+    .notif-filter-form { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 768px) {
+    .notif-filter-form { grid-template-columns: 1fr; }
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.filter-group label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+}
+
+.filter-group input, .filter-group select {
+    padding: 9px 12px;
+    border: 1px solid #cbd5e1;
     border-radius: 8px;
-    border: 1.5px solid #002F6C;
+    font-size: 13px;
+    color: #1e293b;
+    outline: none;
+    transition: border-color 0.15s ease;
     background: #fff;
-    color: #002F6C;
+}
+
+.filter-group input:focus, .filter-group select:focus {
+    border-color: #002F6C;
+    box-shadow: 0 0 0 3px rgba(0,47,108,0.1);
+}
+
+.btn-filter-submit {
+    padding: 9px 18px;
+    background: #0f172a;
+    color: #ffffff;
+    border: 1px solid #0f172a;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 13px;
     cursor: pointer;
-    transition: all 0.18s;
-    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+}
+.btn-filter-submit:hover { background: #1e293b; border-color: #1e293b; }
+
+.btn-filter-reset {
+    padding: 9px 14px;
+    background: #ffffff;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 13px;
+    text-decoration: none !important;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+}
+.btn-filter-reset:hover { background: #f8fafc; color: #0f172a; border-color: #94a3b8; }
+
+/* Table Container */
+.notif-table-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    overflow: hidden;
+}
+
+.notif-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.notif-table th {
+    background: #f8fafc;
+    padding: 14px 18px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.notif-table td {
+    padding: 16px 18px;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 13px;
+    color: #334155;
+    vertical-align: middle;
+}
+
+.notif-table tbody tr {
+    transition: background 0.15s ease;
+}
+
+.notif-table tbody tr.unread-row {
+    background: rgba(0, 47, 108, 0.025);
+}
+
+.notif-table tbody tr:hover {
+    background: #f8fafc;
+}
+
+/* Priority Badges */
+.prio-badge {
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.prio-low { background: #e0f2fe; color: #0369a1; }
+.prio-medium { background: #ffedd5; color: #c2410c; }
+.prio-high { background: #fee2e2; color: #b91c1c; }
+.prio-critical { background: #7f1d1d; color: #ffffff; }
+
+/* Status Badges */
+.stat-badge {
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.stat-unread { background: #ef4444; color: #fff; }
+.stat-read { background: #e2e8f0; color: #475569; }
+.stat-archived { background: #e0e7ff; color: #4f46e5; }
+
+/* Action Buttons */
+.action-btn-group {
     display: flex;
     align-items: center;
     gap: 6px;
 }
-.notif-mark-all-btn:hover {
-    background: #002F6C;
-    color: #fff;
-}
 
-/* Filter tabs */
-.notif-filter-bar {
-    display: flex;
-    gap: 10px;
-    padding: 14px 28px;
-    background: #f8fafc;
-    border-bottom: 1px solid #e8ecf2;
-}
-
-.notif-filter-pill {
-    padding: 8px 20px;
-    border-radius: 20px;
-    font-size: 14px;
-    font-weight: 700;
-    cursor: pointer;
-    text-decoration: none !important;
-    border: 2px solid #e2e8f0;
-    background: #fff;
-    color: #64748b;
-    transition: all 0.18s;
-    display: inline-block;
-}
-.notif-filter-pill.active,
-.notif-filter-pill:hover {
-    background: #002F6C;
-    color: #fff !important;
-    border-color: #002F6C;
-}
-
-/* Section headings */
-.notif-section-label {
-    padding: 14px 28px 6px;
-    font-size: 12px;
-    font-weight: 800;
-    color: #94a3b8;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-/* Individual notification row */
-.notif-row {
-    display: table;
-    width: 100%;
-    max-width: 100%;
-    table-layout: fixed;    /* columns NEVER exceed 100% total */
-    border-collapse: collapse;
-    cursor: pointer;
-    text-decoration: none !important;
-    box-sizing: border-box;
-}
-
-.notif-row:hover .notif-row-inner {
-    background: #f8fafc;
-}
-
-.notif-row.is-unread .notif-row-inner {
-    background: #eff6ff;
-}
-.notif-row.is-unread:hover .notif-row-inner {
-    background: #dbeafe;
-}
-
-.notif-row-inner {
-    display: table-row;
-    border-radius: 10px;
-    transition: background 0.18s;
-}
-
-.notif-cell-avatar,
-.notif-cell-content,
-.notif-cell-meta {
-    display: table-cell;
-    vertical-align: middle;
-    padding: 14px 0;
-}
-
-.notif-cell-avatar {
-    width: 76px;
-    padding-left: 20px;
-    padding-right: 12px;
-}
-
-.notif-cell-content {
-    /* Takes all remaining space — overflow-hidden so text can't push table wider */
-    padding-right: 16px;
-    word-break: break-word;
-    overflow-wrap: break-word;
-    overflow: hidden;
-    max-width: 0;       /* trick: with table-layout:fixed, forces cell to use remaining space */
-}
-
-.notif-cell-meta {
-    width: 1%;
-    white-space: nowrap;
-    padding-right: 20px;
-    text-align: right;
-}
-
-/* Avatar */
-.notif-avatar {
-    width: 52px;
-    height: 52px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #e8edf5 0%, #d0d9e8 100%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    border: 2px solid #fff;
-    box-shadow: 0 2px 6px rgba(0,47,108,0.1);
-    flex-shrink: 0;
-    position: relative;
-}
-
-.notif-avatar img {
-    width: 32px;
-    height: 32px;
-    object-fit: contain;
-}
-
-.notif-avatar-icon {
-    font-size: 20px;
-    color: #94a3b8;
-}
-
-.notif-type-badge {
-    position: absolute;
-    bottom: -3px;
-    right: -3px;
-    width: 20px;
-    height: 20px;
+.tbl-btn {
+    padding: 6px 12px;
     border-radius: 6px;
-    display: flex;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid transparent;
+    cursor: pointer;
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
-    border: 2px solid #fff;
-    color: #fff;
-    font-size: 9px;
+    gap: 4px;
+    background: none;
+    text-decoration: none !important;
+    transition: all 0.15s ease;
 }
 
-/* Content area */
-.notif-title-text {
-    font-size: 15px;
+.tbl-btn-open { background-color: #eff6ff !important; color: #2563eb !important; border: 1px solid #bfdbfe !important; }
+.tbl-btn-open:hover { background-color: #dbeafe !important; color: #1d4ed8 !important; border-color: #93c5fd !important; }
+
+.tbl-btn-read { background-color: #f1f5f9 !important; color: #475569 !important; border: 1px solid #cbd5e1 !important; }
+.tbl-btn-read:hover { background-color: #e2e8f0 !important; color: #0f172a !important; border-color: #94a3b8 !important; }
+
+.tbl-btn-archive { background-color: #ffffff !important; color: #64748b !important; border: 1px solid #e2e8f0 !important; }
+.tbl-btn-archive:hover { background-color: #fef2f2 !important; color: #dc2626 !important; border-color: #fca5a5 !important; }
+
+/* Pagination */
+.notif-pagination {
+    padding: 16px 20px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Modal Styling */
+.modal-backdrop-custom {
+    position: fixed;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(2px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.modal-content-custom {
+    background: #fff;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 550px;
+    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+    overflow: hidden;
+}
+
+.modal-hdr {
+    padding: 20px 24px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.modal-hdr h3 {
+    font-size: 18px;
     font-weight: 700;
     color: #0f172a;
-    margin-bottom: 3px;
-    line-height: 1.4;
-}
-
-.notif-msg-text {
-    font-size: 13px;
-    color: #64748b;
-    line-height: 1.5;
-}
-
-/* Meta: time + unread dot */
-.notif-time-badge {
-    display: inline-block;
-    font-size: 12px;
-    font-weight: 700;
-    color: #3b82f6;
-    background: #eff6ff;
-    border: 1px solid #bfdbfe;
-    border-radius: 20px;
-    padding: 3px 10px;
-}
-
-.notif-row:not(.is-unread) .notif-time-badge {
-    color: #94a3b8;
-    background: #f1f5f9;
-    border-color: #e2e8f0;
-}
-
-.notif-unread-dot {
-    display: block;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: #3b82f6;
-    margin: 6px 0 0 auto;
-    box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
-}
-
-/* Dividers between rows */
-.notif-row + .notif-row .notif-row-inner {
-    border-top: 1px solid #f1f5f9;
-}
-
-/* Empty state */
-.notif-empty {
-    padding: 80px 20px;
-    text-align: center;
-    color: #94a3b8;
-}
-.notif-empty i {
-    font-size: 56px;
-    color: #cbd5e1;
-    display: block;
-    margin-bottom: 16px;
-}
-.notif-empty p {
-    font-size: 16px;
     margin: 0;
 }
 
-/* Load more */
-.notif-load-more {
-    display: block;
-    margin: 20px 28px;
-    padding: 14px 0;
-    text-align: center;
-    background: #f8fafc;
-    color: #002F6C;
-    border-radius: 10px;
-    font-weight: 700;
-    font-size: 14px;
-    cursor: pointer;
-    text-decoration: none !important;
-    border: 2px solid #dde3ee;
-    transition: all 0.18s;
-}
-.notif-load-more:hover {
-    background: #002F6C;
-    color: #fff !important;
-    border-color: #002F6C;
+.modal-body {
+    padding: 24px;
 }
 
-/* Badge colours */
-.ntb-transaction { background: #3b82f6; }
-.ntb-joborder    { background: #f59e0b; }
-.ntb-inventory   { background: #ef4444; }
-.ntb-customer    { background: #8b5cf6; }
-.ntb-delivery    { background: #10b981; }
-.ntb-calendar    { background: #06b6d4; }
-.ntb-report      { background: #64748b; }
-.ntb-warning     { background: #f59e0b; }
-.ntb-error       { background: #ef4444; }
-.ntb-success     { background: #10b981; }
-.ntb-default     { background: #002F6C; }
+.modal-ftr {
+    padding: 16px 24px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+}
 </style>
 
-<div class="notif-page-wrap">
-    <div class="notif-page-card">
+<div class="notif-wrapper">
 
-        <!-- Header -->
-        <div class="notif-page-hdr">
-            <h1 class="notif-page-title">
-                <i class="fas fa-bell"></i>
-                Notifications
-            </h1>
-            <button class="notif-mark-all-btn" onclick="markAllRead()">
-                <i class="fas fa-check-double"></i> Mark all read
-            </button>
+    <!-- Top Header -->
+    <div class="notif-header">
+        <div class="notif-title-area">
+            <h1><i class="fas fa-bell"></i> Notifications Hub</h1>
+            <p>View, filter, and manage your operational system alerts and activity records.</p>
         </div>
-
-        <!-- Filter pills -->
-        <div class="notif-filter-bar">
-            <a href="?filter=all"    class="notif-filter-pill <?php echo $status_filter === 'all'    ? 'active' : ''; ?>">All</a>
-            <a href="?filter=unread" class="notif-filter-pill <?php echo $status_filter === 'unread' ? 'active' : ''; ?>">Unread</a>
+        <div>
+            <form method="POST" style="display:inline;">
+                <input type="hidden" name="action" value="mark_all_read">
+                <button type="submit" class="btn-filter-reset" style="background-color: #f0fdf4 !important; color: #166534 !important; border: 1px solid #bbf7d0 !important;">
+                    <i class="fas fa-check-double"></i> Mark All as Read
+                </button>
+            </form>
         </div>
+    </div>
 
-        <?php if (empty($notifications)): ?>
-            <div class="notif-empty">
-                <i class="fas fa-bell-slash"></i>
-                <p>No notifications yet</p>
+    <?php if ($notice): ?>
+        <div style="padding:12px 18px; background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; border-radius:8px; margin-bottom:20px; font-weight:600; font-size:14px;">
+            <?= htmlspecialchars($notice) ?>
+        </div>
+    <?php endif; ?>
+
+    <!-- Dashboard Cards -->
+    <div class="notif-cards-grid">
+        <a href="notifications.php?status=all" class="notif-card card-total">
+            <div>
+                <div class="notif-card-val"><?= number_format($counts['total']) ?></div>
+                <div class="notif-card-lbl">Total Notifications</div>
             </div>
-        <?php else: ?>
+            <div class="notif-card-ico"><i class="fas fa-layer-group"></i></div>
+        </a>
 
-            <?php if (!empty($new_notifs)): ?>
-                <div class="notif-section-label">New</div>
-                <?php foreach ($new_notifs as $n) renderNotifRow($n); ?>
-            <?php endif; ?>
+        <a href="notifications.php?status=unread" class="notif-card card-unread">
+            <div>
+                <div class="notif-card-val"><?= number_format($counts['unread']) ?></div>
+                <div class="notif-card-lbl">Unread</div>
+            </div>
+            <div class="notif-card-ico"><i class="fas fa-bell"></i></div>
+        </a>
 
-            <?php if (!empty($earlier_notifs)): ?>
-                <div class="notif-section-label">Earlier</div>
-                <?php foreach ($earlier_notifs as $n) renderNotifRow($n); ?>
-            <?php endif; ?>
+        <a href="notifications.php?status=read" class="notif-card card-read">
+            <div>
+                <div class="notif-card-val"><?= number_format($counts['read']) ?></div>
+                <div class="notif-card-lbl">Read</div>
+            </div>
+            <div class="notif-card-ico"><i class="fas fa-check-circle"></i></div>
+        </a>
 
-            <?php if (count($notifications) == 30): ?>
-                <a href="?filter=<?php echo $status_filter; ?>&page=<?php echo $page + 1; ?>" class="notif-load-more">
-                    <i class="fas fa-chevron-down"></i> See previous notifications
-                </a>
-            <?php endif; ?>
+        <a href="notifications.php?status=archived" class="notif-card card-archived">
+            <div>
+                <div class="notif-card-val"><?= number_format($counts['archived']) ?></div>
+                <div class="notif-card-lbl">Archived</div>
+            </div>
+            <div class="notif-card-ico"><i class="fas fa-archive"></i></div>
+        </a>
+    </div>
 
+    <!-- Filters Bar -->
+    <div class="notif-filter-box">
+        <form method="GET" class="notif-filter-form">
+            
+            <div class="filter-group">
+                <label><i class="fas fa-search"></i> Search</label>
+                <input type="text" name="search" placeholder="Search keyword..." value="<?= htmlspecialchars($search) ?>">
+            </div>
+
+            <div class="filter-group">
+                <label><i class="fas fa-tag"></i> Type</label>
+                <select name="type">
+                    <option value="all">All Types</option>
+                    <option value="transaction" <?= $filter_type === 'transaction' ? 'selected' : '' ?>>Transaction</option>
+                    <option value="job_order" <?= $filter_type === 'job_order' ? 'selected' : '' ?>>Job Order</option>
+                    <option value="fuel_management" <?= $filter_type === 'fuel_management' ? 'selected' : '' ?>>Fuel Management</option>
+                    <option value="inventory" <?= $filter_type === 'inventory' ? 'selected' : '' ?>>Inventory</option>
+                    <option value="customer" <?= $filter_type === 'customer' ? 'selected' : '' ?>>Customer</option>
+                    <option value="delivery" <?= $filter_type === 'delivery' ? 'selected' : '' ?>>Delivery</option>
+                    <option value="calendar" <?= $filter_type === 'calendar' ? 'selected' : '' ?>>Calendar</option>
+                    <option value="report" <?= $filter_type === 'report' ? 'selected' : '' ?>>Report</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label><i class="fas fa-exclamation-circle"></i> Priority</label>
+                <select name="priority">
+                    <option value="all">All Priorities</option>
+                    <option value="low" <?= $filter_prio === 'low' ? 'selected' : '' ?>>Low</option>
+                    <option value="medium" <?= $filter_prio === 'medium' ? 'selected' : '' ?>>Medium</option>
+                    <option value="high" <?= $filter_prio === 'high' ? 'selected' : '' ?>>High</option>
+                    <option value="critical" <?= $filter_prio === 'critical' ? 'selected' : '' ?>>Critical</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label><i class="fas fa-filter"></i> Status</label>
+                <select name="status">
+                    <option value="all">All Statuses</option>
+                    <option value="unread" <?= $filter_stat === 'unread' ? 'selected' : '' ?>>Unread</option>
+                    <option value="read" <?= $filter_stat === 'read' ? 'selected' : '' ?>>Read</option>
+                    <option value="archived" <?= $filter_stat === 'archived' ? 'selected' : '' ?>>Archived</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label><i class="fas fa-calendar-alt"></i> From Date</label>
+                <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>">
+            </div>
+
+            <div class="filter-group">
+                <label><i class="fas fa-calendar-alt"></i> To Date</label>
+                <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>">
+            </div>
+
+            <div style="display:flex; gap:8px;">
+                <button type="submit" class="btn-filter-submit"><i class="fas fa-filter"></i> Filter</button>
+                <a href="notifications.php" class="btn-filter-reset"><i class="fas fa-undo"></i> Reset</a>
+            </div>
+
+        </form>
+    </div>
+
+    <!-- Data Table -->
+    <div class="notif-table-card">
+        <table class="notif-table">
+            <thead>
+                <tr>
+                    <th style="width: 170px;">Date & Time</th>
+                    <th style="width: 160px;">Notification Type</th>
+                    <th>Message</th>
+                    <th style="width: 110px;">Priority</th>
+                    <th style="width: 100px;">Status</th>
+                    <th style="width: 220px; text-align: right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (empty($notifications)): ?>
+                    <tr>
+                        <td colspan="6" style="text-align: center; padding: 48px; color: #94a3b8;">
+                            <i class="fas fa-bell-slash" style="font-size: 36px; margin-bottom: 12px; display: block; color: #cbd5e1;"></i>
+                            No notifications match your selected filters.
+                        </td>
+                    </tr>
+                <?php else: ?>
+                    <?php foreach ($notifications as $n): 
+                        $is_unread = ($n['status'] === 'unread');
+                        $prio = strtolower($n['severity'] ?? 'medium');
+                        $type_label = ucwords(str_replace('_', ' ', $n['event_type'] ?? 'General'));
+                        $redirect = $n['redirect_url'] ?? '';
+                    ?>
+                        <tr class="<?= $is_unread ? 'unread-row' : '' ?>" style="cursor: pointer;" onclick="handleNotifClick(event, <?= htmlspecialchars(json_encode($n)) ?>)">
+                            <td style="font-weight: 600; color: #1e293b;">
+                                <?= date('M d, Y', strtotime($n['created_at'])) ?><br>
+                                <span style="font-size: 11px; color: #64748b; font-weight: normal;"><?= date('h:i A', strtotime($n['created_at'])) ?></span>
+                            </td>
+
+                            <td>
+                                <strong style="color: #0f172a; font-size: 13px;"><?= htmlspecialchars($type_label) ?></strong>
+                            </td>
+
+                            <td>
+                                <div style="font-weight: 700; color: #002F6C; margin-bottom: 2px; font-size: 14px;">
+                                    <?= htmlspecialchars($n['title']) ?>
+                                    <?php if (!empty($redirect)): ?>
+                                        <i class="fas fa-external-link-alt" style="font-size: 11px; margin-left: 4px; color: #3b82f6;"></i>
+                                    <?php endif; ?>
+                                </div>
+                                <div style="color: #475569; line-height: 1.4;">
+                                    <?= htmlspecialchars($n['message']) ?>
+                                </div>
+                            </td>
+
+                            <td>
+                                <span class="prio-badge prio-<?= $prio ?>">
+                                    <i class="fas fa-circle" style="font-size:7px;"></i> <?= ucfirst($prio) ?>
+                                </span>
+                            </td>
+
+                            <td>
+                                <span class="stat-badge stat-<?= $n['status'] ?>">
+                                    <?= ucfirst($n['status']) ?>
+                                </span>
+                            </td>
+
+                            <td style="text-align: right;" onclick="event.stopPropagation()">
+                                <div class="action-btn-group" style="justify-content: flex-end;">
+                                    
+                                    <!-- Open Action Button -->
+                                    <?php if (!empty($redirect)): ?>
+                                        <button type="button" class="tbl-btn tbl-btn-open"
+                                                onclick="handleNotifClick(event, <?= htmlspecialchars(json_encode($n)) ?>)">
+                                            <i class="fas fa-external-link-alt"></i> Open
+                                        </button>
+                                    <?php endif; ?>
+
+                                    <!-- Mark Read Form -->
+                                    <?php if ($is_unread): ?>
+                                        <form method="POST" style="display:inline;">
+                                            <input type="hidden" name="action" value="mark_read">
+                                            <input type="hidden" name="notification_id" value="<?= $n['id'] ?>">
+                                            <button type="submit" class="tbl-btn tbl-btn-read" title="Mark as Read">
+                                                <i class="fas fa-check"></i> Read
+                                            </button>
+                                        </form>
+                                    <?php endif; ?>
+
+                                    <!-- Archive Form -->
+                                    <?php if ($n['status'] !== 'archived'): ?>
+                                        <form method="POST" style="display:inline;">
+                                            <input type="hidden" name="action" value="archive">
+                                            <input type="hidden" name="notification_id" value="<?= $n['id'] ?>">
+                                            <button type="submit" class="tbl-btn tbl-btn-archive" title="Archive Notification">
+                                                <i class="fas fa-archive"></i> Archive
+                                            </button>
+                                        </form>
+                                    <?php endif; ?>
+
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+
+        <!-- Pagination Bar -->
+        <?php if ($total_pages > 1): ?>
+            <div class="notif-pagination">
+                <div style="font-size: 13px; color: #64748b;">
+                    Showing page <strong><?= $page ?></strong> of <strong><?= $total_pages ?></strong> (<?= number_format($total_rows) ?> records)
+                </div>
+                <div style="display: flex; gap: 6px;">
+                    <?php if ($page > 1): ?>
+                        <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page - 1])) ?>" class="btn-filter-reset" style="padding: 6px 12px;">&laquo; Previous</a>
+                    <?php endif; ?>
+                    <?php if ($page < $total_pages): ?>
+                        <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page + 1])) ?>" class="btn-filter-reset" style="padding: 6px 12px;">Next &raquo;</a>
+                    <?php endif; ?>
+                </div>
+            </div>
         <?php endif; ?>
 
     </div>
+
 </div>
 
-<form id="actionForm" method="post" style="display:none;">
-    <input type="hidden" name="action" id="formAction">
-    <input type="hidden" name="notification_id" id="formNotifId">
-</form>
-
-<script>
-async function handleNotificationClick(id, url) {
-    try {
-        const fd = new FormData();
-        fd.append('notification_id', id);
-        await fetch('../backend/api/notifications_api.php?action=mark_read', { method: 'POST', body: fd });
-    } catch (e) { console.error(e); }
-    if (url && url !== '#') {
-        const resolved = typeof window.resolveRedirectUrl === 'function' ? window.resolveRedirectUrl(url) : url;
-        window.location.href = resolved;
-    } else {
-        window.location.reload();
-    }
-}
-
-function markAllRead() {
-    if (confirm('Mark all notifications as read?')) {
-        document.getElementById('formAction').value = 'mark_all_read';
-        document.getElementById('actionForm').submit();
-    }
-}
-</script>
-
-<?php
-function renderNotifRow($n) {
-    $unread  = $n['status'] === 'unread';
-    $url     = !empty($n['redirect_url']) ? htmlspecialchars($n['redirect_url']) : '#';
-    $onClick = "handleNotificationClick({$n['id']}, '" . addslashes($url) . "')";
-
-    // Time ago
-    $diff = max(0, time() - strtotime($n['created_at']));
-    if      ($diff < 60)     $ago = max(1,$diff).'s';
-    elseif  ($diff < 3600)   $ago = floor($diff/60).'m';
-    elseif  ($diff < 86400)  $ago = floor($diff/3600).'h';
-    elseif  ($diff < 604800) $ago = floor($diff/86400).'d';
-    else                     $ago = floor($diff/604800).'w';
-
-    // Icon & colour
-    $evt = $n['event_type'] ?? '';
-    $badgeClass = 'ntb-default';
-    $faIcon     = 'bell';
-    if      ($evt === 'transaction')                   { $badgeClass = 'ntb-transaction'; $faIcon = 'shopping-cart'; }
-    elseif  (in_array($evt,['joborder','job_order']))  { $badgeClass = 'ntb-joborder';    $faIcon = 'tools'; }
-    elseif  ($evt === 'inventory')                     { $badgeClass = 'ntb-inventory';   $faIcon = 'boxes'; }
-    elseif  ($evt === 'customer')                      { $badgeClass = 'ntb-customer';    $faIcon = 'user'; }
-    elseif  ($evt === 'delivery')                      { $badgeClass = 'ntb-delivery';    $faIcon = 'truck'; }
-    elseif  ($evt === 'calendar')                      { $badgeClass = 'ntb-calendar';    $faIcon = 'calendar-alt'; }
-    elseif  ($evt === 'report')                        { $badgeClass = 'ntb-report';      $faIcon = 'file-alt'; }
-    else {
-        $t = $n['type'] ?? '';
-        if      ($t === 'success') { $badgeClass = 'ntb-success'; $faIcon = 'check'; }
-        elseif  ($t === 'warning') { $badgeClass = 'ntb-warning'; $faIcon = 'exclamation'; }
-        elseif  ($t === 'error')   { $badgeClass = 'ntb-error';   $faIcon = 'times'; }
-    }
-
-    $rowClass = $unread ? 'notif-row is-unread' : 'notif-row';
-    $title    = htmlspecialchars($n['title']   ?? '');
-    $message  = htmlspecialchars($n['message'] ?? '');
-
-    echo <<<HTML
-<div class="{$rowClass}" onclick="{$onClick}">
-    <div class="notif-row-inner">
-        <div class="notif-cell-avatar">
-            <div class="notif-avatar">
-                <img src="../assets/img/Petron Logo.png" onerror="this.style.display='none';this.parentElement.innerHTML='<i class=\\'fas fa-building notif-avatar-icon\\'></i>';" />
-                <div class="notif-type-badge {$badgeClass}">
-                    <i class="fas fa-{$faIcon}"></i>
-                </div>
+<!-- Modal Dialog -->
+<div id="notifModal" class="modal-backdrop-custom">
+    <div class="modal-content-custom">
+        <div class="modal-hdr">
+            <h3 id="modalTitle">Notification Details</h3>
+            <button type="button" onclick="closeNotifModal()" style="background:none;border:none;font-size:20px;color:#64748b;cursor:pointer;">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+                <span id="modalPriority" class="prio-badge prio-medium">Medium</span>
+                <span id="modalDate" style="font-size:12px; color:#64748b;">Jul 29, 2026 12:00 PM</span>
             </div>
+            <h4 id="modalHeading" style="font-size:16px; font-weight:700; color:#0f172a; margin:0 0 10px;">Title</h4>
+            <p id="modalMessage" style="font-size:14px; color:#334155; line-height:1.5; margin:0 0 16px;">Message body...</p>
         </div>
-        <div class="notif-cell-content">
-            <div class="notif-title-text">{$title}</div>
-            <div class="notif-msg-text">{$message}</div>
-        </div>
-        <div class="notif-cell-meta">
-            <span class="notif-time-badge">{$ago}</span>
-HTML;
-    if ($unread) {
-        echo '<span class="notif-unread-dot"></span>';
-    }
-    echo <<<HTML
+        <div class="modal-ftr">
+            <button type="button" onclick="closeNotifModal()" class="btn-filter-reset">Close</button>
+            <a id="modalActionBtn" href="#" class="btn-filter-submit" style="display:none; text-decoration:none;">
+                <i class="fas fa-external-link-alt"></i> Open Related Action
+            </a>
         </div>
     </div>
 </div>
-HTML;
+
+<script>
+function handleNotifClick(e, n) {
+    if (e) e.stopPropagation();
+    
+    // Mark as read asynchronously
+    if (n.status === 'unread') {
+        const formData = new FormData();
+        formData.append('action', 'mark_read');
+        formData.append('notification_id', n.id);
+        fetch('backend/api/notifications_api.php?action=mark_read', {
+            method: 'POST',
+            body: formData
+        }).catch(err => {});
+    }
+
+    if (n.redirect_url && n.redirect_url.trim() !== '' && n.redirect_url !== '#' && n.redirect_url !== 'null') {
+        const targetUrl = window.resolveRedirectUrl ? window.resolveRedirectUrl(n.redirect_url) : n.redirect_url;
+        window.location.href = targetUrl;
+    } else {
+        openNotifModal(n);
+    }
 }
 
-include __DIR__ . '/../partials/footer.php';
-?>
+function openNotifModal(n) {
+    document.getElementById('modalTitle').textContent = (n.event_type || 'Notification').toUpperCase().replace('_', ' ');
+    document.getElementById('modalHeading').textContent = n.title || 'Notification';
+    document.getElementById('modalMessage').textContent = n.message || '';
+    
+    const prioEl = document.getElementById('modalPriority');
+    const prio = (n.severity || 'medium').toLowerCase();
+    prioEl.className = `prio-badge prio-${prio}`;
+    prioEl.innerHTML = `<i class="fas fa-circle" style="font-size:7px;"></i> ${prio.toUpperCase()}`;
+
+    const d = new Date(n.created_at);
+    document.getElementById('modalDate').textContent = d.toLocaleString();
+
+    const actionBtn = document.getElementById('modalActionBtn');
+    if (n.redirect_url && n.redirect_url.trim() !== '' && n.redirect_url !== '#' && n.redirect_url !== 'null') {
+        actionBtn.href = window.resolveRedirectUrl ? window.resolveRedirectUrl(n.redirect_url) : n.redirect_url;
+        actionBtn.style.display = 'inline-flex';
+    } else {
+        actionBtn.style.display = 'none';
+    }
+
+    document.getElementById('notifModal').style.display = 'flex';
+
+    // Mark as read asynchronously
+    if (n.status === 'unread') {
+        const formData = new FormData();
+        formData.append('action', 'mark_read');
+        formData.append('notification_id', n.id);
+        fetch('backend/api/notifications_api.php?action=mark_read', {
+            method: 'POST',
+            body: formData
+        }).catch(err => {});
+    }
+}
+
+function closeNotifModal() {
+    document.getElementById('notifModal').style.display = 'none';
+}
+</script>
+
+<?php include __DIR__ . '/../partials/footer.php'; ?>

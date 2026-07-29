@@ -170,6 +170,33 @@ if (isset($_POST['action']) && $_POST['action'] === 'validate_event') {
     $sub_action = $_POST['sub_action'] ?? '';
     
     try {
+        // Handle reschedule for all types
+        if ($sub_action === 'reschedule') {
+            $new_date = $_POST['new_date'] ?? '';
+            if (!$new_date || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $new_date)) {
+                echo json_encode(['success' => false, 'message' => 'Invalid date provided.']);
+                exit;
+            }
+            if ($evt_type === 'job_order') {
+                $st = $pdo->prepare("UPDATE job_orders SET created_at = CONCAT(?, ' ', TIME(created_at)) WHERE id = ?");
+                $st->execute([$new_date, $numeric_id]);
+                echo json_encode(['success' => true, 'message' => 'Job Order rescheduled to ' . $new_date]);
+            } elseif ($evt_type === 'staff_shift') {
+                $st = $pdo->prepare("UPDATE staff_schedules SET scheduled_date = ? WHERE id = ?");
+                $st->execute([$new_date, $numeric_id]);
+                echo json_encode(['success' => true, 'message' => 'Shift rescheduled to ' . $new_date]);
+            } elseif (in_array($evt_type, ['merchandise_delivery', 'fuel_delivery', 'delivery'])) {
+                $st = $pdo->prepare("UPDATE deliveries_oversight SET delivery_date = ? WHERE id = ?");
+                $st->execute([$new_date, $numeric_id]);
+                echo json_encode(['success' => true, 'message' => 'Delivery rescheduled to ' . $new_date]);
+            } else {
+                $st = $pdo->prepare("UPDATE staff_calendar_events SET event_date = ? WHERE id = ?");
+                $st->execute([$new_date, $numeric_id]);
+                echo json_encode(['success' => true, 'message' => 'Event rescheduled to ' . $new_date]);
+            }
+            exit;
+        }
+
         if ($evt_type === 'job_order') {
             if ($sub_action === 'approve') {
                 $st = $pdo->prepare("UPDATE job_orders SET status = 'Verified', validated_by = ?, validated_at = NOW() WHERE id = ?");
@@ -272,11 +299,17 @@ $summary_stats = [
     'pending_validations' => 0,
     'overdue_payments' => 0,
     'low_stock_items' => 0,
-    'staff_workload' => []
+    'staff_workload' => [],
+    'tomorrow_deliveries' => [],
+    'pending_job_orders' => [],
+    'upcoming_pms' => [],
+    'today_deliveries_list' => [],
+    'all_mechanics' => []
 ];
 
 try {
     $today_date = date('Y-m-d');
+    $tomorrow_date = date('Y-m-d', strtotime('+1 day'));
     $week_start = date('Y-m-d', strtotime('monday this week'));
     $week_end = date('Y-m-d', strtotime('sunday this week'));
     $upcoming_end = date('Y-m-d', strtotime('+3 days'));
@@ -284,56 +317,130 @@ try {
     // Today's events count
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM staff_calendar_events WHERE station_id = ? AND event_date = ?");
     $stmt->execute([$station_id, $today_date]);
-    $summary_stats['today_events'] = $stmt->fetchColumn();
+    $summary_stats['today_events'] = (int)$stmt->fetchColumn();
     
     // Today's shifts
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM staff_schedules ss 
         JOIN users u ON ss.user_id = u.id 
         WHERE ss.scheduled_date = ? AND u.station_id = ?");
     $stmt->execute([$today_date, $station_id]);
-    $summary_stats['today_shifts'] = $stmt->fetchColumn();
+    $summary_stats['today_shifts'] = (int)$stmt->fetchColumn();
     
-    // Today's deliveries
+    // Today's deliveries count
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id = ? AND DATE(delivery_date) = ?");
     $stmt->execute([$station_id, $today_date]);
-    $summary_stats['today_deliveries'] = $stmt->fetchColumn();
+    $summary_stats['today_deliveries'] = (int)$stmt->fetchColumn();
     
-    // Today's job orders
+    // Today's job orders count
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND DATE(created_at) = ?");
     $stmt->execute([$station_id, $today_date]);
-    $summary_stats['today_job_orders'] = $stmt->fetchColumn();
+    $summary_stats['today_job_orders'] = (int)$stmt->fetchColumn();
     
-    // Week status counts
-    $stmt = $pdo->prepare("SELECT status, COUNT(*) as cnt FROM staff_calendar_events 
-        WHERE station_id = ? AND event_date BETWEEN ? AND ? 
-        GROUP BY status");
+    // Today's deliveries list
+    try {
+        $stmt = $pdo->prepare("SELECT d.id, d.supplier, d.product, d.status, DATE(d.delivery_date) AS del_date, u.name AS staff_name
+            FROM deliveries_oversight d JOIN users u ON d.encoded_by = u.id
+            WHERE d.station_id = ? AND DATE(d.delivery_date) = ? ORDER BY d.id DESC LIMIT 5");
+        $stmt->execute([$station_id, $today_date]);
+        $summary_stats['today_deliveries_list'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+
+    // Tomorrow's deliveries list
+    try {
+        $stmt = $pdo->prepare("SELECT d.id, d.supplier, d.product, d.status, DATE(d.delivery_date) AS del_date, u.name AS staff_name
+            FROM deliveries_oversight d JOIN users u ON d.encoded_by = u.id
+            WHERE d.station_id = ? AND DATE(d.delivery_date) = ? ORDER BY d.id DESC LIMIT 5");
+        $stmt->execute([$station_id, $tomorrow_date]);
+        $summary_stats['tomorrow_deliveries'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        // Also check fuel deliveries for tomorrow
+        $stmt2 = $pdo->prepare("SELECT id, fuel_type AS product, supplier, delivery_date, status
+            FROM fuel_deliveries WHERE station_id = ? AND DATE(delivery_date) = ? LIMIT 3");
+        $stmt2->execute([$station_id, $tomorrow_date]);
+        foreach ($stmt2->fetchAll(PDO::FETCH_ASSOC) as $fd) {
+            $fd['supplier'] = $fd['supplier'] ?? 'Petron';
+            $summary_stats['tomorrow_deliveries'][] = $fd;
+        }
+    } catch (Exception $e) {}
+    
+    // Pending Job Orders list
+    try {
+        $stmt = $pdo->prepare("SELECT jo.id, jo.service_type, jo.customer_name, jo.status, 
+            jo.plate_number, u.name AS staff_name, DATE(jo.created_at) AS jo_date
+            FROM job_orders jo JOIN users u ON jo.created_by = u.id
+            WHERE jo.station_id = ? AND jo.status IN ('Pending','Reviewed','In Progress')
+            ORDER BY jo.created_at DESC LIMIT 5");
+        $stmt->execute([$station_id]);
+        $summary_stats['pending_job_orders'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+    
+    // Upcoming PMS (Preventive Maintenance) - from job_orders with service_type LIKE PMS
+    try {
+        $stmt = $pdo->prepare("SELECT jo.id, jo.service_type, jo.customer_name, jo.plate_number, 
+            jo.status, DATE(jo.created_at) AS jo_date, u.name AS staff_name
+            FROM job_orders jo JOIN users u ON jo.created_by = u.id
+            WHERE jo.station_id = ? AND (LOWER(jo.service_type) LIKE '%pms%' OR LOWER(jo.service_type) LIKE '%preventive%' OR LOWER(jo.service_type) LIKE '%maintenance%')
+            AND DATE(jo.created_at) >= ?
+            ORDER BY jo.created_at ASC LIMIT 5");
+        $stmt->execute([$station_id, $today_date]);
+        $summary_stats['upcoming_pms'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+    
+    // All mechanics for assign/filter
+    try {
+        $stmt = $pdo->prepare("SELECT id, name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant','mechanic') AND status = 'Active' ORDER BY name");
+        $stmt->execute([$station_id]);
+        $summary_stats['all_mechanics'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+    
+    // Week status counts (combining all sources)
+    $stmt = $pdo->prepare("SELECT status FROM staff_calendar_events WHERE station_id = ? AND event_date BETWEEN ? AND ?");
     $stmt->execute([$station_id, $week_start, $week_end]);
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $status = strtolower($row['status']);
-        if ($status === 'pending') $summary_stats['week_pending'] = $row['cnt'];
-        if ($status === 'approved' || $status === 'in_progress') $summary_stats['week_in_progress'] += $row['cnt'];
-        if ($status === 'completed') $summary_stats['week_completed'] = $row['cnt'];
+    $all_statuses = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    
+    $stmt2 = $pdo->prepare("SELECT status FROM deliveries_oversight WHERE station_id = ? AND DATE(delivery_date) BETWEEN ? AND ?");
+    $stmt2->execute([$station_id, $week_start, $week_end]);
+    $all_statuses = array_merge($all_statuses, $stmt2->fetchAll(PDO::FETCH_COLUMN));
+    
+    $stmt3 = $pdo->prepare("SELECT status FROM job_orders WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?");
+    $stmt3->execute([$station_id, $week_start, $week_end]);
+    $all_statuses = array_merge($all_statuses, $stmt3->fetchAll(PDO::FETCH_COLUMN));
+    
+    foreach ($all_statuses as $st_val) {
+        $st = strtolower(trim($st_val ?? ''));
+        if (in_array($st, ['pending', 'pending validation', 'draft', 'reviewed', 'in progress'])) {
+            $summary_stats['week_pending']++;
+        } elseif (in_array($st, ['approved', 'verified', 'processing'])) {
+            $summary_stats['week_in_progress']++;
+        } elseif (in_array($st, ['completed', 'complete', 'stock-in complete', 'delivered'])) {
+            $summary_stats['week_completed']++;
+        }
     }
     
-    // Upcoming events (next 3 days)
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM staff_calendar_events 
-        WHERE station_id = ? AND event_date BETWEEN ? AND ?");
+    // Upcoming events (next 3 days across all sources)
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM staff_calendar_events WHERE station_id = ? AND event_date BETWEEN ? AND ?");
     $stmt->execute([$station_id, $today_date, $upcoming_end]);
-    $summary_stats['upcoming_count'] = $stmt->fetchColumn();
+    $u1 = (int)$stmt->fetchColumn();
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id = ? AND DATE(delivery_date) BETWEEN ? AND ?");
+    $stmt->execute([$station_id, $today_date, $upcoming_end]);
+    $u2 = (int)$stmt->fetchColumn();
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?");
+    $stmt->execute([$station_id, $today_date, $upcoming_end]);
+    $u3 = (int)$stmt->fetchColumn();
+    $summary_stats['upcoming_count'] = $u1 + $u2 + $u3;
     
     // MANAGER SPECIFIC: Pending validations count
     try {
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions WHERE station_id = ? AND validation_status = 'Pending'");
         $stmt->execute([$station_id]);
-        $summary_stats['pending_validations'] += $stmt->fetchColumn();
+        $summary_stats['pending_validations'] += (int)$stmt->fetchColumn();
         
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id = ? AND (LOWER(status) LIKE '%pending%' OR manager_id IS NULL)");
         $stmt->execute([$station_id]);
-        $summary_stats['pending_validations'] += $stmt->fetchColumn();
+        $summary_stats['pending_validations'] += (int)$stmt->fetchColumn();
 
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND (status = 'Pending' OR status = 'Reviewed')");
         $stmt->execute([$station_id]);
-        $summary_stats['pending_validations'] += $stmt->fetchColumn();
+        $summary_stats['pending_validations'] += (int)$stmt->fetchColumn();
     } catch (Exception $e) {}
     
     // MANAGER SPECIFIC: Overdue payments count
@@ -342,7 +449,7 @@ try {
             WHERE station_id = ? AND COALESCE(balance_due, 0) > 0 AND due_date < CURDATE()
             AND LOWER(COALESCE(payment_status, '')) <> 'paid'");
         $stmt->execute([$station_id]);
-        $summary_stats['overdue_payments'] = $stmt->fetchColumn();
+        $summary_stats['overdue_payments'] = (int)$stmt->fetchColumn();
     } catch (Exception $e) {}
     
     // MANAGER SPECIFIC: Low stock items
@@ -356,7 +463,7 @@ try {
               AND COALESCE(si.stock_level, ip.stock, 0) <= COALESCE(si.reorder_level, ip.min_stock, 10)
         ");
         $stmt->execute([$station_id]);
-        $summary_stats['low_stock_items'] = $stmt->fetchColumn();
+        $summary_stats['low_stock_items'] = (int)$stmt->fetchColumn();
     } catch (Exception $e) {}
     
     // MANAGER SPECIFIC: Staff workload today (events per staff)
@@ -371,7 +478,7 @@ try {
         $summary_stats['staff_workload'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {}
     
-    // Check for schedule conflicts (overlapping events for same user on same day)
+    // Check for schedule conflicts
     $stmt = $pdo->prepare("SELECT e1.event_date, e1.start_time, e1.end_time, e1.work_description,
             e2.start_time as conflict_start, e2.end_time as conflict_end, e2.work_description as conflict_desc,
             u.name as staff_name
@@ -734,7 +841,15 @@ include __DIR__ . '/../partials/header.php';
 <style>
 /* Google Calendar Style */
 .cal-layout { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff; display: flex; height: 100vh; overflow: hidden; }
-.cal-layout * { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; box-sizing: border-box; }
+.cal-layout *:not(i):not([class*="fa-"]) { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; box-sizing: border-box; }
+
+/* Font Awesome Icon Override */
+i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
+    font-family: "Font Awesome 6 Free", "Font Awesome 5 Free", "FontAwesome" !important;
+    font-style: normal !important;
+    font-weight: 900 !important;
+    display: inline-block !important;
+}
 
 /* Sidebar */
 .cal-sidebar { width: 256px; border-right: 1px solid #dadce0; padding: 8px 0; overflow-y: auto; flex-shrink: 0; }
@@ -814,6 +929,60 @@ include __DIR__ . '/../partials/header.php';
 <div class="cal-layout">
     <!-- Sidebar -->
     <div class="cal-sidebar">
+        <!-- Search Sidebar Panel -->
+        <div style="padding: 12px; border-bottom: 1px solid #dadce0;">
+            <div style="font-size: 12px; font-weight: 600; color: #3c4043; margin-bottom: 8px;"><i class="fas fa-search"></i> SEARCH CALENDAR</div>
+            <input type="text" id="calendarSearchInput" placeholder="Customer, Plate, JO#, Mechanic..." 
+                   onkeyup="filterCalendarEvents()" 
+                   style="width: 100%; padding: 6px 10px; font-size: 12px; border: 1px solid #dadce0; border-radius: 4px; outline: none; margin-bottom: 8px;">
+            <div style="font-size: 10px; color: #70757a;">Search by: Customer | Plate | JO# | Mechanic</div>
+        </div>
+
+        <!-- Filters Sidebar Panel -->
+        <div style="padding: 12px; border-bottom: 1px solid #dadce0;">
+            <div style="font-size: 12px; font-weight: 600; color: #3c4043; margin-bottom: 8px;"><i class="fas fa-filter"></i> FILTERS</div>
+            <div style="display: grid; gap: 6px;">
+                <select id="filterStatus" onchange="filterCalendarEvents()" style="width: 100%; padding: 5px; font-size: 11px; border: 1px solid #dadce0; border-radius: 4px;">
+                    <option value="">All Statuses</option>
+                    <option value="pending">Pending / Unvalidated</option>
+                    <option value="approved">Approved / In Progress</option>
+                    <option value="completed">Completed / Verified</option>
+                </select>
+                
+                <select id="filterMechanic" onchange="filterCalendarEvents()" style="width: 100%; padding: 5px; font-size: 11px; border: 1px solid #dadce0; border-radius: 4px;">
+                    <option value="">All Staff / Mechanics</option>
+                    <?php foreach ($summary_stats['all_mechanics'] as $mech): ?>
+                    <option value="<?= htmlspecialchars($mech['id']) ?>"><?= htmlspecialchars($mech['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+
+                <select id="filterEventType" onchange="filterCalendarEvents()" style="width: 100%; padding: 5px; font-size: 11px; border: 1px solid #dadce0; border-radius: 4px;">
+                    <option value="">All Event Types</option>
+                    <option value="job_order">🟢 Job Orders</option>
+                    <option value="customer_appointment">🔵 Customer Appointments</option>
+                    <option value="pms">🟠 Preventive Maintenance (PMS)</option>
+                    <option value="staff_shift">🟣 Staff Shifts</option>
+                    <option value="merchandise_delivery">🟡 Merchandise Deliveries</option>
+                    <option value="fuel_delivery">🟤 Fuel Deliveries</option>
+                </select>
+
+                <input type="date" id="filterDate" onchange="filterCalendarEvents()" style="width: 100%; padding: 5px; font-size: 11px; border: 1px solid #dadce0; border-radius: 4px;">
+            </div>
+        </div>
+
+        <!-- Events Color Legend -->
+        <div style="padding: 12px; border-bottom: 1px solid #dadce0;">
+            <div style="font-size: 12px; font-weight: 600; color: #3c4043; margin-bottom: 8px;"><i class="fas fa-palette"></i> EVENT TYPES</div>
+            <div style="display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: #3c4043;">
+                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #33b679; font-size: 14px;">🟢</span> <span>Job Orders</span></div>
+                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #039be5; font-size: 14px;">🔵</span> <span>Customer Appointments</span></div>
+                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #f6bf26; font-size: 14px;">🟠</span> <span>Preventive Maintenance</span></div>
+                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #8e24aa; font-size: 14px;">🟣</span> <span>Staff Shifts</span></div>
+                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #e67c73; font-size: 14px;">🟡</span> <span>Merchandise Deliveries</span></div>
+                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #795548; font-size: 14px;">🟤</span> <span>Fuel Deliveries</span></div>
+            </div>
+        </div>
+
         <!-- Summary Panels -->
         <div style="padding: 0 12px 20px; border-bottom: 1px solid #dadce0;">
             <!-- Manager Validation Tasks -->
@@ -827,6 +996,55 @@ include __DIR__ . '/../partials/header.php';
                 </a>
                 <?php endif; ?>
             </div>
+
+            <!-- Pending Job Orders Quick List -->
+            <div style="background: #e6f4ea; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+                <div style="font-size: 12px; color: #137333; font-weight: 600; margin-bottom: 6px;"><i class="fas fa-wrench"></i> PENDING JOB ORDERS (<?= count($summary_stats['pending_job_orders']) ?>)</div>
+                <?php if (empty($summary_stats['pending_job_orders'])): ?>
+                    <div style="font-size: 11px; color: #5f6368;">No pending job orders</div>
+                <?php else: ?>
+                    <div style="max-height: 120px; overflow-y: auto;">
+                        <?php foreach($summary_stats['pending_job_orders'] as $pjo): ?>
+                        <div style="font-size: 11px; border-bottom: 1px solid #ceead6; padding: 4px 0;">
+                            <div style="font-weight: 600; color: #137333;"><?= htmlspecialchars($pjo['service_type']) ?> - JO#<?= $pjo['id'] ?></div>
+                            <div style="color: #5f6368; font-size: 10px;"><?= htmlspecialchars($pjo['customer_name']) ?> (<?= htmlspecialchars($pjo['plate_number'] ?? 'N/A') ?>)</div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Tomorrow's Deliveries Quick List -->
+            <div style="background: #fef7e0; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+                <div style="font-size: 12px; color: #b06000; font-weight: 600; margin-bottom: 6px;"><i class="fas fa-truck"></i> TOMORROW'S DELIVERIES (<?= count($summary_stats['tomorrow_deliveries']) ?>)</div>
+                <?php if (empty($summary_stats['tomorrow_deliveries'])): ?>
+                    <div style="font-size: 11px; color: #5f6368;">No deliveries tomorrow</div>
+                <?php else: ?>
+                    <div style="max-height: 120px; overflow-y: auto;">
+                        <?php foreach($summary_stats['tomorrow_deliveries'] as $tdel): ?>
+                        <div style="font-size: 11px; border-bottom: 1px solid #feefc3; padding: 4px 0;">
+                            <div style="font-weight: 600; color: #b06000;"><?= htmlspecialchars($tdel['supplier'] ?? 'Supplier') ?></div>
+                            <div style="color: #5f6368; font-size: 10px;"><?= htmlspecialchars($tdel['product']) ?></div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Upcoming PMS Panel -->
+            <?php if (!empty($summary_stats['upcoming_pms'])): ?>
+            <div style="background: #e8f0fe; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+                <div style="font-size: 12px; color: #1a73e8; font-weight: 600; margin-bottom: 6px;"><i class="fas fa-car-side"></i> UPCOMING PMS (<?= count($summary_stats['upcoming_pms']) ?>)</div>
+                <div style="max-height: 120px; overflow-y: auto;">
+                    <?php foreach($summary_stats['upcoming_pms'] as $pms): ?>
+                    <div style="font-size: 11px; border-bottom: 1px solid #d2e3fc; padding: 4px 0;">
+                        <div style="font-weight: 600; color: #1a73e8;"><?= htmlspecialchars($pms['customer_name']) ?> (<?= htmlspecialchars($pms['plate_number'] ?? 'N/A') ?>)</div>
+                        <div style="color: #5f6368; font-size: 10px;"><?= htmlspecialchars($pms['service_type']) ?> - <?= $pms['jo_date'] ?></div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
             
             <!-- Manager Action Items -->
             <div style="background: #fce8e6; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
@@ -1479,39 +1697,101 @@ function showManagerDetailsModal(evt) {
 
     body.innerHTML = html;
 
-    // Action buttons
+    // ─── ACTION BUTTONS ─────────────────────────────────────────────
+    // Always: 👁 View  ✏ Reschedule  👤 Assign/Reassign
+    const isAutoSynced = evt.auto_synced || false;
+    const hasNumericId = numericId && !isNaN(numericId);
+
+    // Build the reschedule date picker inline
+    const reschedulePicker = `
+        <div id="reschedulePanel" style="display:none; margin-top:12px; padding:12px; background:#f8f9fa; border-radius:8px; border:1px solid #dadce0;">
+            <label style="font-size:12px; font-weight:600; color:#3c4043; display:block; margin-bottom:6px;">✏ New Date:</label>
+            <input type="date" id="rescheduleDate" value="${evt.event_date || evt.del_date || ''}" style="width:100%; padding:8px; border:1px solid #dadce0; border-radius:4px; font-size:13px; margin-bottom:8px;">
+            <button onclick="submitReschedule('${numericId}', '${evt.type_key || ''}')" style="width:100%; padding:8px; border:none; background:#1a73e8; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
+                Confirm Reschedule
+            </button>
+        </div>
+    `;
+
+    // Build assign/reassign staff picker
+    const reassignPanel = `
+        <div id="reassignPanel" style="display:none; margin-top:12px; padding:12px; background:#f8f9fa; border-radius:8px; border:1px solid #dadce0;">
+            <label style="font-size:12px; font-weight:600; color:#3c4043; display:block; margin-bottom:6px;">👤 Select Mechanic / Staff:</label>
+            <select id="reassignSelectNew" style="width:100%; padding:8px; border:1px solid #dadce0; border-radius:4px; font-size:13px; margin-bottom:8px;">
+                <option value="">-- Select --</option>
+                ${Object.keys(activeStaffList).map(id => `<option value="${id}" ${evt.staff_encoder_id == id ? 'selected' : ''}>${activeStaffList[id].name}</option>`).join('')}
+            </select>
+            <button onclick="submitReassignNew('${numericId}', '${evt.type_key || ''}')" style="width:100%; padding:8px; border:none; background:#1a73e8; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
+                Confirm Assignment
+            </button>
+        </div>
+    `;
+
+    // Insert panels into body
+    body.innerHTML += reschedulePicker + reassignPanel;
+
     let actionButtons = `
-        <button type="button" onclick="closeDetailsModal()" style="padding: 10px 20px; border: 1px solid #dadce0; background: #fff; color: #3c4043; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500;">
-            Close
+        <button type="button" onclick="closeDetailsModal()" style="padding:10px 16px; border:1px solid #dadce0; background:#fff; color:#3c4043; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
+            ✕ Close
         </button>
     `;
 
-    // Add validation decisions
+    // 👁 View — link to source record
+    let viewUrl = '#';
+    if (evt.type_key === 'job_order') viewUrl = `../public/manager_job_orders.php?id=${numericId}`;
+    else if (evt.type_key === 'merchandise_delivery') viewUrl = `../public/manager_deliveries.php?id=${numericId}`;
+    else if (evt.type_key === 'fuel_delivery') viewUrl = `../public/manager_fuel_delivery.php?id=${numericId}`;
+    else if (evt.type_key === 'staff_shift') viewUrl = `../public/manager_staff_schedule.php`;
+
+    if (viewUrl !== '#') {
+        actionButtons += `
+            <a href="${viewUrl}" target="_blank" style="padding:10px 16px; border:1px solid #1a73e8; background:#fff; color:#1a73e8; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+                👁 View
+            </a>
+        `;
+    }
+
+    // ✏ Reschedule — toggle panel
+    if (!isAutoSynced || evt.type_key === 'staff_shift' || evt.type_key === 'job_order') {
+        actionButtons += `
+            <button type="button" onclick="document.getElementById('reschedulePanel').style.display = document.getElementById('reschedulePanel').style.display === 'none' ? 'block' : 'none';" style="padding:10px 16px; border:1px solid #ea8600; background:#fff; color:#ea8600; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
+                ✏ Reschedule
+            </button>
+        `;
+    }
+
+    // 👤 Assign/Reassign Mechanic
+    if (evt.type_key === 'job_order' || evt.type_key === 'staff_shift' || evt.type_key === 'merchandise_delivery') {
+        actionButtons += `
+            <button type="button" onclick="document.getElementById('reassignPanel').style.display = document.getElementById('reassignPanel').style.display === 'none' ? 'block' : 'none';" style="padding:10px 16px; border:1px solid #8e24aa; background:#fff; color:#8e24aa; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
+                👤 Assign/Reassign
+            </button>
+        `;
+    }
+
+    // Validation decisions
     if (evt.type_key === 'job_order') {
         actionButtons += `
-            <button type="button" onclick="submitManagerAction('job_order', '${numericId}', 'return')" style="padding: 10px 20px; border: none; background: #ea8600; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500;">
-                Return for Review
+            <button type="button" onclick="submitManagerAction('job_order', '${numericId}', 'approve')" style="padding:10px 16px; border:none; background:#188038; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
+                ✓ Approve
             </button>
-            <button type="button" onclick="submitManagerAction('job_order', '${numericId}', 'reject')" style="padding: 10px 20px; border: none; background: #d93025; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500;">
-                Reject Job Order
-            </button>
-            <button type="button" onclick="submitManagerAction('job_order', '${numericId}', 'approve')" style="padding: 10px 20px; border: none; background: #188038; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500;">
-                Approve/Verify
+            <button type="button" onclick="submitManagerAction('job_order', '${numericId}', 'reject')" style="padding:10px 16px; border:none; background:#d93025; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
+                ✗ Reject
             </button>
         `;
     } else if (evt.type_key === 'merchandise_delivery' || evt.type_key === 'fuel_delivery') {
         actionButtons += `
-            <button type="button" onclick="submitManagerAction('delivery', '${numericId}', 'reject')" style="padding: 10px 20px; border: none; background: #d93025; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500;">
-                Reject Delivery
+            <button type="button" onclick="submitManagerAction('delivery', '${numericId}', 'approve')" style="padding:10px 16px; border:none; background:#188038; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
+                ✓ Approve
             </button>
-            <button type="button" onclick="submitManagerAction('delivery', '${numericId}', 'approve')" style="padding: 10px 20px; border: none; background: #188038; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500;">
-                Approve Delivery
+            <button type="button" onclick="submitManagerAction('delivery', '${numericId}', 'reject')" style="padding:10px 16px; border:none; background:#d93025; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
+                ✗ Reject
             </button>
         `;
     } else if (evt.type_key === 'fuel_calibration') {
         actionButtons += `
-            <button type="button" onclick="submitManagerAction('fuel_calibration', '${numericId}', 'validate')" style="padding: 10px 20px; border: none; background: #188038; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500;">
-                Validate Calibration
+            <button type="button" onclick="submitManagerAction('fuel_calibration', '${numericId}', 'validate')" style="padding:10px 16px; border:none; background:#188038; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
+                ✓ Validate
             </button>
         `;
     }
@@ -1583,6 +1863,45 @@ function submitManagerReassign(evtType, numericId) {
         }
     })
     .catch(e => alert('Network error re-assigning staff'));
+}
+
+// ✏ Reschedule handler
+function submitReschedule(numericId, evtType) {
+    const newDate = document.getElementById('rescheduleDate')?.value;
+    if (!newDate) { alert('Please pick a new date.'); return; }
+    const formData = new FormData();
+    formData.append('action', 'validate_event');
+    formData.append('evt_type', evtType);
+    formData.append('numeric_id', numericId);
+    formData.append('sub_action', 'reschedule');
+    formData.append('new_date', newDate);
+    fetch('manager_calendar.php', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) { alert('✓ Rescheduled successfully!'); location.reload(); }
+            else { alert('Error: ' + (data.message || 'Could not reschedule.')); }
+        })
+        .catch(() => alert('Network error rescheduling'));
+}
+
+// 👤 Reassign (new panel version)
+function submitReassignNew(numericId, evtType) {
+    const select = document.getElementById('reassignSelectNew');
+    const newStaffId = select?.value;
+    if (!newStaffId) { alert('Please select a staff member.'); return; }
+    const formData = new FormData();
+    formData.append('action', 'validate_event');
+    formData.append('evt_type', evtType === 'staff_shift' ? 'staff_shift' : 'job_order');
+    formData.append('numeric_id', numericId);
+    formData.append('sub_action', 'reassign');
+    formData.append('new_staff_id', newStaffId);
+    fetch('manager_calendar.php', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) { alert('✓ ' + data.message); location.reload(); }
+            else { alert('Error: ' + (data.message || 'Could not reassign.')); }
+        })
+        .catch(() => alert('Network error reassigning'));
 }
 
 function closeDetailsModal() {
@@ -1679,6 +1998,44 @@ function toggleStaff(staffId) {
     const events = document.querySelectorAll(`[data-staff="${staffId}"]`);
     events.forEach(evt => {
         evt.style.display = checkbox.classList.contains('checked') ? 'flex' : 'none';
+    });
+}
+
+// Client-side Live Search & Multi-Filter for Calendar Events
+function filterCalendarEvents() {
+    const searchVal = (document.getElementById('calendarSearchInput')?.value || '').toLowerCase().trim();
+    const statusVal = (document.getElementById('filterStatus')?.value || '').toLowerCase().trim();
+    const mechanicVal = (document.getElementById('filterMechanic')?.value || '').trim();
+    const typeVal = (document.getElementById('filterEventType')?.value || '').toLowerCase().trim();
+    const dateVal = (document.getElementById('filterDate')?.value || '').trim();
+
+    const allEvents = document.querySelectorAll('.cal-event');
+    allEvents.forEach(evt => {
+        const text = (evt.innerText || evt.getAttribute('title') || '').toLowerCase();
+        const staff = evt.getAttribute('data-staff') || '';
+        const dayContainer = evt.closest('.cal-day');
+        const dayNum = dayContainer ? dayContainer.querySelector('.cal-day-num')?.innerText : '';
+        
+        let match = true;
+
+        if (searchVal && !text.includes(searchVal)) {
+            match = false;
+        }
+
+        if (mechanicVal && staff !== mechanicVal) {
+            match = false;
+        }
+
+        if (typeVal) {
+            if (typeVal === 'job_order' && !text.includes('job order') && !text.includes('jo#') && !text.includes('service')) match = false;
+            else if (typeVal === 'pms' && !text.includes('pms') && !text.includes('preventive') && !text.includes('maintenance')) match = false;
+            else if (typeVal === 'staff_shift' && !text.includes('shift')) match = false;
+            else if (typeVal === 'merchandise_delivery' && !text.includes('delivery') && !text.includes('supplier')) match = false;
+            else if (typeVal === 'fuel_delivery' && !text.includes('fuel delivery') && !text.includes('diesel') && !text.includes('unl')) match = false;
+            else if (typeVal === 'customer_appointment' && !text.includes('appointment') && !text.includes('customer')) match = false;
+        }
+
+        evt.style.display = match ? 'flex' : 'none';
     });
 }
 

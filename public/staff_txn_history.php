@@ -131,17 +131,17 @@
   table-layout: fixed;
 }
 #histTbl th {
-  padding: 8px 6px;
-  font-size: 10.5px;
+  padding: 10px 8px;
+  font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  background: #f8fafc;
-  border-bottom: 2px solid #e2e8f0;
-  color: #475569;
+  background: #002F70 !important;
+  border-bottom: 2px solid #001f4d;
+  color: #ffffff !important;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.4px;
 }
 #histTbl td {
   padding: 8px 6px;
@@ -343,18 +343,19 @@
     <div>
     <table class="txn-table" id="histTbl" style="width:100%;table-layout:fixed;">
       <thead><tr>
-        <th style="width:13%">Transaction ID</th>
-        <th style="width:12%">Customer</th>
-        <th style="width:12%">Type</th>
-        <th style="width:14%">Product</th>
+        <th style="width:12%">Transaction ID</th>
+        <th style="width:11%">Customer</th>
+        <th style="width:9%">Type</th>
+        <th style="width:11%">Product</th>
         <th style="width:10%">Service Type</th>
-        <th style="width:5%;text-align:center">Qty</th>
-        <th style="width:6%;text-align:center">Unit</th>
-        <th style="width:9%;text-align:right">Amount</th>
-        <th style="width:9%">Payment</th>
+        <th style="width:7%;text-align:right">Service Fee</th>
+        <th style="width:7%;text-align:right">Labor Fee</th>
+        <th style="width:4%;text-align:center">Qty</th>
+        <th style="width:5%;text-align:center">Unit</th>
+        <th style="width:8%;text-align:right">Amount</th>
+        <th style="width:8%">Payment</th>
         <th style="width:8%">Status</th>
         <th style="width:10%">Date</th>
-        <th style="width:10%;text-align:center">Actions</th>
       </tr></thead>
       <tbody id="histTbody">
       <?php
@@ -469,8 +470,34 @@
           } else {
               $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:12px;font-size:10.5px;font-weight:700;color:#166534;background:#d1fae5;border:1px solid #86efac;"><i class="fas fa-circle" style="font-size:7px;"></i> Completed</span>';
           }
+
+          // Service Fee & Labor Fee resolution
+          $sf_val = (float)($ht['service_fee'] ?? 0);
+          $lf_val = (float)($ht['labor_fee'] ?? 0);
+          if ($sf_val == 0 && !empty($row_items)) {
+              foreach ($row_items as $ri) {
+                  $itype = strtolower($ri['item_type'] ?? '');
+                  $icat  = strtolower($ri['category'] ?? '');
+                  $iname = strtolower($ri['product_name'] ?? '');
+                  if (($itype === 'service' || strpos($icat, 'service') !== false) && strpos($icat, 'labor') === false && strpos($iname, 'labor') === false) {
+                      $sf_val += (float)($ri['subtotal'] ?? 0);
+                  }
+              }
+              if ($sf_val == 0 && ($ht_type === 'job_order' || !empty($ht['job_order_service']))) {
+                  $sf_val = (float)($ht['total_amount'] ?? 0);
+              }
+          }
+          if ($lf_val == 0 && !empty($row_items)) {
+              foreach ($row_items as $ri) {
+                  $icat  = strtolower($ri['category'] ?? '');
+                  $iname = strtolower($ri['product_name'] ?? '');
+                  if ($icat === 'labor' || strpos($iname, 'labor') !== false) {
+                      $lf_val += (float)($ri['subtotal'] ?? 0);
+                  }
+              }
+          }
       ?>
-      <tr class="hist-row-main">
+      <tr class="hist-row-main" onclick="openHistModal(<?= $ht_id ?>)" style="cursor:pointer;" title="Click to view transaction details">
         <td style="font-size:11px;font-weight:600;color:#334155;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0;" title="<?= $ht_tid ?>"><?= $ht_tid ?></td>
         <td style="font-weight:600;font-size:11.5px"><?= $ht_cname ?></td>
         <td><span style="background:<?= $tb ?>;color:<?= $tc ?>;border:1px solid <?= $tborder ?>;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700"><?= $tl ?></span></td>
@@ -503,6 +530,12 @@
           echo $svc_name ? '<span class="hist-item-chip svc"><i class="fas fa-wrench" style="font-size:9px"></i> ' . htmlspecialchars($svc_name) . '</span>' : '<span style="color:#94a3b8;">—</span>';
           ?>
         </td>
+        <td style="text-align:right;font-weight:700;color:#002F70;font-size:11px;">
+          <?= $sf_val > 0 ? '₱' . number_format($sf_val, 2) : '<span style="color:#94a3b8;font-weight:400;">—</span>' ?>
+        </td>
+        <td style="text-align:right;font-weight:700;color:#16a34a;font-size:11px;">
+          <?= $lf_val > 0 ? '₱' . number_format($lf_val, 2) : '<span style="color:#94a3b8;font-weight:400;">—</span>' ?>
+        </td>
         <td style="text-align:center;font-weight:700;color:#334155"><?= $qty_col_val ?></td>
         <td style="text-align:center;font-weight:600;color:#64748b;font-size:10.5px"><?= $unit_col_val ?></td>
         <td style="text-align:right;font-weight:700;color:#002F70">&#8369;<?= number_format((float)$ht['total_amount'],2) ?></td>
@@ -512,16 +545,6 @@
         </td>
         <td><?= $v_badge_html ?></td>
         <td style="font-size:10px;color:#64748b;"><?= $ht_date ?: '—' ?></td>
-        <td style="text-align:center;">
-          <div style="display:flex;flex-direction:column;gap:4px;align-items:stretch;">
-            <button onclick="openHistModal(<?= $ht_id ?>)" class="hist-action-btn btn-view-act" title="View Transaction Details" style="width:100%;">
-              <i class="fas fa-eye"></i> View
-            </button>
-            <button onclick="window.open('receipt.php?id=<?= urlencode($ht_tid) ?>&type=<?= urlencode($ht_type) ?>', '_blank')" class="hist-action-btn btn-print-act" title="Print Receipt" style="width:100%;">
-              <i class="fas fa-print"></i> Print
-            </button>
-          </div>
-        </td>
       </tr>
       <?php endforeach; ?>
       </tbody>

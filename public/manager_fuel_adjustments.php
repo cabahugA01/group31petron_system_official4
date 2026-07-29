@@ -27,7 +27,7 @@ if ($station_id <= 0) {
 }
 
 // Active Tab
-$active_tab = 'transactions'; // Only transactions tab available now
+$active_tab = 'transactions';
 
 // ── GET Filters ──────────────────────────────────────────────
 $date_from          = trim($_GET['date_from'] ?? date('Y-m-d', strtotime('-30 days')));
@@ -36,22 +36,16 @@ $fuel_type_filter   = trim($_GET['fuel_type'] ?? 'all');
 $adjusted_by_filter = trim($_GET['adjusted_by'] ?? 'all');
 $export             = trim($_GET['export'] ?? '');
 
-// Tab 1 specific filters
 $shift_filter       = trim($_GET['shift'] ?? 'all');
 $staff_filter       = trim($_GET['staff'] ?? '');
 $search_tx          = trim($_GET['search_tx'] ?? '');
 
-// Tab 2 specific filters
-$supplier_filter    = trim($_GET['supplier'] ?? 'all');
-$search_del         = trim($_GET['search_del'] ?? '');
-
-// Base conditions for active tab
-$adj_type = ($active_tab === 'transactions') ? 'transaction_adjustment' : 'delivery_adjustment';
+// Base conditions for active tab (includes all fuel/meter/calibration adjustments for station)
 $where = [
     "fa.station_id = ?",
-    "fa.adjustment_type = ?"
+    "(LOWER(COALESCE(fa.adjustment_type, '')) NOT LIKE '%delivery%' OR fa.adjustment_type IS NULL)"
 ];
-$params = [$station_id, $adj_type];
+$params = [$station_id];
 
 // Date Filter
 $where[] = "DATE(fa.adjustment_date) BETWEEN ? AND ?";
@@ -71,21 +65,19 @@ if ($adjusted_by_filter !== 'all' && $adjusted_by_filter !== '') {
 }
 
 // JSON & Text filters for Transactions
-if ($active_tab === 'transactions') {
-    if ($shift_filter !== 'all' && $shift_filter !== '') {
-        $where[] = "fa.notes LIKE ?";
-        $params[] = '%"shift":"%' . $shift_filter . '%"%';
-    }
-    if ($staff_filter !== '') {
-        $where[] = "fa.notes LIKE ?";
-        $params[] = '%' . $staff_filter . '%';
-    }
-    if ($search_tx !== '') {
-        $where[] = "(fa.notes LIKE ? OR fa.id LIKE ?)";
-        $like_val = '%' . $search_tx . '%';
-        $params[] = $like_val;
-        $params[] = $like_val;
-    }
+if ($shift_filter !== 'all' && $shift_filter !== '') {
+    $where[] = "fa.notes LIKE ?";
+    $params[] = '%"shift":"%' . $shift_filter . '%"%';
+}
+if ($staff_filter !== '') {
+    $where[] = "fa.notes LIKE ?";
+    $params[] = '%' . $staff_filter . '%';
+}
+if ($search_tx !== '') {
+    $where[] = "(fa.notes LIKE ? OR fa.id LIKE ?)";
+    $like_val = '%' . $search_tx . '%';
+    $params[] = $like_val;
+    $params[] = $like_val;
 }
 
 // Fetch Adjustments
@@ -116,30 +108,29 @@ $last_adj_str = '—';
 
 try {
     // 1. Total
-    $sp = $pdo->prepare("SELECT COUNT(*) FROM fuel_adjustments WHERE station_id = ? AND adjustment_type = ?");
-    $sp->execute([$station_id, $adj_type]);
+    $sp = $pdo->prepare("SELECT COUNT(*) FROM fuel_adjustments WHERE station_id = ? AND (LOWER(COALESCE(adjustment_type, '')) NOT LIKE '%delivery%' OR adjustment_type IS NULL)");
+    $sp->execute([$station_id]);
     $total_count = (int)$sp->fetchColumn();
 
     // 2. Today
-    $sp2 = $pdo->prepare("SELECT COUNT(*) FROM fuel_adjustments WHERE station_id = ? AND adjustment_type = ? AND DATE(adjustment_date) = CURDATE()");
-    $sp2->execute([$station_id, $adj_type]);
+    $sp2 = $pdo->prepare("SELECT COUNT(*) FROM fuel_adjustments WHERE station_id = ? AND (LOWER(COALESCE(adjustment_type, '')) NOT LIKE '%delivery%' OR adjustment_type IS NULL) AND DATE(adjustment_date) = CURDATE()");
+    $sp2->execute([$station_id]);
     $today_count = (int)$sp2->fetchColumn();
 
     // 3. This Month
-    $sp3 = $pdo->prepare("SELECT COUNT(*) FROM fuel_adjustments WHERE station_id = ? AND adjustment_type = ? AND MONTH(adjustment_date) = MONTH(CURDATE()) AND YEAR(adjustment_date) = YEAR(CURDATE())");
-    $sp3->execute([$station_id, $adj_type]);
+    $sp3 = $pdo->prepare("SELECT COUNT(*) FROM fuel_adjustments WHERE station_id = ? AND (LOWER(COALESCE(adjustment_type, '')) NOT LIKE '%delivery%' OR adjustment_type IS NULL) AND MONTH(adjustment_date) = MONTH(CURDATE()) AND YEAR(adjustment_date) = YEAR(CURDATE())");
+    $sp3->execute([$station_id]);
     $month_count = (int)$sp3->fetchColumn();
 
     // 4. Last Adjustment
-    $sp4 = $pdo->prepare("SELECT created_at FROM fuel_adjustments WHERE station_id = ? AND adjustment_type = ? ORDER BY id DESC LIMIT 1");
-    $sp4->execute([$station_id, $adj_type]);
+    $sp4 = $pdo->prepare("SELECT created_at FROM fuel_adjustments WHERE station_id = ? AND (LOWER(COALESCE(adjustment_type, '')) NOT LIKE '%delivery%' OR adjustment_type IS NULL) ORDER BY id DESC LIMIT 1");
+    $sp4->execute([$station_id]);
     $last_adj = $sp4->fetchColumn();
     if ($last_adj) {
         $last_adj_str = date('M d, Y h:i A', strtotime($last_adj));
     }
 } catch (Exception $e) {}
 
-// Managers List for filter
 $managers = [];
 try {
     $mgr_stmt = $pdo->prepare("
@@ -147,10 +138,10 @@ try {
                COALESCE(NULLIF(CONCAT(TRIM(u.first_name), ' ', TRIM(u.last_name)), ' '), u.username, 'Unknown') as name
         FROM users u 
         JOIN fuel_adjustments fa ON fa.user_id = u.id 
-        WHERE fa.station_id = ? AND fa.adjustment_type = ?
+        WHERE fa.station_id = ?
         ORDER BY name
     ");
-    $mgr_stmt->execute([$station_id, $adj_type]);
+    $mgr_stmt->execute([$station_id]);
     $managers = $mgr_stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
@@ -160,15 +151,6 @@ try {
     $ft_stmt = $pdo->prepare("SELECT DISTINCT fuel_type FROM fuel_inventory WHERE station_id=? AND fuel_type IS NOT NULL AND fuel_type!='' ORDER BY fuel_type");
     $ft_stmt->execute([$station_id]);
     $fuel_types = $ft_stmt->fetchAll(PDO::FETCH_COLUMN);
-} catch (Exception $e) {}
-
-// Dynamic Shifts list for filter
-$shifts = [];
-try {
-    $sh_stmt = $pdo->query("SELECT DISTINCT name FROM shift_periods ORDER BY id");
-    if ($sh_stmt) {
-        $shifts = $sh_stmt->fetchAll(PDO::FETCH_COLUMN);
-    }
 } catch (Exception $e) {}
 if (empty($shifts)) {
     $shifts = ['First Shift', 'Second Shift', 'Third Shift'];

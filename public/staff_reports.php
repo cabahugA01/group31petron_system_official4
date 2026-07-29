@@ -108,7 +108,12 @@ try {
 // ============================================================
 $requested_section = trim($_GET['section'] ?? '');
 $requested_view = trim($_GET['view'] ?? '');
-if ($requested_section === 'job_orders' || $requested_view === 'jo_tracker') {
+
+// New staff-report sections — do NOT redirect these
+$new_staff_sections = ['transactions', 'job_orders_rpt', 'sales_summary'];
+if (in_array($requested_section, $new_staff_sections, true)) {
+    // Handled below — fall through
+} elseif ($requested_view === 'jo_tracker') {
     $redirect_date = trim($_GET['start'] ?? $_GET['date_start'] ?? $_GET['report_date'] ?? date('Y-m-d'));
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $redirect_date)) {
         $redirect_date = date('Y-m-d');
@@ -135,56 +140,58 @@ if ($requested_section === 'job_orders' || $requested_view === 'jo_tracker') {
     exit;
 }
 
-$valid_sections = ['sales', 'deliveries', 'meter', 'payments', 'customers', 'activity'];
-$section = trim($_GET['section'] ?? 'sales');
+// Support new staff report sections
+$new_staff_sections = ['transactions', 'job_orders_rpt', 'sales_summary'];
+$valid_sections = ['sales', 'deliveries', 'meter', 'payments', 'customers', 'activity', 'transactions', 'job_orders_rpt', 'sales_summary'];
+$section = trim($_GET['section'] ?? 'transactions');
+
+// Legacy section remapping
 if ($section === 'job_orders') {
-    $section = 'sales';
-    $_GET['sub_tab'] = 'merch_sales';
+    $section = 'job_orders_rpt';
 }
 if (!in_array($section, $valid_sections)) {
-    // Check if legacy view parameter is used
     $view_param = trim($_GET['view'] ?? '');
     $legacy_map = [
-        'daily_sales' => 'sales',
-        'customer_linkage' => 'sales',
-        'jo_tracker' => 'sales',
-        'fuel_deliveries' => 'deliveries',
-        'merch_deliveries' => 'deliveries',
-        'meter_readings' => 'meter',
-        'payment_status' => 'payments',
-        'customer_reports' => 'customers',
-        'personal_activity' => 'activity',
-        'audit_trail' => 'activity',
+        'daily_sales'      => 'transactions',
+        'customer_linkage' => 'transactions',
+        'jo_tracker'       => 'job_orders_rpt',
+        'fuel_deliveries'  => 'transactions',
+        'merch_deliveries' => 'transactions',
+        'meter_readings'   => 'transactions',
+        'payment_status'   => 'transactions',
+        'customer_reports' => 'transactions',
+        'personal_activity'=> 'transactions',
+        'audit_trail'      => 'transactions',
     ];
-    $section = $legacy_map[$view_param] ?? 'sales';
-    if ($view_param === 'jo_tracker') {
-        $_GET['sub_tab'] = 'merch_sales';
-    }
+    $section = $legacy_map[$view_param] ?? 'transactions';
 }
 
 $page_id = match($section) {
-    'deliveries' => 'report_deliveries',
-    'meter'      => 'report_meter',
-    'payments'   => 'report_payments',
-    'customers'  => 'report_customers',
-    'activity'   => 'report_activity',
-    default      => 'report_daily_sales',
+    'transactions'    => 'report_transactions',
+    'job_orders_rpt'  => 'report_job_orders',
+    'sales_summary'   => 'report_sales_summary',
+    'deliveries'      => 'report_deliveries',
+    'meter'           => 'report_meter',
+    'payments'        => 'report_payments',
+    'customers'       => 'report_customers',
+    'activity'        => 'report_activity',
+    default           => 'report_transactions',
 };
 
-$range = strtolower(trim($_GET['range'] ?? 'month'));
-if (!in_array($range, ['today', 'week', 'month', 'custom'])) $range = 'month';
+$range = strtolower(trim($_GET['range'] ?? 'today'));
+if (!in_array($range, ['today', 'week', 'month', 'custom'])) $range = 'today';
 
 $sub_tab = trim($_GET['sub_tab'] ?? $_GET['sub'] ?? '');
 if (empty($sub_tab)) {
-    if ($section === 'sales') $sub_tab = 'fuel_sales';
+    if ($section === 'transactions')   $sub_tab = 'daily_summary';
+    elseif ($section === 'job_orders_rpt') $sub_tab = 'assigned_jo';
+    elseif ($section === 'sales_summary')  $sub_tab = 'shift_merch_sales';
+    elseif ($section === 'sales')      $sub_tab = 'merch_sales';
     elseif ($section === 'deliveries') $sub_tab = 'fuel_deliveries';
-    elseif ($section === 'meter') $sub_tab = 'readings';
-    elseif ($section === 'payments') $sub_tab = 'status_breakdown';
-    elseif ($section === 'customers') $sub_tab = 'customer_list';
-    elseif ($section === 'activity') $sub_tab = 'staff_activity';
-}
-if ($section === 'sales' && in_array($sub_tab, ['jo_list', 'staff_perf'], true)) {
-    $sub_tab = 'merch_sales';
+    elseif ($section === 'meter')      $sub_tab = 'readings';
+    elseif ($section === 'payments')   $sub_tab = 'status_breakdown';
+    elseif ($section === 'customers')  $sub_tab = 'customer_list';
+    elseif ($section === 'activity')   $sub_tab = 'staff_activity';
 }
 
 $today = date('Y-m-d');
@@ -236,9 +243,6 @@ $report_data = [];
 $summary_cards = [];
 $report_error = '';
 
-// ============================================================
-// DATA FETCHING CONDITIONALS
-// ============================================================
 try {
     if ($section === 'sales') {
         if ($sub_tab === 'daily_summary') {

@@ -391,21 +391,16 @@ require_once __DIR__ . '/../partials/header.php';
         </div>
     </form>
 
-    <!-- Tabs -->
-    <div class="cr-tabs">
-        <button class="cr-tab <?= $section==='activity'?'active':'' ?>" onclick="crTab('activity')"><i class="fas fa-history"></i> Activity Logs</button>
-        <button class="cr-tab <?= $section==='audit'?'active':'' ?>"    onclick="crTab('audit')"><i class="fas fa-shield-alt"></i> Audit Trail</button>
-        <button class="cr-tab <?= $section==='calendar'?'active':'' ?>" onclick="crTab('calendar')"><i class="fas fa-calendar-alt"></i> Calendar &amp; Schedule</button>
-    </div>
+
 
     <div class="cr-content">
     <div class="rpt-printable">
 
     <!-- ACTIVITY LOGS -->
-    <div id="cr-panel-activity" class="cr-panel <?= $section==='activity'?'active':'' ?>">
+    <div id="cr-panel-activity" class="cr-panel active">
         <div class="cr-rpt-header">
-            <div class="rh-title">ACTIVITY LOGS REPORT</div>
-            <div class="rh-sub">DAILY STAFF & SYSTEM ACTIONS</div>
+            <div class="rh-title">AUDIT TRAIL REPORT</div>
+            <div class="rh-sub">CONSOLIDATED COMPLIANCE & AUDIT LOGS</div>
             <div class="rh-station"><?= htmlspecialchars($station_name) ?></div>
             <div class="rh-date"><strong>Date:</strong> <?= date('F j, Y', strtotime($date_from)) ?><?= $date_from!==$date_to?' – '.date('F j, Y', strtotime($date_to)):'' ?></div>
         </div>
@@ -445,141 +440,7 @@ require_once __DIR__ . '/../partials/header.php';
         </table>
     </div>
 
-    <!-- AUDIT TRAIL -->
-    <div id="cr-panel-audit" class="cr-panel <?= $section==='audit'?'active':'' ?>">
-        <div class="cr-rpt-header">
-            <div class="rh-title">AUDIT TRAIL REPORT</div>
-            <div class="rh-sub">CONSOLIDATED COMPLIANCE LOGS</div>
-            <div class="rh-station"><?= htmlspecialchars($station_name) ?></div>
-            <div class="rh-date"><strong>Date:</strong> <?= date('F j, Y', strtotime($date_from)) ?><?= $date_from!==$date_to?' – '.date('F j, Y', strtotime($date_to)):'' ?></div>
-        </div>
-        <table class="cr-tbl">
-            <thead><tr>
-                <th>#</th><th>Staff Name / Encoder</th><th>Action Performed</th>
-                <th>Timestamp</th><th>Shift</th><th>System Reference</th><th>Module</th>
-            </tr></thead>
-            <tbody>
-            <?php if (empty($audit_rows)): ?>
-                <tr><td colspan="7" class="cr-empty">No audit trail records for this period.</td></tr>
-            <?php else: $i=0; foreach ($audit_rows as $r): $i++;
-                $action = strtolower($r['action_performed']);
-                $badge_class = str_contains($action,'delete') ? 'badge-delete'
-                    : (str_contains($action,'approve')||str_contains($action,'validate') ? 'badge-approve'
-                    : (str_contains($action,'update')||str_contains($action,'edit') ? 'badge-edit'
-                    : (str_contains($action,'add')||str_contains($action,'create') ? 'badge-encode'
-                    : 'badge-default')));
-            ?>
-                <tr>
-                    <td><?= $i ?></td>
-                    <td><?= htmlspecialchars(trim($r['staff_name']))?:'-' ?></td>
-                    <td><span class="cr-badge <?= $badge_class ?>"><?= htmlspecialchars($r['action_performed']) ?></span></td>
-                    <td><?= $r['timestamp'] ? date('m/d/Y H:i:s', strtotime($r['timestamp'])) : '—' ?></td>
-                    <td><?= htmlspecialchars($r['shift_assignment']) ?></td>
-                    <td><?= htmlspecialchars($r['system_reference']) ?></td>
-                    <td><?= htmlspecialchars($r['module_affected']) ?></td>
-                </tr>
-            <?php endforeach; endif; ?>
-            </tbody>
-            <?php if (!empty($audit_rows)): ?>
-            <tfoot><tr>
-                <td colspan="7">TOTAL RECORDS: <?= count($audit_rows) ?></td>
-            </tr></tfoot>
-            <?php endif; ?>
-        </table>
-    </div>
 
-    <!-- CALENDAR & SCHEDULE -->
-    <div id="cr-panel-calendar" class="cr-panel <?= $section==='calendar'?'active':'' ?>">
-        <div class="cr-rpt-header">
-            <div class="rh-title">CALENDAR & SCHEDULE REPORT</div>
-            <div class="rh-sub">JOB ORDERS & DELIVERIES SCHEDULE</div>
-            <div class="rh-station"><?= htmlspecialchars($station_name) ?></div>
-            <div class="rh-date"><strong>Date:</strong> <?= date('F j, Y', strtotime($date_from)) ?><?= $date_from!==$date_to?' – '.date('F j, Y', strtotime($date_to)):'' ?></div>
-        </div>
-
-        <!-- Calendar Grid View -->
-        <?php
-        // Build calendar for the month of date_from
-        $cal_year  = (int)date('Y', strtotime($date_from));
-        $cal_month = (int)date('m', strtotime($date_from));
-        $first_day = mktime(0,0,0,$cal_month,1,$cal_year);
-        $days_in_month = (int)date('t', $first_day);
-        $start_dow = (int)date('w', $first_day); // 0=Sun
-        $today = date('Y-m-d');
-        $day_labels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-        ?>
-        <div style="margin-bottom:6px;font-size:13px;font-weight:700;color:#00264D;text-transform:uppercase;">
-            <?= date('F Y', $first_day) ?>
-        </div>
-        <div class="cr-calendar-grid">
-            <?php foreach ($day_labels as $dl): ?>
-                <div class="cr-cal-header"><?= $dl ?></div>
-            <?php endforeach; ?>
-            <?php
-            // Empty cells before first day
-            for ($i = 0; $i < $start_dow; $i++) echo '<div class="cr-cal-day empty"></div>';
-            // Day cells
-            for ($day = 1; $day <= $days_in_month; $day++):
-                $date_key = sprintf('%04d-%02d-%02d', $cal_year, $cal_month, $day);
-                $is_today = ($date_key === $today);
-                $tasks_on_day = $calendar_by_date[$date_key] ?? [];
-            ?>
-                <div class="cr-cal-day <?= $is_today?'today':'' ?>">
-                    <div class="day-num"><?= $day ?></div>
-                    <?php foreach (array_slice($tasks_on_day, 0, 3) as $t): ?>
-                        <div class="cr-task-dot <?= $t['task_type']==='Job Order'?'cr-task-jo':'cr-task-fd' ?>">
-                            <?= htmlspecialchars($t['task_type'] === 'Job Order' ? 'JO' : 'DEL') ?>: <?= htmlspecialchars(substr($t['task_ref'],0,8)) ?>
-                        </div>
-                    <?php endforeach; ?>
-                    <?php if (count($tasks_on_day) > 3): ?>
-                        <div style="font-size:9px;color:#64748b;">+<?= count($tasks_on_day)-3 ?> more</div>
-                    <?php endif; ?>
-                </div>
-            <?php endfor; ?>
-        </div>
-
-        <!-- Task List Table -->
-        <div class="cr-sub-heading"><i class="fas fa-list"></i> Task List</div>
-        <table class="cr-tbl">
-            <thead><tr>
-                <th>#</th><th>Task Type</th><th>Task ID / Reference</th>
-                <th>Assigned Staff / Supplier</th><th>Scheduled Date & Time</th>
-                <th>Status</th><th>Description</th>
-            </tr></thead>
-            <tbody>
-            <?php if (empty($calendar_tasks)): ?>
-                <tr><td colspan="7" class="cr-empty">No scheduled tasks for this period.</td></tr>
-            <?php else: $i=0; foreach ($calendar_tasks as $t): $i++;
-                $status_lc = strtolower($t['status']);
-                $sc = str_contains($status_lc,'complet') ? 'status-completed'
-                    : (str_contains($status_lc,'cancel') ? 'status-cancelled'
-                    : (str_contains($status_lc,'progress') ? 'status-progress'
-                    : 'status-pending'));
-            ?>
-                <tr>
-                    <td><?= $i ?></td>
-                    <td><?= htmlspecialchars($t['task_type']) ?></td>
-                    <td><?= htmlspecialchars($t['task_ref']) ?></td>
-                    <td><?= htmlspecialchars($t['assigned_to']) ?></td>
-                    <td><?= $t['scheduled_date'] ? date('m/d/Y H:i', strtotime($t['scheduled_date'])) : '—' ?></td>
-                    <td><span class="cr-status <?= $sc ?>"><?= htmlspecialchars($t['status']) ?></span></td>
-                    <td><?= htmlspecialchars($t['description']) ?></td>
-                </tr>
-            <?php endforeach; endif; ?>
-            </tbody>
-            <?php if (!empty($calendar_tasks)):
-                $counts = array_count_values(array_column($calendar_tasks,'task_type'));
-            ?>
-            <tfoot><tr>
-                <td colspan="7">
-                    TOTAL: <?= count($calendar_tasks) ?> tasks
-                    &nbsp;|&nbsp; Job Orders: <?= $counts['Job Order'] ?? 0 ?>
-                    &nbsp;|&nbsp; Deliveries: <?= $counts['Fuel Delivery'] ?? 0 ?>
-                </td>
-            </tr></tfoot>
-            <?php endif; ?>
-        </table>
-    </div>
 
     </div><!-- end rpt-printable -->
     </div><!-- end cr-content -->

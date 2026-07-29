@@ -167,8 +167,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ->execute([$name, $category, $min_price, $max_price, $price_desc, $notes, $icon, $color, $id]);
                     
                     // Insert into pending_price_approvals
-                    $pdo->prepare("INSERT INTO pending_price_approvals (station_id, product_type, product_id, old_price, new_price, manager_id, status, created_at) VALUES (?, 'service_type', ?, ?, ?, ?, 'pending', NOW())")
-                        ->execute([$station_id, $id, $old_price, $price, $me['id']]);
+                    $pdo->prepare("INSERT INTO pending_price_approvals (station_id, product_type, product_id, product_name, field_name, old_value, new_value, old_price, new_price, requested_by, manager_id, status, created_at) VALUES (?, 'service', ?, ?, 'price', ?, ?, ?, ?, ?, ?, 'pending', NOW())")
+                        ->execute([$station_id, $id, $name, $old_price, $price, $old_price, $price, $me['id'], $me['id']]);
                     
                     $_SESSION['success'] = "Service details updated. Price change submitted for Admin approval.";
                     $log_msg = "Service '$name' updated. Price change submitted: ₱".number_format($old_price, 2)." → ₱".number_format($price, 2)." (Pending Approval)";

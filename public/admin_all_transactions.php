@@ -82,7 +82,9 @@ if($search!=='') {
     if(preg_match('/OR-\d{4}-(\d+)/i', $search, $orMatch)) {
         $orSearchNum = (int)$orMatch[1]; // the zero-padded number
     }
-    $veh_search = aat_has($mt_cols,'vehicle_plate') ? ' OR mt.vehicle_plate LIKE ?' : '';
+    $has_plate_col = aat_has($mt_cols, 'job_order_vehicle_plate') || aat_has($mt_cols, 'vehicle_plate');
+    $plate_field   = aat_has($mt_cols, 'job_order_vehicle_plate') ? 'mt.job_order_vehicle_plate' : 'mt.vehicle_plate';
+    $veh_search    = $has_plate_col ? " OR {$plate_field} LIKE ? OR jo.vehicle_plate LIKE ?" : '';
     if($orSearchNum !== null) {
         $where.=" AND (mt.customer_name LIKE ? OR mt.transaction_id LIKE ? OR mt.id=?$veh_search)";
         $params[]="%$search%"; $params[]="%$search%"; $params[]=$orSearchNum;
@@ -90,7 +92,7 @@ if($search!=='') {
         $where.=" AND (mt.customer_name LIKE ? OR mt.transaction_id LIKE ?$veh_search)";
         $params[]="%$search%"; $params[]="%$search%";
     }
-    if(aat_has($mt_cols,'vehicle_plate')) $params[]="%$search%";
+    if($has_plate_col) { $params[]="%$search%"; $params[]="%$search%"; }
 }
 // Shift filter: use raw shift_period column, not a CASE expression (CASE cannot be used in WHERE)
 $shift_col = aat_has($mt_cols,'shift_period') ? 'mt.shift_period' : (aat_has($mt_cols,'shift_name') ? 'mt.shift_name' : null);
@@ -180,7 +182,7 @@ function format_transaction_items($raw_items_str, $htmlMode = true) {
 
 // ── Fetch rows ────────────────────────────────────────────────────────────────
 $rows=[];
-$veh_col = aat_has($mt_cols,'vehicle_plate') ? 'COALESCE(mt.vehicle_plate,"—")' : '"—"';
+$veh_col = "COALESCE(NULLIF(TRIM(mt.job_order_vehicle_plate),''), NULLIF(TRIM(jo.vehicle_plate),''), '—')";
 $staff_col = "COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),' '),u.username,'Unknown')";
 try {
     $s=$pdo->prepare("SELECT mt.id as txn_db_id, mt.transaction_id, COALESCE(NULLIF(TRIM(mt.customer_name),''),'Walk-in') as customer,
@@ -194,9 +196,27 @@ try {
         $adj_reason_col as adjustment_reason,
         $mgr_remarks_col as manager_remarks,
         GROUP_CONCAT(CONCAT(mti.product_name, '::', COALESCE(mti.size_variant,''), '::', mti.quantity) ORDER BY mti.id SEPARATOR '||') as items,
-        COALESCE(NULLIF(TRIM(mt.job_order_service),''), '') as service_type
+        COALESCE(
+            NULLIF(TRIM(mt.job_order_service), ''),
+            jo.service_type,
+            (SELECT GROUP_CONCAT(product_name SEPARATOR ', ') FROM merchandise_transaction_items WHERE transaction_id = mt.id AND (item_type = 'service' OR category LIKE '%Service%') AND category != 'Labor' AND product_name NOT LIKE '%Labor%'),
+            ''
+        ) as service_type,
+        COALESCE(
+            jo.estimated_cost,
+            (SELECT NULLIF(SUM(subtotal),0) FROM merchandise_transaction_items WHERE transaction_id = mt.id AND (item_type = 'service' OR category LIKE '%Service%') AND category != 'Labor' AND product_name NOT LIKE '%Labor%'),
+            CASE WHEN (mt.job_order_service IS NOT NULL AND TRIM(mt.job_order_service) != '') OR mt.transaction_type IN ('job_order', 'combined') THEN mt.total_amount ELSE 0 END,
+            0
+        ) as service_fee,
+        COALESCE(
+            jo.actual_labor_cost,
+            jo.estimated_labor_cost,
+            (SELECT COALESCE(SUM(subtotal),0) FROM merchandise_transaction_items WHERE transaction_id = mt.id AND (category = 'Labor' OR product_name LIKE '%Labor%')),
+            0
+        ) as labor_fee
         FROM merchandise_transactions mt
         LEFT JOIN users u ON u.id=mt.staff_id
+        LEFT JOIN job_orders jo ON jo.id = mt.job_order_db_id
         LEFT JOIN merchandise_transaction_items mti ON mti.transaction_id=mt.id AND COALESCE(mti.item_type,'') != 'service' AND COALESCE(mti.category,'') NOT LIKE '%Service%'
         $where GROUP BY mt.id ORDER BY $mt_date DESC LIMIT 500");
     $s->execute($params);
@@ -255,6 +275,16 @@ if(in_array($export,['excel','csv'])) {
 require_once __DIR__ . '/../partials/header.php';
 ?>
 <style>
+/* Prevent horizontal scrolling globally */
+html, body {
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    max-width: 100vw !important;
+}
+.content-wrapper, .main-content {
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+}
 
 .flt-btn{display:inline-flex;align-items:center;gap:6px;padding:0 16px;height:36px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap;transition:all .15s;background:white !important;border:1px solid transparent;}
 .flt-btn-reset{color:#6b7280 !important;border-color:#6b7280 !important;} .flt-btn-reset:hover{background:#6b7280 !important;color:#fff !important;}
@@ -277,12 +307,12 @@ require_once __DIR__ . '/../partials/header.php';
 .card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.05);}
 .card-head{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid #e9ecef;background:#f8fafc;}
 .card-title{font-size:13px;font-weight:700;color:#00264D;}
-.t{width:100%;border-collapse:collapse;font-size:12px;}
+.t{width:100%;border-collapse:collapse;font-size:11px;table-layout:auto;}
 .t thead tr{background:#002F70;}
-.t th{padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;}
+.t th{padding:8px 6px;text-align:left;font-size:10px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.2px;white-space:normal;word-wrap:break-word;}
 .t tbody tr{border-bottom:1px solid #f1f5f9;} .t tbody tr:hover td{background:#eff6ff;}
-.t tbody td{padding:9px 12px;color:#334155;background:#fff;font-size:12px;vertical-align:middle;}
-.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;}
+.t tbody td{padding:7px 6px;color:#334155;background:#fff;font-size:11px;vertical-align:middle;white-space:normal;word-wrap:break-word;}
+.badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;}
 .badge-green{background:#dcfce7;color:#166534;} .badge-blue{background:#dbeafe;color:#1e40af;}
 .badge-orange{background:#fff7ed;color:#9a3412;} .badge-gray{background:#f1f5f9;color:#475569;}
 .badge-red{background:#fee2e2;color:#991b1b;} .badge-purple{background:#f3e8ff;color:#6b21a8;}
@@ -367,8 +397,6 @@ require_once __DIR__ . '/../partials/header.php';
     }
     /* Icons inside badges and anywhere — hide completely */
     .badge i, i.fas, i.far, i.fab { display: none !important; }
-    /* Actions column — hide */
-    .t th:last-child, .t td:last-child { display: none !important; }
     /* Overflow containers — no scroll */
     .card { border: none !important; box-shadow: none !important; overflow: visible !important; }
     div[style*="overflow-x"] { overflow: visible !important; }
@@ -495,19 +523,18 @@ $kpi_period = date('M j, Y', strtotime($date_from)) . ' – ' . date('M j, Y', s
 
 <!-- Table -->
 <div class="card">
-    <div style="overflow-x:auto;">
+    <div style="width:100%;overflow-x:hidden !important;">
     <table class="t">
         <thead>
             <tr>
-                <th>OR No.</th><th>Transaction ID</th><th>Customer Name</th><th>Transaction Type</th>
-                <th>Products</th><th>Service Type</th><th>Vehicle</th><th>Amount</th><th>Payment Method</th>
-                <th>Shift</th><th>Staff Encoder</th><th>Status</th><th>Date & Time</th>
-                <th>Actions</th>
+                <th>OR No.</th><th>TXN ID</th><th>Customer</th><th>Type</th>
+                <th>Products</th><th>Service Type</th><th>Svc Fee</th><th>Labor Fee</th><th>Plate No.</th><th>Total</th><th>Payment</th>
+                <th>Shift</th><th>Staff</th><th>Status</th><th>Date & Time</th>
             </tr>
         </thead>
         <tbody>
         <?php if(empty($rows)): ?>
-        <tr><td colspan="14" style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>No transactions found</td></tr>
+        <tr><td colspan="15" style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>No transactions found</td></tr>
         <?php else: ?>
         <?php foreach($rows as $r): ?>
         <?php
@@ -538,16 +565,24 @@ $kpi_period = date('M j, Y', strtotime($date_from)) . ' – ' . date('M j, Y', s
             $or_no = 'OR-' . date('Y', strtotime($r['txn_date'])) . '-' . str_pad($r['txn_db_id'], 6, '0', STR_PAD_LEFT);
         ?>
         <tr>
-            <td><strong><?=htmlspecialchars($or_no)?></strong></td>
-            <td><span style="font-size:11px;color:#64748b;"><?=htmlspecialchars($r['transaction_id'])?></span></td>
-            <td><?=htmlspecialchars($r['customer'])?></td>
+            <td style="white-space:normal;"><strong><?=htmlspecialchars($or_no)?></strong></td>
+            <td style="white-space:normal;"><span style="font-size:11px;color:#64748b;"><?=htmlspecialchars($r['transaction_id'])?></span></td>
+            <td style="white-space:normal;word-wrap:break-word;" title="<?=htmlspecialchars($r['customer'])?>"><?=htmlspecialchars($r['customer'])?></td>
             <td><span class="badge <?=$tBadge?>"><i class="fas <?=$tIcon?>"></i> <?=htmlspecialchars($tLabel)?></span></td>
-            <td style="font-size:11px;line-height:1.4;"><?=format_transaction_items($r['items'])?></td>
-            <td style="font-size:11px;color:#475569;"><?=htmlspecialchars(!empty(trim($r['service_type']??'')) ? $r['service_type'] : '—')?></td>
-            <td><?php
+            <td style="font-size:11px;line-height:1.3;vertical-align:top;white-space:normal;word-wrap:break-word;"><?=format_transaction_items($r['items'])?></td>
+            <td style="font-size:11px;color:#475569;white-space:normal;word-wrap:break-word;" title="<?=htmlspecialchars($r['service_type']??'')?>"><?=htmlspecialchars(!empty(trim($r['service_type']??'')) ? $r['service_type'] : '—')?></td>
+            <td style="font-size:11px;font-weight:600;color:#2563eb;text-align:right;white-space:normal;"><?php
+                $s_cost = (float)($r['service_fee'] ?? $r['estimated_cost'] ?? 0);
+                echo $s_cost > 0 ? '₱' . number_format($s_cost, 2) : '<span style="color:#cbd5e1;">—</span>';
+            ?></td>
+            <td style="font-size:11px;font-weight:600;color:#16a34a;text-align:right;white-space:normal;"><?php
+                $l_cost = (float)($r['labor_fee'] ?? $r['actual_labor_cost'] ?? $r['estimated_labor_cost'] ?? 0);
+                echo $l_cost > 0 ? '₱' . number_format($l_cost, 2) : '<span style="color:#cbd5e1;">—</span>';
+            ?></td>
+            <td style="font-size:11px;white-space:normal;"><?php
                 $veh = trim($r['vehicle'] ?? '');
-                if ($veh === '' || $veh === '—') {
-                    echo $has_service ? '<span style="color:#94a3b8;font-size:11px;">N/A</span>' : '<span style="color:#94a3b8;font-size:11px;">N/A</span>';
+                if ($veh === '' || $veh === '—' || $veh === 'N/A') {
+                    echo '<span style="color:#94a3b8;">N/A</span>';
                 } else { echo htmlspecialchars($veh); }
             ?></td>
             <td style="font-weight:700;">₱<?=number_format($r['amount'],2)?></td>
@@ -564,29 +599,6 @@ $kpi_period = date('M j, Y', strtotime($date_from)) . ' – ' . date('M j, Y', s
                 }
             ?></td>
             <td><?=date('M d, Y h:i A',strtotime($r['txn_date']))?></td>
-            <td>
-                <button class="flt-btn flt-btn-search" style="height:26px;font-size:10px;padding:0 8px;"
-                    onclick="openTxnModal({
-                        id:    '<?=addslashes(htmlspecialchars($r['transaction_id']))?>' ,
-                        or_no: '<?=addslashes(htmlspecialchars($or_no))?>' ,
-                        customer: '<?=addslashes(htmlspecialchars($r['customer']))?>' ,
-                        type:  '<?=addslashes(htmlspecialchars($tLabel))?>' ,
-                        items: '<?=addslashes(format_transaction_items($r['items'], false))?>' ,
-                        service_type: '<?=addslashes(htmlspecialchars(!empty(trim($r['service_type']??'')) ? $r['service_type'] : 'N/A'))?>' ,
-                        vehicle: '<?=addslashes(htmlspecialchars((trim($r['vehicle']??'')==''||trim($r['vehicle']??'')=='—') ? 'N/A' : $r['vehicle']))?>' ,
-                        amount: '₱<?=number_format($r['amount'],2)?>' ,
-                        payment: '<?=addslashes(htmlspecialchars($r['payment_method']))?>' ,
-                        pstatus: '<?=addslashes(htmlspecialchars($r['payment_status']??''))?>' ,
-                        shift:  '<?=addslashes(htmlspecialchars($r['shift']))?>' ,
-                        staff:  '<?=addslashes(htmlspecialchars($r['staff_name']))?>' ,
-                        status: '<?=addslashes(htmlspecialchars($statusLabel))?>' ,
-                        txn_date: '<?=date('M d, Y',strtotime($r['txn_date']))?>' ,
-                        txn_time: '<?=date('h:i A',strtotime($r['txn_date']))?>' ,
-                        void_reason: '<?=addslashes(htmlspecialchars($r['void_reason'] ?? ''))?>' ,
-                        adjustment_reason: '<?=addslashes(htmlspecialchars($r['adjustment_reason'] ?? ''))?>' ,
-                        manager_remarks: '<?=addslashes(htmlspecialchars($r['manager_remarks'] ?? ''))?>'
-                    })"><i class="fas fa-eye"></i> View</button>
-            </td>
         </tr>
         <?php endforeach; ?>
         <?php endif; ?>

@@ -70,7 +70,7 @@ try {
             si.variance,
             COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated
         FROM inventory_products ip
-        LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
+        LEFT JOIN station_inventory si ON si.product_id = ip.id AND (si.station_id = ? OR si.station_id = 0 OR si.station_id IS NULL)
         WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
 
         UNION
@@ -93,7 +93,7 @@ try {
             COALESCE(si2.last_updated, p.updated_at, p.created_at) AS last_updated
         FROM products p
         LEFT JOIN product_categories pc ON pc.id = p.category_id
-        LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND si2.station_id = ?
+        LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND (si2.station_id = ? OR si2.station_id = 0 OR si2.station_id IS NULL)
         WHERE LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
           AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
           AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products'))
@@ -161,7 +161,7 @@ try {
 $all_categories = [];
 $all_brands = [];
 $all_units = [];
-$stats = ['total'=>0,'available'=>0,'low'=>0,'critical'=>0,'out'=>0];
+$stats = ['total'=>0,'available'=>0,'low'=>0,'out'=>0];
 $js_items = [];
 
 foreach ($merch_inventory as $item) {
@@ -177,7 +177,7 @@ foreach ($merch_inventory as $item) {
     if ($critical <= 0) $critical = 10; // safety: never zero
 
     $fill_pct = $capacity > 0 ? min(100, ($stock / $capacity) * 100) : 0;
-    // Status: stock=0 → Out of Stock | ≤critical → Critical | ≤reorder(24) → Low Stock | else → Available
+    // Status: stock=0 → Out of Stock | ≤critical → Critical Stock | ≤reorder(24) → Low Stock | else → Available
     if      ($stock <= 0)         { $st='OUT OF STOCK';  $sc='#dc3545'; $st_cls='out'; }
     elseif  ($stock <= $critical) { $st='CRITICAL STOCK'; $sc='#dc3545'; $st_cls='critical'; }
     elseif  ($stock <= $reorder)  { $st='LOW STOCK';     $sc='#fd7e14'; $st_cls='low'; }
@@ -185,8 +185,7 @@ foreach ($merch_inventory as $item) {
 
     $stats['total']++;
     if ($st_cls==='ok') $stats['available']++;
-    elseif ($st_cls==='low') $stats['low']++;
-    elseif ($st_cls==='critical') $stats['critical']++;
+    elseif ($st_cls==='low' || $st_cls==='critical') $stats['low']++;
     else $stats['out']++;
 
     $pid = (int)$item['id'];
@@ -508,8 +507,8 @@ body.modal-open .main {
 <?php endif; ?>
 
 
-<!-- ══ SUMMARY CARDS ══ -->
-<div class="inv-stats-row">
+<!-- ══ SUMMARY CARDS (4 CARDS) ══ -->
+<div class="inv-stats-row" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));">
     <div class="inv-stat-card" id="card-total" onclick="filterByCard('', this)">
         <div class="inv-stat-info">
             <span class="inv-stat-label">Total Products</span>
@@ -517,33 +516,26 @@ body.modal-open .main {
         </div>
         <div class="inv-stat-icon" style="color:#2563eb;"><i class="fas fa-box"></i></div>
     </div>
-    <div class="inv-stat-card" id="card-available" data-filter="ok" onclick="filterByCard('available', this)" title="Click to filter available stock items">
+    <div class="inv-stat-card" id="card-available" data-filter="ok" onclick="filterByCard('available', this)" title="Click to filter available products">
         <div class="inv-stat-info">
-            <span class="inv-stat-label">Available Stock</span>
+            <span class="inv-stat-label">Available Products</span>
             <span class="inv-stat-val"><?php echo $stats['available']; ?></span>
         </div>
         <div class="inv-stat-icon" style="color:#28a745;"><i class="fas fa-check-circle"></i></div>
     </div>
-    <div class="inv-stat-card" id="card-low" data-filter="warning" onclick="filterByCard('warning', this)" title="Click to filter stock alert items">
+    <div class="inv-stat-card" id="card-low" data-filter="warning" onclick="filterByCard('warning', this)" title="Click to filter low stock items">
         <div class="inv-stat-info">
             <span class="inv-stat-label">Low Stock</span>
             <span class="inv-stat-val"><?php echo $stats['low']; ?></span>
         </div>
         <div class="inv-stat-icon" style="color:#fd7e14;"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
-    <div class="inv-stat-card" id="card-critical" data-filter="warning" onclick="filterByCard('warning', this)" title="Click to filter stock alert items">
-        <div class="inv-stat-info">
-            <span class="inv-stat-label">Critical Stock</span>
-            <span class="inv-stat-val"><?php echo $stats['critical']; ?></span>
-        </div>
-        <div class="inv-stat-icon" style="color:#dc2626;"><i class="fas fa-bell"></i></div>
-    </div>
-    <div class="inv-stat-card" id="card-out" data-filter="warning" onclick="filterByCard('warning', this)" title="Click to filter stock alert items">
+    <div class="inv-stat-card" id="card-out" data-filter="out" onclick="filterByCard('out', this)" title="Click to filter out of stock items">
         <div class="inv-stat-info">
             <span class="inv-stat-label">Out of Stock</span>
             <span class="inv-stat-val"><?php echo $stats['out']; ?></span>
         </div>
-        <div class="inv-stat-icon" style="color:#7f1d1d;"><i class="fas fa-times-circle"></i></div>
+        <div class="inv-stat-icon" style="color:#dc2626;"><i class="fas fa-times-circle"></i></div>
     </div>
 </div>
 
@@ -558,7 +550,7 @@ body.modal-open .main {
         </button>
         <button type="button" class="inv-tab-btn" id="tab-alerts" onclick="switchInvTab('alerts')" style="padding:9px 18px; border-radius:8px; font-weight:700; font-size:13px; cursor:pointer; border:1px solid #cbd5e1; background:#fff; color:#475569; transition:all .15s;">
             <i class="fas fa-bell"></i> Stock Alerts
-            <span style="background:#dc2626; color:#fff; font-size:11px; padding:2px 7px; border-radius:12px; margin-left:6px;"><?php echo ($stats['low'] + $stats['critical'] + $stats['out']); ?></span>
+            <span style="background:#dc2626; color:#fff; font-size:11px; padding:2px 7px; border-radius:12px; margin-left:6px;"><?php echo ($stats['low'] + $stats['out']); ?></span>
         </button>
     </div>
 </div>
@@ -567,11 +559,6 @@ body.modal-open .main {
 <div class="inv-card" id="section-overview">
     <div class="inv-card-head">
         <div class="inv-card-title"><i class="fas fa-box"></i> Merchandise Stock Overview</div>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <button onclick="openSrModal()" class="txn-btn primary">
-                <i class="fas fa-plus"></i> Stock Request
-            </button>
-        </div>
     </div>
     <div class="inv-card-body">
 
@@ -588,7 +575,7 @@ body.modal-open .main {
         <div class="inv-filter-bar" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px;">
             <div style="position:relative;">
                 <i class="fas fa-search" style="position:absolute; left:10px; top:11px; color:#94a3b8; font-size:12px;"></i>
-                <input type="text" id="merchSearch" placeholder="Search Product..." autocomplete="off" style="padding-left:28px;">
+                <input type="text" id="merchSearch" placeholder="Search Product / SKU..." autocomplete="off" style="padding-left:28px; width:240px;">
             </div>
             <select id="filterCategory" onchange="applyFilters()">
                 <option value="">All Categories</option>
@@ -596,13 +583,13 @@ body.modal-open .main {
                 <option value="<?php echo htmlspecialchars(strtolower($cat)); ?>"><?php echo htmlspecialchars($cat); ?></option>
                 <?php endforeach; ?>
             </select>
-            <select id="filterBrand" onchange="applyFilters()">
+            <select id="filterBrand" onchange="applyFilters()" style="display:none;">
                 <option value="">All Brands</option>
                 <?php foreach ($all_brands as $b): ?>
                 <option value="<?php echo htmlspecialchars(strtolower($b)); ?>"><?php echo htmlspecialchars($b); ?></option>
                 <?php endforeach; ?>
             </select>
-            <select id="filterUnit" onchange="applyFilters()">
+            <select id="filterUnit" onchange="applyFilters()" style="display:none;">
                 <option value="">All Units</option>
                 <?php foreach ($all_units as $u): ?>
                 <option value="<?php echo htmlspecialchars(strtolower($u)); ?>"><?php echo htmlspecialchars($u); ?></option>
@@ -612,33 +599,14 @@ body.modal-open .main {
                 <option value="">All Statuses</option>
                 <option value="available">Available</option>
                 <option value="low">Low Stock</option>
-                <option value="critical">Critical Stock</option>
                 <option value="out">Out of Stock</option>
-                <option value="variance detected">Variance Detected</option>
-                <option value="warning">Stock Alerts</option>
             </select>
-            <div class="cdd-wrap" id="cdd-sort" style="margin-left:auto;">
-                <div class="cdd-trigger" onclick="cddToggle('cdd-sort')">
-                    <span class="cdd-label">Default Sort</span>
-                    <i class="fas fa-chevron-down cdd-arrow"></i>
-                </div>
-                <div class="cdd-menu cdd-menu-right">
-                    <div class="cdd-item cdd-active" data-val="default">Default Sort</div>
-                    <div class="cdd-item" data-val="newest">Newest Updated</div>
-                    <div class="cdd-item" data-val="name_asc">Name A–Z</div>
-                    <div class="cdd-item" data-val="name_desc">Name Z–A</div>
-                    <div class="cdd-item" data-val="stock_asc">Stock Low–High</div>
-                    <div class="cdd-item" data-val="stock_desc">Stock High–Low</div>
-                </div>
-            </div>
-            <select id="sortBy" onchange="applyFilters()" style="margin-left:auto;">
+            <select id="sortBy" onchange="applyFilters()" style="display:none;">
                 <option value="default">Default Sort</option>
-                <option value="newest">Newest Updated</option>
-                <option value="name_asc">Name A-Z</option>
-                <option value="name_desc">Name Z-A</option>
-                <option value="stock_asc">Stock Low-High</option>
-                <option value="stock_desc">Stock High-Low</option>
             </select>
+            <button type="button" class="flt-btn" onclick="applyFilters()" style="border:1px solid #002F70; color:#002F70;">
+                <i class="fas fa-filter"></i> Filter
+            </button>
             <button type="button" class="flt-btn flt-btn-reset" onclick="resetFilters()" title="Reset All Filters">
                 <i class="fas fa-undo"></i> Reset
             </button>
@@ -654,7 +622,6 @@ body.modal-open .main {
                         <th style="text-align:center;">Category</th>
                         <th style="text-align:center;">UOM</th>
                         <th>Current Stock</th>
-                        <th style="text-align:center;">Reorder Level</th>
                         <th style="text-align:center;">Status</th>
                         <th>Last Updated</th>
                         <th style="text-align:center;">Actions</th>
@@ -662,7 +629,7 @@ body.modal-open .main {
                 </thead>
                 <tbody id="merchTableBody">
                 <?php if (empty($js_items)): ?>
-                    <tr><td colspan="9" style="text-align:center;padding:32px;color:#6c757d;">No merchandise data available.</td></tr>
+                    <tr><td colspan="8" style="text-align:center;padding:32px;color:#6c757d;">No merchandise data available.</td></tr>
                 <?php else: ?>
                     <?php
                     // Group by category from $js_items (already filtered to active only)
@@ -671,7 +638,7 @@ body.modal-open .main {
                     ksort($grouped);
                     foreach ($grouped as $cat_label => $items):
                     ?>
-                    <tr class="cat-header"><td colspan="9" style="font-weight:700; background:#e9ecef!important; color:#495057!important; text-transform:uppercase; font-size:11px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px; text-align:center;"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                    <tr class="cat-header"><td colspan="8" style="font-weight:700; background:#e9ecef!important; color:#495057!important; text-transform:uppercase; font-size:11px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px; text-align:center;"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                     <?php foreach ($items as $it):
                         $ts = $it['last_updated'] ? (new DateTime($it['last_updated']))->format('M d, Y') : '-';
                         $has_variance = ($it['variance'] !== null && (float)$it['variance'] != 0);
@@ -699,9 +666,6 @@ body.modal-open .main {
                             </div>
                             <span style="font-size:11px;font-weight:600;color:#334155;"><?php echo number_format($it['stock']); ?> <?php echo htmlspecialchars($it['unit']); ?></span>
                         </td>
-                        <td style="text-align:center;font-weight:700;color:#dc2626;font-size:12px;">
-                            <?php echo number_format($it['reorder']); ?> <?php echo htmlspecialchars($it['unit']); ?>
-                        </td>
                         <td style="text-align:center;">
                             <span class="status-badge" style="background:<?php echo $display_color; ?>20;color:<?php echo $display_color; ?>;border:1px solid <?php echo $display_color; ?>40;">
                                 <?php echo htmlspecialchars($display_status); ?>
@@ -725,10 +689,7 @@ body.modal-open .main {
 <!-- ══ TAB 2: STOCK ALERTS ══ -->
 <div class="inv-card" id="section-alerts" style="display:none;">
     <div class="inv-card-head">
-        <div class="inv-card-title"><i class="fas fa-bell"></i> Stock Alerts (Low, Critical & Out of Stock)</div>
-        <button onclick="openSrModal()" class="txn-btn primary">
-            <i class="fas fa-plus"></i> Stock Request
-        </button>
+        <div class="inv-card-title"><i class="fas fa-bell"></i> Stock Alerts</div>
     </div>
     <div class="inv-card-body">
         <div class="table-wrap">
@@ -739,7 +700,6 @@ body.modal-open .main {
                         <th style="padding:10px 12px; text-align:center;">Current Stock</th>
                         <th style="padding:10px 12px; text-align:center;">Reorder Level</th>
                         <th style="padding:10px 12px; text-align:center;">Status</th>
-                        <th style="padding:10px 12px; text-align:center;">Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -749,9 +709,11 @@ body.modal-open .main {
                 });
                 if (empty($alert_items)):
                 ?>
-                    <tr><td colspan="5" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-check-circle" style="color:#16a34a; font-size:1.8em; display:block; margin-bottom:8px;"></i> No stock alerts found. All items are currently at optimal stock levels.</td></tr>
+                    <tr><td colspan="4" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-check-circle" style="color:#16a34a; font-size:1.8em; display:block; margin-bottom:8px;"></i> No stock alerts found. All items are currently at optimal stock levels.</td></tr>
                 <?php else: ?>
-                    <?php foreach ($alert_items as $ait): ?>
+                    <?php foreach ($alert_items as $ait):
+                        $ait_status = ($ait['status_key'] === 'out') ? 'Out of Stock' : (($ait['status_key'] === 'low' || $ait['status_key'] === 'critical') ? 'Low Stock' : 'Available');
+                    ?>
                     <tr style="border-bottom:1px solid #f1f5f9;">
                         <td style="padding:10px 12px;">
                             <strong><?php echo htmlspecialchars($ait['name']); ?></strong>
@@ -765,11 +727,8 @@ body.modal-open .main {
                         </td>
                         <td style="padding:10px 12px; text-align:center;">
                             <span class="status-badge" style="background:<?php echo $ait['color']; ?>20; color:<?php echo $ait['color']; ?>; border:1px solid <?php echo $ait['color']; ?>40;">
-                                <?php echo htmlspecialchars($ait['status']); ?>
+                                <?php echo htmlspecialchars($ait_status); ?>
                             </span>
-                        </td>
-                        <td style="padding:10px 12px; text-align:center;">
-                            <button type="button" class="txn-btn primary sm" onclick='viewDetails(<?php echo htmlspecialchars(json_encode($ait), ENT_QUOTES); ?>)'><i class="fas fa-eye"></i> View</button>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -921,6 +880,7 @@ body.modal-open .main {
 
 <script>
 var allMerchData = <?php echo json_encode(array_values($js_items), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP); ?>;
+var stockInListData = <?php echo json_encode(array_values($stock_in_list), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP); ?>;
 var _srPreselect = null;
 
 // ── Filter / Sort ─────────────────────────────────────────────
@@ -1202,20 +1162,21 @@ function switchInvTab(tab) {
 // ── View Details ──────────────────────────────────────────────
 function viewDetails(it) {
     var lastUpdatedStr = it.last_updated ? (new Date(it.last_updated)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-    var batches = it.batches || [];
-    var batchRows = '';
-    
-    if (batches.length > 0) {
-        batchRows = batches.map(function(b) {
+    var matchingStockIns = (window.stockInListData || []).filter(function(sin) {
+        return parseInt(sin.product_id || 0) === parseInt(it.id) || (sin.product_name && sin.product_name.toLowerCase() === (it.name || '').toLowerCase());
+    });
+    var stockInRows = '';
+    if (matchingStockIns.length > 0) {
+        stockInRows = matchingStockIns.slice(0, 10).map(function(sin) {
+            var dStr = sin.date_received ? (new Date(sin.date_received)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
             return '<tr>' +
-                '<td style="padding:6px 8px; font-weight:600;">' + escHtml(b.batch_id) + '</td>' +
-                '<td style="padding:6px 8px; text-align:center; font-weight:700;">' + b.remaining_qty + '</td>' +
-                '<td style="padding:6px 8px; text-align:right;">₱' + parseFloat(b.selling_price).toFixed(2) + '</td>' +
-                '<td style="padding:6px 8px; text-align:center;"><span style="background:#e0f2fe; color:#0369a1; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:700;">' + escHtml(b.status) + '</span></td>' +
+                '<td style="padding:6px 8px; font-weight:700; color:#002F70;">' + escHtml(sin.stock_in_no || ('SI-' + String(sin.id).padStart(5, '0'))) + '</td>' +
+                '<td style="padding:6px 8px; text-align:center; font-size:11px; color:#64748b;">' + escHtml(dStr) + '</td>' +
+                '<td style="padding:6px 8px; text-align:right; font-weight:700; color:#16a34a;">+' + Number(sin.qty_received || 0).toLocaleString() + '</td>' +
                 '</tr>';
         }).join('');
     } else {
-        batchRows = '<tr><td colspan="4" style="text-align:center; color:#94a3b8; padding:8px;">No batch information available.</td></tr>';
+        stockInRows = '<tr><td colspan="3" style="text-align:center; color:#94a3b8; padding:12px;">No recent stock-in history available.</td></tr>';
     }
 
     document.getElementById('vdContent').innerHTML =
@@ -1224,30 +1185,26 @@ function viewDetails(it) {
         vdRow('SKU', '<code>' + escHtml(it.sku || '—') + '</code>') +
         vdRow('Product Name', '<strong>' + escHtml(it.name) + '</strong>') +
         vdRow('Category', escHtml(it.category)) +
+        vdRow('Brand', escHtml(it.brand || 'Petron')) +
         vdRow('Unit of Measure (UOM)', escHtml(it.unit)) +
-        vdRow('Supplier', escHtml(it.supplier || 'Petron Main Depot')) +
         vdRow('Barcode', '<code>' + escHtml(it.barcode || '—') + '</code>') +
         '</div>' +
         '<h4 style="margin:16px 0 10px; color:#002F70; font-size:12px; font-weight:700; text-transform:uppercase; border-bottom:1px solid #e2e8f0; padding-bottom:4px;"><i class="fas fa-cubes"></i> Stock Information</h4>' +
         '<div class="vd-grid">' +
-        vdRow('Current Stock', '<strong style="font-size:16px; color:#0f172a;">' + it.stock + '</strong> ' + escHtml(it.unit)) +
-        vdRow('Reorder Level', '<strong style="color:#dc2626;">' + it.reorder + '</strong> ' + escHtml(it.unit)) +
+        vdRow('Current Stock', '<strong style="font-size:16px; color:#0f172a;">' + Number(it.stock).toLocaleString() + '</strong> ' + escHtml(it.unit)) +
+        vdRow('Reorder Level', '<strong style="color:#dc2626;">' + Number(it.reorder).toLocaleString() + '</strong> ' + escHtml(it.unit)) +
         vdRow('Status', '<span class="status-badge" style="background:' + it.color + '20; color:' + it.color + '; border:1px solid ' + it.color + '40;">' + escHtml(it.status) + '</span>') +
-        vdRow('Last Updated', escHtml(lastUpdatedStr)) +
         '</div>' +
-        '<h4 style="margin:16px 0 8px; color:#002F70; font-size:12px; font-weight:700; text-transform:uppercase; border-bottom:1px solid #e2e8f0; padding-bottom:4px;"><i class="fas fa-layer-group"></i> Batch Information (FIFO)</h4>' +
+        '<h4 style="margin:16px 0 8px; color:#002F70; font-size:12px; font-weight:700; text-transform:uppercase; border-bottom:1px solid #e2e8f0; padding-bottom:4px;"><i class="fas fa-arrow-down"></i> Recent Stock-In (Read-Only Reference)</h4>' +
         '<table style="width:100%; border-collapse:collapse; font-size:11.5px; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden;">' +
-        '<thead><tr style="background:#f1f5f9; color:#475569;">' +
-        '<th style="padding:6px 8px; text-align:left;">Batch ID</th>' +
-        '<th style="padding:6px 8px; text-align:center;">Remaining Qty</th>' +
-        '<th style="padding:6px 8px; text-align:right;">Selling Price</th>' +
-        '<th style="padding:6px 8px; text-align:center;">Status</th>' +
+        '<thead><tr style="background:#002F70; color:#fff;">' +
+        '<th style="padding:6px 8px; text-align:left;">Stock-In No.</th>' +
+        '<th style="padding:6px 8px; text-align:center;">Date Received</th>' +
+        '<th style="padding:6px 8px; text-align:right;">Quantity Received</th>' +
         '</tr></thead>' +
-        '<tbody>' + batchRows + '</tbody>' +
+        '<tbody>' + stockInRows + '</tbody>' +
         '</table>';
 
-    var srBtn = document.getElementById('vdSrBtn');
-    if (srBtn) srBtn.dataset.item = JSON.stringify(it);
     document.getElementById('vdModal').classList.add('open');
     document.body.classList.add('modal-open');
 }

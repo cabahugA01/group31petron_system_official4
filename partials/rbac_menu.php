@@ -209,7 +209,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                         'label' => 'Compliance Reports',
                         'href' => 'admin_compliance_reports.php',
                         'permissions' => ['view_all_reports'],
-                        'desc' => 'Activity Logs, Audit Trail, Calendar & Schedule.',
+                        'desc' => 'Consolidated Compliance & Audit Logs.',
                     ],
                 ],
             ],
