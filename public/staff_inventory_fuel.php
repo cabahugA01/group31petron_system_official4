@@ -656,6 +656,8 @@ body, html { overflow-x: hidden !important; }
     </div>
 </div>
 
+
+
 <?php if ($msg): ?>
 <div style="background:#f8d7da;color:#721c24;padding:12px 16px;border-radius:8px;margin-bottom:16px;">
     <?php echo htmlspecialchars($msg); ?>
@@ -722,6 +724,8 @@ body, html { overflow-x: hidden !important; }
         <button type="submit" class="flt-btn flt-btn-search"><i class="fas fa-search"></i> Filter</button>
         <button type="button" class="flt-btn flt-btn-reset" onclick="resetFuelInventoryFilters()"><i class="fas fa-rotate-left"></i> Reset</button>
     </div>
+
+
 </form>
 
 <!-- ══ Sub Tabs ══ -->
@@ -760,9 +764,13 @@ body, html { overflow-x: hidden !important; }
 <!-- ══ TAB: FUEL INVENTORY OVERVIEW ══ -->
 <div id="section-tank-overview">
 <div class="inv-card">
-    <div class="inv-card-head">
+    <div class="inv-card-head" style="display:flex; align-items:center; justify-content:space-between;">
         <div class="inv-card-title"><i class="fas fa-gas-pump"></i> Fuel Inventory Overview</div>
+        <button type="button" onclick="openFuelSrModal()" class="sr-btn-outline" style="background:transparent !important; background-color:transparent !important; color:#334155 !important; border:1px solid #cbd5e1 !important; border-radius:6px; padding:6px 14px; font-size:13px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:none !important; text-decoration:none;" onmouseover="this.style.borderColor='#94a3b8';this.style.background='#f8fafc';" onmouseout="this.style.borderColor='#cbd5e1';this.style.background='transparent';">
+            <i class="fas fa-paper-plane" style="color:#002F70;"></i> Stock Request
+        </button>
     </div>
+
     <div class="inv-card-body">
         <div class="table-wrap">
             <table class="fuel-table" id="fuelTable">
@@ -815,7 +823,11 @@ body, html { overflow-x: hidden !important; }
                             <button type="button" class="int-btn-outline" onclick='openTankModal(<?= $r_json ?>)'>
                                 <i class="fas fa-eye"></i> View
                             </button>
+                            <button type="button" class="int-btn-outline" onclick="openFuelSrModal()" style="margin-left:4px;" title="Submit Fuel Stock Request">
+                                <i class="fas fa-paper-plane"></i> Request
+                            </button>
                         </td>
+
                     </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -1370,9 +1382,11 @@ function switchFuelTab(tab) {
 
     [btnOv, btnDel, btnAlt].forEach(function(b) {
         if (!b) return;
-        b.style.background = '#ffffff';
-        b.style.color = '#475569';
-        b.style.border = '1px solid #cbd5e1';
+        b.classList.remove('active');
+        b.style.setProperty('background', '#ffffff', 'important');
+        b.style.setProperty('background-color', '#ffffff', 'important');
+        b.style.setProperty('color', '#334155', 'important');
+        b.style.setProperty('border', '1px solid #cbd5e1', 'important');
     });
     [overview, deliveriesList, alerts].forEach(function(s) {
         if (!s) return;
@@ -1381,15 +1395,34 @@ function switchFuelTab(tab) {
 
     if (tab === 'overview') {
         if (overview) overview.style.display = '';
-        if (btnOv) { btnOv.style.background = '#00264D'; btnOv.style.color = '#ffffff'; btnOv.style.border = '1px solid #00264D'; }
+        if (btnOv) {
+            btnOv.classList.add('active');
+            btnOv.style.setProperty('background', '#002F70', 'important');
+            btnOv.style.setProperty('background-color', '#002F70', 'important');
+            btnOv.style.setProperty('color', '#ffffff', 'important');
+            btnOv.style.setProperty('border', '1px solid #002F70', 'important');
+        }
     } else if (tab === 'deliveries_list') {
         if (deliveriesList) deliveriesList.style.display = '';
-        if (btnDel) { btnDel.style.background = '#00264D'; btnDel.style.color = '#ffffff'; btnDel.style.border = '1px solid #00264D'; }
+        if (btnDel) {
+            btnDel.classList.add('active');
+            btnDel.style.setProperty('background', '#002F70', 'important');
+            btnDel.style.setProperty('background-color', '#002F70', 'important');
+            btnDel.style.setProperty('color', '#ffffff', 'important');
+            btnDel.style.setProperty('border', '1px solid #002F70', 'important');
+        }
     } else {
         if (alerts) alerts.style.display = '';
-        if (btnAlt) { btnAlt.style.background = '#00264D'; btnAlt.style.color = '#ffffff'; btnAlt.style.border = '1px solid #00264D'; }
+        if (btnAlt) {
+            btnAlt.classList.add('active');
+            btnAlt.style.setProperty('background', '#002F70', 'important');
+            btnAlt.style.setProperty('background-color', '#002F70', 'important');
+            btnAlt.style.setProperty('color', '#ffffff', 'important');
+            btnAlt.style.setProperty('border', '1px solid #002F70', 'important');
+        }
     }
 }
+
 
 // ── Tank Details Modal ───────────────────────────────────────────────
 var _currentTankData = null;

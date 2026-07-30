@@ -523,7 +523,7 @@ body.modal-open .main {
         </div>
         <div class="inv-stat-icon" style="color:#28a745;"><i class="fas fa-check-circle"></i></div>
     </div>
-    <div class="inv-stat-card" id="card-low" data-filter="warning" onclick="filterByCard('warning', this)" title="Click to filter low stock items">
+    <div class="inv-stat-card" id="card-low" data-filter="low" onclick="filterByCard('low', this)" title="Click to filter low stock items">
         <div class="inv-stat-info">
             <span class="inv-stat-label">Low Stock</span>
             <span class="inv-stat-val"><?php echo $stats['low']; ?></span>
@@ -540,8 +540,8 @@ body.modal-open .main {
 </div>
 
 <!-- ══ TABS NAVIGATION ══ -->
-<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
-    <div style="display:flex; gap:8px;">
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button type="button" class="inv-tab-btn active" id="tab-overview" onclick="switchInvTab('overview')" style="padding:9px 18px; border-radius:8px; font-weight:700; font-size:13px; cursor:pointer; border:1px solid #002F70; background:#002F70; color:#fff; transition:all .15s;">
             <i class="fas fa-list"></i> Inventory Overview
         </button>
@@ -559,23 +559,19 @@ body.modal-open .main {
 <div class="inv-card" id="section-overview">
     <div class="inv-card-head">
         <div class="inv-card-title"><i class="fas fa-box"></i> Merchandise Stock Overview</div>
+        <button type="button" onclick="openSrModal()" style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:6px; font-weight:600; font-size:13px; cursor:pointer; background:transparent !important; color:#334155 !important; border:1px solid #cbd5e1 !important; transition:all 0.15s ease;" onmouseover="this.style.borderColor='#94a3b8';this.style.background='#f8fafc';" onmouseout="this.style.borderColor='#cbd5e1';this.style.background='transparent';">
+            <i class="fas fa-paper-plane" style="color:#002F70;"></i> Stock Request
+        </button>
     </div>
-    <div class="inv-card-body">
 
-        <select id="sortByHidden" style="display:none">
-            <option value="default">Default Sort</option>
-            <option value="newest">Newest Updated</option>
-            <option value="name_asc">Name A–Z</option>
-            <option value="name_desc">Name Z–A</option>
-            <option value="stock_asc">Stock Low–High</option>
-            <option value="stock_desc">Stock High–Low</option>
-        </select>
+
+    <div class="inv-card-body">
 
         <!-- Filter Bar -->
         <div class="inv-filter-bar" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px;">
             <div style="position:relative;">
                 <i class="fas fa-search" style="position:absolute; left:10px; top:11px; color:#94a3b8; font-size:12px;"></i>
-                <input type="text" id="merchSearch" placeholder="Search Product / SKU..." autocomplete="off" style="padding-left:28px; width:240px;">
+                <input type="text" id="merchSearch" placeholder="Search Product / SKU..." autocomplete="off" oninput="applyFilters()" onkeydown="if(event.key==='Enter'){ applyFilters(); }" style="padding-left:28px; width:240px;">
             </div>
             <select id="filterCategory" onchange="applyFilters()">
                 <option value="">All Categories</option>
@@ -601,16 +597,22 @@ body.modal-open .main {
                 <option value="low">Low Stock</option>
                 <option value="out">Out of Stock</option>
             </select>
-            <select id="sortBy" onchange="applyFilters()" style="display:none;">
+            <select id="sortBy" onchange="applyFilters()">
                 <option value="default">Default Sort</option>
+                <option value="newest">Newest Updated</option>
+                <option value="name_asc">Name A–Z</option>
+                <option value="name_desc">Name Z–A</option>
+                <option value="stock_asc">Stock Low–High</option>
+                <option value="stock_desc">Stock High–Low</option>
             </select>
-            <button type="button" class="flt-btn" onclick="applyFilters()" style="border:1px solid #002F70; color:#002F70;">
+            <button type="button" class="flt-btn" onclick="applyFilters()" style="border:1px solid #002F70; color:#002F70; background:#fff; font-weight:600; padding:6px 14px; border-radius:6px; cursor:pointer;">
                 <i class="fas fa-filter"></i> Filter
             </button>
-            <button type="button" class="flt-btn flt-btn-reset" onclick="resetFilters()" title="Reset All Filters">
+            <button type="button" class="flt-btn flt-btn-reset" onclick="resetFilters()" title="Reset All Filters" style="border:1px solid #64748b; color:#64748b; background:#fff; font-weight:600; padding:6px 14px; border-radius:6px; cursor:pointer;">
                 <i class="fas fa-undo"></i> Reset
             </button>
         </div>
+
 
         <!-- Table -->
         <div class="table-wrap">
@@ -675,6 +677,7 @@ body.modal-open .main {
                         <td style="text-align:center;">
                             <button type="button" class="txn-btn primary sm" onclick='viewDetails(<?php echo htmlspecialchars(json_encode($it), ENT_QUOTES); ?>)'><i class="fas fa-eye"></i> View</button>
                         </td>
+
                     </tr>
                     <?php endforeach; ?>
                     <?php endforeach; ?>
@@ -885,16 +888,12 @@ var _srPreselect = null;
 
 // ── Filter / Sort ─────────────────────────────────────────────
 function applyFilters() {
-    var q     = (document.getElementById('merchSearch').value || '').toLowerCase().trim();
-    var cat   = (document.getElementById('filterCategory').value || '').toLowerCase();
-    var brand = (document.getElementById('filterBrand').value || '').toLowerCase();
-    var unit  = (document.getElementById('filterUnit').value || '').toLowerCase();
-    var stat  = (document.getElementById('filterStatus').value || '').toLowerCase();
-    var sortBy = document.getElementById('sortBy').value;
-
-    // 1. Filter each data row — use search-hidden class (works with pagination)
-    // WARNING TIERS: low, critical, out are all connected and shown together
-    var WARNING_KEYS = ['low', 'critical', 'out'];
+    var q      = (document.getElementById('merchSearch')?.value || '').toLowerCase().trim();
+    var cat    = (document.getElementById('filterCategory')?.value || '').toLowerCase().trim();
+    var brand  = (document.getElementById('filterBrand')?.value || '').toLowerCase().trim();
+    var unit   = (document.getElementById('filterUnit')?.value || '').toLowerCase().trim();
+    var stat   = (document.getElementById('filterStatus')?.value || '').toLowerCase().trim();
+    var sortBy = document.getElementById('sortBy')?.value || 'default';
 
     document.querySelectorAll('#merchTableBody .merch-row').forEach(function(r) {
         var name    = (r.dataset.name || '').toLowerCase();
@@ -905,54 +904,45 @@ function applyFilters() {
         var rstat   = (r.dataset.status || '').toLowerCase();
         var rfilter = (r.dataset.filterStatus || rstat).toLowerCase();
 
-        var isWarning = WARNING_KEYS.indexOf(rstat) !== -1;
+        var matchC = !cat || rcat === cat;
+        var matchB = !brand || rbrand === brand;
+        var matchU = !unit || runit === unit;
 
-        var matchC  = !cat    || rcat === cat;
-        var matchB  = !brand  || rbrand === brand;
-        var matchU  = !unit   || runit === unit;
-
-        // Status filter: selecting Low Stock, Critical Stock, or Out of Stock all show the same combined alert view
         var matchS = true;
         if (stat) {
-            if (stat === 'warning' || stat === 'low' || stat === 'critical' || stat === 'out' || stat === 'out of stock') {
-                // Any stock-alert filter shows ALL low + critical + out of stock items together
-                matchS = isWarning;
-            } else if (stat === 'variance detected') {
-                matchS = (rfilter === 'variance detected');
-            } else if (stat === 'available') {
-                matchS = (rfilter === 'available' || rfilter === 'ok');
+            if (stat === 'available' || stat === 'ok') {
+                matchS = (rstat === 'ok' || rstat === 'available' || rfilter === 'available');
+            } else if (stat === 'low') {
+                matchS = (rstat === 'low' || rstat === 'critical');
+            } else if (stat === 'out' || stat === 'out of stock') {
+                matchS = (rstat === 'out');
+            } else if (stat === 'warning') {
+                matchS = (rstat === 'low' || rstat === 'critical' || rstat === 'out');
             } else {
-                matchS = (rfilter === stat);
+                matchS = (rstat === stat || rfilter === stat);
             }
         }
 
-        // Search text: status keywords expand to show all warning products
         var matchQ = true;
         if (q) {
-            if (['low', 'low stock', 'out', 'out of stock', 'critical', 'critical stock', 'warning'].indexOf(q) !== -1) {
-                matchQ = isWarning;
-            } else if (q === 'available' || q === 'ok') {
-                matchQ = (rstat === 'ok' || rstat === 'available');
-            } else {
-                matchQ = (name.indexOf(q) !== -1 || sku.indexOf(q) !== -1 || rcat.indexOf(q) !== -1 || rbrand.indexOf(q) !== -1);
-            }
+            matchQ = (name.indexOf(q) !== -1 || sku.indexOf(q) !== -1 || rcat.indexOf(q) !== -1 || rbrand.indexOf(q) !== -1 || runit.indexOf(q) !== -1 || rstat.indexOf(q) !== -1);
         }
-        
+
         var visible = matchQ && matchC && matchB && matchU && matchS;
         if (visible) {
             r.classList.remove('search-hidden');
-            r.style.display = ''; // ensure visible
+            r.style.display = '';
         } else {
             r.classList.add('search-hidden');
             r.style.display = 'none';
         }
     });
 
-    // 2. Update category header visibility
+    // Handle Category headers & sorting
     var tbody = document.getElementById('merchTableBody');
+    if (!tbody) return;
 
     if (sortBy === 'default') {
-        // Show/hide category headers based on whether they have ≥1 visible item underneath
         var rows = Array.from(tbody.querySelectorAll('tr'));
         var currentHeader = null;
         var hasVisibleItems = false;
@@ -961,11 +951,8 @@ function applyFilters() {
             if (r.classList.contains('cat-header')) {
                 if (currentHeader) {
                     currentHeader.style.display = hasVisibleItems ? '' : 'none';
-                    if (!hasVisibleItems) {
-                        currentHeader.classList.add('search-hidden');
-                    } else {
-                        currentHeader.classList.remove('search-hidden');
-                    }
+                    if (!hasVisibleItems) currentHeader.classList.add('search-hidden');
+                    else currentHeader.classList.remove('search-hidden');
                 }
                 currentHeader = r;
                 hasVisibleItems = false;
@@ -975,30 +962,45 @@ function applyFilters() {
                 }
             }
         });
-        // Handle last group
         if (currentHeader) {
             currentHeader.style.display = hasVisibleItems ? '' : 'none';
-            if (!hasVisibleItems) {
-                currentHeader.classList.add('search-hidden');
-            } else {
-                currentHeader.classList.remove('search-hidden');
-            }
+            if (!hasVisibleItems) currentHeader.classList.add('search-hidden');
+            else currentHeader.classList.remove('search-hidden');
         }
     } else {
-        // Global sort mode — always hide category headers
+        // Global sort mode — hide category headers
         Array.from(tbody.querySelectorAll('.cat-header')).forEach(function(h) {
             h.style.display = 'none';
             h.classList.add('search-hidden');
         });
+
+        // Perform in-place sorting of merch-rows
+        var merchRows = Array.from(tbody.querySelectorAll('.merch-row'));
+        merchRows.sort(function(a, b) {
+            if (sortBy === 'name_asc') {
+                return (a.dataset.name || '').localeCompare(b.dataset.name || '');
+            } else if (sortBy === 'name_desc') {
+                return (b.dataset.name || '').localeCompare(a.dataset.name || '');
+            } else if (sortBy === 'stock_asc') {
+                return parseFloat(a.dataset.stock || 0) - parseFloat(b.dataset.stock || 0);
+            } else if (sortBy === 'stock_desc') {
+                return parseFloat(b.dataset.stock || 0) - parseFloat(a.dataset.stock || 0);
+            } else if (sortBy === 'newest') {
+                return (b.dataset.updated || '').localeCompare(a.dataset.updated || '');
+            }
+            return 0;
+        });
+        merchRows.forEach(function(r) { tbody.appendChild(r); });
     }
 
-    // 3. Trigger pagination reset (go to page 1)
+    // Trigger pagination refresh
     if (window.tablePaginationTriggers && window.tablePaginationTriggers['merchTable']) {
         window.tablePaginationTriggers['merchTable']();
     } else if (window.setTablePage) {
         window.setTablePage('merchTable', 1);
     }
 }
+
 
 function resetFilters() {
     document.getElementById('merchSearch').value = '';
@@ -1128,10 +1130,11 @@ function switchInvTab(tab) {
 
     [btnOv, btnStk, btnAlt].forEach(function(b) {
         if (!b) return;
-        b.style.background = '#fff';
-        b.style.color = '#475569';
-        b.style.borderColor = '#cbd5e1';
         b.classList.remove('active');
+        b.style.setProperty('background', '#ffffff', 'important');
+        b.style.setProperty('background-color', '#ffffff', 'important');
+        b.style.setProperty('color', '#334155', 'important');
+        b.style.setProperty('border', '1px solid #cbd5e1', 'important');
     });
     [secOv, secStk, secAlt].forEach(function(s) {
         if (!s) return;
@@ -1139,25 +1142,35 @@ function switchInvTab(tab) {
     });
 
     if (tab === 'overview') {
-        btnOv.style.background = '#002F70';
-        btnOv.style.color = '#fff';
-        btnOv.style.borderColor = '#002F70';
-        btnOv.classList.add('active');
-        secOv.style.display = 'block';
+        if (btnOv) {
+            btnOv.classList.add('active');
+            btnOv.style.setProperty('background', '#002F70', 'important');
+            btnOv.style.setProperty('background-color', '#002F70', 'important');
+            btnOv.style.setProperty('color', '#ffffff', 'important');
+            btnOv.style.setProperty('border', '1px solid #002F70', 'important');
+        }
+        if (secOv) secOv.style.display = 'block';
     } else if (tab === 'stockin') {
-        btnStk.style.background = '#002F70';
-        btnStk.style.color = '#fff';
-        btnStk.style.borderColor = '#002F70';
-        btnStk.classList.add('active');
-        secStk.style.display = 'block';
+        if (btnStk) {
+            btnStk.classList.add('active');
+            btnStk.style.setProperty('background', '#002F70', 'important');
+            btnStk.style.setProperty('background-color', '#002F70', 'important');
+            btnStk.style.setProperty('color', '#ffffff', 'important');
+            btnStk.style.setProperty('border', '1px solid #002F70', 'important');
+        }
+        if (secStk) secStk.style.display = 'block';
     } else {
-        btnAlt.style.background = '#002F70';
-        btnAlt.style.color = '#fff';
-        btnAlt.style.borderColor = '#002F70';
-        btnAlt.classList.add('active');
-        secAlt.style.display = 'block';
+        if (btnAlt) {
+            btnAlt.classList.add('active');
+            btnAlt.style.setProperty('background', '#002F70', 'important');
+            btnAlt.style.setProperty('background-color', '#002F70', 'important');
+            btnAlt.style.setProperty('color', '#ffffff', 'important');
+            btnAlt.style.setProperty('border', '1px solid #002F70', 'important');
+        }
+        if (secAlt) secAlt.style.display = 'block';
     }
 }
+
 
 // ── View Details ──────────────────────────────────────────────
 function viewDetails(it) {

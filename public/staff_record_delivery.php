@@ -1032,11 +1032,12 @@ include __DIR__ . '/../partials/header.php';
 }
 .tab-btn {
     padding: 10px 24px;
-    background: #ffffff;
-    border: 1px solid #cbd5e1;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
     font-size: 14px;
     font-weight: 700;
-    color: #64748b;
+    color: #334155 !important;
     cursor: pointer;
     transition: all 0.2s;
     border-radius: 6px;
@@ -1047,15 +1048,21 @@ include __DIR__ . '/../partials/header.php';
     white-space: nowrap;
 }
 .tab-btn:hover {
-    background: #f8fafc;
-    border-color: #94a3b8;
-    color: #334155;
+    background: #f8fafc !important;
+    background-color: #f8fafc !important;
+    border-color: #94a3b8 !important;
+    color: #0f172a !important;
 }
 .tab-btn.active {
-    background: #002F70;
-    color: #ffffff;
-    border-color: #002F70;
+    background: #002F70 !important;
+    background-color: #002F70 !important;
+    color: #ffffff !important;
+    border-color: #002F70 !important;
 }
+.tab-btn.active *, .tab-btn.active span, .tab-btn.active i {
+    color: #ffffff !important;
+}
+
 
 /* Tab Content */
 .tab-content {

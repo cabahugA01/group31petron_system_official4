@@ -1714,6 +1714,11 @@ include __DIR__ . '/../partials/header.php';
             }
 
             function updateControls() {
+                if (totalRows <= 10) {
+                    wrapper.style.display = 'none';
+                    return;
+                }
+                wrapper.style.display = 'flex';
                 totalPages = Math.ceil(totalRows / rowsPerPage);
                 
                 const start = (currentPage - 1) * rowsPerPage + 1;

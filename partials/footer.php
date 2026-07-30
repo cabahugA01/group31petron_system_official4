@@ -940,17 +940,18 @@
         var container = document.getElementById(paginationContainerId);
         if (!container) return;
         
-        var rowsPerPage = defaultRows || 10;
+        var rowsPerPage = 10;
         var currentPage = 1;
         
         function updatePagination() {
             var allRows = Array.from(tbody.querySelectorAll('tr'));
             var visibleRows = allRows.filter(function(row) {
-                return !row.classList.contains('search-hidden') && !row.classList.contains('no-paginate');
+                return !row.classList.contains('search-hidden') && !row.classList.contains('no-paginate') && !row.classList.contains('cat-header') && !row.classList.contains('category-header');
             });
             
             var totalRows = visibleRows.length;
-            if (totalRows <= rowsPerPage) {
+            // RULE: IF Total Records <= 10: HIDE Rows per page & Pagination completely!
+            if (totalRows <= 10) {
                 container.innerHTML = '';
                 container.style.display = 'none';
                 allRows.forEach(function(row) {
@@ -958,28 +959,34 @@
                         row.style.display = '';
                     }
                 });
-                // Adjust category headers if present
-                var catHeaders = tbody.querySelectorAll('.cat-header');
+                var catHeaders = tbody.querySelectorAll('.cat-header, .category-header');
                 if (catHeaders.length > 0) {
                     catHeaders.forEach(function(header) {
                         var next = header.nextElementSibling;
                         var hasVisibleItem = false;
-                        while (next && !next.classList.contains('cat-header')) {
-                            if (next.style.display !== 'none' && !next.classList.contains('search-hidden')) {
+                        while (next && !next.classList.contains('cat-header') && !next.classList.contains('category-header')) {
+                            if (!next.classList.contains('search-hidden')) {
                                 hasVisibleItem = true;
                                 break;
                             }
                             next = next.nextElementSibling;
                         }
-                        header.style.display = hasVisibleItem ? '' : 'none';
+                        header.style.display = (hasVisibleItem && !header.classList.contains('search-hidden')) ? '' : 'none';
                     });
                 }
+
                 return;
             }
-            container.style.display = '';
+            
+            container.style.display = 'flex';
+            container.style.alignItems = 'center';
+            container.style.justifyContent = 'space-between';
+            container.style.padding = '12px 16px';
+            container.style.borderTop = '1px solid #f1f5f9';
+            container.style.flexWrap = 'wrap';
+            container.style.gap = '12px';
 
             var totalPages = Math.ceil(totalRows / rowsPerPage) || 1;
-            
             if (currentPage > totalPages) currentPage = totalPages;
             
             allRows.forEach(function(row) {
@@ -996,12 +1003,12 @@
             });
             
             // Adjust category headers visibility: show only if there's at least one visible item following it on this page
-            var catHeaders = tbody.querySelectorAll('.cat-header');
+            var catHeaders = tbody.querySelectorAll('.cat-header, .category-header');
             if (catHeaders.length > 0) {
                 catHeaders.forEach(function(header) {
                     var next = header.nextElementSibling;
                     var hasVisibleItem = false;
-                    while (next && !next.classList.contains('cat-header')) {
+                    while (next && !next.classList.contains('cat-header') && !next.classList.contains('category-header')) {
                         if (next.style.display !== 'none' && !next.classList.contains('search-hidden')) {
                             hasVisibleItem = true;
                             break;
@@ -1013,28 +1020,32 @@
             }
             
             var html = '';
-            html += '<button class="pag-btn" style="padding:4px 8px;margin:2px;font-size:11px;background:transparent;color:inherit;border:1px solid #ccc;border-radius:4px;cursor:pointer;" ' + (currentPage === 1 ? 'disabled' : '') + ' onclick="setTablePage(\''+tableId+'\',' + (currentPage - 1) + ')">Prev</button>';
+            html += '<button class="pag-btn" style="padding:4px 8px;margin:2px;font-size:12px;background:#fff;color:#475569;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;" ' + (currentPage === 1 ? 'disabled' : '') + ' onclick="setTablePage(\''+tableId+'\',' + (currentPage - 1) + ')"><i class="fas fa-chevron-left"></i></button>';
             
             for (var i = 1; i <= totalPages; i++) {
                 if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
                     var isActive = (i === currentPage);
-                    html += '<button class="pag-btn" style="padding:4px 8px;margin:2px;font-size:11px;border-radius:4px;cursor:pointer;' + (isActive ? 'background:transparent;color:inherit;font-weight:bold;border:2px solid #6b7280;' : 'background:transparent;color:inherit;border:1px solid #ccc;') + '" onclick="setTablePage(\''+tableId+'\',' + i + ')">' + i + '</button>';
+                    html += '<button class="pag-btn" style="padding:4px 8px;margin:2px;font-size:12px;border-radius:6px;cursor:pointer;' + (isActive ? 'background:#002F6C;color:#fff;font-weight:bold;border:1px solid #002F6C;' : 'background:#fff;color:#475569;border:1px solid #e2e8f0;') + '" onclick="setTablePage(\''+tableId+'\',' + i + ')">' + i + '</button>';
                 } else if (i === currentPage - 3 || i === currentPage + 3) {
-                    html += '<span style="padding:4px 8px;margin:2px;font-size:11px;color:#6c757d;">...</span>';
+                    html += '<span style="padding:4px 6px;margin:2px;font-size:12px;color:#94a3b8;">...</span>';
                 }
             }
             
-            html += '<button class="pag-btn" style="padding:4px 8px;margin:2px;font-size:11px;background:transparent;color:inherit;border:1px solid #ccc;border-radius:4px;cursor:pointer;" ' + (currentPage === totalPages ? 'disabled' : '') + ' onclick="setTablePage(\''+tableId+'\',' + (currentPage + 1) + ')">Next</button>';
+            html += '<button class="pag-btn" style="padding:4px 8px;margin:2px;font-size:12px;background:#fff;color:#475569;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;" ' + (currentPage === totalPages ? 'disabled' : '') + ' onclick="setTablePage(\''+tableId+'\',' + (currentPage + 1) + ')"><i class="fas fa-chevron-right"></i></button>';
             
-            var selectHtml = '<select class="rows-select" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:11px;background:transparent;cursor:pointer;margin-right:12px;outline:none;">';
-            var options = [10, 20, 25, 50, 100];
+            var showingStart = totalRows === 0 ? 0 : start + 1;
+            var showingEnd = Math.min(end, totalRows);
+            var infoHtml = '<span style="font-size:13px;color:#64748b;font-weight:600;">Showing ' + showingStart + '–' + showingEnd + ' of ' + totalRows + ' entries</span>';
+
+            var selectHtml = '<div style="display:flex;align-items:center;gap:6px;"><span style="font-size:13px;color:#64748b;font-weight:600;">Rows per page:</span><select class="rows-select" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;font-weight:600;color:#334155;background:transparent !important;cursor:pointer;outline:none;">';
+            var options = [10, 20, 50, 100];
             options.forEach(function(opt) {
                 var selectedAttr = (opt === rowsPerPage) ? 'selected' : '';
-                selectHtml += '<option value="' + opt + '" ' + selectedAttr + '>' + opt + ' rows</option>';
+                selectHtml += '<option value="' + opt + '" ' + selectedAttr + '>' + opt + '</option>';
             });
-            selectHtml += '</select>';
+            selectHtml += '</select></div>';
             
-            container.innerHTML = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px;justify-content:flex-end;">' + selectHtml + html + '</div>';
+            container.innerHTML = '<div style="display:flex;align-items:center;">' + infoHtml + '</div><div style="display:flex;align-items:center;gap:16px;">' + selectHtml + '<div style="display:flex;gap:4px;">' + html + '</div></div>';
             
             var freshSelect = container.querySelector('.rows-select');
             if (freshSelect) {
@@ -1045,6 +1056,7 @@
                 });
             }
         }
+
         
         window.setTablePage = function(tId, page) {
             if (tId === tableId) {

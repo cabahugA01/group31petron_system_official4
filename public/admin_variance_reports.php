@@ -578,25 +578,9 @@ html,body{max-width:100vw;overflow-x:hidden}
         </table>
     </div>
 
-    <!-- Pagination -->
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-top:1px solid #f1f5f9;flex-wrap:wrap;gap:12px;">
-        <div style="display:flex;align-items:center;gap:8px;">
-            <label style="font-size:12px;color:#64748b;font-weight:600;">Rows per page:</label>
-            <select id="rowsPerPage" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;">
-                <option value="10">10</option><option value="25" selected>25</option>
-                <option value="50">50</option><option value="100">100</option>
-            </select>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;">
-            <span id="pageInfo" style="font-size:12px;color:#64748b;font-weight:600;">Page 1 of 1</span>
-            <div style="display:flex;gap:4px;">
-                <button id="prevPage" style="padding:6px 12px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;color:#64748b;font-size:12px;cursor:pointer;" disabled><i class="fas fa-chevron-left"></i> Prev</button>
-                <button id="nextPage" style="padding:6px 12px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;color:#64748b;font-size:12px;cursor:pointer;">Next <i class="fas fa-chevron-right"></i></button>
-            </div>
-        </div>
-    </div>
     <?php endif; ?>
 </div>
+
 
 <!-- ══════════════════════════════════════════════════════════════════════════
      MODALS
@@ -851,36 +835,7 @@ function confirmDelete(id, txn_id) {
     }
 }
 
-// ── Client-side Pagination & Row Controls ─────────────────────────────────────
-(function() {
-    const tbody = document.querySelector('#mvrTable tbody');
-    if (!tbody) return;
-    const allRows = Array.from(tbody.querySelectorAll('tr'));
-    let page = 1, rpp = 25;
-    const rppSel = document.getElementById('rowsPerPage');
-    const info   = document.getElementById('pageInfo');
-    const prev   = document.getElementById('prevPage');
-    const next   = document.getElementById('nextPage');
-
-    function render() {
-        const total = Math.ceil(allRows.length / rpp) || 1;
-        if (page > total) page = total;
-
-        allRows.forEach(r => r.style.display = 'none');
-        allRows.slice((page-1)*rpp, page*rpp).forEach(r => r.style.display = '');
-
-        info.textContent = `Page ${page} of ${total}`;
-        prev.disabled = page === 1;
-        next.disabled = page >= total;
-        prev.style.opacity = prev.disabled ? '0.5' : '1';
-        next.style.opacity = next.disabled ? '0.5' : '1';
-    }
-
-    rppSel.addEventListener('change', () => { rpp = parseInt(rppSel.value); page = 1; render(); });
-    prev.addEventListener('click', () => { if(page>1){page--;render();} });
-    next.addEventListener('click', () => { if(page < Math.ceil(allRows.length/rpp)){page++;render();} });
-    render();
-})();
 </script>
+
 
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

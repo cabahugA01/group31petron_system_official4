@@ -228,25 +228,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // Fuel Inventory Actions
     if ($action === 'update_fuel_product') {
-        $fuel_id = $_POST['fuel_id'] ?? 0;
-        $price_per_liter = $_POST['price_per_liter'] ?? 0;
-        $status = $_POST['status'] ?? 'Normal';
-        
+        $fuel_id         = (int)($_POST['fuel_id'] ?? 0);
+        $price_per_liter = (float)($_POST['price_per_liter'] ?? 0);
+        $status          = $_POST['status'] ?? 'Normal';
+
         try {
+            // ── 1. Update fuel_inventory (primary / authoritative price source) ──
             $stmt = $pdo->prepare("UPDATE fuel_inventory SET price_per_liter = ?, status = ?, last_updated = NOW(), updated_by = ? WHERE id = ?");
             $stmt->execute([$price_per_liter, $status, $me['id'], $fuel_id]);
-            
-            // Get fuel type for logging
-            $stmt = $pdo->prepare("SELECT fuel_type FROM fuel_inventory WHERE id = ?");
+
+            // ── 2. Fetch the fuel_type name & fuel_type_id for downstream sync ──
+            $stmt = $pdo->prepare("SELECT fuel_type, fuel_type_id, station_id FROM fuel_inventory WHERE id = ?");
             $stmt->execute([$fuel_id]);
-            $fuel_type = $stmt->fetchColumn();
-            
-            
-            $_SESSION['success'] = 'Fuel inventory updated successfully';
+            $fi_row       = $stmt->fetch(PDO::FETCH_ASSOC);
+            $fuel_type    = $fi_row['fuel_type']    ?? '';
+            $fuel_type_id = $fi_row['fuel_type_id'] ?? null;
+            $fi_station   = $fi_row['station_id']   ?? null;
+
+            // ── 3. Sync to fuel_types.price_per_liter (so meter reading display stays consistent) ──
+            if ($fuel_type_id) {
+                $pdo->prepare("UPDATE fuel_types SET price_per_liter = ? WHERE id = ?")
+                    ->execute([$price_per_liter, $fuel_type_id]);
+            }
+
+            // ── 4. Sync to fuel_pricing (used by Inventory / Reports pages) ──
+            if ($fuel_type_id && $fi_station) {
+                // Check if an active row exists for this station + fuel_type
+                $fp_stmt = $pdo->prepare("SELECT id FROM fuel_pricing WHERE station_id = ? AND fuel_type_id = ? AND is_active = 1 LIMIT 1");
+                $fp_stmt->execute([$fi_station, $fuel_type_id]);
+                $fp_id = $fp_stmt->fetchColumn();
+
+                if ($fp_id) {
+                    // Update existing active pricing row
+                    $pdo->prepare("UPDATE fuel_pricing SET price_per_liter = ?, updated_at = NOW() WHERE id = ?")
+                        ->execute([$price_per_liter, $fp_id]);
+                } else {
+                    // Insert new pricing row
+                    $pdo->prepare("INSERT INTO fuel_pricing (station_id, fuel_type_id, price_per_liter, effective_date, is_active, created_by, created_at, updated_at) VALUES (?, ?, ?, NOW(), 1, ?, NOW(), NOW())")
+                        ->execute([$fi_station, $fuel_type_id, $price_per_liter, $me['id']]);
+                }
+            }
+
+            // ── 5. Log the price change to fuel_price_log ──
+            try {
+                $pdo->prepare("INSERT INTO fuel_price_log (station_id, fuel_type_id, fuel_type, old_price, new_price, price_difference, change_type, reason_for_change, changed_by, changed_by_name, change_timestamp) SELECT ?, ?, ?, price_per_liter, ?, ? - price_per_liter, 'manual_update', 'Updated via Product Management', ?, ?, NOW() FROM fuel_inventory WHERE id = ?")
+                    ->execute([$fi_station, $fuel_type_id, $fuel_type, $price_per_liter, $price_per_liter, $me['id'], ($me['name'] ?? $me['username'] ?? ''), $fuel_id]);
+            } catch (Exception $logEx) { /* non-critical */ }
+
+            $_SESSION['success'] = 'Fuel price updated successfully. Inventory and all pricing tables synced.';
             header('Location: product_management.php?tab=' . $active_tab);
             exit;
         } catch (Exception $e) {
-            $_SESSION['error'] = 'Error updating fuel inventory: ' . $e->getMessage();
+            $_SESSION['error'] = 'Error updating fuel price: ' . $e->getMessage();
         }
     }
     

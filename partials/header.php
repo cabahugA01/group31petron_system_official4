@@ -581,9 +581,98 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     button, .btn, .ss-btn-primary {
         background-color: <?php echo htmlspecialchars($theme_button_color); ?> !important;
     }
-    /* Prevent theme button color from bleeding into custom dropdown triggers, filter buttons & table action buttons */
+    /* Sub-tabs & Navigation tabs styling fix: ensure inactive tab text is crisp, clear, and visible with white background */
+    .tab-btn:not(.active),
+    .sub-tab-btn:not(.active),
+    .inv-tab-btn:not(.active),
+    .nav-tab:not(.active),
+    .cust-tab:not(.active),
+    button.tab-btn:not(.active),
+    button.cust-tab:not(.active),
+    #tabOverview:not(.active),
+    #tabDeliveriesList:not(.active),
+    #tabDeliveries:not(.active),
+    #tab-overview:not(.active),
+    #tab-stockin:not(.active),
+    #tab-alerts:not(.active) {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        color: #334155 !important;
+        border: 1px solid #cbd5e1 !important;
+        font-weight: 600 !important;
+        box-shadow: none !important;
+    }
+    .tab-btn.active,
+    .sub-tab-btn.active,
+    .inv-tab-btn.active,
+    .nav-tab.active,
+    .cust-tab.active,
+    button.tab-btn.active,
+    button.cust-tab.active,
+    #tabOverview.active,
+    #tabDeliveriesList.active,
+    #tabDeliveries.active,
+    #tab-overview.active,
+    #tab-stockin.active,
+    #tab-alerts.active {
+        background: #002F70 !important;
+        background-color: #002F70 !important;
+        color: #ffffff !important;
+        border: 1px solid #002F70 !important;
+        font-weight: 700 !important;
+    }
+    .tab-btn.active *,
+    .sub-tab-btn.active *,
+    .inv-tab-btn.active *,
+    .cust-tab.active * {
+        color: #ffffff !important;
+    }
+
+
+
+    /* Reset & Secondary Filter Buttons styling fix: ensure clean white background with dark slate text */
+    button.btn-secondary,
+    .btn-secondary,
+    button.btn-action.btn-secondary,
+    .btn-action.btn-secondary,
+    button.flt-btn-reset,
+    .flt-btn-reset,
+    button.btn-reset,
+    .btn-reset {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        color: #334155 !important;
+        border: 1px solid #cbd5e1 !important;
+        font-weight: 600 !important;
+        box-shadow: none !important;
+    }
+    button.btn-secondary:hover,
+    .btn-secondary:hover,
+    button.btn-action.btn-secondary:hover,
+    .btn-action.btn-secondary:hover,
+    button.flt-btn-reset:hover,
+    .flt-btn-reset:hover,
+    button.btn-reset:hover,
+    .btn-reset:hover {
+        background: #f8fafc !important;
+        background-color: #f8fafc !important;
+        border-color: #94a3b8 !important;
+        color: #0f172a !important;
+    }
+
+    /* Filter dropdown buttons, triggers & transparent stock request buttons */
+
     button.fd-select-trigger,
     button.cdd-trigger,
+    button.adm-cdd-btn,
+    button.adm-cdd-trigger,
+    button.sr-btn-outline,
+    .sr-btn-outline,
+    .fd-select-trigger,
+    .cdd-trigger,
+    .adm-cdd-btn,
+    .adm-cdd-trigger,
+    button.flt-btn:not(.flt-btn-solid-primary),
     button.tbl-btn,
     a.tbl-btn,
     .tbl-btn,
@@ -591,9 +680,29 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     .btn-filter-reset,
     .notif-header-actions button,
     #markAllReadBtn {
-        background-color: transparent;
-        color: inherit;
+        background: transparent !important;
+        background-color: transparent !important;
+        border: 1px solid #cbd5e1 !important;
+        color: #1e293b !important;
+        font-weight: 600 !important;
+        box-shadow: none !important;
     }
+    .fd-select-label, .cdd-label, .adm-cdd-label {
+        color: #1e293b !important;
+        font-weight: 600 !important;
+    }
+    .fd-select-arrow, .cdd-arrow, .adm-cdd-arrow {
+        color: #64748b !important;
+    }
+    .fd-select-trigger:hover, .cdd-trigger:hover, .adm-cdd-btn:hover, button.adm-cdd-btn:hover, .sr-btn-outline:hover {
+        background: #f8fafc !important;
+        background-color: #f8fafc !important;
+        border-color: #94a3b8 !important;
+    }
+
+
+
+
     <?php if ($theme_high_contrast): ?>
     body, html, div, p, span, table, td, th, a, button, input, select {
         filter: contrast(1.15) !important;
@@ -3736,11 +3845,11 @@ require_once __DIR__ . '/rbac_menu.php';
     .petron-toast {
         position: relative;
         width: 100%;
-        min-height: 58px;
-        padding: 13px 42px 13px 15px;
-        border-radius: 8px;
-        border: 1px solid #dbe4f0;
-        border-left: 5px solid #2563eb;
+        min-height: 54px;
+        padding: 14px 18px;
+        border-radius: 10px;
+        border: 1px solid #e2e8f0 !important;
+        border-left: none !important;
         background: #fff;
         color: #0f172a;
         font-size: 14px;
@@ -3749,20 +3858,21 @@ require_once __DIR__ . '/rbac_menu.php';
         display: flex;
         align-items: flex-start;
         gap: 12px;
-        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
         pointer-events: auto;
         animation: toastIn 0.26s ease;
         transition: opacity 0.35s ease, transform 0.35s ease;
         overflow: hidden;
     }
-    .petron-toast.toast-success { border-left-color:#16a34a; }
-    .petron-toast.toast-error   { border-left-color:#dc2626; }
-    .petron-toast.toast-warning { border-left-color:#f59e0b; }
-    .petron-toast.toast-info    { border-left-color:#2563eb; }
+    .petron-toast.toast-success { border-left: none !important; }
+    .petron-toast.toast-error   { border-left: none !important; }
+    .petron-toast.toast-warning { border-left: none !important; }
+    .petron-toast.toast-info    { border-left: none !important; }
     .petron-toast.toast-success .petron-toast-icon { color:#16a34a; }
     .petron-toast.toast-error .petron-toast-icon   { color:#dc2626; }
     .petron-toast.toast-warning .petron-toast-icon { color:#d97706; }
     .petron-toast.toast-info .petron-toast-icon    { color:#2563eb; }
+    .petron-toast-close { display: none !important; }
     .petron-toast.toast-hide { opacity:0; transform:translateX(34px); }
     @keyframes toastIn {
         from { opacity:0; transform:translateX(34px); }
@@ -3863,9 +3973,110 @@ require_once __DIR__ . '/rbac_menu.php';
     }
     @media print {
         #petron-toast-container,
-        .petron-flash { display: none !important; }
+        .petron-flash,
+        .petron-pagination-bar { display: none !important; }
+    }
+
+    /* Clean Petron Table Pagination Component */
+    .petron-pagination-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 18px;
+        border-top: 1px solid #f1f5f9;
+        flex-wrap: wrap;
+        gap: 12px;
+        background: transparent;
+    }
+    .petron-paginate-left {
+        display: flex;
+        align-items: center;
+    }
+    .petron-paginate-info {
+        font-size: 13px;
+        color: #64748b;
+        font-weight: 600;
+    }
+    .petron-paginate-right {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+    .petron-rows-select-wrap {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .petron-rows-label {
+        font-size: 13px;
+        color: #64748b;
+        font-weight: 600;
+    }
+    .petron-rows-select,
+    select[id*="rowsPerPage"], select[id*="RowsLimit"], select[id*="rowsLimit"],
+    .pagination-wrapper select, .pagination-controls select, .client-side-pagination select {
+        background: transparent !important;
+        background-color: transparent !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 6px !important;
+        padding: 4px 8px !important;
+        font-size: 13px !important;
+        font-weight: 600 !important;
+        color: #334155 !important;
+        cursor: pointer !important;
+        outline: none !important;
+        box-shadow: none !important;
+    }
+    .petron-rows-select:hover, .petron-rows-select:focus,
+    select[id*="rowsPerPage"]:hover, select[id*="RowsLimit"]:hover {
+        border-color: #94a3b8 !important;
+    }
+
+    .petron-page-buttons {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .petron-page-btn {
+        min-width: 32px;
+        height: 32px;
+        padding: 0 8px;
+        border-radius: 6px;
+        border: 1px solid #e2e8f0;
+        background: #ffffff;
+        color: #475569;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+    }
+    .petron-page-btn:hover:not(:disabled) {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+        color: #0f172a;
+    }
+    .petron-page-btn.active {
+        background: #002F6C !important;
+        border-color: #002F6C !important;
+        color: #ffffff !important;
+        font-weight: 700;
+    }
+    .petron-page-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        background: #f8fafc;
+    }
+    .petron-page-ellipsis {
+        padding: 0 4px;
+        color: #94a3b8;
+        font-size: 13px;
+        font-weight: 600;
     }
     </style>
+
 
     <!-- â•â• GLOBAL FLASH MESSAGE RENDERER (PHP SESSION â†’ HTML) â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
     <?php
@@ -3898,9 +4109,8 @@ require_once __DIR__ . '/rbac_menu.php';
             <i class="fas <?php echo htmlspecialchars($__toast['icon'], ENT_QUOTES); ?> petron-toast-icon"></i>
             <span class="petron-toast-body">
                 <strong class="petron-toast-title"><?php echo htmlspecialchars($__toast['title'], ENT_QUOTES); ?></strong>
-                <span class="petron-toast-message"><?php echo htmlspecialchars($__toast['message'], ENT_QUOTES); ?></span>
+                <span class="petron-toast-message"><?php echo htmlspecialchars(strip_tags($__toast['message']), ENT_QUOTES); ?></span>
             </span>
-            <button type="button" class="petron-toast-close" aria-label="Close notification">&times;</button>
         </div>
         <?php endforeach; ?>
     </div>
@@ -3967,6 +4177,7 @@ require_once __DIR__ . '/rbac_menu.php';
             type = normalizeToastType(type);
             var container = document.getElementById('petron-toast-container');
             if (!container) return;
+            var cleanMsg = String(message).replace(/<[^>]*>?/gm, '').trim();
             container.style.display = 'flex'; // ensure visible when adding toast
             var toast = document.createElement('div');
             toast.className = 'petron-toast toast-' + type;
@@ -3975,12 +4186,12 @@ require_once __DIR__ . '/rbac_menu.php';
                 '<i class="fas ' + (icons[type] || icons.info) + ' petron-toast-icon"></i>' +
                 '<span class="petron-toast-body">' +
                     '<strong class="petron-toast-title">' + escapeHtml(title || titles[type] || 'Information') + '</strong>' +
-                    '<span class="petron-toast-message">' + escapeHtml(message) + '</span>' +
-                '</span>' +
-                '<button type="button" class="petron-toast-close" aria-label="Close notification">&times;</button>';
+                    '<span class="petron-toast-message">' + escapeHtml(cleanMsg) + '</span>' +
+                '</span>';
             container.appendChild(toast);
             armToast(toast, duration);
         };
+
 
         var sharedShowToast = window.showToast;
         window.showPetronFlash = window.showPetronFlash || function(message, type, duration) {
@@ -3999,7 +4210,155 @@ require_once __DIR__ . '/rbac_menu.php';
             });
         });
     })();
+
+    /* ══════════════════════════════════════════════════════════════════════════════
+     * GLOBAL PETRON TABLE PAGINATION COMPONENT
+     * Rule: IF Total Records <= Default Page Size (10): HIDE Rows per page & Pagination
+     * Rule: IF Total Records > 10: SHOW Rows per page (transparent bg) & Pagination
+     * Excludes Dashboards
+     * ══════════════════════════════════════════════════════════════════════════════ */
+    window.initPetronPagination = function(targetContainer, options = {}) {
+        const path = window.location.pathname.toLowerCase();
+        const isExcluded = path.includes('dashboard') || path.includes('report');
+        if (isExcluded) return;
+
+
+        let containers = [];
+        if (targetContainer) {
+            containers = typeof targetContainer === 'string' ? Array.from(document.querySelectorAll(targetContainer)) : [targetContainer];
+        } else {
+            containers = Array.from(document.querySelectorAll('.afto-table-card, .table-container, .table-responsive, [data-petron-paginate="true"]'));
+        }
+
+        containers.forEach(container => {
+            if (!container) return;
+            const table = container.querySelector('table');
+            if (!table) return;
+            if (table.dataset.noPaginate === 'true' || table.closest('.dashboard-card, .dashboard-section')) return;
+
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return;
+
+            const allRows = Array.from(tbody.querySelectorAll('tr:not(.no-records-row)'));
+            const totalRecords = allRows.length;
+            const defaultPageSize = options.defaultPageSize || 10;
+
+            let paginationBar = container.querySelector('.petron-pagination-bar, .client-pagination');
+            if (!paginationBar) {
+                paginationBar = document.createElement('div');
+                paginationBar.className = 'petron-pagination-bar';
+                container.appendChild(paginationBar);
+            }
+
+            // RULE: IF Total Records <= Default Page Size (10): HIDE Rows per page & Pagination completely!
+            if (totalRecords <= defaultPageSize) {
+                paginationBar.style.display = 'none';
+                allRows.forEach(row => row.style.display = '');
+                return;
+            }
+
+            paginationBar.style.display = 'flex';
+            let currentPage = 1;
+            let rowsPerPage = defaultPageSize;
+
+            function render() {
+                const totalPages = Math.ceil(totalRecords / rowsPerPage) || 1;
+                if (currentPage > totalPages) currentPage = totalPages;
+                if (currentPage < 1) currentPage = 1;
+
+                const startIdx = (currentPage - 1) * rowsPerPage;
+                const endIdx = Math.min(startIdx + rowsPerPage, totalRecords);
+
+                allRows.forEach((row, i) => {
+                    row.style.display = (i >= startIdx && i < endIdx) ? '' : 'none';
+                });
+
+                const showingStart = totalRecords === 0 ? 0 : startIdx + 1;
+                const summaryText = `Showing ${showingStart}–${endIdx} of ${totalRecords} entries`;
+
+                let pageBtns = '';
+                const prevDisabled = currentPage === 1 ? 'disabled' : '';
+                const nextDisabled = currentPage === totalPages ? 'disabled' : '';
+
+                pageBtns += `<button type="button" class="petron-page-btn" ${prevDisabled} data-page="${currentPage - 1}"><i class="fas fa-chevron-left"></i></button>`;
+
+                let pagesToDisplay = [];
+                if (totalPages <= 7) {
+                    for (let i = 1; i <= totalPages; i++) pagesToDisplay.push(i);
+                } else {
+                    if (currentPage <= 4) {
+                        pagesToDisplay = [1, 2, 3, 4, 5, '...', totalPages];
+                    } else if (currentPage >= totalPages - 3) {
+                        pagesToDisplay = [1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+                    } else {
+                        pagesToDisplay = [1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages];
+                    }
+                }
+
+                pagesToDisplay.forEach(p => {
+                    if (p === '...') {
+                        pageBtns += `<span class="petron-page-ellipsis">...</span>`;
+                    } else {
+                        const activeClass = p === currentPage ? 'active' : '';
+                        pageBtns += `<button type="button" class="petron-page-btn ${activeClass}" data-page="${p}">${p}</button>`;
+                    }
+                });
+
+                pageBtns += `<button type="button" class="petron-page-btn" ${nextDisabled} data-page="${currentPage + 1}"><i class="fas fa-chevron-right"></i></button>`;
+
+                paginationBar.innerHTML = `
+                    <div class="petron-paginate-left">
+                        <span class="petron-paginate-info">${summaryText}</span>
+                    </div>
+                    <div class="petron-paginate-right">
+                        <div class="petron-rows-select-wrap">
+                            <span class="petron-rows-label">Rows per page:</span>
+                            <select class="petron-rows-select" aria-label="Rows per page">
+                                <option value="10" ${rowsPerPage === 10 ? 'selected' : ''}>10</option>
+                                <option value="20" ${rowsPerPage === 20 ? 'selected' : ''}>20</option>
+                                <option value="50" ${rowsPerPage === 50 ? 'selected' : ''}>50</option>
+                                <option value="100" ${rowsPerPage === 100 ? 'selected' : ''}>100</option>
+                            </select>
+                        </div>
+                        <div class="petron-page-buttons">
+                            ${pageBtns}
+                        </div>
+                    </div>
+                `;
+
+                const sel = paginationBar.querySelector('.petron-rows-select');
+                if (sel) {
+                    sel.addEventListener('change', function() {
+                        rowsPerPage = parseInt(this.value, 10);
+                        currentPage = 1;
+                        render();
+                    });
+                }
+
+                paginationBar.querySelectorAll('.petron-page-btn[data-page]').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        if (this.disabled) return;
+                        const p = parseInt(this.dataset.page, 10);
+                        if (p && p >= 1 && p <= totalPages) {
+                            currentPage = p;
+                            render();
+                            container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    });
+                });
+            }
+
+            render();
+        });
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        if (!window.location.pathname.toLowerCase().includes('dashboard')) {
+            window.initPetronPagination();
+        }
+    });
     </script>
+
 
     <!-- Page content starts here -->      
     <script>

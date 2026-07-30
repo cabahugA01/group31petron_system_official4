@@ -356,8 +356,9 @@ require_once __DIR__ . '/../partials/header.php';
 .btn-action { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:0 14px; height:36px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid transparent; transition:all .15s; text-decoration:none; }
 .btn-primary { background:#002F70; color:#fff; border-color:#002F70; }
 .btn-primary:hover { background:#001f4d; }
-.btn-secondary { background:#f1f5f9; color:#475569; border-color:#cbd5e1; }
-.btn-secondary:hover { background:#e2e8f0; }
+.btn-secondary, button.btn-secondary { background:#ffffff !important; background-color:#ffffff !important; color:#334155 !important; border:1px solid #cbd5e1 !important; }
+.btn-secondary:hover, button.btn-secondary:hover { background:#f8fafc !important; background-color:#f8fafc !important; border-color:#94a3b8 !important; color:#0f172a !important; }
+
 .btn-danger { background:#dc2626; color:#fff; border-color:#dc2626; }
 .btn-danger:hover { background:#b91c1c; }
 .btn-header-add { background:#002F70!important; color:#fff!important; border:1px solid #002F70; display:inline-flex; align-items:center; gap:6px; padding:0 16px; height:34px; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; transition:all .15s; white-space:nowrap; }

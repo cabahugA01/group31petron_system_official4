@@ -363,14 +363,16 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
                     if ($remarks) $log_notes .= " | Notes: " . $remarks;
                     $pdo->prepare("
                         INSERT INTO inventory_logs (
-                            station_id, product_id, user_id, action, 
+                            station_id, product_id, product_name, user_id, performed_by, action, 
                             quantity_before, quantity_after, quantity_change, 
                             reference_type, reference_id, notes, created_at
-                        ) VALUES (?, ?, ?, 'delivery', ?, ?, ?, 'stock_in', ?, ?, NOW())
+                        ) VALUES (?, ?, ?, ?, ?, 'Stock In', ?, ?, ?, 'stock_in', ?, ?, NOW())
                     ")->execute([
                         $station_id,
                         $item_product_id,
+                        $item_product_name,
                         $me['id'],
+                        $me['name'] ?? $me['username'] ?? 'Staff',
                         $stock_before,
                         $stock_after,
                         $qty_to_add,
@@ -380,6 +382,7 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
                 } catch (Exception $logErr) {
                     error_log("Inventory log insert error in Stock-In: " . $logErr->getMessage());
                 }
+
 
                 // Also update inventory_products.stock as fallback
                 try {

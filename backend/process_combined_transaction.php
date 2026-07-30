@@ -67,6 +67,16 @@ try {
     
     // Generate IDs
     $job_order_number = 'JO-' . $station_id . '-' . date('Ymd-His') . '-' . mt_rand(100, 999);
+    $engine_number  = strtoupper(trim($_POST['engine_number'] ?? ''));
+    $chassis_number = strtoupper(trim($_POST['chassis_number'] ?? ''));
+    
+    if (empty($engine_number)) {
+        throw new Exception("Engine Number is required for vehicle identification.");
+    }
+    if (empty($chassis_number)) {
+        throw new Exception("Chassis Number (VIN) is required for vehicle security.");
+    }
+
     $transaction_id = 'COMB-' . $station_id . '-' . date('Ymd-His');
     
     // Begin transaction
@@ -76,22 +86,23 @@ try {
     $jo_stmt = $pdo->prepare("
         INSERT INTO job_orders (
             job_order_number, customer_name, contact_number, vehicle_plate,
-            vehicle_type, service_type, assigned_mechanic, service_fee,
+            vehicle_type, engine_number, chassis_number, service_type, assigned_mechanic, service_fee,
             amount_paid, balance_due, payment_status, payment_method,
             transaction_type, status, staff_id, station_id,
             shift_period, shift_name, created_at
         ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
             'combined', 'Pending', ?, ?, ?, ?, NOW()
         )
     ");
     
     $jo_stmt->execute([
         $job_order_number, $customer_name, $contact_number, $vehicle_plate,
-        $vehicle_type, $service_type, $assigned_mechanic, $service_fee,
+        $vehicle_type, $engine_number, $chassis_number, $service_type, $assigned_mechanic, $service_fee,
         $amount_paid, $balance_due, $payment_status, $payment_method,
         $me['id'], $station_id, $shift_period, $shift_name
     ]);
+
     
     $job_order_id = $pdo->lastInsertId();
     

@@ -56,12 +56,14 @@ include __DIR__ . '/../partials/header.php';
 .cust-field input:focus, .cust-field select:focus, .cust-field textarea:focus { outline:none; border-color:#002f70; box-shadow:0 0 0 3px rgba(0,47,112,.12); }
 
 /* Navigation Tabs */
-.cust-tabs { display:flex; gap:6px; background:#e2e8f0; border-radius:8px; padding:4px; width:fit-content; }
-.cust-tab { display:flex; align-items:center; gap:8px; padding:8px 16px; background:none; border:none; border-radius:6px; font-size:13px; font-weight:700; color:#475569; cursor:pointer; transition:all .18s; white-space:nowrap; }
-.cust-tab:hover { color:#002f70; background:#cbd5e1; }
-.cust-tab.active { background:#002f70; color:#fff; box-shadow:0 2px 6px rgba(0,47,112,.2); }
+.cust-tabs { display:flex; gap:6px; background:#f1f5f9; border-radius:8px; padding:4px; width:fit-content; }
+.cust-tab, button.cust-tab { display:flex; align-items:center; gap:8px; padding:8px 16px; background:#ffffff !important; background-color:#ffffff !important; border:1px solid #cbd5e1 !important; border-radius:6px; font-size:13px; font-weight:700; color:#334155 !important; cursor:pointer; transition:all .18s; white-space:nowrap; }
+.cust-tab:hover, button.cust-tab:hover { color:#0f172a !important; background:#f8fafc !important; border-color:#94a3b8 !important; }
+.cust-tab.active, button.cust-tab.active { background:#002f70 !important; background-color:#002f70 !important; color:#ffffff !important; border:1px solid #002f70 !important; box-shadow:0 2px 6px rgba(0,47,112,.2); }
 .cust-tab-badge { font-size:11px; font-weight:800; padding:2px 7px; border-radius:20px; min-width:18px; text-align:center; background:rgba(255,255,255,.3); color:#fff; }
-.cust-tab:not(.active) .cust-tab-badge { background:#cbd5e1; color:#475569; }
+.cust-tab:not(.active) .cust-tab-badge { background:#cbd5e1 !important; color:#334155 !important; }
+.cust-tab.active .cust-tab-badge { background:rgba(255,255,255,.25) !important; color:#ffffff !important; }
+
 
 /* Buttons - Plain Outline Uniform Style */
 .btn-plain { border:1px solid #cbd5e1; background:transparent !important; color:#002f70; border-radius:6px; height:38px; padding:0 14px; font-weight:700; font-size:13px; display:inline-flex; align-items:center; justify-content:center; gap:6px; cursor:pointer; text-decoration:none; transition:all 0.15s ease; box-shadow:none !important; }

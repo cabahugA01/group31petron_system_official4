@@ -913,6 +913,26 @@ class JobOrderOperations {
                  }
                  $stmt->execute([$part['quantity'], $this->station_id, $part['product_id']]);
                  
+                 if (function_exists('log_inventory_movement')) {
+                     try {
+                         $cur_stock_stmt = $this->pdo->prepare("SELECT stock_level FROM station_inventory WHERE station_id = ? AND product_id = ? LIMIT 1");
+                         $cur_stock_stmt->execute([$this->station_id, $part['product_id']]);
+                         $stock_after = (int)$cur_stock_stmt->fetchColumn();
+                         $stock_before = $stock_after + (int)$part['quantity'];
+
+                         $pname_stmt = $this->pdo->prepare("SELECT name FROM products WHERE id = ? LIMIT 1");
+                         $pname_stmt->execute([$part['product_id']]);
+                         $pname = $pname_stmt->fetchColumn() ?: ('Part #' . $part['product_id']);
+
+                         log_inventory_movement(
+                             $this->pdo, $this->station_id, (int)$part['product_id'], $pname,
+                             'Job Order Usage', $stock_before, $stock_after, -(int)$part['quantity'],
+                             'job_order', $job['job_order_number'],
+                             $this->user['name'] ?? 'System', 'Job Order Usage - Ref: ' . $job['job_order_number']
+                         );
+                     } catch (Exception $log_err) {}
+                 }
+
                  // Record parts used
                  $stmt = $this->pdo->prepare("
                      INSERT INTO job_order_parts

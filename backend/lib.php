@@ -1737,4 +1737,64 @@ function get_tank_by_ugt(int $ugt_no, int $station_id = null): ?array {
     }
     return null;
 }
+
+/**
+ * Helper to log inventory movements to inventory_logs
+ * Actions: 'Stock In', 'Merchandise Sale', 'Job Order Usage', 'Stock Adjustment'
+ */
+function log_inventory_movement(PDO $pdo, int $station_id, int $product_id, string $product_name, string $action, int $qty_before, int $qty_after, int $qty_change, ?string $ref_type = null, ?string $ref_id = null, ?string $performed_by = null, ?string $notes = null): bool {
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS `inventory_logs` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `station_id` INT NOT NULL,
+            `product_id` INT NOT NULL,
+            `product_name` VARCHAR(255) NULL,
+            `user_id` INT NULL,
+            `performed_by` VARCHAR(255) NULL,
+            `action` VARCHAR(100) NOT NULL,
+            `quantity_before` INT NOT NULL DEFAULT 0,
+            `quantity_after` INT NOT NULL DEFAULT 0,
+            `quantity_change` INT NOT NULL DEFAULT 0,
+            `reference_type` VARCHAR(100) NULL,
+            `reference_id` VARCHAR(100) NULL,
+            `notes` TEXT NULL,
+            `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_station (station_id),
+            INDEX idx_product (product_id),
+            INDEX idx_action (action)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+        $me = function_exists('current_user') ? current_user() : null;
+        $user_id = $me ? (int)($me['id'] ?? 0) : null;
+        if (empty($performed_by)) {
+            $performed_by = $me ? ($me['name'] ?? $me['username'] ?? 'System') : 'System';
+        }
+
+        $stmt = $pdo->prepare("
+            INSERT INTO inventory_logs (
+                station_id, product_id, product_name, user_id, performed_by,
+                action, quantity_before, quantity_after, quantity_change,
+                reference_type, reference_id, notes, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        ");
+        return $stmt->execute([
+            $station_id,
+            $product_id,
+            $product_name,
+            $user_id,
+            $performed_by,
+            $action,
+            $qty_before,
+            $qty_after,
+            $qty_change,
+            $ref_type,
+            $ref_id,
+            $notes
+        ]);
+    } catch (Exception $e) {
+        error_log("log_inventory_movement error: " . $e->getMessage());
+        return false;
+    }
+}
 ?>
+

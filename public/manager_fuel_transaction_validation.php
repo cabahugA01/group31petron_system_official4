@@ -100,11 +100,17 @@ $export             = trim($_GET['export']             ?? '');
 
 // ── POST Actions (Validate / Reject) ──────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $is_ajax = !empty($_POST['ajax']) || (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
     $action  = trim($_POST['action'] ?? '');
     $tx_id   = (int)($_POST['id'] ?? 0);
     $remarks = trim($_POST['remarks'] ?? '');
 
     if ($tx_id <= 0) {
+        if ($is_ajax) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Invalid transaction ID.']);
+            exit;
+        }
         $_SESSION['error'] = 'Invalid transaction ID.';
         header('Location: manager_fuel_transaction_validation.php'); exit;
     }
@@ -127,62 +133,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception("Transaction has already been processed.");
             }
 
-            $liters_sold = (float)$tx['liters_sold'];
-            $prev_reading = (float)$tx['previous_reading'];
+            $prev_reading    = (float)$tx['previous_reading'];
+            $present_reading = (float)$tx['present_reading'];
+            $calibration     = (float)$tx['calibration'];
+            $price_per_liter = (float)$tx['price_per_liter'];
 
-            // Enforce sequence validation & carry-over for pump transactions
-            if ($tx['pump_id'] > 0) {
-                $tx_date_str = date('Y-m-d', strtotime($tx['transaction_date']));
-                $preceding = get_preceding_shift_and_date($pdo, $tx['shift_period'], $tx_date_str);
-                
-                if ($preceding) {
-                    // Check if there is any unverified/unadjusted transaction for the preceding shift
-                    $stmt_check = $pdo->prepare("
-                        SELECT COUNT(*) 
-                        FROM fuel_transactions 
-                        WHERE station_id = ? 
-                          AND pump_id = ? 
-                          AND LOWER(shift_period) = LOWER(?) 
-                          AND DATE(transaction_date) = ?
-                          AND LOWER(status) NOT IN ('verified', 'adjusted')
-                    ");
-                    $stmt_check->execute([$station_id, $tx['pump_id'], $preceding['shift_key'], $preceding['date']]);
-                    $unverified_count = (int)$stmt_check->fetchColumn();
-                    
-                    if ($unverified_count > 0) {
-                        throw new Exception("Cannot validate this transaction. The transaction for the preceding shift (" . ucfirst($preceding['shift_key']) . " on " . $preceding['date'] . ") for this fuel line must be verified or adjusted first.");
-                    }
-                }
-                
-                // Programmatically set Beginning Reading to match preceding shift's validated Ending Reading
-                $prev_reading = get_preceding_shift_validated_ending($pdo, $station_id, $tx['pump_id'], $tx['shift_period'], $tx_date_str);
-                $present_reading = (float)$tx['present_reading'];
-                $calibration = (float)$tx['calibration'];
-                
-                if ($present_reading < $prev_reading) {
-                    throw new Exception("Ending reading (" . number_format($present_reading, 2) . ") cannot be less than the preceding shift's validated ending reading (" . number_format($prev_reading, 2) . ").");
-                }
-                
+            if ($present_reading >= $prev_reading && $present_reading > 0) {
                 $liters_sold = max(0.00, $present_reading - $prev_reading - $calibration);
-                $price_per_liter = (float)$tx['price_per_liter'];
-                $total_amount = round($liters_sold * $price_per_liter, 2);
-                
-                // Update with carried over readings
-                $up = $pdo->prepare("UPDATE fuel_transactions SET previous_reading = ?, liters_sold = ?, total_amount = ?, status = 'Verified', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
-                $up->execute([$prev_reading, $liters_sold, $total_amount, $me['id'], $remarks ?: null, $tx_id]);
             } else {
-                // Non-pump fallback
-                $up = $pdo->prepare("UPDATE fuel_transactions SET status = 'Verified', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
-                $up->execute([$me['id'], $remarks ?: null, $tx_id]);
+                $liters_sold = max(0.00, (float)$tx['liters_sold']);
             }
 
-            // Deduct stock from fuel_inventory
+            $total_amount = round($liters_sold * $price_per_liter, 2);
+
+            // Mark as Verified (Validated)
+            $up = $pdo->prepare("UPDATE fuel_transactions SET previous_reading = ?, present_reading = ?, liters_sold = ?, total_amount = ?, status = 'Verified', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
+            $up->execute([$prev_reading, $present_reading, $liters_sold, $total_amount, $me['id'], $remarks ?: null, $tx_id]);
+
+            // Deduct stock from fuel_inventory (matching exact fuel_type or base fuel_type without pump suffix)
+            $base_fuel_type = preg_replace('/\s*-\s*\d+$/i', '', trim($tx['fuel_type']));
             $up_stock = $pdo->prepare("UPDATE fuel_inventory 
                                        SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?),
                                            current_stock  = GREATEST(0, COALESCE(current_stock, 0) - ?),
                                            last_updated   = NOW()
-                                       WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
-            $up_stock->execute([$liters_sold, $liters_sold, $station_id, $tx['fuel_type']]);
+                                       WHERE station_id = ? 
+                                         AND (
+                                             LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                                          OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                                         )");
+            $up_stock->execute([$liters_sold, $liters_sold, $station_id, $tx['fuel_type'], $base_fuel_type]);
 
             // Safety check: ensure the fuel type was found in inventory
             if ($up_stock->rowCount() === 0) {
@@ -384,8 +363,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
         $pdo->commit();
+
+        if ($is_ajax) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'message' => strip_tags($_SESSION['success'] ?? 'Action completed successfully.')]);
+            exit;
+        }
     } catch (Exception $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($is_ajax) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            exit;
+        }
         $_SESSION['error'] = "Error: " . $e->getMessage();
     }
 
@@ -1046,28 +1036,9 @@ input[type="checkbox"]:indeterminate {
                     </tbody>
                 </table>
             </div>
-
-            <!-- Client-side Pagination -->
-            <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-top: 1px solid #f1f5f9; flex-wrap: wrap; gap: 12px;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label style="font-size: 12px; color: #64748b; font-weight: 600;">Rows per page:</label>
-                    <select id="rowsPerPage" style="padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; cursor: pointer;">
-                        <option value="10">10</option>
-                        <option value="25" selected>25</option>
-                        <option value="50">50</option>
-                        <option value="100">100</option>
-                    </select>
-                </div>
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <span id="pageInfo" style="font-size: 12px; color: #64748b; font-weight: 600;">Page 1 of 1</span>
-                    <div style="display: flex; gap: 4px;">
-                        <button id="prevPage" class="page-btn" disabled><i class="fas fa-chevron-left"></i> Prev</button>
-                        <button id="nextPage" class="page-btn">Next <i class="fas fa-chevron-right"></i></button>
-                    </div>
-                </div>
-            </div>
     </div>
 </div>
+
 
 <!-- View Modal -->
 <div id="viewModal" class="modal">
@@ -1620,11 +1591,133 @@ function getSelectedTransactions() {
     return selected;
 }
 
+// ── Custom Petron Modal Helpers ──────────────────────────────────────
+function showActionConfirmModal({ icon, title, message, confirmText, confirmBg }) {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal';
+        overlay.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(15,23,42,0.6);z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(3px);';
+        overlay.innerHTML = `
+            <div class="modal-content" style="max-width:440px;width:90%;border-radius:14px;padding:28px 30px;box-shadow:0 20px 40px rgba(0,0,0,0.3);background:#fff;text-align:center;">
+                <div style="width:52px;height:52px;background:${confirmBg}18;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+                    <i class="${icon}" style="font-size:24px;color:${confirmBg};"></i>
+                </div>
+                <h3 style="margin:0 0 8px;font-size:18px;font-weight:700;color:#0f172a;">${escapeHtml(title)}</h3>
+                <p style="margin:0 0 24px;font-size:13px;color:#475569;line-height:1.6;font-weight:500;">${escapeHtml(message).replace(/\n/g, '<br>')}</p>
+                <div style="display:flex;gap:12px;justify-content:center;">
+                    <button id="modalConfirmCancel" type="button" class="ato-btn ato-btn-back" style="padding:9px 22px !important;border-radius:6px !important;">Cancel</button>
+                    <button id="modalConfirmOk" type="button" class="ato-btn" style="background:${confirmBg} !important;color:#fff !important;border-color:${confirmBg} !important;padding:9px 22px !important;border-radius:6px !important;font-weight:700 !important;">
+                        ${escapeHtml(confirmText)}
+                    </button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        overlay.querySelector('#modalConfirmOk').onclick = () => { overlay.remove(); resolve(true); };
+        overlay.querySelector('#modalConfirmCancel').onclick = () => { overlay.remove(); resolve(false); };
+    });
+}
+
+function showActionResultModal({ title, message, badgeText, badgeBg, badgeColor, icon, count, totalLiters, totalSales }) {
+    const toastType = (badgeBg && badgeBg.includes('dcfce7')) ? 'success' : ((badgeBg && badgeBg.includes('fee2e2')) ? 'error' : 'info');
+    
+    // Trigger top-right floating toast notification banner immediately!
+    if (window.showPetronFlash) {
+        window.showPetronFlash(title + ': ' + message, toastType, 6000);
+    } else if (window.showToast) {
+        window.showToast(title + ': ' + message, toastType, 6000);
+    }
+
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal';
+        overlay.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(15,23,42,0.65);z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(4px);';
+        
+        let detailsBox = '';
+        if (count !== undefined && count > 0) {
+            detailsBox = `
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin:18px 0 24px;text-align:left;display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;">
+                    <div>
+                        <span style="color:#64748b;font-size:10px;font-weight:700;text-transform:uppercase;display:block;">TRANSACTIONS</span>
+                        <strong style="color:#0f172a;font-size:15px;">${count} Record(s)</strong>
+                    </div>
+                    ${totalLiters ? `
+                    <div>
+                        <span style="color:#64748b;font-size:10px;font-weight:700;text-transform:uppercase;display:block;">TOTAL VOLUME</span>
+                        <strong style="color:#0f172a;font-size:15px;">${totalLiters}</strong>
+                    </div>` : ''}
+                    ${totalSales ? `
+                    <div style="grid-column: span 2; border-top:1px solid #e2e8f0; padding-top:8px; margin-top:2px;">
+                        <span style="color:#64748b;font-size:10px;font-weight:700;text-transform:uppercase;display:block;">TOTAL SALES AMOUNT</span>
+                        <strong style="color:#16a34a;font-size:17px;">${totalSales}</strong>
+                    </div>` : ''}
+                </div>`;
+        }
+
+        overlay.innerHTML = `
+            <div class="modal-content" style="max-width:460px;width:90%;border-radius:16px;padding:30px;box-shadow:0 24px 48px rgba(0,0,0,0.35);background:#fff;text-align:center;">
+                <div style="width:60px;height:60px;background:${badgeBg};border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;box-shadow:0 8px 20px ${badgeBg}44;">
+                    <i class="${icon}" style="font-size:28px;color:${badgeColor};"></i>
+                </div>
+                <div style="display:inline-block;padding:4px 12px;background:${badgeBg};color:${badgeColor};border-radius:20px;font-size:11px;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:10px;">
+                    ${escapeHtml(badgeText)}
+                </div>
+                <h3 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#0f172a;">${escapeHtml(title)}</h3>
+                <p style="margin:0;font-size:13px;color:#475569;line-height:1.5;font-weight:500;">${escapeHtml(message)}</p>
+                ${detailsBox}
+                <div style="margin-top:10px;">
+                    <button id="modalResultOk" type="button" class="ato-btn" style="width:100%;padding:11px;border-radius:8px !important;background:#002F6C !important;color:#fff !important;font-size:14px !important;font-weight:700 !important;box-shadow:0 4px 12px rgba(0,47,108,0.3);">
+                        <i class="fas fa-check-circle" style="margin-right:6px;"></i> OK / Refresh
+                    </button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        overlay.querySelector('#modalResultOk').onclick = () => {
+            sessionStorage.setItem('petron_post_reload_toast_msg', title);
+            sessionStorage.setItem('petron_post_reload_toast_type', toastType);
+            overlay.remove();
+            resolve(true);
+        };
+    });
+}
+
+// ── Check for post-reload flash toast banner on page load ────────────
+document.addEventListener('DOMContentLoaded', function() {
+    const postReloadMsg = sessionStorage.getItem('petron_post_reload_toast_msg');
+    const postReloadType = sessionStorage.getItem('petron_post_reload_toast_type') || 'success';
+    if (postReloadMsg) {
+        sessionStorage.removeItem('petron_post_reload_toast_msg');
+        sessionStorage.removeItem('petron_post_reload_toast_type');
+        setTimeout(function() {
+            if (window.showPetronFlash) {
+                window.showPetronFlash(postReloadMsg, postReloadType, 5000);
+            } else if (window.showToast) {
+                window.showToast(postReloadMsg, postReloadType, 5000);
+            }
+        }, 300);
+    }
+});
+
+
+function notifySelectWarning(msg) {
+    if (window.showPetronFlash) {
+        window.showPetronFlash(msg, 'warning');
+    } else {
+        showActionResultModal({
+            title: 'Selection Required',
+            message: msg,
+            badgeText: '⚠️ Action Required',
+            badgeBg: '#fef3c7',
+            badgeColor: '#b45309',
+            icon: 'fas fa-exclamation-triangle'
+        });
+    }
+}
+
 // Open Review Modal
 function openReviewModal() {
     const selected = getSelectedTransactions();
     if (selected.length === 0) {
-        alert('Please select at least one transaction to review.');
+        notifySelectWarning('Please select at least one transaction to review.');
         return;
     }
     
@@ -1683,35 +1776,47 @@ function closeReviewAndReject() {
 async function batchValidate() {
     const selected = getSelectedTransactions();
     if (selected.length === 0) {
-        alert('Please select at least one transaction to approve.');
+        notifySelectWarning('Please select at least one transaction to approve.');
         return;
     }
     
-    if (!confirm(`Approve ${selected.length} transaction(s)?\n\nThis will validate the readings and deduct fuel stock.`)) {
-        return;
-    }
+    const confirmApprove = await showActionConfirmModal({
+        icon: 'fas fa-check-circle',
+        title: 'Approve Fuel Transactions',
+        message: `Approve ${selected.length} transaction(s)?\n\nThis will validate the readings and deduct fuel stock from inventory.`,
+        confirmText: 'Yes, Approve',
+        confirmBg: '#16a34a'
+    });
+    if (!confirmApprove) return;
     
     let successCount = 0;
     let errorCount = 0;
     const errors = [];
+    let totalLiters = 0;
+    let totalSales = 0;
     
     for (const tx of selected) {
         try {
             const formData = new FormData();
+            formData.append('ajax', '1');
             formData.append('action', 'validate');
             formData.append('id', tx.id);
             formData.append('remarks', 'Batch validation - approved by manager');
             
             const response = await fetch('', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
             
-            if (response.ok) {
+            const jsonRes = await response.json().catch(() => null);
+            if (jsonRes && jsonRes.success) {
                 successCount++;
+                totalLiters += parseFloat(tx.liters_sold || 0);
+                totalSales += parseFloat(tx.total_amount || 0);
             } else {
                 errorCount++;
-                errors.push(`${tx.transaction_id}: Server error`);
+                errors.push(`${tx.transaction_id}: ${jsonRes?.message || 'Server error'}`);
             }
         } catch (error) {
             errorCount++;
@@ -1720,10 +1825,12 @@ async function batchValidate() {
     }
     
     if (errorCount === 0) {
-        alert(`✓ Successfully approved ${successCount} transaction(s).`);
+        sessionStorage.setItem('petron_post_reload_toast_msg', `${successCount} transaction(s) approved successfully.`);
+        sessionStorage.setItem('petron_post_reload_toast_type', 'success');
         location.reload();
     } else {
-        alert(`Completed with ${successCount} success, ${errorCount} failed.\n\n` + errors.join('\n'));
+        sessionStorage.setItem('petron_post_reload_toast_msg', `Approved with ${errorCount} error(s): ` + errors.join(', '));
+        sessionStorage.setItem('petron_post_reload_toast_type', 'error');
         location.reload();
     }
 }
@@ -1732,7 +1839,7 @@ async function batchValidate() {
 function openBatchReject() {
     const selected = getSelectedTransactions();
     if (selected.length === 0) {
-        alert('Please select at least one transaction to reject.');
+        notifySelectWarning('Please select at least one transaction to reject.');
         return;
     }
     
@@ -1745,7 +1852,7 @@ function openBatchReject() {
 async function confirmBatchReject() {
     const reason = document.getElementById('batchRejectReason').value.trim();
     if (!reason) {
-        alert('Please enter a rejection reason.');
+        notifySelectWarning('Please enter a rejection reason.');
         return;
     }
     
@@ -1761,20 +1868,23 @@ async function confirmBatchReject() {
     for (const tx of selected) {
         try {
             const formData = new FormData();
+            formData.append('ajax', '1');
             formData.append('action', 'reject');
             formData.append('id', tx.id);
             formData.append('remarks', reason);
             
             const response = await fetch('', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
             
-            if (response.ok) {
+            const jsonRes = await response.json().catch(() => null);
+            if (jsonRes && jsonRes.success) {
                 successCount++;
             } else {
                 errorCount++;
-                errors.push(`${tx.transaction_id}: Server error`);
+                errors.push(`${tx.transaction_id}: ${jsonRes?.message || 'Server error'}`);
             }
         } catch (error) {
             errorCount++;
@@ -1783,10 +1893,12 @@ async function confirmBatchReject() {
     }
     
     if (errorCount === 0) {
-        alert(`✓ Successfully rejected ${successCount} transaction(s).`);
+        sessionStorage.setItem('petron_post_reload_toast_msg', `${successCount} transaction(s) rejected successfully.`);
+        sessionStorage.setItem('petron_post_reload_toast_type', 'warning');
         location.reload();
     } else {
-        alert(`Completed with ${successCount} success, ${errorCount} failed.\n\n` + errors.join('\n'));
+        sessionStorage.setItem('petron_post_reload_toast_msg', `Rejected with ${errorCount} error(s): ` + errors.join(', '));
+        sessionStorage.setItem('petron_post_reload_toast_type', 'error');
         location.reload();
     }
 }
@@ -1795,7 +1907,7 @@ async function confirmBatchReject() {
 function printSelected() {
     const selected = getSelectedTransactions();
     if (selected.length === 0) {
-        alert('Please select at least one transaction to print.');
+        notifySelectWarning('Please select at least one transaction to print.');
         return;
     }
     
@@ -1831,7 +1943,7 @@ function printSelected() {
                     <tr>
                         <th>Transaction ID</th>
                         <th>Date</th>
-                        <th>Pump</th>
+                        <th>Shift</th>
                         <th>Fuel Type</th>
                         <th class="text-right">Begin</th>
                         <th class="text-right">Ending</th>
@@ -1883,11 +1995,12 @@ function printSelected() {
 function openBatchAdjust() {
     const selected = getSelectedTransactions();
     if (selected.length === 0) {
-        alert('Please select at least one transaction to adjust.');
+        notifySelectWarning('Please select at least one transaction to adjust.');
         return;
     }
     
     document.getElementById('batchAdjustPrompt').textContent = `You are about to mark ${selected.length} transaction(s) for adjustment. Please provide a reason:`;
+    document.getElementById('batchRejectReason') ? null : null;
     document.getElementById('batchAdjustReason').value = '';
     
     const singleFields = document.getElementById('singleAdjustFields');
@@ -1925,7 +2038,7 @@ function calcAdjTotals() {
 async function confirmBatchAdjust() {
     const reason = document.getElementById('batchAdjustReason').value.trim();
     if (!reason) {
-        alert('Please enter an adjustment reason.');
+        notifySelectWarning('Please enter an adjustment reason.');
         return;
     }
     
@@ -1941,6 +2054,7 @@ async function confirmBatchAdjust() {
     for (const tx of selected) {
         try {
             const formData = new FormData();
+            formData.append('ajax', '1');
             formData.append('action', 'adjust');
             formData.append('id', tx.id);
             formData.append('remarks', reason);
@@ -1953,14 +2067,16 @@ async function confirmBatchAdjust() {
             
             const response = await fetch('', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
             
-            if (response.ok) {
+            const jsonRes = await response.json().catch(() => null);
+            if (jsonRes && jsonRes.success) {
                 successCount++;
             } else {
                 errorCount++;
-                errors.push(`${tx.transaction_id}: Server error`);
+                errors.push(`${tx.transaction_id}: ${jsonRes?.message || 'Server error'}`);
             }
         } catch (error) {
             errorCount++;
@@ -1969,13 +2085,17 @@ async function confirmBatchAdjust() {
     }
     
     if (errorCount === 0) {
-        alert(`✓ Successfully adjusted ${successCount} transaction(s).`);
+        sessionStorage.setItem('petron_post_reload_toast_msg', `${successCount} transaction(s) adjusted successfully.`);
+        sessionStorage.setItem('petron_post_reload_toast_type', 'info');
         location.reload();
     } else {
-        alert(`Completed with ${successCount} success, ${errorCount} failed.\n\n` + errors.join('\n'));
+        sessionStorage.setItem('petron_post_reload_toast_msg', `Adjusted with ${errorCount} error(s): ` + errors.join(', '));
+        sessionStorage.setItem('petron_post_reload_toast_type', 'error');
         location.reload();
     }
 }
+
+
 </script>
 
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

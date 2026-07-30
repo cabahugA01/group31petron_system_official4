@@ -31,6 +31,16 @@ try {
         }
     }
     
+    $engine_number  = strtoupper(trim($_POST['engine_number'] ?? ''));
+    $chassis_number = strtoupper(trim($_POST['chassis_number'] ?? ''));
+    
+    if (empty($engine_number)) {
+        throw new Exception("Engine Number is required for vehicle identification.");
+    }
+    if (empty($chassis_number)) {
+        throw new Exception("Chassis Number (VIN) is required for vehicle security.");
+    }
+
     // Extract form data
     $customer_name = trim($_POST['customer_name']);
     $contact_number = trim($_POST['contact_number'] ?? '');
@@ -79,6 +89,8 @@ try {
             contact_number,
             vehicle_plate,
             vehicle_type,
+            engine_number,
+            chassis_number,
             service_type,
             assigned_mechanic,
             service_fee,
@@ -95,7 +107,7 @@ try {
             shift_name,
             created_at
         ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
             'job_order', 
             'Pending', 
             ?, ?, ?, ?, NOW()
@@ -108,11 +120,14 @@ try {
         $contact_number,
         $vehicle_plate,
         $vehicle_type,
+        $engine_number,
+        $chassis_number,
         $service_type,
         $assigned_mechanic,
         $service_fee,
         $amount_paid,
         $balance_due,
+
         $payment_status,
         $payment_method,
         $remarks,

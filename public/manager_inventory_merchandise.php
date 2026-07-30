@@ -611,6 +611,81 @@ try {
     }
 } catch (Exception $e) {}
 
+// ── prod_added_map: total stock added (Stock-In) per product ──────────────────
+// Primary source: inventory_logs (action = Stock In / stock_in / delivery)
+$prod_added_map = [];
+try {
+    $add_stmt = $pdo->prepare("
+        SELECT product_id, COALESCE(SUM(quantity_change), 0) AS total_added
+        FROM inventory_logs
+        WHERE station_id = ?
+          AND quantity_change > 0
+          AND LOWER(action) IN ('stock in','stock-in','stock_in','delivery','delivered')
+        GROUP BY product_id
+    ");
+    $add_stmt->execute([$station_id]);
+    foreach ($add_stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $prod_added_map[(int)$r['product_id']] = (float)$r['total_added'];
+    }
+} catch (Exception $e) {}
+
+// Always also merge from merchandise_stock_in (source of truth for stock additions)
+try {
+    $add_stmt2 = $pdo->prepare("
+        SELECT product_id, COALESCE(SUM(qty_received), 0) AS total_added
+        FROM merchandise_stock_in
+        WHERE station_id = ? AND product_id IS NOT NULL
+        GROUP BY product_id
+    ");
+    $add_stmt2->execute([$station_id]);
+    foreach ($add_stmt2->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $pid = (int)$r['product_id'];
+        // Use max of logs vs actual stock-in records (avoid double-counting if already logged)
+        $logged = $prod_added_map[$pid] ?? 0;
+        $from_si = (float)$r['total_added'];
+        $prod_added_map[$pid] = max($logged, $from_si);
+    }
+} catch (Exception $e) {}
+
+// ── prod_deducted_map: total stock deducted (Sales + JO + Adjustments) per product ──
+// Primary source: inventory_logs (action = sale/Merchandise Sale/Job Order Usage/etc.)
+$prod_deducted_map = [];
+try {
+    $ded_stmt = $pdo->prepare("
+        SELECT product_id, COALESCE(SUM(ABS(quantity_change)), 0) AS total_deducted
+        FROM inventory_logs
+        WHERE station_id = ?
+          AND quantity_change < 0
+          AND LOWER(action) IN ('merchandise sale','sale','job order usage','stock adjustment','stock out','stock-out','stock_out','release')
+        GROUP BY product_id
+    ");
+    $ded_stmt->execute([$station_id]);
+    foreach ($ded_stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $prod_deducted_map[(int)$r['product_id']] = (float)$r['total_deducted'];
+    }
+} catch (Exception $e) {}
+
+// Always also merge from merchandise_transaction_items (source of truth for sales deductions)
+try {
+    $ded_stmt2 = $pdo->prepare("
+        SELECT ti.product_id, COALESCE(SUM(ti.quantity), 0) AS total_deducted
+        FROM merchandise_transaction_items ti
+        JOIN merchandise_transactions t ON t.id = ti.transaction_id
+        WHERE t.station_id = ?
+          AND ti.product_id IS NOT NULL
+          AND LOWER(t.workflow_status) NOT IN ('voided','void','cancelled')
+        GROUP BY ti.product_id
+    ");
+    $ded_stmt2->execute([$station_id]);
+    foreach ($ded_stmt2->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $pid = (int)$r['product_id'];
+        $logged = $prod_deducted_map[$pid] ?? 0;
+        $from_txn = (float)$r['total_deducted'];
+        $prod_deducted_map[$pid] = max($logged, $from_txn);
+    }
+} catch (Exception $e) {}
+
+
 // Category list for filters
 $categories_list = [];
 foreach ($merch_inventory as $item) {
@@ -618,6 +693,7 @@ foreach ($merch_inventory as $item) {
     if ($cat !== '') $categories_list[$cat] = true;
 }
 ksort($categories_list);
+
 
 // Build sorted-by-category structure (used by both Inventory Overview and Stock Alerts tabs)
 $by_cat = [];
@@ -766,9 +842,12 @@ try {
     $stmt = $pdo->prepare("
         SELECT il.id AS log_id, il.created_at, il.action AS movement_type, il.quantity_change AS quantity, 
                il.quantity_before, il.quantity_after, il.reference_type, il.reference_id, il.notes, 
-               ip.product_name, ip.sku, COALESCE(si.unit, ip.size, 'pcs') AS unit, u.name AS user_name 
+               COALESCE(il.product_name, ip.product_name, 'Merchandise Item') AS product_name,
+               COALESCE(ip.sku, il.reference_id, 'N/A') AS sku,
+               COALESCE(si.unit, ip.size, 'pcs') AS unit,
+               COALESCE(il.performed_by, u.name, 'System') AS user_name 
         FROM inventory_logs il 
-        JOIN inventory_products ip ON il.product_id = ip.id 
+        LEFT JOIN inventory_products ip ON il.product_id = ip.id 
         LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = il.station_id 
         LEFT JOIN users u ON il.user_id = u.id 
         WHERE il.station_id = ? 
@@ -776,6 +855,7 @@ try {
     ");
     $stmt->execute([$station_id]);
     $movement_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
 
     $mov_total_count = count($movement_history);
     foreach ($movement_history as $log) {

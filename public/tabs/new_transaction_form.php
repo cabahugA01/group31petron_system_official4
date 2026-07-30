@@ -272,6 +272,19 @@
                     <input type="text" id="vehicle_model" name="vehicle_model" placeholder="Vios, Civic, Montero, etc.">
                 </div>
             </div>
+
+            <div class="input-row">
+                <div class="input-group">
+                    <label for="engine_number">Engine Number <span style="color: #dc2626;">*</span></label>
+                    <input type="text" id="engine_number" name="engine_number" placeholder="e.g. 1NZ-FE-1234567" style="text-transform:uppercase;">
+                </div>
+                
+                <div class="input-group">
+                    <label for="chassis_number">Chassis Number (VIN) <span style="color: #dc2626;">*</span></label>
+                    <input type="text" id="chassis_number" name="chassis_number" placeholder="e.g. MHFXE1234567890" style="text-transform:uppercase;">
+                </div>
+            </div>
+
             
             <!-- Service Details -->
             <div class="section-title" style="margin-top: 2rem;">Service Details <span style="color: #9ca3af; font-size: 0.875rem; font-weight: 400;">(For job orders)</span></div>

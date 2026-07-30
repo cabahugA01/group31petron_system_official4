@@ -47,16 +47,9 @@ document.addEventListener('DOMContentLoaded', function() {
             info: '#2563eb'
         };
         var toast = document.createElement('div');
-        toast.style.cssText = 'position:relative;width:100%;padding:13px 42px 13px 15px;border-radius:8px;border:1px solid #dbe4f0;border-left:5px solid ' + (colors[type] || colors.info) + ';background:#fff;color:#0f172a;font:600 14px/1.4 Arial,sans-serif;box-shadow:0 12px 28px rgba(15,23,42,.18);pointer-events:auto;';
-        toast.textContent = message;
+        toast.style.cssText = 'position:relative;width:100%;padding:14px 18px;border-radius:10px;border:1px solid #e2e8f0;background:#fff;color:#0f172a;font:600 14px/1.4 Arial,sans-serif;box-shadow:0 12px 28px rgba(15,23,42,.14);pointer-events:auto;';
+        toast.textContent = String(message).replace(/<[^>]*>?/gm, '').trim();
 
-        var close = document.createElement('button');
-        close.type = 'button';
-        close.setAttribute('aria-label', 'Close notification');
-        close.innerHTML = '&times;';
-        close.style.cssText = 'position:absolute;top:9px;right:10px;width:24px;height:24px;border:0;border-radius:50%;background:transparent;color:#64748b;cursor:pointer;font-size:18px;line-height:1;';
-        close.onclick = function() { toast.remove(); };
-        toast.appendChild(close);
 
         container.appendChild(toast);
         setTimeout(function() { toast.style.opacity = '0'; toast.style.transform = 'translateX(34px)'; toast.style.transition = 'all .35s ease'; }, 4000);

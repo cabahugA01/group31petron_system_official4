@@ -89,7 +89,7 @@ if (!$me) {
     $posted_uid = (int)($_POST['auth_user_id'] ?? $_GET['auth_user_id'] ?? 0);
     if ($posted_uid > 0) {
         try {
-            $u = $pdo->prepare("SELECT * FROM users WHERE user_id = ? AND (status = 'Active' OR status IS NULL) LIMIT 1");
+            $u = $pdo->prepare("SELECT * FROM users WHERE id = ? AND (status = 'Active' OR status IS NULL) LIMIT 1");
             $u->execute([$posted_uid]);
             $db_user = $u->fetch(PDO::FETCH_ASSOC);
             if ($db_user) {
@@ -98,7 +98,7 @@ if (!$me) {
                 $role       = role_key($me['role'] ?? '');
                 $station_id = $me['station_id'] ?? null;
                 try {
-                    $sid_stmt = $pdo->prepare("SELECT station_id FROM users WHERE user_id = ? LIMIT 1");
+                    $sid_stmt = $pdo->prepare("SELECT station_id FROM users WHERE id = ? LIMIT 1");
                     $sid_stmt->execute([$me['id']]);
                     $sid_val = $sid_stmt->fetchColumn();
                     if ($sid_val !== false) $station_id = $sid_val;
@@ -143,6 +143,9 @@ try {
     try {
         $pdo->exec("ALTER TABLE fuel_transactions MODIFY COLUMN `status` VARCHAR(50) NULL DEFAULT 'Pending Validation'");
     } catch (Exception $e2) {}
+    try {
+        $pdo->exec("ALTER TABLE fuel_transactions DROP FOREIGN KEY fk_ft_shift_id");
+    } catch (Exception $e3) {}
 } catch (Exception $e) {}
 
 // ── Router ────────────────────────────────────────────────────
@@ -298,7 +301,7 @@ try {
 
             // ── Validation Rule 1: Ending must be ≥ Beginning ──
             if ($present < $previous) {
-                respond(false, "Invalid Reading: Ending meter reading ({$present}) cannot be less than Beginning reading ({$previous}).");
+                respond(false, "Ending Reading cannot be lower than Beginning Reading.");
             }
 
             // ── Validation Rule 2: Calibration must be ≥ 0 ──

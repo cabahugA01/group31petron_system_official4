@@ -50,10 +50,14 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
 // ── Fetch DB data for current calculations ────────────────────────────
 $fi_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, reorder_level FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)");
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, reorder_level, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)");
     $s->execute([$station_id]);
     foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $fi_lookup[strtolower(trim($row['fuel_type']))] = $row;
+        $key = strtolower(trim($row['fuel_type']));
+        $val = (float)($row['current_level'] ?? $row['current_stock'] ?? 0);
+        if (!isset($fi_lookup[$key]) || $val > 0) {
+            $fi_lookup[$key] = $row;
+        }
     }
 } catch (Exception $e) {}
 
@@ -84,12 +88,13 @@ try {
     }
 } catch (Exception $e) {}
 
+// ── Price source: fuel_inventory.price_per_liter (authoritative — same as Meter Reading form) ──
 $price_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT ft.name AS fuel_type, fp.price_per_liter FROM fuel_pricing fp JOIN fuel_types ft ON fp.fuel_type_id = ft.id WHERE fp.station_id = ? AND fp.is_active = 1 ORDER BY fp.effective_date DESC");
+    $s = $pdo->prepare("SELECT LOWER(TRIM(fuel_type)) AS ft_key, price_per_liter FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)");
     $s->execute([$station_id]);
     foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $key = strtolower(trim($row['fuel_type']));
+        $key = $row['ft_key'];
         if (!isset($price_lookup[$key])) $price_lookup[$key] = (float)$row['price_per_liter'];
     }
 } catch (Exception $e) {}
@@ -104,23 +109,29 @@ foreach ($TANK_CONFIG_17 as $tc) {
         $cand = '';
         if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'xtra unl 1'; }
         elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'xtra unl 2'; }
-        if ($cand && isset($fi_lookup[$cand])) { $ft_key = $cand; }
+        if ($cand && isset($fi_lookup[$cand]) && (float)($fi_lookup[$cand]['current_level'] ?? 0) > 0) { $ft_key = $cand; }
         else { $ft_key = 'xtra unl'; }
     } elseif ($ft_key === 'diesel') {
         $cand = '';
         if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'diesel 1'; }
         elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'diesel 2'; }
-        if ($cand && isset($fi_lookup[$cand])) { $ft_key = $cand; }
+        if ($cand && isset($fi_lookup[$cand]) && (float)($fi_lookup[$cand]['current_level'] ?? 0) > 0) { $ft_key = $cand; }
         else { $ft_key = 'diesel'; }
     }
     $tank_key = strtolower(trim($tc['tank']));
     $inv      = $fi_lookup[$ft_key] ?? null;
 
+    if (!$inv || ((float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) <= 0)) {
+        $base_key = strtolower(explode(' ', $tc['fuel_type'])[0]);
+        if (isset($fi_lookup[$base_key]) && (float)($fi_lookup[$base_key]['current_level'] ?? $fi_lookup[$base_key]['current_stock'] ?? 0) > 0) {
+            $inv = $fi_lookup[$base_key];
+        }
+    }
+
     $capacity  = (float)$tc['capacity'];
-    $cur_level = min(
-        $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0,
-        $capacity
-    );
+    $raw_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
+    $cur_level = $raw_level > 0 ? min($raw_level, $capacity) : 0;
+
 
     $same_type_count = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key, $fi_lookup) {
         $k = strtolower(trim($t['fuel_type']));
@@ -1343,56 +1354,89 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     </div>
 </div>
 
-<!-- ══ ADJUST FUEL READING MODAL (MANAGER ONLY) ══ -->
-<div class="modal-overlay" id="adjustReadingModal" style="z-index:10005;">
-    <div style="background:#fff;border-radius:14px;width:96%;max-width:540px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 40px rgba(0,0,0,.25);position:relative;z-index:10006;">
-        <div style="padding:16px 22px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;">
-            <div style="font-size:15px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;gap:8px;">
-                <i class="fas fa-sliders-h" style="color:#fd7e14;"></i> Adjust Fuel Reading (Manager Only)
+<!-- ══ FUEL STOCK ADJUSTMENT REQUEST MODAL (STEP 5: MANAGER REQUEST) ══ -->
+<div class="modal-overlay" id="adjustReadingModal" style="z-index:10005; display:none; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;">
+    <div style="background:#fff; border-radius:14px; width:96%; max-width:580px; max-height:calc(100vh - 40px); display:flex; flex-direction:column; overflow:hidden; box-shadow:0 24px 40px rgba(0,0,0,.25); position:relative; z-index:10006; margin:auto;">
+
+
+        <!-- Header (Fixed) -->
+        <div style="padding:14px 20px; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; background:#f8fafc; flex-shrink:0;">
+            <div style="font-size:15px; font-weight:800; color:#002F70; text-transform:uppercase; letter-spacing:.4px; display:flex; align-items:center; gap:8px;">
+                <i class="fas fa-sliders-h" style="color:#fd7e14;"></i> Fuel Stock Adjustment Request (Manager)
             </div>
-            <button type="button" onclick="closeAdjustReadingModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;line-height:1;">&times;</button>
         </div>
-        <div style="padding:22px;">
-            <div class="form-group">
-                <label>Fuel Type</label>
-                <input type="text" id="afrFuelType" readonly style="background:#f1f5f9;color:#64748b;font-weight:600;">
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        
+        <!-- Body (Scrollable) -->
+        <div style="padding:20px; overflow-y:auto; flex:1;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
                 <div class="form-group">
-                    <label>Current Meter Reading</label>
-                    <input type="number" id="afrCurReading" readonly style="background:#f1f5f9;color:#64748b;font-weight:600;">
+                    <label style="font-weight:700; font-size:12px; color:#334155;">Fuel Type *</label>
+                    <select id="afrFuelTypeSelect" onchange="onAfrFuelTypeChange(this.value)" style="width:100%; padding:9px 11px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#0f172a;">
+                    </select>
                 </div>
                 <div class="form-group">
-                    <label>New Meter Reading *</label>
-                    <input type="number" id="afrNewReading" step="0.01" placeholder="Enter new reading" oninput="calcFuelVariance()">
+                    <label style="font-weight:700; font-size:12px; color:#334155;">UGT Number</label>
+                    <input type="text" id="afrUgtNo" readonly style="background:#f1f5f9; color:#002F70; font-weight:700;">
                 </div>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:10px;">
                 <div class="form-group">
-                    <label>Variance (Auto)</label>
-                    <input type="text" id="afrVariance" readonly style="background:#f1f5f9;color:#64748b;font-weight:700;">
+                    <label style="font-weight:700; font-size:12px; color:#334155;">Current Volume (Auto)</label>
+                    <input type="text" id="afrCurReading" readonly style="background:#f1f5f9; color:#002F70; font-weight:800;">
                 </div>
                 <div class="form-group">
-                    <label>Calibration (L)</label>
-                    <input type="number" id="afrCalibration" step="0.01" placeholder="0.00">
+                    <label style="font-weight:700; font-size:12px; color:#334155;">Actual Tank Dip Volume (L) *</label>
+                    <input type="number" id="afrNewReading" step="0.01" placeholder="Enter dip volume" oninput="calcFuelVariance()" style="font-weight:700; border:1px solid #94a3b8;">
                 </div>
             </div>
-            <div class="form-group">
-                <label>Reason <span style="color:#94a3b8;font-size:10px;">(Optional)</span></label>
-                <textarea id="afrReason" rows="2" placeholder="State reason for reading adjustment..." style="width:100%;padding:9px 11px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;"></textarea>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-top:10px; background:#f8fafc; padding:12px; border-radius:8px; border:1px solid #e2e8f0;">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label style="font-size:11px; font-weight:700; color:#64748b;">Variance (Auto)</label>
+                    <input type="text" id="afrVariance" readonly style="background:#fff; color:#0f172a; font-weight:800; font-size:13px; border:1px solid #cbd5e1;">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label style="font-size:11px; font-weight:700; color:#64748b;">Direction</label>
+                    <input type="text" id="afrDirection" readonly style="background:#fff; color:#0f172a; font-weight:800; font-size:13px; border:1px solid #cbd5e1;">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label style="font-size:11px; font-weight:700; color:#64748b;">Adjustment (L)</label>
+                    <input type="text" id="afrAdjLiters" readonly style="background:#fff; color:#002F70; font-weight:800; font-size:13px; border:1px solid #cbd5e1;">
+                </div>
             </div>
-            <div class="form-group">
-                <label>Remarks <span style="color:#94a3b8;font-size:10px;">(Optional)</span></label>
-                <textarea id="afrRemarks" rows="2" placeholder="Additional remarks..." style="width:100%;padding:9px 11px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;"></textarea>
+            <div class="form-group" style="margin-top:12px;">
+                <label style="font-weight:700; font-size:12px; color:#334155;">Adjustment Type *</label>
+                <select id="afrAdjType" style="width:100%; padding:9px 11px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600;">
+                    <option value="Physical Count / Tank Dip">Physical Count / Tank Dip</option>
+                    <option value="Spill">Spill</option>
+                    <option value="Leakage">Leakage</option>
+                    <option value="Evaporation">Evaporation</option>
+                    <option value="Wrong Fuel Delivery">Wrong Fuel Delivery</option>
+                    <option value="Encoding Error">Encoding Error</option>
+                    <option value="System Correction">System Correction</option>
+                    <option value="Others">Others</option>
+                </select>
             </div>
-            <div id="afrError" style="color:#dc3545;font-size:12px;margin-bottom:10px;display:none;"></div>
-            <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
-                <button type="button" onclick="saveFuelAdjustment()" style="background:#002F70;color:#fff;border:none;border-radius:6px;padding:9px 22px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save"></i> Save Adjustment</button>
-                <button type="button" onclick="closeAdjustReadingModal()" style="background:#fff;color:#6b7280;border:1px solid #6b7280;border-radius:6px;padding:9px 22px;font-size:13px;font-weight:700;cursor:pointer;">Cancel</button>
+            <div class="form-group" style="margin-top:10px;">
+                <label style="font-weight:700; font-size:12px; color:#334155;">Reason <span style="color:#dc2626;">*</span></label>
+                <textarea id="afrReason" rows="2" placeholder="State reason for stock adjustment..." style="width:100%; padding:9px 11px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; box-sizing:border-box; resize:vertical;"></textarea>
             </div>
+            <div class="form-group" style="margin-top:10px;">
+                <label style="font-weight:700; font-size:12px; color:#334155;">Remarks <span style="color:#94a3b8; font-size:10px;">(Optional)</span></label>
+                <textarea id="afrRemarks" rows="2" placeholder="Additional remarks..." style="width:100%; padding:9px 11px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; box-sizing:border-box; resize:vertical;"></textarea>
+            </div>
+            <div id="afrError" style="color:#dc3545; font-size:12px; margin-top:8px; display:none; font-weight:600;"></div>
+        </div>
+
+        <!-- Footer (Fixed, Clean Outline Buttons) -->
+        <div style="padding:12px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:flex-end; align-items:center; gap:10px; flex-shrink:0;">
+            <button type="button" onclick="saveFuelAdjustment()" style="background:#ffffff !important; color:#002F70 !important; border:1px solid #002F70 !important; border-radius:6px; padding:8px 20px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:none !important;"><i class="fas fa-paper-plane"></i> Submit Request</button>
+            <button type="button" onclick="closeAdjustReadingModal()" style="background:#ffffff !important; color:#475569 !important; border:1px solid #cbd5e1 !important; border-radius:6px; padding:8px 20px; font-size:13px; font-weight:600; cursor:pointer; box-shadow:none !important;">Cancel</button>
         </div>
     </div>
 </div>
+
+
+
 
 <script>
 function esc(str) {
@@ -1691,6 +1735,8 @@ function printFuelDetails() {
     setTimeout(function() { pw.print(); }, 300);
 }
 
+window._allFuelRows = <?= json_encode(array_values($rows)) ?>;
+
 // ── Adjust Reading Modal ──
 function openAdjustReadingModal(r) {
     closeFuelModal(); // Close view fuel modal to prevent overlapping/sapaw
@@ -1700,15 +1746,45 @@ function openAdjustReadingModal(r) {
     if (modal.parentNode !== document.body) {
         document.body.appendChild(modal);
     }
+
+    // Populate Fuel Type Select dropdown with index keys
+    var sel = document.getElementById('afrFuelTypeSelect');
+    if (sel && window._allFuelRows && window._allFuelRows.length > 0) {
+        sel.innerHTML = '';
+        window._allFuelRows.forEach(function(item, idx) {
+            var opt = document.createElement('option');
+            opt.value = idx;
+            opt.textContent = item.fuel_type + ' (' + (item.ugt_no || ('UGT-' + String(idx + 1).padStart(2, '0'))) + ')';
+            sel.appendChild(opt);
+        });
+    }
+
     if (r) {
         _currentFuelRow = r;
-        var ugtName = r.ugt_no || ('UGT-' + String(r.tank_id || 0).padStart(2, '0'));
-        document.getElementById('afrFuelType').value = (r.fuel_type || '') + ' (' + ugtName + ')';
-        document.getElementById('afrCurReading').value = r.current_volume || 0;
+        var matchIdx = -1;
+        if (window._allFuelRows && window._allFuelRows.length > 0) {
+            matchIdx = window._allFuelRows.findIndex(function(item) {
+                return (item.ugt_no && r.ugt_no && item.ugt_no === r.ugt_no) ||
+                       (item.fuel_type.toLowerCase() === (r.fuel_type || '').toLowerCase());
+            });
+        }
+        if (matchIdx >= 0) {
+            if (sel) sel.value = matchIdx;
+            onAfrFuelTypeChange(matchIdx);
+        } else {
+            if (sel) sel.value = 0;
+            onAfrFuelTypeChange(0);
+        }
+    } else {
+        if (sel) sel.value = 0;
+        onAfrFuelTypeChange(0);
     }
+
     document.getElementById('afrNewReading').value = '';
-    document.getElementById('afrVariance').value = '';
-    document.getElementById('afrCalibration').value = '';
+    document.getElementById('afrVariance').value = '0.00 L';
+    document.getElementById('afrDirection').value = 'Balanced';
+    document.getElementById('afrAdjLiters').value = '0.00 L';
+    document.getElementById('afrAdjType').value = 'Physical Count / Tank Dip';
     document.getElementById('afrReason').value = '';
     document.getElementById('afrRemarks').value = '';
     document.getElementById('afrError').style.display = 'none';
@@ -1719,8 +1795,45 @@ function openAdjustReadingModal(r) {
     modal.style.left = '0';
     modal.style.right = '0';
     modal.style.bottom = '0';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.padding = '20px';
+    modal.style.boxSizing = 'border-box';
     modal.style.zIndex = '10005';
+
 }
+
+function onAfrFuelTypeChange(val) {
+    if (!window._allFuelRows || window._allFuelRows.length === 0) return;
+    var index = parseInt(val);
+    if (isNaN(index) || index < 0 || index >= window._allFuelRows.length) {
+        index = 0;
+    }
+    var target = window._allFuelRows[index];
+    if (target) {
+        _currentFuelRow = target;
+        var ugtName = target.ugt_no || ('UGT-' + String(target.tank_id || (index + 1)).padStart(2, '0'));
+        document.getElementById('afrUgtNo').value = ugtName;
+
+        var vol = parseFloat(target.current_volume);
+        if (isNaN(vol) || vol <= 0) {
+            vol = parseFloat(target.ending_system) || parseFloat(target.current_level) || 0;
+        }
+        if (vol <= 0) {
+            var activeTank = window._allFuelRows.find(function(r) {
+                var v = parseFloat(r.current_volume);
+                return r.fuel_type.toLowerCase() === target.fuel_type.toLowerCase() && !isNaN(v) && v > 0;
+            });
+            if (activeTank) {
+                vol = parseFloat(activeTank.current_volume);
+            }
+        }
+
+        document.getElementById('afrCurReading').value = Number(vol || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
+        calcFuelVariance();
+    }
+}
+
 
 function closeAdjustReadingModal() {
     var modal = document.getElementById('adjustReadingModal');
@@ -1731,45 +1844,68 @@ function closeAdjustReadingModal() {
 }
 
 function calcFuelVariance() {
-    var cur = parseFloat(document.getElementById('afrCurReading').value) || 0;
-    var nw  = parseFloat(document.getElementById('afrNewReading').value) || 0;
+    var curText = (document.getElementById('afrCurReading').value || '0').replace(/[^0-9.-]/g, '');
+    var cur = parseFloat(curText) || 0;
+    var nwText = document.getElementById('afrNewReading').value.trim();
+    if (!nwText || isNaN(nwText)) {
+        document.getElementById('afrVariance').value = '0.00 L';
+        document.getElementById('afrDirection').value = 'Balanced';
+        document.getElementById('afrAdjLiters').value = '0.00 L';
+        return;
+    }
+    var nw  = parseFloat(nwText);
     var variance = nw - cur;
-    var sign = variance >= 0 ? '+' : '';
-    document.getElementById('afrVariance').value = sign + variance.toFixed(2) + ' L';
+    var absVar = Math.abs(variance);
+    
+    document.getElementById('afrVariance').value = (variance >= 0 ? '+' : '') + variance.toFixed(2) + ' L';
+    document.getElementById('afrDirection').value = variance > 0 ? 'Increase (+)' : (variance < 0 ? 'Decrease (-)' : 'Balanced');
+    document.getElementById('afrAdjLiters').value = absVar.toFixed(2) + ' L';
 }
 
 function saveFuelAdjustment() {
-    var newReading = document.getElementById('afrNewReading').value.trim();
+    var actualDip  = document.getElementById('afrNewReading').value.trim();
+    var sel        = document.getElementById('afrFuelTypeSelect');
+    var target     = (window._allFuelRows && sel) ? window._allFuelRows[sel.value] : null;
+    var fuelType   = target ? target.fuel_type : (document.getElementById('afrFuelTypeSelect').selectedOptions[0]?.text || '');
+    var ugtNo      = document.getElementById('afrUgtNo').value.trim();
+    var adjType    = document.getElementById('afrAdjType').value;
+    var reason     = document.getElementById('afrReason').value.trim();
     var remarks    = document.getElementById('afrRemarks').value.trim();
-    var reason     = document.getElementById('afrReason').value.trim() || remarks || 'Meter reading adjustment by Manager';
-    var calibration = document.getElementById('afrCalibration').value.trim() || '0';
-    var fuelType   = document.getElementById('afrFuelType').value.trim();
     var errEl      = document.getElementById('afrError');
+
+
 
     errEl.style.display = 'none';
 
-    if (!newReading || isNaN(newReading)) {
-        errEl.textContent = 'New Meter Reading is required and must be a valid number.';
+    if (!actualDip || isNaN(actualDip)) {
+        errEl.textContent = 'Actual Tank Dip Volume is required and must be a valid number.';
+        errEl.style.display = 'block';
+        return;
+    }
+    if (!reason) {
+        errEl.textContent = 'Reason for adjustment is required.';
         errEl.style.display = 'block';
         return;
     }
 
     var saveBtn = document.querySelector('#adjustReadingModal button[onclick="saveFuelAdjustment()"]');
-    if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...'; }
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...'; }
 
     var fd = new FormData();
-    fd.append('fuel_type',   fuelType);
-    fd.append('new_reading', newReading);
-    fd.append('calibration', calibration);
-    fd.append('reason',      reason);
-    fd.append('remarks',     remarks);
+    fd.append('action',             'create_adjustment');
+    fd.append('fuel_type',          fuelType);
+    fd.append('ugt_no',             ugtNo);
+    fd.append('actual_dip_volume',  actualDip);
+    fd.append('adjustment_type',    adjType);
+    fd.append('reason',             reason);
+    fd.append('remarks',            remarks);
 
-    fetch('../backend/api/save_fuel_reading_adjustment.php', { method: 'POST', body: fd })
+    fetch('../backend/api/fuel_adjustments.php', { method: 'POST', body: fd })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Adjustment'; }
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request'; }
         if (!data.success) {
-            errEl.textContent = data.error || 'Failed to save adjustment.';
+            errEl.textContent = data.message || data.error || 'Failed to submit adjustment request.';
             errEl.style.display = 'block';
             return;
         }
@@ -1777,11 +1913,11 @@ function saveFuelAdjustment() {
         closeAdjustReadingModal();
         closeFuelModal();
 
-        var msg = data.message || ('Fuel reading for ' + fuelType + ' adjusted successfully!');
+        var msg = data.message || ('Stock adjustment request for ' + fuelType + ' submitted. Pending Admin approval.');
         if (window.showPetronFlash) {
-            window.showPetronFlash(msg, 'success', 4000);
+            window.showPetronFlash(msg, 'success', 5000);
         } else if (window.showToast) {
-            window.showToast(msg, 'success', 4000);
+            window.showToast(msg, 'success', 5000);
         } else {
             alert(msg);
         }
@@ -1789,11 +1925,12 @@ function saveFuelAdjustment() {
         setTimeout(function() { location.reload(); }, 1200);
     })
     .catch(function(err) {
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Adjustment'; }
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Request'; }
         errEl.textContent = 'Network error. Please try again.';
         errEl.style.display = 'block';
     });
 }
+
 
 // ── Reset Fuel Filters ──
 function resetFuelFilters() {

@@ -369,40 +369,30 @@ try {
             CONCAT('ADJ-', LPAD(fa.id, 5, '0')) AS adjustment_no,
             fa.id,
             fa.adjustment_date AS date,
-            COALESCE(
-                NULLIF(fa.fuel_type,''),
-                fi.fuel_type,
-                ft.name,
-                'Diesel'
-            ) AS fuel_type,
-            COALESCE(
-                NULLIF(fi.ugt_no,''),
-                CASE 
-                    WHEN LOWER(COALESCE(fa.fuel_type, fi.fuel_type, '')) LIKE '%turbo%' THEN 'UGT-05'
-                    WHEN LOWER(COALESCE(fa.fuel_type, fi.fuel_type, '')) LIKE '%diesel%' THEN 'UGT-01'
-                    WHEN LOWER(COALESCE(fa.fuel_type, fi.fuel_type, '')) LIKE '%xcs%' THEN 'UGT-03'
-                    WHEN LOWER(COALESCE(fa.fuel_type, fi.fuel_type, '')) LIKE '%xtra%' THEN 'UGT-04'
-                    WHEN LOWER(COALESCE(fa.fuel_type, fi.fuel_type, '')) LIKE '%kerosene%' THEN 'UGT-07'
-                    ELSE 'UGT-01'
-                END
-            ) AS ugt_no,
+            COALESCE(NULLIF(fa.fuel_type,''), fi.fuel_type, ft.name, 'Diesel') AS fuel_type,
+            COALESCE(NULLIF(fa.ugt_no,''), NULLIF(fi.ugt_no,''), 'UGT-01') AS ugt_no,
+            COALESCE(fa.adjustment_type, 'Physical Count / Tank Dip') AS adjustment_type,
+            fa.liters,
+            COALESCE(fa.adjustment_direction, IF(fa.variance >= 0, 'Increase', 'Decrease')) AS adjustment_direction,
             fa.previous_value AS previous_reading,
             fa.new_value AS new_reading,
-            (fa.new_value - fa.previous_value) AS variance,
+            COALESCE(fa.variance, (fa.new_value - fa.previous_value)) AS variance,
             COALESCE(NULLIF(fa.reason,''), NULLIF(fa.notes,''), 'Routine Calibration') AS reason,
-            COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Edgar Eslit') AS adjusted_by
+            COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Manager') AS adjusted_by,
+            COALESCE(fa.status, 'Approved') AS status
         FROM fuel_adjustments fa
         LEFT JOIN fuel_inventory fi ON (fa.fuel_type_id = fi.fuel_type_id OR LOWER(fa.fuel_type) = LOWER(fi.fuel_type))
         LEFT JOIN fuel_types ft ON fa.fuel_type_id = ft.id
         LEFT JOIN users u ON fa.user_id = u.id
         WHERE (fa.station_id = ? OR fa.station_id = 0 OR fa.station_id IS NULL OR fa.station_id = 1253 OR fa.station_id = 1)
         GROUP BY fa.id
-        ORDER BY fa.adjustment_date DESC, fa.id DESC
+        ORDER BY CASE WHEN LOWER(COALESCE(fa.status,'')) LIKE '%pending%' THEN 0 ELSE 1 END, fa.adjustment_date DESC, fa.id DESC
         LIMIT 200
     ");
     $stmt->execute([$station_id]);
     $fuel_adjustments_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
+
 
 include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
@@ -808,39 +798,55 @@ body, html { overflow-x:hidden !important; }
           <th>Adjustment No.</th>
           <th>UGT No.</th>
           <th>Fuel Type</th>
-          <th style="text-align:right;">Previous Reading</th>
-          <th style="text-align:right;">New Reading</th>
+          <th>Adjustment Type</th>
+          <th style="text-align:right;">System Vol</th>
+          <th style="text-align:right;">Actual Dip</th>
           <th style="text-align:right;">Variance</th>
           <th>Reason</th>
-          <th>Adjusted By</th>
-          <th>Date</th>
+          <th>Requested By</th>
+          <th>Status</th>
+          <th style="text-align:center;">Action</th>
         </tr>
       </thead>
       <tbody id="adminFuelAdjBody">
       <?php if (empty($fuel_adjustments_list)): ?>
-        <tr><td colspan="9" style="text-align:center; padding:32px; color:#6c757d;"><i class="fas fa-info-circle" style="font-size:24px; display:block; margin-bottom:8px;"></i>No fuel adjustment history found.</td></tr>
+        <tr><td colspan="11" style="text-align:center; padding:32px; color:#6c757d;"><i class="fas fa-info-circle" style="font-size:24px; display:block; margin-bottom:8px;"></i>No fuel adjustment requests found.</td></tr>
       <?php else: ?>
         <?php foreach ($fuel_adjustments_list as $adj):
             $adate = $adj['date'] ? date('M d, Y h:i A', strtotime($adj['date'])) : '—';
             $var = (float)($adj['variance'] ?? 0);
             $var_color = $var > 0 ? '#16a34a' : ($var < 0 ? '#dc2626' : '#64748b');
-            $adj_json = htmlspecialchars(json_encode($adj), ENT_QUOTES);
+            $st = strtolower(trim($adj['status'] ?? ''));
+            $is_pending = strpos($st, 'pending') !== false;
+            $st_badge = $is_pending ? '<span style="background:#fef3c7;color:#b45309;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700;"><i class="fas fa-clock"></i> Pending Admin Approval</span>'
+                      : ($st === 'approved' ? '<span style="background:#dcfce7;color:#15803d;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700;"><i class="fas fa-check-circle"></i> Approved</span>'
+                      : '<span style="background:#fee2e2;color:#b91c1c;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700;"><i class="fas fa-times-circle"></i> Rejected</span>');
         ?>
         <tr class="adj-row" data-search="<?= strtolower(htmlspecialchars($adj['adjustment_no'] . ' ' . $adj['fuel_type'] . ' ' . $adj['reason'])) ?>">
           <td><code style="font-weight:700; color:#002F70;"><?= htmlspecialchars($adj['adjustment_no']) ?></code></td>
           <td><code style="font-weight:700; color:#002F70;"><?= htmlspecialchars($adj['ugt_no']) ?></code></td>
           <td style="font-weight:700; color:#0f172a;"><?= htmlspecialchars(get_canonical_fuel_name($adj['fuel_type'])) ?></td>
+          <td style="font-size:11px; font-weight:600; color:#475569;"><?= htmlspecialchars($adj['adjustment_type']) ?></td>
           <td style="text-align:right; font-weight:600; color:#475569;"><?= number_format((float)$adj['previous_reading'], 2) ?> L</td>
           <td style="text-align:right; font-weight:700; color:#002F70;"><?= number_format((float)$adj['new_reading'], 2) ?> L</td>
           <td style="text-align:right; font-weight:700; color:<?= $var_color ?>;"><?= ($var >= 0 ? '+' : '') . number_format($var, 2) ?> L</td>
-          <td style="font-size:11px; color:#334155;"><?= htmlspecialchars($adj['reason']) ?></td>
+          <td style="font-size:11px; color:#334155; max-width:180px;"><?= htmlspecialchars($adj['reason']) ?></td>
           <td style="font-size:11px; color:#334155;"><?= htmlspecialchars($adj['adjusted_by']) ?></td>
-          <td style="color:#64748b; font-size:11px;"><?= $adate ?></td>
+          <td><?= $st_badge ?></td>
+          <td style="text-align:center; white-space:nowrap;">
+            <?php if ($is_pending): ?>
+              <button type="button" onclick="approveFuelAdjustment(<?= $adj['id'] ?>)" style="background:#16a34a; color:#fff; border:none; border-radius:5px; padding:4px 10px; font-size:11px; font-weight:700; cursor:pointer; margin-right:4px;"><i class="fas fa-check"></i> Approve</button>
+              <button type="button" onclick="rejectFuelAdjustment(<?= $adj['id'] ?>)" style="background:#dc2626; color:#fff; border:none; border-radius:5px; padding:4px 10px; font-size:11px; font-weight:700; cursor:pointer;"><i class="fas fa-times"></i> Reject</button>
+            <?php else: ?>
+              <span style="color:#94a3b8; font-size:11px; font-weight:600;">Processed</span>
+            <?php endif; ?>
+          </td>
         </tr>
         <?php endforeach; ?>
       <?php endif; ?>
       </tbody>
     </table>
+
   </div>
   <div id="adminFuelAdjPagination" style="padding:8px 16px;"></div>
 </div>
@@ -1247,7 +1253,8 @@ function filterAdjTable() {
     }
 }
 
-// Modal dismissal on click outside
+<!-- Modal dismissal on click outside -->
+<script>
 document.querySelectorAll('.modal-overlay').forEach(function(modal) {
     modal.addEventListener('click', function(e) {
         if (e.target === this) {
@@ -1256,6 +1263,170 @@ document.querySelectorAll('.modal-overlay').forEach(function(modal) {
         }
     });
 });
+</script>
+
+<!-- ══ ADMIN APPROVE CONFIRMATION MODAL ══ -->
+<div class="modal-overlay" id="adminApproveModal" style="z-index:10005; display:none; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;">
+    <div style="background:#fff; border-radius:14px; width:96%; max-width:480px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 24px 40px rgba(0,0,0,.25); position:relative; z-index:10006; margin:auto;">
+        <div style="padding:16px 20px; border-bottom:1px solid #e2e8f0; background:#f8fafc; display:flex; align-items:center; justify-content:space-between;">
+            <div style="font-size:15px; font-weight:800; color:#002F70; text-transform:uppercase; letter-spacing:.4px; display:flex; align-items:center; gap:8px;">
+                <i class="fas fa-check-circle" style="color:#16a34a;"></i> Confirm Fuel Stock Adjustment
+            </div>
+        </div>
+        <div style="padding:22px; text-align:center;">
+            <div style="width:54px; height:54px; border-radius:50%; background:#dcfce7; color:#16a34a; display:flex; align-items:center; justify-content:center; font-size:24px; margin:0 auto 14px;">
+                <i class="fas fa-gas-pump"></i>
+            </div>
+            <h4 style="margin:0 0 8px; font-size:16px; font-weight:800; color:#0f172a;">Approve this Fuel Stock Adjustment?</h4>
+            <p style="margin:0; font-size:13px; color:#64748b; line-height:1.5;">This will automatically update the Underground Storage Tank (UGT) Current Volume and record the movement in the audit trail.</p>
+            <div id="adminApproveError" style="color:#dc2626; font-size:12px; font-weight:700; margin-top:10px; display:none;"></div>
+        </div>
+        <div style="padding:14px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:flex-end; gap:10px;">
+            <button type="button" id="adminApproveConfirmBtn" onclick="execApproveFuelAdjustment()" style="background:#ffffff !important; color:#16a34a !important; border:1px solid #16a34a !important; border-radius:6px; padding:8px 20px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:none !important;"><i class="fas fa-check"></i> Approve Adjustment</button>
+            <button type="button" onclick="closeAdminApproveModal()" style="background:#ffffff !important; color:#475569 !important; border:1px solid #cbd5e1 !important; border-radius:6px; padding:8px 20px; font-size:13px; font-weight:600; cursor:pointer; box-shadow:none !important;">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ ADMIN REJECT CONFIRMATION MODAL ══ -->
+<div class="modal-overlay" id="adminRejectModal" style="z-index:10005; display:none; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;">
+    <div style="background:#fff; border-radius:14px; width:96%; max-width:480px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 24px 40px rgba(0,0,0,.25); position:relative; z-index:10006; margin:auto;">
+        <div style="padding:16px 20px; border-bottom:1px solid #e2e8f0; background:#f8fafc; display:flex; align-items:center; justify-content:space-between;">
+            <div style="font-size:15px; font-weight:800; color:#dc2626; text-transform:uppercase; letter-spacing:.4px; display:flex; align-items:center; gap:8px;">
+                <i class="fas fa-times-circle" style="color:#dc2626;"></i> Reject Fuel Stock Adjustment
+            </div>
+        </div>
+        <div style="padding:22px;">
+            <p style="margin:0 0 10px; font-size:13px; font-weight:700; color:#334155;">Enter reason for rejecting this stock adjustment request: <span style="color:#dc2626;">*</span></p>
+            <textarea id="adminRejectReason" rows="3" placeholder="State reason for rejection..." style="width:100%; padding:9px 11px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; box-sizing:border-box; resize:vertical;"></textarea>
+            <div id="adminRejectError" style="color:#dc2626; font-size:12px; font-weight:700; margin-top:8px; display:none;"></div>
+        </div>
+        <div style="padding:14px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:flex-end; gap:10px;">
+            <button type="button" id="adminRejectConfirmBtn" onclick="execRejectFuelAdjustment()" style="background:#ffffff !important; color:#dc2626 !important; border:1px solid #dc2626 !important; border-radius:6px; padding:8px 20px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:none !important;"><i class="fas fa-times"></i> Confirm Rejection</button>
+            <button type="button" onclick="closeAdminRejectModal()" style="background:#ffffff !important; color:#475569 !important; border:1px solid #cbd5e1 !important; border-radius:6px; padding:8px 20px; font-size:13px; font-weight:600; cursor:pointer; box-shadow:none !important;">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<script>
+
+var _selectedAdjustmentId = null;
+
+function approveFuelAdjustment(id) {
+    _selectedAdjustmentId = id;
+    var errEl = document.getElementById('adminApproveError');
+    if (errEl) errEl.style.display = 'none';
+    var modal = document.getElementById('adminApproveModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.style.position = 'fixed';
+        modal.style.top = '0'; modal.style.left = '0'; modal.style.right = '0'; modal.style.bottom = '0';
+        modal.style.alignItems = 'center';
+        modal.style.justifyContent = 'center';
+        modal.style.padding = '20px';
+        modal.style.zIndex = '10005';
+    }
+}
+
+function closeAdminApproveModal() {
+    var modal = document.getElementById('adminApproveModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function execApproveFuelAdjustment() {
+    if (!_selectedAdjustmentId) return;
+    var btn = document.getElementById('adminApproveConfirmBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Approving...'; }
+
+    var fd = new FormData();
+    fd.append('action', 'approve_adjustment');
+    fd.append('adjustment_id', _selectedAdjustmentId);
+
+    fetch('../backend/api/fuel_adjustments.php', { method: 'POST', body: fd })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Approve Adjustment'; }
+        if (!data.success) {
+            var errEl = document.getElementById('adminApproveError');
+            if (errEl) { errEl.textContent = data.message || 'Failed to approve adjustment.'; errEl.style.display = 'block'; }
+            return;
+        }
+        closeAdminApproveModal();
+        if (window.showPetronFlash) {
+            window.showPetronFlash(data.message || 'Fuel Stock Adjustment approved successfully! Inventory volume updated.', 'success', 5000);
+        }
+        setTimeout(function() { location.reload(); }, 1200);
+    })
+    .catch(function(err) {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Approve Adjustment'; }
+        var errEl = document.getElementById('adminApproveError');
+        if (errEl) { errEl.textContent = 'Network error. Please try again.'; errEl.style.display = 'block'; }
+    });
+}
+
+function rejectFuelAdjustment(id) {
+    _selectedAdjustmentId = id;
+    var reasonInput = document.getElementById('adminRejectReason');
+    if (reasonInput) reasonInput.value = '';
+    var errEl = document.getElementById('adminRejectError');
+    if (errEl) errEl.style.display = 'none';
+    var modal = document.getElementById('adminRejectModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.style.position = 'fixed';
+        modal.style.top = '0'; modal.style.left = '0'; modal.style.right = '0'; modal.style.bottom = '0';
+        modal.style.alignItems = 'center';
+        modal.style.justifyContent = 'center';
+        modal.style.padding = '20px';
+        modal.style.zIndex = '10005';
+    }
+}
+
+
+function closeAdminRejectModal() {
+    var modal = document.getElementById('adminRejectModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function execRejectFuelAdjustment() {
+    if (!_selectedAdjustmentId) return;
+    var reason = (document.getElementById('adminRejectReason').value || '').trim();
+    var errEl = document.getElementById('adminRejectError');
+    if (errEl) errEl.style.display = 'none';
+
+    if (!reason) {
+        if (errEl) { errEl.textContent = 'Rejection reason is required.'; errEl.style.display = 'block'; }
+        return;
+    }
+
+    var btn = document.getElementById('adminRejectConfirmBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Rejecting...'; }
+
+    var fd = new FormData();
+    fd.append('action', 'reject_adjustment');
+    fd.append('adjustment_id', _selectedAdjustmentId);
+    fd.append('reason', reason);
+
+    fetch('../backend/api/fuel_adjustments.php', { method: 'POST', body: fd })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-times"></i> Confirm Rejection'; }
+        if (!data.success) {
+            if (errEl) { errEl.textContent = data.message || 'Failed to reject adjustment.'; errEl.style.display = 'block'; }
+            return;
+        }
+        closeAdminRejectModal();
+        if (window.showPetronFlash) {
+            window.showPetronFlash(data.message || 'Fuel Stock Adjustment request rejected.', 'success', 5000);
+        }
+        setTimeout(function() { location.reload(); }, 1200);
+    })
+    .catch(function(err) {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-times"></i> Confirm Rejection'; }
+        if (errEl) { errEl.textContent = 'Network error. Please try again.'; errEl.style.display = 'block'; }
+    });
+}
+
 
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof setupTablePagination === 'function') {
@@ -1266,5 +1437,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

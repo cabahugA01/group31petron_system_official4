@@ -112,12 +112,28 @@ try {
                             $item['productId'],
                             $item['quantity']
                         ]);
+
+                        if (function_exists('log_inventory_movement')) {
+                            try {
+                                $curStockStmt = $pdo->prepare("SELECT stock_level FROM station_inventory WHERE station_id = ? AND product_id = ? LIMIT 1");
+                                $curStockStmt->execute([$station_id, $item['productId']]);
+                                $stock_after = (int)$curStockStmt->fetchColumn();
+                                $stock_before = $stock_after + (int)$item['quantity'];
+                                log_inventory_movement(
+                                    $pdo, $station_id, (int)$item['productId'], $item['productName'],
+                                    'Merchandise Sale', $stock_before, $stock_after, -(int)$item['quantity'],
+                                    'merchandise_transaction', $input['transaction_id'],
+                                    $me['name'] ?? 'System', 'POS Merchandise Sale - Ref: ' . $input['transaction_id']
+                                );
+                            } catch (Exception $lErr) {}
+                        }
                     } catch (Exception $stockError) {
                         // Log stock update error but continue
                         error_log("Stock update failed: " . $stockError->getMessage());
                     }
                 }
             } catch (Exception $itemError) {
+
                 // Log item insertion error but continue with other items
                 error_log("Item insertion failed: " . $itemError->getMessage());
             }

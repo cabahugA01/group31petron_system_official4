@@ -307,8 +307,12 @@ try {
 
             foreach ($latest_rows as $row) {
                 $lbl = strtoupper(trim($row['pump_label'] ?? ''));
+                $ft_name = strtoupper(trim($row['fuel_type'] ?? ''));
                 if ($lbl !== '' && !isset($last_readings_by_pump[$lbl])) {
                     $last_readings_by_pump[$lbl] = (float)$row['present_reading'];
+                }
+                if ($ft_name !== '' && !isset($last_readings_by_pump[$ft_name])) {
+                    $last_readings_by_pump[$ft_name] = (float)$row['present_reading'];
                 }
             }
         } catch (Exception $e) {}
@@ -3097,7 +3101,7 @@ input[list] {
                             <th colspan="6" style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:14px;font-weight:700;color:#fff;">METER READING</th>
                         </tr>
                         <tr style="background:#002F70;">
-                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;" title="Auto-fetched from previous validated shift. Read-only."><i class="fas fa-lock" style="font-size:9px;opacity:0.8;margin-right:3px;"></i>BEGINNING<br><span style="font-size:9px;font-weight:400;color:#86efac;">(Auto-Fetched)</span></th>
+                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;" title="Auto-fetched if previous record exists, or manual input for first shift.">BEGINNING<br><span style="font-size:9px;font-weight:400;color:#86efac;">(Auto / Manual)</span></th>
                             <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">ENDING <span style="color:#f87171;">*</span><br><span style="font-size:9px;font-weight:400;color:#93c5fd;">(Required)</span></th>
                             <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">CALIBRATION<br><span style="font-size:9px;font-weight:400;color:#93c5fd;">(Default 0.00)</span></th>
                             <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">PRICE / LITER<br><span style="font-size:9px;font-weight:400;color:#93c5fd;">(Auto)</span></th>
@@ -3192,7 +3196,7 @@ input[list] {
                             <span style="font-weight:700;font-size:12px;color:#1e293b;"><?= $display_name ?></span>
                         </td>
 
-                        <!-- BEGINNING Column — READ-ONLY auto-fetched from previous validated shift -->
+                        <!-- BEGINNING Column — Auto-fetched (Read-only) if previous record exists, or Manual Input (Editable) for first shift -->
                         <td style="border:1px solid #e2e8f0;padding:6px;">
                             <?php if ($has_prev_reading): ?>
                                 <input type="text"
@@ -3202,19 +3206,21 @@ input[list] {
                                        style="width:100%;box-sizing:border-box;padding:8px;font-size:12px;border:1px solid #86efac;border-radius:4px;text-align:right;background:#f0fdf4;font-weight:700;color:#15803d;cursor:not-allowed;"
                                        value="<?= number_format($pump_prev_reading, 2, '.', ',') ?>"
                                        readonly
-                                       title="Auto-fetched from previous meter reading. Cannot be edited."
+                                       title="Auto-fetched from previous meter reading (<?= number_format($pump_prev_reading, 2, '.', ',') ?>). Read-only."
                                        data-pump="<?= htmlspecialchars($display_name) ?>">
                             <?php else: ?>
-                                <!-- Initial meter reading / first shift — default to 0.00 -->
+                                <!-- Initial meter reading / first shift — Editable manual input -->
                                 <input type="text"
                                        form="fuelForm_<?= $ft_id ?>"
                                        name="beginning_reading"
                                        id="beginning_<?= $ft_id ?>"
-                                       style="width:100%;box-sizing:border-box;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;background:#f8fafc;font-weight:600;color:#334155;cursor:not-allowed;"
-                                       value="0.00"
-                                       readonly
-                                       placeholder="0.00"
-                                       title="Initial meter reading (0.00)."
+                                       style="width:100%;box-sizing:border-box;padding:8px;font-size:12px;border:1px solid #3b82f6;border-radius:4px;text-align:right;background:#ffffff;font-weight:600;color:#1e293b;"
+                                       value=""
+                                       placeholder="Enter beginning reading..."
+                                       autocomplete="off"
+                                       oninput="formatOnInput(this); updateFuelCalc('<?= $ft_id ?>')"
+                                       onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')"
+                                       title="First shift / No previous record: Enter beginning meter reading manually."
                                        data-pump="<?= htmlspecialchars($display_name) ?>">
                             <?php endif; ?>
                         </td>
@@ -3324,15 +3330,121 @@ input[list] {
                 }
             }
             ?>
+            <!-- ═══ STANDALONE FUEL CALC SCRIPT — no external dependencies ═══ -->
             <script>
-            // ── On page load: run updateFuelCalc for every row so pre-filled values show totals ──
-            document.addEventListener('DOMContentLoaded', function() {
-                const fuelRows = <?= json_encode($all_ft_ids_js) ?>;
-                fuelRows.forEach(function(ftId) {
-                    if (typeof updateFuelCalc === 'function') updateFuelCalc(ftId);
-                });
-            });
+            (function() {
+                'use strict';
+
+                /* ── Parse a formatted number string (may have commas) ── */
+                function parseNum(str) {
+                    return parseFloat((str || '').toString().replace(/,/g, '')) || 0;
+                }
+
+                /* ── Format a number with 2 decimal places + thousand commas ── */
+                function fmtNum(n) {
+                    return n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+                }
+
+                /* ── Core calculation for one row ── */
+                function calcRow(ftId) {
+                    var bEl  = document.getElementById('beginning_' + ftId);
+                    var eEl  = document.getElementById('ending_'    + ftId);
+                    var cEl  = document.getElementById('cal_'       + ftId);
+                    var pEl  = document.getElementById('price_'     + ftId);
+                    var vEl  = document.getElementById('volume_'    + ftId);
+                    var vvEl = document.getElementById('volume_value_' + ftId);
+                    var aEl  = document.getElementById('amount_'    + ftId);
+                    var avEl = document.getElementById('amount_value_' + ftId);
+                    var msgEl = document.getElementById('cardMsg_'  + ftId);
+
+                    if (!bEl || !eEl || !cEl || !pEl || !vEl || !aEl) return;
+
+                    var beginning = parseNum(bEl.value);
+                    var ending    = parseNum(eEl.value);
+                    var cal       = parseNum(cEl.value);
+                    var price     = parseNum(pEl.value);
+
+                    /* ── Validation ── */
+                    var errMsg = '';
+                    var hasEndingVal = eEl.value.trim() !== '';
+                    if (hasEndingVal && ending < beginning) {
+                        errMsg = 'Ending Reading cannot be lower than Beginning Reading.';
+                        eEl.style.borderColor = '#dc2626';
+                    } else {
+                        eEl.style.borderColor = '';
+                    }
+                    if (cal < 0) {
+                        errMsg = errMsg || 'Calibration cannot be negative.';
+                        cEl.style.borderColor = '#dc2626';
+                    } else {
+                        cEl.style.borderColor = '';
+                    }
+                    if (msgEl && errMsg) {
+                        msgEl.style.cssText = 'display:block;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:6px;padding:8px 12px;font-size:11px;font-weight:600;margin-top:5px;';
+                        msgEl.textContent = errMsg;
+                    } else if (msgEl && msgEl.textContent && (msgEl.textContent.indexOf('lower than') !== -1 || msgEl.textContent.indexOf('negative') !== -1)) {
+                        msgEl.style.display = 'none';
+                        msgEl.textContent = '';
+                    }
+
+                    /* ── Formulas ── */
+                    /* Net Fuel Dispensed = Ending - Beginning - Calibration */
+                    var net    = ending - beginning - cal;
+                    var volume = net > 0 ? net : 0;
+                    /* Fuel Sales Amount = Net Volume × Price/Liter */
+                    var amount = volume * price;
+
+                    /* ── Update display fields ── */
+                    vEl.value = fmtNum(volume);
+                    if (vvEl) vvEl.value = volume.toFixed(2);
+                    aEl.value = '\u20b1' + fmtNum(amount);
+                    if (avEl) avEl.value = amount.toFixed(2);
+                }
+
+                /* ── Attach listeners to all fuel inputs ── */
+                function attachAll() {
+                    /* Find all ending_fuel_* and cal_fuel_* inputs */
+                    var allEnding = document.querySelectorAll('input[id^="ending_fuel_"]');
+                    var allCal    = document.querySelectorAll('input[id^="cal_fuel_"]');
+                    var allBeg    = document.querySelectorAll('input[id^="beginning_fuel_"]:not([readonly])');
+
+                    function makeHandler(inp) {
+                        return function() {
+                            var m = inp.id.match(/^(?:ending|beginning|cal)_(.+)$/);
+                            if (m) calcRow(m[1]);
+                        };
+                    }
+
+                    [].slice.call(allEnding).concat([].slice.call(allCal)).concat([].slice.call(allBeg)).forEach(function(inp) {
+                        if (inp._fuelCalcAttached) return;
+                        inp._fuelCalcAttached = true;
+                        var fn = makeHandler(inp);
+                        inp.addEventListener('input',  fn);
+                        inp.addEventListener('change', fn);
+                        inp.addEventListener('keyup',  fn);
+                    });
+
+                    /* Run initial calc for each row (for auto-fetched beginning values) */
+                    [].slice.call(allEnding).forEach(function(inp) {
+                        var m = inp.id.match(/^ending_(.+)$/);
+                        if (m) calcRow(m[1]);
+                    });
+                }
+
+                /* ── Expose globally so inline oninput handlers can call it ── */
+                window.updateFuelCalc = function(ftId) { calcRow(ftId); };
+
+                /* ── Boot ── */
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', attachAll);
+                } else {
+                    attachAll();
+                }
+                window.addEventListener('load', attachAll);
+
+            })();
             </script>
+            <!-- ═══ end STANDALONE FUEL CALC SCRIPT ═══ -->
 
             <!-- Submit/Reset Buttons - Bottom Right -->
             <div style="display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:16px;padding:0 8px;">
@@ -3532,40 +3644,13 @@ input[list] {
 
         // Helper functions for dynamic comma-formatting as user types
         function formatOnInput(input) {
-            let selectionStart = input.selectionStart;
-            let oldLength = input.value.length;
-            let val = input.value;
-            
-            // Allow numbers, commas, and a single decimal dot
-            let clean = val.replace(/[^\d.]/g, '');
-            let parts = clean.split('.');
-            if (parts.length > 2) {
-                parts = [parts[0], parts.slice(1).join('')];
-            }
-            
-            let integerPart = parts[0];
-            if (integerPart) {
-                // Remove leading zeroes
-                if (integerPart.length > 1 && integerPart.startsWith('0')) {
-                    integerPart = integerPart.replace(/^0+/, '');
-                    if (integerPart === '') integerPart = '0';
-                }
-                // Add commas
-                integerPart = parseInt(integerPart, 10).toLocaleString('en-US');
-            }
-            
-            let formatted = integerPart;
-            if (parts.length > 1) {
-                formatted += '.' + parts[1];
-            }
-            
-            input.value = formatted || '';
-            
-            // Restore selection range/cursor offset
-            let newLength = input.value.length;
-            let delta = newLength - oldLength;
-            input.setSelectionRange(selectionStart + delta, selectionStart + delta);
+            var val = input.value.replace(/[^\d.]/g, '');
+            var parts = val.split('.');
+            if (parts.length > 2) parts = [parts[0], parts.slice(1).join('')];
+            var intPart = parts[0] ? parseInt(parts[0], 10).toLocaleString('en-US') : '';
+            input.value = parts.length > 1 ? intPart + '.' + parts[1] : intPart;
         }
+        window.formatOnInput = formatOnInput;
 
         function formatOnBlur(input) {
             let val = input.value.replace(/,/g, '');
@@ -3575,48 +3660,6 @@ input[list] {
             } else {
                 input.value = '';
             }
-        }
-
-        // ── Live calculation per row (Beginning → Ending → CAL → Price → Volume → Amount) ──────────────────
-        function updateFuelCalc(ftId) {
-            const beginningEl = document.getElementById(`beginning_${ftId}`);
-            const endingEl    = document.getElementById(`ending_${ftId}`);
-            const calEl       = document.getElementById(`cal_${ftId}`);
-            const priceEl     = document.getElementById(`price_${ftId}`);
-            const volumeEl    = document.getElementById(`volume_${ftId}`);
-            const volumeValueEl = document.getElementById(`volume_value_${ftId}`);
-            const amountEl    = document.getElementById(`amount_${ftId}`);
-            const amountValueEl = document.getElementById(`amount_value_${ftId}`);
-            
-            if (!beginningEl || !endingEl || !calEl || !priceEl || !volumeEl || !amountEl) return;
-            
-            const beginning = parseFloat(beginningEl.value.replace(/,/g, '')) || 0;
-            const ending    = parseFloat(endingEl.value.replace(/,/g, ''))    || 0;
-            const cal       = parseFloat(calEl.value.replace(/,/g, ''))       || 0;
-            const price     = parseFloat(priceEl.value) || 0;
-
-            // ── Validation indicators on the CAL field ──
-            const grossVolume = ending - beginning;
-            const calNeg  = cal < 0;
-            const calHigh = cal > grossVolume && grossVolume > 0;
-            calEl.style.borderColor = (calNeg || calHigh) ? '#dc2626' : '#cbd5e1';
-            calEl.title = calNeg  ? 'Calibration must be ≥ 0'
-                        : calHigh ? `Calibration cannot exceed Gross Volume (${grossVolume.toFixed(2)}L)`
-                        : '';
-
-            // ── Formula: Net Volume = (Ending - Beginning) - Calibration ──
-            const netVolume = grossVolume - cal;
-            const volume    = netVolume > 0 ? netVolume : 0;
-
-            // ── Formula: Amount = Net Volume × Price per Liter ──
-            const amount = volume * price;
-
-            // Update displays
-            volumeEl.value = volume.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
-            if (volumeValueEl) volumeValueEl.value = volume.toFixed(2);
-
-            amountEl.value = '₱' + amount.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
-            if (amountValueEl) amountValueEl.value = amount.toFixed(2);
         }
 
         // ── AJAX submit per fuel row (Updated for tanker data) ──────────────────────────────────────────
@@ -3629,18 +3672,21 @@ input[list] {
 
             if (!form) return false;
 
-            // ── Beginning reading default fallback ──
-            const beginningEl = document.getElementById('beginning_' + ftId);
-            if (beginningEl && (!beginningEl.value || beginningEl.value === '')) {
-                beginningEl.value = '0.00';
-            }
-
-            // Build FormData from the form
+            // Build FormData from the form first
             const formData = new FormData(form);
 
             // Add global remarks to this fuel transaction
             const globalRemarks = document.getElementById('globalFuelRemarks').value.trim();
             formData.set('notes', globalRemarks);
+
+            // ── Beginning reading validation for manual input (first shift) ──
+            const beginningEl = document.getElementById('beginning_' + ftId);
+            const beginningRaw = ((formData.get('beginning_reading') !== null ? formData.get('beginning_reading') : (beginningEl ? beginningEl.value : '')) || '').replace(/,/g, '');
+
+            if (beginningEl && !beginningEl.readOnly && (beginningRaw === '' || isNaN(parseFloat(beginningRaw)))) {
+                showRowMsg(msgEl, 'error', 'Please enter the Beginning meter reading.');
+                return false;
+            }
 
             // Validate: ending_reading must be filled (strip commas before parsing)
             const endingRaw = (formData.get('ending_reading') || '').replace(/,/g, '');
@@ -3649,16 +3695,15 @@ input[list] {
                 showRowMsg(msgEl, 'error', 'Please enter the Ending meter reading.');
                 return false;
             }
-            // Inject stripped value back so API receives a plain number
+            // Inject stripped values back so API receives plain numbers
             formData.set('ending_reading', endingRaw);
-            const beginningRaw = (formData.get('beginning_reading') || '').replace(/,/g, '');
             formData.set('beginning_reading', beginningRaw);
             const beginningVal = parseFloat(beginningRaw) || 0;
 
             // Validation Rule 1: Ending Reading must not be less than Beginning Reading
             // Note: Ending can equal Beginning (volume = 0), which is valid
             if (endingVal < beginningVal) {
-                showRowMsg(msgEl, 'error', 'Invalid Reading: Ending meter reading cannot be less than Beginning reading.');
+                showRowMsg(msgEl, 'error', 'Ending Reading cannot be lower than Beginning Reading.');
                 return false;
             }
 
@@ -3714,12 +3759,12 @@ input[list] {
 
                 if (json.success) {
                     // Show success toast via shared helper
-                    showToast('All meter readings for today\'s shift have been recorded.', 'success');
+                    showToast('Meter readings submitted successfully.', 'success');
 
                     // Clear any inline message
                     if (msgEl) { msgEl.style.display = 'none'; msgEl.innerHTML = ''; }
 
-                    // ── Continuous cycle: carryover submitted Ending → next Beginning ──
+                    // ── Continuous cycle: carryover submitted Ending → next Beginning (Auto-fetched & Read-only) ──
                     const endingEl    = document.getElementById('ending_'    + ftId);
                     const beginningEl = document.getElementById('beginning_' + ftId);
                     const calEl       = document.getElementById('cal_'       + ftId);
@@ -3730,16 +3775,17 @@ input[list] {
 
                     const submittedEnding = parseFloat((endingEl?.value || '0').replace(/,/g, ''));
 
-                    // After submission, reset beginning to 0 — professional clean reset.
-                    // The next shift will fetch this ending as their beginning from validated DB.
-                    if (beginningEl) {
-                        beginningEl.value = '0.00';
-                        beginningEl.placeholder = '0.00';
+                    // After submission, set beginning to submitted ending (auto-fetched & read-only for next shift)
+                    if (beginningEl && submittedEnding > 0) {
+                        beginningEl.value = submittedEnding.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                        beginningEl.readOnly = true;
+                        beginningEl.title = 'Auto-fetched from previous meter reading (' + beginningEl.value + '). Read-only.';
                         delete beginningEl.dataset.missing;
-                        beginningEl.style.background = '#f8fafc';
-                        beginningEl.style.fontWeight = '600';
-                        beginningEl.style.color      = '#64748b';
-                        beginningEl.style.border     = '1px solid #cbd5e1';
+                        beginningEl.style.background = '#f0fdf4';
+                        beginningEl.style.fontWeight = '700';
+                        beginningEl.style.color      = '#15803d';
+                        beginningEl.style.border     = '1px solid #86efac';
+                        beginningEl.style.cursor     = 'not-allowed';
                     }
 
                     // Clear ending and computed fields
@@ -3759,12 +3805,13 @@ input[list] {
                     showRowMsg(msgEl, 'error', errMsg);
                 }
             } catch (err) {
-                showRowMsg(msgEl, 'error', 'Request failed: ' + (err.message || 'Unknown error'));
+                showRowMsg(msgEl, 'error', 'Network error: ' + err.message);
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Save';
+                }
             }
-
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit';
-            return false;
         }
 
         function showRowMsg(el, type, text) {
@@ -3865,47 +3912,70 @@ input[list] {
             if (e.target === this) closeGlobalRemarksModal();
         });
 
-        // ── Submit ALL fuel rows with data ─────────────────────────────────────
+        // ── Submit ALL valid encoded rows ──────────────────────────────────────
         async function submitAllFuelRows() {
             const allForms = document.querySelectorAll('form[id^="fuelForm_"]');
-            const formsToSubmit = [];
-
-            const skippedForms = []; // rows with errors — skipped but logged
-
-            // Categorize each form: valid to submit OR skip with reason
-            allForms.forEach(form => {
-                const ftId = form.id.replace('fuelForm_', '');
-                const endingEl    = document.getElementById(`ending_${ftId}`);
-                const beginningEl = document.getElementById(`beginning_${ftId}`);
-                const msgEl       = document.getElementById('cardMsg_' + ftId);
-                const pumpLabel   = (beginningEl?.dataset?.pump || ftId).replace(/_/g, ' ').toUpperCase();
-
-                // Default beginning value to 0.00 if empty
-                if (beginningEl && (!beginningEl.value || beginningEl.value === '')) {
-                    beginningEl.value = '0.00';
-                }
-
-                const endingValue    = parseFloat((endingEl?.value    || '0').replace(/,/g, ''));
-                const beginningValue = parseFloat((beginningEl?.value || '0').replace(/,/g, ''));
-
-                // Skip: ending < beginning (only when ending was actually entered > 0)
-                if (endingValue > 0 && endingValue < beginningValue) {
-                    skippedForms.push({ ftId, reason: `Ending (${endingValue.toLocaleString()}) < Beginning (${beginningValue.toLocaleString()})` });
-                    if (msgEl) showRowMsg(msgEl, 'error', 'Ending cannot be less than Beginning — skipped.');
-                    return; // skip this row
-                }
-
-                // Valid — queue for submission
-                formsToSubmit.push({ ftId, form });
-            });
-
-            // Nothing valid to submit
-            if (formsToSubmit.length === 0) {
-                showToast('No valid readings to submit. Please correct the errors highlighted in red.', 'error');
+            if (!allForms || allForms.length === 0) {
+                showToast('No fuel reading forms found.', 'error');
                 return;
             }
 
-            // Build confirm message
+            const formsToSubmit = [];
+            const skippedForms  = [];
+
+            allForms.forEach(form => {
+                const ftId        = form.id.replace('fuelForm_', '');
+                const endingEl    = document.getElementById(`ending_${ftId}`);
+                const beginningEl = document.getElementById(`beginning_${ftId}`);
+                const calEl       = document.getElementById(`cal_${ftId}`);
+                const msgEl       = document.getElementById(`cardMsg_${ftId}`);
+
+                const endingRaw    = (endingEl    ? endingEl.value    : '').replace(/,/g, '').trim();
+                const beginningRaw = (beginningEl ? beginningEl.value : '').replace(/,/g, '').trim();
+                const calRaw       = (calEl       ? calEl.value       : '0.00').replace(/,/g, '').trim();
+
+                const endingVal    = parseFloat(endingRaw)    || 0;
+                const beginningVal = parseFloat(beginningRaw) || 0;
+                const calVal       = parseFloat(calRaw)       || 0;
+
+                // 1. Skip rows where ending reading is not entered / blank
+                if (!endingRaw || endingVal <= 0) {
+                    return;
+                }
+
+                // 2. Check beginning reading requirement if manual (first shift / editable)
+                if (beginningEl && !beginningEl.readOnly && (!beginningRaw || beginningRaw === '')) {
+                    skippedForms.push({ ftId, reason: 'Missing Beginning Reading' });
+                    if (msgEl) showRowMsg(msgEl, 'error', 'Please enter Beginning meter reading — skipped.');
+                    return;
+                }
+
+                // 3. Ending must be >= Beginning
+                if (endingVal < beginningVal) {
+                    skippedForms.push({ ftId, reason: `Ending (${endingVal.toLocaleString()}) < Beginning (${beginningVal.toLocaleString()})` });
+                    if (msgEl) showRowMsg(msgEl, 'error', 'Ending Reading cannot be lower than Beginning Reading — skipped.');
+                    return;
+                }
+
+                // 4. Calibration >= 0
+                if (calVal < 0) {
+                    skippedForms.push({ ftId, reason: 'Calibration cannot be negative' });
+                    if (msgEl) showRowMsg(msgEl, 'error', 'Calibration cannot be negative — skipped.');
+                    return;
+                }
+
+                formsToSubmit.push({ ftId, form, endingRaw, beginningRaw, calRaw, endingVal });
+            });
+
+            if (formsToSubmit.length === 0) {
+                if (skippedForms.length > 0) {
+                    showToast('Cannot submit readings. Please fix the errors highlighted in red.', 'error');
+                } else {
+                    showToast('Please enter the Ending meter reading for at least one fuel pump before submitting.', 'info');
+                }
+                return;
+            }
+
             let confirmMsg = `Submit ${formsToSubmit.length} fuel reading(s) for manager validation?`;
             if (skippedForms.length > 0) {
                 confirmMsg += `\n\n⚠️ ${skippedForms.length} row(s) will be SKIPPED due to errors:\n` +
@@ -3916,34 +3986,41 @@ input[list] {
             if (!confirmed) return;
 
             let successCount = 0;
-            let errorCount = 0;
-            const errors = [];
+            let errorCount   = 0;
+            const errors     = [];
 
-            // Get global remarks to apply to all fuel transactions
-            const globalRemarks = document.getElementById('globalFuelRemarks').value.trim();
+            const globalRemarks = document.getElementById('globalFuelRemarks')?.value.trim() || '';
 
             // Submit each form
-            for (const {ftId, form} of formsToSubmit) {
+            for (const {ftId, form, endingRaw, beginningRaw, calRaw, endingVal} of formsToSubmit) {
                 try {
                     const formData = new FormData(form);
-                    // Strip commas from text inputs before sending to API
-                    formData.set('ending_reading',   (formData.get('ending_reading')   || '').replace(/,/g, ''));
-                    formData.set('beginning_reading', (formData.get('beginning_reading') || '').replace(/,/g, ''));
-                    formData.set('calibration',       (formData.get('calibration')       || '0').replace(/,/g, ''));
-                    // Add global remarks to this fuel transaction
-                    formData.set('notes', globalRemarks);
-                    const response = await fetch('api_fuel_readings.php', {
+                    formData.set('auth_user_id',     '<?= (int)$me['id'] ?>');
+                    formData.set('ending_reading',    endingRaw);
+                    formData.set('beginning_reading',  beginningRaw);
+                    formData.set('calibration',        calRaw);
+                    formData.set('notes',              globalRemarks);
+
+                    const targetUrl = window.location.pathname.replace(/[^\\/]+$/, '') + 'api_fuel_readings.php';
+                    const response = await fetch(targetUrl, {
                         method: 'POST',
-                        body: formData
+                        body: formData,
+                        credentials: 'same-origin'
                     });
 
+                    const raw = await response.text().catch(() => '');
                     let result;
-                    try { result = await response.json(); }
-                    catch(e) { result = {success:false, message:'Invalid server response.'}; }
+                    try {
+                        const jsonStart = raw.indexOf('{"success"');
+                        const jsonStr   = jsonStart >= 0 ? raw.slice(jsonStart) : raw;
+                        result = JSON.parse(jsonStr);
+                    } catch(e) {
+                        result = { success: false, message: 'Invalid server response.' };
+                    }
 
                     if (result.success) {
                         successCount++;
-                        // ── Continuous cycle: carryover Ending → Beginning ──
+                        // ── Continuous cycle: carryover Ending → Beginning (Auto-fetched & Read-only) ──
                         const endingEl    = document.getElementById(`ending_${ftId}`);
                         const beginningEl = document.getElementById(`beginning_${ftId}`);
                         const calEl       = document.getElementById(`cal_${ftId}`);
@@ -3951,17 +4028,17 @@ input[list] {
                         const volumeValEl = document.getElementById(`volume_value_${ftId}`);
                         const amountEl    = document.getElementById(`amount_${ftId}`);
                         const amountValEl = document.getElementById(`amount_value_${ftId}`);
-                        const submittedEnding = parseFloat((endingEl?.value || '0').replace(/,/g, ''));
-                        // After submission, reset beginning to 0 — professional clean reset.
-                        // The next shift will fetch this ending as their beginning from validated DB.
-                        if (beginningEl) {
-                            beginningEl.value = '0.00';
-                            beginningEl.placeholder = '0.00';
+
+                        if (beginningEl && endingVal > 0) {
+                            beginningEl.value = endingVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                            beginningEl.readOnly = true;
+                            beginningEl.title = 'Auto-fetched from previous meter reading (' + beginningEl.value + '). Read-only.';
                             delete beginningEl.dataset.missing;
-                            beginningEl.style.background = '#f8fafc';
-                            beginningEl.style.fontWeight = '600';
-                            beginningEl.style.color      = '#64748b';
-                            beginningEl.style.border     = '1px solid #cbd5e1';
+                            beginningEl.style.background = '#f0fdf4';
+                            beginningEl.style.fontWeight = '700';
+                            beginningEl.style.color      = '#15803d';
+                            beginningEl.style.border     = '1px solid #86efac';
+                            beginningEl.style.cursor     = 'not-allowed';
                         }
                         if (endingEl)    endingEl.value    = '';
                         if (calEl)       calEl.value       = '0.00';
@@ -3984,24 +4061,21 @@ input[list] {
             if (typeof loadTodayEntries === 'function') loadTodayEntries();
 
             // Show summary toast
-            if (errorCount === 0) {
-                // Clear global remarks after successful submission
-                document.getElementById('globalFuelRemarks').value = '';
-                document.getElementById('globalRemarksTextarea').value = '';
-                document.getElementById('remarksButtonLabel').textContent = 'Add Remarks';
+            if (errorCount === 0 || successCount > 0) {
+                const remarksInput = document.getElementById('globalFuelRemarks');
+                if (remarksInput) remarksInput.value = '';
+                const remarksTextarea = document.getElementById('globalRemarksTextarea');
+                if (remarksTextarea) remarksTextarea.value = '';
+                const remarksBtnLbl = document.getElementById('remarksButtonLabel');
+                if (remarksBtnLbl) remarksBtnLbl.textContent = 'Add Remarks';
 
-                showToast('✔ All meter readings for today\'s shift have been recorded. Pending manager validation.', 'success');
-                // Reload the page after a short delay so the form resets cleanly
-                // and the next shift will see their carry-over beginning readings
+                showToast('Meter readings submitted successfully.', 'success');
                 setTimeout(() => {
                     window.location.reload();
-                }, 2800);
+                }, 2500);
             } else {
-                showToast(
-                    `${successCount} reading(s) submitted.` +
-                    (errorCount > 0 ? ` ${errorCount} failed — check individual rows.` : ''),
-                    errorCount === successCount ? 'error' : 'warning'
-                );
+                const firstErr = errors[0] ? errors[0].replace(/^[^:]+:\s*/, '') : 'Submission failed.';
+                showToast(firstErr, 'error');
             }
         }
 
@@ -4041,14 +4115,14 @@ input[list] {
         function showConfirm(msg) {
             return new Promise(resolve => {
                 const overlay = document.createElement('div');
-                overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99998;display:flex;align-items:center;justify-content:center;';
+                overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99998;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px);';
                 overlay.innerHTML = `
-                    <div style="background:#fff;border-radius:14px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2);text-align:center;">
-                        <div style="font-size:22px;color:#002F6C;margin-bottom:12px;"><i class="fas fa-question-circle"></i></div>
-                        <p style="font-size:15px;font-weight:600;color:#1e293b;margin:0 0 20px;">${msg}</p>
-                        <div style="display:flex;gap:12px;justify-content:center;">
-                            <button id="confirmNo"  style="padding:7px 20px;border-radius:4px;border:1px solid #64748b;background:white;color:#64748b;font-weight:600;cursor:pointer;font-size:11px;transition:all .2s;" onmouseover="this.style.background='#64748b';this.style.color='white'" onmouseout="this.style.background='white';this.style.color='#64748b'">Cancel</button>
-                            <button id="confirmYes" style="padding:7px 20px;border-radius:4px;border:1px solid #002F6C;background:white;color:#002F6C;font-weight:600;cursor:pointer;font-size:11px;transition:all .2s;" onmouseover="this.style.background='#002F6C';this.style.color='white'" onmouseout="this.style.background='white';this.style.color='#002F6C'">Submit</button>
+                    <div style="background:#ffffff;border-radius:14px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 12px 36px rgba(0,0,0,.25);text-align:center;">
+                        <div style="font-size:28px;color:#002F6C;margin-bottom:14px;"><i class="fas fa-question-circle"></i></div>
+                        <p style="font-size:15px;font-weight:600;color:#1e293b;margin:0 0 24px;line-height:1.5;">${msg.replace(/\n/g, '<br>')}</p>
+                        <div style="display:flex;gap:14px;justify-content:center;">
+                            <button id="confirmNo" type="button" style="padding:10px 24px !important;border-radius:6px !important;border:1px solid #cbd5e1 !important;background-color:#e2e8f0 !important;color:#334155 !important;font-weight:700 !important;cursor:pointer !important;font-size:13px !important;transition:all .2s;" onmouseover="this.style.setProperty('background-color','#cbd5e1','important');this.style.setProperty('color','#0f172a','important');" onmouseout="this.style.setProperty('background-color','#e2e8f0','important');this.style.setProperty('color','#334155','important');">Cancel</button>
+                            <button id="confirmYes" type="button" style="padding:10px 24px !important;border-radius:6px !important;border:1px solid #002F6C !important;background-color:#002F6C !important;color:#ffffff !important;font-weight:700 !important;cursor:pointer !important;font-size:13px !important;transition:all .2s;" onmouseover="this.style.setProperty('background-color','#001f4d','important');this.style.setProperty('color','#ffffff','important');" onmouseout="this.style.setProperty('background-color','#002F6C','important');this.style.setProperty('color','#ffffff','important');">Submit</button>
                         </div>
                     </div>`;
                 document.body.appendChild(overlay);
@@ -4316,35 +4390,46 @@ input[list] {
 
             html += `</tbody></table></div>`;
             
-            // Pagination Footer
-            html += `
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <label style="margin:0; font-weight:500; color:#475569;">Rows per page:</label>
-                    <select onchange="window.todayEntriesPageSize=parseInt(this.value); window.todayEntriesPage=1; renderTodayEntriesTable();" style="padding:5px 24px 5px 8px; border:1.5px solid #cbd5e1; border-radius:6px; font-size:13px; background:#fff; color:#1e293b; outline:none; cursor:pointer;">
-                        <option value="10" ${window.todayEntriesPageSize === 10 ? 'selected' : ''}>10</option>
-                        <option value="20" ${window.todayEntriesPageSize === 20 ? 'selected' : ''}>20</option>
-                        <option value="30" ${window.todayEntriesPageSize === 30 ? 'selected' : ''}>30</option>
-                        <option value="40" ${window.todayEntriesPageSize === 40 ? 'selected' : ''}>40</option>
-                        <option value="50" ${window.todayEntriesPageSize === 50 ? 'selected' : ''}>50</option>
-                    </select>
-                </div>
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <button onclick="if(window.todayEntriesPage>1){ window.todayEntriesPage--; renderTodayEntriesTable(); }" 
-                            style="width:32px; height:32px; background:#fff; border:1.5px solid #cbd5e1; border-radius:6px; cursor:${window.todayEntriesPage > 1 ? 'pointer' : 'not-allowed'}; color:${window.todayEntriesPage > 1 ? '#475569' : '#cbd5e1'}; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
-                            onmouseover="if(window.todayEntriesPage>1) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
-                        <i class="fas fa-chevron-left"></i>
-                    </button>
-                    <span style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page ${window.todayEntriesPage} of ${totalPages}</span>
-                    <button onclick="if(window.todayEntriesPage<${totalPages}){ window.todayEntriesPage++; renderTodayEntriesTable(); }" 
-                            style="width:32px; height:32px; background:#fff; border:1.5px solid #cbd5e1; border-radius:6px; cursor:${window.todayEntriesPage < totalPages ? 'pointer' : 'not-allowed'}; color:${window.todayEntriesPage < totalPages ? '#475569' : '#cbd5e1'}; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
-                            onmouseover="if(window.todayEntriesPage<${totalPages}) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
-                        <i class="fas fa-chevron-right"></i>
-                    </button>
-                </div>
-            </div>`;
+            // Pagination Footer (Only if Total Records > 10)
+            if (totalRows > 10) {
+                var showingStart = (window.todayEntriesPage - 1) * window.todayEntriesPageSize + 1;
+                var showingEnd = Math.min(window.todayEntriesPage * window.todayEntriesPageSize, totalRows);
+                
+                html += `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+                    <div style="display:flex; align-items:center;">
+                        <span style="font-size:13px; color:#64748b; font-weight:600;">Showing ${showingStart}–${showingEnd} of ${totalRows} entries</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:16px;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                            <select onchange="window.todayEntriesPageSize=parseInt(this.value); window.todayEntriesPage=1; renderTodayEntriesTable();" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                                <option value="10" ${window.todayEntriesPageSize === 10 ? 'selected' : ''}>10</option>
+                                <option value="20" ${window.todayEntriesPageSize === 20 ? 'selected' : ''}>20</option>
+                                <option value="50" ${window.todayEntriesPageSize === 50 ? 'selected' : ''}>50</option>
+                                <option value="100" ${window.todayEntriesPageSize === 100 ? 'selected' : ''}>100</option>
+                            </select>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <button onclick="if(window.todayEntriesPage>1){ window.todayEntriesPage--; renderTodayEntriesTable(); }" 
+                                    style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:${window.todayEntriesPage > 1 ? 'pointer' : 'not-allowed'}; color:${window.todayEntriesPage > 1 ? '#475569' : '#cbd5e1'}; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                                    onmouseover="if(window.todayEntriesPage>1) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                                <i class="fas fa-chevron-left"></i>
+                            </button>
+                            <span style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page ${window.todayEntriesPage} of ${totalPages}</span>
+                            <button onclick="if(window.todayEntriesPage<${totalPages}){ window.todayEntriesPage++; renderTodayEntriesTable(); }" 
+                                    style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:${window.todayEntriesPage < totalPages ? 'pointer' : 'not-allowed'}; color:${window.todayEntriesPage < totalPages ? '#475569' : '#cbd5e1'}; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                                    onmouseover="if(window.todayEntriesPage<${totalPages}) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>`;
+            }
+
             
             body.innerHTML = html;
+
         }
 
         // ── Export Sub-Tab Readings ──
@@ -4602,7 +4687,33 @@ input[list] {
                             </div>
                         </div>
 
-                        <!-- ── STEP 3: JOB ORDER INFORMATION ─────────────────── -->
+                        <!-- Engine Number + Chassis Number (VIN) [Vehicle Identification & Security] -->
+                        <div class="txn-form-grid" style="margin-bottom:14px;">
+
+                            <div class="txn-field">
+                                <label>Engine Number <span style="color:#dc2626;">*</span></label>
+                                <input type="text" id="joEngineNumber" class="txn-input"
+                                       placeholder="e.g. 1NZ-FE-1234567"
+                                       style="text-transform:uppercase;"
+                                       autocomplete="off"
+                                       oninput="checkVehicleSecurityWarning()">
+                            </div>
+                            <div class="txn-field">
+                                <label>Chassis Number (VIN) <span style="color:#dc2626;">*</span></label>
+                                <input type="text" id="joChassisNumber" class="txn-input"
+                                       placeholder="e.g. MHFXE1234567890"
+                                       style="text-transform:uppercase;"
+                                       autocomplete="off"
+                                       oninput="checkVehicleSecurityWarning()">
+                            </div>
+                        </div>
+
+                        <!-- Real-time Vehicle Security Warning Alert -->
+                        <div id="joVehicleSecurityWarningBox" style="display:none; background:#fffbe6; border:1px solid #ffe58f; border-radius:6px; padding:10px 14px; margin-bottom:14px; color:#d46b08; font-size:12px; font-weight:600; line-height:1.5;">
+                            <i class="fas fa-shield-alt" style="margin-right:6px; color:#fa8c16; font-size:14px;"></i>
+                            <span id="joVehicleSecurityWarningText"></span>
+                        </div>
+
                         <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:6px;padding-top:12px;border-top:1px solid #fde68a;">
                             <i class="fas fa-file-alt" style="margin-right:5px;"></i>Job Order Information
                         </div>
@@ -5413,6 +5524,16 @@ input[list] {
                             var total = rows.length;
                             var perPage = mhState.per_page;
                             var page = mhState.page;
+
+                            var foot = document.getElementById('mhPerPage') ? document.getElementById('mhPerPage').closest('div[style*="display:flex"]') : null;
+                            if (foot) {
+                                foot.style.display = total <= 10 ? 'none' : 'flex';
+                            }
+                            if (total <= 10) {
+                                rows.forEach(function(row) { row.style.display = ''; });
+                                return;
+                            }
+
                             var totalPages = Math.max(1, Math.ceil(total / perPage));
                             if (page > totalPages) { mhState.page = page = totalPages; }
 
@@ -8306,6 +8427,16 @@ input[list] {
                 showTxnAlert('Please enter the vehicle plate number.', 'warning');
                 return;
             }
+            const engineNo = document.getElementById('joEngineNumber')?.value?.trim();
+            if (!engineNo) {
+                showTxnAlert('Engine Number is required for vehicle identification.', 'warning');
+                return;
+            }
+            const chassisNo = document.getElementById('joChassisNumber')?.value?.trim();
+            if (!chassisNo) {
+                showTxnAlert('Chassis Number (VIN) is required for vehicle security.', 'warning');
+                return;
+            }
             const serviceType = document.getElementById('joServiceType')?.value?.trim();
             if (!serviceType) {
                 showTxnAlert('Please select a service type before submitting the Job Order.', 'warning');
@@ -8313,6 +8444,35 @@ input[list] {
             }
             // Delegate to the existing cart-based flow
             addServiceFromFormToCart();
+        }
+
+        var _secCheckDebounce = null;
+        function checkVehicleSecurityWarning() {
+            clearTimeout(_secCheckDebounce);
+            _secCheckDebounce = setTimeout(function() {
+                const plate   = (document.getElementById('joVehiclePlate')?.value || '').trim();
+                const engine  = (document.getElementById('joEngineNumber')?.value || '').trim();
+                const chassis = (document.getElementById('joChassisNumber')?.value || '').trim();
+                const warnBox = document.getElementById('joVehicleSecurityWarningBox');
+                const warnTxt = document.getElementById('joVehicleSecurityWarningText');
+
+                if (!engine && !chassis) {
+                    if (warnBox) warnBox.style.display = 'none';
+                    return;
+                }
+
+                fetch(`../backend/api/check_vehicle_security.php?plate_number=${encodeURIComponent(plate)}&engine_number=${encodeURIComponent(engine)}&chassis_number=${encodeURIComponent(chassis)}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success && data.warnings && data.warnings.length > 0) {
+                        if (warnTxt) warnTxt.innerHTML = data.warnings.join('<br>');
+                        if (warnBox) warnBox.style.display = 'block';
+                    } else {
+                        if (warnBox) warnBox.style.display = 'none';
+                    }
+                })
+                .catch(e => {});
+            }, 300);
         }
 
         // ── Collect Job Order form data as object ────────────────────────────
@@ -8330,10 +8490,13 @@ input[list] {
                 contact_number:        document.getElementById('joContactNumber')?.value?.trim() || '',
                 vehicle_type:          document.getElementById('joVehicleType')?.value?.trim() || '',
                 plate_number:          document.getElementById('joVehiclePlate')?.value?.trim() || '',
+                engine_number:         document.getElementById('joEngineNumber')?.value?.trim() || '',
+                chassis_number:        document.getElementById('joChassisNumber')?.value?.trim() || '',
                 vehicle_brand:         document.getElementById('joVehicleBrand')?.value?.trim() || '',
                 vehicle_model:         document.getElementById('joVehicleModel')?.value?.trim() || '',
                 year_model:            document.getElementById('joYearModel')?.value || '',
                 odometer:              document.getElementById('joOdometer')?.value?.trim() || '',
+
                 jo_date:               document.getElementById('joDate')?.value || '',
                 priority:              document.querySelector('input[name="joPriority"]:checked')?.value || 'Normal',
                 expected_release:      document.getElementById('joExpectedRelease')?.value || '',
@@ -9697,26 +9860,18 @@ input[list] {
                                 ]);
                             ?>
                             <div style="display:flex;flex-direction:column;gap:3px;width:100%;">
-                                <!-- Row 1: View + Update Status + Adjust -->
+                                <?php if (in_array($val_status, ['Pending Validation', 'Approved']) && !in_array($wf_status, ['In Progress', 'Completed', 'Rejected'])): ?>
+                                <!-- Row 1: Adjust Button (only before In Progress) - GRAY -->
                                 <div style="display:flex;gap:3px;flex-wrap:nowrap;width:100%;">
-                                    <!-- View Button (Always visible) - DARK BLUE -->
-                                    <button type="button"
-                                            onclick='viewJobOrderDetails(<?= htmlspecialchars($jo_data, ENT_QUOTES) ?>)'
-                                            class="txn-btn primary" 
-                                            style="flex:1;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
-                                        <i class="fas fa-eye"></i> View
-                                    </button>
-                                    
-                                    <?php if (in_array($val_status, ['Pending Validation', 'Approved']) && !in_array($wf_status, ['In Progress', 'Completed', 'Rejected'])): ?>
-                                    <!-- Adjust Button (only before In Progress) - GRAY -->
                                     <button type="button"
                                             onclick='openAdjustJobOrderModal(<?= htmlspecialchars($jo_data, ENT_QUOTES) ?>)'
                                             class="txn-btn secondary" 
                                             style="flex:1;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
                                         <i class="fas fa-edit"></i> Adjust
                                     </button>
-                                    <?php endif; ?>
                                 </div>
+                                <?php endif; ?>
+
                                 
                                 <!-- Row 2: Workflow Actions -->
                                 <?php if ($wf_status === 'Released'): ?>
@@ -9947,8 +10102,19 @@ input[list] {
             // Pagination
             var total      = visibleRows.length;
             var perPage    = joState.per_page;
+
+            var foot = document.getElementById('joPerPage') ? document.getElementById('joPerPage').closest('div[style*="display:flex"]') : null;
+            if (foot) {
+                foot.style.display = total <= 10 ? 'none' : 'flex';
+            }
+            if (total <= 10) {
+                visibleRows.forEach(function(row) { row.style.display = ''; });
+                return;
+            }
+
             var totalPages = Math.max(1, Math.ceil(total / perPage));
             if (joState.page > totalPages) { joState.page = totalPages; }
+
 
             var start = (joState.page - 1) * perPage;
             var end   = start + perPage;
@@ -11058,7 +11224,18 @@ input[list] {
                 var total = rows.length;
                 var perPage = fhState.per_page;
                 var page = fhState.page;
+
+                var foot = document.getElementById('fhPerPage') ? document.getElementById('fhPerPage').closest('div[style*="display:flex"]') : null;
+                if (foot) {
+                    foot.style.display = total <= 10 ? 'none' : 'flex';
+                }
+                if (total <= 10) {
+                    rows.forEach(function(row) { row.style.display = ''; });
+                    return;
+                }
+
                 var totalPages = Math.max(1, Math.ceil(total / perPage));
+
                 if (page > totalPages) { fhState.page = page = totalPages; }
                 var start = (page - 1) * perPage;
                 var end   = start + perPage;

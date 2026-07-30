@@ -145,16 +145,41 @@ try {
                 exit;
             }
 
-            $stmt = $pdo->prepare("SELECT fuel_type, price_per_liter FROM fuel_inventory WHERE id=? AND station_id=? LIMIT 1");
+            $stmt = $pdo->prepare("SELECT fuel_type, fuel_type_id, price_per_liter FROM fuel_inventory WHERE id=? AND station_id=? LIMIT 1");
             $stmt->execute([$id, $station_id]);
             $fuel = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!$fuel) { echo json_encode(['success' => false, 'message' => 'Fuel product not found']); exit; }
 
-            $old_price = (float)$fuel['price_per_liter'];
+            $old_price    = (float)$fuel['price_per_liter'];
+            $fuel_type_id = $fuel['fuel_type_id'] ?? null;
 
-            // Update fuel_inventory immediately
+            // Update fuel_inventory immediately (primary authoritative source)
             $stmt = $pdo->prepare("UPDATE fuel_inventory SET price_per_liter=?, capacity=?, critical_level=?, updated_by=?, last_updated=NOW() WHERE id=? AND station_id=?");
             $stmt->execute([$new_price, $capacity, $critical_level, $me['id'], $id, $station_id]);
+
+            // ── Sync to fuel_types.price_per_liter (so meter reading shows correct price) ──
+            if ($fuel_type_id) {
+                try {
+                    $pdo->prepare("UPDATE fuel_types SET price_per_liter = ? WHERE id = ?")
+                        ->execute([$new_price, $fuel_type_id]);
+                } catch (Exception $e) {}
+            }
+
+            // ── Sync to fuel_pricing (used by Inventory / Reports pages) ──
+            if ($fuel_type_id) {
+                try {
+                    $fp_stmt = $pdo->prepare("SELECT id FROM fuel_pricing WHERE station_id = ? AND fuel_type_id = ? AND is_active = 1 LIMIT 1");
+                    $fp_stmt->execute([$station_id, $fuel_type_id]);
+                    $fp_id = $fp_stmt->fetchColumn();
+                    if ($fp_id) {
+                        $pdo->prepare("UPDATE fuel_pricing SET price_per_liter = ?, updated_at = NOW() WHERE id = ?")
+                            ->execute([$new_price, $fp_id]);
+                    } else {
+                        $pdo->prepare("INSERT INTO fuel_pricing (station_id, fuel_type_id, price_per_liter, effective_date, is_active, created_by, created_at, updated_at) VALUES (?, ?, ?, NOW(), 1, ?, NOW(), NOW())")
+                            ->execute([$station_id, $fuel_type_id, $new_price, $me['id']]);
+                    }
+                } catch (Exception $e) {}
+            }
 
             // Mark any pending price request for this fuel as approved
             $pdo->prepare("UPDATE pending_price_approvals SET status='approved', admin_id=?, reviewed_by=?, reviewed_at=NOW(), updated_at=NOW() WHERE station_id=? AND product_type IN ('fuel','fuel_inventory') AND product_id=? AND status='pending'")
@@ -180,8 +205,9 @@ try {
             }
 
             log_activity($pdo, $me['id'], 'Admin Edit Fuel Product', "Admin updated fuel {$fuel['fuel_type']} price: ₱{$old_price} -> ₱{$new_price}, capacity: {$capacity}L");
-            echo json_encode(['success' => true, 'message' => 'Fuel product updated successfully!']);
+            echo json_encode(['success' => true, 'message' => 'Fuel product updated successfully! Price synced across all modules.']);
             exit;
+
 
         // ══════════════════════════════════════════════════════════════════════
         // ADMIN EDIT SERVICE TYPE DIRECTLY

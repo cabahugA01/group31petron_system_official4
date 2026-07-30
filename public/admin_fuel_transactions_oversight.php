@@ -901,30 +901,8 @@ require_once __DIR__ . '/../partials/header.php';
         </table>
     </div>
     
-    <!-- Pagination Controls -->
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-top:1px solid #f1f5f9;flex-wrap:wrap;gap:12px;">
-        <div style="display:flex;align-items:center;gap:8px;">
-            <label style="font-size:12px;color:#64748b;font-weight:600;">Rows per page:</label>
-            <select id="rowsPerPage" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;">
-                <option value="10">10</option>
-                <option value="20" selected>20</option>
-                <option value="30">30</option>
-                <option value="40">40</option>
-                <option value="50">50</option>
-            </select>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;">
-            <span id="pageInfo" style="font-size:12px;color:#64748b;font-weight:600;">Page 1 of 1</span>
-            <div style="display:flex;gap:4px;">
-                <button id="prevPage" class="afto-page-btn" style="padding:6px 12px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;color:#64748b;font-size:12px;cursor:pointer;transition:all .15s;" disabled>
-                    <i class="fas fa-chevron-left"></i> Prev
-                </button>
-                <button id="nextPage" class="afto-page-btn" style="padding:6px 12px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;color:#64748b;font-size:12px;cursor:pointer;transition:all .15s;">
-                    Next <i class="fas fa-chevron-right"></i>
-                </button>
-            </div>
-        </div>
-    </div>
+    <!-- End Table Container -->
+
 </div>
 
 <!-- Reopen Transaction Form -->
@@ -1108,77 +1086,6 @@ function printSingleTxn(id) {
     };
 }
 
-// Pagination functionality
-(function() {
-    const table = document.querySelector('.afto-tbl tbody');
-    if (!table) return;
-    
-    const allRows = Array.from(table.querySelectorAll('tr'));
-    let currentPage = 1;
-    let rowsPerPage = 20;
-    
-    const rowsSelect = document.getElementById('rowsPerPage');
-    const pageInfo = document.getElementById('pageInfo');
-    const prevBtn = document.getElementById('prevPage');
-    const nextBtn = document.getElementById('nextPage');
-    
-    function updateTable() {
-        const totalPages = Math.ceil(allRows.length / rowsPerPage);
-        const start = (currentPage - 1) * rowsPerPage;
-        const end = start + rowsPerPage;
-        
-        allRows.forEach(row => row.style.display = 'none');
-        allRows.slice(start, end).forEach(row => row.style.display = '');
-        
-        pageInfo.textContent = `Page ${currentPage} of ${totalPages || 1}`;
-        
-        prevBtn.disabled = currentPage === 1;
-        nextBtn.disabled = currentPage === totalPages || totalPages === 0;
-        
-        prevBtn.style.opacity = prevBtn.disabled ? '0.5' : '1';
-        prevBtn.style.cursor = prevBtn.disabled ? 'not-allowed' : 'pointer';
-        nextBtn.style.opacity = nextBtn.disabled ? '0.5' : '1';
-        nextBtn.style.cursor = nextBtn.disabled ? 'not-allowed' : 'pointer';
-    }
-    
-    rowsSelect.addEventListener('change', function() {
-        rowsPerPage = parseInt(this.value);
-        currentPage = 1;
-        updateTable();
-    });
-    
-    prevBtn.addEventListener('click', function() {
-        if (currentPage > 1) {
-            currentPage--;
-            updateTable();
-            document.querySelector('.afto-table-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-    });
-    
-    nextBtn.addEventListener('click', function() {
-        const totalPages = Math.ceil(allRows.length / rowsPerPage);
-        if (currentPage < totalPages) {
-            currentPage++;
-            updateTable();
-            document.querySelector('.afto-table-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-    });
-    
-    document.querySelectorAll('.afto-page-btn').forEach(btn => {
-        btn.addEventListener('mouseenter', function() {
-            if (!this.disabled) {
-                this.style.background = '#f1f5f9';
-                this.style.borderColor = '#cbd5e1';
-            }
-        });
-        btn.addEventListener('mouseleave', function() {
-            this.style.background = '#fff';
-            this.style.borderColor = '#e2e8f0';
-        });
-    });
-    
-    updateTable();
-})();
 
 function aftoExport(format) {
     if (format === 'pdf') {
