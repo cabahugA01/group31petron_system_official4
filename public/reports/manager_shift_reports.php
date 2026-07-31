@@ -81,34 +81,13 @@ ksort($shifts);
     margin: 2px 0;
 }
 /* Section Tabs */
-.sr-section-tabs {
-    display: flex;
-    border-bottom: 2px solid #e2e8f0;
-    margin-bottom: 0;
-    overflow-x: auto;
-    background: #00264D;
-}
-.sr-section-tab {
-    padding: 12px 20px;
-    font-size: 12px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-    color: #ffffff !important;
-    background: transparent;
-    border: none;
-    border-bottom: 3px solid transparent;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.2s;
-}
-.sr-section-tab:hover { background: rgba(255,255,255,0.15); color: #ffffff !important; }
-.sr-section-tab.active {
-    background: #ffffff;
-    color: #00264D !important;
-    border-bottom-color: #002F70;
-    font-weight: 800;
-}
+.sr-section-tabs{display:flex;flex-wrap:wrap;background:#ffffff;border-top:1px solid #cbd5e1;border-bottom:2px solid #00264D;padding:0;margin:0;}
+.sr-section-tab{padding:12px 24px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#334155 !important;background:#ffffff !important;border:none !important;border-right:1px solid #e2e8f0 !important;border-radius:0 !important;cursor:pointer;white-space:nowrap;transition:all .15s ease;display:inline-flex;align-items:center;gap:8px;}
+.sr-section-tab i{font-size:11px;color:#64748b !important;}
+.sr-section-tab:hover{background:#f8fafc !important;color:#00264D !important;}
+.sr-section-tab:hover i{color:#00264D !important;}
+.sr-section-tab.active{background:#00264D !important;color:#ffffff !important;font-weight:800;border-right-color:#00264D !important;}
+.sr-section-tab.active i{color:#ffffff !important;}
 /* Shift Filter Buttons */
 .sr-shift-btns {
     display: flex;

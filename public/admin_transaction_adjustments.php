@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'admin_transaction_adjustments';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -13,7 +13,7 @@ if (!in_array($role, ['admin', 'superadmin'])) {
     header('Location: admin_dashboard.php'); exit;
 }
 
-// ── Create table if missing ───────────────────────────────────────────────────
+// â”€â”€ Create table if missing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 try { $pdo->exec("CREATE TABLE IF NOT EXISTS transaction_adjustments (
     id INT AUTO_INCREMENT PRIMARY KEY, transaction_id VARCHAR(50) NOT NULL,
     transaction_type ENUM('job_order','merchandise','combined') DEFAULT 'merchandise',
@@ -25,13 +25,13 @@ try { $pdo->exec("CREATE TABLE IF NOT EXISTS transaction_adjustments (
     INDEX idx_adj_date (adjustment_date), INDEX idx_adj_station (station_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"); } catch(Exception $e){}
 
-// ── Filters ───────────────────────────────────────────────────────────────────
+// â”€â”€ Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $date_from = trim($_GET['date_from'] ?? date('Y-m-01'));
 $date_to   = trim($_GET['date_to']   ?? date('Y-m-d'));
 $f_manager = trim($_GET['manager']   ?? '');
 $f_type    = trim($_GET['type']      ?? '');
 
-// ── KPIs ──────────────────────────────────────────────────────────────────────
+// â”€â”€ KPIs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $kpi_total=0; $kpi_month=0; $kpi_managers=0;
 try {
     $s=$pdo->prepare("SELECT COUNT(*) FROM transaction_adjustments WHERE station_id=?");
@@ -42,7 +42,7 @@ try {
     $s3->execute([$station_id,$date_from,$date_to]); $kpi_managers=(int)$s3->fetchColumn();
 } catch(Exception $e){}
 
-// ── Manager list ──────────────────────────────────────────────────────────────
+// â”€â”€ Manager list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $mgr_list=[];
 try {
     $s=$pdo->prepare("SELECT DISTINCT u.id, COALESCE(NULLIF(TRIM(CONCAT(u.first_name,' ',u.last_name)),' '),u.username,'Unknown') as name
@@ -50,7 +50,7 @@ try {
     $s->execute([$station_id]); $mgr_list=$s->fetchAll(PDO::FETCH_ASSOC);
 } catch(Exception $e){}
 
-// ── Fetch rows ────────────────────────────────────────────────────────────────
+// â”€â”€ Fetch rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $where="WHERE ta.station_id=? AND DATE(ta.adjustment_date) BETWEEN ? AND ?";
 $params=[$station_id,$date_from,$date_to];
 if($f_manager!=='') { $where.=" AND ta.adjusted_by=?"; $params[]=$f_manager; }
@@ -71,7 +71,7 @@ try {
     $s->execute($params); $rows=$s->fetchAll(PDO::FETCH_ASSOC);
 } catch(Exception $e){}
 
-// ── Export ────────────────────────────────────────────────────────────────────
+// â”€â”€ Export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $export=$_GET['export']??'';
 if(in_array($export,['excel','csv'])) {
     $fn='transaction_adjustments_'.date('Ymd_His');
@@ -79,7 +79,7 @@ if(in_array($export,['excel','csv'])) {
     else { header('Content-Type: text/csv; charset=utf-8'); header("Content-Disposition: attachment; filename=\"{$fn}.csv\""); }
     $out=fopen('php://output','w');
     fputcsv($out,['Adj ID','Transaction ID','Customer','Type','Original Amount','Updated Amount','Difference','Reason','Adjusted By','Date']);
-    foreach($rows as $r) fputcsv($out,['ADJ-'.$r['adj_id'],$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['transaction_type'])),'₱'.number_format($r['original_amount'],2),'₱'.number_format($r['updated_amount'],2),'₱'.number_format($r['amount_difference'],2),$r['adjustment_reason'],$r['adjusted_by_name'],date('M d, Y H:i',strtotime($r['adjustment_date']))]);
+    foreach($rows as $r) fputcsv($out,['ADJ-'.$r['adj_id'],$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['transaction_type'])),'â‚±'.number_format($r['original_amount'],2),'â‚±'.number_format($r['updated_amount'],2),'â‚±'.number_format($r['amount_difference'],2),$r['adjustment_reason'],$r['adjusted_by_name'],date('M d, Y H:i',strtotime($r['adjustment_date']))]);
     fclose($out); exit;
 }
 
@@ -91,9 +91,9 @@ require_once __DIR__ . '/../partials/header.php';
 .page-head.txn-page-head .sub{font-size:13px;color:#666;margin-top:4px;text-transform:none !important;font-weight:400 !important;}
 .flt-btn{display:inline-flex;align-items:center;gap:6px;padding:0 16px;height:36px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap;transition:all .15s;background:white !important;border:1px solid transparent;}
 .flt-btn-reset{color:#6b7280 !important;border-color:#6b7280 !important;} .flt-btn-reset:hover{background:#6b7280 !important;color:#fff !important;}
-.flt-btn-excel{color:#1d6f42 !important;border-color:#1d6f42 !important;} .flt-btn-excel:hover{background:#1d6f42 !important;color:#fff !important;}
+.flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; } .flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .flt-btn-search{color:#00264D !important;border-color:#00264D !important;} .flt-btn-search:hover{background:#00264D !important;color:#fff !important;}
-.flt-btn-pdf{color:#dc2626 !important;border-color:#dc2626 !important;} .flt-btn-pdf:hover{background:#dc2626 !important;color:#fff !important;}
+.flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; } .flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .flt-btn-solid-primary{color:#fff !important;background:#002F70 !important;border-color:#002F70 !important;}
 .txn-kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px;}
 .txn-kpi-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.05);transition:transform .15s,box-shadow .15s;}
@@ -212,13 +212,13 @@ require_once __DIR__ . '/../partials/header.php';
         $fc = json_decode($r['fields_changed'], true) ?: [];
         
         // Job Order Number
-        $jo_display = !empty($r['job_order_id']) ? 'JO-' . $r['job_order_id'] : '—';
+        $jo_display = !empty($r['job_order_id']) ? 'JO-' . $r['job_order_id'] : 'â€”';
         
         // Customer Name
         $customer_display = htmlspecialchars($r['customer']);
         
         // Vehicle Plate
-        $plate_display = !empty($r['job_order_vehicle_plate']) ? htmlspecialchars($r['job_order_vehicle_plate']) : '—';
+        $plate_display = !empty($r['job_order_vehicle_plate']) ? htmlspecialchars($r['job_order_vehicle_plate']) : 'â€”';
         
         // Transaction Type
         $txn_type_display = htmlspecialchars(ucwords(str_replace('_', ' ', $r['transaction_type'])));
@@ -235,14 +235,14 @@ require_once __DIR__ . '/../partials/header.php';
         if (empty($items_list) && !empty($r['item_names'])) {
             $items_list[] = $r['item_names'];
         }
-        $items_display = !empty($items_list) ? htmlspecialchars(implode(', ', $items_list)) : '—';
+        $items_display = !empty($items_list) ? htmlspecialchars(implode(', ', $items_list)) : 'â€”';
         
         // Quantities
-        $old_qty = '—';
-        $new_qty = '—';
+        $old_qty = 'â€”';
+        $new_qty = 'â€”';
         if (isset($fc['adjusted_items']) && is_array($fc['adjusted_items']) && !empty($fc['adjusted_items'])) {
-            $old_qty = $fc['adjusted_items'][0]['old_qty'] ?? '—';
-            $new_qty = $fc['adjusted_items'][0]['new_qty'] ?? '—';
+            $old_qty = $fc['adjusted_items'][0]['old_qty'] ?? 'â€”';
+            $new_qty = $fc['adjusted_items'][0]['new_qty'] ?? 'â€”';
         } else {
             if (isset($fc['quantity'])) {
                 $new_qty = $fc['quantity'];
@@ -253,11 +253,11 @@ require_once __DIR__ . '/../partials/header.php';
         }
         
         // Payment Method
-        $payment_display = !empty($r['payment_method']) ? htmlspecialchars($r['payment_method']) : '—';
+        $payment_display = !empty($r['payment_method']) ? htmlspecialchars($r['payment_method']) : 'â€”';
         
         // Adjustment Type
         $adj_type = 'Price Adj';
-        if ($old_qty !== '—' && $new_qty !== '—' && $old_qty != $new_qty) {
+        if ($old_qty !== 'â€”' && $new_qty !== 'â€”' && $old_qty != $new_qty) {
             $adj_type = 'Quantity Adj';
         }
         
@@ -298,10 +298,10 @@ require_once __DIR__ . '/../partials/header.php';
             <td style="font-size:11.5px; line-height:1.2;"><?=$items_display?></td>
             <td style="text-align:center; font-size:11px;"><?=$old_qty?></td>
             <td style="text-align:center; font-size:11px;"><?=$new_qty?></td>
-            <td style="white-space:nowrap; font-size:11.5px;">₱<?=number_format($r['original_amount'],2)?></td>
-            <td style="white-space:nowrap; font-weight:700; font-size:11.5px;">₱<?=number_format($r['updated_amount'],2)?></td>
+            <td style="white-space:nowrap; font-size:11.5px;">â‚±<?=number_format($r['original_amount'],2)?></td>
+            <td style="white-space:nowrap; font-weight:700; font-size:11.5px;">â‚±<?=number_format($r['updated_amount'],2)?></td>
             <td style="white-space:nowrap; font-weight:700; font-size:11.5px; color:<?=$diff>=0?'#16a34a':'#dc2626'?>;">
-                <?=($diff>=0?'+':'').'₱'.number_format($diff,2)?>
+                <?=($diff>=0?'+':'').'â‚±'.number_format($diff,2)?>
             </td>
             <td style="white-space:nowrap; font-size:11px;"><?=$payment_display?></td>
             <td style="white-space:nowrap; font-size:11px;"><?=$adj_type?></td>
@@ -316,9 +316,9 @@ require_once __DIR__ . '/../partials/header.php';
                         txnId:    '<?=addslashes(htmlspecialchars($r['transaction_id']))?>' ,
                         customer: '<?=addslashes(htmlspecialchars($r['customer']))?>' ,
                         type:     '<?=addslashes(htmlspecialchars(ucwords(str_replace('_',' ',$r['transaction_type']))))?>' ,
-                        original: '₱<?=number_format($r['original_amount'],2)?>' ,
-                        updated:  '₱<?=number_format($r['updated_amount'],2)?>' ,
-                        diff:     '₱<?=number_format($r['amount_difference'],2)?>' ,
+                        original: 'â‚±<?=number_format($r['original_amount'],2)?>' ,
+                        updated:  'â‚±<?=number_format($r['updated_amount'],2)?>' ,
+                        diff:     'â‚±<?=number_format($r['amount_difference'],2)?>' ,
                         reason:   '<?=addslashes(htmlspecialchars($r['adjustment_reason']))?>' ,
                         remarks:  '<?=addslashes(htmlspecialchars($r['manager_remarks']??''))?>' ,
                         by:       '<?=addslashes(htmlspecialchars($r['adjusted_by_name']))?>' ,
@@ -359,7 +359,7 @@ require_once __DIR__ . '/../partials/header.php';
 </style>
 <script>
 function openAdjModal(d){
-  var diff = parseFloat((d.diff||'').replace(/[^₱0-9.\-]/g,'').replace('₱','')) || 0;
+  var diff = parseFloat((d.diff||'').replace(/[^â‚±0-9.\-]/g,'').replace('â‚±','')) || 0;
   var diffColor = diff >= 0 ? '#16a34a' : '#dc2626';
   var rows=[
     ['Adjustment ID',    '<strong>'+d.adjId+'</strong>'],
@@ -370,7 +370,7 @@ function openAdjModal(d){
     ['Updated Amount',   '<strong style="color:#002F70;font-size:15px;">'+d.updated+'</strong>'],
     ['Difference',       '<strong style="color:'+diffColor+';font-size:14px;">'+d.diff+'</strong>'],
     ['Reason',           d.reason],
-    ['Manager Remarks',  d.remarks || '—'],
+    ['Manager Remarks',  d.remarks || 'â€”'],
     ['Adjusted By',      d.by],
     ['Adjustment Date',  d.date]
   ];

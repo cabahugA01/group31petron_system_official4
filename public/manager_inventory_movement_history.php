@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'mgr_inv_movement';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -27,9 +27,9 @@ $categories_list = [];
 $users_list = [];
 $fuel_types_list = [];
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // DATA FETCHING BASED ON ACTIVE TAB
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 if ($active_tab === 'merch') {
     // 1. Calculate Merchandise Summary Cards
@@ -107,12 +107,12 @@ if ($active_tab === 'merch') {
                 CONCAT('DEL-', fd.id)         AS movement_id,
                 fd.delivery_date              AS movement_date,
                 fd.fuel_type,
-                COALESCE(fd.tank_assigned,'—') AS tank,
+                COALESCE(fd.tank_assigned,'â€”') AS tank,
                 'Delivery'                    AS movement_type,
                 fd.delivery_liters            AS liters,
                 NULL                          AS previous_volume,
                 NULL                          AS new_volume,
-                COALESCE(u.name,'—')          AS performed_by,
+                COALESCE(u.name,'â€”')          AS performed_by,
                 fd.invoice_no                 AS ref_no,
                 fd.status,
                 fd.notes
@@ -135,12 +135,12 @@ if ($active_tab === 'merch') {
                 CONCAT('SAL-', ft.id)         AS movement_id,
                 DATE(ft.transaction_date)     AS movement_date,
                 ft.fuel_type,
-                COALESCE(CONCAT('Pump #',ft.pump_id),'—') AS tank,
+                COALESCE(CONCAT('Pump #',ft.pump_id),'â€”') AS tank,
                 'Sale'                        AS movement_type,
                 ft.liters_sold                AS liters,
                 NULL                          AS previous_volume,
                 NULL                          AS new_volume,
-                COALESCE(u.name,'—')          AS performed_by,
+                COALESCE(u.name,'â€”')          AS performed_by,
                 ft.transaction_id             AS ref_no,
                 ft.status,
                 ft.notes
@@ -163,12 +163,12 @@ if ($active_tab === 'merch') {
                 CONCAT('ADJ-', fa.id)         AS movement_id,
                 fa.adjustment_date            AS movement_date,
                 fa.fuel_type,
-                '—'                           AS tank,
+                'â€”'                           AS tank,
                 CONCAT('Adjustment (',fa.adjustment_type,')') AS movement_type,
                 fa.liters,
                 fa.previous_value             AS previous_volume,
                 fa.new_value                  AS new_volume,
-                COALESCE(u.name,'—')          AS performed_by,
+                COALESCE(u.name,'â€”')          AS performed_by,
                 fa.reason                     AS ref_no,
                 fa.status,
                 fa.notes
@@ -367,12 +367,12 @@ include __DIR__ . '/../partials/header.php';
 .flt-btn-search:hover { background: #002F70 !important; color: #fff !important; }
 .flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
 .flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
-.flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
-.flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
-.flt-btn-csv { color: #002F70 !important; border-color: #002F70 !important; }
-.flt-btn-csv:hover { background: #002F70 !important; color: #fff !important; }
-.flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
-.flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
+.flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-csv { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-csv:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 
 /* == Transaction Action Buttons (txn-btn style) == */
 .txn-btn {
@@ -468,24 +468,24 @@ include __DIR__ . '/../partials/header.php';
 }
 </style>
 
-<!-- ══ Page Title / Header ══ -->
+<!-- â•â• Page Title / Header â•â• -->
 <div class="int-head">
     <div>
         <h1><i class="fas fa-history"></i> Inventory Movement History</h1>
     </div>
 </div>
 
-<!-- ══ Tabs Nav ══ -->
+<!-- â•â• Tabs Nav â•â• -->
 <div class="tab-nav">
     <a href="manager_inventory_movement_history.php?tab=merch" class="tab-btn <?= $active_tab === 'merch' ? 'active' : '' ?>"><i class="fas fa-box"></i> Merchandise Movements</a>
     <a href="manager_inventory_movement_history.php?tab=fuel" class="tab-btn <?= $active_tab === 'fuel' ? 'active' : '' ?>"><i class="fas fa-gas-pump"></i> Fuel Movements</a>
 </div>
 
 <?php if ($active_tab === 'merch'): ?>
-<!-- ═══════════════════════════════════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      MERCHANDISE MOVEMENTS TAB
-     ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- ══ Summary Cards ══ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+<!-- â•â• Summary Cards â•â• -->
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;">
     <!-- Total Merchandise Movements -->
     <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
@@ -521,7 +521,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- ══ Catalog / Movements List ══ -->
+<!-- â•â• Catalog / Movements List â•â• -->
 <div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;">
     
     <!-- Filter bar -->
@@ -604,25 +604,25 @@ include __DIR__ . '/../partials/header.php';
                 </tr>
             <?php else: ?>
                 <?php foreach ($movements_list as $m):
-                    $date_str = $m['created_at'] ? date('M d, Y h:i A', strtotime($m['created_at'])) : '—';
+                    $date_str = $m['created_at'] ? date('M d, Y h:i A', strtotime($m['created_at'])) : 'â€”';
                     $raw_act = strtolower($m['raw_action']);
                     
                     // Categorize action
                     if (in_array($raw_act, ['stock_in', 'delivery', 'receive', 'po_receipt'])) {
                         $mov_type = 'delivery';
-                        $mov_label = '📥 Delivery';
+                        $mov_label = 'ðŸ“¥ Delivery';
                         $badge_class = 'badge-delivery';
                         $qty_prefix = '+';
                         $qty_style = 'color:#137333; font-weight:700;';
                     } elseif (in_array($raw_act, ['sale', 'release', 'sold', 'manual_release', 'stock_out'])) {
                         $mov_type = 'release';
-                        $mov_label = '📤 Release/Sale';
+                        $mov_label = 'ðŸ“¤ Release/Sale';
                         $badge_class = 'badge-release';
                         $qty_prefix = '-';
                         $qty_style = 'color:#c5221f; font-weight:700;';
                     } else {
                         $mov_type = 'adjustment';
-                        $mov_label = '⚖️ Adjustment';
+                        $mov_label = 'âš–ï¸ Adjustment';
                         $badge_class = 'badge-adjustment';
                         
                         $qty_val = (float)$m['quantity_change'];
@@ -648,16 +648,16 @@ include __DIR__ . '/../partials/header.php';
                         <td style="font-size:11px;color:#64748b;"><?= $date_str ?></td>
                         <td>
                             <strong><?= htmlspecialchars($m['product_name']) ?></strong><br>
-                            <small style="color:#64748b;">SKU: <?= htmlspecialchars($m['prod_sku'] ?? '—') ?></small>
+                            <small style="color:#64748b;">SKU: <?= htmlspecialchars($m['prod_sku'] ?? 'â€”') ?></small>
                         </td>
-                        <td><?= htmlspecialchars($m['product_category'] ?? '—') ?></td>
+                        <td><?= htmlspecialchars($m['product_category'] ?? 'â€”') ?></td>
                         <td style="text-align:center;">
                             <span class="<?= $badge_class ?>"><?= $mov_label ?></span>
                         </td>
                         <td style="text-align:right;<?= $qty_style ?>"><?= $qty_prefix . number_format($m['quantity_change']) ?> <span style="font-size:10px;color:#64748b;"><?= htmlspecialchars($m['unit'] ?? 'pcs') ?></span></td>
                         <td style="text-align:right;color:#64748b;"><?= number_format($m['quantity_before']) ?></td>
                         <td style="text-align:right;font-weight:600;"><?= number_format($m['quantity_after']) ?></td>
-                        <td><?= htmlspecialchars($m['performed_by'] ?? '—') ?></td>
+                        <td><?= htmlspecialchars($m['performed_by'] ?? 'â€”') ?></td>
                         <td style="text-align:center;">
                             <span class="badge-approved">Completed</span>
                         </td>
@@ -671,15 +671,15 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <?php else: ?>
-<!-- ═══════════════════════════════════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      FUEL MOVEMENTS TAB
-     ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- ══ Summary Cards ══ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+<!-- â•â• Summary Cards â•â• -->
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;">
     <!-- Total Fuel Movements -->
     <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">⛽ Total Fuel Movements</div>
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">â›½ Total Fuel Movements</div>
             <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_total_movements) ?></div>
         </div>
         <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-gas-pump"></i></div>
@@ -687,7 +687,7 @@ include __DIR__ . '/../partials/header.php';
     <!-- Fuel Deliveries -->
     <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">🛢 Fuel Deliveries</div>
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">ðŸ›¢ Fuel Deliveries</div>
             <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_deliveries) ?></div>
         </div>
         <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-truck-loading"></i></div>
@@ -695,7 +695,7 @@ include __DIR__ . '/../partials/header.php';
     <!-- Fuel Sales -->
     <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">🚗 Fuel Sales</div>
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">ðŸš— Fuel Sales</div>
             <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_releases) ?></div>
         </div>
         <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-filter"></i></div>
@@ -703,14 +703,14 @@ include __DIR__ . '/../partials/header.php';
     <!-- Fuel Adjustments -->
     <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
         <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">⚖️ Fuel Adjustments</div>
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">âš–ï¸ Fuel Adjustments</div>
             <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_adjustments) ?></div>
         </div>
         <div style="background:#f8fafc;color:#64748b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-adjust"></i></div>
     </div>
 </div>
 
-<!-- ══ Catalog / Fuel Movements List ══ -->
+<!-- â•â• Catalog / Fuel Movements List â•â• -->
 <div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;">
     
     <!-- Filter bar -->
@@ -792,24 +792,24 @@ include __DIR__ . '/../partials/header.php';
                 </tr>
             <?php else: ?>
                 <?php foreach ($fuel_movements as $fm):
-                    $date_str = $fm['movement_date'] ? date('M d, Y', strtotime($fm['movement_date'])) : '—';
+                    $date_str = $fm['movement_date'] ? date('M d, Y', strtotime($fm['movement_date'])) : 'â€”';
                     $raw_type = strtolower($fm['movement_type']);
                     
                     if (strpos($raw_type, 'delivery') !== false) {
                         $mov_type = 'delivery';
-                        $mov_label = '📥 Fuel Delivery';
+                        $mov_label = 'ðŸ“¥ Fuel Delivery';
                         $badge_class = 'badge-delivery';
                         $qty_prefix = '+';
                         $qty_style = 'color:#137333; font-weight:700;';
                     } elseif (strpos($raw_type, 'sale') !== false) {
                         $mov_type = 'sale';
-                        $mov_label = '🚗 Fuel Sale';
+                        $mov_label = 'ðŸš— Fuel Sale';
                         $badge_class = 'badge-release';
                         $qty_prefix = '-';
                         $qty_style = 'color:#c5221f; font-weight:700;';
                     } else {
                         $mov_type = 'adjustment';
-                        $mov_label = '⚖️ ' . $fm['movement_type'];
+                        $mov_label = 'âš–ï¸ ' . $fm['movement_type'];
                         $badge_class = 'badge-adjustment';
                         
                         $liters_val = (float)$fm['liters'];
@@ -836,9 +836,9 @@ include __DIR__ . '/../partials/header.php';
                             <span class="<?= $badge_class ?>"><?= $mov_label ?></span>
                         </td>
                         <td style="text-align:right;<?= $qty_style ?>"><?= $qty_prefix . number_format($fm['liters'], 2) ?> <span style="font-size:10px;color:#64748b;">L</span></td>
-                        <td style="text-align:right;color:#64748b;"><?= $fm['previous_volume'] !== null ? number_format($fm['previous_volume'], 2) . ' L' : '—' ?></td>
-                        <td style="text-align:right;font-weight:600;"><?= $fm['new_volume'] !== null ? number_format($fm['new_volume'], 2) . ' L' : '—' ?></td>
-                        <td><?= htmlspecialchars($fm['performed_by'] ?? '—') ?></td>
+                        <td style="text-align:right;color:#64748b;"><?= $fm['previous_volume'] !== null ? number_format($fm['previous_volume'], 2) . ' L' : 'â€”' ?></td>
+                        <td style="text-align:right;font-weight:600;"><?= $fm['new_volume'] !== null ? number_format($fm['new_volume'], 2) . ' L' : 'â€”' ?></td>
+                        <td><?= htmlspecialchars($fm['performed_by'] ?? 'â€”') ?></td>
                         <td style="text-align:center;">
                             <span class="badge-approved"><?= htmlspecialchars($fm['status'] ?: 'Completed') ?></span>
                         </td>
@@ -852,7 +852,7 @@ include __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
-<!-- ══ Modal: Details Modal ══ -->
+<!-- â•â• Modal: Details Modal â•â• -->
 <div class="modal-overlay" id="detailsModal">
     <div class="modal-box" style="width:500px;">
         <div class="modal-header">
@@ -882,7 +882,7 @@ function esc(str) {
         .replace(/'/g, "&#039;");
 }
 
-// ── Search & Filter Merchandise ──
+// â”€â”€ Search & Filter Merchandise â”€â”€
 function filterMovTable() {
     var search = (document.getElementById('movSearch').value || '').toLowerCase();
     var category = (document.getElementById('movCategoryFilter').value || '').toLowerCase();
@@ -917,7 +917,7 @@ function filterMovTable() {
     });
 }
 
-// ── Search & Filter Fuel ──
+// â”€â”€ Search & Filter Fuel â”€â”€
 function filterFuelTable() {
     var search = (document.getElementById('fuelMovSearch').value || '').toLowerCase();
     var fuelType = (document.getElementById('fuelMovTypeValFilter').value || '').toLowerCase();
@@ -952,7 +952,7 @@ function filterFuelTable() {
     });
 }
 
-// ── View Merchandise Details Modal ──
+// â”€â”€ View Merchandise Details Modal â”€â”€
 function viewMovDetails(m, typeLabel) {
     var qty = Number(m.quantity_change);
     var sign = qty > 0 && typeLabel.indexOf('Delivery') !== -1 ? '+' : '';
@@ -961,22 +961,22 @@ function viewMovDetails(m, typeLabel) {
     var html = `
         <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b; width:150px;">Movement ID:</td><td style="font-weight:700;color:#002F70;">#${m.movement_id}</td></tr>
         <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Product Name:</td><td style="font-weight:700;">${esc(m.product_name)}</td></tr>
-        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">SKU:</td><td>${esc(m.prod_sku || '—')}</td></tr>
-        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Category:</td><td>${esc(m.product_category || '—')}</td></tr>
+        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">SKU:</td><td>${esc(m.prod_sku || 'â€”')}</td></tr>
+        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Category:</td><td>${esc(m.product_category || 'â€”')}</td></tr>
         <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Movement Type:</td><td style="font-weight:700;">${typeLabel}</td></tr>
         <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Quantity Changed:</td><td style="font-weight:700;color:#002F70;">${sign}${qty.toLocaleString()} ${esc(m.unit || 'pcs')}</td></tr>
         <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Previous Stock:</td><td>${Number(m.quantity_before).toLocaleString()} ${esc(m.unit || 'pcs')}</td></tr>
         <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">New Stock:</td><td style="font-weight:700;">${Number(m.quantity_after).toLocaleString()} ${esc(m.unit || 'pcs')}</td></tr>
-        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Performed By:</td><td>${esc(m.performed_by || '—')}</td></tr>
-        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Date/Time:</td><td>${m.created_at ? new Date(m.created_at).toLocaleString() : '—'}</td></tr>
-        <tr><td style="padding:8px 0; font-weight:600; color:#64748b;">Notes / Details:</td><td style="font-style:italic;color:#1e293b;">${esc(m.notes || '—')}</td></tr>
+        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Performed By:</td><td>${esc(m.performed_by || 'â€”')}</td></tr>
+        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Date/Time:</td><td>${m.created_at ? new Date(m.created_at).toLocaleString() : 'â€”'}</td></tr>
+        <tr><td style="padding:8px 0; font-weight:600; color:#64748b;">Notes / Details:</td><td style="font-style:italic;color:#1e293b;">${esc(m.notes || 'â€”')}</td></tr>
     `;
     
     document.getElementById('detailTable').innerHTML = html;
     document.getElementById('detailsModal').classList.add('open');
 }
 
-// ── View Fuel Details Modal ──
+// â”€â”€ View Fuel Details Modal â”€â”€
 function viewFuelMovDetails(fm, typeLabel) {
     var liters = Number(fm.liters);
     var sign = '';
@@ -991,16 +991,16 @@ function viewFuelMovDetails(fm, typeLabel) {
     var html = `
         <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b; width:150px;">Movement ID:</td><td style="font-weight:700;color:#002F70;">#${fm.movement_id}</td></tr>
         <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Fuel Type:</td><td style="font-weight:700;color:#002F6C;">${esc(fm.fuel_type)}</td></tr>
-        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Tank Reference:</td><td>${esc(fm.tank || '—')}</td></tr>
+        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Tank Reference:</td><td>${esc(fm.tank || 'â€”')}</td></tr>
         <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Movement Type:</td><td style="font-weight:700;">${typeLabel}</td></tr>
         <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Liters:</td><td style="font-weight:700;color:#002F70;">${sign}${liters.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} L</td></tr>
-        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Previous Volume:</td><td>${fm.previous_volume !== null ? Number(fm.previous_volume).toLocaleString(undefined, {minimumFractionDigits:2}) + ' L' : '—'}</td></tr>
-        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">New Volume:</td><td style="font-weight:700;">${fm.new_volume !== null ? Number(fm.new_volume).toLocaleString(undefined, {minimumFractionDigits:2}) + ' L' : '—'}</td></tr>
-        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Reference No:</td><td><code>${esc(fm.ref_no || '—')}</code></td></tr>
-        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Performed By:</td><td>${esc(fm.performed_by || '—')}</td></tr>
-        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Date/Time:</td><td>${fm.movement_date ? new Date(fm.movement_date).toLocaleString() : '—'}</td></tr>
+        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Previous Volume:</td><td>${fm.previous_volume !== null ? Number(fm.previous_volume).toLocaleString(undefined, {minimumFractionDigits:2}) + ' L' : 'â€”'}</td></tr>
+        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">New Volume:</td><td style="font-weight:700;">${fm.new_volume !== null ? Number(fm.new_volume).toLocaleString(undefined, {minimumFractionDigits:2}) + ' L' : 'â€”'}</td></tr>
+        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Reference No:</td><td><code>${esc(fm.ref_no || 'â€”')}</code></td></tr>
+        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Performed By:</td><td>${esc(fm.performed_by || 'â€”')}</td></tr>
+        <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Date/Time:</td><td>${fm.movement_date ? new Date(fm.movement_date).toLocaleString() : 'â€”'}</td></tr>
         <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0; font-weight:600; color:#64748b;">Status:</td><td><span class="badge-approved">${esc(fm.status || 'Completed')}</span></td></tr>
-        <tr><td style="padding:8px 0; font-weight:600; color:#64748b;">Notes / Details:</td><td style="font-style:italic;color:#1e293b;">${esc(fm.notes || '—')}</td></tr>
+        <tr><td style="padding:8px 0; font-weight:600; color:#64748b;">Notes / Details:</td><td style="font-style:italic;color:#1e293b;">${esc(fm.notes || 'â€”')}</td></tr>
     `;
     
     document.getElementById('detailTable').innerHTML = html;
@@ -1011,14 +1011,14 @@ function closeDetailsModal() {
     document.getElementById('detailsModal').classList.remove('open');
 }
 
-// ── Print Merchandise Movement Slip ──
+// â”€â”€ Print Merchandise Movement Slip â”€â”€
 function printMovementSlip(m, typeLabel) {
     var qty = Number(m.quantity_change);
     var sign = qty > 0 && typeLabel.indexOf('Delivery') !== -1 ? '+' : '';
     if (typeLabel.indexOf('Release') !== -1) sign = '-';
 
     var pw = window.open('', '_blank');
-    pw.document.write('<!DOCTYPE html><html><head><title>Inventory Movement Slip — #' + m.movement_id + '</title>');
+    pw.document.write('<!DOCTYPE html><html><head><title>Inventory Movement Slip â€” #' + m.movement_id + '</title>');
     pw.document.write('<style>');
     pw.document.write('body{font-family:Arial,sans-serif;font-size:13px;color:#222;margin:0;padding:24px;}');
     pw.document.write('.header{background:#002F6C;color:#fff;padding:16px 20px;border-radius:6px 6px 0 0;}');
@@ -1038,20 +1038,20 @@ function printMovementSlip(m, typeLabel) {
     pw.document.write('<tr><td>Movement ID:</td><td><strong>#' + m.movement_id + '</strong></td></tr>');
     pw.document.write('<tr><td>Movement Type:</td><td><strong>' + esc(typeLabel) + '</strong></td></tr>');
     pw.document.write('<tr><td>Performed By:</td><td>' + esc(m.performed_by || 'System') + '</td></tr>');
-    pw.document.write('<tr><td>Date & Time:</td><td>' + (m.created_at ? new Date(m.created_at).toLocaleString() : '—') + '</td></tr>');
+    pw.document.write('<tr><td>Date & Time:</td><td>' + (m.created_at ? new Date(m.created_at).toLocaleString() : 'â€”') + '</td></tr>');
     pw.document.write('</table></div>');
 
     pw.document.write('<div class="section"><h4>Item & Stock Specifications</h4><table class="info">');
     pw.document.write('<tr><td>Product Name:</td><td><strong>' + esc(m.product_name) + '</strong></td></tr>');
-    pw.document.write('<tr><td>SKU:</td><td>' + esc(m.prod_sku || '—') + '</td></tr>');
-    pw.document.write('<tr><td>Category:</td><td>' + esc(m.product_category || '—') + '</td></tr>');
+    pw.document.write('<tr><td>SKU:</td><td>' + esc(m.prod_sku || 'â€”') + '</td></tr>');
+    pw.document.write('<tr><td>Category:</td><td>' + esc(m.product_category || 'â€”') + '</td></tr>');
     pw.document.write('<tr><td>Quantity Changed:</td><td><strong style="font-size:14px;color:#002F70;">' + sign + qty.toLocaleString() + ' ' + esc(m.unit || 'pcs') + '</strong></td></tr>');
     pw.document.write('<tr><td>Previous Stock:</td><td>' + Number(m.quantity_before).toLocaleString() + ' ' + esc(m.unit || 'pcs') + '</td></tr>');
     pw.document.write('<tr><td>New Stock:</td><td><strong>' + Number(m.quantity_after).toLocaleString() + ' ' + esc(m.unit || 'pcs') + '</strong></td></tr>');
     pw.document.write('</table></div>');
 
     pw.document.write('<div class="section"><h4>Details & Log Notes</h4><table class="info">');
-    pw.document.write('<tr><td>Notes:</td><td><em>' + esc(m.notes || '—') + '</em></td></tr>');
+    pw.document.write('<tr><td>Notes:</td><td><em>' + esc(m.notes || 'â€”') + '</em></td></tr>');
     pw.document.write('</table></div>');
 
     pw.document.write('<div class="footer">Petron Station Management System &copy; ' + new Date().getFullYear() + '</div>');
@@ -1060,7 +1060,7 @@ function printMovementSlip(m, typeLabel) {
     pw.print();
 }
 
-// ── Print Fuel Movement Slip ──
+// â”€â”€ Print Fuel Movement Slip â”€â”€
 function printFuelMovementSlip(fm, typeLabel) {
     var liters = Number(fm.liters);
     var sign = '';
@@ -1073,7 +1073,7 @@ function printFuelMovementSlip(fm, typeLabel) {
     }
 
     var pw = window.open('', '_blank');
-    pw.document.write('<!DOCTYPE html><html><head><title>Fuel Movement Slip — #' + fm.movement_id + '</title>');
+    pw.document.write('<!DOCTYPE html><html><head><title>Fuel Movement Slip â€” #' + fm.movement_id + '</title>');
     pw.document.write('<style>');
     pw.document.write('body{font-family:Arial,sans-serif;font-size:13px;color:#222;margin:0;padding:24px;}');
     pw.document.write('.header{background:#002F6C;color:#fff;padding:16px 20px;border-radius:6px 6px 0 0;}');
@@ -1092,22 +1092,22 @@ function printFuelMovementSlip(fm, typeLabel) {
     pw.document.write('<div class="section"><h4>Movement Info</h4><table class="info">');
     pw.document.write('<tr><td>Movement ID:</td><td><strong>#' + fm.movement_id + '</strong></td></tr>');
     pw.document.write('<tr><td>Movement Type:</td><td><strong>' + esc(typeLabel) + '</strong></td></tr>');
-    pw.document.write('<tr><td>Performed By:</td><td>' + esc(fm.performed_by || '—') + '</td></tr>');
-    pw.document.write('<tr><td>Date & Time:</td><td>' + (fm.movement_date ? new Date(fm.movement_date).toLocaleString() : '—') + '</td></tr>');
+    pw.document.write('<tr><td>Performed By:</td><td>' + esc(fm.performed_by || 'â€”') + '</td></tr>');
+    pw.document.write('<tr><td>Date & Time:</td><td>' + (fm.movement_date ? new Date(fm.movement_date).toLocaleString() : 'â€”') + '</td></tr>');
     pw.document.write('</table></div>');
 
     pw.document.write('<div class="section"><h4>Fuel Specifications</h4><table class="info">');
     pw.document.write('<tr><td>Fuel Type:</td><td><strong>' + esc(fm.fuel_type) + '</strong></td></tr>');
-    pw.document.write('<tr><td>Tank Reference:</td><td>' + esc(fm.tank || '—') + '</td></tr>');
+    pw.document.write('<tr><td>Tank Reference:</td><td>' + esc(fm.tank || 'â€”') + '</td></tr>');
     pw.document.write('<tr><td>Liters Changed:</td><td><strong style="font-size:14px;color:#002F70;">' + sign + liters.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) + ' L</strong></td></tr>');
-    pw.document.write('<tr><td>Previous Volume:</td><td>' + (fm.previous_volume !== null ? Number(fm.previous_volume).toLocaleString(undefined, {minimumFractionDigits:2}) + ' L' : '—') + '</td></tr>');
-    pw.document.write('<tr><td>New Volume:</td><td><strong>' + (fm.new_volume !== null ? Number(fm.new_volume).toLocaleString(undefined, {minimumFractionDigits:2}) + ' L' : '—') + '</strong></td></tr>');
+    pw.document.write('<tr><td>Previous Volume:</td><td>' + (fm.previous_volume !== null ? Number(fm.previous_volume).toLocaleString(undefined, {minimumFractionDigits:2}) + ' L' : 'â€”') + '</td></tr>');
+    pw.document.write('<tr><td>New Volume:</td><td><strong>' + (fm.new_volume !== null ? Number(fm.new_volume).toLocaleString(undefined, {minimumFractionDigits:2}) + ' L' : 'â€”') + '</strong></td></tr>');
     pw.document.write('</table></div>');
 
     pw.document.write('<div class="section"><h4>Details & Log Notes</h4><table class="info">');
-    pw.document.write('<tr><td>Reference No:</td><td><code>' + esc(fm.ref_no || '—') + '</code></td></tr>');
+    pw.document.write('<tr><td>Reference No:</td><td><code>' + esc(fm.ref_no || 'â€”') + '</code></td></tr>');
     pw.document.write('<tr><td>Status:</td><td>' + esc(fm.status || 'Completed') + '</td></tr>');
-    pw.document.write('<tr><td>Notes:</td><td><em>' + esc(fm.notes || '—') + '</em></td></tr>');
+    pw.document.write('<tr><td>Notes:</td><td><em>' + esc(fm.notes || 'â€”') + '</em></td></tr>');
     pw.document.write('</table></div>');
 
     pw.document.write('<div class="footer">Petron Station Management System &copy; ' + new Date().getFullYear() + '</div>');
@@ -1116,7 +1116,7 @@ function printFuelMovementSlip(fm, typeLabel) {
     pw.print();
 }
 
-// ── Export Merchandise Functions ──
+// â”€â”€ Export Merchandise Functions â”€â”€
 function exportMovTablePDF() {
     if (typeof exportTableToPDF === 'function') {
         exportTableToPDF('mgrMovTable', 'Inventory Movement History Report');
@@ -1153,7 +1153,7 @@ function exportMovTableCSV() {
     document.body.removeChild(a);
 }
 
-// ── Export Fuel Functions ──
+// â”€â”€ Export Fuel Functions â”€â”€
 function exportFuelTablePDF() {
     if (typeof exportTableToPDF === 'function') {
         exportTableToPDF('mgrFuelMovTable', 'Fuel Movement History Report');

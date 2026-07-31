@@ -563,25 +563,29 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     border-radius: 4px;
     font-size: 11px;
     font-weight: 700;
-    border: 1px solid currentColor;
-    background: #fff;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #00264D;
     text-decoration: none;
     cursor: pointer;
     white-space: nowrap;
+    transition: all 0.2s;
 }
 
-.sfr-export-btn.excel { color: #15803d; }
-.sfr-export-btn.csv { color: #002F6C; }
-.sfr-export-btn.pdf { color: #dc2626; }
-.sfr-export-btn.print { color: #1e3a8a; }
+.sfr-export-btn.excel,
+.sfr-export-btn.csv,
+.sfr-export-btn.pdf,
+.sfr-export-btn.print { color: #00264D; border-color: #cbd5e1; }
 
-.sfr-export-btn:hover {
-    color: #fff;
+.sfr-export-btn:hover,
+.sfr-export-btn.excel:hover,
+.sfr-export-btn.csv:hover,
+.sfr-export-btn.pdf:hover,
+.sfr-export-btn.print:hover {
+    background: #f8fafc;
+    border-color: #00264D;
+    color: #00264D;
 }
-.sfr-export-btn.excel:hover { background: #15803d; }
-.sfr-export-btn.csv:hover { background: #002F6C; }
-.sfr-export-btn.pdf:hover { background: #dc2626; }
-.sfr-export-btn.print:hover { background: #1e3a8a; }
 
 .sfr-print-area {
     min-width: 0;

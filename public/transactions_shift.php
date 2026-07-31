@@ -496,10 +496,10 @@ function exportShiftTransactions(format) {
 .flt-btn-search:hover { background: #00264D !important; color: #fff !important; }
 .flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
 .flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
-.flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
-.flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
-.flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
-.flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
+.flt-btn-excel  { color: #00264D !important; border-color: #cbd5e1 !important; }
+.flt-btn-excel:hover  { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-pdf    { color: #00264D !important; border-color: #cbd5e1 !important; }
+.flt-btn-pdf:hover    { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 
 .txn-btn {
     display: inline-flex;

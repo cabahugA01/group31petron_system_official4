@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'mgr_inv_fuel';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -8,7 +8,7 @@ $me         = current_user();
 $role       = role_key($me['role'] ?? '');
 $station_id = user_station_id();
 
-// ── Module gate ───────────────────────────────────────────────
+// â”€â”€ Module gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (!in_array($role, ['superadmin', 'developer']) && !is_module_enabled('inventory')) {
     render_module_disabled_page('Inventory');
 }
@@ -20,7 +20,7 @@ if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
 
 $TANK_CONFIG_17 = get_tank_config();
 
-// ── AJAX Handler ─────────────────────────────────────────────────────
+// â”€â”€ AJAX Handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
     header('Content-Type: application/json');
     $fuel_type = $_GET['fuel_type'] ?? '';
@@ -47,7 +47,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
     exit;
 }
 
-// ── Fetch DB data for current calculations ────────────────────────────
+// â”€â”€ Fetch DB data for current calculations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $fi_lookup = [];
 try {
     $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, reorder_level, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)");
@@ -88,7 +88,7 @@ try {
     }
 } catch (Exception $e) {}
 
-// ── Price source: fuel_inventory.price_per_liter (authoritative — same as Meter Reading form) ──
+// â”€â”€ Price source: fuel_inventory.price_per_liter (authoritative â€” same as Meter Reading form) â”€â”€
 $price_lookup = [];
 try {
     $s = $pdo->prepare("SELECT LOWER(TRIM(fuel_type)) AS ft_key, price_per_liter FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)");
@@ -99,7 +99,7 @@ try {
     }
 } catch (Exception $e) {}
 
-// ── Process tanks dataset ─────────────────────────────────────────────
+// â”€â”€ Process tanks dataset â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $rows = [];
 $total_fuel_volume = 0;
 
@@ -164,7 +164,7 @@ foreach ($TANK_CONFIG_17 as $tc) {
     $remaining_capacity = max(0, $capacity - $ending_system);
     $total_fuel_volume += $ending_system;
 
-    // Thresholds — from DB tank config (reorder_level / critical_level)
+    // Thresholds â€” from DB tank config (reorder_level / critical_level)
     $critical_lvl = (float)($tc['critical_level'] ?? 0);
     $low_lvl      = (float)($tc['reorder_level']  ?? 0);
     if ($critical_lvl <= 0) $critical_lvl = $capacity > 0 ? $capacity * 0.15 : 0;
@@ -207,7 +207,7 @@ foreach ($TANK_CONFIG_17 as $tc) {
     ];
 }
 
-// ── Summary Metrics ──────────────────────────────────────────────────
+// â”€â”€ Summary Metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $diesel_available    = 0;
 $premium_available   = 0;
 $regular_available   = 0;
@@ -299,7 +299,7 @@ $alert_critical_tanks = count(array_filter($rows, fn($r) => $r['status'] === 'Cr
 $alert_empty_tanks = count(array_filter($rows, fn($r) => $r['status'] === 'Out of Stock' || $r['current_volume'] <= 0));
 $alert_needing_delivery = $alert_low_tanks + $alert_critical_tanks + $alert_empty_tanks;
 
-// ── Fuel Movement History Data (only fetched when on movement tab) ─────
+// â”€â”€ Fuel Movement History Data (only fetched when on movement tab) â”€â”€â”€â”€â”€
 $mov_rows          = [];
 $mov_total         = 0;
 $mov_deliveries    = 0;
@@ -314,12 +314,12 @@ if ($active_tab === 'movement') {
                 CONCAT('DEL-', fd.id)         AS movement_id,
                 fd.delivery_date              AS movement_date,
                 fd.fuel_type,
-                COALESCE(fd.tank_assigned,'—') AS tank,
+                COALESCE(fd.tank_assigned,'â€”') AS tank,
                 'Delivery'                    AS movement_type,
                 fd.delivery_liters            AS liters,
                 NULL                          AS previous_volume,
                 NULL                          AS new_volume,
-                COALESCE(u.name,'—')          AS performed_by,
+                COALESCE(u.name,'â€”')          AS performed_by,
                 fd.invoice_no                 AS ref_no,
                 fd.status,
                 fd.notes
@@ -342,12 +342,12 @@ if ($active_tab === 'movement') {
                 CONCAT('SAL-', ft.id)         AS movement_id,
                 DATE(ft.transaction_date)     AS movement_date,
                 ft.fuel_type,
-                COALESCE(CONCAT('Pump #',ft.pump_id),'—') AS tank,
+                COALESCE(CONCAT('Pump #',ft.pump_id),'â€”') AS tank,
                 'Sale'                        AS movement_type,
                 ft.liters_sold                AS liters,
                 NULL                          AS previous_volume,
                 NULL                          AS new_volume,
-                COALESCE(u.name,'—')          AS performed_by,
+                COALESCE(u.name,'â€”')          AS performed_by,
                 ft.transaction_id             AS ref_no,
                 ft.status,
                 ft.notes
@@ -370,12 +370,12 @@ if ($active_tab === 'movement') {
                 CONCAT('ADJ-', fa.id)         AS movement_id,
                 fa.adjustment_date            AS movement_date,
                 fa.fuel_type,
-                '—'                           AS tank,
+                'â€”'                           AS tank,
                 CONCAT('Adjustment (',fa.adjustment_type,')') AS movement_type,
                 fa.liters,
                 fa.previous_value             AS previous_volume,
                 fa.new_value                  AS new_volume,
-                COALESCE(u.name,'—')          AS performed_by,
+                COALESCE(u.name,'â€”')          AS performed_by,
                 fa.reason                     AS ref_no,
                 fa.status,
                 fa.notes
@@ -398,13 +398,13 @@ if ($active_tab === 'movement') {
     $mov_total = count($mov_rows);
 }
 
-// ── Fetch Deliveries Tab Data ──
+// â”€â”€ Fetch Deliveries Tab Data â”€â”€
 $deliveries_tab_list = [];
 try {
     $stmt = $pdo->prepare("
         SELECT
             CONCAT('DEL-', LPAD(fd.id, 5, '0')) AS delivery_no,
-            COALESCE(NULLIF(fd.invoice_no,''), '—') AS po_no,
+            COALESCE(NULLIF(fd.invoice_no,''), 'â€”') AS po_no,
             COALESCE(NULLIF(fd.supplier,''), 'Petron Corporation') AS supplier,
             fd.delivery_liters AS liters,
             COALESCE(fp.price_per_liter, 0) AS cost_per_liter,
@@ -420,14 +420,14 @@ try {
     $deliveries_tab_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── Fetch Meter Readings Tab Data ──────────────────────────────────────
+// â”€â”€ Fetch Meter Readings Tab Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $meter_readings_list = [];
 try {
     $stmt = $pdo->prepare("
         SELECT
             fa.id,
             fa.adjustment_date AS date,
-            COALESCE(fa.fuel_type, '—') AS fuel_type,
+            COALESCE(fa.fuel_type, 'â€”') AS fuel_type,
             'UGT-01' AS ugt_no,
             fa.previous_value AS dip_reading,
             fa.new_value AS meter_reading,
@@ -444,7 +444,7 @@ try {
     $meter_readings_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── Fetch Remaining Fuel Volume Tab Data ──
+// â”€â”€ Fetch Remaining Fuel Volume Tab Data â”€â”€
 $fuel_types_grouped = [];
 foreach ($rows as $r) {
     $ft = $r['fuel_type'];
@@ -473,7 +473,7 @@ foreach ($rows as $r) {
 }
 $remaining_volume_list = array_values($fuel_types_grouped);
 
-// ── Fetch Fuel Movement History Tab Data ──
+// â”€â”€ Fetch Fuel Movement History Tab Data â”€â”€
 $fuel_movement_history = [];
 try {
     $stmt = $pdo->prepare("
@@ -725,30 +725,12 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     white-space: nowrap;
     text-decoration: none;
 }
-.flt-btn-excel {
-    color: #1d6f42 !important;
-    border-color: #1d6f42 !important;
-}
-.flt-btn-excel:hover {
-    background: #1d6f42 !important;
-    color: #fff !important;
-}
-.flt-btn-csv {
-    color: #002F70 !important;
-    border-color: #002F70 !important;
-}
-.flt-btn-csv:hover {
-    background: #002F70 !important;
-    color: #fff !important;
-}
-.flt-btn-pdf {
-    color: #dc2626 !important;
-    border-color: #dc2626 !important;
-}
-.flt-btn-pdf:hover {
-    background: #dc2626 !important;
-    color: #fff !important;
-}
+.flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-csv { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-csv:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 
 /* == MODAL OVERLAY == */
 .modal-overlay {
@@ -861,7 +843,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 }
 </style>
 
-<!-- ══ Page Header ══ -->
+<!-- â•â• Page Header â•â• -->
 <div class="int-head">
     <div>
         <h1><i class="fas fa-gas-pump"></i> Fuel Inventory Monitoring</h1>
@@ -877,7 +859,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     <?php endif; ?>
 </div>
 
-<!-- ══ Sub-Tab Navigation (4 Tabs) ══ -->
+<!-- â•â• Sub-Tab Navigation (4 Tabs) â•â• -->
 <div class="tab-nav" style="overflow-x:auto; flex-wrap:nowrap; white-space:nowrap; padding-bottom:4px;">
     <a href="manager_inventory_fuel.php?tab=overview" class="tab-btn <?= $active_tab === 'overview' ? 'active' : '' ?>">
         <i class="fas fa-list"></i> Fuel Overview
@@ -897,7 +879,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 </div>
 
 <?php if ($active_tab === 'overview'): ?>
-<!-- ══ Summary Cards (6 Cards) ══ -->
+<!-- â•â• Summary Cards (6 Cards) â•â• -->
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;">
     <!-- Total Fuel Available -->
     <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
@@ -949,7 +931,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     </div>
 </div>
 
-<!-- ══ Fuel Catalog Card ══ -->
+<!-- â•â• Fuel Catalog Card â•â• -->
 <div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;">
     <div style="padding:16px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
         <div style="font-size:1rem;font-weight:700;color:#002F70;display:flex;align-items:center;gap:8px;">
@@ -997,7 +979,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
             </thead>
             <tbody id="fuelTableBody">
             <?php foreach ($rows as $r): 
-                $ts_str = $r['last_updated'] ? date('M d, Y h:i A', strtotime($r['last_updated'])) : '—';
+                $ts_str = $r['last_updated'] ? date('M d, Y h:i A', strtotime($r['last_updated'])) : 'â€”';
                 $pct = $r['fill_pct'];
                 $pct_color = $pct < 25 ? '#dc3545' : ($pct < 50 ? '#fd7e14' : '#28a745');
                 $crit_level = max(1000, round($r['capacity'] * 0.15));
@@ -1039,7 +1021,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 </div>
 <?php endif; ?>
 
-<!-- ══ TAB: FUEL DELIVERIES ══ -->
+<!-- â•â• TAB: FUEL DELIVERIES â•â• -->
 <?php if ($active_tab === 'deliveries'): ?>
 <div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;">
     <div style="padding:16px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
@@ -1080,7 +1062,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
                 <tr><td colspan="8" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-info-circle" style="font-size:1.8em; display:block; margin-bottom:8px;"></i> No fuel delivery records found.</td></tr>
             <?php else: ?>
                 <?php foreach ($deliveries_tab_list as $fd):
-                    $ddate = !empty($fd['date']) ? (new DateTime($fd['date']))->format('M d, Y h:i A') : '—';
+                    $ddate = !empty($fd['date']) ? (new DateTime($fd['date']))->format('M d, Y h:i A') : 'â€”';
                     $del_type = $fd['fuel_type'] ?? 'Diesel';
                     $ugt = $fd['ugt_no'] ?? 'UGT-01';
                 ?>
@@ -1091,7 +1073,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
                     <td><span style="font-weight:600;color:#0f172a;"><?= htmlspecialchars($del_type) ?></span></td>
                     <td><code style="font-size:11px;font-weight:700;color:#002F70;"><?= htmlspecialchars($ugt) ?></code></td>
                     <td style="text-align:right; font-weight:700; color:#16a34a; font-size:13px;"><?php echo number_format((float)$fd['liters'], 2); ?> L</td>
-                    <td style="text-align:right; font-weight:600; color:#002F70;">₱<?php echo number_format((float)$fd['cost_per_liter'], 2); ?></td>
+                    <td style="text-align:right; font-weight:600; color:#002F70;">â‚±<?php echo number_format((float)$fd['cost_per_liter'], 2); ?></td>
                     <td style="text-align:center; font-size:11px; color:#64748b;"><?php echo $ddate; ?></td>
                 </tr>
                 <?php endforeach; ?>
@@ -1103,7 +1085,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 </div>
 <?php endif; ?>
 
-<!-- ══ TAB: METER READINGS ══ -->
+<!-- â•â• TAB: METER READINGS â•â• -->
 <?php if ($active_tab === 'readings'): ?>
 <div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;">
     <div style="padding:16px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
@@ -1158,7 +1140,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
                 <?php endforeach; ?>
             <?php else: ?>
                 <?php foreach ($meter_readings_list as $mr):
-                    $mdate = !empty($mr['date']) ? (new DateTime($mr['date']))->format('M d, Y h:i A') : '—';
+                    $mdate = !empty($mr['date']) ? (new DateTime($mr['date']))->format('M d, Y h:i A') : 'â€”';
                     $var = (float)($mr['variance'] ?? 0);
                     $var_color = $var > 0 ? '#16a34a' : ($var < 0 ? '#dc2626' : '#64748b');
                 ?>
@@ -1181,7 +1163,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 </div>
 <?php endif; ?>
 
-<!-- ══ TAB CONTENT: Stock Alerts ══ -->
+<!-- â•â• TAB CONTENT: Stock Alerts â•â• -->
 <?php if ($active_tab === 'alerts'): ?>
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;">
     <!-- Low Fuel Tanks -->
@@ -1218,7 +1200,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     </div>
 </div>
 
-<!-- ══ Low Fuel Alert Table Card ══ -->
+<!-- â•â• Low Fuel Alert Table Card â•â• -->
 <div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;">
     <div style="padding:16px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
         <div style="font-size:1rem;font-weight:700;color:#002F70;display:flex;align-items:center;gap:8px;">
@@ -1292,7 +1274,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 
 
 
-<!-- ══ VIEW FUEL MODAL ══ -->
+<!-- â•â• VIEW FUEL MODAL â•â• -->
 <div class="modal-overlay" id="viewFuelModal" style="z-index:10000;">
     <div style="background:#fff;border-radius:14px;width:96%;max-width:820px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 40px rgba(0,0,0,.18);overflow:hidden;position:relative;z-index:10001;">
         <!-- Header -->
@@ -1328,11 +1310,11 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
             <div id="vfmPane2" style="display:none;">
                 <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-tachometer-alt"></i> Meter Reading Summary</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;margin-bottom:20px;">
-                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Beginning Meter Reading</div><div id="vfmBegReading" style="font-weight:700;color:#0f172a;">—</div></div>
-                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Ending Meter Reading</div><div id="vfmEndReading" style="font-weight:700;color:#0f172a;">—</div></div>
+                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Beginning Meter Reading</div><div id="vfmBegReading" style="font-weight:700;color:#0f172a;">â€”</div></div>
+                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Ending Meter Reading</div><div id="vfmEndReading" style="font-weight:700;color:#0f172a;">â€”</div></div>
                     <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Calibration</div><div id="vfmCalibration" style="font-weight:600;color:#64748b;">0.00 L</div></div>
-                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Net Fuel Dispensed</div><div id="vfmNetDispensed" style="font-weight:800;color:#002F70;">—</div></div>
-                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Last Reconciliation</div><div id="vfmReconciled" style="color:#64748b;font-size:12px;">—</div></div>
+                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Net Fuel Dispensed</div><div id="vfmNetDispensed" style="font-weight:800;color:#002F70;">â€”</div></div>
+                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Last Reconciliation</div><div id="vfmReconciled" style="color:#64748b;font-size:12px;">â€”</div></div>
                 </div>
             </div>
             <!-- TAB 3: Delivery History -->
@@ -1354,7 +1336,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     </div>
 </div>
 
-<!-- ══ FUEL STOCK ADJUSTMENT REQUEST MODAL (STEP 5: MANAGER REQUEST) ══ -->
+<!-- â•â• FUEL STOCK ADJUSTMENT REQUEST MODAL (STEP 5: MANAGER REQUEST) â•â• -->
 <div class="modal-overlay" id="adjustReadingModal" style="z-index:10005; display:none; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;">
     <div style="background:#fff; border-radius:14px; width:96%; max-width:580px; max-height:calc(100vh - 40px); display:flex; flex-direction:column; overflow:hidden; box-shadow:0 24px 40px rgba(0,0,0,.25); position:relative; z-index:10006; margin:auto;">
 
@@ -1567,7 +1549,7 @@ function filterReadingsTable() {
     }
 }
 
-// ── Open View Fuel Modal ──
+// â”€â”€ Open View Fuel Modal â”€â”€
 var _currentFuelRow = null;
 
 function openFuelModal(r) {
@@ -1578,8 +1560,8 @@ function openFuelModal(r) {
         document.body.appendChild(overlay);
     }
 
-    document.getElementById('vfmTitle').textContent = 'View Fuel — ' + (r.fuel_type || '');
-    document.getElementById('vfmFuelType').textContent = r.fuel_type || '—';
+    document.getElementById('vfmTitle').textContent = 'View Fuel â€” ' + (r.fuel_type || '');
+    document.getElementById('vfmFuelType').textContent = r.fuel_type || 'â€”';
     document.getElementById('vfmCurrentVolume').textContent = Number(r.current_volume || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
     document.getElementById('vfmCapacity').textContent = Number(r.capacity || 0).toLocaleString() + ' L';
     document.getElementById('vfmReorderLevel').textContent = Number(r.reorder_level || 0).toLocaleString() + ' L';
@@ -1587,14 +1569,14 @@ function openFuelModal(r) {
     document.getElementById('vfmCriticalLevel').textContent = critLevel.toLocaleString() + ' L';
     var statusHtml = '<span style="background:' + (r.status_color || '#28a745') + '20;color:' + (r.status_color || '#28a745') + ';border:1px solid ' + (r.status_color || '#28a745') + '40;padding:4px 10px;border-radius:4px;font-size:11px;font-weight:700;text-transform:uppercase;">' + (r.status || 'Normal') + '</span>';
     document.getElementById('vfmStatus').innerHTML = statusHtml;
-    document.getElementById('vfmLastUpdated').textContent = r.last_updated ? new Date(r.last_updated).toLocaleString() : '—';
+    document.getElementById('vfmLastUpdated').textContent = r.last_updated ? new Date(r.last_updated).toLocaleString() : 'â€”';
 
-    // Meter reading summary — try to load via AJAX
-    document.getElementById('vfmBegReading').textContent = '—';
-    document.getElementById('vfmEndReading').textContent = '—';
+    // Meter reading summary â€” try to load via AJAX
+    document.getElementById('vfmBegReading').textContent = 'â€”';
+    document.getElementById('vfmEndReading').textContent = 'â€”';
     document.getElementById('vfmCalibration').textContent = '0.00 L';
-    document.getElementById('vfmNetDispensed').textContent = '—';
-    document.getElementById('vfmReconciled').textContent = '—';
+    document.getElementById('vfmNetDispensed').textContent = 'â€”';
+    document.getElementById('vfmReconciled').textContent = 'â€”';
 
     // Reset tabs
     vfmSwitchTab(1);
@@ -1635,7 +1617,7 @@ function openFuelModal(r) {
             document.getElementById('vfmBegReading').textContent = Number(first.liters_sold || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L';
             document.getElementById('vfmEndReading').textContent = Number(last.liters_sold || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L';
             document.getElementById('vfmNetDispensed').textContent = totalSold.toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L';
-            document.getElementById('vfmReconciled').textContent = last.transaction_date ? new Date(last.transaction_date).toLocaleDateString() : '—';
+            document.getElementById('vfmReconciled').textContent = last.transaction_date ? new Date(last.transaction_date).toLocaleDateString() : 'â€”';
         }
 
         // Delivery History Table
@@ -1645,14 +1627,14 @@ function openFuelModal(r) {
             var dHtml = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
             dHtml += '<thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Delivery No.</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">PO No.</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Delivery Date</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Supplier</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Liters Received</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Cost/Liter</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Received By</th></tr></thead><tbody>';
             data.deliveries.forEach(function(d) {
-                var dateStr = d.delivery_date ? new Date(d.delivery_date).toLocaleDateString() : '—';
+                var dateStr = d.delivery_date ? new Date(d.delivery_date).toLocaleDateString() : 'â€”';
                 dHtml += '<tr><td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;"><code style="color:#002F70;font-weight:700;">' + esc(d.invoice_no || 'DEL-' + d.id) + '</code></td>';
-                dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;"><code>' + esc(d.po_number || '—') + '</code></td>';
+                dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;"><code>' + esc(d.po_number || 'â€”') + '</code></td>';
                 dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;">' + dateStr + '</td>';
                 dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;">' + esc(d.supplier || 'Petron Supplier') + '</td>';
                 dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#002F70;">' + Number(d.delivery_liters).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>';
-                dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">₱' + Number(d.cost_per_liter || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
-                dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;">' + esc(d.received_by_name || d.received_by || '—') + '</td></tr>';
+                dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">â‚±' + Number(d.cost_per_liter || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
+                dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;">' + esc(d.received_by_name || d.received_by || 'â€”') + '</td></tr>';
             });
             dHtml += '</tbody></table>';
             document.getElementById('vfmDeliveryTable').innerHTML = dHtml;
@@ -1665,14 +1647,14 @@ function openFuelModal(r) {
             var mHtml = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
             mHtml += '<thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Beginning Volume</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Delivered</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Dispensed</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Calibration</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Ending Volume</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Performed By</th></tr></thead><tbody>';
             data.transactions.forEach(function(t) {
-                var dateStr = t.transaction_date ? new Date(t.transaction_date).toLocaleDateString() : '—';
+                var dateStr = t.transaction_date ? new Date(t.transaction_date).toLocaleDateString() : 'â€”';
                 mHtml += '<tr><td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;">' + dateStr + '</td>';
-                mHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">—</td>';
-                mHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;color:#28a745;font-weight:700;">—</td>';
+                mHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">â€”</td>';
+                mHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;color:#28a745;font-weight:700;">â€”</td>';
                 mHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;color:#dc3545;font-weight:700;">' + Number(t.liters_sold).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>';
                 mHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;color:#64748b;">' + Number(t.calibration || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>';
-                mHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#002F70;">—</td>';
-                mHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;">' + esc(t.staff_name || '—') + '</td></tr>';
+                mHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#002F70;">â€”</td>';
+                mHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;">' + esc(t.staff_name || 'â€”') + '</td></tr>';
             });
             mHtml += '</tbody></table>';
             document.getElementById('vfmMovementTable').innerHTML = mHtml;
@@ -1713,21 +1695,21 @@ function vfmSwitchTab(tabNum) {
     }
 }
 
-// ── Print Fuel Details ──
+// â”€â”€ Print Fuel Details â”€â”€
 function printFuelDetails() {
     var r = _currentFuelRow;
     if (!r) return;
     var pw = window.open('', '_blank');
-    pw.document.write('<!DOCTYPE html><html><head><title>Fuel Details — ' + (r.fuel_type || '') + '</title>');
+    pw.document.write('<!DOCTYPE html><html><head><title>Fuel Details â€” ' + (r.fuel_type || '') + '</title>');
     pw.document.write('<style>body{font-family:Arial,sans-serif;font-size:13px;color:#222;margin:0;padding:24px;}.header{background:#002F6C;color:#fff;padding:16px 20px;border-radius:6px 6px 0 0;}.header h2{margin:0;font-size:16px;}.section{border:1px solid #e2e8f0;border-top:none;padding:16px 20px;margin-bottom:12px;}.section h4{margin:0 0 10px;color:#002F6C;font-size:11px;text-transform:uppercase;border-bottom:1px solid #e2e8f0;padding-bottom:6px;}table.info{width:100%;border-collapse:collapse;font-size:12px;}table.info td{padding:5px 0;border-bottom:1px solid #f1f5f9;}table.info td:first-child{color:#64748b;font-weight:600;width:180px;}.footer{text-align:center;font-size:10px;color:#94a3b8;margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;}</style></head><body>');
-    pw.document.write('<div class="header"><h2>Fuel Inventory Record — ' + (r.fuel_type || '') + '</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
+    pw.document.write('<div class="header"><h2>Fuel Inventory Record â€” ' + (r.fuel_type || '') + '</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
     pw.document.write('<div class="section"><h4>Fuel Information</h4><table class="info">');
-    pw.document.write('<tr><td>Fuel Type:</td><td><strong>' + (r.fuel_type || '—') + '</strong></td></tr>');
+    pw.document.write('<tr><td>Fuel Type:</td><td><strong>' + (r.fuel_type || 'â€”') + '</strong></td></tr>');
     pw.document.write('<tr><td>Current Volume:</td><td><strong style="color:#002F70;font-size:14px;">' + Number(r.current_volume || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</strong></td></tr>');
     pw.document.write('<tr><td>Storage Capacity:</td><td>' + Number(r.capacity || 0).toLocaleString() + ' L</td></tr>');
     pw.document.write('<tr><td>Reorder Level:</td><td>' + Number(r.reorder_level || 0).toLocaleString() + ' L</td></tr>');
     pw.document.write('<tr><td>Status:</td><td><span style="background:' + (r.status_color || '#28a745') + '20;color:' + (r.status_color || '#28a745') + ';padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">' + (r.status || 'Normal') + '</span></td></tr>');
-    pw.document.write('<tr><td>Last Updated:</td><td>' + (r.last_updated ? new Date(r.last_updated).toLocaleString() : '—') + '</td></tr>');
+    pw.document.write('<tr><td>Last Updated:</td><td>' + (r.last_updated ? new Date(r.last_updated).toLocaleString() : 'â€”') + '</td></tr>');
     pw.document.write('</table></div>');
     pw.document.write('<div class="footer">Petron Station Management System &copy; ' + new Date().getFullYear() + '</div>');
     pw.document.write('</body></html>');
@@ -1737,7 +1719,7 @@ function printFuelDetails() {
 
 window._allFuelRows = <?= json_encode(array_values($rows)) ?>;
 
-// ── Adjust Reading Modal ──
+// â”€â”€ Adjust Reading Modal â”€â”€
 function openAdjustReadingModal(r) {
     closeFuelModal(); // Close view fuel modal to prevent overlapping/sapaw
 
@@ -1909,7 +1891,7 @@ function saveFuelAdjustment() {
             errEl.style.display = 'block';
             return;
         }
-        // Success — close both modals
+        // Success â€” close both modals
         closeAdjustReadingModal();
         closeFuelModal();
 
@@ -1932,7 +1914,7 @@ function saveFuelAdjustment() {
 }
 
 
-// ── Reset Fuel Filters ──
+// â”€â”€ Reset Fuel Filters â”€â”€
 function resetFuelFilters() {
     document.getElementById('fuelSearch').value = '';
     document.getElementById('fuelTypeFilter').value = '';
@@ -1940,7 +1922,7 @@ function resetFuelFilters() {
     filterFuelTable();
 }
 
-// ── Alert Table Filter ──
+// â”€â”€ Alert Table Filter â”€â”€
 function filterAlertTable() {
     var search   = (document.getElementById('alertSearch') || {}).value || '';
     var ftype    = (document.getElementById('alertTypeFilter') || {}).value || '';
@@ -1977,7 +1959,7 @@ function filterAlertTable() {
     }
 }
 
-// ── Export Functions (Alerts) ──
+// â”€â”€ Export Functions (Alerts) â”€â”€
 function exportAlertTablePDF() {
     if (typeof exportTableToPDF === 'function') {
         exportTableToPDF('mgrAlertTable', 'Fuel Stock Alerts Report');
@@ -2016,11 +1998,11 @@ function exportAlertTableCSV() {
     document.body.removeChild(a);
 }
 
-// ── Print Tank Alert ──
+// â”€â”€ Print Tank Alert â”€â”€
 function printTankAlert(r) {
     var alertColor = r.alert_type === 'Empty Tank' ? '#000' : (r.alert_type === 'Critical Fuel' ? '#dc3545' : '#fd7e14');
     var pw = window.open('', '_blank');
-    pw.document.write('<!DOCTYPE html><html><head><title>Fuel Alert — ' + esc(r.tank_name) + '</title>');
+    pw.document.write('<!DOCTYPE html><html><head><title>Fuel Alert â€” ' + esc(r.tank_name) + '</title>');
     pw.document.write('<style>');
     pw.document.write('body{font-family:Arial,sans-serif;font-size:13px;color:#222;margin:0;padding:24px;}');
     pw.document.write('.header{background:' + alertColor + ';color:#fff;padding:16px 20px;border-radius:6px 6px 0 0;}');
@@ -2035,7 +2017,7 @@ function printTankAlert(r) {
     pw.document.write('.alert-box{background:' + alertColor + '15;border:1px solid ' + alertColor + '40;border-radius:6px;padding:12px 16px;margin:12px 0;font-weight:700;color:' + alertColor + ';}');
     pw.document.write('.footer{text-align:center;font-size:10px;color:#94a3b8;margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;}');
     pw.document.write('</style></head><body>');
-    pw.document.write('<div class="header"><h2>⚠ Fuel Stock Alert</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
+    pw.document.write('<div class="header"><h2>âš  Fuel Stock Alert</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
     pw.document.write('<div class="section"><h4>Tank Information</h4>');
     pw.document.write('<table class="info">');
     var ugtDisp = r.ugt_no || ('UGT-' + String(r.tank_id || 0).padStart(2, '0'));
@@ -2049,8 +2031,8 @@ function printTankAlert(r) {
     pw.document.write('<table class="info">');
     pw.document.write('<tr><td>Current Volume:</td><td><strong style="color:#002F70;font-size:14px;">' + Number(r.current_volume).toLocaleString('en-US',{minimumFractionDigits:2}) + ' L</strong></td></tr>');
     pw.document.write('<tr><td>Tank Capacity:</td><td>' + Number(r.capacity).toLocaleString() + ' L</td></tr>');
-    pw.document.write('<tr><td>Reorder Level:</td><td>' + (r.reorder_level ? Number(r.reorder_level).toLocaleString('en-US',{minimumFractionDigits:2}) + ' L' : '—') + '</td></tr>');
-    pw.document.write('<tr><td>Last Updated:</td><td>' + (r.last_updated ? new Date(r.last_updated).toLocaleString() : '—') + '</td></tr>');
+    pw.document.write('<tr><td>Reorder Level:</td><td>' + (r.reorder_level ? Number(r.reorder_level).toLocaleString('en-US',{minimumFractionDigits:2}) + ' L' : 'â€”') + '</td></tr>');
+    pw.document.write('<tr><td>Last Updated:</td><td>' + (r.last_updated ? new Date(r.last_updated).toLocaleString() : 'â€”') + '</td></tr>');
     pw.document.write('</table></div>');
     pw.document.write('<div class="footer">Petron Station Management System &copy; ' + new Date().getFullYear() + '</div>');
     pw.document.write('</body></html>');
@@ -2058,7 +2040,7 @@ function printTankAlert(r) {
     pw.print();
 }
 
-// ── Create Fuel Request Modal ──
+// â”€â”€ Create Fuel Request Modal â”€â”€
 var _fuelReqData = {};
 function openCreateFuelRequest(fuelType, currentVolume, capacity, alertType) {
     _fuelReqData = { fuel_type: fuelType, current_level: currentVolume, capacity: capacity, stock_status: alertType.toUpperCase() };
@@ -2146,7 +2128,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// ── Movement Table Filter ──
+// â”€â”€ Movement Table Filter â”€â”€
 function filterMovTable() {
     var search = ((document.getElementById('movSearch') || {}).value || '').toLowerCase();
     var fuel   = ((document.getElementById('movFuelFilter') || {}).value || '').toLowerCase();
@@ -2160,24 +2142,24 @@ function filterMovTable() {
     });
 }
 
-// ── Movement Details Modal ──
+// â”€â”€ Movement Details Modal â”€â”€
 function viewMovDetails(m) {
     var typeColor = m.movement_id.startsWith('DEL') ? '#28a745'
                  : (m.movement_id.startsWith('SAL') ? '#dc3545' : '#6f42c1');
     document.getElementById('movDetId').textContent   = m.movement_id;
-    document.getElementById('movDetDate').textContent = m.movement_date || '—';
-    document.getElementById('movDetFuel').textContent = m.fuel_type || '—';
-    document.getElementById('movDetTank').textContent = m.tank || '—';
+    document.getElementById('movDetDate').textContent = m.movement_date || 'â€”';
+    document.getElementById('movDetFuel').textContent = m.fuel_type || 'â€”';
+    document.getElementById('movDetTank').textContent = m.tank || 'â€”';
     document.getElementById('movDetType').innerHTML   = '<span style="background:' + typeColor + '20;color:' + typeColor + ';border:1px solid ' + typeColor + '40;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;">' + esc(m.movement_type) + '</span>';
     var lSign = m.movement_id.startsWith('SAL') ? '-' : (parseFloat(m.liters) >= 0 ? '+' : '');
     document.getElementById('movDetLiters').textContent    = lSign + Number(m.liters).toLocaleString('en-US',{minimumFractionDigits:2}) + ' L';
     document.getElementById('movDetLiters').style.color    = typeColor;
-    document.getElementById('movDetPrevVol').textContent   = m.previous_volume != null ? Number(m.previous_volume).toLocaleString('en-US',{minimumFractionDigits:2}) + ' L' : '—';
-    document.getElementById('movDetNewVol').textContent    = m.new_volume != null ? Number(m.new_volume).toLocaleString('en-US',{minimumFractionDigits:2}) + ' L' : '—';
-    document.getElementById('movDetBy').textContent        = m.performed_by || '—';
-    document.getElementById('movDetRef').textContent       = m.ref_no || '—';
-    document.getElementById('movDetStatus').textContent    = m.status || '—';
-    document.getElementById('movDetNotes').textContent     = m.notes || '—';
+    document.getElementById('movDetPrevVol').textContent   = m.previous_volume != null ? Number(m.previous_volume).toLocaleString('en-US',{minimumFractionDigits:2}) + ' L' : 'â€”';
+    document.getElementById('movDetNewVol').textContent    = m.new_volume != null ? Number(m.new_volume).toLocaleString('en-US',{minimumFractionDigits:2}) + ' L' : 'â€”';
+    document.getElementById('movDetBy').textContent        = m.performed_by || 'â€”';
+    document.getElementById('movDetRef').textContent       = m.ref_no || 'â€”';
+    document.getElementById('movDetStatus').textContent    = m.status || 'â€”';
+    document.getElementById('movDetNotes').textContent     = m.notes || 'â€”';
     document.getElementById('movDetailModal').classList.add('open');
 }
 
@@ -2185,13 +2167,13 @@ function closeMovDetailModal() {
     document.getElementById('movDetailModal').classList.remove('open');
 }
 
-// ── Print Movement Record ──
+// â”€â”€ Print Movement Record â”€â”€
 function printMovRecord(m) {
     var typeColor = m.movement_id.startsWith('DEL') ? '#28a745'
                  : (m.movement_id.startsWith('SAL') ? '#dc3545' : '#6f42c1');
     var lSign = m.movement_id.startsWith('SAL') ? '-' : (parseFloat(m.liters) >= 0 ? '+' : '');
     var pw = window.open('', '_blank');
-    pw.document.write('<!DOCTYPE html><html><head><title>Movement Record — ' + esc(m.movement_id) + '</title>');
+    pw.document.write('<!DOCTYPE html><html><head><title>Movement Record â€” ' + esc(m.movement_id) + '</title>');
     pw.document.write('<style>');
     pw.document.write('body{font-family:Arial,sans-serif;font-size:13px;color:#222;margin:0;padding:24px;}');
     pw.document.write('.header{background:#002F6C;color:#fff;padding:16px 20px;border-radius:6px 6px 0 0;}');
@@ -2212,12 +2194,12 @@ function printMovRecord(m) {
     pw.document.write('<tr><td>Tank / Source:</td><td>' + esc(m.tank) + '</td></tr>');
     pw.document.write('<tr><td>Movement Type:</td><td><span class="badge" style="background:' + typeColor + '20;color:' + typeColor + ';border:1px solid ' + typeColor + '40;">' + esc(m.movement_type) + '</span></td></tr>');
     pw.document.write('<tr><td>Liters:</td><td><strong style="font-size:14px;color:' + typeColor + ';">' + lSign + Number(m.liters).toLocaleString('en-US',{minimumFractionDigits:2}) + ' L</strong></td></tr>');
-    pw.document.write('<tr><td>Previous Volume:</td><td>' + (m.previous_volume != null ? Number(m.previous_volume).toLocaleString('en-US',{minimumFractionDigits:2}) + ' L' : '—') + '</td></tr>');
-    pw.document.write('<tr><td>New Volume:</td><td>' + (m.new_volume != null ? Number(m.new_volume).toLocaleString('en-US',{minimumFractionDigits:2}) + ' L' : '—') + '</td></tr>');
+    pw.document.write('<tr><td>Previous Volume:</td><td>' + (m.previous_volume != null ? Number(m.previous_volume).toLocaleString('en-US',{minimumFractionDigits:2}) + ' L' : 'â€”') + '</td></tr>');
+    pw.document.write('<tr><td>New Volume:</td><td>' + (m.new_volume != null ? Number(m.new_volume).toLocaleString('en-US',{minimumFractionDigits:2}) + ' L' : 'â€”') + '</td></tr>');
     pw.document.write('<tr><td>Performed By:</td><td>' + esc(m.performed_by) + '</td></tr>');
-    pw.document.write('<tr><td>Reference No.:</td><td>' + esc(m.ref_no || '—') + '</td></tr>');
-    pw.document.write('<tr><td>Status:</td><td>' + esc(m.status || '—') + '</td></tr>');
-    pw.document.write('<tr><td>Notes:</td><td>' + esc(m.notes || '—') + '</td></tr>');
+    pw.document.write('<tr><td>Reference No.:</td><td>' + esc(m.ref_no || 'â€”') + '</td></tr>');
+    pw.document.write('<tr><td>Status:</td><td>' + esc(m.status || 'â€”') + '</td></tr>');
+    pw.document.write('<tr><td>Notes:</td><td>' + esc(m.notes || 'â€”') + '</td></tr>');
     pw.document.write('</table></div>');
     pw.document.write('<div class="footer">Petron Station Management System &copy; ' + new Date().getFullYear() + '</div>');
     pw.document.write('</body></html>');
@@ -2225,7 +2207,7 @@ function printMovRecord(m) {
     pw.print();
 }
 
-// ── Movement Export Functions ──
+// â”€â”€ Movement Export Functions â”€â”€
 function exportMovTablePDF() {
     if (typeof exportTableToPDF === 'function') {
         exportTableToPDF('mgrMovTable', 'Fuel Movement History Report');
@@ -2256,7 +2238,7 @@ function exportMovTableCSV() {
 }
 </script>
 
-<!-- ══ Create Fuel Request Modal ══ -->
+<!-- â•â• Create Fuel Request Modal â•â• -->
 <div class="modal-overlay" id="createFuelRequestModal">
     <div class="modal-box" style="width:520px;">
         <div class="modal-header">
@@ -2267,19 +2249,19 @@ function exportMovTableCSV() {
                 <table style="width:100%;border-collapse:collapse;">
                     <tr>
                         <td style="color:#64748b;font-weight:600;padding:4px 0;width:140px;">Fuel Type:</td>
-                        <td style="font-weight:700;color:#002F70;" id="frFuelType">—</td>
+                        <td style="font-weight:700;color:#002F70;" id="frFuelType">â€”</td>
                     </tr>
                     <tr>
                         <td style="color:#64748b;font-weight:600;padding:4px 0;">Current Volume:</td>
-                        <td style="font-weight:700;color:#002F70;" id="frCurrentVol">—</td>
+                        <td style="font-weight:700;color:#002F70;" id="frCurrentVol">â€”</td>
                     </tr>
                     <tr>
                         <td style="color:#64748b;font-weight:600;padding:4px 0;">Tank Capacity:</td>
-                        <td style="font-weight:600;" id="frCapacity">—</td>
+                        <td style="font-weight:600;" id="frCapacity">â€”</td>
                     </tr>
                     <tr>
                         <td style="color:#64748b;font-weight:600;padding:4px 0;">Alert Status:</td>
-                        <td style="font-weight:700;" id="frAlertType">—</td>
+                        <td style="font-weight:700;" id="frAlertType">â€”</td>
                     </tr>
                 </table>
             </div>
@@ -2313,7 +2295,7 @@ function exportMovTableCSV() {
     </div>
 </div>
 
-<!-- ══ Movement Detail Modal ══ -->
+<!-- â•â• Movement Detail Modal â•â• -->
 <div class="modal-overlay" id="movDetailModal">
     <div class="modal-box" style="width:540px;">
         <div class="modal-header">

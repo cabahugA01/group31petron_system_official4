@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * STAFF FUEL SALES SUMMARY REPORT
  * Complete fetch process with all summaries
@@ -15,7 +15,7 @@ $role = role_key($me['role'] ?? 'staff');
 $user_id = (int)($me['id'] ?? 0);
 $station_id = user_station_id();
 
-// Detect user's current shift — ONLY from active labor_sessions (no hardcoded time fallback)
+// Detect user's current shift â€” ONLY from active labor_sessions (no hardcoded time fallback)
 $user_current_shift   = null; // 'shift1', 'shift2', or null (= show all data)
 $is_manager_or_admin  = in_array($role, ['manager', 'admin', 'superadmin', 'developer']);
 
@@ -49,8 +49,8 @@ if (!$is_manager_or_admin) {
                 $user_current_shift = 'shift2';
             }
         }
-        // NOTE: No time-of-day fallback — shift must come from the database only.
-        // If no active session exists, $user_current_shift stays null → 24-hour data shown.
+        // NOTE: No time-of-day fallback â€” shift must come from the database only.
+        // If no active session exists, $user_current_shift stays null â†’ 24-hour data shown.
     } catch (Exception $e) {
         error_log("Shift detection error (staff_fuel_sales_summary): " . $e->getMessage());
     }
@@ -151,8 +151,8 @@ function column_exists($pdo, $table, $column) {
 
 /**
  * Normalize various shift_period values to Shift 1 (true) or Shift 2 (false).
- * Handles: 'Shift 1','Shift1','First Shift','1st','Morning','General','Day' → shift1
- *          'Shift 2','Shift2','Second Shift','2nd','Evening','Afternoon','Night' → shift2
+ * Handles: 'Shift 1','Shift1','First Shift','1st','Morning','General','Day' â†’ shift1
+ *          'Shift 2','Shift2','Second Shift','2nd','Evening','Afternoon','Night' â†’ shift2
  */
 function is_shift1(string $shift): bool {
     $s = strtolower(trim($shift));
@@ -172,7 +172,7 @@ function staff_report_fuel_display_name($fuel_type): string {
     $name = trim((string)$fuel_type);
     $normalized = strtoupper(preg_replace('/\s+/', ' ', $name));
     
-    // Remove pump/nozzle numbers pattern like "DIESEL 1 - 1" → "DIESEL"
+    // Remove pump/nozzle numbers pattern like "DIESEL 1 - 1" â†’ "DIESEL"
     // Patterns: "DIESEL 1 - 1", "TURBO DIESEL - 1", "XCS PLUS - 2", "XTRA UNL 1 - 2"
     $name = preg_replace('/\s+\d+\s*-\s*\d+$/', '', $name); // Remove " 1 - 1", " 2 - 3" at end
     $name = preg_replace('/\s*-\s*\d+$/', '', $name); // Remove " - 1", " - 2" at end
@@ -413,7 +413,7 @@ function staff_report_fetch_service_income_rows(PDO $pdo, int $station_id, strin
         $laborSql = "COALESCE(NULLIF(jo.actual_labor_cost, 0), NULLIF(jo.estimated_labor_cost, 0), 0)";
         $amountSql = "COALESCE(NULLIF(jo.total_cost, 0), NULLIF(jo.estimated_cost, 0), NULLIF(jo.amount_paid, 0), NULLIF(COALESCE(jo.actual_labor_cost, 0) + COALESCE(jo.actual_parts_cost, 0), 0), NULLIF(COALESCE(jo.estimated_labor_cost, 0) + COALESCE(jo.estimated_parts_cost, 0), 0), 0)";
 
-        // Build parts subquery — try with inventory_products join first,
+        // Build parts subquery â€” try with inventory_products join first,
         // fall back to part IDs only if the table is inaccessible (corrupt/missing engine file)
         $partsSqlWithJoin = table_exists($pdo, 'job_order_parts')
             ? "(
@@ -584,7 +584,7 @@ function staff_report_add_ar_shift_amount(array &$summary, array $row): void {
     }
 
     $shiftLabel = (string)($row['shift'] ?? $row['shift_period'] ?? '');
-    // No time-based fallback — use only the stored shift label
+    // No time-based fallback â€” use only the stored shift label
     if ($shiftLabel === '') {
         $summary['total'] = $summary['shift1'] + $summary['shift2'];
         return; // unknown shift, skip bucketing
@@ -1424,7 +1424,7 @@ if ($cashier_name === '') {
 }
 $shift_label_display = '';
 if (!$is_manager_or_admin && !empty($user_current_shift)) {
-    $shift_label_display = $user_current_shift === 'shift1' ? 'Shift 1 (6AM – 2PM)' : 'Shift 2 (2PM – 12AM)';
+    $shift_label_display = $user_current_shift === 'shift1' ? 'Shift 1 (6AM â€“ 2PM)' : 'Shift 2 (2PM â€“ 12AM)';
 } else {
     $shift_label_display = '24-Hour Summary';
 }
@@ -1469,16 +1469,16 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             fputcsv($output, [
                 $t['category'],
                 $t['product_name'],
-                '—',
-                '—',
+                'â€”',
+                'â€”',
                 number_format($t['stock_out'], 2),
-                '—',
-                '₱' . number_format($t['unit_price'], 2),
-                '₱' . number_format($t['total_amount'], 2),
+                'â€”',
+                'â‚±' . number_format($t['unit_price'], 2),
+                'â‚±' . number_format($t['total_amount'], 2),
                 $t['encoder'] ?? 'N/A'
             ]);
         }
-        fputcsv($output, ['', '', '', '', '', '', 'TOTAL', '₱' . number_format($total_merch, 2), '']);
+        fputcsv($output, ['', '', '', '', '', '', 'TOTAL', 'â‚±' . number_format($total_merch, 2), '']);
         fputcsv($output, []);
         
         fputcsv($output, ['SERVICE INCOME TABLE']);
@@ -1489,13 +1489,13 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             $total_svc += $t['total_amount'];
             fputcsv($output, [
                 $t['service_type'],
-                '₱' . number_format($t['labor_fee'], 2),
-                $t['parts_used'] ?? '—',
-                '₱' . number_format($t['total_amount'], 2),
+                'â‚±' . number_format($t['labor_fee'], 2),
+                $t['parts_used'] ?? 'â€”',
+                'â‚±' . number_format($t['total_amount'], 2),
                 $t['encoder'] ?? 'N/A'
             ]);
         }
-        fputcsv($output, ['', '', 'TOTAL', '₱' . number_format($total_svc, 2), '']);
+        fputcsv($output, ['', '', 'TOTAL', 'â‚±' . number_format($total_svc, 2), '']);
         
     } else {
         // Fuel CSV
@@ -1521,11 +1521,11 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                 number_format($r['ending_reading'], 2),
                 number_format($r['calibration'], 2),
                 number_format($r['liters_sold'], 2),
-                '₱' . number_format($price, 2),
-                '₱' . number_format($amount, 2)
+                'â‚±' . number_format($price, 2),
+                'â‚±' . number_format($amount, 2)
             ]);
         }
-        fputcsv($output, ['', '', '', '', 'TOTAL', number_format($total_liters, 2), '', '₱' . number_format($total_amount, 2)]);
+        fputcsv($output, ['', '', '', '', 'TOTAL', number_format($total_liters, 2), '', 'â‚±' . number_format($total_amount, 2)]);
         fputcsv($output, []);
         
         fputcsv($output, ['VOLUME SALES SUMMARY']);
@@ -1534,8 +1534,8 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             fputcsv($output, [
                 $v['fuel_type'],
                 number_format($v['total_liters'], 2) . ' L',
-                '₱' . number_format($v['avg_price'], 2),
-                '₱' . number_format($v['total_amount'], 2)
+                'â‚±' . number_format($v['avg_price'], 2),
+                'â‚±' . number_format($v['total_amount'], 2)
             ]);
         }
     }
@@ -1632,18 +1632,18 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
                 echo '<tr>';
                 echo '<td>' . htmlspecialchars($trans['category']) . '</td>';
                 echo '<td class="font-bold">' . htmlspecialchars($trans['product_name']) . '</td>';
-                echo '<td class="text-right">—</td>';
-                echo '<td class="text-right">—</td>';
+                echo '<td class="text-right">â€”</td>';
+                echo '<td class="text-right">â€”</td>';
                 echo '<td class="text-right">' . number_format($trans['stock_out'], 2) . '</td>';
-                echo '<td class="text-right">—</td>';
-                echo '<td class="text-right">₱' . number_format($trans['unit_price'], 2) . '</td>';
-                echo '<td class="text-right font-bold">₱' . number_format($trans['total_amount'], 2) . '</td>';
+                echo '<td class="text-right">â€”</td>';
+                echo '<td class="text-right">â‚±' . number_format($trans['unit_price'], 2) . '</td>';
+                echo '<td class="text-right font-bold">â‚±' . number_format($trans['total_amount'], 2) . '</td>';
                 echo '<td>' . htmlspecialchars($trans['encoder'] ?? 'N/A') . '</td>';
                 echo '</tr>';
             }
             echo '<tr class="font-bold">';
             echo '<td colspan="7" class="text-right">TOTAL</td>';
-            echo '<td class="text-right">₱' . number_format($total_merch_amount, 2) . '</td>';
+            echo '<td class="text-right">â‚±' . number_format($total_merch_amount, 2) . '</td>';
             echo '<td></td>';
             echo '</tr>';
         } else {
@@ -1676,15 +1676,15 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
                 $total_service_amount += $trans['total_amount'];
                 echo '<tr>';
                 echo '<td class="font-bold">' . htmlspecialchars($trans['service_type']) . '</td>';
-                echo '<td class="text-right">₱' . number_format($trans['labor_fee'], 2) . '</td>';
-                echo '<td>' . htmlspecialchars($trans['parts_used'] ?? '—') . '</td>';
-                echo '<td class="text-right font-bold">₱' . number_format($trans['total_amount'], 2) . '</td>';
+                echo '<td class="text-right">â‚±' . number_format($trans['labor_fee'], 2) . '</td>';
+                echo '<td>' . htmlspecialchars($trans['parts_used'] ?? 'â€”') . '</td>';
+                echo '<td class="text-right font-bold">â‚±' . number_format($trans['total_amount'], 2) . '</td>';
                 echo '<td>' . htmlspecialchars($trans['encoder'] ?? 'N/A') . '</td>';
                 echo '</tr>';
             }
             echo '<tr class="font-bold">';
             echo '<td colspan="3" class="text-right">TOTAL</td>';
-            echo '<td class="text-right">₱' . number_format($total_service_amount, 2) . '</td>';
+            echo '<td class="text-right">â‚±' . number_format($total_service_amount, 2) . '</td>';
             echo '<td></td>';
             echo '</tr>';
         } else {
@@ -1700,14 +1700,14 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
             echo '<h2>SHIFT 1 SALES SUMMARY (6AM-2PM)</h2>';
             echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
             echo '<tbody>';
-            echo '<tr><td class="font-bold">Merchandise Sales:</td><td class="text-right font-bold">₱' . number_format($shift1_summary['merchandise_sales'], 2) . '</td></tr>';
-            echo '<tr><td class="font-bold">Service Income:</td><td class="text-right font-bold">₱' . number_format($shift1_summary['service_income'] ?? 0, 2) . '</td></tr>';
+            echo '<tr><td class="font-bold">Merchandise Sales:</td><td class="text-right font-bold">â‚±' . number_format($shift1_summary['merchandise_sales'], 2) . '</td></tr>';
+            echo '<tr><td class="font-bold">Service Income:</td><td class="text-right font-bold">â‚±' . number_format($shift1_summary['service_income'] ?? 0, 2) . '</td></tr>';
             echo '<tr><td colspan="2">&nbsp;</td></tr>';
             echo '<tr><td colspan="2" class="font-bold">Payment Breakdown</td></tr>';
-            echo '<tr><td>Cash:</td><td class="text-right">₱' . number_format($shift1_summary['cash'], 2) . '</td></tr>';
-            echo '<tr><td>Card:</td><td class="text-right">₱' . number_format($shift1_summary['card'], 2) . '</td></tr>';
-            echo '<tr><td>E-Wallet:</td><td class="text-right">₱' . number_format($shift1_summary['ewallet'], 2) . '</td></tr>';
-            echo '<tr><td>Credit/Suki:</td><td class="text-right">₱' . number_format($shift1_summary['credit'], 2) . '</td></tr>';
+            echo '<tr><td>Cash:</td><td class="text-right">â‚±' . number_format($shift1_summary['cash'], 2) . '</td></tr>';
+            echo '<tr><td>Card:</td><td class="text-right">â‚±' . number_format($shift1_summary['card'], 2) . '</td></tr>';
+            echo '<tr><td>E-Wallet:</td><td class="text-right">â‚±' . number_format($shift1_summary['ewallet'], 2) . '</td></tr>';
+            echo '<tr><td>Credit/Suki:</td><td class="text-right">â‚±' . number_format($shift1_summary['credit'], 2) . '</td></tr>';
             echo '</tbody>';
             echo '</table>';
             echo '<br/>';
@@ -1717,14 +1717,14 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
             echo '<h2>SHIFT 2 SALES SUMMARY (2PM-12AM)</h2>';
             echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
             echo '<tbody>';
-            echo '<tr><td class="font-bold">Merchandise Sales:</td><td class="text-right font-bold">₱' . number_format($shift2_summary['merchandise_sales'], 2) . '</td></tr>';
-            echo '<tr><td class="font-bold">Service Income:</td><td class="text-right font-bold">₱' . number_format($shift2_summary['service_income'] ?? 0, 2) . '</td></tr>';
+            echo '<tr><td class="font-bold">Merchandise Sales:</td><td class="text-right font-bold">â‚±' . number_format($shift2_summary['merchandise_sales'], 2) . '</td></tr>';
+            echo '<tr><td class="font-bold">Service Income:</td><td class="text-right font-bold">â‚±' . number_format($shift2_summary['service_income'] ?? 0, 2) . '</td></tr>';
             echo '<tr><td colspan="2">&nbsp;</td></tr>';
             echo '<tr><td colspan="2" class="font-bold">Payment Breakdown</td></tr>';
-            echo '<tr><td>Cash:</td><td class="text-right">₱' . number_format($shift2_summary['cash'], 2) . '</td></tr>';
-            echo '<tr><td>Card:</td><td class="text-right">₱' . number_format($shift2_summary['card'], 2) . '</td></tr>';
-            echo '<tr><td>E-Wallet:</td><td class="text-right">₱' . number_format($shift2_summary['ewallet'], 2) . '</td></tr>';
-            echo '<tr><td>Credit/Suki:</td><td class="text-right">₱' . number_format($shift2_summary['credit'], 2) . '</td></tr>';
+            echo '<tr><td>Cash:</td><td class="text-right">â‚±' . number_format($shift2_summary['cash'], 2) . '</td></tr>';
+            echo '<tr><td>Card:</td><td class="text-right">â‚±' . number_format($shift2_summary['card'], 2) . '</td></tr>';
+            echo '<tr><td>E-Wallet:</td><td class="text-right">â‚±' . number_format($shift2_summary['ewallet'], 2) . '</td></tr>';
+            echo '<tr><td>Credit/Suki:</td><td class="text-right">â‚±' . number_format($shift2_summary['credit'], 2) . '</td></tr>';
             echo '</tbody>';
             echo '</table>';
             echo '<br/>';
@@ -1754,15 +1754,15 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
                 echo '<td class="font-bold">' . htmlspecialchars($ar['name']) . '</td>';
                 echo '<td>' . htmlspecialchars($ar['contact_number'] ?? '-') . '</td>';
                 echo '<td>' . strtoupper($ar['type']) . '</td>';
-                echo '<td class="text-right font-bold">₱' . number_format($ar['balance'], 2) . '</td>';
-                echo '<td class="text-right">₱' . number_format($ar['credit_limit'], 2) . '</td>';
-                echo '<td class="text-right">₱' . number_format($available, 2) . '</td>';
+                echo '<td class="text-right font-bold">â‚±' . number_format($ar['balance'], 2) . '</td>';
+                echo '<td class="text-right">â‚±' . number_format($ar['credit_limit'], 2) . '</td>';
+                echo '<td class="text-right">â‚±' . number_format($available, 2) . '</td>';
                 echo '</tr>';
             }
             
             echo '<tr class="font-bold">';
             echo '<td colspan="3" class="text-right">TOTAL ACCOUNTS RECEIVABLE</td>';
-            echo '<td class="text-right">₱' . number_format($total_ar, 2) . '</td>';
+            echo '<td class="text-right">â‚±' . number_format($total_ar, 2) . '</td>';
             echo '<td colspan="2"></td>';
             echo '</tr>';
             echo '</tbody>';
@@ -1774,10 +1774,10 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         echo '<h2>OVERALL DAILY MERCHANDISE SUMMARY</h2>';
         echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
         echo '<tbody>';
-        echo '<tr><td><strong>Total Merchandise Sales:</strong></td><td class="text-right font-bold">₱' . number_format($overall_summary['total_merchandise_sales'], 2) . '</td></tr>';
-        echo '<tr><td><strong>Total Service Income:</strong></td><td class="text-right font-bold">₱' . number_format($total_service_amount, 2) . '</td></tr>';
-        echo '<tr><td><strong>Grand Total Sales:</strong></td><td class="text-right font-bold">₱' . number_format($overall_summary['total_merchandise_sales'] + $total_service_amount, 2) . '</td></tr>';
-        echo '<tr><td><strong>Total Cash Collection:</strong></td><td class="text-right font-bold">₱' . number_format($overall_summary['total_cash'], 2) . '</td></tr>';
+        echo '<tr><td><strong>Total Merchandise Sales:</strong></td><td class="text-right font-bold">â‚±' . number_format($overall_summary['total_merchandise_sales'], 2) . '</td></tr>';
+        echo '<tr><td><strong>Total Service Income:</strong></td><td class="text-right font-bold">â‚±' . number_format($total_service_amount, 2) . '</td></tr>';
+        echo '<tr><td><strong>Grand Total Sales:</strong></td><td class="text-right font-bold">â‚±' . number_format($overall_summary['total_merchandise_sales'] + $total_service_amount, 2) . '</td></tr>';
+        echo '<tr><td><strong>Total Cash Collection:</strong></td><td class="text-right font-bold">â‚±' . number_format($overall_summary['total_cash'], 2) . '</td></tr>';
         echo '</tbody>';
         echo '</table>';
         echo '<br/>';
@@ -1786,9 +1786,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         echo '<h2>TOTAL CASH IN BANK</h2>';
         echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
         echo '<tbody>';
-        echo '<tr><td class="font-bold">Cash on Hand:</td><td class="text-right font-bold">₱' . number_format($overall_summary['total_cash'], 2) . '</td></tr>';
-        echo '<tr><td class="font-bold">Deposits Made Today:</td><td class="text-right font-bold">₱' . number_format($overall_summary['total_deposits'], 2) . '</td></tr>';
-        echo '<tr><td class="font-bold" style="font-size: 14px;">TOTAL CASH IN BANK:</td><td class="text-right font-bold" style="font-size: 14px;">₱' . number_format($overall_summary['total_cash'] + $overall_summary['total_deposits'], 2) . '</td></tr>';
+        echo '<tr><td class="font-bold">Cash on Hand:</td><td class="text-right font-bold">â‚±' . number_format($overall_summary['total_cash'], 2) . '</td></tr>';
+        echo '<tr><td class="font-bold">Deposits Made Today:</td><td class="text-right font-bold">â‚±' . number_format($overall_summary['total_deposits'], 2) . '</td></tr>';
+        echo '<tr><td class="font-bold" style="font-size: 14px;">TOTAL CASH IN BANK:</td><td class="text-right font-bold" style="font-size: 14px;">â‚±' . number_format($overall_summary['total_cash'] + $overall_summary['total_deposits'], 2) . '</td></tr>';
         echo '</tbody>';
         echo '</table>';
         
@@ -1833,15 +1833,15 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
             echo '<td class="text-right">' . number_format($reading['ending_reading'], 2) . '</td>';
             echo '<td class="text-right">' . number_format($reading['calibration'], 2) . '</td>';
             echo '<td class="text-right font-bold">' . number_format($reading['liters_sold'], 2) . '</td>';
-            echo '<td class="text-right">₱' . number_format($price, 2) . '</td>';
-            echo '<td class="text-right font-bold">₱' . number_format($amount, 2) . '</td>';
+            echo '<td class="text-right">â‚±' . number_format($price, 2) . '</td>';
+            echo '<td class="text-right font-bold">â‚±' . number_format($amount, 2) . '</td>';
             echo '</tr>';
         }
         echo '<tr class="font-bold">';
         echo '<td colspan="5" class="text-right">TOTAL</td>';
         echo '<td class="text-right">' . number_format($total_liters_meter, 2) . '</td>';
         echo '<td></td>';
-        echo '<td class="text-right">₱' . number_format($total_amount_meter, 2) . '</td>';
+        echo '<td class="text-right">â‚±' . number_format($total_amount_meter, 2) . '</td>';
         echo '</tr>';
     } else {
         echo '<tr><td colspan="8" style="text-align: center; padding: 20px;">No meter readings found for this date.</td></tr>';
@@ -1871,15 +1871,15 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
             echo '<tr>';
             echo '<td class="font-bold">' . htmlspecialchars($vol['fuel_type']) . '</td>';
             echo '<td class="text-right">' . number_format($vol['total_liters'], 2) . ' L</td>';
-            echo '<td class="text-right">₱' . number_format($vol['avg_price'], 2) . '</td>';
-            echo '<td class="text-right font-bold">₱' . number_format($vol['total_amount'], 2) . '</td>';
+            echo '<td class="text-right">â‚±' . number_format($vol['avg_price'], 2) . '</td>';
+            echo '<td class="text-right font-bold">â‚±' . number_format($vol['total_amount'], 2) . '</td>';
             echo '</tr>';
         }
         echo '<tr class="font-bold">';
         echo '<td>TOTAL</td>';
         echo '<td class="text-right">' . number_format(array_sum(array_column($volume_sales, 'total_liters')), 2) . ' L</td>';
         echo '<td class="text-right">-</td>';
-        echo '<td class="text-right">₱' . number_format($total_amount_vol, 2) . '</td>';
+        echo '<td class="text-right">â‚±' . number_format($total_amount_vol, 2) . '</td>';
         echo '</tr>';
     } else {
         echo '<tr><td colspan="4" style="text-align: center; padding: 20px;">No volume sales data available.</td></tr>';
@@ -1983,15 +1983,15 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
             echo '<td class="font-bold">' . htmlspecialchars($ar['name']) . '</td>';
             echo '<td>' . htmlspecialchars($ar['contact_number'] ?? '-') . '</td>';
             echo '<td>' . strtoupper($ar['type']) . '</td>';
-            echo '<td class="text-right font-bold">₱' . number_format($ar['balance'], 2) . '</td>';
-            echo '<td class="text-right">₱' . number_format($ar['credit_limit'], 2) . '</td>';
-            echo '<td class="text-right">₱' . number_format($available, 2) . '</td>';
+            echo '<td class="text-right font-bold">â‚±' . number_format($ar['balance'], 2) . '</td>';
+            echo '<td class="text-right">â‚±' . number_format($ar['credit_limit'], 2) . '</td>';
+            echo '<td class="text-right">â‚±' . number_format($available, 2) . '</td>';
             echo '</tr>';
         }
         
         echo '<tr class="font-bold">';
         echo '<td colspan="3" class="text-right">TOTAL ACCOUNTS RECEIVABLE</td>';
-        echo '<td class="text-right">₱' . number_format($total_ar, 2) . '</td>';
+        echo '<td class="text-right">â‚±' . number_format($total_ar, 2) . '</td>';
         echo '<td colspan="2"></td>';
         echo '</tr>';
         echo '</tbody>';
@@ -2003,10 +2003,10 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     echo '<h2>OVERALL DAILY FUEL SUMMARY</h2>';
     echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
     echo '<tbody>';
-    echo '<tr><td><strong>Total Fuel Sales:</strong></td><td class="text-right font-bold">₱' . number_format($overall_summary['total_fuel_sales'], 2) . '</td></tr>';
+    echo '<tr><td><strong>Total Fuel Sales:</strong></td><td class="text-right font-bold">â‚±' . number_format($overall_summary['total_fuel_sales'], 2) . '</td></tr>';
     echo '<tr><td><strong>Total Liters Sold:</strong></td><td class="text-right font-bold">' . number_format($overall_summary['total_liters'], 2) . ' L</td></tr>';
-    echo '<tr><td><strong>Total Cash Collection:</strong></td><td class="text-right font-bold">₱' . number_format($overall_summary['total_cash'], 2) . '</td></tr>';
-    echo '<tr><td><strong>Total Deposits:</strong></td><td class="text-right font-bold">₱' . number_format($overall_summary['total_deposits'], 2) . '</td></tr>';
+    echo '<tr><td><strong>Total Cash Collection:</strong></td><td class="text-right font-bold">â‚±' . number_format($overall_summary['total_cash'], 2) . '</td></tr>';
+    echo '<tr><td><strong>Total Deposits:</strong></td><td class="text-right font-bold">â‚±' . number_format($overall_summary['total_deposits'], 2) . '</td></tr>';
     echo '</tbody>';
     echo '</table>';
     echo '<br/>';
@@ -2015,9 +2015,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     echo '<h2>TOTAL CASH IN BANK</h2>';
     echo '<table border="1" cellpadding="5" cellspacing="0" class="summary-table" style="width: 60%;">';
     echo '<tbody>';
-    echo '<tr><td class="font-bold">Cash on Hand:</td><td class="text-right font-bold">₱' . number_format($overall_summary['total_cash'], 2) . '</td></tr>';
-    echo '<tr><td class="font-bold">Deposits Made Today:</td><td class="text-right font-bold">₱' . number_format($overall_summary['total_deposits'], 2) . '</td></tr>';
-    echo '<tr><td class="font-bold" style="font-size: 14px;">TOTAL CASH IN BANK:</td><td class="text-right font-bold" style="font-size: 14px;">₱' . number_format($overall_summary['total_cash'] + $overall_summary['total_deposits'], 2) . '</td></tr>';
+    echo '<tr><td class="font-bold">Cash on Hand:</td><td class="text-right font-bold">â‚±' . number_format($overall_summary['total_cash'], 2) . '</td></tr>';
+    echo '<tr><td class="font-bold">Deposits Made Today:</td><td class="text-right font-bold">â‚±' . number_format($overall_summary['total_deposits'], 2) . '</td></tr>';
+    echo '<tr><td class="font-bold" style="font-size: 14px;">TOTAL CASH IN BANK:</td><td class="text-right font-bold" style="font-size: 14px;">â‚±' . number_format($overall_summary['total_cash'] + $overall_summary['total_deposits'], 2) . '</td></tr>';
     echo '</tbody>';
     echo '</table>';
     
@@ -2049,7 +2049,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
                 table { page-break-inside: avoid; }
                 .page-break { page-break-after: always; }
             }
-            /* Hide signature on screen — only show on print */
+            /* Hide signature on screen â€” only show on print */
             .print-only-signature { display: none; }
             @media print { .print-only-signature { display: table !important; } }
             * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -2222,17 +2222,17 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
                     <h3>SHIFT 1 - BEGINNING</h3>
                     <table style="width: 100%; font-size: 8pt;">
                         <tr><td>A/R Report #:</td><td style="text-align: right;">___________</td></tr>
-                        <tr><td>Amount:</td><td style="text-align: right;">₱ <?= number_format($shift1_summary['total_sales'], 2) ?></td></tr>
-                        <tr><td>Cash Deposit:</td><td style="text-align: right;">₱ <?= number_format($shift1_summary['cash'], 2) ?></td></tr>
+                        <tr><td>Amount:</td><td style="text-align: right;">â‚± <?= number_format($shift1_summary['total_sales'], 2) ?></td></tr>
+                        <tr><td>Cash Deposit:</td><td style="text-align: right;">â‚± <?= number_format($shift1_summary['cash'], 2) ?></td></tr>
                     </table>
                 </div>
                 
                 <div class="calibration-box">
                     <h3>SHIFT 1 - ENDING</h3>
                     <table style="width: 100%; font-size: 8pt;">
-                        <tr><td>Cash/Bank:</td><td style="text-align: right;">₱ <?= number_format($shift1_summary['cash'], 2) ?></td></tr>
-                        <tr><td>Less Deposit:</td><td style="text-align: right;">₱ 0.00</td></tr>
-                        <tr><td style="font-weight: bold;">Cash on Hand:</td><td style="text-align: right; font-weight: bold;">₱ <?= number_format($shift1_summary['cash'], 2) ?></td></tr>
+                        <tr><td>Cash/Bank:</td><td style="text-align: right;">â‚± <?= number_format($shift1_summary['cash'], 2) ?></td></tr>
+                        <tr><td>Less Deposit:</td><td style="text-align: right;">â‚± 0.00</td></tr>
+                        <tr><td style="font-weight: bold;">Cash on Hand:</td><td style="text-align: right; font-weight: bold;">â‚± <?= number_format($shift1_summary['cash'], 2) ?></td></tr>
                     </table>
                 </div>
                 
@@ -2241,17 +2241,17 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
                     <h3>SHIFT 2 - BEGINNING</h3>
                     <table style="width: 100%; font-size: 8pt;">
                         <tr><td>A/R Report #:</td><td style="text-align: right;">___________</td></tr>
-                        <tr><td>Amount:</td><td style="text-align: right;">₱ <?= number_format($shift2_summary['total_sales'], 2) ?></td></tr>
-                        <tr><td>Cash Deposit:</td><td style="text-align: right;">₱ <?= number_format($shift2_summary['cash'], 2) ?></td></tr>
+                        <tr><td>Amount:</td><td style="text-align: right;">â‚± <?= number_format($shift2_summary['total_sales'], 2) ?></td></tr>
+                        <tr><td>Cash Deposit:</td><td style="text-align: right;">â‚± <?= number_format($shift2_summary['cash'], 2) ?></td></tr>
                     </table>
                 </div>
                 
                 <div class="calibration-box">
                     <h3>SHIFT 2 - ENDING</h3>
                     <table style="width: 100%; font-size: 8pt;">
-                        <tr><td>Cash/Bank:</td><td style="text-align: right;">₱ <?= number_format($shift2_summary['cash'], 2) ?></td></tr>
-                        <tr><td>Less Deposit:</td><td style="text-align: right;">₱ 0.00</td></tr>
-                        <tr><td style="font-weight: bold;">Cash on Hand:</td><td style="text-align: right; font-weight: bold;">₱ <?= number_format($shift2_summary['cash'], 2) ?></td></tr>
+                        <tr><td>Cash/Bank:</td><td style="text-align: right;">â‚± <?= number_format($shift2_summary['cash'], 2) ?></td></tr>
+                        <tr><td>Less Deposit:</td><td style="text-align: right;">â‚± 0.00</td></tr>
+                        <tr><td style="font-weight: bold;">Cash on Hand:</td><td style="text-align: right; font-weight: bold;">â‚± <?= number_format($shift2_summary['cash'], 2) ?></td></tr>
                     </table>
                 </div>
                 
@@ -2261,7 +2261,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
                     <table style="width: 100%; font-size: 8pt;">
                         <tr>
                             <td style="font-weight: bold;">Total Cash in Bank:</td>
-                            <td style="text-align: right; font-weight: bold;">₱ <?= number_format($overall_summary['total_cash'], 2) ?></td>
+                            <td style="text-align: right; font-weight: bold;">â‚± <?= number_format($overall_summary['total_cash'], 2) ?></td>
                         </tr>
                     </table>
                 </div>
@@ -2323,22 +2323,22 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
                         <tr>
                             <td class="label"><?= htmlspecialchars($vol['fuel_type']) ?></td>
                             <td><?= number_format($vol['total_liters'], 2) ?> L</td>
-                            <td class="value">₱<?= number_format($vol['total_amount'], 2) ?></td>
+                            <td class="value">â‚±<?= number_format($vol['total_amount'], 2) ?></td>
                         </tr>
                         <?php endforeach; ?>
                         <tr style="font-weight: bold;">
                             <td class="label">TOTAL FUEL SALES</td>
                             <td><?= number_format(array_sum(array_column($volume_sales, 'total_liters')), 2) ?> L</td>
-                            <td class="value">₱<?= number_format($overall_summary['total_fuel_sales'], 2) ?></td>
+                            <td class="value">â‚±<?= number_format($overall_summary['total_fuel_sales'], 2) ?></td>
                         </tr>
                         <tr>
                             <td class="label">MERCHANDISE</td>
-                            <td>—</td>
-                            <td class="value">₱<?= number_format($overall_summary['total_merchandise_sales'], 2) ?></td>
+                            <td>â€”</td>
+                            <td class="value">â‚±<?= number_format($overall_summary['total_merchandise_sales'], 2) ?></td>
                         </tr>
                         <tr style="font-weight: bold;">
                             <td class="label">TOTAL SALES</td>
-                            <td colspan="2" class="value">₱<?= number_format($overall_summary['total_fuel_sales'] + $overall_summary['total_merchandise_sales'], 2) ?></td>
+                            <td colspan="2" class="value">â‚±<?= number_format($overall_summary['total_fuel_sales'] + $overall_summary['total_merchandise_sales'], 2) ?></td>
                         </tr>
                     </table>
                 </div>
@@ -2372,7 +2372,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
                     <table class="summary-table">
                         <tr>
                             <td class="label">TOTAL CASH IN BANK:</td>
-                            <td class="value" style="font-weight: bold;">₱<?= number_format($overall_summary['total_cash'], 2) ?></td>
+                            <td class="value" style="font-weight: bold;">â‚±<?= number_format($overall_summary['total_cash'], 2) ?></td>
                         </tr>
                     </table>
                 </div>
@@ -2426,13 +2426,13 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
                     <tr>
                         <td><?= htmlspecialchars($ar['name']) ?></td>
                         <td style="text-align: center;"><?= strtoupper($ar['type']) ?></td>
-                        <td class="text-right" style="font-weight: bold;">₱<?= number_format($ar['balance'], 2) ?></td>
-                        <td class="text-right">₱<?= number_format($ar['credit_limit'], 2) ?></td>
+                        <td class="text-right" style="font-weight: bold;">â‚±<?= number_format($ar['balance'], 2) ?></td>
+                        <td class="text-right">â‚±<?= number_format($ar['credit_limit'], 2) ?></td>
                     </tr>
                     <?php endforeach; ?>
                     <tr style="font-weight: bold;">
                         <td colspan="2" style="text-align: right;">TOTAL A/R</td>
-                        <td class="text-right">₱<?= number_format($total_ar, 2) ?></td>
+                        <td class="text-right">â‚±<?= number_format($total_ar, 2) ?></td>
                         <td></td>
                     </tr>
                 </tbody>
@@ -2457,7 +2457,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
         <!-- Footer -->
         <div class="report-footer">
             <p><strong>Generated on:</strong> <?= date('F d, Y h:i:s A') ?></p>
-            <p>Petron Station Management System © 2026</p>
+            <p>Petron Station Management System Â© 2026</p>
         </div>
     </body>
     </html>
@@ -2604,12 +2604,12 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     .flt-btn-search:hover { background: #002F70 !important; color: #fff !important; }
     .flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
     .flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
-    .flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
-    .flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
-    .flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
-    .flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
-    .flt-btn-csv    { color: #002F70 !important; border-color: #002F70 !important; }
-    .flt-btn-csv:hover    { background: #002F70 !important; color: #fff !important; }
+    .flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+    .flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+    .flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+    .flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+    .flt-btn-csv { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+    .flt-btn-csv:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
     .flt-btn-print  { color: #374151 !important; border-color: #374151 !important; }
     .flt-btn-print:hover  { background: #374151 !important; color: #fff !important; }
     
@@ -2778,7 +2778,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         font-weight: 700;
     }
     
-    /* ── Print styles — matched to PO invoice (print_supplier_invoice.php) ── */
+    /* â”€â”€ Print styles â€” matched to PO invoice (print_supplier_invoice.php) â”€â”€ */
     @media print {
         @page {
             size: A4 portrait;
@@ -2804,7 +2804,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             color: #333 !important;
         }
 
-        /* Hide all page UI — keep only sfss-print-only */
+        /* Hide all page UI â€” keep only sfss-print-only */
         body > *:not(.sfss-print-only) {
             display: none !important;
         }
@@ -2821,7 +2821,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             display: none !important;
         }
 
-        /* ── Print container ── */
+        /* â”€â”€ Print container â”€â”€ */
         .sfss-print-only {
             display: block !important;
             position: static !important;
@@ -2856,7 +2856,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             font-size: 0 !important; margin: 0 !important; padding: 0 !important;
         }
 
-        /* ── Header — same as PO ── */
+        /* â”€â”€ Header â€” same as PO â”€â”€ */
         .sfss-print-only .header {
             text-align: center !important;
             border-bottom: none !important;
@@ -2878,7 +2878,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             margin: 1px 0 !important;
         }
 
-        /* ── Section titles ── */
+        /* â”€â”€ Section titles â”€â”€ */
         .sfss-print-only .section-title {
             display: block !important;
             font-size: 10px !important;
@@ -2894,7 +2894,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             text-transform: uppercase !important;
         }
 
-        /* ── Tables — same as PO items-table ── */
+        /* â”€â”€ Tables â€” same as PO items-table â”€â”€ */
         .sfss-print-only .table-container {
             overflow: visible !important;
             width: 100% !important;
@@ -3025,11 +3025,11 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             <div class="header" style="text-align:center; margin-bottom:14px; border-bottom:2px solid #002F6C; padding-bottom:8px;">
                 <h1 style="font-size:16px; font-weight:800; color:#002F6C; margin:0 0 3px 0; letter-spacing:0.5px; font-family:'Segoe UI', sans-serif;">FUEL SALES REPORT</h1>
                 <div style="font-size:12px; font-weight:700; color:#1e293b; margin-bottom:5px;">
-                    <?= htmlspecialchars($station_name) ?><?= $station_location ? ' — ' . htmlspecialchars($station_location) : '' ?>
+                    <?= htmlspecialchars($station_name) ?><?= $station_location ? ' â€” ' . htmlspecialchars($station_location) : '' ?>
                 </div>
                 <div style="font-size:11px; color:#334155; font-weight:600; display:flex; justify-content:center; gap:16px; flex-wrap:wrap;">
                     <span><strong>Date:</strong> <?= htmlspecialchars($report_period_label) ?></span>
-                    <span>•</span>
+                    <span>â€¢</span>
                     <span><strong>Shift:</strong> <?= htmlspecialchars($shift_label_display) ?></span>
                 </div>
             </div>
@@ -3099,8 +3099,8 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                             <td class="text-right"><?= number_format($reading['ending_reading'], 2) ?></td>
                             <td class="text-right"><?= number_format($reading['calibration'], 2) ?></td>
                             <td class="text-right font-bold"><?= number_format($reading['liters_sold'], 2) ?></td>
-                            <td class="text-right">₱<?= number_format($price, 2) ?></td>
-                            <td class="text-right font-bold">₱<?= number_format($amount, 2) ?></td>
+                            <td class="text-right">â‚±<?= number_format($price, 2) ?></td>
+                            <td class="text-right font-bold">â‚±<?= number_format($amount, 2) ?></td>
                         </tr>
                         <?php 
                             endforeach;
@@ -3117,7 +3117,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                             <td colspan="5" class="text-right">TOTAL</td>
                             <td class="text-right"><?= number_format($total_liters_meter, 2) ?></td>
                             <td></td>
-                            <td class="text-right">₱<?= number_format($total_amount_meter, 2) ?></td>
+                            <td class="text-right">â‚±<?= number_format($total_amount_meter, 2) ?></td>
                         </tr>
                         <?php endif; ?>
                     </tbody>
@@ -3148,8 +3148,8 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                         <tr>
                             <td class="font-bold"><?= htmlspecialchars($vol['fuel_type']) ?></td>
                             <td class="text-right"><?= number_format($vol['total_liters'], 2) ?> L</td>
-                            <td class="text-right">₱<?= number_format($vol['avg_price'], 2) ?></td>
-                            <td class="text-right font-bold">₱<?= number_format($vol['total_amount'], 2) ?></td>
+                            <td class="text-right">â‚±<?= number_format($vol['avg_price'], 2) ?></td>
+                            <td class="text-right font-bold">â‚±<?= number_format($vol['total_amount'], 2) ?></td>
                         </tr>
                         <?php 
                             endforeach;
@@ -3166,7 +3166,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                             <td>TOTAL</td>
                             <td class="text-right"><?= number_format(array_sum(array_column($volume_sales, 'total_liters')), 2) ?> L</td>
                             <td class="text-right">-</td>
-                            <td class="text-right">₱<?= number_format($total_amount_vol, 2) ?></td>
+                            <td class="text-right">â‚±<?= number_format($total_amount_vol, 2) ?></td>
                         </tr>
                         <?php endif; ?>
                     </tbody>
@@ -3194,7 +3194,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 + $active_fuel_summary['credit'];
             ?>
             <div class="section-title">
-                FUEL SALES — <?= htmlspecialchars(strtoupper($active_shift_label)) ?>
+                FUEL SALES â€” <?= htmlspecialchars(strtoupper($active_shift_label)) ?>
             </div>
             <div class="table-container">
                 <table>
@@ -3265,13 +3265,13 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                     <tbody>
                         <?php if ($is_manager_or_admin || $user_current_shift === 'shift1'): ?>
                         <tr>
-                            <td class="font-bold">Shift 1 (6AM–2PM)</td>
+                            <td class="font-bold">Shift 1 (6AMâ€“2PM)</td>
                             <td class="text-right">&#8369;<?= number_format($ar_shift_summary['shift1'], 2) ?></td>
                         </tr>
                         <?php endif; ?>
                         <?php if ($is_manager_or_admin || $user_current_shift === 'shift2'): ?>
                         <tr>
-                            <td class="font-bold">Shift 2 (2PM–12AM)</td>
+                            <td class="font-bold">Shift 2 (2PMâ€“12AM)</td>
                             <td class="text-right">&#8369;<?= number_format($ar_shift_summary['shift2'], 2) ?></td>
                         </tr>
                         <?php endif; ?>
@@ -3311,14 +3311,14 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                             <td class="font-bold"><?= htmlspecialchars($ar['name']) ?></td>
                             <td><?= htmlspecialchars($ar['contact_number'] ?? '-') ?></td>
                             <td><?= strtoupper($ar['type']) ?></td>
-                            <td class="text-right font-bold">₱<?= number_format($ar['balance'], 2) ?></td>
-                            <td class="text-right">₱<?= number_format($ar['credit_limit'], 2) ?></td>
-                            <td class="text-right">₱<?= number_format($available, 2) ?></td>
+                            <td class="text-right font-bold">â‚±<?= number_format($ar['balance'], 2) ?></td>
+                            <td class="text-right">â‚±<?= number_format($ar['credit_limit'], 2) ?></td>
+                            <td class="text-right">â‚±<?= number_format($available, 2) ?></td>
                         </tr>
                         <?php endforeach; ?>
                         <tr style="font-weight: 700;">
                             <td colspan="3" class="text-right">TOTAL CUSTOMER A/R BALANCE</td>
-                            <td class="text-right">₱<?= number_format($total_ar, 2) ?></td>
+                            <td class="text-right">â‚±<?= number_format($total_ar, 2) ?></td>
                             <td colspan="2"></td>
                         </tr>
                     </tbody>
@@ -3372,11 +3372,11 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             <div class="header" style="text-align:center; margin-bottom:14px; border-bottom:2px solid #002F6C; padding-bottom:8px;">
                 <h1 style="font-size:16px; font-weight:800; color:#002F6C; margin:0 0 3px 0; letter-spacing:0.5px; font-family:'Segoe UI', sans-serif;">MERCHANDISE & SERVICE SALES REPORT</h1>
                 <div style="font-size:12px; font-weight:700; color:#1e293b; margin-bottom:5px;">
-                    <?= htmlspecialchars($station_name) ?><?= $station_location ? ' — ' . htmlspecialchars($station_location) : '' ?>
+                    <?= htmlspecialchars($station_name) ?><?= $station_location ? ' â€” ' . htmlspecialchars($station_location) : '' ?>
                 </div>
                 <div style="font-size:11px; color:#334155; font-weight:600; display:flex; justify-content:center; gap:16px; flex-wrap:wrap;">
                     <span><strong>Date:</strong> <?= htmlspecialchars($report_period_label) ?></span>
-                    <span>•</span>
+                    <span>â€¢</span>
                     <span><strong>Shift:</strong> <?= htmlspecialchars($shift_label_display) ?></span>
                 </div>
             </div>
@@ -3405,7 +3405,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                                 <td><?= htmlspecialchars($mt['transaction_number'] ?? $mt['id'] ?? '-') ?></td>
                                 <td><?= htmlspecialchars($mt['item_name'] ?? $mt['product_name'] ?? $mt['description'] ?? 'Merchandise') ?></td>
                                 <td><?= htmlspecialchars($mt['payment_method'] ?? '-') ?></td>
-                                <td class="text-right">₱<?= number_format((float)($mt['total_amount'] ?? 0), 2) ?></td>
+                                <td class="text-right">â‚±<?= number_format((float)($mt['total_amount'] ?? 0), 2) ?></td>
                             </tr>
                             <?php
                                 endforeach;
@@ -3420,7 +3420,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                             <?php if (count($merchandise_report_transactions) > 0): ?>
                             <tr style="font-weight:700;">
                                 <td colspan="3" class="text-right">TOTAL MERCHANDISE SALES</td>
-                                <td class="text-right">₱<?= number_format($merch_total, 2) ?></td>
+                                <td class="text-right">â‚±<?= number_format($merch_total, 2) ?></td>
                             </tr>
                             <?php endif; ?>
                         </tbody>
@@ -3450,7 +3450,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                                 <td><?= htmlspecialchars($st['transaction_number'] ?? $st['id'] ?? '-') ?></td>
                                 <td><?= htmlspecialchars($st['service_name'] ?? $st['job_order_service'] ?? $st['description'] ?? 'Service') ?></td>
                                 <td><?= htmlspecialchars($st['payment_method'] ?? '-') ?></td>
-                                <td class="text-right">₱<?= number_format((float)($st['total_amount'] ?? 0), 2) ?></td>
+                                <td class="text-right">â‚±<?= number_format((float)($st['total_amount'] ?? 0), 2) ?></td>
                             </tr>
                             <?php
                                 endforeach;
@@ -3465,7 +3465,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                             <?php if (count($service_income_transactions) > 0): ?>
                             <tr style="font-weight:700;">
                                 <td colspan="3" class="text-right">TOTAL SERVICE INCOME</td>
-                                <td class="text-right">₱<?= number_format($svc_total, 2) ?></td>
+                                <td class="text-right">â‚±<?= number_format($svc_total, 2) ?></td>
                             </tr>
                             <?php endif; ?>
                         </tbody>
@@ -3479,15 +3479,15 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                         <tbody>
                             <tr>
                                 <td class="font-bold" style="width:60%;">Total Merchandise Sales</td>
-                                <td class="text-right">₱<?= number_format($overall_summary['total_merchandise_sales'], 2) ?></td>
+                                <td class="text-right">â‚±<?= number_format($overall_summary['total_merchandise_sales'], 2) ?></td>
                             </tr>
                             <tr>
                                 <td class="font-bold">Total Service Income</td>
-                                <td class="text-right">₱<?= number_format($total_service_amount, 2) ?></td>
+                                <td class="text-right">â‚±<?= number_format($total_service_amount, 2) ?></td>
                             </tr>
                             <tr style="font-weight:700;border-top:2px solid #374151;">
                                 <td>Grand Total</td>
-                                <td class="text-right font-bold" style="font-size:16px;">₱<?= number_format($overall_summary['total_merchandise_sales'] + $total_service_amount, 2) ?></td>
+                                <td class="text-right font-bold" style="font-size:16px;">â‚±<?= number_format($overall_summary['total_merchandise_sales'] + $total_service_amount, 2) ?></td>
                             </tr>
                         </tbody>
                     </table>
@@ -3608,9 +3608,9 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     }
 
 
-    // ─── CSV EXPORT ─────────────────────────────────────────────────────────────
+    // â”€â”€â”€ CSV EXPORT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     /**
-     * Server-side CSV export — mirrors the Excel handler but outputs CSV.
+     * Server-side CSV export â€” mirrors the Excel handler but outputs CSV.
      * Falls back to client-side table scraping if the server route fails.
      */
     function sfssExportCSV() {
@@ -3635,10 +3635,10 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         window.location.href = url;
     }
 
-    // ─── PRINT ──────────────────────────────────────────────────────────────────
+    // â”€â”€â”€ PRINT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     /**
      * Determines which tab is currently active.
-     * Priority: tab-btn text → URL param → DOM .active class
+     * Priority: tab-btn text â†’ URL param â†’ DOM .active class
      */
     function _sfss_getActiveTabName() {
         var activeBtn = document.querySelector('.tab-navigation .tab-btn.active');
@@ -3657,7 +3657,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         _sfss_doNativePrint();
     }
 
-    // ─── PDF EXPORT ─────────────────────────────────────────────────────────────
+    // â”€â”€â”€ PDF EXPORT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     function exportPrintableAreaToPDF(selector, title, filename, btn) {
         if (btn) {
             const origHTML = btn.innerHTML;

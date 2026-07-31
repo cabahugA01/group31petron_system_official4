@@ -1,7 +1,7 @@
-<?php
+﻿<?php
 // ============================================================
 // Admin Fuel Adjustments Oversight
-// Fetch Source: fuel_adjustments (manager-requested → admin-reviewed/overridden)
+// Fetch Source: fuel_adjustments (manager-requested â†’ admin-reviewed/overridden)
 // ============================================================
 $page_id = 'admin_fuel_adjustments_oversight';
 require_once __DIR__ . '/../backend/lib.php';
@@ -17,7 +17,7 @@ if (!in_array($role, ['admin', 'superadmin'])) {
     header('Location: admin_dashboard.php'); exit;
 }
 
-// ── Handle AJAX Actions ──────────────────────────────────────
+// â”€â”€ Handle AJAX Actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (isset($_GET['ajax_action'])) {
     $action = $_GET['ajax_action'];
     $adj_id = (int)($_GET['id'] ?? 0);
@@ -26,7 +26,7 @@ if (isset($_GET['ajax_action'])) {
         try {
             $stmt = $pdo->prepare("SELECT fa.*, 
                 COALESCE(NULLIF(CONCAT(TRIM(COALESCE(req.first_name,'')), ' ', TRIM(COALESCE(req.last_name,''))), ' '), req.username, 'Unknown') AS requested_by_name,
-                COALESCE(NULLIF(CONCAT(TRIM(COALESCE(app.first_name,'')), ' ', TRIM(COALESCE(app.last_name,''))), ' '), app.username, '—') AS approved_by_name,
+                COALESCE(NULLIF(CONCAT(TRIM(COALESCE(app.first_name,'')), ' ', TRIM(COALESCE(app.last_name,''))), ' '), app.username, 'â€”') AS approved_by_name,
                 s.name AS station_name
                 FROM fuel_adjustments fa
                 LEFT JOIN users req ON fa.user_id = req.id
@@ -62,7 +62,7 @@ if (isset($_GET['ajax_action'])) {
     }
 }
 
-// ── Handle Post Actions (Approve/Reject Overrides) ──────────
+// â”€â”€ Handle Post Actions (Approve/Reject Overrides) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $action = $_POST['action'];
     $adj_id = (int)($_POST['id'] ?? 0);
@@ -151,13 +151,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     exit;
 }
 
-// ── Station Filter ──────────────────────────────────────────
+// â”€â”€ Station Filter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $filter_station = isset($_GET['station']) ? (int)$_GET['station'] : $station_id;
 if ($role === 'superadmin' && !isset($_GET['station'])) {
     $filter_station = 0; // Default to all stations for superadmin
 }
 
-// ── Filters ──────────────────────────────────────────────────
+// â”€â”€ Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $date_from        = trim($_GET['date_from'] ?? date('Y-m-d', strtotime('-90 days')));
 $date_to          = trim($_GET['date_to']   ?? date('Y-m-d'));
 $adj_type_filter  = trim($_GET['adjustment_type'] ?? '');
@@ -165,13 +165,13 @@ $fuel_type_filter = trim($_GET['fuel_type'] ?? '');
 $status_filter    = trim($_GET['status_filter'] ?? '');
 $export           = trim($_GET['export'] ?? '');
 
-// ── Single Adjustment Print Mode ────────────────────────────
+// â”€â”€ Single Adjustment Print Mode â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (isset($_GET['single_id']) && $export === 'pdf') {
     $single_id = (int)$_GET['single_id'];
     try {
         $stmt = $pdo->prepare("SELECT fa.*, 
             COALESCE(NULLIF(CONCAT(TRIM(COALESCE(req.first_name,'')), ' ', TRIM(COALESCE(req.last_name,''))), ' '), req.username, 'Unknown') AS requested_by_name,
-            COALESCE(NULLIF(CONCAT(TRIM(COALESCE(app.first_name,'')), ' ', TRIM(COALESCE(app.last_name,''))), ' '), app.username, '—') AS approved_by_name,
+            COALESCE(NULLIF(CONCAT(TRIM(COALESCE(app.first_name,'')), ' ', TRIM(COALESCE(app.last_name,''))), ' '), app.username, 'â€”') AS approved_by_name,
             s.name AS station_name
             FROM fuel_adjustments fa
             LEFT JOIN users req ON fa.user_id = req.id
@@ -224,8 +224,8 @@ if (isset($_GET['single_id']) && $export === 'pdf') {
                     <div class="row"><label>Requested By:</label><span><?= htmlspecialchars($adj['requested_by_name']) ?></span></div>
                     <div class="row"><label>Approved By:</label><span><?= htmlspecialchars($adj['approved_by_name']) ?></span></div>
                     <div class="row"><label>Status:</label><span style="color:<?= $status_color ?>; font-weight:bold;"><?= ucfirst(htmlspecialchars($adj['status'])) ?></span></div>
-                    <div class="row"><label>Resolved At:</label><span><?= ($adj['approved_at'] ? date('M d, Y h:i A', strtotime($adj['approved_at'])) : '—') ?></span></div>
-                    <div class="row" style="flex-direction:column; align-items:flex-start;"><label>Remarks/Reason:</label><span style="text-align:left; font-weight: normal; margin-top: 3px; color:#555;"><?= htmlspecialchars($adj['reason'] ?? '—') ?></span></div>
+                    <div class="row"><label>Resolved At:</label><span><?= ($adj['approved_at'] ? date('M d, Y h:i A', strtotime($adj['approved_at'])) : 'â€”') ?></span></div>
+                    <div class="row" style="flex-direction:column; align-items:flex-start;"><label>Remarks/Reason:</label><span style="text-align:left; font-weight: normal; margin-top: 3px; color:#555;"><?= htmlspecialchars($adj['reason'] ?? 'â€”') ?></span></div>
                     <?php if (!empty($adj['notes'])): ?>
                         <div class="row" style="flex-direction:column; align-items:flex-start; margin-top: 5px;"><label>Resolution Notes:</label><span style="text-align:left; font-weight: normal; font-style: italic; color:#b91c1c;"><?= htmlspecialchars($adj['notes']) ?></span></div>
                     <?php endif; ?>
@@ -245,7 +245,7 @@ if (isset($_GET['single_id']) && $export === 'pdf') {
     }
 }
 
-// ── Get Station Name ──────────────────────────────────────
+// â”€â”€ Get Station Name â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $station_name = 'All Stations';
 if ($filter_station > 0) {
     try {
@@ -255,7 +255,7 @@ if ($filter_station > 0) {
     } catch (Exception $e) {}
 }
 
-// ── Summary & Fetch Query Construction ────────────────────────
+// â”€â”€ Summary & Fetch Query Construction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $where  = [
     "DATE(fa.adjustment_date) BETWEEN ? AND ?",
     "fa.adjustment_type NOT IN ('verified_sale', 'rejected_reading', 'daily_log_approved', 'daily_log_rejected')"
@@ -279,7 +279,7 @@ if ($status_filter !== '') {
     $params[] = strtolower($status_filter);
 }
 
-// ── Summary Counts ───────────────────────────────────────────
+// â”€â”€ Summary Counts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $total_adjustments = 0; $pending_adjustments = 0; $approved_adjustments = 0; $rejected_adjustments = 0;
 try {
     $sc_sql = "SELECT
@@ -299,12 +299,12 @@ try {
     $rejected_adjustments = (int)($sc_row['rejected'] ?? 0);
 } catch (Exception $e) {}
 
-// ── Fetch Adjustments ────────────────────────────────────────
+// â”€â”€ Fetch Adjustments â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $adjustments = [];
 try {
     $stmt = $pdo->prepare("SELECT fa.*,
         COALESCE(NULLIF(CONCAT(TRIM(COALESCE(req.first_name,'')), ' ', TRIM(COALESCE(req.last_name,''))), ' '), req.username, 'Unknown') AS requested_by_name,
-        COALESCE(NULLIF(CONCAT(TRIM(COALESCE(app.first_name,'')), ' ', TRIM(COALESCE(app.last_name,''))), ' '), app.username, '—') AS approved_by_name,
+        COALESCE(NULLIF(CONCAT(TRIM(COALESCE(app.first_name,'')), ' ', TRIM(COALESCE(app.last_name,''))), ' '), app.username, 'â€”') AS approved_by_name,
         s.name AS station_name
         FROM fuel_adjustments fa
         LEFT JOIN users req ON fa.user_id = req.id
@@ -316,7 +316,7 @@ try {
     $adjustments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── Dynamic filter dropdown choices ──────────────────────────
+// â”€â”€ Dynamic filter dropdown choices â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $fuel_types = [];
 $adjustment_types = [];
 try {
@@ -332,7 +332,7 @@ try {
     $adjustment_types = $at_stmt->fetchAll(PDO::FETCH_COLUMN);
 } catch (Exception $e) {}
 
-// ── Get All Stations (for filter) ─────────────────────────
+// â”€â”€ Get All Stations (for filter) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $stations = [];
 if ($role === 'superadmin') {
     try {
@@ -341,7 +341,7 @@ if ($role === 'superadmin') {
     } catch (Exception $e) {}
 }
 
-// ── EXPORT ───────────────────────────────────────────────────
+// â”€â”€ EXPORT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (in_array($export, ['excel','pdf'])) {
     $headers = ['Adjustment ID','Date','Adjustment Type','Fuel Type','Tank/Pump','Previous Value','New Value','Difference (L)','Reason','Requested By','Approved By','Status','Approval Date'];
     $rows_fmt = [];
@@ -366,11 +366,11 @@ if (in_array($export, ['excel','pdf'])) {
             number_format($adj['previous_value'] ?? 0, 2),
             number_format($adj['new_value'] ?? 0, 2),
             $diff_str,
-            $adj['reason'] ?? '—',
-            $adj['requested_by_name'] ?? '—',
-            $adj['approved_by_name'] ?? '—',
+            $adj['reason'] ?? 'â€”',
+            $adj['requested_by_name'] ?? 'â€”',
+            $adj['approved_by_name'] ?? 'â€”',
             ucfirst($adj['status']),
-            $adj['approved_at'] ? date('M d, Y H:i', strtotime($adj['approved_at'])) : '—'
+            $adj['approved_at'] ? date('M d, Y H:i', strtotime($adj['approved_at'])) : 'â€”'
         ];
     }
     
@@ -457,7 +457,7 @@ if (in_array($export, ['excel','pdf'])) {
             </table>
 
             <div class="footer">
-                <span>System Generated Report • Confidential</span>
+                <span>System Generated Report â€¢ Confidential</span>
                 <span>Page 1 of 1</span>
             </div>
         </body>
@@ -606,10 +606,10 @@ require_once __DIR__ . '/../partials/header.php';
 }
 .ato-btn-filter { color: #002F70 !important; border-color: #002F70 !important; }
 .ato-btn-filter:hover { background: #002F70 !important; color: #ffffff !important; }
-.ato-btn-excel { color: #16a34a !important; border-color: #16a34a !important; }
-.ato-btn-excel:hover { background: #16a34a !important; color: #ffffff !important; }
-.ato-btn-pdf { color: #dc2626 !important; border-color: #dc2626 !important; }
-.ato-btn-pdf:hover { background: #dc2626 !important; color: #ffffff !important; }
+.ato-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.ato-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.ato-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.ato-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .ato-btn-print { color: #334155 !important; border-color: #64748b !important; }
 .ato-btn-print:hover { background: #64748b !important; color: #ffffff !important; }
 .ato-btn-back { color: #4b5563 !important; border-color: #9ca3af !important; }
@@ -998,7 +998,7 @@ require_once __DIR__ . '/../partials/header.php';
                             <td><?= htmlspecialchars($adj['requested_by_name']) ?></td>
                             <td><?= htmlspecialchars($adj['approved_by_name']) ?></td>
                             <td><span class="sb sb-<?= strtolower($adj['status']) ?>"><?= ucfirst(htmlspecialchars($adj['status'])) ?></span></td>
-                            <td><?= ($adj['approved_at'] ? date('M d, Y', strtotime($adj['approved_at'])) : '—') ?></td>
+                            <td><?= ($adj['approved_at'] ? date('M d, Y', strtotime($adj['approved_at'])) : 'â€”') ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -1038,7 +1038,7 @@ function viewAdjDetails(id) {
         .then(res => {
             if (res.success) {
                 const data = res.data;
-                const notes = data.notes ? data.notes.replace(/\n/g, '<br>') : '—';
+                const notes = data.notes ? data.notes.replace(/\n/g, '<br>') : 'â€”';
                 const diff = parseFloat(data.liters);
                 const diffStr = (diff >= 0 ? '+' : '') + diff.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) + ' L';
                 const diffColor = diff >= 0 ? '#16a34a' : '#dc2626';
@@ -1054,8 +1054,8 @@ function viewAdjDetails(id) {
                     <div class="details-item"><label>Requested By</label><span>${data.requested_by_name}</span></div>
                     <div class="details-item"><label>Approved By</label><span>${data.approved_by_name}</span></div>
                     <div class="details-item"><label>Status</label><span>${data.status}</span></div>
-                    <div class="details-item"><label>Approval Date</label><span>${data.approved_at || '—'}</span></div>
-                    <div class="details-item" style="grid-column: span 2;"><label>Adjustment Reason</label><span>${data.reason || '—'}</span></div>
+                    <div class="details-item"><label>Approval Date</label><span>${data.approved_at || 'â€”'}</span></div>
+                    <div class="details-item" style="grid-column: span 2;"><label>Adjustment Reason</label><span>${data.reason || 'â€”'}</span></div>
                     <div class="details-item" style="grid-column: span 2;"><label>Resolution Notes</label><span>${notes}</span></div>
                 `;
                 document.getElementById('detailsGrid').innerHTML = gridHtml;

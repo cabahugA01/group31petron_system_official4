@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = match($_GET['tab'] ?? '') {
     'deliveries'    => 'fuel_deliveries_validation',
     'transactions'  => 'fuel_transactions_oversight',
@@ -103,7 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 $pdo->beginTransaction();
 
-                // Update transaction status — use $new_status (canonical casing)
+                // Update transaction status â€” use $new_status (canonical casing)
                 $pdo->prepare("UPDATE fuel_transactions SET status=?, validated_by=?, validated_at=NOW(), reject_reason=? WHERE transaction_id=? AND station_id=?")->execute([
                     $new_status,
                     $me['id'],
@@ -262,7 +262,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ")->execute([$adjusted_liters, $adjusted_liters, $station_id, $transaction['fuel_type']]);
 
                 // Audit trail
-                $audit_reason = substr("ADJUSTED by manager. Reading #{$reading_id}. Original: {$original_liters} L → Adjusted: {$adjusted_liters} L. Reason: {$adj_reason}", 0, 255);
+                $audit_reason = substr("ADJUSTED by manager. Reading #{$reading_id}. Original: {$original_liters} L â†’ Adjusted: {$adjusted_liters} L. Reason: {$adj_reason}", 0, 255);
                 $pdo->prepare("
                     INSERT INTO fuel_adjustments (station_id, fuel_type_id, adjustment_type, liters, previous_value, new_value, reason, user_id, status, approved_by, approved_at, adjustment_date)
                     SELECT ?, fuel_type_id, 'adjusted_reading', ?, ?, ?, ?, ?, 'Approved', ?, NOW(), CURDATE()
@@ -281,7 +281,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ]);
 
                 log_activity($pdo, $me['id'], 'Adjust Transaction',
-                    "Transaction #{$reading_id} adjusted: {$original_liters} L → {$adjusted_liters} L. Reason: {$adj_reason}");
+                    "Transaction #{$reading_id} adjusted: {$original_liters} L â†’ {$adjusted_liters} L. Reason: {$adj_reason}");
                 $pdo->commit();
 
                 // -- Notify staff of the adjustment --
@@ -300,7 +300,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     error_log("Adjust notification failed: " . $ne->getMessage());
                 }
 
-                $_SESSION['success'] = "✓ Transaction #{$reading_id} adjusted to {$adjusted_liters} L and approved.";
+                $_SESSION['success'] = "âœ“ Transaction #{$reading_id} adjusted to {$adjusted_liters} L and approved.";
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
                 $_SESSION['error'] = '? ' . $e->getMessage();
@@ -471,10 +471,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     "PO {$po_number} created from Stock Request #{$request_id}. Item: {$request['item_name']}, Qty: {$approved_qty}");
 
                 $pdo->commit();
-                $_SESSION['success'] = "✓ Purchase Order {$po_number} generated successfully. Pending Admin validation.";
+                $_SESSION['success'] = "âœ“ Purchase Order {$po_number} generated successfully. Pending Admin validation.";
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
-                $_SESSION['error'] = '✗ Error generating PO: ' . $e->getMessage();
+                $_SESSION['error'] = 'âœ— Error generating PO: ' . $e->getMessage();
             }
             header('Location: manager_fuel_management_complete.php?tab=stock_requests'); exit;
 
@@ -855,7 +855,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             try {
                 if (empty($fuel_type_id))  throw new Exception('Please select a fuel type.');
                 if (empty($adjustment_type)) throw new Exception('Please select an adjustment type.');
-                // reason is optional — no minimum length enforced
+                // reason is optional â€” no minimum length enforced
                 if ($new_level < 0)        throw new Exception('New level cannot be negative.');
 
                 // Get current stock + fuel type name
@@ -899,7 +899,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 if ($new_price <= 0)      throw new Exception('Price must be greater than 0.');
 
                 // Ensure fuel_price_log table exists BEFORE starting transaction
-                // (DDL causes implicit commit in MySQL — must be outside transaction)
+                // (DDL causes implicit commit in MySQL â€” must be outside transaction)
                 try {
                     $pdo->exec("CREATE TABLE IF NOT EXISTS fuel_price_log (
                         id               INT AUTO_INCREMENT PRIMARY KEY,
@@ -943,7 +943,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // 1. Update fuel_inventory price
                 $pdo->prepare("UPDATE fuel_inventory SET price_per_liter=?, last_updated=NOW() WHERE station_id=? AND fuel_type_id=?")->execute([$new_price, $station_id, $fuel_type_id]);
 
-                // 2. Insert into fuel_price_log (immutable — never overwrite)
+                // 2. Insert into fuel_price_log (immutable â€” never overwrite)
                 try {
                     $pdo->prepare("
                         INSERT INTO fuel_price_log
@@ -1098,8 +1098,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         echo '<td>' . htmlspecialchars($t['transaction_date']) . '</td>';
                         echo '<td>' . htmlspecialchars($t['fuel_type']) . '</td>';
                         echo '<td>' . number_format($t['liters_sold'], 2) . '</td>';
-                        echo '<td>₱' . number_format($t['price_per_liter'], 2) . '</td>';
-                        echo '<td>₱' . number_format($t['total_amount'], 2) . '</td>';
+                        echo '<td>â‚±' . number_format($t['price_per_liter'], 2) . '</td>';
+                        echo '<td>â‚±' . number_format($t['total_amount'], 2) . '</td>';
                         echo '<td>' . htmlspecialchars($t['status']) . '</td>';
                         echo '<td>' . htmlspecialchars($t['staff_name'] ?? '-') . '</td>';
                         echo '<td>' . htmlspecialchars($t['validated_by_name'] ?? 'Pending') . '</td>';
@@ -1298,7 +1298,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         echo '<td>' . htmlspecialchars($c['fuel_type']) . '</td>';
                         echo '<td>' . ($c['pump_number'] ? 'Pump ' . $c['pump_number'] : 'Tank') . '</td>';
                         echo '<td>' . ($c['calibration_value'] ?? $c['latest_calibration']) . ' L</td>';
-                        echo '<td>₱' . number_format($c['price_per_liter'], 2) . '</td>';
+                        echo '<td>â‚±' . number_format($c['price_per_liter'], 2) . '</td>';
                         echo '<td>' . number_format($c['current_level'], 2) . ' L</td>';
                         echo '<td>' . number_format($c['capacity'], 2) . ' L</td>';
                         echo '<td>' . ($c['calibration_updated_at'] ?? $c['last_updated']) . '</td>';
@@ -1361,20 +1361,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 }
 
 /* -------------------------------------------------------------
-   SCHEMA SAFETY — widen columns that are too narrow for actual values
+   SCHEMA SAFETY â€” widen columns that are too narrow for actual values
    (idempotent: MySQL ignores if already wide enough)
 ------------------------------------------------------------- */
 $_schema_fixes = [
-    // fuel_deliveries.status VARCHAR(20) → VARCHAR(60)
+    // fuel_deliveries.status VARCHAR(20) â†’ VARCHAR(60)
     // 'Pending Manager Approval' = 24 chars, would be silently truncated
     "ALTER TABLE fuel_deliveries MODIFY COLUMN `status` VARCHAR(60) NOT NULL DEFAULT 'Pending'",
-    // fuel_deliveries.fuel_type VARCHAR(50) → VARCHAR(100) to match fuel_inventory
+    // fuel_deliveries.fuel_type VARCHAR(50) â†’ VARCHAR(100) to match fuel_inventory
     "ALTER TABLE fuel_deliveries MODIFY COLUMN `fuel_type` VARCHAR(100) DEFAULT NULL",
-    // fuel_variance_reports.fuel_type VARCHAR(50) → VARCHAR(100) to match fuel_inventory
+    // fuel_variance_reports.fuel_type VARCHAR(50) â†’ VARCHAR(100) to match fuel_inventory
     "ALTER TABLE fuel_variance_reports MODIFY COLUMN `fuel_type` VARCHAR(100) NOT NULL",
-    // fuel_transactions.shift_period VARCHAR(20) → VARCHAR(50) for longer shift keys
+    // fuel_transactions.shift_period VARCHAR(20) â†’ VARCHAR(50) for longer shift keys
     "ALTER TABLE fuel_transactions MODIFY COLUMN `shift_period` VARCHAR(50) NOT NULL DEFAULT 'general'",
-    // fuel_transactions.payment_method VARCHAR(20) → VARCHAR(50)
+    // fuel_transactions.payment_method VARCHAR(20) â†’ VARCHAR(50)
     "ALTER TABLE fuel_transactions MODIFY COLUMN `payment_method` VARCHAR(50) NOT NULL DEFAULT 'Internal'",
     // fuel_transactions: ensure validated_by, validated_at, reject_reason columns exist
     "ALTER TABLE fuel_transactions ADD COLUMN IF NOT EXISTS `validated_by` INT NULL",
@@ -1382,7 +1382,7 @@ $_schema_fixes = [
     "ALTER TABLE fuel_transactions ADD COLUMN IF NOT EXISTS `reject_reason` TEXT NULL",
 ];
 foreach ($_schema_fixes as $_sf) {
-    try { $pdo->exec($_sf); } catch (Exception $_e) { /* already correct width — ignore */ }
+    try { $pdo->exec($_sf); } catch (Exception $_e) { /* already correct width â€” ignore */ }
 }
 unset($_schema_fixes, $_sf, $_e);
 
@@ -1401,7 +1401,7 @@ require_once __DIR__ . '/../backend/classes/ShiftPeriodConfig.php';
 $shiftConfig  = new ShiftPeriodConfig($pdo, $station_id);
 $shift_periods = $shiftConfig->getShiftPeriods();
 
-// Build a lookup: shift_key => display label (e.g. 'first' => 'First Shift: 6:00 AM – 2:00 PM')
+// Build a lookup: shift_key => display label (e.g. 'first' => 'First Shift: 6:00 AM â€“ 2:00 PM')
 $shift_label_map = [];
 foreach ($shift_periods as $sp) {
     $shift_label_map[$sp['shift_key']] = $sp['shift_name'];
@@ -1413,7 +1413,7 @@ foreach ($shift_periods as $sp) {
  * Resolve a raw shift_period/shift_name value to a display label using DB config.
  */
 function resolve_shift_label(string $raw, array $map): string {
-    if ($raw === '') return '—';
+    if ($raw === '') return 'â€”';
     $key = strtolower(trim($raw));
     // Direct key match (e.g. 'first', 'second')
     if (isset($map[$key])) return htmlspecialchars($map[$key]);
@@ -1781,8 +1781,8 @@ html, body {
 
 /* Export Button Styles */
 .flt-btn{display:inline-flex;align-items:center;gap:6px;padding:0 18px;height:40px;border-radius:7px;font-size:15px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap;transition:all .15s;background:white !important;border:1px solid transparent;}
-.flt-btn-excel{color:#1d6f42 !important;border-color:#1d6f42 !important;} .flt-btn-excel:hover{background:#1d6f42 !important;color:#fff !important;}
-.flt-btn-pdf{color:#dc2626 !important;border-color:#dc2626 !important;} .flt-btn-pdf:hover{background:#dc2626 !important;color:#fff !important;}
+.flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; } .flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; } .flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 
 /* Prevent any element from exceeding viewport */
 *:not(.modal):not(.modal *) {
@@ -1935,7 +1935,7 @@ html, body {
     }
 }
 
-/* Actions column — labeled buttons stacked vertically */
+/* Actions column â€” labeled buttons stacked vertically */
 .data-table th.col-actions,
 .data-table td.col-actions {
     width: 110px;
@@ -1947,7 +1947,7 @@ html, body {
     background: inherit;
 }
 
-/* Labeled action buttons — stacked, full width */
+/* Labeled action buttons â€” stacked, full width */
 .act-btn {
     display: flex;
     align-items: center;
@@ -2095,7 +2095,7 @@ html, body {
     <div class="int-head">
         <div>
             <h1 id="mfm-page-title"><i class="fas fa-gas-pump"></i> Fuel Transactions Oversight</h1>
-            <div class="sub" id="mfm-page-subtitle">Review pump readings encoded by Staff — Validate / Approve / Adjust</div>
+            <div class="sub" id="mfm-page-subtitle">Review pump readings encoded by Staff â€” Validate / Approve / Adjust</div>
         </div>
         <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
             <button onclick="exportCSV()" class="flt-btn flt-btn-excel" style="font-size:12px;"><i class="fas fa-file-csv"></i> CSV</button>
@@ -2136,7 +2136,7 @@ require __DIR__ . '/../partials/flash_toast.php';
         <thead><tr>
             <th style="min-width:90px;">TXN ID</th>
             <th style="min-width:55px;">Fuel</th>
-            <th style="min-width:70px;">Reading<br><small style="font-weight:normal;opacity:0.8">Prev→Now</small></th>
+            <th style="min-width:70px;">Reading<br><small style="font-weight:normal;opacity:0.8">Prevâ†’Now</small></th>
             <th style="min-width:55px;">Liters</th>
             <th style="min-width:65px;">Revenue</th>
             <th style="min-width:80px;">Shift</th>
@@ -2188,12 +2188,12 @@ require __DIR__ . '/../partials/flash_toast.php';
                 $revenue_r = (float)($r['total_amount'] ?? 0) ?: ($liters_sold * $price_r);
                 ?>
                 <?php if ($revenue_r > 0): ?>
-                <strong style="color:#155724;">₱<?php echo number_format($revenue_r, 2); ?></strong>
+                <strong style="color:#155724;">â‚±<?php echo number_format($revenue_r, 2); ?></strong>
                 <?php if ($price_r > 0): ?>
-                <div style="font-size:.68rem;color:#888;">@ ₱<?php echo number_format($price_r, 2); ?>/L</div>
+                <div style="font-size:.68rem;color:#888;">@ â‚±<?php echo number_format($price_r, 2); ?>/L</div>
                 <?php endif; ?>
                 <?php else: ?>
-                <span style="color:#bbb;font-size:.78rem;">—</span>
+                <span style="color:#bbb;font-size:.78rem;">â€”</span>
                 <?php endif; ?>
             </td>
             <td>
@@ -2205,7 +2205,7 @@ require __DIR__ . '/../partials/flash_toast.php';
                 <span class="audit-badge"><i class="fas fa-user"></i> <?php echo htmlspecialchars($r['staff_name']); ?></span>
             </td>
             <td style="font-size:.73rem;color:#666;">
-                <?php echo $submitted_at ? date('M j Y', strtotime($submitted_at)) . '<br><span style="color:#999">' . date('H:i', strtotime($submitted_at)) . '</span>' : '—'; ?>
+                <?php echo $submitted_at ? date('M j Y', strtotime($submitted_at)) . '<br><span style="color:#999">' . date('H:i', strtotime($submitted_at)) . '</span>' : 'â€”'; ?>
             </td>
             <td style="text-align:center;">
                 <?php if ($is_flagged): ?>
@@ -2375,7 +2375,7 @@ require __DIR__ . '/../partials/flash_toast.php';
         <td style="text-align:right;">
             <strong style="color:<?php echo $colors['primary']; ?>;"><?php echo number_format($liters_sold, 2); ?> L</strong>
             <?php if ($prev_h > 0 && $pres_h > 0): ?>
-            <div style="font-size:.68rem;color:#888;"><?php echo number_format($prev_h,2); ?> → <?php echo number_format($pres_h,2); ?></div>
+            <div style="font-size:.68rem;color:#888;"><?php echo number_format($prev_h,2); ?> â†’ <?php echo number_format($pres_h,2); ?></div>
             <?php endif; ?>
         </td>
         <td style="text-align:right;">
@@ -2422,7 +2422,7 @@ require __DIR__ . '/../partials/flash_toast.php';
                 </button>
             </div>
             <?php else: ?>
-                <span style="color:#bbb;font-size:.75rem;">—</span>
+                <span style="color:#bbb;font-size:.75rem;">â€”</span>
             <?php endif; ?>
         </td>
     </tr>
@@ -2486,8 +2486,8 @@ require __DIR__ . '/../partials/flash_toast.php';
                 </span>
             </td>
             <td><?= status_badge($d['status'] ?? 'pending') ?></td>
-            <td style="font-size:.80rem;"><?= htmlspecialchars($d['supplier'] ?? '—') ?></td>
-            <td style="font-family:monospace;font-size:.78rem;"><?= htmlspecialchars($d['invoice_no'] ?? '—') ?></td>
+            <td style="font-size:.80rem;"><?= htmlspecialchars($d['supplier'] ?? 'â€”') ?></td>
+            <td style="font-family:monospace;font-size:.78rem;"><?= htmlspecialchars($d['invoice_no'] ?? 'â€”') ?></td>
             <td style="text-align:right;font-weight:700;color:#002F6C;">
                 <?= number_format($del_val, 2) ?>
                 <?php if ($over_cap): ?>
@@ -2497,7 +2497,7 @@ require __DIR__ . '/../partials/flash_toast.php';
             <td style="font-size:.78rem;">
                 <?php if ($cur_val > 0): ?>
                     <?= number_format($cur_val, 0) ?> L<?= $cap_val > 0 ? ' / ' . number_format($cap_val, 0) . ' L' : '' ?>
-                <?php else: ?>—<?php endif; ?>
+                <?php else: ?>â€”<?php endif; ?>
             </td>
             <td style="font-size:.78rem;">
                 <span class="audit-badge"><i class="fas fa-user"></i> <?= htmlspecialchars($d['recorded_by_name'] ?? 'Staff') ?></span>
@@ -2512,7 +2512,7 @@ require __DIR__ . '/../partials/flash_toast.php';
                     <?php if (!empty($d['verified_at'])): ?>
                     <div style="font-size:.68rem;color:#94a3b8;margin-top:2px;"><?= date('M j, g:i A', strtotime($d['verified_at'])) ?></div>
                     <?php endif; ?>
-                <?php else: ?>—<?php endif; ?>
+                <?php else: ?>â€”<?php endif; ?>
             </td>
             <td class="col-actions" style="white-space:nowrap;">
                 <?php if ($is_pending): ?>
@@ -2595,7 +2595,7 @@ try {
     $fpl_count = (int)$fpl_check->fetchColumn();
 
     if ($fpl_count > 0) {
-        // Primary: fuel_price_log — fully structured with old/new price
+        // Primary: fuel_price_log â€” fully structured with old/new price
         $stmt = $pdo->prepare("
             SELECT
                 fpl.id,
@@ -2641,7 +2641,7 @@ try {
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Parse old/new price from reason string for display
-        // Pattern examples: "Price: ₱85.00 → ₱87.00/L." or "Price: ?85.00 ? ?87.00/L."
+        // Pattern examples: "Price: â‚±85.00 â†’ â‚±87.00/L." or "Price: ?85.00 ? ?87.00/L."
         foreach ($rows as &$row) {
             $reason = $row['reason_for_change'] ?? '';
             preg_match_all('/\d+(?:\.\d+)?/', $reason, $all_prices);
@@ -2672,7 +2672,7 @@ try {
     </form>
     <?php endforeach; ?>
 
-    <!-- Hidden Forms for Price Updates (one per fuel type) — submit via confirm modal -->
+    <!-- Hidden Forms for Price Updates (one per fuel type) â€” submit via confirm modal -->
     <?php foreach ($tank_data as $t): ?>
     <form id="form_price_<?php echo $t['fuel_type_id']; ?>" method="post" action="manager_fuel_management_complete.php">
         <input type="hidden" name="action" value="update_price">
@@ -2926,11 +2926,11 @@ function switchPriceTab(tab) {
 }
 </script>
 
-<!-- ── Price Update Confirmation Modal ─────────────────────── -->
+<!-- â”€â”€ Price Update Confirmation Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
 <div id="modal-price-confirm" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:9999; align-items:center; justify-content:center;">
     <div style="background:#fff; border-radius:10px; padding:28px 28px 22px; max-width:440px; width:92%; box-shadow:0 8px 32px rgba(0,0,0,.18); position:relative;">
         <h4 style="margin:0 0 6px; color:#00264D; font-size:1rem;"><i class="fas fa-tag"></i> Confirm Price Update</h4>
-        <p style="margin:0 0 18px; font-size:.82rem; color:#666;">Review the change below before applying. This action is logged and cannot be silently undone — use a rollback entry to revert.</p>
+        <p style="margin:0 0 18px; font-size:.82rem; color:#666;">Review the change below before applying. This action is logged and cannot be silently undone â€” use a rollback entry to revert.</p>
         <div id="price-confirm-summary" style="background:#f8f9fa; border-radius:8px; padding:14px 16px; margin-bottom:18px; font-size:.85rem; line-height:1.7;"></div>
         <div style="display:flex; gap:10px; justify-content:flex-end;">
             <button type="button" id="btn-price-cancel" style="padding:8px 18px; border:1px solid #dee2e6; background:#fff; border-radius:5px; cursor:pointer; font-size:.82rem;">Cancel</button>
@@ -2941,7 +2941,7 @@ function switchPriceTab(tab) {
 
 <script>
 (function () {
-    // ── Price diff hint ──────────────────────────────────────────
+    // â”€â”€ Price diff hint â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     document.querySelectorAll('.new-price-input').forEach(function (inp) {
         inp.addEventListener('input', function () {
             var fid   = this.dataset.fuelId;
@@ -2960,7 +2960,7 @@ function switchPriceTab(tab) {
         });
     });
 
-    // ── Confirmation modal ───────────────────────────────────────
+    // â”€â”€ Confirmation modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     var modal      = document.getElementById('modal-price-confirm');
     var summary    = document.getElementById('price-confirm-summary');
     var btnConfirm = document.getElementById('btn-price-confirm');
@@ -2985,7 +2985,7 @@ function switchPriceTab(tab) {
                 setTimeout(function () { priceInp.style.borderColor = ''; }, 2000);
                 return;
             }
-            // reason is optional — no minimum length check
+            // reason is optional â€” no minimum length check
             if (nv === cur) {
                 alert('New price is the same as the current price. No update needed.');
                 return;
@@ -3622,7 +3622,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
                     <?php echo number_format($cur_cal,2); ?> L
                 </span>
                 <?php if ($cur_cal == 0): ?>
-                <div style="font-size:.72rem;color:<?php echo $colors['danger']; ?>;font-weight:700;">⚠ NEEDS UPDATE</div>
+                <div style="font-size:.72rem;color:<?php echo $colors['danger']; ?>;font-weight:700;">âš  NEEDS UPDATE</div>
                 <?php endif; ?>
             </td>
             <td>
@@ -4604,10 +4604,10 @@ const _sectionTitles = {
 };
 
 const _sectionSubtitles = {
-    'fuel-transactions': 'Review pump readings encoded by Staff — Validate / Approve / Adjust',
-    'fuel-deliveries':   'Review supplier Delivery Receipts encoded by Staff — Approve / Reject / Adjust',
+    'fuel-transactions': 'Review pump readings encoded by Staff â€” Validate / Approve / Adjust',
+    'fuel-deliveries':   'Review supplier Delivery Receipts encoded by Staff â€” Approve / Reject / Adjust',
     'adjustments':       'Encode corrections to tank levels, pump readings, or delivery entries',
-    'pump-master':       'Manage pump list and calibration records — Add/Edit pumps, assign calibration schedules',
+    'pump-master':       'Manage pump list and calibration records â€” Add/Edit pumps, assign calibration schedules',
     'variance-reports':  'Detected variances requiring investigation or resolution',
     'shift-history':     'Read-only history of all validated fuel transactions',
     'fuel-reports':      'Weekly and monthly sales summary reports',
@@ -4641,7 +4641,7 @@ function activateTabFromHash() {
 document.addEventListener('DOMContentLoaded', function() {
     activateTabFromHash();
 
-    // Sidebar sub-item clicks — show/hide section without reload if already on page
+    // Sidebar sub-item clicks â€” show/hide section without reload if already on page
     document.querySelectorAll('a[href*="manager_fuel_management_complete.php"]').forEach(function(link) {
         link.addEventListener('click', function(e) {
             const href = this.getAttribute('href');
@@ -4760,7 +4760,7 @@ const _shiftLabelMap = <?php
 ?>;
 
 function getShiftLabel(shift_key) {
-    if (!shift_key) return '—';
+    if (!shift_key) return 'â€”';
     if (_shiftLabelMap[shift_key]) return _shiftLabelMap[shift_key];
     // Alias fallback
     const aliases = { morning: 'first', am: 'first', '1': 'first', afternoon: 'second', pm: 'second', '2': 'second' };

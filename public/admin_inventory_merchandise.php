@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ============================================================
 // Admin Merchandise Inventory Oversight - admin_inventory_merchandise.php
 // Rebuilt to support summary cards, filters, flat paginated table,
@@ -14,7 +14,7 @@ $me         = current_user();
 $role       = role_key($me['role'] ?? '');
 $station_id = (int)user_station_id();
 
-// ── Module gate ───────────────────────────────────────────────
+// â”€â”€ Module gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (!in_array($role, ['superadmin', 'developer']) && !is_module_enabled('inventory')) {
     render_module_disabled_page('Inventory');
 }
@@ -27,7 +27,7 @@ if ($station_id <= 0 && $role === 'admin') {
     render_no_station_page('admin_dashboard.php'); 
 }
 
-// ── Status Badge Styles / Helper Functions ───────────────────
+// â”€â”€ Status Badge Styles / Helper Functions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (!function_exists('getStatusBadgeClass')) {
     function getStatusBadgeClass($status) {
         $s = strtolower(trim($status ?? ''));
@@ -79,7 +79,7 @@ if (!function_exists('get_product_barcode')) {
     }
 }
 
-// ── PRINT FRIENDLY VIEW ──────────────────────────────────────
+// â”€â”€ PRINT FRIENDLY VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (isset($_GET['print_id'])) {
     $print_id = (int)$_GET['print_id'];
     
@@ -255,7 +255,7 @@ if (isset($_GET['print_id'])) {
             <div class="row"><span class="label">SKU / Code:</span><span class="value"><code><?= htmlspecialchars($item['sku']) ?></code></span></div>
             <div class="row"><span class="label">Category:</span><span class="value"><?= htmlspecialchars($item['category']) ?></span></div>
             <div class="row"><span class="label">Unit:</span><span class="value"><?= htmlspecialchars($item['unit']) ?></span></div>
-            <div class="row"><span class="label">Supplier:</span><span class="value"><?= htmlspecialchars($item['supplier'] ?: '—') ?></span></div>
+            <div class="row"><span class="label">Supplier:</span><span class="value"><?= htmlspecialchars($item['supplier'] ?: 'â€”') ?></span></div>
             
             <div class="section">
                 <div class="row"><span class="label">Current Stock:</span><span class="value"><?= number_format($stock, 2) ?> <?= htmlspecialchars($item['unit']) ?></span></div>
@@ -309,7 +309,7 @@ if (isset($_GET['print_id'])) {
             </div>
 
             <div class="center section" style="font-size: 10px; color: #666; margin-top: 30px;">
-                Petron Station Management System • Official Inventory Slip
+                Petron Station Management System â€¢ Official Inventory Slip
             </div>
         </div>
     </body>
@@ -318,7 +318,7 @@ if (isset($_GET['print_id'])) {
     exit;
 }
 
-// ── GET MOVEMENT HISTORY (AJAX ENDPOINT) ──────────────────────
+// â”€â”€ GET MOVEMENT HISTORY (AJAX ENDPOINT) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (isset($_GET['action']) && $_GET['action'] === 'get_history') {
     header('Content-Type: application/json');
     $pid = (int)($_GET['product_id'] ?? 0);
@@ -341,7 +341,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_history') {
     exit;
 }
 
-// ── GET PRODUCT DETAILS & FIFO BATCHES (AJAX ENDPOINT) ────────
+// â”€â”€ GET PRODUCT DETAILS & FIFO BATCHES (AJAX ENDPOINT) â”€â”€â”€â”€â”€â”€â”€â”€
 if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_product_details') {
     header('Content-Type: application/json');
     $prod_id = (int)($_GET['product_id'] ?? 0);
@@ -367,7 +367,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_product_details') {
     exit;
 }
 
-// ── GET Filters ──────────────────────────────────────────────
+// â”€â”€ GET Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $search_query   = trim($_GET['search_query'] ?? '');
 $category_filter = trim($_GET['category'] ?? 'all');
 $brand_filter    = trim($_GET['brand'] ?? 'all');
@@ -377,11 +377,11 @@ $status_filter   = strtolower(trim($_GET['status_filter'] ?? 'all'));
 $date_from      = trim($_GET['date_from'] ?? '');
 $date_to        = trim($_GET['date_to'] ?? '');
 
-// ── Active Tab ────────────────────────────────────────────────
+// â”€â”€ Active Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $active_tab = trim($_GET['tab'] ?? 'overview');
 if (!in_array($active_tab, ['overview', 'movement', 'stockin', 'stockout', 'transfer', 'damaged', 'expired'])) $active_tab = 'overview';
 
-// ── Fetch dynamic categories for dropdown ────────────────────
+// â”€â”€ Fetch dynamic categories for dropdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $all_categories = [];
 try {
     $cat_stmt = $pdo->query("SELECT DISTINCT category FROM inventory_products WHERE category NOT IN ('fuel', 'fuel products') AND category IS NOT NULL AND category != '' ORDER BY category");
@@ -401,7 +401,7 @@ try {
     } catch (Exception $fallback_error) {}
 }
 
-// ── Fetch all merchandise items ──────────────────────────────
+// â”€â”€ Fetch all merchandise items â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $all_items = [];
 try {
     $stmt = $pdo->prepare("
@@ -459,7 +459,7 @@ try {
     error_log("Error loading merchandise inventory: " . $e->getMessage());
 }
 
-// ── Extract brand, barcode, and populate filter options ──────
+// â”€â”€ Extract brand, barcode, and populate filter options â”€â”€â”€â”€â”€â”€
 $last_movements = [];
 try {
     $mvStmt = $pdo->prepare("
@@ -520,7 +520,7 @@ sort($all_suppliers);
 sort($all_units);
 sort($all_categories);
 
-// ── Compute KPI summary metrics & filter list in PHP ──────────
+// â”€â”€ Compute KPI summary metrics & filter list in PHP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $kpi_total_products = 0;
 $kpi_total_stock    = 0;
 $kpi_low_stock      = 0;
@@ -554,7 +554,7 @@ foreach ($all_items as $item) {
     $has_variance = ($item['variance'] !== null && (float)$item['variance'] != 0);
     $item_status = strtolower(trim($item['status'] ?? 'active'));
     
-    // Status computation — driven entirely by DB thresholds
+    // Status computation â€” driven entirely by DB thresholds
     if ($stock <= 0) {
         $computed_status = 'out';
     } elseif ($stock <= $critical) {
@@ -631,7 +631,7 @@ foreach ($all_items as $item) {
         }
     }
 
-    // 6. Status Filter — Low Stock, Critical Stock, Out of Stock all show the same combined stock alert view
+    // 6. Status Filter â€” Low Stock, Critical Stock, Out of Stock all show the same combined stock alert view
     if ($status_filter !== 'all' && $status_filter !== '') {
         $sf_lower = strtolower($status_filter);
         if (in_array($sf_lower, ['warning', 'low', 'low stock', 'critical', 'critical stock', 'out', 'out of stock'], true)) {
@@ -692,7 +692,7 @@ if (!empty($filtered_items)) {
     }
 }
 
-// ── KPI: Available Stock count ────────────────────────────────
+// â”€â”€ KPI: Available Stock count â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $kpi_available_stock = 0;
 foreach ($all_items as $item) {
     $s = (float)$item['stock_level'];
@@ -701,7 +701,7 @@ foreach ($all_items as $item) {
     if ($s > $r) $kpi_available_stock++;
 }
 
-// ── Fetch Stock Movement History (Unified across logs, deliveries & sales) ──
+// â”€â”€ Fetch Stock Movement History (Unified across logs, deliveries & sales) â”€â”€
 $movement_history = [];
 try {
     $stmt = $pdo->prepare("
@@ -709,7 +709,7 @@ try {
                il.created_at,
                il.action AS movement_type,
                il.quantity_change AS quantity,
-               COALESCE(NULLIF(il.notes,''), '—') AS notes,
+               COALESCE(NULLIF(il.notes,''), 'â€”') AS notes,
                COALESCE(NULLIF(CONCAT_WS('-', il.reference_type, il.reference_id),''), CONCAT('LOG-', LPAD(il.id, 5, '0'))) AS reference_no,
                COALESCE(ip.product_name, p.name, 'Unknown') AS product_name,
                COALESCE(ip.sku, CONCAT('P', LPAD(p.id,4,'0')), '') AS sku,
@@ -727,7 +727,7 @@ try {
                msi.encoded_at AS created_at,
                'Stock In' AS movement_type,
                msi.qty_received AS quantity,
-               COALESCE(NULLIF(msi.remarks,''), CONCAT('PO: ', COALESCE(msi.po_number,'—'), ' | Batch: ', COALESCE(msi.batch_ref,'—'))) AS notes,
+               COALESCE(NULLIF(msi.remarks,''), CONCAT('PO: ', COALESCE(msi.po_number,'â€”'), ' | Batch: ', COALESCE(msi.batch_ref,'â€”'))) AS notes,
                CONCAT('SI-', LPAD(msi.id, 5, '0')) AS reference_no,
                COALESCE(ip.product_name, p.name, msi.product_name, 'Unknown') AS product_name,
                COALESCE(ip.sku, msi.sku, CONCAT('P', LPAD(p.id,4,'0')), '') AS sku,
@@ -769,7 +769,7 @@ try {
     error_log("Error fetching movement history: " . $e->getMessage());
 }
 
-// ── Fetch Stock-In History ────────────────────────────────────
+// â”€â”€ Fetch Stock-In History â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $stockin_history = [];
 try {
     $stmt = $pdo->prepare("
@@ -793,7 +793,7 @@ try {
     $stockin_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── Fetch Stock-Out History ────────────────────────────────────
+// â”€â”€ Fetch Stock-Out History â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $stockout_history = [];
 try {
     $stmt = $pdo->prepare("
@@ -817,7 +817,7 @@ try {
     $stockout_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── Fetch Transfer Records ────────────────────────────────────
+// â”€â”€ Fetch Transfer Records â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $transfer_records = [];
 try {
     $stmt = $pdo->prepare("
@@ -825,8 +825,8 @@ try {
             CONCAT('TR-', LPAD(il.id, 5, '0')) AS transfer_no,
             COALESCE(ip.product_name, 'Unknown') AS product_name,
             COALESCE(ip.sku, '') AS sku,
-            COALESCE(il.notes, '—') AS from_location,
-            COALESCE(NULLIF(CONCAT_WS(' ', il.reference_type, il.reference_id), ''), '—') AS to_location,
+            COALESCE(il.notes, 'â€”') AS from_location,
+            COALESCE(NULLIF(CONCAT_WS(' ', il.reference_type, il.reference_id), ''), 'â€”') AS to_location,
             ABS(il.quantity_change) AS qty,
             il.created_at AS date,
             COALESCE(u.name, 'Staff') AS performed_by
@@ -842,7 +842,7 @@ try {
     $transfer_records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── Fetch Damaged Items ────────────────────────────────────────
+// â”€â”€ Fetch Damaged Items â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $damaged_items = [];
 try {
     $stmt = $pdo->prepare("
@@ -851,7 +851,7 @@ try {
             COALESCE(ip.product_name, 'Unknown') AS product_name,
             COALESCE(ip.sku, '') AS sku,
             ABS(il.quantity_change) AS qty,
-            COALESCE(il.notes, '—') AS reason,
+            COALESCE(il.notes, 'â€”') AS reason,
             il.created_at AS date,
             COALESCE(u.name, 'Staff') AS performed_by
         FROM inventory_logs il
@@ -866,14 +866,14 @@ try {
     $damaged_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── Fetch Expired Products ─────────────────────────────────────
+// â”€â”€ Fetch Expired Products â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $expired_products = [];
 try {
     $stmt = $pdo->prepare("
         SELECT
             COALESCE(ip.product_name, 'Unknown') AS product_name,
             COALESCE(ip.sku, '') AS sku,
-            COALESCE(mb.batch_number, msi.batch_ref, '—') AS batch,
+            COALESCE(mb.batch_number, msi.batch_ref, 'â€”') AS batch,
             mb.created_at AS expiry_date,
             COALESCE(mb.remaining_qty, msi.qty_received, 0) AS qty
         FROM merchandise_batches mb
@@ -1065,14 +1065,14 @@ body, html {
 .flt-btn-search:hover { background: #002F70 !important; color: #fff !important; }
 .flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
 .flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
-.flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
-.flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
-.flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
-.flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
-.flt-btn-csv    { color: #002F70 !important; border-color: #002F70 !important; }
-.flt-btn-csv:hover    { background: #002F70 !important; color: #fff !important; }
+.flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-csv { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-csv:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 
-/* ── Admin Custom Dropdown (always opens downward) ── */
+/* â”€â”€ Admin Custom Dropdown (always opens downward) â”€â”€ */
 .adm-cdd-wrap{position:relative;display:block;}
 .adm-cdd-trigger{display:flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#374151;background:#fff;cursor:pointer;user-select:none;white-space:nowrap;width:100%;box-sizing:border-box;}
 .adm-cdd-trigger:hover{border-color:#94a3b8;}
@@ -1270,13 +1270,13 @@ body, html {
     color: #334155;
 }
 
-/* ── Tab Navigation ── */
+/* â”€â”€ Tab Navigation â”€â”€ */
 .tab-nav { display:flex; gap:0; border-bottom:2px solid #e2e8f0; margin-bottom:22px; }
 .tab-btn { padding:10px 24px; background:none; border:none; border-bottom:3px solid transparent; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; margin-bottom:-2px; transition:all .15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
 .tab-btn.active { color:#002F70; border-bottom-color:#002F70; }
 .tab-btn:hover { color:#002F70 !important; background:#f8fafc !important; }
 
-/* ── Modal tab button overrides to prevent global button background ── */
+/* â”€â”€ Modal tab button overrides to prevent global button background â”€â”€ */
 .modal-tab-btn {
     background: none !important;
     background-color: transparent !important;
@@ -1310,7 +1310,7 @@ body, html {
     background: #f1f5f9 !important;
 }
 
-/* ── Outline buttons (View, Print, Close) plain styles ── */
+/* â”€â”€ Outline buttons (View, Print, Close) plain styles â”€â”€ */
 .int-btn-outline {
     display: inline-flex;
     align-items: center;
@@ -1365,7 +1365,7 @@ body, html {
     <div class="afto-card purple">
         <div class="afto-card-info">
             <span class="afto-card-lbl">Total Inventory Value</span>
-            <span class="afto-card-val" style="font-size:15px;">₱<?= number_format($kpi_total_value, 2) ?></span>
+            <span class="afto-card-val" style="font-size:15px;">â‚±<?= number_format($kpi_total_value, 2) ?></span>
         </div>
         <div class="afto-card-icon"><i class="fas fa-coins"></i></div>
     </div>
@@ -1613,7 +1613,7 @@ body, html {
                             <span style="font-size:11px;font-weight:600;color:#334155;"><?= number_format($stock, 0) ?> <?= htmlspecialchars($item['unit']) ?></span>
                         </td>
                         <td class="align-right" style="font-weight:600;color:#ea580c;"><?= number_format($reorder, 0) ?></td>
-                        <td class="align-right" style="font-weight:700;color:#002F70;">₱<?= number_format($value, 2) ?></td>
+                        <td class="align-right" style="font-weight:700;color:#002F70;">â‚±<?= number_format($value, 2) ?></td>
                         <td class="align-center"><span class="badge-lbl <?= $badgeCls ?>"><?= htmlspecialchars($badgeLbl) ?></span></td>
                         <td style="font-size:11px; color:#64748b;"><?= $updated ?></td>
                         <td class="align-center">
@@ -1649,7 +1649,7 @@ body, html {
 </div>
 <?php endif; ?>
 
-<!-- ══ TAB: STOCK MOVEMENT MONITORING ══ -->
+<!-- â•â• TAB: STOCK MOVEMENT MONITORING â•â• -->
 <?php if ($active_tab === 'movement'): ?>
 <div class="tbl-card">
     <div class="tbl-hd">
@@ -1696,7 +1696,7 @@ body, html {
                 <tr><td colspan="8" class="align-center" style="padding:24px;color:#64748b;"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>No movement records found.</td></tr>
             <?php else: ?>
                 <?php foreach ($movement_history as $log):
-                    $m_date = !empty($log['created_at']) ? date('M d, Y h:i A', strtotime($log['created_at'])) : '—';
+                    $m_date = !empty($log['created_at']) ? date('M d, Y h:i A', strtotime($log['created_at'])) : 'â€”';
                     $m_raw  = strtolower($log['movement_type'] ?? '');
                     $ref_no = !empty($log['reference_no']) ? $log['reference_no'] : ('LOG-' . str_pad($log['log_id'] ?? 0, 5, '0', STR_PAD_LEFT));
                     $qty    = (float)($log['quantity'] ?? 0);
@@ -1748,7 +1748,7 @@ body, html {
                     <td style="text-align:right;font-weight:800;font-size:13px;color:<?= $qty_color ?>;"><?= $qty_text ?> <?= $unit ?></td>
                     <td style="font-size:11px;font-weight:600;color:#334155;"><?= htmlspecialchars($log['user_name'] ?? 'System') ?></td>
                     <td style="font-size:11px;color:#475569;"><?= $branch ?></td>
-                    <td style="font-size:11px;color:#475569;max-width:200px;"><?= htmlspecialchars($log['notes'] ?? '—') ?></td>
+                    <td style="font-size:11px;color:#475569;max-width:200px;"><?= htmlspecialchars($log['notes'] ?? 'â€”') ?></td>
                 </tr>
                 <?php endforeach; ?>
             <?php endif; ?>
@@ -1759,7 +1759,7 @@ body, html {
 </div>
 <?php endif; ?>
 
-<!-- ══ TAB: STOCK ALERTS ══ -->
+<!-- â•â• TAB: STOCK ALERTS â•â• -->
 <?php if ($active_tab === 'alerts'): ?>
 <div class="tbl-card">
     <div class="tbl-hd">
@@ -1811,7 +1811,7 @@ body, html {
 </div>
 <?php endif; ?>
 
-<!-- ══ VIEW PRODUCT MODAL (WITH SUB-TABS) ══ -->
+<!-- â•â• VIEW PRODUCT MODAL (WITH SUB-TABS) â•â• -->
 <div class="modal-overlay" id="adminViewProdModal" style="z-index:10000;">
     <div style="background:#fff;border-radius:14px;width:96%;max-width:850px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 40px rgba(0,0,0,.18);overflow:hidden;position:relative;z-index:10001;">
         <!-- Header -->
@@ -1869,7 +1869,7 @@ body, html {
     </div>
 </div>
 
-<!-- ══ VIEW MOVEMENT MODAL ══ -->
+<!-- â•â• VIEW MOVEMENT MODAL â•â• -->
 <div class="modal-overlay" id="adminViewMovModal" style="z-index:10005;">
     <div style="background:#fff;border-radius:14px;width:96%;max-width:520px;box-shadow:0 24px 40px rgba(0,0,0,.22);overflow:hidden;position:relative;z-index:10006;">
         <div style="padding:16px 22px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;">
@@ -1900,7 +1900,7 @@ body, html {
     </div>
 </div>
 
-<!-- ══ VIEW STOCK-IN MODAL ══ -->
+<!-- â•â• VIEW STOCK-IN MODAL â•â• -->
 <div class="modal-overlay" id="adminViewSiModal" style="z-index:10005;">
     <div style="background:#fff;border-radius:14px;width:96%;max-width:540px;box-shadow:0 24px 40px rgba(0,0,0,.22);overflow:hidden;position:relative;z-index:10006;">
         <div style="padding:16px 22px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;">
@@ -1937,7 +1937,7 @@ body, html {
 </div>
 
 <script>
-// ── Modal JS Functions ──
+// â”€â”€ Modal JS Functions â”€â”€
 var _adminCurrentProd = null;
 
 function adminViewProduct(item) {
@@ -1948,10 +1948,10 @@ function adminViewProduct(item) {
         document.body.appendChild(overlay);
     }
 
-    document.getElementById('vpmTitle').textContent = 'View Product — ' + (item.name || '');
-    document.getElementById('vpmSku').textContent = item.sku || '—';
-    document.getElementById('vpmName').textContent = item.name || '—';
-    document.getElementById('vpmCategory').textContent = item.category_name || '—';
+    document.getElementById('vpmTitle').textContent = 'View Product â€” ' + (item.name || '');
+    document.getElementById('vpmSku').textContent = item.sku || 'â€”';
+    document.getElementById('vpmName').textContent = item.name || 'â€”';
+    document.getElementById('vpmCategory').textContent = item.category_name || 'â€”';
     document.getElementById('vpmBrand').textContent = item.brand || 'Petron';
     document.getElementById('vpmSupplier').textContent = item.supplier || 'Petron Corporation';
     document.getElementById('vpmUnit').textContent = item.unit || 'pcs';
@@ -1976,9 +1976,9 @@ function adminViewProduct(item) {
     document.getElementById('vpmAvailableStock').textContent = stock.toLocaleString('en-US', {minimumFractionDigits: 2}) + ' ' + (item.unit || 'pcs');
     document.getElementById('vpmReorderLevel').textContent = reorder.toLocaleString('en-US') + ' ' + (item.unit || 'pcs');
     document.getElementById('vpmCriticalLevel').textContent = critical.toLocaleString('en-US') + ' ' + (item.unit || 'pcs');
-    document.getElementById('vpmCost').textContent = '₱' + cost.toLocaleString('en-US', {minimumFractionDigits: 2});
-    document.getElementById('vpmPrice').textContent = '₱' + price.toLocaleString('en-US', {minimumFractionDigits: 2});
-    document.getElementById('vpmInventoryValue').textContent = '₱' + (stock * price).toLocaleString('en-US', {minimumFractionDigits: 2});
+    document.getElementById('vpmCost').textContent = 'â‚±' + cost.toLocaleString('en-US', {minimumFractionDigits: 2});
+    document.getElementById('vpmPrice').textContent = 'â‚±' + price.toLocaleString('en-US', {minimumFractionDigits: 2});
+    document.getElementById('vpmInventoryValue').textContent = 'â‚±' + (stock * price).toLocaleString('en-US', {minimumFractionDigits: 2});
 
     // Reset sub-tabs
     vpmSwitchTab(1);
@@ -2007,13 +2007,13 @@ function adminViewProduct(item) {
         var fHtml = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
         fHtml += '<thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Batch ID</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Delivery Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Received Qty</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Remaining Qty</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Unit Cost</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Selling Price</th></tr></thead><tbody>';
         data.deliveries.forEach(function(d) {
-            var dateStr = d.encoded_at ? new Date(d.encoded_at).toLocaleDateString() : '—';
+            var dateStr = d.encoded_at ? new Date(d.encoded_at).toLocaleDateString() : 'â€”';
             fHtml += '<tr><td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;"><code style="color:#002F70;font-weight:700;">' + esc(d.batch_no || 'BATCH-' + d.id) + '</code></td>';
             fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;">' + dateStr + '</td>';
             fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">' + Number(d.qty_received).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
             fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#002F70;">' + Number(d.qty_received).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
-            fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">₱' + Number(d.unit_cost || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
-            fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;color:#16a34a;font-weight:700;">₱' + Number(item.price || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td></tr>';
+            fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">â‚±' + Number(d.unit_cost || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
+            fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;color:#16a34a;font-weight:700;">â‚±' + Number(item.price || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td></tr>';
         });
         fHtml += '</tbody></table>';
         document.getElementById('vpmFifoTable').innerHTML = fHtml;
@@ -2061,18 +2061,18 @@ function printAdminProductDetails() {
     var r = _adminCurrentProd;
     if (!r) return;
     var pw = window.open('', '_blank');
-    pw.document.write('<!DOCTYPE html><html><head><title>Product Details — ' + (r.name || '') + '</title>');
+    pw.document.write('<!DOCTYPE html><html><head><title>Product Details â€” ' + (r.name || '') + '</title>');
     pw.document.write('<style>body{font-family:Arial,sans-serif;font-size:13px;color:#222;margin:0;padding:24px;}.header{background:#002F6C;color:#fff;padding:16px 20px;border-radius:6px 6px 0 0;}.header h2{margin:0;font-size:16px;}.section{border:1px solid #e2e8f0;border-top:none;padding:16px 20px;margin-bottom:12px;}.section h4{margin:0 0 10px;color:#002F6C;font-size:11px;text-transform:uppercase;border-bottom:1px solid #e2e8f0;padding-bottom:6px;}table.info{width:100%;border-collapse:collapse;font-size:12px;}table.info td{padding:5px 0;border-bottom:1px solid #f1f5f9;}table.info td:first-child{color:#64748b;font-weight:600;width:180px;}.footer{text-align:center;font-size:10px;color:#94a3b8;margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;}</style></head><body>');
-    pw.document.write('<div class="header"><h2>Merchandise Product Slip — ' + (r.name || '') + '</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
+    pw.document.write('<div class="header"><h2>Merchandise Product Slip â€” ' + (r.name || '') + '</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
     pw.document.write('<div class="section"><h4>Product Information</h4><table class="info">');
-    pw.document.write('<tr><td>SKU:</td><td><code>' + (r.sku || '—') + '</code></td></tr>');
-    pw.document.write('<tr><td>Product Name:</td><td><strong>' + (r.name || '—') + '</strong></td></tr>');
-    pw.document.write('<tr><td>Category:</td><td>' + (r.category_name || '—') + '</td></tr>');
+    pw.document.write('<tr><td>SKU:</td><td><code>' + (r.sku || 'â€”') + '</code></td></tr>');
+    pw.document.write('<tr><td>Product Name:</td><td><strong>' + (r.name || 'â€”') + '</strong></td></tr>');
+    pw.document.write('<tr><td>Category:</td><td>' + (r.category_name || 'â€”') + '</td></tr>');
     pw.document.write('<tr><td>Brand:</td><td>' + (r.brand || 'Petron') + '</td></tr>');
     pw.document.write('<tr><td>Supplier:</td><td>' + (r.supplier || 'Petron Corporation') + '</td></tr>');
     pw.document.write('<tr><td>Barcode:</td><td>' + (r.barcode || '4800012345678') + '</td></tr>');
     pw.document.write('<tr><td>Current Stock:</td><td><strong style="color:#002F70;">' + Number(r.stock_level || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' ' + (r.unit || 'pcs') + '</strong></td></tr>');
-    pw.document.write('<tr><td>Selling Price:</td><td><strong style="color:#16a34a;">₱' + Number(r.price || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</strong></td></tr>');
+    pw.document.write('<tr><td>Selling Price:</td><td><strong style="color:#16a34a;">â‚±' + Number(r.price || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</strong></td></tr>');
     pw.document.write('</table></div>');
     pw.document.write('<div class="footer">Petron Station Management System &copy; ' + new Date().getFullYear() + '</div>');
     pw.document.write('</body></html>');
@@ -2080,7 +2080,7 @@ function printAdminProductDetails() {
     setTimeout(function() { pw.print(); }, 300);
 }
 
-// ── Movement Modal ──
+// â”€â”€ Movement Modal â”€â”€
 function openMovModal(d) {
     var modal = document.getElementById('adminViewMovModal');
     if (!modal) return;
@@ -2109,7 +2109,7 @@ function closeAdminViewMovModal() {
     }
 }
 
-// ── Stock-In Modal ──
+// â”€â”€ Stock-In Modal â”€â”€
 function openSiModal(d) {
     var modal = document.getElementById('adminViewSiModal');
     if (!modal) return;
@@ -2119,7 +2119,7 @@ function openSiModal(d) {
     document.getElementById('vsimSupplier').textContent = d.supplier;
     document.getElementById('vsimDate').textContent = d.date;
     document.getElementById('vsimQty').textContent = d.qty;
-    document.getElementById('vsimCost').textContent = '₱' + d.unit_cost;
+    document.getElementById('vsimCost').textContent = 'â‚±' + d.unit_cost;
     document.getElementById('vsimBatch').textContent = d.batch;
     document.getElementById('vsimBy').textContent = d.received_by;
     document.getElementById('vsimStatus').innerHTML = '<span style="background:#dcfce7;color:#15803d;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;">' + esc(d.status) + '</span>';
@@ -2140,7 +2140,7 @@ function closeAdminViewSiModal() {
     }
 }
 
-// ── Movement & Stock-In Table Filters ──
+// â”€â”€ Movement & Stock-In Table Filters â”€â”€
 function filterMovTable() {
     var query = (document.getElementById('movSearchInput') || {}).value || '';
     var type = (document.getElementById('movTypeFilter') || {}).value || '';
@@ -2283,7 +2283,7 @@ function filterAdminByCard(statusKey) {
     if (form) form.submit();
 }
 
-// ── Admin Custom Dropdown (CDD) Logic ────────────────────────────
+// â”€â”€ Admin Custom Dropdown (CDD) Logic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function acddToggle(id) {
     var wrap = document.getElementById(id);
     var isOpen = wrap.classList.contains('adm-cdd-open');
@@ -2375,7 +2375,7 @@ function setupDownwardFilterSelects(selects) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Wire hidden input map: cdd id → hidden input id
+    // Wire hidden input map: cdd id â†’ hidden input id
     var acddInputMap = {
         'acdd-category': 'category',
         'acdd-brand':    'brand',

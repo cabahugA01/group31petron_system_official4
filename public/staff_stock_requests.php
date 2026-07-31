@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'staff_stock_requests';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -13,7 +13,7 @@ if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
     exit;
 }
 
-// ── Handle Request Cancellation ──────────────────────────────────────────
+// â”€â”€ Handle Request Cancellation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (isset($_GET['cancel_id']) && isset($_GET['type'])) {
     $cancel_id = (int)$_GET['cancel_id'];
     $type = $_GET['type']; // 'fuel' or 'merch'
@@ -77,7 +77,7 @@ if (isset($_GET['cancel_id']) && isset($_GET['type'])) {
     exit;
 }
 
-// ── Ensure PO columns exist ──────────────────────────────────────────────────
+// â”€â”€ Ensure PO columns exist â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 foreach ([
     "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS admin_finalized TINYINT(1) NOT NULL DEFAULT 0",
     "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS admin_finalized_at DATETIME NULL",
@@ -87,7 +87,7 @@ foreach ([
     "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS delivery_flag ENUM('OK','Short','Damaged','Excess','Mixed') NULL",
 ] as $sql) { try { $pdo->exec($sql); } catch (Exception $e) {} }
 
-// ── Ensure fuel_stock_requests table exists ──────────────────────────────────
+// â”€â”€ Ensure fuel_stock_requests table exists â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 try {
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS fuel_stock_requests (
@@ -111,7 +111,7 @@ try {
     ");
 } catch (Exception $ignored) {}
 
-// ── Fetch merchandise stock requests ────────────────────────────────────────
+// â”€â”€ Fetch merchandise stock requests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $merch_requests = [];
 try {
     $stmt = $pdo->prepare("
@@ -154,7 +154,7 @@ try {
     $merch_requests = [];
 }
 
-// ── Fetch fuel stock requests ────────────────────────────────────────────────
+// â”€â”€ Fetch fuel stock requests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $fuel_requests = [];
 try {
     $stmt = $pdo->prepare("
@@ -184,7 +184,7 @@ try {
     $fuel_requests = [];
 }
 
-// ── Fetch active merchandise products for request dropdown ──────────────────
+// â”€â”€ Fetch active merchandise products for request dropdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $all_products = [];
 try {
     $stmt = $pdo->prepare("
@@ -198,7 +198,7 @@ try {
     $all_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── Fetch active fuel products for request dropdown ─────────────────────────
+// â”€â”€ Fetch active fuel products for request dropdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $all_fuels = [];
 try {
     $stmt = $pdo->prepare("
@@ -223,7 +223,7 @@ if (empty($all_fuels)) {
     $all_fuels = $tank_config;
 }
 
-// ── Per-tab summary stats ─────────────────────────────────────────────────
+// â”€â”€ Per-tab summary stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $fuel_stats  = ['total'=>0,'pending'=>0,'approved'=>0,'rejected'=>0];
 $merch_stats = ['total'=>0,'pending'=>0,'approved'=>0,'rejected'=>0];
 
@@ -242,15 +242,15 @@ foreach ($merch_requests as $r) {
     elseif ($st === 'rejected') $merch_stats['rejected']++;
 }
 
-// ── Fuel tank label helper ────────────────────────────────────────────────
+// â”€â”€ Fuel tank label helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function get_fuel_tank_label($fuel_type) {
     $ft = strtolower(trim($fuel_type));
-    if ($ft === 'diesel')       return 'Tank #1 – #6';
+    if ($ft === 'diesel')       return 'Tank #1 â€“ #6';
     if ($ft === 'kerosene')     return 'Tank #7';
-    if ($ft === 'turbo diesel') return 'Tank #8 – #9';
-    if ($ft === 'xcs plus')     return 'Tank #10 – #13';
-    if ($ft === 'xtra unl')     return 'Tank #14 – #17';
-    return '—';
+    if ($ft === 'turbo diesel') return 'Tank #8 â€“ #9';
+    if ($ft === 'xcs plus')     return 'Tank #10 â€“ #13';
+    if ($ft === 'xtra unl')     return 'Tank #14 â€“ #17';
+    return 'â€”';
 }
 
 include __DIR__ . '/../partials/header.php';
@@ -399,14 +399,8 @@ include __DIR__ . '/../partials/header.php';
     white-space: nowrap !important;
     background: #fff !important;
 }
-.exp-btn-excel {
-    color: #16a34a !important;
-    border-color: #16a34a !important;
-}
-.exp-btn-excel:hover {
-    background: #16a34a !important;
-    color: #fff !important;
-}
+.exp-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.exp-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .exp-btn-csv {
     color: #002F70 !important;
     border-color: #002F70 !important;
@@ -415,14 +409,8 @@ include __DIR__ . '/../partials/header.php';
     background: #002F70 !important;
     color: #fff !important;
 }
-.exp-btn-pdf {
-    color: #dc2626 !important;
-    border-color: #dc2626 !important;
-}
-.exp-btn-pdf:hover {
-    background: #dc2626 !important;
-    color: #fff !important;
-}
+.exp-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.exp-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 </style>
 
 <div class="stock-page">
@@ -477,7 +465,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
 
-    <!-- ══ FUEL PANEL ══ -->
+    <!-- â•â• FUEL PANEL â•â• -->
     <div class="ssr-tab-panel active" id="panel-fuel">
 
         <!-- Per-Tab Summary Cards -->
@@ -587,7 +575,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
 
-    <!-- ══ MERCHANDISE PANEL ══ -->
+    <!-- â•â• MERCHANDISE PANEL â•â• -->
     <div class="ssr-tab-panel" id="panel-merch">
 
         <!-- Per-Tab Summary Cards -->
@@ -704,7 +692,7 @@ include __DIR__ . '/../partials/header.php';
 
 </div>
 
-<!-- ══ DETAILS VIEW MODAL ══ -->
+<!-- â•â• DETAILS VIEW MODAL â•â• -->
 <div class="ssr-overlay" id="viewModal">
     <div class="ssr-modal-box">
         <div class="ssr-modal-head">
@@ -740,14 +728,14 @@ function viewRequest(type, req) {
     var product = type === 'fuel' ? req.fuel_type : req.item_name;
     var mu = (type === 'fuel') ? 'Liters (L)' : (req.item_unit ? req.item_unit : 'Pieces');
     var current = type === 'fuel' ? parseFloat(req.current_level).toLocaleString() + ' ' + mu : parseInt(req.current_stock).toLocaleString() + ' ' + mu;
-    var requested = '—';
+    var requested = 'â€”';
     if (type === 'fuel') {
         requested = parseFloat(req.requested_liters) > 0 ? parseFloat(req.requested_liters).toLocaleString('en-PH',{minimumFractionDigits:2}) + ' ' + mu : '<span style="color:#94a3b8;font-weight:normal;">Pending Manager Input</span>';
     } else {
         requested = parseInt(req.requested_quantity) > 0 ? parseInt(req.requested_quantity).toLocaleString() + ' ' + mu : '<span style="color:#94a3b8;font-weight:normal;">Pending Manager Input</span>';
     }
     
-    var approved = '—';
+    var approved = 'â€”';
     if (type === 'fuel' && req.approved_liters !== null) {
         approved = parseFloat(req.approved_liters).toLocaleString('en-PH',{minimumFractionDigits:2}) + ' ' + mu;
     } else if (type === 'merch' && req.approved_quantity !== null) {
@@ -755,7 +743,7 @@ function viewRequest(type, req) {
     }
     
     var formattedDate = new Date(req.created_at).toLocaleString();
-    var manager = req.manager_name ? req.manager_name : '—';
+    var manager = req.manager_name ? req.manager_name : 'â€”';
     
     var statusKey = req.status.toLowerCase().replace(/[\s\/]+/g, '-');
     var badgeClass = 'sbadge sbadge-' + statusKey;
@@ -827,14 +815,14 @@ function printRequest(type, req) {
     var product = type === 'fuel' ? req.fuel_type : req.item_name;
     var mu = (type === 'fuel') ? 'Liters (L)' : (req.item_unit ? req.item_unit : 'Pieces');
     var current = type === 'fuel' ? parseFloat(req.current_level).toLocaleString() + ' ' + mu : parseInt(req.current_stock).toLocaleString() + ' ' + mu;
-    var requested = '—';
+    var requested = 'â€”';
     if (type === 'fuel') {
         requested = parseFloat(req.requested_liters) > 0 ? parseFloat(req.requested_liters).toLocaleString('en-PH',{minimumFractionDigits:2}) + ' ' + mu : 'Pending Manager Input';
     } else {
         requested = parseInt(req.requested_quantity) > 0 ? parseInt(req.requested_quantity).toLocaleString() + ' ' + mu : 'Pending Manager Input';
     }
     
-    var approved = '—';
+    var approved = 'â€”';
     if (type === 'fuel' && req.approved_liters !== null) {
         approved = parseFloat(req.approved_liters).toLocaleString('en-PH',{minimumFractionDigits:2}) + ' ' + mu;
     } else if (type === 'merch' && req.approved_quantity !== null) {

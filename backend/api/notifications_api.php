@@ -172,6 +172,28 @@ function get_category_unread_counts(PDO $pdo, int $user_id, string $role = '', i
         );
         $counts['reports']       = $admin_system_alerts;
         $counts['admin_reports'] = $admin_system_alerts;
+
+        // 4. Fuel Management Oversight: Manager-verified/approved fuel transactions + fuel deliveries + fuel stock requests + fuel adjustments
+        $admin_fuel_txns = $safe_count(
+            "SELECT COUNT(*) FROM fuel_transactions WHERE LOWER(COALESCE(status,'')) IN ('verified','validated','approved','adjusted','pending')",
+            []
+        );
+        $admin_fuel_deliv = $safe_count(
+            "SELECT COUNT(*) FROM purchase_orders WHERE (type = 'fuel' OR LOWER(COALESCE(item_category,'')) IN ('fuel','fuels')) AND (delivery_validated = 1 OR status IN ('Validated','Delivered','Pending Admin Review','Submitted'))",
+            []
+        );
+        $admin_fuel_reqs = $safe_count(
+            "SELECT COUNT(*) FROM fuel_stock_requests WHERE LOWER(COALESCE(status,'')) IN ('pending','pending manager review','pending admin review','approved','submitted')",
+            []
+        );
+        $admin_fuel_adj = $safe_count(
+            "SELECT COUNT(*) FROM fuel_adjustments WHERE LOWER(COALESCE(status,'')) IN ('pending','verified','reviewed','approved')",
+            []
+        );
+        $admin_fuel_total = $admin_fuel_txns + $admin_fuel_deliv + $admin_fuel_reqs + $admin_fuel_adj;
+        $counts['fuel']                  = $admin_fuel_total;
+        $counts['admin_fuel']            = $admin_fuel_total;
+        $counts['admin_fuel_management'] = $admin_fuel_total;
     }
 
     return $counts;

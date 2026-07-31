@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'manager_deliveries';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -30,7 +30,7 @@ include __DIR__ . '/../partials/header.php';
 .int-head .sub { font-size:13px; color:#64748b; margin-top:4px; }
 
 /* === Clean Merchandise Deliveries Design === */
-/* ── Workflow Steps Guide ── */
+/* â”€â”€ Workflow Steps Guide â”€â”€ */
 .workflow-container {
     background: #f8f9fa;
     border: 1px solid #dee2e6;
@@ -95,7 +95,7 @@ include __DIR__ . '/../partials/header.php';
     color: #fff;
 }
 
-/* ── Modern Tabs ── */
+/* â”€â”€ Modern Tabs â”€â”€ */
 .tab-container {
     display: flex;
     gap: 4px;
@@ -141,7 +141,7 @@ include __DIR__ . '/../partials/header.php';
     font-weight: 700;
 }
 
-/* ── Plain text badges - NO backgrounds ── */
+/* â”€â”€ Plain text badges - NO backgrounds â”€â”€ */
 .sbadge{color:#6c757d !important;font-weight:700 !important;font-size:0.813rem !important;background:none !important;padding:0 !important;border:none !important;text-transform:uppercase;}
 .sbadge-pending{color:#fd7e14 !important;}
 .sbadge-approved,.sbadge-confirmed,.sbadge-validated{color:#28a745 !important;}
@@ -152,11 +152,11 @@ include __DIR__ . '/../partials/header.php';
 .sbadge-adjusted{color:#17a2b8 !important;}
 .sbadge-closed{color:#6c757d !important;}
 
-/* ── Delivery ref chip ── */
+/* â”€â”€ Delivery ref chip â”€â”€ */
 .del-ref{font-family:monospace;font-size:11px;background:#e8f4fd;color:#002F70;padding:3px 7px;border-radius:5px;font-weight:700;display:inline-block;border:1px solid #b8d4f1;}
 .cat-tag{font-size:10px;color:#6c757d;display:block;margin-top:2px;}
 
-/* ── Action buttons (white outline style matching transaction module) ── */
+/* â”€â”€ Action buttons (white outline style matching transaction module) â”€â”€ */
 .act-wrap{display:flex;gap:4px;flex-direction:column;}
 .btn-act{
     display: inline-flex;
@@ -208,14 +208,14 @@ include __DIR__ . '/../partials/header.php';
 .flt-btn-search:hover { background: #00264D !important; color: #fff !important; }
 .flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
 .flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
-.flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
-.flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
-.flt-btn-csv    { color: #002F70 !important; border-color: #002F70 !important; }
-.flt-btn-csv:hover    { background: #002F70 !important; color: #fff !important; }
-.flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
-.flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
+.flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-csv { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-csv:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 
-/* ── Table (100% width, table-layout: fixed, no horizontal scroll) ── */
+/* â”€â”€ Table (100% width, table-layout: fixed, no horizontal scroll) â”€â”€ */
 .table-wrap{background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);border:1px solid #e9ecef;overflow-x:auto;-webkit-overflow-scrolling:touch;}
 body #del-table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;}
 body #del-table thead th{background:#002F70 !important;color:#fff !important;padding:8px 6px !important;font-weight:600 !important;font-size:10px !important;text-transform:uppercase !important;letter-spacing:.3px !important;border:none !important;word-wrap:break-word;word-break:break-all;overflow:hidden;text-overflow:ellipsis;}
@@ -223,14 +223,14 @@ body #del-table tbody td{padding:8px 6px;border-bottom:1px solid #e9ecef;vertica
 body #del-table tbody tr:hover td{background:#e3f2fd;}
 body #del-table tbody tr:last-child td{border-bottom:none;}
 
-/* ── Filter bar ── */
+/* â”€â”€ Filter bar â”€â”€ */
 .filter-row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:16px;}
 .filter-row .fg{display:flex;flex-direction:column;gap:3px;}
 .filter-row .fg label{font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:.4px;}
 .filter-row select,.filter-row input{padding:10px 12px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;}
 .filter-row select:focus,.filter-row input:focus{border-color:#002F70;outline:none;box-shadow:0 0 0 3px rgba(0,47,112,.1);}
 
-/* ── Summary cards ── */
+/* â”€â”€ Summary cards â”€â”€ */
 .sum-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin-bottom:20px;}
 .sum-card{background:#fff;border-radius:10px;padding:14px 16px;box-shadow:0 2px 6px rgba(0,0,0,.06);border:1px solid #e9ecef;display:flex;flex-direction:column;gap:3px;}
 .sum-card .sc-num{font-size:1.8rem;font-weight:700;line-height:1;}
@@ -240,7 +240,7 @@ body #del-table tbody tr:last-child td{border-bottom:none;}
 .sc-approved .sc-num{color:#155724;}
 .sc-closed .sc-num{color:#383d41;}
 
-/* ── Modals ── */
+/* â”€â”€ Modals â”€â”€ */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;}
 .modal-overlay.open{display:flex;}
 .modal-box{background:#fff;border-radius:12px;padding:26px;width:560px;max-width:calc(100vw - 24px);max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25);animation:mIn .18s ease;}
@@ -266,7 +266,7 @@ body #del-table tbody tr:last-child td{border-bottom:none;}
 .dlbl{font-weight:600;color:#6c757d;font-size:11px;text-transform:uppercase;letter-spacing:.3px;}
 .dval{color:#212529;flex:1;}
 
-/* ── Resolution option cards ── */
+/* â”€â”€ Resolution option cards â”€â”€ */
 .res-options{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
 .res-opt{border:2px solid #dee2e6;border-radius:8px;padding:12px;cursor:pointer;transition:all .15s;text-align:center;}
 .res-opt:hover{border-color:#002F70;background:#f0f4ff;}
@@ -275,14 +275,14 @@ body #del-table tbody tr:last-child td{border-bottom:none;}
 .res-opt .ro-title{font-size:12px;font-weight:700;color:#002F70;}
 .res-opt .ro-desc{font-size:11px;color:#6c757d;margin-top:3px;}
 
-/* ── Toast ── */
+/* â”€â”€ Toast â”€â”€ */
 .toast{position:fixed;bottom:24px;right:24px;padding:12px 18px;border-radius:8px;color:#fff;font-weight:600;font-size:13px;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,.2);display:none;animation:tUp .22s ease;max-width:340px;}
 .toast.show{display:block;}
 .toast-success{background:#28a745;}
 .toast-error{background:#dc3545;}
 @keyframes tUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 
-/* ── Discrepancy banner in detail ── */
+/* â”€â”€ Discrepancy banner in detail â”€â”€ */
 .disc-banner{background:#fff3e0;border:1px solid #fd7e14;border-radius:8px;padding:11px 14px;margin-bottom:14px;font-size:13px;color:#7d4e00;display:flex;align-items:flex-start;gap:10px;}
 
 /* Prevent horizontal scroll */
@@ -290,7 +290,7 @@ body{overflow-x:hidden !important;max-width:100vw !important;}
 </style>
 
 <?php
-// Summary counts for the 5 dashboard cards — live from DB
+// Summary counts for the 5 dashboard cards â€” live from DB
 $cnt_pending = 0; $cnt_verified = 0; $cnt_rejected = 0; $total_qty_verified = 0; $total_records = 0;
 try {
     $sc = $pdo->prepare("SELECT status, quantity FROM deliveries_oversight WHERE station_id=? AND delivery_type='merchandise'");
@@ -448,7 +448,7 @@ try {
 
 
 
-<!-- ══ VERIFY MODAL ════════════════════════════════════════════════════════════════════════════ -->
+<!-- â•â• VERIFY MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div class="modal-overlay" id="aprModal">
     <div class="modal-box">
         <div class="modal-head">
@@ -472,7 +472,7 @@ try {
     </div>
 </div>
 
-<!-- ══ REJECT DELIVERY MODAL (checklist reasons) ══════════════════════════════════════ -->
+<!-- â•â• REJECT DELIVERY MODAL (checklist reasons) â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div class="modal-overlay" id="flagModal">
     <div class="modal-box">
         <div class="modal-head">
@@ -512,7 +512,7 @@ try {
     </div>
 </div>
 
-<!-- ══ REJECT MODAL (simple reject back to staff) ════════════════════════════ -->
+<!-- â•â• REJECT MODAL (simple reject back to staff) â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div class="modal-overlay" id="rejModal">
     <div class="modal-box">
         <div class="modal-head">
@@ -533,7 +533,7 @@ try {
     </div>
 </div>
 
-<!-- ══ RESOLVE DISCREPANCY MODAL ════════════════════════════════════════════ -->
+<!-- â•â• RESOLVE DISCREPANCY MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div class="modal-overlay" id="resolveModal">
     <div class="modal-box wide">
         <div class="modal-head">
@@ -554,22 +554,22 @@ try {
             <label>Choose Resolution Action <span style="color:#dc3545;">*</span></label>
             <div class="res-options" id="resOptions">
                 <div class="res-opt" onclick="selectRes('return_supplier')" id="ro-return_supplier">
-                    <span class="ro-icon">🔄</span>
+                    <span class="ro-icon">ðŸ”„</span>
                     <div class="ro-title">Return to Supplier</div>
                     <div class="ro-desc">Ibalik ang kulang/guba nga items. No inventory update.</div>
                 </div>
                 <div class="res-opt" onclick="selectRes('replacement')" id="ro-replacement">
-                    <span class="ro-icon">📦</span>
+                    <span class="ro-icon">ðŸ“¦</span>
                     <div class="ro-title">Request Replacement</div>
                     <div class="ro-desc">Supplier mo-deliver ug kapuli. Awaiting replacement.</div>
                 </div>
                 <div class="res-opt" onclick="selectRes('adjustment')" id="ro-adjustment">
-                    <span class="ro-icon">✏️</span>
+                    <span class="ro-icon">âœï¸</span>
                     <div class="ro-title">Adjust Quantity</div>
                     <div class="ro-desc">I-update ang qty sa actual received. Inventory updated.</div>
                 </div>
                 <div class="res-opt" onclick="selectRes('approve_as_is')" id="ro-approve_as_is">
-                    <span class="ro-icon">✅</span>
+                    <span class="ro-icon">âœ…</span>
                     <div class="ro-title">Approve As-Is</div>
                     <div class="ro-desc">Accept original qty. Inventory updated with encoded qty.</div>
                 </div>
@@ -591,7 +591,7 @@ try {
     </div>
 </div>
 
-<!-- ══ STAFF REMARKS MODAL (for Pending Resolution entries) ═════════════════ -->
+<!-- â•â• STAFF REMARKS MODAL (for Pending Resolution entries) â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div class="modal-overlay" id="remarksModal">
     <div class="modal-box">
         <div class="modal-head">
@@ -601,7 +601,7 @@ try {
         <div class="obox"><i class="fas fa-info-circle"></i> Add remarks about the discrepancy (e.g. "5 pcs kulang", "2 pcs guba"). Manager will use this to decide resolution.</div>
         <div class="fld"><label>Delivery ID</label><input type="text" id="rmk-ref" readonly></div>
         <div class="fld"><label>Discrepancy Note from Manager</label><input type="text" id="rmk-mgrnote" readonly></div>
-        <div class="fld"><label>Your Remarks <span style="color:#dc3545;">*</span></label><textarea id="rmk-text" rows="4" placeholder="e.g. 5 pcs kulang — supplier confirmed shortage. OR 2 pcs guba upon inspection."></textarea></div>
+        <div class="fld"><label>Your Remarks <span style="color:#dc3545;">*</span></label><textarea id="rmk-text" rows="4" placeholder="e.g. 5 pcs kulang â€” supplier confirmed shortage. OR 2 pcs guba upon inspection."></textarea></div>
         <div class="modal-footer">
             <button type="button" onclick="closeM('remarksModal')" class="btn ghost">Cancel</button>
             <button type="button" onclick="doAddRemarks()" class="btn" style="background:#6c757d;color:#fff;font-weight:700;"><i class="fas fa-save"></i> Save Remarks</button>
@@ -609,7 +609,7 @@ try {
     </div>
 </div>
 
-<!-- ══ BATCH APPROVE MODAL ════════════════════════════════════════════════════ -->
+<!-- â•â• BATCH APPROVE MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div class="modal-overlay" id="aprBatchModal">
     <div class="modal-box">
         <div class="modal-head">
@@ -626,7 +626,7 @@ try {
     </div>
 </div>
 
-<!-- ══ BATCH REJECT MODAL ════════════════════════════════════════════════════ -->
+<!-- â•â• BATCH REJECT MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div class="modal-overlay" id="flagBatchModal">
     <div class="modal-box">
         <div class="modal-head">
@@ -654,7 +654,7 @@ try {
     </div>
 </div>
 
-<!-- ══ BATCH RETURN TO STAFF MODAL ═════════════════════════════════════════════ -->
+<!-- â•â• BATCH RETURN TO STAFF MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div class="modal-overlay" id="rejBatchModal">
     <div class="modal-box">
         <div class="modal-head">
@@ -671,7 +671,7 @@ try {
     </div>
 </div>
 
-<!-- ══ BATCH ADJUST MODAL ═════════════════════════════════════════════════════ -->
+<!-- â•â• BATCH ADJUST MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div class="modal-overlay" id="adjBatchModal">
     <div class="modal-box">
         <div class="modal-head">
@@ -691,7 +691,7 @@ try {
     </div>
 </div>
 
-<!-- ══ REPLACEMENT RECEIVED MODAL ═══════════════════════════════════════════ -->
+<!-- â•â• REPLACEMENT RECEIVED MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div class="modal-overlay" id="replRecvModal">
     <div class="modal-box">
         <div class="modal-head">
@@ -712,14 +712,14 @@ try {
     </div>
 </div>
 
-<!-- ══ ADJUST MODAL ══════════════════════════════════════════════════════════ -->
+<!-- â•â• ADJUST MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div class="modal-overlay" id="adjModal">
     <div class="modal-box">
         <div class="modal-head">
             <div class="modal-title"><i class="fas fa-sliders-h" style="color:#002F70;"></i> Adjust Delivery</div>
             <button class="modal-close" onclick="closeM('adjModal')">&times;</button>
         </div>
-        <div class="ibox"><i class="fas fa-info-circle"></i> Minor corrections only. After saving, this delivery will be marked <strong>Adjusted — Ready for Stock-In</strong>. Inventory will be updated by Staff during stock-in. <strong>Reason is mandatory.</strong></div>
+        <div class="ibox"><i class="fas fa-info-circle"></i> Minor corrections only. After saving, this delivery will be marked <strong>Adjusted â€” Ready for Stock-In</strong>. Inventory will be updated by Staff during stock-in. <strong>Reason is mandatory.</strong></div>
         <div class="fg2">
             <div class="fld"><label>Delivery ID</label><input type="text" id="adj-ref" readonly></div>
             <div class="fld"><label>Product</label><input type="text" id="adj-prod" readonly></div>
@@ -737,7 +737,7 @@ try {
     </div>
 </div>
 
-<!-- ══ DETAIL MODAL ══════════════════════════════════════════════════════════ -->
+<!-- â•â• DETAIL MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div class="modal-overlay" id="dtlModal">
     <div class="modal-box wide">
         <div class="modal-head">
@@ -759,7 +759,7 @@ try {
 var API = '../backend/api/manager_merchandise_deliveries_api.php';
 var CID = null, _t = null, _selRes = null;
 
-// ── Init ──────────────────────────────────────────────────────────────────────
+// â”€â”€ Init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Manager Merchandise Deliveries: Initializing...');
     try {
@@ -771,7 +771,7 @@ document.addEventListener('DOMContentLoaded', function() {
             clearTimeout(_t); _t = setTimeout(loadDeliveries, 400);
         });
 
-        // ── Auto-switch tab from URL parameter ──
+        // â”€â”€ Auto-switch tab from URL parameter â”€â”€
         var urlParams = new URLSearchParams(window.location.search);
         var urlTab = urlParams.get('tab');
         if (urlTab === 'history') {
@@ -791,7 +791,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// ── Modal helpers ─────────────────────────────────────────────────────────────
+// â”€â”€ Modal helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openM(id)  { document.getElementById(id).classList.add('open'); }
 function closeM(id) { document.getElementById(id).classList.remove('open'); }
 document.addEventListener('click', function(e) {
@@ -804,7 +804,7 @@ document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') ['aprModal','flagModal','rejModal','resolveModal','remarksModal','replRecvModal','adjModal','dtlModal','poModal','poDtlModal','aprBatchModal','flagBatchModal','rejBatchModal','adjBatchModal'].forEach(closeM);
 });
 
-// ── Toast ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Toast â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function toast(msg, type) {
     if (window.showPetronFlash) {
         window.showPetronFlash(msg, type || 'success');
@@ -816,10 +816,10 @@ function toast(msg, type) {
     setTimeout(function() { t.classList.remove('show'); }, 4000);
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function h(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function j(s) { return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"'); }
-function dt(s) { return s ? String(s).replace('T',' ').substring(0,16) : '<span style="color:#adb5bd">—</span>'; }
+function dt(s) { return s ? String(s).replace('T',' ').substring(0,16) : '<span style="color:#adb5bd">â€”</span>'; }
 function dr(l,v){ return '<div class="drow"><span class="dlbl">'+l+'</span><span class="dval">'+v+'</span></div>'; }
 
 function badgeHtml(status) {
@@ -827,14 +827,14 @@ function badgeHtml(status) {
     return '<span class="' + cls + '">' + h(status) + '</span>';
 }
 
-// ── Status bucket mapping ─────────────────────────────────────────────────────
+// â”€â”€ Status bucket mapping â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function getDisplayStatus(raw) {
     var s = (raw || '').toLowerCase();
     if (s.includes('pending manager') || s === 'pending validation' || s === 'pending verification' || s === 'pending' || s === 'pending admin oversight') return 'Pending';
     if (s === 'pending resolution') return 'Pending Resolution';
     if (s === 'awaiting replacement') return 'Awaiting Replacement';
     if (s === 'ready for stock-in' || s === 'confirmed' || s === 'approved' || s === 'validated' || s === 'verified' || s === 'stock-in complete' || s === 'partial delivery' || s === 'damaged items') return 'Verified';
-    if (s === 'adjusted' || s === 'adjusted — verified') return 'Adjusted — Verified';
+    if (s === 'adjusted' || s === 'adjusted â€” verified') return 'Adjusted â€” Verified';
     if (s === 'returned' || s === 'returned to staff') return 'Returned to Staff';
     if (s === 'returned to supplier') return 'Returned to Supplier';
     if (s === 'discrepancy' || s === 'flagged' || s === 'rejected' || s === 'rejected delivery') return 'Rejected';
@@ -842,7 +842,7 @@ function getDisplayStatus(raw) {
     return raw;
 }
 
-// ── Load deliveries ───────────────────────────────────────────────────────────
+// â”€â”€ Load deliveries â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 var currentTab = 'manage';
 
 function switchTab(tab) {
@@ -880,7 +880,7 @@ function switchTab(tab) {
     } else {
         sf.innerHTML = '<option value="history">All Processed</option>'
                      + '<option value="Verified">Verified</option>'
-                     + '<option value="Adjusted — Verified">Adjusted (Verified)</option>'
+                     + '<option value="Adjusted â€” Verified">Adjusted (Verified)</option>'
                      + '<option value="Returned to Staff">Returned to Staff</option>'
                      + '<option value="Returned to Supplier">Returned to Supplier</option>'
                      + '<option value="Rejected">Rejected</option>';
@@ -933,7 +933,7 @@ function loadDeliveries() {
                 if (status === 'active') return true;
                 return ds === status || d.status === status;
             } else {
-                var histBuckets = ['Verified','Adjusted — Verified','Returned to Staff','Returned to Supplier','Rejected','Closed'];
+                var histBuckets = ['Verified','Adjusted â€” Verified','Returned to Staff','Returned to Supplier','Rejected','Closed'];
                 if (histBuckets.indexOf(ds) === -1) return false;
                 if (status === 'history') return true;
                 return ds === status || d.status === status;
@@ -947,7 +947,7 @@ function loadDeliveries() {
             return;
         }
 
-        // Flat per-item rendering — one row per delivery record
+        // Flat per-item rendering â€” one row per delivery record
         var out = '';
         rows.forEach(function(d) {
             var ds = getDisplayStatus(d.status);
@@ -957,7 +957,7 @@ function loadDeliveries() {
                 'Pending Resolution':   'sbadge-pending-resolution',
                 'Awaiting Replacement': 'sbadge-awaiting-replacement',
                 'Verified':             'sbadge-approved',
-                'Adjusted — Verified':  'sbadge-adjusted',
+                'Adjusted â€” Verified':  'sbadge-adjusted',
                 'Returned to Staff':    'sbadge-pending-resolution',
                 'Returned to Supplier': 'sbadge-returned-to-supplier',
                 'Rejected':             'sbadge-rejected',
@@ -965,9 +965,9 @@ function loadDeliveries() {
             }[ds] || 'sbadge-pending';
             var badge = '<span class="sbadge ' + badgeCls + '">' + h(ds) + '</span>';
 
-            var verDate = d.verification_date ? dtFull(d.verification_date) : '<span style="color:#aaa;">—</span>';
+            var verDate = d.verification_date ? dtFull(d.verification_date) : '<span style="color:#aaa;">â€”</span>';
 
-            // Action buttons — vertically stacked
+            // Action buttons â€” vertically stacked
             var acts = '';
             if (ds === 'Pending') {
                 acts += '<button class="btn-act btn-approve" onclick=\'openSingleApr(' + d.id + ',' + JSON.stringify(d) + ')\'><i class="fas fa-check-double"></i> Verify</button>';
@@ -978,14 +978,14 @@ function loadDeliveries() {
             out += '<tr>'
                 + '<td><code style="font-size:11px;font-weight:700;">' + h(d.delivery_ref || ('#' + d.id)) + '</code></td>'
                 + '<td style="white-space:nowrap;font-size:12px;">' + dt(d.delivery_date) + '</td>'
-                + '<td><code style="font-size:11px;">' + h(d.batch_id || '—') + '</code></td>'
-                + '<td style="font-size:12px;">' + h(d.dr_number || '—') + '</td>'
-                + '<td style="font-size:12px;"><strong>' + h(d.supplier_name || '—') + '</strong></td>'
-                + '<td style="font-size:12px;"><strong>' + h(d.product_name || '—') + '</strong></td>'
-                + '<td style="font-size:12px;">' + h(d.category || '—') + '</td>'
+                + '<td><code style="font-size:11px;">' + h(d.batch_id || 'â€”') + '</code></td>'
+                + '<td style="font-size:12px;">' + h(d.dr_number || 'â€”') + '</td>'
+                + '<td style="font-size:12px;"><strong>' + h(d.supplier_name || 'â€”') + '</strong></td>'
+                + '<td style="font-size:12px;"><strong>' + h(d.product_name || 'â€”') + '</strong></td>'
+                + '<td style="font-size:12px;">' + h(d.category || 'â€”') + '</td>'
                 + '<td style="text-align:center;font-weight:700;">' + parseFloat(d.quantity_delivered||0).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2}) + '</td>'
                 + '<td style="font-size:12px;">' + h(d.unit || 'pcs') + '</td>'
-                + '<td style="font-size:12px;">' + h(d.encoded_by_name || '—') + '</td>'
+                + '<td style="font-size:12px;">' + h(d.encoded_by_name || 'â€”') + '</td>'
                 + '<td>' + badge + '</td>'
                 + '<td style="font-size:11px;color:#64748b;">' + verDate + '</td>'
                 + '<td style="font-size:11px;color:#64748b;max-width:120px;">' + h(d.remarks || '') + '</td>'
@@ -1030,18 +1030,18 @@ function openSingleDtl(id) {
         if (!res.success || !res.data) { toast('Could not load detail.', 'error'); return; }
         var d = res.data;
         var dtlHtml = '<div class="drow"><div class="dlbl">Delivery ID / Ref</div><div class="dval"><code>' + h(d.delivery_ref || '') + '</code></div></div>'
-            + '<div class="drow"><div class="dlbl">Batch ID</div><div class="dval"><code>' + h(d.batch_id || '—') + '</code></div></div>'
-            + '<div class="drow"><div class="dlbl">DR / Invoice No.</div><div class="dval">' + h(d.dr_number || '—') + '</div></div>'
+            + '<div class="drow"><div class="dlbl">Batch ID</div><div class="dval"><code>' + h(d.batch_id || 'â€”') + '</code></div></div>'
+            + '<div class="drow"><div class="dlbl">DR / Invoice No.</div><div class="dval">' + h(d.dr_number || 'â€”') + '</div></div>'
             + '<div class="drow"><div class="dlbl">Supplier</div><div class="dval">' + h(d.supplier_name || d.supplier || '') + '</div></div>'
             + '<div class="drow"><div class="dlbl">Item Name</div><div class="dval"><strong>' + h(d.product_name || d.product || '') + '</strong></div></div>'
-            + '<div class="drow"><div class="dlbl">Category</div><div class="dval">' + h(d.category || '—') + '</div></div>'
+            + '<div class="drow"><div class="dlbl">Category</div><div class="dval">' + h(d.category || 'â€”') + '</div></div>'
             + '<div class="drow"><div class="dlbl">Delivery Date</div><div class="dval">' + dt(d.delivery_date) + '</div></div>'
             + '<div class="drow"><div class="dlbl">Qty Delivered</div><div class="dval"><strong>' + parseFloat(d.quantity_delivered||0).toLocaleString() + ' ' + h(d.unit||'pcs') + '</strong></div></div>'
-            + '<div class="drow"><div class="dlbl">Staff Receiver</div><div class="dval">' + h(d.encoded_by_name || '—') + '</div></div>'
+            + '<div class="drow"><div class="dlbl">Staff Receiver</div><div class="dval">' + h(d.encoded_by_name || 'â€”') + '</div></div>'
             + '<div class="drow"><div class="dlbl">Status</div><div class="dval">' + h(d.display_status || d.status) + '</div></div>'
-            + '<div class="drow"><div class="dlbl">Verification Date</div><div class="dval">' + (d.verification_date ? dtFull(d.verification_date) : '—') + '</div></div>'
-            + '<div class="drow"><div class="dlbl">Manager Notes</div><div class="dval">' + h(d.manager_notes || d.manager_reason || '—') + '</div></div>'
-            + '<div class="drow"><div class="dlbl">Remarks</div><div class="dval">' + h(d.remarks || '—') + '</div></div>';
+            + '<div class="drow"><div class="dlbl">Verification Date</div><div class="dval">' + (d.verification_date ? dtFull(d.verification_date) : 'â€”') + '</div></div>'
+            + '<div class="drow"><div class="dlbl">Manager Notes</div><div class="dval">' + h(d.manager_notes || d.manager_reason || 'â€”') + '</div></div>'
+            + '<div class="drow"><div class="dlbl">Remarks</div><div class="dval">' + h(d.remarks || 'â€”') + '</div></div>';
         document.getElementById('dtl-body').innerHTML = dtlHtml;
         openM('dtlModal');
     });
@@ -1049,7 +1049,7 @@ function openSingleDtl(id) {
 
 // dtFull helper for datetime display
 function dtFull(s) {
-    if (!s) return '—';
+    if (!s) return 'â€”';
     var d = new Date(s.replace(' ','T'));
     if (isNaN(d.getTime())) return s;
     return d.toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'})
@@ -1058,7 +1058,7 @@ function dtFull(s) {
 
 
 
-// ── BATCH OPERATION HANDLERS ───────────────────────────────────────────────────
+// â”€â”€ BATCH OPERATION HANDLERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openAprBatch(batchId) {
     document.getElementById('apr-batch-id').value = batchId;
     document.getElementById('apr-batch-rmk').value = '';
@@ -1172,7 +1172,7 @@ function doAdjustBatch() {
     });
 }
 
-// ── APPROVE ───────────────────────────────────────────────────────────────────
+// â”€â”€ APPROVE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openApr(id, ref, prod, qty, sup, dtype) {
     CID = id;
     document.getElementById('apr-ref').value  = ref;
@@ -1204,7 +1204,7 @@ function doApprove() {
     });
 }
 
-// ── FLAG / REJECT (single-item) ──────────────────────────────────────────────
+// â”€â”€ FLAG / REJECT (single-item) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function doFlag() {
     var id = window._flagId;
     if (!id) { toast('No delivery selected.', 'error'); return; }
@@ -1241,7 +1241,7 @@ function doFlag() {
     });
 }
 
-// ── REJECT ────────────────────────────────────────────────────────────────────
+// â”€â”€ REJECT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openRej(id, ref, prod, qty) {
     CID = id;
     document.getElementById('rej-ref').value  = ref;
@@ -1257,7 +1257,7 @@ function doReject() {
     .then(function(r){return r.json();}).then(function(res){closeM('rejModal');toast(res.message,res.success?'success':'error');if(res.success)loadDeliveries();});
 }
 
-// ── RESOLVE DISCREPANCY ───────────────────────────────────────────────────────
+// â”€â”€ RESOLVE DISCREPANCY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function selectRes(val) {
     _selRes = val;
     document.querySelectorAll('.res-opt').forEach(function(el) { el.classList.remove('selected'); });
@@ -1270,8 +1270,8 @@ function openResolve(id, ref, prod, qty, remarks, mgrNote) {
     document.getElementById('res-ref').value     = ref;
     document.getElementById('res-prod').value    = prod;
     document.getElementById('res-qty').value     = qty;
-    document.getElementById('res-remarks').value = remarks || '—';
-    document.getElementById('res-notes').value   = mgrNote || '—';
+    document.getElementById('res-remarks').value = remarks || 'â€”';
+    document.getElementById('res-notes').value   = mgrNote || 'â€”';
     document.getElementById('res-note').value    = '';
     document.getElementById('res-adj-qty').value = '';
     document.getElementById('adj-qty-wrap').style.display = 'none';
@@ -1292,11 +1292,11 @@ function doResolve() {
     .then(function(r){return r.json();}).then(function(res){closeM('resolveModal');toast(res.message,res.success?'success':'error');if(res.success)loadDeliveries();});
 }
 
-// ── ADD STAFF REMARKS ─────────────────────────────────────────────────────────
+// â”€â”€ ADD STAFF REMARKS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openRemarks(id, ref, mgrNote) {
     CID = id;
     document.getElementById('rmk-ref').value     = ref;
-    document.getElementById('rmk-mgrnote').value = mgrNote || '—';
+    document.getElementById('rmk-mgrnote').value = mgrNote || 'â€”';
     document.getElementById('rmk-text').value    = '';
     openM('remarksModal');
 }
@@ -1307,7 +1307,7 @@ function doAddRemarks() {
     .then(function(r){return r.json();}).then(function(res){closeM('remarksModal');toast(res.message,res.success?'success':'error');if(res.success)loadDeliveries();});
 }
 
-// ── REPLACEMENT RECEIVED ──────────────────────────────────────────────────────
+// â”€â”€ REPLACEMENT RECEIVED â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openReplReceived(id, ref, prod, qty) {
     CID = id;
     document.getElementById('rr-ref').value  = ref;
@@ -1321,7 +1321,7 @@ function doReplReceived() {
     .then(function(r){return r.json();}).then(function(res){closeM('replRecvModal');toast(res.message,res.success?'success':'error');if(res.success)loadDeliveries();});
 }
 
-// ── ADJUST ────────────────────────────────────────────────────────────────────
+// â”€â”€ ADJUST â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openAdj(id, ref, prod, qty, sup, rmk) {
     CID = id;
     document.getElementById('adj-ref').value  = ref;
@@ -1341,7 +1341,7 @@ function doAdjust() {
     .then(function(r){return r.json();}).then(function(res){closeM('adjModal');toast(res.message,res.success?'success':'error');if(res.success)loadDeliveries();});
 }
 
-// ── DETAIL VIEW ───────────────────────────────────────────────────────────────
+// â”€â”€ DETAIL VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openDtl(id) {
     document.getElementById('dtl-body').innerHTML = '<div style="text-align:center;padding:32px;color:#6c757d;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
     openM('dtlModal');
@@ -1355,20 +1355,20 @@ function openDtl(id) {
         }
         var isFuel = (d.delivery_type === 'fuel');
         var typeBadge = isFuel
-            ? '<span style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:700;">⛽ Fuel</span>'
-            : '<span style="background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:700;">📦 Merchandise</span>';
+            ? '<span style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:700;">â›½ Fuel</span>'
+            : '<span style="background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:700;">ðŸ“¦ Merchandise</span>';
         html += dr('Delivery ID','<span class="del-ref">'+h(d.delivery_ref)+'</span>')
             + dr('Type', typeBadge)
-            + dr('Supplier','<strong>'+h(d.supplier_name||'—')+'</strong>')
-            + dr('Product / Fuel',h(d.product_name||'—'))
+            + dr('Supplier','<strong>'+h(d.supplier_name||'â€”')+'</strong>')
+            + dr('Product / Fuel',h(d.product_name||'â€”'))
             + dr('Qty Delivered','<strong style="color:#155724;">'+parseFloat(d.quantity_delivered||0).toLocaleString()+'</strong> '+h(d.unit||''))
             + dr('Date',dt(d.delivery_date))
-            + dr('DR Number',h(d.dr_number||'—'))
-            + dr('Encoded By',h(d.encoded_by_name||'—'))
+            + dr('DR Number',h(d.dr_number||'â€”'))
+            + dr('Encoded By',h(d.encoded_by_name||'â€”'))
             + dr('Status','<span class="sbadge sbadge-'+ds.toLowerCase().replace(/ /g,'-')+'">'+h(ds)+'</span>')
-            + dr('Staff Remarks',h(d.remarks||'—'))
-            + dr('Manager Notes',h(d.manager_reason||d.admin_notes||'—'))
-            + dr('Manager',h(d.manager_name||'—'))
+            + dr('Staff Remarks',h(d.remarks||'â€”'))
+            + dr('Manager Notes',h(d.manager_reason||d.admin_notes||'â€”'))
+            + dr('Manager',h(d.manager_name||'â€”'))
             + dr('Action At',dt(d.manager_action_at));
         if (d.resolution_action) html += dr('Resolution',h(d.resolution_action));
         document.getElementById('dtl-body').innerHTML = html;
@@ -1396,7 +1396,7 @@ function openBatchDtl(batchId) {
               + '<td style="padding:8px;font-weight:600;">' + h(item.product_name) + '</td>'
               + '<td style="padding:8px;text-align:right;font-weight:700;">' + parseFloat(item.quantity_delivered).toLocaleString() + ' ' + h(item.unit || 'pcs') + '</td>'
               + '<td style="padding:8px;"><span class="sbadge sbadge-' + itemDs.toLowerCase().replace(/ /g,'-') + '">' + h(itemDs) + '</span></td>'
-              + '<td style="padding:8px;color:#64748b;">' + h(item.remarks || '—') + '</td>'
+              + '<td style="padding:8px;color:#64748b;">' + h(item.remarks || 'â€”') + '</td>'
               + '</tr>';
     });
     html += '</tbody></table>';
@@ -1404,7 +1404,7 @@ function openBatchDtl(batchId) {
     openM('dtlModal');
 }
 
-// ── EXPORT ────────────────────────────────────────────────────────────────────
+// â”€â”€ EXPORT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function exportExcel() {
     var s=document.getElementById('f-status').value, sup=document.getElementById('f-supplier').value;
     var st=document.getElementById('f-start').value, en=document.getElementById('f-end').value;

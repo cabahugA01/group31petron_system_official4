@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'admin_inventory_fuel';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -7,7 +7,7 @@ $me         = current_user();
 $role       = role_key($me['role'] ?? '');
 $station_id = (int)user_station_id();
 
-// ── Module gate ───────────────────────────────────────────────
+// â”€â”€ Module gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (!in_array($role, ['superadmin', 'developer']) && !is_module_enabled('inventory')) {
     render_module_disabled_page('Inventory');
 }
@@ -16,7 +16,7 @@ if (!in_array($role, ['admin','superadmin'])) { header('Location: dashboard.php'
 if ($station_id <= 0 && $role === 'admin') { render_no_station_page('admin_dashboard.php'); }
 $can_correct_fuel = in_array($role, ['superadmin'], true);
 
-// ── AJAX Handler for Unified Recent Activity ──────────────────────────────
+// â”€â”€ AJAX Handler for Unified Recent Activity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
     header('Content-Type: application/json');
     $fuel_type = trim($_GET['fuel_type'] ?? '');
@@ -93,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_
             
             if (function_exists('log_activity')) {
                 log_activity($pdo, $me['id'], 'Admin Edit Fuel Level',
-                    "Fuel ID $fid: {$oldL}L → {$newL}L. Note: $note");
+                    "Fuel ID $fid: {$oldL}L â†’ {$newL}L. Note: $note");
             }
             $_SESSION['ok'] = 'Fuel level updated successfully.';
         } catch (Exception $e) { $_SESSION['err'] = $e->getMessage(); }
@@ -103,7 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_
 
 $TANK_CONFIG_17 = get_tank_config();
 
-// ── DB lookups ──────────────────────────────────────────────────────
+// â”€â”€ DB lookups â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $fi_lookup = [];
 try {
     $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, COALESCE(ugt_no, '') AS ugt_no FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)");
@@ -186,7 +186,7 @@ if (!function_exists('get_canonical_fuel_name')) {
     }
 }
 
-// ── Build 7 rows ──────────────────────────────────────────────────
+// â”€â”€ Build 7 rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $rows = [];
 foreach ($TANK_CONFIG_17 as $tc) {
     $ft_key = strtolower(trim($tc['fuel_type']));
@@ -331,19 +331,19 @@ $total_low_fuel_tanks = count(array_filter($rows, fn($r) => $r['status'] === 'Lo
 $total_critical_fuel_tanks = count(array_filter($rows, fn($r) => in_array($r['status'], ['Critical','Out of Stock'])));
 $total_fuel_value = array_sum(array_column($rows, 'value'));
 
-// ── Active Tab ────────────────────────────────────────────────
+// â”€â”€ Active Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $active_tab = trim($_GET['tab'] ?? 'overview');
 if (!in_array($active_tab, ['overview', 'deliveries', 'adjustments', 'alerts'], true)) {
     $active_tab = 'overview';
 }
 
-// ── Fetch Fuel Deliveries History ─────────────────────────────
+// â”€â”€ Fetch Fuel Deliveries History â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $fuel_deliveries_list = [];
 try {
     $stmt = $pdo->prepare("
         SELECT fd.id,
                CONCAT('DEL-', LPAD(fd.id, 5, '0')) AS delivery_no,
-               COALESCE(NULLIF(fd.invoice_no,''), fd.po_number, '—') AS po_number,
+               COALESCE(NULLIF(fd.invoice_no,''), fd.po_number, 'â€”') AS po_number,
                COALESCE(NULLIF(fd.supplier,''), 'Petron Corporation') AS supplier,
                COALESCE(fd.fuel_type, 'Diesel') AS fuel_type,
                fd.delivery_liters AS liters,
@@ -361,7 +361,7 @@ try {
     $fuel_deliveries_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── Fetch Fuel Adjustment History ──────────────────────────────
+// â”€â”€ Fetch Fuel Adjustment History â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $fuel_adjustments_list = [];
 try {
     $stmt = $pdo->prepare("
@@ -402,13 +402,13 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 .int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
 .int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
 
-/* ── Tab Navigation ── */
+/* â”€â”€ Tab Navigation â”€â”€ */
 .tab-nav { display:flex; gap:0; border-bottom:2px solid #e2e8f0; margin-bottom:22px; }
 .tab-btn { padding:10px 24px; background:none; border:none; border-bottom:3px solid transparent; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; margin-bottom:-2px; transition:all .15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
 .tab-btn.active { color:#002F70; border-bottom-color:#002F70; }
 .tab-btn:hover { color:#002F70 !important; background:#f8fafc !important; }
 
-/* ── Modal Tab Button Overrides ── */
+/* â”€â”€ Modal Tab Button Overrides â”€â”€ */
 .modal-tab-btn {
     background: none !important;
     background-color: transparent !important;
@@ -478,12 +478,12 @@ body, html { overflow-x:hidden !important; }
     background: white !important;
     border: 1px solid transparent;
 }
-.flt-btn-excel { color: #1d6f42 !important; border-color: #1d6f42 !important; }
-.flt-btn-excel:hover { background: #1d6f42 !important; color: #fff !important; }
-.flt-btn-csv { color: #002F70 !important; border-color: #002F70 !important; }
-.flt-btn-csv:hover { background: #002F70 !important; color: #fff !important; }
-.flt-btn-pdf { color: #dc2626 !important; border-color: #dc2626 !important; }
-.flt-btn-pdf:hover { background: #dc2626 !important; color: #fff !important; }
+.flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-csv { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-csv:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 
 .int-btn-outline {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -567,7 +567,7 @@ body, html { overflow-x:hidden !important; }
   </div>
 </div>
 
-<!-- ══ Dashboard Cards (5 Cards) ══ -->
+<!-- â•â• Dashboard Cards (5 Cards) â•â• -->
 <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-bottom:24px;">
     <!-- Card 1: Total Fuel Available -->
     <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
@@ -605,13 +605,13 @@ body, html { overflow-x:hidden !important; }
     <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
         <div>
             <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Inventory Value</div>
-            <div style="font-size:20px; font-weight:800; color:#16a34a; margin-top:4px;">₱<?= number_format($total_fuel_value, 2) ?></div>
+            <div style="font-size:20px; font-weight:800; color:#16a34a; margin-top:4px;">â‚±<?= number_format($total_fuel_value, 2) ?></div>
         </div>
         <div style="background:#dcfce7; color:#16a34a; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-coins"></i></div>
     </div>
 </div>
 
-<!-- ══ Tab Navigation (4 Tabs) ══ -->
+<!-- â•â• Tab Navigation (4 Tabs) â•â• -->
 <div class="tab-nav" style="overflow-x:auto; flex-wrap:nowrap; white-space:nowrap; padding-bottom:2px;">
     <a href="admin_inventory_fuel.php?tab=overview" class="tab-btn <?= $active_tab === 'overview' ? 'active' : '' ?>">
         <i class="fas fa-gas-pump"></i> Fuel Inventory Overview
@@ -627,7 +627,7 @@ body, html { overflow-x:hidden !important; }
     </a>
 </div>
 
-<!-- ══ TAB 1: FUEL INVENTORY OVERVIEW ══ -->
+<!-- â•â• TAB 1: FUEL INVENTORY OVERVIEW â•â• -->
 <?php if ($active_tab === 'overview'): ?>
 <!-- Search & Filters -->
 <div class="inv-filter-bar" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:20px; background:#fff; padding:12px 16px; border:1px solid #e2e8f0; border-radius:8px;">
@@ -676,7 +676,7 @@ body, html { overflow-x:hidden !important; }
         <tr><td colspan="10" style="text-align:center; padding:32px; color:#6c757d;">No fuel inventory data available.</td></tr>
       <?php else: ?>
         <?php foreach ($rows as $r):
-            $ts_str  = $r['timestamp'] ? date('M d, Y h:i A', strtotime($r['timestamp'])) : '—';
+            $ts_str  = $r['timestamp'] ? date('M d, Y h:i A', strtotime($r['timestamp'])) : 'â€”';
             $ugt_no = 'UGT-' . str_pad($r['tanker_num'], 2, '0', STR_PAD_LEFT);
             $rem_cap = max(0, $r['capacity'] - $r['current_level']);
             $r_json = htmlspecialchars(json_encode(array_merge($r, ['ugt_no' => $ugt_no, 'available_space' => $rem_cap])), ENT_QUOTES);
@@ -710,7 +710,7 @@ body, html { overflow-x:hidden !important; }
 </div>
 <?php endif; ?>
 
-<!-- ══ TAB 2: FUEL DELIVERIES ══ -->
+<!-- â•â• TAB 2: FUEL DELIVERIES â•â• -->
 <?php if ($active_tab === 'deliveries'): ?>
 <div style="background:#fff; border:1px solid #e2e8f0; border-radius:11px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.05); margin-bottom:20px;">
   <div style="padding:14px 18px; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; background:#f8fafc;">
@@ -741,7 +741,7 @@ body, html { overflow-x:hidden !important; }
       <?php else: ?>
         <?php foreach ($fuel_deliveries_list as $d):
             $d_no = $d['delivery_no'];
-            $d_date = $d['date'] ? date('M d, Y g:i A', strtotime($d['date'])) : '—';
+            $d_date = $d['date'] ? date('M d, Y g:i A', strtotime($d['date'])) : 'â€”';
             $d_status = strtolower($d['status']);
             $d_badge = ($d_status === 'verified' || $d_status === 'completed') ? '<span class="status-pill" style="background:#dcfce7;color:#15803d;border:1px solid #a7f3d0;">Verified</span>' : '<span class="status-pill" style="background:#fef3c7;color:#b45309;border:1px solid #fde68a;">'.ucfirst($d['status']).'</span>';
             $d_json = htmlspecialchars(json_encode([
@@ -750,7 +750,7 @@ body, html { overflow-x:hidden !important; }
                 'supplier'    => $d['supplier'],
                 'fuel_type'   => $d['fuel_type'],
                 'liters'      => number_format((float)$d['liters'], 2) . ' L',
-                'cost'        => '₱' . number_format((float)$d['unit_cost'], 2),
+                'cost'        => 'â‚±' . number_format((float)$d['unit_cost'], 2),
                 'date'        => $d_date,
                 'status'      => ucfirst($d['status']),
                 'received_by' => $d['received_by_name'],
@@ -763,7 +763,7 @@ body, html { overflow-x:hidden !important; }
           <td style="font-weight:600;"><?= htmlspecialchars($d['supplier']) ?></td>
           <td style="font-weight:700; color:#334155;"><?= htmlspecialchars(get_canonical_fuel_name($d['fuel_type'])) ?></td>
           <td style="text-align:right; font-weight:700; color:#16a34a;"><?= number_format((float)$d['liters'], 2) ?> L</td>
-          <td style="text-align:right; font-weight:600; color:#002F70;">₱<?= number_format((float)$d['unit_cost'], 2) ?></td>
+          <td style="text-align:right; font-weight:600; color:#002F70;">â‚±<?= number_format((float)$d['unit_cost'], 2) ?></td>
           <td style="color:#64748b; font-size:11px;"><?= $d_date ?></td>
           <td style="font-size:11px; color:#334155;"><?= htmlspecialchars($d['received_by_name']) ?></td>
           <td style="text-align:center;"><?= $d_badge ?></td>
@@ -782,7 +782,7 @@ body, html { overflow-x:hidden !important; }
 </div>
 <?php endif; ?>
 
-<!-- ══ TAB 3: FUEL ADJUSTMENT HISTORY ══ -->
+<!-- â•â• TAB 3: FUEL ADJUSTMENT HISTORY â•â• -->
 <?php if ($active_tab === 'adjustments'): ?>
 <div style="background:#fff; border:1px solid #e2e8f0; border-radius:11px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.05); margin-bottom:20px;">
   <div style="padding:14px 18px; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; background:#f8fafc;">
@@ -813,7 +813,7 @@ body, html { overflow-x:hidden !important; }
         <tr><td colspan="11" style="text-align:center; padding:32px; color:#6c757d;"><i class="fas fa-info-circle" style="font-size:24px; display:block; margin-bottom:8px;"></i>No fuel adjustment requests found.</td></tr>
       <?php else: ?>
         <?php foreach ($fuel_adjustments_list as $adj):
-            $adate = $adj['date'] ? date('M d, Y h:i A', strtotime($adj['date'])) : '—';
+            $adate = $adj['date'] ? date('M d, Y h:i A', strtotime($adj['date'])) : 'â€”';
             $var = (float)($adj['variance'] ?? 0);
             $var_color = $var > 0 ? '#16a34a' : ($var < 0 ? '#dc2626' : '#64748b');
             $st = strtolower(trim($adj['status'] ?? ''));
@@ -852,7 +852,7 @@ body, html { overflow-x:hidden !important; }
 </div>
 <?php endif; ?>
 
-<!-- ══ TAB 4: STOCK ALERTS ══ -->
+<!-- â•â• TAB 4: STOCK ALERTS â•â• -->
 <?php if ($active_tab === 'alerts'): ?>
 <div style="background:#fff; border:1px solid #e2e8f0; border-radius:11px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.05); margin-bottom:20px;">
   <div style="padding:14px 18px; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; background:#f8fafc;">
@@ -896,7 +896,7 @@ body, html { overflow-x:hidden !important; }
 </div>
 <?php endif; ?>
 
-<!-- ══ VIEW FUEL DETAILS MODAL (SUB-TABBED) ══ -->
+<!-- â•â• VIEW FUEL DETAILS MODAL (SUB-TABBED) â•â• -->
 <div class="modal-overlay" id="tankModal" style="z-index:10000;">
     <div style="background:#fff; border-radius:14px; width:96%; max-width:850px; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 24px 40px rgba(0,0,0,.18); overflow:hidden; position:relative;">
         <!-- Header -->
@@ -949,7 +949,7 @@ body, html { overflow-x:hidden !important; }
     </div>
 </div>
 
-<!-- ══ VIEW DELIVERY DETAIL MODAL ══ -->
+<!-- â•â• VIEW DELIVERY DETAIL MODAL â•â• -->
 <div class="modal-overlay" id="delDetailModal" style="z-index:10005;">
     <div style="background:#fff; border-radius:14px; width:96%; max-width:540px; box-shadow:0 24px 40px rgba(0,0,0,.22); overflow:hidden; position:relative;">
         <div style="padding:16px 22px; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; background:#f8fafc;">
@@ -996,10 +996,10 @@ function viewTankDetails(r) {
     }
 
     var ugtNoStr = r.ugt_no || ('UGT #' + (r.tanker_num || ''));
-    document.getElementById('vfmTitle').textContent = 'View Fuel Details — ' + ugtNoStr + ' (' + (r.fuel_type || '') + ')';
+    document.getElementById('vfmTitle').textContent = 'View Fuel Details â€” ' + ugtNoStr + ' (' + (r.fuel_type || '') + ')';
     
     if (document.getElementById('vfmUgtNo')) document.getElementById('vfmUgtNo').textContent = ugtNoStr;
-    if (document.getElementById('vfmFuelType')) document.getElementById('vfmFuelType').textContent = r.fuel_type || '—';
+    if (document.getElementById('vfmFuelType')) document.getElementById('vfmFuelType').textContent = r.fuel_type || 'â€”';
     if (document.getElementById('vfmCapacity')) document.getElementById('vfmCapacity').textContent = Number(r.capacity || 0).toLocaleString() + ' L';
     if (document.getElementById('vfmVolume')) document.getElementById('vfmVolume').textContent = Number(r.current_level || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
     if (document.getElementById('vfmAvailableSpace')) document.getElementById('vfmAvailableSpace').textContent = Number(r.available_space || (r.capacity - r.current_level) || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
@@ -1041,11 +1041,11 @@ function viewTankDetails(r) {
             var dHtml = '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Delivery No.</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Liters</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Cost/Liter</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Supplier</th></tr></thead><tbody>';
             data.deliveries.forEach(function(d) {
                 var dNo = d.invoice_no || ('DEL-' + String(d.id || 0).padStart(5, '0'));
-                var dDate = d.delivery_date ? new Date(d.delivery_date).toLocaleDateString() : '—';
+                var dDate = d.delivery_date ? new Date(d.delivery_date).toLocaleDateString() : 'â€”';
                 dHtml += '<tr><td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;"><code style="font-weight:700;color:#002F70;">' + esc(dNo) + '</code></td>';
                 dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;color:#64748b;">' + dDate + '</td>';
                 dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#16a34a;">' + Number(d.delivery_liters || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>';
-                dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:600;color:#002F70;">₱' + Number(d.cost_per_liter || 65.5).toFixed(2) + '</td>';
+                dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:600;color:#002F70;">â‚±' + Number(d.cost_per_liter || 65.5).toFixed(2) + '</td>';
                 dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;">' + esc(d.supplier || 'Petron Corporation') + '</td></tr>';
             });
             dHtml += '</tbody></table>';
@@ -1058,7 +1058,7 @@ function viewTankDetails(r) {
         } else {
             var aHtml = '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Previous</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">New</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Variance</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Reason</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Adjusted By</th></tr></thead><tbody>';
             data.adjustments.forEach(function(a) {
-                var aDate = a.adjustment_date ? new Date(a.adjustment_date).toLocaleString() : '—';
+                var aDate = a.adjustment_date ? new Date(a.adjustment_date).toLocaleString() : 'â€”';
                 var prev = Number(a.previous_value || 0);
                 var newVal = Number(a.new_value || 0);
                 var v = newVal - prev;
@@ -1121,12 +1121,12 @@ function printAdminFuelDetails() {
     if (!r) return;
     var ugtNoStr = r.ugt_no || ('UGT #' + (r.tanker_num || ''));
     var pw = window.open('', '_blank');
-    pw.document.write('<!DOCTYPE html><html><head><title>Fuel Details — ' + ugtNoStr + '</title>');
+    pw.document.write('<!DOCTYPE html><html><head><title>Fuel Details â€” ' + ugtNoStr + '</title>');
     pw.document.write('<style>body{font-family:Arial,sans-serif;font-size:13px;color:#222;margin:0;padding:24px;}.header{background:#002F6C;color:#fff;padding:16px 20px;border-radius:6px 6px 0 0;}.header h2{margin:0;font-size:16px;}.section{border:1px solid #e2e8f0;border-top:none;padding:16px 20px;margin-bottom:12px;}.section h4{margin:0 0 10px;color:#002F6C;font-size:11px;text-transform:uppercase;border-bottom:1px solid #e2e8f0;padding-bottom:6px;}table.info{width:100%;border-collapse:collapse;font-size:12px;}table.info td{padding:5px 0;border-bottom:1px solid #f1f5f9;}table.info td:first-child{color:#64748b;font-weight:600;width:180px;}.footer{text-align:center;font-size:10px;color:#94a3b8;margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;}</style></head><body>');
-    pw.document.write('<div class="header"><h2>Fuel Details Slip — ' + ugtNoStr + ' (' + (r.fuel_type || '') + ')</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
+    pw.document.write('<div class="header"><h2>Fuel Details Slip â€” ' + ugtNoStr + ' (' + (r.fuel_type || '') + ')</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
     pw.document.write('<div class="section"><h4>UGT & Fuel Information</h4><table class="info">');
     pw.document.write('<tr><td>UGT Tank No.:</td><td><strong>' + ugtNoStr + '</strong></td></tr>');
-    pw.document.write('<tr><td>Fuel Type:</td><td><strong>' + (r.fuel_type || '—') + '</strong></td></tr>');
+    pw.document.write('<tr><td>Fuel Type:</td><td><strong>' + (r.fuel_type || 'â€”') + '</strong></td></tr>');
     pw.document.write('<tr><td>Storage Capacity:</td><td>' + Number(r.capacity || 0).toLocaleString() + ' L</td></tr>');
     pw.document.write('<tr><td>Current Volume:</td><td><strong style="color:#002F70;">' + Number(r.current_level || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</strong></td></tr>');
     pw.document.write('<tr><td>Available Space:</td><td><strong style="color:#16a34a;">' + Number(r.available_space || (r.capacity - r.current_level) || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</strong></td></tr>');
@@ -1265,7 +1265,7 @@ document.querySelectorAll('.modal-overlay').forEach(function(modal) {
 });
 </script>
 
-<!-- ══ ADMIN APPROVE CONFIRMATION MODAL ══ -->
+<!-- â•â• ADMIN APPROVE CONFIRMATION MODAL â•â• -->
 <div class="modal-overlay" id="adminApproveModal" style="z-index:10005; display:none; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;">
     <div style="background:#fff; border-radius:14px; width:96%; max-width:480px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 24px 40px rgba(0,0,0,.25); position:relative; z-index:10006; margin:auto;">
         <div style="padding:16px 20px; border-bottom:1px solid #e2e8f0; background:#f8fafc; display:flex; align-items:center; justify-content:space-between;">
@@ -1288,7 +1288,7 @@ document.querySelectorAll('.modal-overlay').forEach(function(modal) {
     </div>
 </div>
 
-<!-- ══ ADMIN REJECT CONFIRMATION MODAL ══ -->
+<!-- â•â• ADMIN REJECT CONFIRMATION MODAL â•â• -->
 <div class="modal-overlay" id="adminRejectModal" style="z-index:10005; display:none; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;">
     <div style="background:#fff; border-radius:14px; width:96%; max-width:480px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 24px 40px rgba(0,0,0,.25); position:relative; z-index:10006; margin:auto;">
         <div style="padding:16px 20px; border-bottom:1px solid #e2e8f0; background:#f8fafc; display:flex; align-items:center; justify-content:space-between;">

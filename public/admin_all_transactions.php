@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'admin_all_transactions';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -22,7 +22,7 @@ try {
     $station_location = (string)($sl->fetchColumn() ?? '');
 } catch(Exception $e) { $station_location = ''; }
 
-// ── Column detection ──────────────────────────────────────────────────────────
+// â”€â”€ Column detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function aat_cols(PDO $p, string $t): array {
     try { $r=[]; foreach($p->query("SHOW COLUMNS FROM `$t`")->fetchAll(PDO::FETCH_ASSOC) as $c) $r[strtolower($c['Field'])]=true; return $r; }
     catch(Exception $e){ return []; }
@@ -43,7 +43,7 @@ $void_reason_col = aat_has($mt_cols,'void_reason') ? 'mt.void_reason' : 'NULL';
 $adj_reason_col = aat_has($mt_cols,'adjustment_reason') ? 'mt.adjustment_reason' : 'NULL';
 $mgr_remarks_col = aat_has($mt_cols,'manager_remarks') ? 'mt.manager_remarks' : 'NULL';
 
-// ── Filters ───────────────────────────────────────────────────────────────────
+// â”€â”€ Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // DEFAULT: Show last 365 days (1 year) to ensure we catch all historical staff transactions
 $date_from  = trim($_GET['date_from']       ?? date('Y-m-d', strtotime('-365 days')));
 $date_to    = trim($_GET['date_to']         ?? date('Y-m-d'));
@@ -54,7 +54,7 @@ $f_pay      = trim($_GET['payment_method']  ?? '');
 $f_status   = trim($_GET['status']          ?? '');
 $search     = trim($_GET['search']          ?? '');
 
-// ── Fetch staff list ──────────────────────────────────────────────────────────
+// â”€â”€ Fetch staff list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $staff_list = [];
 try {
     $s = $pdo->prepare("SELECT DISTINCT u.id, COALESCE(NULLIF(TRIM(CONCAT(u.first_name,' ',u.last_name)),' '),u.username,'Unknown') as name
@@ -63,7 +63,7 @@ try {
     $staff_list = $s->fetchAll(PDO::FETCH_ASSOC);
 } catch(Exception $e){}
 
-// ── Build WHERE clause ────────────────────────────────────────────────────────
+// â”€â”€ Build WHERE clause â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // IMPORTANT: Show ALL transactions by default - only filter by date if user provides specific dates
 $where  = "WHERE mt.station_id=?";
 $params = [$station_id];
@@ -77,7 +77,7 @@ if($date_from !== '' && $date_to !== '') {
 
 if($search!=='') {
     // Search OR No. (derived from txn_db_id), transaction_id, customer_name, and vehicle_plate
-    // OR No. format: OR-YYYY-XXXXXX — extract numeric part for matching
+    // OR No. format: OR-YYYY-XXXXXX â€” extract numeric part for matching
     $orSearchNum = null;
     if(preg_match('/OR-\d{4}-(\d+)/i', $search, $orMatch)) {
         $orSearchNum = (int)$orMatch[1]; // the zero-padded number
@@ -110,7 +110,7 @@ if($f_status==='Completed') {
     $where.=" AND ($mt_stat='Adjusted')";
 }
 
-// ── KPIs — always reflect the active filter (same WHERE as the table) ──────────
+// â”€â”€ KPIs â€” always reflect the active filter (same WHERE as the table) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $kpi_txn_count=0; $kpi_total_sales=0.0; $kpi_merch_count=0; $kpi_jo_count=0;
 try {
     $kpi_sql = "SELECT
@@ -130,10 +130,10 @@ try {
     $kpi_jo_count    = (int)($kr['jo_cnt'] ?? 0);
 } catch(Exception $e){}
 
-// ── Items Format Helper ───────────────────────────────────────────────────────
+// â”€â”€ Items Format Helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function format_transaction_items($raw_items_str, $htmlMode = true) {
     $raw = trim($raw_items_str ?? '');
-    if ($raw === '' || $raw === '—') return '—';
+    if ($raw === '' || $raw === 'â€”') return 'â€”';
     // Determine the unit label based on product name
     $resolveUnit = function(string $nameLower, float $qty): string {
         if (strpos($nameLower, 'refrigerant') !== false || strpos($nameLower, 'r134a') !== false)
@@ -176,13 +176,13 @@ function format_transaction_items($raw_items_str, $htmlMode = true) {
             }
         }
     }
-    if (empty($formatted)) return '—';
+    if (empty($formatted)) return 'â€”';
     return implode($htmlMode ? '<br><br>' : '; ', $formatted);
 }
 
-// ── Fetch rows ────────────────────────────────────────────────────────────────
+// â”€â”€ Fetch rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $rows=[];
-$veh_col = "COALESCE(NULLIF(TRIM(mt.job_order_vehicle_plate),''), NULLIF(TRIM(jo.vehicle_plate),''), '—')";
+$veh_col = "COALESCE(NULLIF(TRIM(mt.job_order_vehicle_plate),''), NULLIF(TRIM(jo.vehicle_plate),''), 'â€”')";
 $staff_col = "COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),' '),u.username,'Unknown')";
 try {
     $s=$pdo->prepare("SELECT mt.id as txn_db_id, mt.transaction_id, COALESCE(NULLIF(TRIM(mt.customer_name),''),'Walk-in') as customer,
@@ -223,7 +223,7 @@ try {
     $rows=$s->fetchAll(PDO::FETCH_ASSOC);
 } catch(Exception $e){}
 
-// ── Export ────────────────────────────────────────────────────────────────────
+// â”€â”€ Export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $export=$_GET['export']??'';
 if(in_array($export,['excel','csv'])) {
     $fn='all_transactions_'.date('Ymd_His');
@@ -251,7 +251,7 @@ if(in_array($export,['excel','csv'])) {
         $exportItems = format_transaction_items($r['items'], false);
         
         $veh = trim($r['vehicle'] ?? '');
-        $exportVeh = ($veh === '' || $veh === '—') ? 'N/A' : $veh;
+        $exportVeh = ($veh === '' || $veh === 'â€”') ? 'N/A' : $veh;
         
         fputcsv($out,[
             $or_no,
@@ -259,9 +259,9 @@ if(in_array($export,['excel','csv'])) {
             $r['customer'],
             $tLabel,
             $exportItems,
-            $r['service_type'] ?: '—',
+            $r['service_type'] ?: 'â€”',
             $exportVeh,
-            '₱'.number_format($r['amount'],2),
+            'â‚±'.number_format($r['amount'],2),
             $r['payment_method'],
             $r['shift'],
             $r['staff_name'],
@@ -288,9 +288,9 @@ html, body {
 
 .flt-btn{display:inline-flex;align-items:center;gap:6px;padding:0 16px;height:36px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap;transition:all .15s;background:white !important;border:1px solid transparent;}
 .flt-btn-reset{color:#6b7280 !important;border-color:#6b7280 !important;} .flt-btn-reset:hover{background:#6b7280 !important;color:#fff !important;}
-.flt-btn-excel{color:#1d6f42 !important;border-color:#1d6f42 !important;} .flt-btn-excel:hover{background:#1d6f42 !important;color:#fff !important;}
+.flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; } .flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .flt-btn-search{color:#00264D !important;border-color:#00264D !important;} .flt-btn-search:hover{background:#00264D !important;color:#fff !important;}
-.flt-btn-pdf{color:#dc2626 !important;border-color:#dc2626 !important;} .flt-btn-pdf:hover{background:#dc2626 !important;color:#fff !important;}
+.flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; } .flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .flt-btn-solid-primary{color:#fff !important;background:#002F70 !important;border-color:#002F70 !important;}
 .txn-kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px;}
 .txn-kpi-card{background:transparent;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;box-shadow:none;transition:transform .15s,box-shadow .15s;}
@@ -319,9 +319,9 @@ html, body {
 .modal-section-title{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:6px 12px;margin:0;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;}
 .stock-page{padding-top:0;}
 
-/* ═══════════════════════════════════════════════════════════
-   PRINT STYLES — matches admin_reports.php clean-room output
-   ═══════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   PRINT STYLES â€” matches admin_reports.php clean-room output
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 @media print {
     @page { size: A4 portrait; margin: 0.3in 0.4in; }
 
@@ -335,7 +335,7 @@ html, body {
         font-family: Arial, sans-serif !important;
     }
 
-    /* Hide EVERYTHING — only .rpt-printable is shown */
+    /* Hide EVERYTHING â€” only .rpt-printable is shown */
     body > * { display: none !important; }
     .rpt-printable { display: block !important; }
 
@@ -348,7 +348,7 @@ html, body {
         margin-bottom: 16px;
     }
 
-    /* Table — clean plain style matching sr-table */
+    /* Table â€” clean plain style matching sr-table */
     .t {
         width: 100% !important;
         border-collapse: collapse !important;
@@ -386,7 +386,7 @@ html, body {
         break-inside: avoid !important;
         page-break-inside: avoid !important;
     }
-    /* Badges — strip color, show text only */
+    /* Badges â€” strip color, show text only */
     .badge {
         background: transparent !important;
         color: #000 !important;
@@ -395,9 +395,9 @@ html, body {
         border-radius: 0 !important;
         font-weight: 700 !important;
     }
-    /* Icons inside badges and anywhere — hide completely */
+    /* Icons inside badges and anywhere â€” hide completely */
     .badge i, i.fas, i.far, i.fab { display: none !important; }
-    /* Overflow containers — no scroll */
+    /* Overflow containers â€” no scroll */
     .card { border: none !important; box-shadow: none !important; overflow: visible !important; }
     div[style*="overflow-x"] { overflow: visible !important; }
 }
@@ -405,7 +405,7 @@ html, body {
 
 <div class="stock-page">
 
-    <!-- ── Screen-only toolbar ── -->
+    <!-- â”€â”€ Screen-only toolbar â”€â”€ -->
     <div class="stock-head" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
         <div>
             <h1 class="stock-title"><i class="fas fa-list-alt"></i> All Transactions Oversight</h1>
@@ -427,7 +427,7 @@ try {
 
 <?php
 // Human-readable period label for KPI cards
-$kpi_period = date('M j, Y', strtotime($date_from)) . ' – ' . date('M j, Y', strtotime($date_to));
+$kpi_period = date('M j, Y', strtotime($date_from)) . ' â€“ ' . date('M j, Y', strtotime($date_to));
 ?>
 <!-- KPI Cards -->
 <div class="txn-kpi-grid">
@@ -509,14 +509,14 @@ $kpi_period = date('M j, Y', strtotime($date_from)) . ' – ' . date('M j, Y', s
 </form>
 
 
-<!-- ── Printable wrapper: only this div shows on @media print ── -->
+<!-- â”€â”€ Printable wrapper: only this div shows on @media print â”€â”€ -->
 <div class="rpt-printable">
 
-<!-- Centered print header — hidden on screen, shown by print CSS -->
+<!-- Centered print header â€” hidden on screen, shown by print CSS -->
 <div class="txn-print-header" style="display:none;">
     <div style="font-size:20px;font-weight:800;color:#00264D;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">ALL TRANSACTIONS OVERSIGHT</div>
     <div style="font-size:15px;font-weight:700;color:#00264D;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:8px;">TRANSACTION AUDIT REPORT</div>
-    <div style="font-size:12px;color:#64748b;margin-bottom:2px;"><?=htmlspecialchars($station_name)?><?=($station_location ? ' — ' . htmlspecialchars($station_location) : '')?></div>
+    <div style="font-size:12px;color:#64748b;margin-bottom:2px;"><?=htmlspecialchars($station_name)?><?=($station_location ? ' â€” ' . htmlspecialchars($station_location) : '')?></div>
     <div style="font-size:12px;color:#334155;"><strong>Period:</strong> <?=htmlspecialchars($kpi_period)?></div>
     <div style="font-size:11px;color:#64748b;margin-top:2px;">Printed: <?=date('F j, Y h:i A')?></div>
 </div>
@@ -570,22 +570,22 @@ $kpi_period = date('M j, Y', strtotime($date_from)) . ' – ' . date('M j, Y', s
             <td style="white-space:normal;word-wrap:break-word;" title="<?=htmlspecialchars($r['customer'])?>"><?=htmlspecialchars($r['customer'])?></td>
             <td><span class="badge <?=$tBadge?>"><i class="fas <?=$tIcon?>"></i> <?=htmlspecialchars($tLabel)?></span></td>
             <td style="font-size:11px;line-height:1.3;vertical-align:top;white-space:normal;word-wrap:break-word;"><?=format_transaction_items($r['items'])?></td>
-            <td style="font-size:11px;color:#475569;white-space:normal;word-wrap:break-word;" title="<?=htmlspecialchars($r['service_type']??'')?>"><?=htmlspecialchars(!empty(trim($r['service_type']??'')) ? $r['service_type'] : '—')?></td>
+            <td style="font-size:11px;color:#475569;white-space:normal;word-wrap:break-word;" title="<?=htmlspecialchars($r['service_type']??'')?>"><?=htmlspecialchars(!empty(trim($r['service_type']??'')) ? $r['service_type'] : 'â€”')?></td>
             <td style="font-size:11px;font-weight:600;color:#2563eb;text-align:right;white-space:normal;"><?php
                 $s_cost = (float)($r['service_fee'] ?? $r['estimated_cost'] ?? 0);
-                echo $s_cost > 0 ? '₱' . number_format($s_cost, 2) : '<span style="color:#cbd5e1;">—</span>';
+                echo $s_cost > 0 ? 'â‚±' . number_format($s_cost, 2) : '<span style="color:#cbd5e1;">â€”</span>';
             ?></td>
             <td style="font-size:11px;font-weight:600;color:#16a34a;text-align:right;white-space:normal;"><?php
                 $l_cost = (float)($r['labor_fee'] ?? $r['actual_labor_cost'] ?? $r['estimated_labor_cost'] ?? 0);
-                echo $l_cost > 0 ? '₱' . number_format($l_cost, 2) : '<span style="color:#cbd5e1;">—</span>';
+                echo $l_cost > 0 ? 'â‚±' . number_format($l_cost, 2) : '<span style="color:#cbd5e1;">â€”</span>';
             ?></td>
             <td style="font-size:11px;white-space:normal;"><?php
                 $veh = trim($r['vehicle'] ?? '');
-                if ($veh === '' || $veh === '—' || $veh === 'N/A') {
+                if ($veh === '' || $veh === 'â€”' || $veh === 'N/A') {
                     echo '<span style="color:#94a3b8;">N/A</span>';
                 } else { echo htmlspecialchars($veh); }
             ?></td>
-            <td style="font-weight:700;">₱<?=number_format($r['amount'],2)?></td>
+            <td style="font-weight:700;">â‚±<?=number_format($r['amount'],2)?></td>
             <td><?=htmlspecialchars($r['payment_method'])?></td>
             <td><?=htmlspecialchars($r['shift'])?></td>
             <td><?=htmlspecialchars($r['staff_name'])?></td>
@@ -672,13 +672,13 @@ function openTxnModal(d){
   var info = '';
   info += _mrow('OR Number','<strong>'+d.or_no+'</strong>');
   info += _mrow('Transaction ID','<strong>'+d.id+'</strong>');
-  info += _mrow('Date', d.txn_date || d.date || '—');
-  info += _mrow('Time', d.txn_time || '—');
-  info += _mrow('Shift', d.shift || '—');
-  info += _mrow('Staff Encoder', d.staff || '—');
+  info += _mrow('Date', d.txn_date || d.date || 'â€”');
+  info += _mrow('Time', d.txn_time || 'â€”');
+  info += _mrow('Shift', d.shift || 'â€”');
+  info += _mrow('Staff Encoder', d.staff || 'â€”');
   info += _mrow('Customer', d.customer || 'Walk-in');
-  info += _mrow('Transaction Type', d.type || '—');
-  info += _mrow('Status', d.status || '—');
+  info += _mrow('Transaction Type', d.type || 'â€”');
+  info += _mrow('Status', d.status || 'â€”');
   document.getElementById('modalTxnInfo').innerHTML = info;
   // Section 2: Merchandise / JO Details
   var isJO = d.type && (d.type.toLowerCase().indexOf('job') !== -1);
@@ -686,15 +686,15 @@ function openTxnModal(d){
     (isJO ? '<i class="fas fa-wrench" style="margin-right:6px;"></i>Job Order / Merchandise Details'
            : '<i class="fas fa-box" style="margin-right:6px;"></i>Merchandise Details');
   var det = '';
-  if (d.items && d.items !== '—') det += _mrow('Products', '<span style="white-space:pre-wrap;">'+d.items+'</span>');
-  if (d.service_type && d.service_type !== 'N/A' && d.service_type !== '—') det += _mrow('Service Type', d.service_type);
+  if (d.items && d.items !== 'â€”') det += _mrow('Products', '<span style="white-space:pre-wrap;">'+d.items+'</span>');
+  if (d.service_type && d.service_type !== 'N/A' && d.service_type !== 'â€”') det += _mrow('Service Type', d.service_type);
   if (d.vehicle && d.vehicle !== 'N/A') det += _mrow('Vehicle', d.vehicle);
-  if (!det) det = _mrow('Details','—');
+  if (!det) det = _mrow('Details','â€”');
   document.getElementById('modalTxnDetails').innerHTML = det;
   // Section 3: Payment
   var pay = '';
   pay += _mrow('Amount', '<strong style="color:#002F70;font-size:14px;">'+d.amount+'</strong>');
-  pay += _mrow('Payment Method', d.payment || '—');
+  pay += _mrow('Payment Method', d.payment || 'â€”');
   if (d.pstatus) pay += _mrow('Payment Status', d.pstatus);
   document.getElementById('modalTxnPayment').innerHTML = pay;
   // Section 4: Activity

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'manager_voided_transactions';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -17,7 +17,7 @@ $_SESSION['success'] = 'Voiding and transaction review are now handled inside Al
 header('Location: manager_validated_transactions.php');
 exit;
 
-// ── Ensure table exists ───────────────────────────────────────────────────────
+// â”€â”€ Ensure table exists â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 try { $pdo->exec("CREATE TABLE IF NOT EXISTS voided_transactions (
     id INT AUTO_INCREMENT PRIMARY KEY, transaction_id VARCHAR(50) NOT NULL,
     transaction_type ENUM('job_order','merchandise','combined') NOT NULL,
@@ -30,14 +30,14 @@ try { $pdo->exec("CREATE TABLE IF NOT EXISTS voided_transactions (
 try { $pdo->exec("ALTER TABLE voided_transactions ADD COLUMN IF NOT EXISTS fields_changed JSON DEFAULT NULL"); } catch(Exception $e2){}
 try { $pdo->exec("ALTER TABLE voided_transactions ADD COLUMN IF NOT EXISTS merchandise_txn_id INT DEFAULT NULL"); } catch(Exception $e2){}
 
-// ── Filters ───────────────────────────────────────────────────────────────────
+// â”€â”€ Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $date_from = trim($_GET['date_from'] ?? '');
 $date_to   = trim($_GET['date_to']   ?? '');
 $f_manager = trim($_GET['manager']   ?? '');
 $f_type    = trim($_GET['type']      ?? '');
 $search    = trim($_GET['search']    ?? '');
 
-// ── KPIs ──────────────────────────────────────────────────────────────────────
+// â”€â”€ KPIs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $kpi_total=0; $kpi_month=0; $kpi_amount=0.0;
 try {
     // KPI cards show ALL voided transactions (no date filter)
@@ -53,7 +53,7 @@ try {
     $kpi_month=(int)$s2->fetchColumn();
 } catch(Exception $e){}
 
-// ── Manager list ──────────────────────────────────────────────────────────────
+// â”€â”€ Manager list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $mgr_list=[];
 try {
     $s=$pdo->prepare("SELECT DISTINCT u.id, COALESCE(NULLIF(TRIM(CONCAT(u.first_name,' ',u.last_name)),' '),u.username,'Unknown') as name
@@ -61,7 +61,7 @@ try {
     $s->execute([$station_id]); $mgr_list=$s->fetchAll(PDO::FETCH_ASSOC);
 } catch(Exception $e){}
 
-// ── Fetch rows ────────────────────────────────────────────────────────────────
+// â”€â”€ Fetch rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $where="WHERE vt.station_id=?";
 $params=[$station_id];
 
@@ -96,7 +96,7 @@ try {
     $s->execute($params); $rows=$s->fetchAll(PDO::FETCH_ASSOC);
 } catch(Exception $e){}
 
-// ── Pre-fetch items ───────────────────────────────────────────────────────────
+// â”€â”€ Pre-fetch items â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $void_items_map = [];
 try {
     if (!empty($rows)) {
@@ -111,7 +111,7 @@ try {
     }
 } catch(Exception $e){}
 
-// ── Export ────────────────────────────────────────────────────────────────────
+// â”€â”€ Export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $export=$_GET['export']??'';
 if(in_array($export,['excel','csv'])) {
     $fn='voided_transactions_'.date('Ymd_His');
@@ -119,7 +119,7 @@ if(in_array($export,['excel','csv'])) {
     else { header('Content-Type: text/csv; charset=utf-8'); header("Content-Disposition: attachment; filename=\"{$fn}.csv\""); }
     $out=fopen('php://output','w');
     fputcsv($out,['Void ID','Transaction ID','Customer','Type','Amount','Void Reason','Voided By','Void Date']);
-    foreach($rows as $r) fputcsv($out,['VOID-'.$r['void_id'],$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['transaction_type'])),'₱'.number_format($r['amount'],2),$r['void_reason'],$r['voided_by_name'],date('M d, Y H:i',strtotime($r['void_date']))]);
+    foreach($rows as $r) fputcsv($out,['VOID-'.$r['void_id'],$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['transaction_type'])),'â‚±'.number_format($r['amount'],2),$r['void_reason'],$r['voided_by_name'],date('M d, Y H:i',strtotime($r['void_date']))]);
     fclose($out); exit;
 }
 
@@ -131,9 +131,9 @@ require_once __DIR__ . '/../partials/header.php';
 .page-head.txn-page-head .sub{font-size:13px;color:#666;margin-top:4px;font-weight:400 !important;}
 .flt-btn{display:inline-flex;align-items:center;gap:6px;padding:0 16px;height:36px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap;transition:all .15s;background:white !important;border:1px solid transparent;}
 .flt-btn-reset{color:#6b7280 !important;border-color:#6b7280 !important;} .flt-btn-reset:hover{background:#6b7280 !important;color:#fff !important;}
-.flt-btn-excel{color:#1d6f42 !important;border-color:#1d6f42 !important;} .flt-btn-excel:hover{background:#1d6f42 !important;color:#fff !important;}
+.flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; } .flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .flt-btn-search{color:#00264D !important;border-color:#00264D !important;} .flt-btn-search:hover{background:#00264D !important;color:#fff !important;}
-.flt-btn-pdf{color:#dc2626 !important;border-color:#dc2626 !important;} .flt-btn-pdf:hover{background:#dc2626 !important;color:#fff !important;}
+.flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; } .flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .flt-btn-solid-primary{color:#fff !important;background:#002F70 !important;border-color:#002F70 !important;}
 /* Tab Navigation */
 .txn-tabs{display:flex;gap:4px;margin-bottom:18px;background:#f1f5f9;border-radius:10px;padding:5px;}
@@ -190,7 +190,7 @@ require_once __DIR__ . '/../partials/header.php';
 <div class="txn-kpi-grid">
     <div class="txn-kpi-card"><div class="txn-kpi-lbl"><i class="fas fa-ban"></i> Total Voided</div><div class="txn-kpi-val"><?=number_format($kpi_total)?></div></div>
     <div class="txn-kpi-card"><div class="txn-kpi-lbl"><i class="fas fa-calendar-alt"></i> Voided This Period</div><div class="txn-kpi-val"><?=number_format($kpi_month)?></div></div>
-    <div class="txn-kpi-card red-card"><div class="txn-kpi-lbl"><i class="fas fa-peso-sign"></i> Total Voided Amount</div><div class="txn-kpi-val">₱<?=number_format($kpi_amount,2)?></div></div>
+    <div class="txn-kpi-card red-card"><div class="txn-kpi-lbl"><i class="fas fa-peso-sign"></i> Total Voided Amount</div><div class="txn-kpi-val">â‚±<?=number_format($kpi_amount,2)?></div></div>
 </div>
 
 <!-- Filters -->
@@ -215,7 +215,7 @@ require_once __DIR__ . '/../partials/header.php';
             <option value="combined"    <?=$f_type==='combined'?'selected':''?>>Combined</option>
         </select>
     </div>
-    <div><label>Search</label><input type="text" name="search" value="<?=htmlspecialchars($search)?>" class="inp" placeholder="TXN ID, Customer…"></div>
+    <div><label>Search</label><input type="text" name="search" value="<?=htmlspecialchars($search)?>" class="inp" placeholder="TXN ID, Customerâ€¦"></div>
     <div style="flex-direction:row;gap:6px;">
         <button type="submit" class="flt-btn flt-btn-solid-primary"><i class="fas fa-search"></i> Filter</button>
         <a href="manager_voided_transactions.php" class="flt-btn flt-btn-reset"><i class="fas fa-rotate-left"></i> Reset</a>
@@ -259,13 +259,13 @@ require_once __DIR__ . '/../partials/header.php';
             $fields = !empty($r['fields_changed']) ? json_decode($r['fields_changed'], true) : [];
 
             $jo_raw  = !empty($r['job_order_no']) ? $r['job_order_no'] : ($fields['job_order_no'] ?? '');
-            $jo_no   = !empty($jo_raw) ? (str_starts_with($jo_raw, 'JO-') ? htmlspecialchars($jo_raw) : 'JO-' . htmlspecialchars($jo_raw)) : '—';
-            $v_plate = !empty($r['vehicle_plate']) ? htmlspecialchars($r['vehicle_plate']) : (!empty($fields['vehicle_plate']) ? htmlspecialchars($fields['vehicle_plate']) : '—');
+            $jo_no   = !empty($jo_raw) ? (str_starts_with($jo_raw, 'JO-') ? htmlspecialchars($jo_raw) : 'JO-' . htmlspecialchars($jo_raw)) : 'â€”';
+            $v_plate = !empty($r['vehicle_plate']) ? htmlspecialchars($r['vehicle_plate']) : (!empty($fields['vehicle_plate']) ? htmlspecialchars($fields['vehicle_plate']) : 'â€”');
             $pay_raw = !empty($r['payment_method']) ? $r['payment_method'] : ($fields['payment_method'] ?? 'Cash');
             if (empty($pay_raw) || $pay_raw === 'N/A') $pay_raw = 'Cash';
             $pay_method = htmlspecialchars($pay_raw);
 
-            // Items / Service — from subquery column, then fields_changed voided_items
+            // Items / Service â€” from subquery column, then fields_changed voided_items
             $items_parts = [];
             if (!empty($fields['voided_items']) && is_array($fields['voided_items'])) {
                 foreach ($fields['voided_items'] as $vi) {
@@ -276,7 +276,7 @@ require_once __DIR__ . '/../partials/header.php';
             if (empty($items_parts) && !empty($r['item_names'])) {
                 $items_parts[] = htmlspecialchars($r['item_names']);
             }
-            $items_display = !empty($items_parts) ? implode(', ', $items_parts) : '<em style="color:#94a3b8;">—</em>';
+            $items_display = !empty($items_parts) ? implode(', ', $items_parts) : '<em style="color:#94a3b8;">â€”</em>';
 
             // Transaction type label
             if (str_contains($t,'job')) $type_label = '<span class="badge badge-orange">Job Order</span>';
@@ -291,10 +291,10 @@ require_once __DIR__ . '/../partials/header.php';
             <td><?=$v_plate?></td>
             <td><?=$type_label?></td>
             <td><?=$items_display?></td>
-            <td style="font-weight:700;color:#dc2626;">₱<?=number_format($r['amount'],2)?></td>
+            <td style="font-weight:700;color:#dc2626;">â‚±<?=number_format($r['amount'],2)?></td>
             <td><?=$pay_method?></td>
             <td style="color:#dc2626;font-style:italic;"><?=htmlspecialchars($r['void_reason'])?></td>
-            <td style="color:#94a3b8;"><?=!empty($r['manager_remarks']) ? htmlspecialchars($r['manager_remarks']) : '—'?></td>
+            <td style="color:#94a3b8;"><?=!empty($r['manager_remarks']) ? htmlspecialchars($r['manager_remarks']) : 'â€”'?></td>
             <td><?=htmlspecialchars($r['voided_by_name'])?></td>
             <td><?=date('M d, Y h:i A',strtotime($r['void_date']))?></td>
             <td>
@@ -304,13 +304,13 @@ require_once __DIR__ . '/../partials/header.php';
                     'txnId'    => $r['transaction_id'],
                     'customer' => $r['customer'] ?? 'Walk-in',
                     'type'     => ucwords(str_replace('_',' ',$r['transaction_type'])),
-                    'amount'   => '₱' . number_format($r['amount'],2),
+                    'amount'   => 'â‚±' . number_format($r['amount'],2),
                     'reason'   => $r['void_reason'],
                     'remarks'  => $r['manager_remarks'] ?? '',
                     'by'       => $r['voided_by_name'] ?? 'Unknown',
                     'date'     => date('M d, Y h:i A', strtotime($r['void_date'])),
                     'payment'  => $pay_method,
-                    'items'    => $r['item_names'] ?? '—',
+                    'items'    => $r['item_names'] ?? 'â€”',
                     'vehicle'  => $v_plate,
                     'joNo'     => $jo_no,
                     'fields_changed' => !empty($r['fields_changed']) ? json_decode($r['fields_changed'], true) : null
@@ -357,7 +357,7 @@ require_once __DIR__ . '/../partials/header.php';
 </style>
 <script>
 function openVoidModal(d){
-  var pm = d.payment || '—';
+  var pm = d.payment || 'â€”';
   var itemsHtml = '';
   
   if (d.fields_changed) {
@@ -375,8 +375,8 @@ function openVoidModal(d){
       d.fields_changed.voided_items.forEach(function(item) {
         itemsHtml += '<tr style="border-bottom: 1px solid #fecaca;">' +
           '<td style="padding: 6px 8px;"><strong>' + item.product_name + '</strong></td>' +
-          '<td style="padding: 6px 8px; color: #64748b;">' + item.quantity + ' x ₱' + Number(item.unit_price).toFixed(2) + '</td>' +
-          '<td style="padding: 6px 8px; font-weight: bold; color: #dc2626;">₱' + Number(item.subtotal).toFixed(2) + '</td>' +
+          '<td style="padding: 6px 8px; color: #64748b;">' + item.quantity + ' x â‚±' + Number(item.unit_price).toFixed(2) + '</td>' +
+          '<td style="padding: 6px 8px; font-weight: bold; color: #dc2626;">â‚±' + Number(item.subtotal).toFixed(2) + '</td>' +
           '</tr>';
       });
       itemsHtml += '</table></div>';
@@ -390,15 +390,15 @@ function openVoidModal(d){
   var rows=[
     ['Void ID',          '<strong style="color:#991b1b;">'+d.voidId+'</strong>'],
     ['Transaction ID',   '<span style="font-family:monospace;">'+d.txnId+'</span>'],
-    ['Job Order No.',    d.joNo || '—'],
+    ['Job Order No.',    d.joNo || 'â€”'],
     ['Customer',         d.customer],
-    ['Vehicle Plate',    d.vehicle || '—'],
+    ['Vehicle Plate',    d.vehicle || 'â€”'],
     ['Type',             d.type],
     ['Items / Service',  itemsHtml],
     ['Payment Method',   pm],
     ['Original Amount',  '<strong style="color:#dc2626;font-size:15px;">'+d.amount+'</strong>'],
     ['Void Reason',      d.reason],
-    ['Manager Remarks',  d.remarks || '—'],
+    ['Manager Remarks',  d.remarks || 'â€”'],
     ['Voided By',        d.by],
     ['Void Date',        d.date]
   ];

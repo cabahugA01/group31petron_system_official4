@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // Admin Fuel Reconciliation Oversight
 $page_id = 'admin_fuel_reconciliation_oversight';
 require_once __DIR__ . '/../backend/lib.php';
@@ -18,7 +18,7 @@ $msg_success = $_SESSION['success'] ?? '';
 $msg_error   = $_SESSION['error'] ?? '';
 unset($_SESSION['success'], $_SESSION['error']);
 
-// ── Filters ────────────────────────────────────────────────
+// â”€â”€ Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $date_from     = trim($_GET['date_from'] ?? date('Y-m-d', strtotime('-90 days')));
 $date_to       = trim($_GET['date_to']   ?? date('Y-m-d'));
 $filter_status = trim($_GET['status']    ?? '');
@@ -26,7 +26,7 @@ $export        = trim($_GET['export']    ?? '');
 
 $filter_station = ($role === 'superadmin') ? (int)($_GET['station'] ?? 0) : $station_id;
 
-// ── Station Name ────────────────────────────────────────────
+// â”€â”€ Station Name â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $station_name = 'All Stations';
 if ($filter_station > 0) {
     try {
@@ -36,14 +36,14 @@ if ($filter_station > 0) {
     } catch (Exception $e) {}
 }
 
-// ── Build WHERE ─────────────────────────────────────────────
+// â”€â”€ Build WHERE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $where  = ["DATE(fvr.report_date) BETWEEN ? AND ?"];
 $params = [$date_from, $date_to];
 if ($filter_station > 0) { $where[] = "fvr.station_id = ?"; $params[] = $filter_station; }
 if ($filter_status !== '') { $where[] = "LOWER(fvr.status) = ?"; $params[] = strtolower($filter_status); }
 $where_sql = implode(' AND ', $where);
 
-// ── Summary Counts ──────────────────────────────────────────
+// â”€â”€ Summary Counts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $cnt_total = $cnt_open = $cnt_invest = $cnt_resolved = 0;
 $sum_variance = 0;
 try {
@@ -63,7 +63,7 @@ try {
     $sum_variance = (float)($row['total_var']?? 0);
 } catch (Exception $e) {}
 
-// ── Fetch Variance Records ──────────────────────────────────
+// â”€â”€ Fetch Variance Records â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $records = [];
 try {
     $stmt = $pdo->prepare("SELECT fvr.*,
@@ -79,7 +79,7 @@ try {
     $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── Stations list for superadmin ────────────────────────────
+// â”€â”€ Stations list for superadmin â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $stations = [];
 if ($role === 'superadmin') {
     try {
@@ -88,19 +88,19 @@ if ($role === 'superadmin') {
     } catch (Exception $e) {}
 }
 
-// ── EXPORT ─────────────────────────────────────────────────
+// â”€â”€ EXPORT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($export === 'excel') {
     header('Content-Type: application/vnd.ms-excel; charset=utf-8');
     header('Content-Disposition: attachment; filename="reconciliation_oversight_'.date('Ymd').'.xls"');
     echo '<html><head><meta charset="UTF-8"><style>table{border-collapse:collapse}th,td{border:1px solid #ddd;padding:7px}th{background:#002F6C;color:#fff}</style></head><body>';
-    echo '<h2>Fuel Reconciliation Oversight</h2><p>Period: '.$date_from.' – '.$date_to.' | Station: '.$station_name.'</p>';
+    echo '<h2>Fuel Reconciliation Oversight</h2><p>Period: '.$date_from.' â€“ '.$date_to.' | Station: '.$station_name.'</p>';
     echo '<table><thead><tr><th>ID</th><th>Date</th><th>Station</th><th>Fuel Type</th><th>Expected (L)</th><th>Actual (L)</th><th>Variance (L)</th><th>Variance (%)</th><th>Status</th><th>Resolved By</th><th>Notes</th></tr></thead><tbody>';
     foreach ($records as $r) {
         echo '<tr><td>VAR-'.$r['id'].'</td><td>'.date('M d, Y',strtotime($r['report_date'])).'</td>';
         echo '<td>'.htmlspecialchars($r['station_name']??'').'</td><td>'.htmlspecialchars($r['fuel_type']).'</td>';
         echo '<td>'.number_format($r['expected_stock'],2).'</td><td>'.number_format($r['actual_stock'],2).'</td>';
         echo '<td>'.number_format($r['variance_liters'],2).'</td><td>'.number_format($r['variance_percent'],2).'%</td>';
-        echo '<td>'.htmlspecialchars($r['status']).'</td><td>'.htmlspecialchars($r['resolved_by_name']??'—').'</td>';
+        echo '<td>'.htmlspecialchars($r['status']).'</td><td>'.htmlspecialchars($r['resolved_by_name']??'â€”').'</td>';
         echo '<td>'.htmlspecialchars(substr($r['resolution_notes']??'',0,80)).'</td></tr>';
     }
     echo '</tbody></table></body></html>'; exit;
@@ -116,7 +116,7 @@ html,body{max-width:100vw;overflow-x:hidden}
 .int-head .sub{font-size:13px;color:#666;margin-top:4px;text-transform:none!important}
 /* == Outline Buttons - SuperAdmin standard == */
 .ato-btn{display:inline-flex;align-items:center;gap:6px;padding:0 16px;height:36px;border:1px solid transparent;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap;background:white!important;transition:all .15s}
-.ato-btn-excel{color:#1d6f42!important;border-color:#1d6f42!important}.ato-btn-excel:hover{background:#1d6f42!important;color:#fff!important}
+.ato-btn-excel{color:#00264D!important;border-color:#cbd5e1!important;background:#ffffff!important}.ato-btn-excel:hover{background:#f8fafc!important;border-color:#00264D!important;color:#00264D!important}
 .ato-btn-back{color:#4b5563!important;border-color:#6b7280!important}.ato-btn-back:hover{background:#6b7280!important;color:#fff!important}
 .ato-btn-filter{color:#002F70!important;border-color:#002F70!important}.ato-btn-filter:hover{background:#002F70!important;color:#fff!important}
 /* == KPI Cards == */
@@ -238,7 +238,7 @@ html,body{max-width:100vw;overflow-x:hidden}
 <div class="afao-table-card">
     <div class="afao-table-hd">
         <h3 class="afao-table-title"><i class="fas fa-balance-scale"></i> Fuel Variance / Reconciliation Records</h3>
-        <span style="font-size:11px;color:#64748b;"><?= number_format(count($records)) ?> record(s) — <?= htmlspecialchars($date_from) ?> to <?= htmlspecialchars($date_to) ?></span>
+        <span style="font-size:11px;color:#64748b;"><?= number_format(count($records)) ?> record(s) â€” <?= htmlspecialchars($date_from) ?> to <?= htmlspecialchars($date_to) ?></span>
     </div>
 
     <?php if (empty($records)): ?>
@@ -282,7 +282,7 @@ html,body{max-width:100vw;overflow-x:hidden}
                 <tr>
                     <td style="font-weight:600;color:#475569;">VAR-<?= htmlspecialchars($r['id']) ?></td>
                     <td><?= date('M d, Y', strtotime($r['report_date'])) ?></td>
-                    <td title="<?= htmlspecialchars($r['station_name']??'') ?>"><?= htmlspecialchars($r['station_name'] ?? '—') ?></td>
+                    <td title="<?= htmlspecialchars($r['station_name']??'') ?>"><?= htmlspecialchars($r['station_name'] ?? 'â€”') ?></td>
                     <td style="font-weight:600;"><?= htmlspecialchars($r['fuel_type']) ?></td>
                     <td><?= number_format($r['expected_stock'],2) ?> L</td>
                     <td><?= number_format($r['actual_stock'],2) ?> L</td>
@@ -292,10 +292,10 @@ html,body{max-width:100vw;overflow-x:hidden}
                     <td style="<?= $var_pct > 5 ? 'color:#dc2626;font-weight:700;' : 'color:#16a34a;font-weight:700;' ?>">
                         <?= number_format($r['variance_percent'],2) ?>%
                     </td>
-                    <td style="<?= $st_color ?>"><?= htmlspecialchars(strtoupper($r['status'] ?? '—')) ?></td>
-                    <td title="<?= htmlspecialchars($r['resolved_by_name']??'') ?>"><?= htmlspecialchars($r['resolved_by_name'] ?? '—') ?></td>
+                    <td style="<?= $st_color ?>"><?= htmlspecialchars(strtoupper($r['status'] ?? 'â€”')) ?></td>
+                    <td title="<?= htmlspecialchars($r['resolved_by_name']??'') ?>"><?= htmlspecialchars($r['resolved_by_name'] ?? 'â€”') ?></td>
                     <td title="<?= htmlspecialchars($r['resolution_notes']??'') ?>">
-                        <?= htmlspecialchars(substr($r['resolution_notes'] ?? '—', 0, 30)) ?><?= strlen($r['resolution_notes']??'') > 30 ? '…' : '' ?>
+                        <?= htmlspecialchars(substr($r['resolution_notes'] ?? 'â€”', 0, 30)) ?><?= strlen($r['resolution_notes']??'') > 30 ? 'â€¦' : '' ?>
                     </td>
                 </tr>
                 <?php endforeach; ?>

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Manager Finance Reports - Real Report Format
  * Finance Reports with tabbed interface matching design
@@ -151,23 +151,26 @@ require_once __DIR__ . '/../partials/header.php';
 
 .rpt-filter-bar button {
     padding: 7px 16px !important;
-    background: #ffffff !important;
-    color: #00264D !important;
+    background: #00264D !important;
+    color: #ffffff !important;
     border: 1px solid #00264D !important;
     border-radius: 4px !important;
     font-size: 12px !important;
-    font-weight: 600 !important;
+    font-weight: 700 !important;
     cursor: pointer !important;
     transition: all 0.2s !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
 }
 
 .rpt-filter-bar button:hover {
-    background: #00264D !important;
+    background: #001933 !important;
     color: #ffffff !important;
 }
 
 .rpt-filter-bar button i {
-    margin-right: 4px !important;
+    color: #ffffff !important;
 }
 
 .rpt-export-actions {
@@ -194,40 +197,48 @@ require_once __DIR__ . '/../partials/header.php';
 .rpt-export-btn:nth-child(1) {
     color: #16a34a !important;
     border-color: #16a34a !important;
+    background: #ffffff !important;
 }
 .rpt-export-btn:nth-child(1):hover {
     background: #f0fdf4 !important;
     border-color: #15803d !important;
+    color: #15803d !important;
 }
 
-/* CSV Button - Dark Blue Border */
+/* CSV Button - Clean slate border */
 .rpt-export-btn:nth-child(2) {
-    color: #002F70 !important;
-    border-color: #002F70 !important;
+    color: #00264D !important;
+    border-color: #cbd5e1 !important;
+    background: #ffffff !important;
 }
 .rpt-export-btn:nth-child(2):hover {
-    background: #eff6ff !important;
-    border-color: #001f4d !important;
+    background: #f8fafc !important;
+    border-color: #00264D !important;
+    color: #00264D !important;
 }
 
-/* PDF Button - Red Border */
+/* PDF Button - Clean slate border */
 .rpt-export-btn:nth-child(3) {
-    color: #dc2626 !important;
-    border-color: #dc2626 !important;
+    color: #00264D !important;
+    border-color: #cbd5e1 !important;
+    background: #ffffff !important;
 }
 .rpt-export-btn:nth-child(3):hover {
-    background: #fef2f2 !important;
-    border-color: #b91c1c !important;
+    background: #f8fafc !important;
+    border-color: #00264D !important;
+    color: #00264D !important;
 }
 
-/* Print Button - Blue Border */
+/* Print Button - Clean slate border */
 .rpt-export-btn:nth-child(4) {
-    color: #002F70 !important;
-    border-color: #002F70 !important;
+    color: #00264D !important;
+    border-color: #cbd5e1 !important;
+    background: #ffffff !important;
 }
 .rpt-export-btn:nth-child(4):hover {
-    background: #eff6ff !important;
-    border-color: #002F70 !important;
+    background: #f8fafc !important;
+    border-color: #00264D !important;
+    color: #00264D !important;
 }
 
 .rpt-export-btn i {
@@ -235,35 +246,13 @@ require_once __DIR__ . '/../partials/header.php';
 }
 
 /* Finance Section Tabs */
-.fr-section-tabs {
-    display: flex;
-    border-bottom: 2px solid #e2e8f0;
-    margin-bottom: 0;
-    overflow:hidden;
-    background: #00264D;
-}
-.fr-section-tab {
-    padding: 12px 20px;
-    font-size: 12px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-    color: #ffffff !important;
-    background: transparent;
-    border: none;
-    border-bottom: 3px solid transparent;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.2s;
-}
-
-.fr-section-tab:hover { background: rgba(255,255,255,0.15); color: #ffffff !important; }
-.fr-section-tab.active {
-    background: #ffffff;
-    color: #00264D !important;
-    border-bottom-color: #002F70;
-    font-weight: 800;
-}
+.fr-section-tabs{display:flex;flex-wrap:wrap;background:#ffffff;border-top:1px solid #cbd5e1;border-bottom:2px solid #00264D;padding:0;margin:0;}
+.fr-section-tab{padding:12px 24px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#334155 !important;background:#ffffff !important;border:none !important;border-right:1px solid #e2e8f0 !important;border-radius:0 !important;cursor:pointer;white-space:nowrap;transition:all .15s ease;display:inline-flex;align-items:center;gap:8px;}
+.fr-section-tab i{font-size:11px;color:#64748b !important;}
+.fr-section-tab:hover{background:#f8fafc !important;color:#00264D !important;}
+.fr-section-tab:hover i{color:#00264D !important;}
+.fr-section-tab.active{background:#00264D !important;color:#ffffff !important;font-weight:800;border-right-color:#00264D !important;}
+.fr-section-tab.active i{color:#ffffff !important;}
 
 .fr-section-panel { display: none; }
 .fr-section-panel.active { display: block; }

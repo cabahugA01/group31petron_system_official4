@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ============================================================
 // Admin Inventory History Oversight - admin_inventory_history.php
 // Rebuilt to support 5 required tabs: Purchase Orders, Deliveries,
@@ -15,7 +15,7 @@ $me         = current_user();
 $role       = role_key($me['role'] ?? '');
 $station_id = (int)user_station_id();
 
-// ── Module gate ───────────────────────────────────────────────
+// â”€â”€ Module gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (!in_array($role, ['superadmin', 'developer']) && !is_module_enabled('inventory')) {
     render_module_disabled_page('Inventory');
 }
@@ -27,7 +27,7 @@ if ($station_id <= 0 && $role === 'admin') {
     render_no_station_page('admin_dashboard.php'); 
 }
 
-// ── User filters input ────────────────────────────────────────
+// â”€â”€ User filters input â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $start_date = $_GET['start'] ?? date('Y-m-d', strtotime('-30 days'));
 $end_date   = $_GET['end']   ?? date('Y-m-d');
 $active_tab = $_GET['tab']   ?? 'orders';
@@ -41,7 +41,7 @@ $ref_no      = trim($_GET['ref_no'] ?? '');
 $move_type   = trim($_GET['move_type'] ?? '');
 $status      = trim($_GET['status'] ?? '');
 
-// ── AJAX Handlers ──────────────────────────────────────────────
+// â”€â”€ AJAX Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (isset($_GET['action'])) {
     if (ob_get_length()) ob_clean();
     header('Content-Type: application/json');
@@ -81,7 +81,7 @@ if (isset($_GET['action'])) {
     }
 }
 
-// ── DYNAMIC SQL BUILDER ───────────────────────────────────────
+// â”€â”€ DYNAMIC SQL BUILDER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $union_sql = "";
 $params = [];
 
@@ -99,7 +99,7 @@ if ($active_tab === 'orders') {
     FROM (
         SELECT 
             po.batch_id AS po_no,
-            COALESCE(CONCAT('PR-', po.request_id), '—') AS pr_no,
+            COALESCE(CONCAT('PR-', po.request_id), 'â€”') AS pr_no,
             'Petron Corporation' AS supplier,
             COALESCE(NULLIF(CONCAT(u.first_name, ' ', u.last_name), ' '), u.username, 'System') AS generated_by,
             po.created_at AS date_only,
@@ -114,7 +114,7 @@ if ($active_tab === 'orders') {
 
         SELECT 
             fpo.batch_id AS po_no,
-            COALESCE(CONCAT('PR-FUEL-', DATE_FORMAT(fpo.created_at, '%Y%m%d')), '—') AS pr_no,
+            COALESCE(CONCAT('PR-FUEL-', DATE_FORMAT(fpo.created_at, '%Y%m%d')), 'â€”') AS pr_no,
             'Petron Corporation' AS supplier,
             COALESCE(NULLIF(CONCAT(u.first_name, ' ', u.last_name), ' '), u.username, 'System') AS generated_by,
             fpo.created_at AS date_only,
@@ -173,7 +173,7 @@ if ($active_tab === 'orders') {
         SELECT 
             COALESCE((SELECT delivery_ref FROM fuel_stock_in WHERE batch_ref = fd.invoice_no LIMIT 1), CONCAT('SIF-', fd.id)) AS stock_in_no,
             fd.invoice_no AS po_no,
-            COALESCE(NULLIF(CONCAT(u_val.first_name, ' ', u_val.last_name), ' '), u_val.username, '—') AS approved_by,
+            COALESCE(NULLIF(CONCAT(u_val.first_name, ' ', u_val.last_name), ' '), u_val.username, 'â€”') AS approved_by,
             fd.delivery_date AS date_only,
             'Completed' AS status,
             fd.station_id
@@ -215,8 +215,8 @@ if ($active_tab === 'orders') {
             mt.transaction_date AS date_only,
             mti.product_name AS item,
             'Stock-Out' AS type,
-            '—' AS previous,
-            '—' AS new_val,
+            'â€”' AS previous,
+            'â€”' AS new_val,
             COALESCE(NULLIF(CONCAT(u.first_name, ' ', u.last_name), ' '), u.username, 'System') AS updated_by,
             'pcs' AS unit,
             mt.station_id
@@ -265,8 +265,8 @@ if ($active_tab === 'orders') {
             ft.transaction_date AS date_only,
             ft.fuel_type AS item,
             'Stock-Out' AS type,
-            '—' AS previous,
-            '—' AS new_val,
+            'â€”' AS previous,
+            'â€”' AS new_val,
             COALESCE(NULLIF(CONCAT(u.first_name, ' ', u.last_name), ' '), u.username, 'System') AS updated_by,
             'L' AS unit,
             ft.station_id
@@ -341,7 +341,7 @@ if ($active_tab === 'orders') {
     $params = [$station_id];
 }
 
-// ── OUTER WHERE BUILDER ───────────────────────────────────────
+// â”€â”€ OUTER WHERE BUILDER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $outer_where = " WHERE 1=1 ";
 $outer_params = [];
 
@@ -409,7 +409,7 @@ try {
     die("Database Query Error: " . $e->getMessage() . " <br>SQL: " . $full_sql);
 }
 
-// ── PRINT & EXPORT LOGIC ─────────────────────────────────────
+// â”€â”€ PRINT & EXPORT LOGIC â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (isset($_GET['print'])) {
     $station_name = 'Petron Carmen';
     $station_address = 'Vamenta Blvd., Carmen, Cagayan de Oro';
@@ -614,7 +614,7 @@ if (isset($_GET['export'])) {
     }
 }
 
-// ── Calculate Dynamic KPI Cards ────────────────────────────────
+// â”€â”€ Calculate Dynamic KPI Cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $kpis = ['total' => count($rows), 'k1' => 0, 'k2' => 0, 'k3' => 0];
 if ($active_tab === 'orders') {
     $kpi_labels = ['Total Orders', 'Pending Orders', 'Approved Orders', 'Completed Orders'];
@@ -686,12 +686,12 @@ include __DIR__ . '/../partials/header.php';
 .flt-btn-search:hover { background:#002F70 !important; color:#fff !important; }
 .flt-btn-reset { color:#6b7280 !important; border-color:#6b7280 !important; }
 .flt-btn-reset:hover { background:#6b7280 !important; color:#fff !important; }
-.flt-btn-excel { color:#1d6f42 !important; border-color:#1d6f42 !important; }
-.flt-btn-excel:hover { background:#1d6f42 !important; color:#fff !important; }
-.flt-btn-csv { color:#002F70 !important; border-color:#002F70 !important; }
-.flt-btn-csv:hover { background:#002F70 !important; color:#fff !important; }
-.flt-btn-pdf { color:#dc2626 !important; border-color:#dc2626 !important; }
-.flt-btn-pdf:hover { background:#dc2626 !important; color:#fff !important; }
+.flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-csv { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-csv:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 
 /* Tabs Layout */
 .tab-nav { display:flex; gap:0; border-bottom:2px solid #e2e8f0; margin-bottom:22px; flex-wrap:wrap; }
@@ -781,14 +781,8 @@ include __DIR__ . '/../partials/header.php';
     background: #4b5563 !important;
     color: white !important;
 }
-.btn-outline.btn-pdf {
-    border-color: #dc2626 !important;
-    color: #dc2626 !important;
-}
-.btn-outline.btn-pdf:hover {
-    background: #dc2626 !important;
-    color: white !important;
-}
+.btn-outline.btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.btn-outline.btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 
 /* Centered Modals design */
 .modal-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:9999; align-items:center; justify-content:center; padding:16px; }
@@ -1087,14 +1081,14 @@ include __DIR__ . '/../partials/header.php';
                             <td class="right">
                                 <?php 
                                 $prev = $r['supplier'];
-                                if ($prev === '—' || $prev === '') echo '—';
+                                if ($prev === 'â€”' || $prev === '') echo 'â€”';
                                 else echo number_format((float)$prev, 2) . ' ' . $r['extra_2'];
                                 ?>
                             </td>
                             <td class="right" style="font-weight: 700;">
                                 <?php 
                                 $new_val = $r['performed_by'];
-                                if ($new_val === '—' || $new_val === '') echo '—';
+                                if ($new_val === 'â€”' || $new_val === '') echo 'â€”';
                                 else echo number_format((float)$new_val, 2) . ' ' . $r['extra_2'];
                                 ?>
                             </td>
@@ -1123,8 +1117,8 @@ include __DIR__ . '/../partials/header.php';
         <h3><i class="fas fa-file-invoice"></i> Purchase Order Details</h3>
         
         <div style="margin-bottom:15px; font-size:12px; color:#475569;">
-            <strong>PO Number:</strong> <span id="modalPoNo">—</span><br>
-            <strong>Type:</strong> <span id="modalPoType">—</span>
+            <strong>PO Number:</strong> <span id="modalPoNo">â€”</span><br>
+            <strong>Type:</strong> <span id="modalPoType">â€”</span>
         </div>
         
         <table class="modal-table">
@@ -1179,8 +1173,8 @@ function viewPO(poNo, type) {
                 <tr>
                     <td><strong>${item.product_name}</strong></td>
                     <td style="text-align: right;">${parseFloat(item.quantity).toLocaleString()} ${item.unit}</td>
-                    <td style="text-align: right;">₱${parseFloat(item.unit_price).toFixed(2)}</td>
-                    <td style="text-align: right;">₱${parseFloat(item.total_amount).toFixed(2)}</td>
+                    <td style="text-align: right;">â‚±${parseFloat(item.unit_price).toFixed(2)}</td>
+                    <td style="text-align: right;">â‚±${parseFloat(item.total_amount).toFixed(2)}</td>
                 </tr>
             `).join('');
         })

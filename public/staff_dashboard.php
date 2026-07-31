@@ -478,13 +478,13 @@ function dashboard_change_version(PDO $pdo, int $station_id, int $user_id, strin
     return hash('sha256', implode('|', $pieces));
 }
 
-// User assigned shift
+// User assigned shift — reads directly from users.shift_assignment set by admin
 $user_assigned_shift = null;
+$shift_assignment    = null;
 try {
     $shift_check = $pdo->prepare("SELECT shift_assignment FROM users WHERE id = ? LIMIT 1");
     $shift_check->execute([$user_id]);
-    $shift_assignment = $shift_check->fetchColumn();
-
+    $shift_assignment = $shift_check->fetchColumn() ?: null;
     $user_assigned_shift = dashboard_shift_number_from_value($shift_assignment, $shift_periods);
 } catch (Exception $e) {}
 
@@ -499,13 +499,38 @@ if (!$user_assigned_shift) {
         ");
         $recent_shift->execute([$user_id]);
         $last_shift_name = $recent_shift->fetchColumn();
-
         $user_assigned_shift = dashboard_shift_number_from_value($last_shift_name, $shift_periods);
     } catch (Exception $e) {}
 }
 
 if (!$user_assigned_shift) {
     $user_assigned_shift = (int)($shift_periods[0]['dashboard_number'] ?? 1);
+}
+
+// Resolve the exact shift_periods row that admin assigned to this staff
+$admin_shift_info = dashboard_shift_by_number($shift_periods, $user_assigned_shift);
+if (!$admin_shift_info) {
+    $admin_shift_info = $shift_periods[0] ?? null;
+}
+// Build clean label: e.g. "First Shift" and time range for the card
+$admin_assigned_shift_name  = '';
+$admin_assigned_shift_times = '';
+if ($admin_shift_info) {
+    // Strip the time part from shift_name (everything before ":" or "–"/"-")
+    $raw_name = trim((string)($admin_shift_info['shift_name'] ?? 'Shift'));
+    $raw_name = preg_replace('/[\x{2013}\x{2014}]/u', '-', $raw_name) ?? $raw_name;
+    if (preg_match('/^\s*(.+?)\s*[:\-]/', $raw_name, $m)) {
+        $admin_assigned_shift_name = trim($m[1]);
+    } else {
+        $admin_assigned_shift_name = $raw_name;
+    }
+    $s_start = isset($admin_shift_info['start_time']) ? date('g:i A', strtotime($admin_shift_info['start_time'])) : '';
+    $s_end_raw = (string)($admin_shift_info['end_time'] ?? '');
+    $s_end = $s_end_raw !== '' ? date('g:i A', strtotime($s_end_raw)) : '';
+    if ($s_end_raw >= '23:59:00') $s_end = '12:00 AM';
+    if ($s_start && $s_end) {
+        $admin_assigned_shift_times = $s_start . ' – ' . $s_end;
+    }
 }
 
 $clocked_in = false;
@@ -1816,13 +1841,21 @@ include __DIR__ . '/../partials/header.php';
             <i class="fas fa-wrench"></i>
         </div>
     </div>
-    <!-- 6. Current Shift -->
+    <!-- 6. Current Shift (admin-assigned) + live clock -->
     <div class="summary-metric-card">
         <div class="metric-details">
             <h4>Current Shift</h4>
-            <div class="metric-value" style="font-size: 14px; font-weight: 700; margin-top: 10px;"><?= htmlspecialchars($current_shift_label) ?></div>
+            <div class="metric-value" style="font-size: 15px; font-weight: 700; margin-top: 6px; color: #0f172a;">
+                <?= htmlspecialchars($admin_assigned_shift_name) ?>
+            </div>
+            <?php if ($admin_assigned_shift_times): ?>
+            <div style="font-size: 11px; color: #64748b; font-weight: 600; margin-top: 2px;">
+                <?= htmlspecialchars($admin_assigned_shift_times) ?>
+            </div>
+            <?php endif; ?>
+            <div style="font-size: 13px; font-weight: 700; color: #0891b2; margin-top: 6px; font-variant-numeric: tabular-nums;" id="dashLiveClock">--:-- --</div>
         </div>
-        <div class="metric-icon-box" style="background: #f1f5f9; color: #64748b;">
+        <div class="metric-icon-box" style="background: #ecfeff; color: #0891b2;">
             <i class="fas fa-clock"></i>
         </div>
     </div>
@@ -2651,6 +2684,23 @@ include __DIR__ . '/../partials/header.php';
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) checkStaffDashboardUpdates(true);
     });
+
+    // ── Live real-time clock for the Current Shift card ──────────────────────
+    (function dashClock() {
+        const el = document.getElementById('dashLiveClock');
+        if (!el) return;
+        function tick() {
+            const now = new Date();
+            let h = now.getHours();
+            const m = String(now.getMinutes()).padStart(2, '0');
+            const s = String(now.getSeconds()).padStart(2, '0');
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            h = h % 12 || 12;
+            el.textContent = `${String(h).padStart(2, '0')}:${m}:${s} ${ampm}`;
+        }
+        tick();
+        setInterval(tick, 1000);
+    })();
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -1,6 +1,6 @@
-<?php
+﻿<?php
 // ============================================================
-// Manager Calibration Review – manager_fuel_pump_master.php
+// Manager Calibration Review â€“ manager_fuel_pump_master.php
 // Purpose: Granular, shift-based calibration and meter reading validation.
 // ============================================================
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -26,7 +26,7 @@ if ($station_id <= 0) {
     exit;
 }
 
-// ── Shift Dependency & Continuity Helpers ─────────────────────
+// â”€â”€ Shift Dependency & Continuity Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (!function_exists('get_preceding_shift_and_date')) {
     function get_preceding_shift_and_date($pdo, $shift_key, $date) {
         $stmt = $pdo->query("SELECT shift_key FROM shift_periods WHERE is_active = 1 ORDER BY sort_order ASC");
@@ -185,7 +185,7 @@ if (!function_exists('normalizeFuelType')) {
     }
 }
 
-// ── GET Filters ──────────────────────────────────────────────
+// â”€â”€ GET Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Default date: if no date provided in URL, use the most recent date with transactions.
 // Falls back to today if nothing found.
 if (isset($_GET['date']) && $_GET['date'] !== '') {
@@ -207,7 +207,7 @@ $staff_filter       = trim($_GET['staff']     ?? '');
 $export             = trim($_GET['export']    ?? '');
 
 
-// ── POST Actions (Verify / Adjust / Reject) ───────────────────
+// â”€â”€ POST Actions (Verify / Adjust / Reject) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $export === '') {
     $action  = trim($_POST['action'] ?? '');
     $tx_id   = (int)($_POST['id'] ?? 0);
@@ -350,10 +350,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $export === '') {
                 try {
                     $meta_notes = json_encode([
                         'transaction_id' => $tx['transaction_id'],
-                        'fuel_line' => 'Pump #' . ($tx['pump_id'] ?? '—'),
+                        'fuel_line' => 'Pump #' . ($tx['pump_id'] ?? 'â€”'),
                         'fuel_type' => $tx['fuel_type'],
                         'shift' => formatShiftLabel($tx['shift_period']),
-                        'staff_name' => $tx['staff_name'] ?? '—',
+                        'staff_name' => $tx['staff_name'] ?? 'â€”',
                         'prev_beginning' => (float)$tx['previous_reading'],
                         'prev_ending' => (float)$tx['present_reading'],
                         'prev_calibration' => (float)$tx['calibration'],
@@ -414,7 +414,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $export === '') {
     header('Location: ' . $redirect_url); exit;
 }
 
-// ── Fetch Filtered Calibration Records ────────────────────────
+// â”€â”€ Fetch Filtered Calibration Records â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $where = ["ft.station_id = ?"];
 $params = [$station_id];
 
@@ -428,7 +428,7 @@ if ($shift_filter !== 'all') {
     $params[] = strtolower($shift_filter);
 }
 
-// Fuel Type Filter — use LIKE so 'Diesel' matches stored 'DIESEL 1 - 1', etc.
+// Fuel Type Filter â€” use LIKE so 'Diesel' matches stored 'DIESEL 1 - 1', etc.
 if ($fuel_type_filter !== 'all') {
     $where[] = "LOWER(ft.fuel_type) LIKE ?";
     $params[] = '%' . strtolower($fuel_type_filter) . '%';
@@ -453,7 +453,7 @@ try {
                    COALESCE(
                        NULLIF(CONCAT(TRIM(COALESCE(validator.first_name, '')), ' ', TRIM(COALESCE(validator.last_name, ''))), ' '),
                        validator.username,
-                       '—'
+                       'â€”'
                    ) as validator_name
             FROM fuel_transactions ft
             LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
@@ -487,7 +487,7 @@ try {
     $_SESSION['error'] = "Error loading calibration records: " . $e->getMessage();
 }
 
-// ── Metrics Calculations ──────────────────────────────────────
+// â”€â”€ Metrics Calculations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $total_calibration_liters = 0.0;
 $pending_reviews_count = 0;
 $total_liters_validated = 0.0;
@@ -502,7 +502,7 @@ foreach ($records as $r) {
     }
 }
 
-// ── Fetch dynamic filters data (from fuel_transactions for accurate type list) ─
+// â”€â”€ Fetch dynamic filters data (from fuel_transactions for accurate type list) â”€
 $fuel_types = [];
 try {
     // Pull distinct fuel types from actual transactions so the dropdown matches stored data
@@ -524,7 +524,7 @@ try {
     $fuel_types = array_unique($ft_stmt->fetchAll(PDO::FETCH_COLUMN));
 } catch (Exception $e) {}
 
-// ── EXPORTS ──────────────────────────────────────────────────
+// â”€â”€ EXPORTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (in_array($export, ['excel', 'pdf'])) {
     $headers = ['Date', 'Shift', 'Fuel Type', 'Staff Encoder', 'Beginning', 'Ending', 'Staff Calibration', 'Manager Calibration', 'Liters Sold', 'Status', 'Validated By', 'Date Validated'];
     $rows_fmt = [];
@@ -553,15 +553,15 @@ if (in_array($export, ['excel', 'pdf'])) {
             date('Y-m-d', strtotime($r['transaction_date'])),
             formatShiftLabel($r['shift_period']),
             $fuel_normalized,
-            $r['staff_name'] ?? '—',
+            $r['staff_name'] ?? 'â€”',
             number_format($r['previous_reading'], 2),
             number_format($r['present_reading'], 2),
             number_format($r['staff_calibration'], 2) . ' L',
             number_format($r['calibration'], 2) . ' L',
             number_format($r['liters_sold'], 2) . ' L',
             getStatusLabel($r['status']),
-            $r['validator_name'] ?? '—',
-            $r['validated_at'] ? date('Y-m-d H:i', strtotime($r['validated_at'])) : '—'
+            $r['validator_name'] ?? 'â€”',
+            $r['validated_at'] ? date('Y-m-d H:i', strtotime($r['validated_at'])) : 'â€”'
         ];
     }
     $filename = 'calibration_review_' . $date_filter;
@@ -604,7 +604,7 @@ if (in_array($export, ['excel', 'pdf'])) {
         tr:nth-child(even) td{background:#f8fafc}
         </style></head><body>';
         echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;font-weight:bold;">Print</button>
-        <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none;font-weight:bold;">← Back</a></div>';
+        <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none;font-weight:bold;">â† Back</a></div>';
         echo '<div class="hdr"><div><h1>Calibration Review</h1><p style="margin:2px 0 0;color:#666;">Date: ' . htmlspecialchars($date_filter) . ' | Station: ' . htmlspecialchars(user_station_name()) . '</p></div></div>';
         echo '<table><thead><tr>';
         foreach ($headers as $h) echo '<th>' . htmlspecialchars($h) . '</th>';
@@ -659,10 +659,10 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 
 /* Buttons */
 .ato-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 16px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid transparent; text-decoration: none; transition: all .15s; height: 36px; white-space: nowrap; background: white !important; }
-.ato-btn-excel { color: #1d6f42 !important; border-color: #1d6f42 !important; }
-.ato-btn-excel:hover { background: #1d6f42 !important; color: #fff !important; }
-.ato-btn-pdf { color: #dc2626 !important; border-color: #dc2626 !important; }
-.ato-btn-pdf:hover { background: #dc2626 !important; color: #fff !important; }
+.ato-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.ato-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.ato-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.ato-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .ato-btn-print { color: #334155 !important; border-color: #64748b !important; }
 .ato-btn-print:hover { background: #64748b !important; color: #fff !important; }
 .ato-btn-back { color: #4b5563 !important; border-color: #cbd5e1 !important; }
@@ -672,7 +672,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 .ato-btn-reset { color: #475569 !important; border-color: #cbd5e1 !important; }
 .ato-btn-reset:hover { background: #f1f5f9 !important; }
 
-/* Row Actions — outlined style matching export buttons (white bg, colored border+text, hover fills) */
+/* Row Actions â€” outlined style matching export buttons (white bg, colored border+text, hover fills) */
 .act-btn { display: flex; align-items: center; justify-content: center; gap: 5px; padding: 0 10px; border-radius: 6px; font-size: 10.5px; font-weight: 700; border: 1.5px solid transparent; cursor: pointer; height: 28px; text-decoration: none; text-transform: uppercase; background: #ffffff !important; transition: all 0.15s; width: 100%; box-sizing: border-box; }
 .act-btn-verify { border-color: #16a34a !important; color: #16a34a !important; background: #ffffff !important; }
 .act-btn-verify:hover { background: #16a34a !important; color: #ffffff !important; }
@@ -684,7 +684,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 .act-btn-view:hover { background: #475569 !important; color: #ffffff !important; }
 .act-btn:disabled, .act-btn.disabled { opacity: 0.5; cursor: not-allowed; border-color: #cbd5e1 !important; color: #94a3b8 !important; background: #f1f5f9 !important; }
 
-/* Status — plain colored text, no background fill */
+/* Status â€” plain colored text, no background fill */
 .badge-st { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; background: none !important; padding: 0; border-radius: 0; }
 .badge-st::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .badge-st.bg-amber { color: #b45309; }
@@ -854,7 +854,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                                             <button class="act-btn act-btn-edit" onclick="openAdjustModal(<?= htmlspecialchars(json_encode([
                                                 'id' => $r['id'],
                                                 'txn_id' => $r['transaction_id'],
-                                                'pump' => $r['pump_number'] ?? '—',
+                                                'pump' => $r['pump_number'] ?? 'â€”',
                                                 'fuel_type' => $r['fuel_type'],
                                                 'beginning' => get_preceding_shift_validated_ending($pdo, $station_id, $r['pump_id'], $r['shift_period'], $tx_date),
                                                 'ending' => $r['present_reading'],
@@ -869,24 +869,24 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                                                 $prec_lbl = $preceding ? (formatShiftLabel($preceding['shift_key']) . ' on ' . $preceding['date']) : 'Shift 1';
                                             ?>
                                             <button class="act-btn disabled" disabled title="Waiting for preceding shift (<?= $prec_lbl ?>) validation"><i class="fas fa-lock"></i> Locked</button>
-                                            <span style="font-size:9px; color:#dc2626; text-align:center; display:block;">⚠️ Check preceding shift</span>
+                                            <span style="font-size:9px; color:#dc2626; text-align:center; display:block;">âš ï¸ Check preceding shift</span>
                                         <?php endif; ?>
                                     <?php else: ?>
                                         <button class="act-btn act-btn-view" onclick="openViewModal(<?= htmlspecialchars(json_encode([
                                             'txn_id' => $r['transaction_id'],
-                                            'pump' => $r['pump_number'] ?? '—',
+                                            'pump' => $r['pump_number'] ?? 'â€”',
                                             'fuel_type' => $r['fuel_type'],
                                             'beginning' => number_format($r['previous_reading'], 2),
                                             'ending' => number_format($r['present_reading'], 2),
                                             'staff_cal' => number_format($r['staff_calibration'], 2) . ' L',
                                             'mgr_cal' => number_format($r['calibration'], 2) . ' L',
                                             'liters_sold' => number_format($r['liters_sold'], 2) . ' L',
-                                            'total_amount' => '₱' . number_format($r['total_amount'], 2),
+                                            'total_amount' => 'â‚±' . number_format($r['total_amount'], 2),
                                             'staff' => $r['staff_name'],
                                             'status' => getStatusLabel($r['status']),
                                             'validator' => $r['validator_name'],
-                                            'validated_at' => $r['validated_at'] ? date('M d, Y h:i A', strtotime($r['validated_at'])) : '—',
-                                            'remarks' => $r['reject_reason'] ?: '—'
+                                            'validated_at' => $r['validated_at'] ? date('M d, Y h:i A', strtotime($r['validated_at'])) : 'â€”',
+                                            'remarks' => $r['reject_reason'] ?: 'â€”'
                                         ])) ?>)"><i class="fas fa-eye"></i> View</button>
                                     <?php endif; ?>
                                     </div>

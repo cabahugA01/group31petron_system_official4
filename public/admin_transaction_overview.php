@@ -161,12 +161,12 @@ require_once __DIR__ . '/../partials/header.php';
 .flt-btn { display:inline-flex; align-items:center; gap:6px; padding:0 16px; height:36px; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none; white-space:nowrap; transition:all .15s; background:white !important; border:1px solid transparent; }
 .flt-btn-reset  { color:#6b7280 !important; border-color:#6b7280 !important; }
 .flt-btn-reset:hover  { background:#6b7280 !important; color:#fff !important; }
-.flt-btn-excel  { color:#1d6f42 !important; border-color:#1d6f42 !important; }
-.flt-btn-excel:hover  { background:#1d6f42 !important; color:#fff !important; }
+.flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .flt-btn-search { color:#00264D !important; border-color:#00264D !important; }
 .flt-btn-search:hover { background:#00264D !important; color:#fff !important; }
-.flt-btn-pdf    { color:#dc2626 !important; border-color:#dc2626 !important; }
-.flt-btn-pdf:hover    { background:#dc2626 !important; color:#fff !important; }
+.flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .flt-btn-solid-primary { color:#fff !important; background:#002F70 !important; border-color:#002F70 !important; }
 .txn-kpi-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; margin-bottom:20px; }
 .txn-kpi-card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px 18px; box-shadow:0 1px 4px rgba(0,0,0,.05); transition:transform .15s,box-shadow .15s; }

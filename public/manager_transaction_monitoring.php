@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Transaction Adjustments - Redesigned
  * View adjustment history and manage transaction corrections
@@ -27,7 +27,7 @@ if (!$station_id) {
     die('Error: You are not assigned to a station.');
 }
 
-// ── Create transaction_adjustments table if not exists ────────────────────────
+// â”€â”€ Create transaction_adjustments table if not exists â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 try {
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS transaction_adjustments (
@@ -53,7 +53,7 @@ try {
     error_log("Table creation: " . $e->getMessage());
 }
 
-// ── Handle POST: Save Adjustment ──────────────────────────────────────────────
+// â”€â”€ Handle POST: Save Adjustment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_adjustment') {
     try {
         $pdo->beginTransaction();
@@ -203,7 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
     exit;
 }
 
-// ── Filters ────────────────────────────────────────────────────────────────────
+// â”€â”€ Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $date_from = $_GET['date_from'] ?? date('Y-m-01');
 $date_to = $_GET['date_to'] ?? date('Y-m-d');
 $filter_staff = $_GET['staff'] ?? '';
@@ -232,7 +232,7 @@ if ($filter_type !== '') {
     $params_adj[] = $filter_type;
 }
 
-// ── Fetch KPI Data ─────────────────────────────────────────────────────────────
+// â”€â”€ Fetch KPI Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $kpi = ['total' => 0, 'today' => 0, 'amount' => 0.00];
 
 try {
@@ -255,7 +255,7 @@ try {
     error_log("KPI error: " . $e->getMessage());
 }
 
-// ── Fetch Transactions (to be adjusted) ───────────────────────────────────────
+// â”€â”€ Fetch Transactions (to be adjusted) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $where = ["mt.station_id = ?"];
 $params = [$station_id];
 
@@ -308,7 +308,7 @@ try {
     error_log("Transactions fetch error: " . $e->getMessage());
 }
 
-// ── Fetch Adjustments History ─────────────────────────────────────────────────
+// â”€â”€ Fetch Adjustments History â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $adjustments = [];
 try {
     $stmt_adj = $pdo->prepare("
@@ -343,7 +343,7 @@ try {
     error_log("Adjustments history fetch error: " . $e->getMessage());
 }
 
-// ── Staff list for filter ──────────────────────────────────────────────────────
+// â”€â”€ Staff list for filter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $staff_list = [];
 try {
     $stmt = $pdo->prepare("
@@ -357,7 +357,7 @@ try {
     $staff_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── Export ────────────────────────────────────────────────────────────────────
+// â”€â”€ Export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $export = $_GET['export'] ?? '';
 $export_table = $_GET['table'] ?? 'adjustments';
 if (in_array($export, ['excel', 'csv'])) {
@@ -378,7 +378,7 @@ if (in_array($export, ['excel', 'csv'])) {
                 $txn['transaction_id'],
                 $txn['customer_name'] ?? 'Walk-in Customer',
                 ucwords(str_replace('_', ' ', $txn['transaction_type'] ?? 'merchandise')),
-                '₱' . number_format($txn['total_amount'], 2),
+                'â‚±' . number_format($txn['total_amount'], 2),
                 $txn['payment_method'] ?? '-',
                 $txn['payment_status'] ?? '-',
                 $txn['staff_name'] ?? 'Staff',
@@ -393,9 +393,9 @@ if (in_array($export, ['excel', 'csv'])) {
                 $r['transaction_id'],
                 $r['customer'],
                 ucwords(str_replace('_', ' ', $r['transaction_type'])),
-                '₱' . number_format($r['original_amount'], 2),
-                '₱' . number_format($r['updated_amount'], 2),
-                '₱' . number_format($r['amount_difference'], 2),
+                'â‚±' . number_format($r['original_amount'], 2),
+                'â‚±' . number_format($r['updated_amount'], 2),
+                'â‚±' . number_format($r['amount_difference'], 2),
                 $r['adjustment_reason'],
                 $r['adjusted_by_name'],
                 date('M d, Y H:i', strtotime($r['adjustment_date']))
@@ -436,10 +436,10 @@ require_once __DIR__ . '/../partials/header.php';
 .flt-btn-search:hover { background: #00264D !important; color: #fff !important; }
 .flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
 .flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
-.flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
-.flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
-.flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
-.flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
+.flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 
 /* Primary/Danger solid buttons for form actions */
 .flt-btn-solid-primary { color: #fff !important; background: #002F70 !important; border-color: #002F70 !important; }
@@ -611,7 +611,7 @@ require_once __DIR__ . '/../partials/header.php';
     </div>
     <div class="txn-kpi-card total-amount-card">
         <div class="txn-kpi-lbl"><i class="fas fa-peso-sign"></i> Adjusted Amount</div>
-        <div class="txn-kpi-val">₱<?php echo number_format($kpi['amount'], 2); ?></div>
+        <div class="txn-kpi-val">â‚±<?php echo number_format($kpi['amount'], 2); ?></div>
     </div>
 </div>
 
@@ -702,13 +702,13 @@ require_once __DIR__ . '/../partials/header.php';
             $fc = json_decode($adj['fields_changed'], true) ?: [];
             
             // Job Order Number
-            $jo_display = !empty($adj['job_order_id']) ? 'JO-' . $adj['job_order_id'] : '—';
+            $jo_display = !empty($adj['job_order_id']) ? 'JO-' . $adj['job_order_id'] : 'â€”';
             
             // Customer Name
             $customer_display = htmlspecialchars($adj['customer']);
             
             // Vehicle Plate
-            $plate_display = !empty($adj['job_order_vehicle_plate']) ? htmlspecialchars($adj['job_order_vehicle_plate']) : '—';
+            $plate_display = !empty($adj['job_order_vehicle_plate']) ? htmlspecialchars($adj['job_order_vehicle_plate']) : 'â€”';
             
             // Transaction Type
             $txn_type_display = htmlspecialchars(ucwords(str_replace('_', ' ', $adj['transaction_type'])));
@@ -725,14 +725,14 @@ require_once __DIR__ . '/../partials/header.php';
             if (empty($items_list) && !empty($adj['item_names'])) {
                 $items_list[] = $adj['item_names'];
             }
-            $items_display = !empty($items_list) ? htmlspecialchars(implode(', ', $items_list)) : '—';
+            $items_display = !empty($items_list) ? htmlspecialchars(implode(', ', $items_list)) : 'â€”';
             
             // Quantities
-            $old_qty = '—';
-            $new_qty = '—';
+            $old_qty = 'â€”';
+            $new_qty = 'â€”';
             if (isset($fc['adjusted_items']) && is_array($fc['adjusted_items']) && !empty($fc['adjusted_items'])) {
-                $old_qty = $fc['adjusted_items'][0]['old_qty'] ?? '—';
-                $new_qty = $fc['adjusted_items'][0]['new_qty'] ?? '—';
+                $old_qty = $fc['adjusted_items'][0]['old_qty'] ?? 'â€”';
+                $new_qty = $fc['adjusted_items'][0]['new_qty'] ?? 'â€”';
             } else {
                 if (isset($fc['quantity'])) {
                     $new_qty = $fc['quantity'];
@@ -743,11 +743,11 @@ require_once __DIR__ . '/../partials/header.php';
             }
             
             // Payment Method
-            $payment_display = !empty($adj['payment_method']) ? htmlspecialchars($adj['payment_method']) : '—';
+            $payment_display = !empty($adj['payment_method']) ? htmlspecialchars($adj['payment_method']) : 'â€”';
             
             // Adjustment Type
             $adj_type = 'Price Adj';
-            if ($old_qty !== '—' && $new_qty !== '—' && $old_qty != $new_qty) {
+            if ($old_qty !== 'â€”' && $new_qty !== 'â€”' && $old_qty != $new_qty) {
                 $adj_type = 'Quantity Adj';
             }
             
@@ -788,10 +788,10 @@ require_once __DIR__ . '/../partials/header.php';
                 <td style="font-size:11.5px; line-height:1.2;"><?php echo $items_display; ?></td>
                 <td style="text-align:center; font-size:11px;"><?php echo $old_qty; ?></td>
                 <td style="text-align:center; font-size:11px;"><?php echo $new_qty; ?></td>
-                <td style="white-space:nowrap; font-size:11.5px;">₱<?php echo number_format($adj['original_amount'], 2); ?></td>
-                <td style="white-space:nowrap; font-weight:700; font-size:11.5px;">₱<?php echo number_format($adj['updated_amount'], 2); ?></td>
+                <td style="white-space:nowrap; font-size:11.5px;">â‚±<?php echo number_format($adj['original_amount'], 2); ?></td>
+                <td style="white-space:nowrap; font-weight:700; font-size:11.5px;">â‚±<?php echo number_format($adj['updated_amount'], 2); ?></td>
                 <td style="white-space:nowrap; font-weight:700; font-size:11.5px; color:<?php echo $diff >= 0 ? '#16a34a' : '#dc2626'; ?>;">
-                    <?php echo ($diff >= 0 ? '+' : '') . '₱' . number_format($diff, 2); ?>
+                    <?php echo ($diff >= 0 ? '+' : '') . 'â‚±' . number_format($diff, 2); ?>
                 </td>
                 <td style="white-space:nowrap; font-size:11px;"><?php echo $payment_display; ?></td>
                 <td style="white-space:nowrap; font-size:11px;"><?php echo $adj_type; ?></td>

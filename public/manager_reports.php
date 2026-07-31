@@ -178,23 +178,26 @@ require_once __DIR__ . '/../partials/header.php';
 
 .rpt-filter-bar button {
     padding: 7px 16px !important;
-    background: #ffffff !important;
-    color: #00264D !important;
+    background: #00264D !important;
+    color: #ffffff !important;
     border: 1px solid #00264D !important;
     border-radius: 4px !important;
     font-size: 12px !important;
-    font-weight: 600 !important;
+    font-weight: 700 !important;
     cursor: pointer !important;
     transition: all 0.2s !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
 }
 
 .rpt-filter-bar button:hover {
-    background: #00264D !important;
+    background: #001933 !important;
     color: #ffffff !important;
 }
 
 .rpt-filter-bar button i {
-    margin-right: 4px !important;
+    color: #ffffff !important;
 }
 
 /* Export Actions */
@@ -218,44 +221,52 @@ require_once __DIR__ . '/../partials/header.php';
     background: #ffffff !important;
 }
 
-/* Excel Button - Green Border */
+/* Excel Button - Green outline & text */
 .rpt-export-btn:nth-child(1) {
     color: #16a34a !important;
     border-color: #16a34a !important;
+    background: #ffffff !important;
 }
 .rpt-export-btn:nth-child(1):hover {
     background: #f0fdf4 !important;
     border-color: #15803d !important;
+    color: #15803d !important;
 }
 
-/* CSV Button - Dark Blue Border */
+/* CSV Button - Clean slate border with dark navy text */
 .rpt-export-btn:nth-child(2) {
-    color: #002F70 !important;
-    border-color: #002F70 !important;
+    color: #00264D !important;
+    border-color: #cbd5e1 !important;
+    background: #ffffff !important;
 }
 .rpt-export-btn:nth-child(2):hover {
-    background: #eff6ff !important;
-    border-color: #001f4d !important;
+    background: #f8fafc !important;
+    border-color: #00264D !important;
+    color: #00264D !important;
 }
 
-/* PDF Button - Red Border */
+/* PDF Button - Clean slate border with dark navy text */
 .rpt-export-btn:nth-child(3) {
-    color: #dc2626 !important;
-    border-color: #dc2626 !important;
+    color: #00264D !important;
+    border-color: #cbd5e1 !important;
+    background: #ffffff !important;
 }
 .rpt-export-btn:nth-child(3):hover {
-    background: #fef2f2 !important;
-    border-color: #b91c1c !important;
+    background: #f8fafc !important;
+    border-color: #00264D !important;
+    color: #00264D !important;
 }
 
-/* Print Button - Blue Border */
+/* Print Button - Clean slate border with dark navy text */
 .rpt-export-btn:nth-child(4) {
-    color: #002F70 !important;
-    border-color: #002F70 !important;
+    color: #00264D !important;
+    border-color: #cbd5e1 !important;
+    background: #ffffff !important;
 }
 .rpt-export-btn:nth-child(4):hover {
-    background: #eff6ff !important;
-    border-color: #002F70 !important;
+    background: #f8fafc !important;
+    border-color: #00264D !important;
+    color: #00264D !important;
 }
 
 .rpt-export-btn i {

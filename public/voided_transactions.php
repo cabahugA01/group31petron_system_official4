@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Voided Transactions
  * Manage cancelled or invalid transactions
@@ -27,7 +27,7 @@ if (!$station_id) {
     die('Error: You are not assigned to a station.');
 }
 
-// ── Create voided_transactions table if not exists ────────────────────────────
+// â”€â”€ Create voided_transactions table if not exists â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 try {
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS voided_transactions (
@@ -56,9 +56,9 @@ try { $pdo->exec("ALTER TABLE voided_transactions ADD COLUMN IF NOT EXISTS job_o
 try { $pdo->exec("ALTER TABLE voided_transactions ADD COLUMN IF NOT EXISTS vehicle_plate VARCHAR(50) DEFAULT NULL"); } catch(Exception $e2){}
 try { $pdo->exec("ALTER TABLE voided_transactions ADD COLUMN IF NOT EXISTS payment_method VARCHAR(50) DEFAULT NULL"); } catch(Exception $e2){}
 
-// ── POST handler removed: voiding now goes through /backend/api/void_transaction_manager.php via AJAX ─
+// â”€â”€ POST handler removed: voiding now goes through /backend/api/void_transaction_manager.php via AJAX â”€
 
-// ── Filters ────────────────────────────────────────────────────────────────────
+// â”€â”€ Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $date_from = $_GET['date_from'] ?? '';
 $date_to = $_GET['date_to'] ?? '';
 $filter_staff = $_GET['staff'] ?? '';
@@ -78,7 +78,7 @@ if ($filter_staff !== '') {
     $params[] = $filter_staff;
 }
 
-// ── Fetch KPI Data ─────────────────────────────────────────────────────────────
+// â”€â”€ Fetch KPI Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $kpi = ['total' => 0, 'today' => 0, 'amount' => 0.00];
 try {
     $stmt = $pdo->prepare("
@@ -100,7 +100,7 @@ try {
     error_log("KPI error: " . $e->getMessage());
 }
 
-// ── Fetch Voided Records ───────────────────────────────────────────────────────
+// â”€â”€ Fetch Voided Records â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $voided = [];
 try {
     $stmt = $pdo->prepare("
@@ -134,7 +134,7 @@ try {
     error_log("Voided fetch error: " . $e->getMessage());
 }
 
-// ── Pre-fetch items for voided transactions ──────────────────────────────
+// â”€â”€ Pre-fetch items for voided transactions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $void_items_map = [];
 try {
     if (!empty($voided)) {
@@ -160,7 +160,7 @@ try {
     $void_items_map = []; 
 }
 
-// ── Fetch active transactions for voiding ──────────────────────────────────────
+// â”€â”€ Fetch active transactions for voiding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $active_transactions = [];
 try {
     $stmt = $pdo->prepare("
@@ -183,7 +183,7 @@ try {
     $active_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── Staff list for filter ──────────────────────────────────────────────────────
+// â”€â”€ Staff list for filter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $staff_list = [];
 try {
     $stmt = $pdo->prepare("
@@ -197,7 +197,7 @@ try {
     $staff_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── Export ────────────────────────────────────────────────────────────────────
+// â”€â”€ Export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $export = $_GET['export'] ?? '';
 if (in_array($export, ['excel', 'csv'])) {
     $fn = 'voided_transactions_' . date('Ymd_His');
@@ -227,12 +227,12 @@ if (in_array($export, ['excel', 'csv'])) {
         fputcsv($out, [
             'VOID-' . $v['id'],
             $v['transaction_id'],
-            $v['job_order_no'] ?? '—',
+            $v['job_order_no'] ?? 'â€”',
             $v['customer_name'] ?? 'Walk-in Customer',
-            $v['vehicle_plate'] ?? '—',
+            $v['vehicle_plate'] ?? 'â€”',
             ucwords(str_replace('_', ' ', $v['transaction_type'])),
             $items_summary,
-            '₱' . number_format($v['amount'], 2),
+            'â‚±' . number_format($v['amount'], 2),
             $v['payment_method'] ?? 'N/A',
             $v['void_reason'],
             $v['voided_by_name'] ?? 'Manager',
@@ -275,10 +275,10 @@ require_once __DIR__ . '/../partials/header.php';
 .flt-btn-search:hover { background: #00264D !important; color: #fff !important; }
 .flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
 .flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
-.flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
-.flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
-.flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
-.flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
+.flt-btn-excel  { color: #00264D !important; border-color: #cbd5e1 !important; }
+.flt-btn-excel:hover  { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-pdf    { color: #00264D !important; border-color: #cbd5e1 !important; }
+.flt-btn-pdf:hover    { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 
 /* Solid action buttons for forms and modals */
 .flt-btn-solid-primary { color: #fff !important; background: #002F70 !important; border-color: #002F70 !important; }
@@ -430,7 +430,7 @@ require_once __DIR__ . '/../partials/header.php';
     </div>
     <div class="txn-kpi-card total-amount-card">
         <div class="txn-kpi-lbl"><i class="fas fa-peso-sign"></i> Total Voided Amount</div>
-        <div class="txn-kpi-val">₱<?php echo number_format($kpi['amount'], 2); ?></div>
+        <div class="txn-kpi-val">â‚±<?php echo number_format($kpi['amount'], 2); ?></div>
     </div>
 </div>
 
@@ -494,8 +494,8 @@ require_once __DIR__ . '/../partials/header.php';
             <?php foreach ($voided as $v): 
                 $v_fields  = !empty($v['fields_changed']) ? json_decode($v['fields_changed'], true) : [];
                 $jo_raw    = !empty($v['job_order_no']) ? $v['job_order_no'] : ($v_fields['job_order_no'] ?? '');
-                $jo_disp   = !empty($jo_raw) ? (str_starts_with($jo_raw, 'JO-') ? $jo_raw : 'JO-' . $jo_raw) : '—';
-                $plate_disp = !empty($v['vehicle_plate']) ? $v['vehicle_plate'] : ($v_fields['vehicle_plate'] ?? '—');
+                $jo_disp   = !empty($jo_raw) ? (str_starts_with($jo_raw, 'JO-') ? $jo_raw : 'JO-' . $jo_raw) : 'â€”';
+                $plate_disp = !empty($v['vehicle_plate']) ? $v['vehicle_plate'] : ($v_fields['vehicle_plate'] ?? 'â€”');
                 $payment   = !empty($v['payment_method']) ? $v['payment_method'] : ($v_fields['payment_method'] ?? 'Cash');
                 if (empty($payment) || $payment === 'N/A') $payment = 'Cash';
             ?>
@@ -530,7 +530,7 @@ require_once __DIR__ . '/../partials/header.php';
                             $sub = (float)($item['subtotal'] ?? 0);
                             echo '<div style="margin-bottom:2px;padding:2px 4px;border:1px solid #fca5a5;border-radius:3px;background:#fff5f5;font-size:8px;line-height:1.3;">';
                             echo '<strong>' . htmlspecialchars(substr($item['product_name'] ?? '', 0, 28)) . (strlen($item['product_name'] ?? '') > 28 ? '..' : '') . '</strong><br>';
-                            echo '<span style="color:#64748b;">Qty: ' . $qty . ' | ₱' . number_format($sub, 2) . '</span>';
+                            echo '<span style="color:#64748b;">Qty: ' . $qty . ' | â‚±' . number_format($sub, 2) . '</span>';
                             echo '</div>';
                         }
                     } elseif (!empty($void_items_map[$txn_id])) {
@@ -539,17 +539,17 @@ require_once __DIR__ . '/../partials/header.php';
                             $sub = (float)($item['subtotal'] ?? 0);
                             echo '<div style="margin-bottom:2px;padding:2px 4px;border:1px solid #cbd5e1;border-radius:3px;background:#f8fafc;font-size:8px;line-height:1.3;">';
                             echo '<strong>' . htmlspecialchars(substr($item['product_name'] ?? '', 0, 28)) . (strlen($item['product_name'] ?? '') > 28 ? '..' : '') . '</strong><br>';
-                            echo '<span style="color:#64748b;">Qty: ' . $qty . ' | ₱' . number_format($sub, 2) . '</span>';
+                            echo '<span style="color:#64748b;">Qty: ' . $qty . ' | â‚±' . number_format($sub, 2) . '</span>';
                             echo '</div>';
                         }
                     } elseif (!empty($v['item_names'])) {
                         echo '<span style="font-size:8px;color:#334155;">' . htmlspecialchars($v['item_names']) . '</span>';
                     } else {
-                        echo '<span style="font-size:8px;color:#94a3b8;font-style:italic;">— (legacy record)</span>';
+                        echo '<span style="font-size:8px;color:#94a3b8;font-style:italic;">â€” (legacy record)</span>';
                     }
                     ?>
                 </td>
-                <td style="font-weight:700;color:#dc2626;">₱<?php echo number_format($v['amount'], 2); ?></td>
+                <td style="font-weight:700;color:#dc2626;">â‚±<?php echo number_format($v['amount'], 2); ?></td>
                 <td>
                     <?php 
                     $payment_short = $payment;

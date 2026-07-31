@@ -1,6 +1,6 @@
-<?php
+﻿<?php
 // ============================================================
-// Manager Fuel Reconciliation – manager_fuel_reconciliation.php
+// Manager Fuel Reconciliation â€“ manager_fuel_reconciliation.php
 // Purpose: Compare pump sales with tank levels and resolve variances
 // ============================================================
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -26,11 +26,11 @@ if ($station_id <= 0) {
     exit;
 }
 
-// ── Date Filter ───────────────────────────────────────────
+// â”€â”€ Date Filter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $date_from = trim($_GET['date_from'] ?? date('Y-m-d', strtotime('-6 months'))); // Default to 6 months ago
 $date_to   = trim($_GET['date_to']   ?? date('Y-m-d'));  // Default to today
 
-// ── POST Actions ──────────────────────────────────────────
+// â”€â”€ POST Actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
     $action = trim($_POST['action'] ?? '');
     $variance_id = (int)($_POST['variance_id'] ?? 0);
@@ -101,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
     exit;
 }
 
-// ── Summary Cards ──────────────────────────────────────────
+// â”€â”€ Summary Cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $reconciliations_completed = 0;
 $variances_detected = 0;
 $open_variances = 0;
@@ -133,7 +133,7 @@ try {
     error_log("Summary error: " . $e->getMessage());
 }
 
-// ── Pagination ─────────────────────────────────────────────
+// â”€â”€ Pagination â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $rows_per_page = (int)($_GET['rows_per_page'] ?? 10);
 if (!in_array($rows_per_page, [10, 25, 50, 100])) {
     $rows_per_page = 10;
@@ -141,7 +141,7 @@ if (!in_array($rows_per_page, [10, 25, 50, 100])) {
 $current_page = max(1, (int)($_GET['page'] ?? 1));
 $offset = ($current_page - 1) * $rows_per_page;
 
-// ── Fetch Variance Reports ────────────────────────────────────
+// â”€â”€ Fetch Variance Reports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $variances = [];
 $total_records = 0;
 try {
@@ -190,7 +190,7 @@ try {
 
 $total_pages = ceil($total_records / $rows_per_page);
 
-// ── Handle Export ──────────────────────────────────────────
+// â”€â”€ Handle Export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $export = $_GET['export'] ?? '';
 if (in_array($export, ['excel', 'csv', 'pdf'])) {
     try {
@@ -297,12 +297,12 @@ html, body {
 }
 .ato-btn-primary { color:#00264D !important; border-color:#00264D !important; }
 .ato-btn-primary:hover { background:#00264D !important; color:#fff !important; }
-.ato-btn-excel { color:#1d6f42 !important; border-color:#1d6f42 !important; }
-.ato-btn-excel:hover { background:#1d6f42 !important; color:#fff !important; }
+.ato-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.ato-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .ato-btn-csv { color:#003d7a !important; border-color:#003d7a !important; }
 .ato-btn-csv:hover { background:#003d7a !important; color:#fff !important; }
-.ato-btn-pdf { color:#dc2626 !important; border-color:#dc2626 !important; }
-.ato-btn-pdf:hover { background:#dc2626 !important; color:#fff !important; }
+.ato-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.ato-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .ato-btn-print { color:#334155 !important; border-color:#64748b !important; }
 .ato-btn-print:hover { background:#64748b !important; color:#fff !important; }
 .ato-btn-back { color:#4b5563 !important; border-color:#6b7280 !important; }
@@ -385,7 +385,7 @@ html, body {
     font-size: 11px; font-weight: 700; color: #fff;
     text-transform: uppercase; border-bottom: 2px solid #002F70;
     }
-/* Remove fixed column widths — let the browser auto-size them */
+/* Remove fixed column widths â€” let the browser auto-size them */
 .data-table th, .data-table td {
     padding: 10px 10px;
     white-space: nowrap;

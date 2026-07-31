@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'transactions';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -10,7 +10,7 @@ $station_id = user_station_id();
 $role = role_key($me['role'] ?? '');
 $actor_name = $me['name'] ?? $me['username'] ?? 'Manager';
 
-// ── Module gate ───────────────────────────────────────────────
+// â”€â”€ Module gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (!in_array($role, ['superadmin','developer']) && !is_module_enabled('transactions')) {
     render_module_disabled_page('Transactions');
 }
@@ -20,7 +20,7 @@ try {
     $stmt = $pdo->query("SELECT role_key FROM staff_role_config WHERE can_access_transactions = 1 AND is_active = 1");
     $allowed_roles = $stmt->fetchAll(PDO::FETCH_COLUMN);
 } catch(Exception $e) {
-    /* staff_role_config table doesn't exist — use standard roles */
+    /* staff_role_config table doesn't exist â€” use standard roles */
 }
 if (empty($allowed_roles)) {
     $allowed_roles = ['manager', 'admin', 'superadmin'];
@@ -32,7 +32,7 @@ if (!in_array($role, $allowed_roles)) {
     exit;
 }
 
-// ── POST: Approve ─────────────────────────────────────────────────────────────
+// â”€â”€ POST: Approve â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
@@ -75,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $ph = implode(',', array_fill(0, count($cols), '?'));
             $cl = implode(',', array_map(fn($c) => "`$c`", $cols));
             $pdo->prepare("INSERT INTO audit_trail ($cl) VALUES ($ph)")->execute($vals);
-        } catch (Exception $ae) { /* silent — audit must not break main flow */ }
+        } catch (Exception $ae) { /* silent â€” audit must not break main flow */ }
     };
 
     $deduct_inventory_once = function(int $txn_id) use ($pdo, $station_id, $has_mt, $me) {
@@ -301,7 +301,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // ── Adjust Merchandise Transaction ────────────────────────────────────────
+    // â”€â”€ Adjust Merchandise Transaction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ($action === 'adjust_transaction') {
         $row_id    = (int)($_POST['transaction_id'] ?? 0);
         $new_total = (float)($_POST['adj_total'] ?? 0);
@@ -324,8 +324,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $set_parts) . " WHERE id = ? AND station_id = ?");
             $stmt->execute(array_merge($set_vals, [$row_id, $station_id]));
             if ($stmt->rowCount() > 0) {
-                $insert_audit($row_id, 'Adjust', "New total: ₱{$new_total}. Note: {$adj_note}");
-                log_activity($pdo, $me['id'], 'Adjust Transaction', "Merchandise #{$row_id} adjusted to ₱{$new_total} by {$actor_name}.");
+                $insert_audit($row_id, 'Adjust', "New total: â‚±{$new_total}. Note: {$adj_note}");
+                log_activity($pdo, $me['id'], 'Adjust Transaction', "Merchandise #{$row_id} adjusted to â‚±{$new_total} by {$actor_name}.");
                 $transaction['total_amount'] = $new_total;
                 $deduct_inventory_once($row_id);
                 $apply_credit_balance_once($transaction, $new_total);
@@ -343,7 +343,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // ── Approve Job Order ─────────────────────────────────────────────────────
+    // â”€â”€ Approve Job Order â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ($action === 'approve_job_order') {
         $jo_id    = (int)($_POST['jo_id'] ?? 0);
         $jo_src   = $_POST['jo_source'] ?? 'job_orders'; // 'job_orders' or 'merchandise_transactions'
@@ -351,7 +351,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $pdo->beginTransaction();
             if ($jo_src === 'merchandise_transactions') {
-                // Record came from staff_transactions_hub.php — lives in merchandise_transactions
+                // Record came from staff_transactions_hub.php â€” lives in merchandise_transactions
                 $tx = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND station_id = ? FOR UPDATE");
                 $tx->execute([$jo_id, $station_id]);
                 $transaction = $tx->fetch(PDO::FETCH_ASSOC);
@@ -381,7 +381,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // ── Reject Job Order ──────────────────────────────────────────────────────
+    // â”€â”€ Reject Job Order â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ($action === 'reject_job_order') {
         $jo_id   = (int)($_POST['jo_id'] ?? 0);
         $jo_src  = $_POST['jo_source'] ?? 'job_orders';
@@ -410,7 +410,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // ── Adjust Job Order ──────────────────────────────────────────────────────
+    // â”€â”€ Adjust Job Order â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ($action === 'adjust_job_order') {
         $jo_id    = (int)($_POST['jo_id'] ?? 0);
         $jo_src   = $_POST['jo_source'] ?? 'job_orders';
@@ -436,8 +436,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ->execute([$new_cost, $me['id'], $jo_id, $station_id]);
             }
             try { $pdo->prepare("INSERT INTO audit_trail (transaction_id,manager_id,action_type,new_value,station_id) VALUES (?,?,'Adjust',?,?)")
-                ->execute([$jo_id,$me['id'],"JO Adjusted. New cost: ₱{$new_cost}. {$adj_note}",$station_id]); } catch(Exception $ae){}
-            log_activity($pdo,$me['id'],'JO_ADJUSTED',"Job Order #{$jo_id} adjusted to ₱{$new_cost} by {$actor_name}.");
+                ->execute([$jo_id,$me['id'],"JO Adjusted. New cost: â‚±{$new_cost}. {$adj_note}",$station_id]); } catch(Exception $ae){}
+            log_activity($pdo,$me['id'],'JO_ADJUSTED',"Job Order #{$jo_id} adjusted to â‚±{$new_cost} by {$actor_name}.");
             $pdo->commit();
             $_SESSION['success'] = "Job Order #{$jo_id} adjusted successfully.";
         } catch (Exception $e) {
@@ -448,7 +448,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // ── Mark Job Order Paid ───────────────────────────────────────────────────
+    // â”€â”€ Mark Job Order Paid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ($action === 'mark_jo_paid') {
         $jo_id   = (int)($_POST['jo_id'] ?? 0);
         $jo_src  = $_POST['jo_source'] ?? 'job_orders';
@@ -469,7 +469,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // ── Process Payment ───────────────────────────────────────────────────────
+    // â”€â”€ Process Payment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ($action === 'process_payment') {
         $row_id     = (int)($_POST['pay_id'] ?? 0);
         $pay_src    = $_POST['pay_source'] ?? 'merchandise_transactions';
@@ -522,7 +522,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // ── Mark JO In Progress ───────────────────────────────────────────────────
+    // â”€â”€ Mark JO In Progress â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ($action === 'mark_jo_inprogress') {
         $jo_id  = (int)($_POST['jo_id'] ?? 0);
         $jo_src = $_POST['jo_source'] ?? 'job_orders';
@@ -543,7 +543,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // ── Mark JO Completed ─────────────────────────────────────────────────────
+    // â”€â”€ Mark JO Completed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ($action === 'mark_jo_completed') {
         $jo_id  = (int)($_POST['jo_id'] ?? 0);
         $jo_src = $_POST['jo_source'] ?? 'job_orders';
@@ -565,7 +565,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// ── Filters ───────────────────────────────────────────────────────────────────
+// â”€â”€ Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Default: last 30 days so existing April data always shows on first load
 $start    = $_GET['start']  ?? date('Y-m-d', strtotime('-90 days'));
 $end      = $_GET['end']    ?? date('Y-m-d');
@@ -576,7 +576,7 @@ $type_f   = $_GET['type']   ?? '';   // '' = all, 'merchandise', 'jo'
 
 $do_export = (isset($_GET['export']) && in_array($_GET['export'], ['excel','pdf'])) ? $_GET['export'] : '';
 
-// ── Config lookups ────────────────────────────────────────────────────────────
+// â”€â”€ Config lookups â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $transaction_type_names = [];
 try {
     $rows = $pdo->query("SELECT type_key, type_name, color_class AS badge_color FROM transaction_type_config WHERE is_active = 1 ORDER BY sort_order")->fetchAll(PDO::FETCH_ASSOC);
@@ -585,7 +585,7 @@ try {
     $transaction_type_names = ['fuel'=>['name'=>'Fuel','color'=>'#dc3545'],'merchandise'=>['name'=>'Merchandise','color'=>'#007bff']];
 }
 
-// ── Config lookups — DB-driven with safe fallbacks ───────────────────────────
+// â”€â”€ Config lookups â€” DB-driven with safe fallbacks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $payment_methods = [];
 try {
     $payment_methods = $pdo->query("SELECT method_key, method_name FROM payment_method_config WHERE is_active = 1 ORDER BY sort_order")->fetchAll(PDO::FETCH_ASSOC);
@@ -609,7 +609,7 @@ if (empty($payment_methods)) {
     ];
 }
 
-// ── Status normaliser ─────────────────────────────────────────────────────────
+// â”€â”€ Status normaliser â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function normalise_status(string $raw): string {
     $s = strtolower(trim($raw));
     if ($s === '' || in_array($s, ['pending','pending validation','pendingvalidation','awaiting'])) return 'pending';
@@ -619,7 +619,7 @@ function normalise_status(string $raw): string {
     return 'pending';
 }
 
-// ── Dynamic column detection for merchandise_transactions ────────────────────
+// â”€â”€ Dynamic column detection for merchandise_transactions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $mt_available = [];
 try {
     foreach ($pdo->query("SHOW COLUMNS FROM merchandise_transactions")->fetchAll(PDO::FETCH_ASSOC) as $c)
@@ -627,7 +627,7 @@ try {
 } catch (Exception $e) {}
 $mt_has = fn($c) => isset($mt_available[strtolower($c)]);
 
-// ── Dynamic column detection for job_orders ───────────────────────────────────
+// â”€â”€ Dynamic column detection for job_orders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $jo_available = [];
 try {
     foreach ($pdo->query("SHOW COLUMNS FROM job_orders")->fetchAll(PDO::FETCH_ASSOC) as $c)
@@ -635,11 +635,11 @@ try {
 } catch (Exception $e) {}
 $jo_has = fn($c) => isset($jo_available[strtolower($c)]);
 
-// ── Build merchandise SELECT with optional subtotal/vat columns ───────────────
+// â”€â”€ Build merchandise SELECT with optional subtotal/vat columns â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $mt_subtotal_expr = $mt_has('subtotal_amount') ? 'mt.subtotal_amount' : 'mt.total_amount';
 $mt_vat_expr      = $mt_has('vat_amount')      ? 'mt.vat_amount'      : '0';
 
-// ── Build merchandise WHERE ───────────────────────────────────────────────────
+// â”€â”€ Build merchandise WHERE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $merch_date = "CASE WHEN mt.transaction_date > '2000-01-01' THEN DATE(mt.transaction_date) ELSE DATE(mt.created_at) END";
 
 $mw = "WHERE mt.station_id = ? AND ($merch_date) BETWEEN ? AND ?";
@@ -655,7 +655,7 @@ if ($status_f === 'pending') {
     $mw .= " AND LOWER(TRIM(COALESCE(mt.validation_status,''))) IN ('rejected','returned')";
 }
 
-// ── Merchandise query ─────────────────────────────────────────────────────────
+// â”€â”€ Merchandise query â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Use actual transaction_type column if it exists, otherwise default to 'merchandise'
 // Dynamically classify transactions as combined, job_order, or merchandise
 $mt_txn_type_expr = "
@@ -729,7 +729,7 @@ try {
     $_SESSION['error'] = 'Query error: ' . $e->getMessage();
 }
 
-// ── Job Orders query (unified flow) ──────────────────────────────────────────
+// â”€â”€ Job Orders query (unified flow) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $jo_date = "CASE WHEN jo.created_at > '2000-01-01' THEN DATE(jo.created_at) ELSE CURDATE() END";
 $jow = "WHERE jo.station_id = ? AND ($jo_date) BETWEEN ? AND ?
         AND (jo.validation_status IN ('Pending Validation','Pending','') OR jo.validation_status IS NULL
@@ -782,11 +782,11 @@ try {
     $jstmt->execute($jop);
     $job_orders = $jstmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    // job_orders table may not have all columns — silently skip
+    // job_orders table may not have all columns â€” silently skip
     error_log('transactions.php JO query: ' . $e->getMessage());
 }
 
-// ── Merge & sort all ─────────────────────────────────────────────────────────
+// â”€â”€ Merge & sort all â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $all_transactions = array_merge($transactions, $job_orders);
 usort($all_transactions, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['created_at']));
 
@@ -848,8 +848,8 @@ $all_transactions = array_values(array_map(function($t) use ($audit_meta) {
     $t['status_key'] = normalise_status((string)($t['status'] ?? ''));
     $t['payment_status_raw'] = trim((string)($t['payment_status'] ?? 'Unpaid')) ?: 'Unpaid';
     $t['shift_label'] = $shift_label;
-    $t['vehicle_display'] = trim((string)($t['vehicle'] ?? '')) ?: '—';
-    $t['service_display'] = trim((string)($t['product_name'] ?? '')) ?: '—';
+    $t['vehicle_display'] = trim((string)($t['vehicle'] ?? '')) ?: 'â€”';
+    $t['service_display'] = trim((string)($t['product_name'] ?? '')) ?: 'â€”';
     $t['customer_display'] = trim((string)($t['customer'] ?? '')) ?: 'Walk-in';
     $t['staff_display'] = trim((string)($t['staff_name'] ?? '')) ?: 'Unknown';
     $t['audit_entries'] = $audit_meta[(string)($t['row_id'] ?? '')] ?? [];
@@ -867,7 +867,7 @@ if ($type_f !== '') {
     $all_transactions = array_values($all_transactions);
 }
 
-// ── Split into Pending vs Validated ──────────────────────────────────────────
+// â”€â”€ Split into Pending vs Validated â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Pending  = needs manager action (pending/pending validation)
 // Validated = already processed (approved, adjusted, rejected, completed, in progress)
 $pending_transactions   = [];
@@ -882,7 +882,7 @@ foreach ($all_transactions as $t) {
 }
 
 
-// ── Summary counts ────────────────────────────────────────────────────────────
+// â”€â”€ Summary counts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $pendingCount   = count($pending_transactions);
 $verifiedCount  = 0;
 $rejectedCount  = 0;
@@ -896,7 +896,7 @@ foreach ($validated_transactions as $t) {
     $grandTotal += (float)($t['total'] ?? 0);
 }
 
-// ── Job Order Tracker data (Removed to enforce unified view) ────────────────
+// â”€â”€ Job Order Tracker data (Removed to enforce unified view) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 $staff_options = [];
 $shift_options = [];
@@ -1352,7 +1352,7 @@ include __DIR__ . '/../partials/header.php';
 <div id="transaction-history"></div>
 
 <?php
-// ── Customer list for auto-suggest ───────────────────────────────────────────
+// â”€â”€ Customer list for auto-suggest â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $customer_list = [];
 try {
     $cs = $pdo->prepare("
@@ -1369,7 +1369,7 @@ try {
 } catch(Exception $e) { $customer_list = []; }
 ?>
 
-<!-- ══ FILTER CARD ══════════════════════════════════════════════════════════ -->
+<!-- â•â• FILTER CARD â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div class="txn-view-tabs">
     <a href="transactions.php?<?php echo http_build_query(array_filter(['view' => 'overview', 'start' => $start, 'end' => $end])); ?>" class="txn-view-tab <?php echo $view === 'overview' ? 'active' : ''; ?>">Transaction Overview</a>
     <a href="transactions.php?<?php echo http_build_query(array_filter(['view' => 'all', 'start' => $start, 'end' => $end])); ?>" class="txn-view-tab <?php echo $view === 'all' ? 'active' : ''; ?>">All Transactions</a>
@@ -1411,7 +1411,7 @@ try {
                 <div class="flt-autocomplete-wrap">
                     <input type="text" name="customer" id="flt_customer"
                            value="<?php echo htmlspecialchars($customer); ?>"
-                           class="flt-inp" placeholder="Search customer…"
+                           class="flt-inp" placeholder="Search customerâ€¦"
                            autocomplete="off"
                            list="customer_datalist">
                     <datalist id="customer_datalist">
@@ -1420,7 +1420,7 @@ try {
                         <?php endforeach; ?>
                     </datalist>
                     <?php if($customer !== ''): ?>
-                    <button type="button" class="flt-clear-input" onclick="document.getElementById('flt_customer').value='';this.style.display='none';" title="Clear">×</button>
+                    <button type="button" class="flt-clear-input" onclick="document.getElementById('flt_customer').value='';this.style.display='none';" title="Clear">Ã—</button>
                     <?php endif; ?>
                 </div>
             </div>
@@ -1518,7 +1518,7 @@ try {
 <?php if ($view === 'overview'): ?>
 <div class="txn-kpi-grid">
     <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($overview_total_transactions); ?></span><span class="txn-kpi-label">Total Transactions</span></div>
-    <div class="txn-kpi-card"><span class="txn-kpi-value">₱<?php echo number_format($overview_total_sales, 2); ?></span><span class="txn-kpi-label">Total Sales</span></div>
+    <div class="txn-kpi-card"><span class="txn-kpi-value">â‚±<?php echo number_format($overview_total_sales, 2); ?></span><span class="txn-kpi-label">Total Sales</span></div>
     <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($overview_total_job_orders); ?></span><span class="txn-kpi-label">Total Job Orders</span></div>
     <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($overview_total_merchandise); ?></span><span class="txn-kpi-label">Merchandise Transactions</span></div>
 </div>
@@ -1551,7 +1551,7 @@ try {
             <thead><tr><th>Transaction ID</th><th>Customer</th><th>Type</th><th>Amount</th><th>Date</th></tr></thead>
             <tbody>
             <?php foreach ($recent_transactions as $row): ?>
-                <tr><td><?php echo htmlspecialchars($row['txn_ref'] ?? ''); ?></td><td><?php echo htmlspecialchars($row['customer_display'] ?? ''); ?></td><td><?php echo htmlspecialchars($row['type_label'] ?? ''); ?></td><td>₱<?php echo number_format((float)($row['total'] ?? 0), 2); ?></td><td><?php echo date('M d, Y', strtotime($row['created_at'])); ?></td></tr>
+                <tr><td><?php echo htmlspecialchars($row['txn_ref'] ?? ''); ?></td><td><?php echo htmlspecialchars($row['customer_display'] ?? ''); ?></td><td><?php echo htmlspecialchars($row['type_label'] ?? ''); ?></td><td>â‚±<?php echo number_format((float)($row['total'] ?? 0), 2); ?></td><td><?php echo date('M d, Y', strtotime($row['created_at'])); ?></td></tr>
             <?php endforeach; ?>
             </tbody>
         </table>
@@ -1585,7 +1585,7 @@ try {
 <div class="txn-kpi-grid">
     <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format(count($adjusted_transactions)); ?></span><span class="txn-kpi-label">Total Adjustments</span></div>
     <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format(in_array($role, ['admin', 'superadmin', 'developer'], true) ? $adjustments_month : $adjustments_today); ?></span><span class="txn-kpi-label"><?php echo in_array($role, ['admin', 'superadmin', 'developer'], true) ? 'Adjustments This Month' : 'Adjustments Today'; ?></span></div>
-    <div class="txn-kpi-card"><span class="txn-kpi-value">₱<?php echo number_format($adjusted_amount_total, 2); ?></span><span class="txn-kpi-label">Amount Adjusted</span></div>
+    <div class="txn-kpi-card"><span class="txn-kpi-value">â‚±<?php echo number_format($adjusted_amount_total, 2); ?></span><span class="txn-kpi-label">Amount Adjusted</span></div>
     <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format(count(array_unique(array_filter(array_map(fn($r) => ($r['audit_entries'][0]['manager_name'] ?? ''), $adjusted_transactions))))); ?></span><span class="txn-kpi-label">Managers Involved</span></div>
 </div>
 <div class="card" style="padding:0;">
@@ -1599,7 +1599,7 @@ try {
                     <td><?php echo htmlspecialchars($row['txn_ref'] ?? ''); ?></td>
                     <td><?php echo htmlspecialchars($row['customer_display'] ?? ''); ?></td>
                     <td><?php echo htmlspecialchars($audit['old_value'] ?? 'N/A'); ?></td>
-                    <td>₱<?php echo number_format((float)($row['total'] ?? 0), 2); ?></td>
+                    <td>â‚±<?php echo number_format((float)($row['total'] ?? 0), 2); ?></td>
                     <td><?php echo htmlspecialchars($audit['new_value'] ?? ($row['adjustment_reason'] ?? 'Manager adjustment')); ?></td>
                     <td><?php echo htmlspecialchars($audit['manager_name'] ?? 'Manager'); ?></td>
                     <td><?php echo date('M d, Y H:i', strtotime($audit['timestamp'] ?? $row['created_at'])); ?></td>
@@ -1615,7 +1615,7 @@ try {
 <div class="txn-kpi-grid">
     <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format(count($voided_transactions)); ?></span><span class="txn-kpi-label">Total Voided Transactions</span></div>
     <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format(in_array($role, ['admin', 'superadmin', 'developer'], true) ? $voids_month : $voids_today); ?></span><span class="txn-kpi-label"><?php echo in_array($role, ['admin', 'superadmin', 'developer'], true) ? 'Voids This Month' : 'Voids Today'; ?></span></div>
-    <div class="txn-kpi-card"><span class="txn-kpi-value">₱<?php echo number_format($voided_amount_total, 2); ?></span><span class="txn-kpi-label">Total Voided Amount</span></div>
+    <div class="txn-kpi-card"><span class="txn-kpi-value">â‚±<?php echo number_format($voided_amount_total, 2); ?></span><span class="txn-kpi-label">Total Voided Amount</span></div>
     <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format(count(array_unique(array_filter(array_map(fn($r) => ($r['audit_entries'][0]['manager_name'] ?? ''), $voided_transactions))))); ?></span><span class="txn-kpi-label">Managers Involved</span></div>
 </div>
 <div class="card" style="padding:0;">
@@ -1628,7 +1628,7 @@ try {
                     <td><?php echo htmlspecialchars('VOID-' . ($row['txn_ref'] ?? $row['row_id'])); ?></td>
                     <td><?php echo htmlspecialchars($row['txn_ref'] ?? ''); ?></td>
                     <td><?php echo htmlspecialchars($row['customer_display'] ?? ''); ?></td>
-                    <td>₱<?php echo number_format((float)($row['total'] ?? 0), 2); ?></td>
+                    <td>â‚±<?php echo number_format((float)($row['total'] ?? 0), 2); ?></td>
                     <td><?php echo htmlspecialchars($audit['new_value'] ?? ($row['rejection_reason'] ?? 'Returned / Cancelled')); ?></td>
                     <td><?php echo htmlspecialchars($audit['manager_name'] ?? 'Manager'); ?></td>
                     <td><?php echo date('M d, Y H:i', strtotime($audit['timestamp'] ?? $row['created_at'])); ?></td>
@@ -1643,7 +1643,7 @@ try {
 <?php if ($view === 'all'): ?>
 <div class="txn-kpi-grid">
     <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($overview_total_transactions); ?></span><span class="txn-kpi-label">Total Transactions</span></div>
-    <div class="txn-kpi-card"><span class="txn-kpi-value">₱<?php echo number_format($overview_total_sales, 2); ?></span><span class="txn-kpi-label">Total Sales</span></div>
+    <div class="txn-kpi-card"><span class="txn-kpi-value">â‚±<?php echo number_format($overview_total_sales, 2); ?></span><span class="txn-kpi-label">Total Sales</span></div>
     <?php if (in_array($role, ['admin', 'superadmin', 'developer'], true)): ?>
     <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($today_transactions); ?></span><span class="txn-kpi-label">Today's Transactions</span></div>
     <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($active_shifts_count); ?></span><span class="txn-kpi-label">Active Shifts</span></div>
@@ -1703,7 +1703,7 @@ try {
                     $rowId      = (int)$t['row_id'];
                     $txnRef     = $t['txn_ref'] ?? $t['row_id'];
                     $txnDisplay = $txnRef;
-                    $txnShort   = strlen((string)$txnDisplay) > 14 ? '…' . substr((string)$txnDisplay, -12) : $txnDisplay;
+                    $txnShort   = strlen((string)$txnDisplay) > 14 ? 'â€¦' . substr((string)$txnDisplay, -12) : $txnDisplay;
                     $vehicle    = $t['vehicle'] ?? '';
                     $mechanic   = $t['mechanic'] ?? '';
 
@@ -1751,7 +1751,7 @@ try {
                         <?php echo htmlspecialchars($t['service_display'] ?? $t['product_name']); ?>
                     </td>
                     <td class="col-vehicle" style="font-size:11px;color:#555;">
-                        <?php echo $vehicle ? htmlspecialchars($vehicle) : '<span style="color:#ccc;">—</span>'; ?>
+                        <?php echo $vehicle ? htmlspecialchars($vehicle) : '<span style="color:#ccc;">â€”</span>'; ?>
                     </td>
                     <td class="col-staff">
                         <?php if ($mechanic): ?>
@@ -1768,7 +1768,7 @@ try {
                     </td>
                     <td class="col-vat" style="text-align:right;font-size:12px;color:#888;">
                         <?php $vat = (float)($t['vat_amount'] ?? 0); ?>
-                        <?php echo $vat > 0 ? '&#8369;' . number_format($vat, 2) : '<span style="color:#ccc;">—</span>'; ?>
+                        <?php echo $vat > 0 ? '&#8369;' . number_format($vat, 2) : '<span style="color:#ccc;">â€”</span>'; ?>
                     </td>
                     <td class="col-total"><strong>&#8369;<?php echo number_format($t['total'], 2); ?></strong></td>
                     <td class="col-pay">
@@ -1808,7 +1808,7 @@ try {
                         } elseif (in_array($wf, ['approved','verified','validated'])) {
                             echo '<span style="background:#1d4ed8;color:#fff;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;">&#10003; Approved</span>';
                         } else {
-                            echo '<span style="color:#94a3b8;font-size:11px;">—</span>';
+                            echo '<span style="color:#94a3b8;font-size:11px;">â€”</span>';
                         }
                     ?>
                     </td>
@@ -1866,7 +1866,7 @@ try {
                             <?php endif; ?>
 
                             <?php
-                            // ── Post-approval buttons ─────────────────────────────────────
+                            // â”€â”€ Post-approval buttons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                             $cur_pay    = strtolower(trim($t['payment_status'] ?? 'unpaid'));
                             $cur_wf     = strtolower(trim($t['jo_status'] ?? 'pending'));
                             $is_paid_ps = in_array($cur_pay, ['paid','partial','credit']);
@@ -1971,7 +1971,7 @@ try {
     </div>
 </div>
 
-<!-- ══ REJECT MODAL (Merchandise) ═══════════════════════════════════════════ -->
+<!-- â•â• REJECT MODAL (Merchandise) â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div id="rejectModal" class="txn-modal" onclick="if(event.target===this)closeRejectModal()">
     <div class="txn-modal-content" style="max-width:480px;">
         <div class="txn-modal-header">
@@ -1990,7 +1990,7 @@ try {
                 <div class="form-group">
                     <label class="form-label">Reason for Rejection <span style="color:red;">*</span></label>
                     <textarea id="reject_reason" name="reason" class="form-control" rows="4"
-                        placeholder="e.g. Wrong quantity, incorrect payment method, wrong item…" required></textarea>
+                        placeholder="e.g. Wrong quantity, incorrect payment method, wrong itemâ€¦" required></textarea>
                 </div>
             </div>
             <div class="txn-modal-footer">
@@ -2001,7 +2001,7 @@ try {
     </div>
 </div>
 
-<!-- ══ ADJUST MODAL (Merchandise) ══════════════════════════════════════════ -->
+<!-- â•â• ADJUST MODAL (Merchandise) â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div id="adjustModal" class="txn-modal" onclick="if(event.target===this)closeAdjustModal()">
     <div class="txn-modal-content" style="max-width:480px;">
         <div class="txn-modal-header">
@@ -2017,13 +2017,13 @@ try {
                 <input type="hidden" name="_status" value="<?php echo htmlspecialchars($status_f); ?>">
                 <input type="hidden" name="_type" value="<?php echo htmlspecialchars($type_f); ?>">
                 <div class="form-group">
-                    <label class="form-label">New Total Amount (₱) <span style="color:red;">*</span></label>
+                    <label class="form-label">New Total Amount (â‚±) <span style="color:red;">*</span></label>
                     <input type="number" id="adj_total" name="adj_total" class="form-control" step="0.01" min="0" required placeholder="0.00">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Adjustment Note <span style="color:red;">*</span></label>
                     <textarea id="adj_note" name="adj_note" class="form-control" rows="3"
-                        placeholder="Reason for adjustment…" required></textarea>
+                        placeholder="Reason for adjustmentâ€¦" required></textarea>
                 </div>
             </div>
             <div class="txn-modal-footer">
@@ -2034,7 +2034,7 @@ try {
     </div>
 </div>
 
-<!-- ══ JO REJECT MODAL ══════════════════════════════════════════════════════ -->
+<!-- â•â• JO REJECT MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div id="joRejectModal" class="txn-modal" onclick="if(event.target===this)closeJORejectModal()">
     <div class="txn-modal-content" style="max-width:480px;">
         <div class="txn-modal-header">
@@ -2053,7 +2053,7 @@ try {
                 <div class="form-group">
                     <label class="form-label">Reason for Rejection <span style="color:red;">*</span></label>
                     <textarea id="jo_reject_reason" name="reason" class="form-control" rows="4"
-                        placeholder="e.g. Duplicate entry, wrong service, customer cancelled…" required></textarea>
+                        placeholder="e.g. Duplicate entry, wrong service, customer cancelledâ€¦" required></textarea>
                 </div>
             </div>
             <div class="txn-modal-footer">
@@ -2064,7 +2064,7 @@ try {
     </div>
 </div>
 
-<!-- ══ JO ADJUST MODAL ══════════════════════════════════════════════════════ -->
+<!-- â•â• JO ADJUST MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div id="joAdjustModal" class="txn-modal" onclick="if(event.target===this)closeJOAdjustModal()">
     <div class="txn-modal-content" style="max-width:480px;">
         <div class="txn-modal-header">
@@ -2081,13 +2081,13 @@ try {
                 <input type="hidden" name="_status" value="<?php echo htmlspecialchars($status_f); ?>">
                 <input type="hidden" name="_type" value="<?php echo htmlspecialchars($type_f); ?>">
                 <div class="form-group">
-                    <label class="form-label">New Total Cost (₱) <span style="color:red;">*</span></label>
+                    <label class="form-label">New Total Cost (â‚±) <span style="color:red;">*</span></label>
                     <input type="number" id="jo_adj_cost" name="adj_cost" class="form-control" step="0.01" min="0" required placeholder="0.00">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Adjustment Note <span style="color:red;">*</span></label>
                     <textarea id="jo_adj_note" name="adj_note" class="form-control" rows="3"
-                        placeholder="Reason for adjustment…" required></textarea>
+                        placeholder="Reason for adjustmentâ€¦" required></textarea>
                 </div>
             </div>
             <div class="txn-modal-footer">
@@ -2098,7 +2098,7 @@ try {
     </div>
 </div>
 
-<!-- ══ PAYMENT MODAL ══════════════════════════════════════════════════════════ -->
+<!-- â•â• PAYMENT MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div id="paymentModal" class="txn-modal" onclick="if(event.target===this)closePaymentModal()">
     <div class="txn-modal-content" style="max-width:480px;">
         <div class="txn-modal-header">
@@ -2149,7 +2149,7 @@ try {
 
                 <div class="form-group">
                     <label class="form-label">Payment Note <span style="font-weight:400;color:#888;">(optional)</span></label>
-                    <textarea id="pm_note" name="pay_note" class="form-control" rows="2" placeholder="e.g. GCash ref #, credit approved by manager…"></textarea>
+                    <textarea id="pm_note" name="pay_note" class="form-control" rows="2" placeholder="e.g. GCash ref #, credit approved by managerâ€¦"></textarea>
                 </div>
             </div>
             <div class="txn-modal-footer">
@@ -2160,13 +2160,13 @@ try {
     </div>
 </div>
 
-// ── Print Receipt (Popup-Immune) ──────────────────────────────────────────────
+// â”€â”€ Print Receipt (Popup-Immune) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function printReceiptPopupImmune(id, type) {
     var url = `receipt.php?id=${encodeURIComponent(id)}&type=${encodeURIComponent(type)}`;
     window.open(url, '_blank');
 }
 
-// ── View Details ──────────────────────────────────────────────────────────────
+// â”€â”€ View Details â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function viewDetails(d) {
     document.getElementById('viewDetailsModal').style.display = 'flex';
 
@@ -2216,9 +2216,9 @@ function viewDetails(d) {
 
     if (isJO || isCombined) {
         html += `
-        <div class="detail-item"><span class="detail-label">Vehicle</span><span class="detail-value">${escHtml(vehicle) || '—'}</span></div>
-        <div class="detail-item"><span class="detail-label">Mechanic</span><span class="detail-value">${escHtml(mechanic) || '—'}</span></div>
-        <div class="detail-item"><span class="detail-label">JO Status</span><span class="detail-value">${escHtml(joStatus) || '—'}</span></div>
+        <div class="detail-item"><span class="detail-label">Vehicle</span><span class="detail-value">${escHtml(vehicle) || 'â€”'}</span></div>
+        <div class="detail-item"><span class="detail-label">Mechanic</span><span class="detail-value">${escHtml(mechanic) || 'â€”'}</span></div>
+        <div class="detail-item"><span class="detail-label">JO Status</span><span class="detail-value">${escHtml(joStatus) || 'â€”'}</span></div>
         <div class="detail-item"><span class="detail-label">Payment Status</span><span class="detail-value">${escHtml(paymentStatus) || 'Unpaid'}</span></div>`;
     } else {
         html += `
@@ -2234,7 +2234,7 @@ function viewDetails(d) {
             <span style="background:${statusColor};color:${statusColor==='#e6a817'?'#212529':'#fff'};padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;">${escHtml(status)}</span>
         </span></div>
         <div class="detail-item"><span class="detail-label">Subtotal</span><span class="detail-value">&#8369;${escHtml(subtotal)}</span></div>
-        <div class="detail-item"><span class="detail-label">VAT</span><span class="detail-value">${parseFloat(vat) > 0 ? '&#8369;'+escHtml(vat) : '—'}</span></div>
+        <div class="detail-item"><span class="detail-label">VAT</span><span class="detail-value">${parseFloat(vat) > 0 ? '&#8369;'+escHtml(vat) : 'â€”'}</span></div>
         <div class="detail-item" style="grid-column:1/-1;"><span class="detail-label">Total Amount</span><span class="detail-value" style="font-size:20px;font-weight:800;color:#002F6C;">&#8369;${escHtml(total)}</span></div>
     </div>`;
 
@@ -2272,7 +2272,7 @@ function fetchMerchandiseItems(rowId) {
                 let rows = data.items.map(it => `
                     <tr>
                         <td>${escHtml(it.product_name)}</td>
-                        <td style="color:#666;font-size:11px;">${escHtml(it.category||'')}${it.size_variant?' · '+escHtml(it.size_variant):''}</td>
+                        <td style="color:#666;font-size:11px;">${escHtml(it.category||'')}${it.size_variant?' Â· '+escHtml(it.size_variant):''}</td>
                         <td style="text-align:center;">${parseFloat(it.quantity).toFixed(0)}</td>
                         <td style="text-align:right;">&#8369;${parseFloat(it.unit_price).toFixed(2)}</td>
                         <td style="text-align:right;font-weight:700;">&#8369;${parseFloat(it.subtotal).toFixed(2)}</td>
@@ -2302,7 +2302,7 @@ function fetchMerchandiseItems(rowId) {
 
 function closeViewModal() { document.getElementById('viewDetailsModal').style.display = 'none'; }
 
-// ── Merchandise Reject Modal ──────────────────────────────────────────────────
+// â”€â”€ Merchandise Reject Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openRejectModal(id, type) {
     document.getElementById('reject_txn_id').value   = id;
     document.getElementById('reject_txn_type').value = type;
@@ -2319,7 +2319,7 @@ function validateReject() {
     return confirm('Reject this transaction?');
 }
 
-// ── Merchandise Adjust Modal ──────────────────────────────────────────────────
+// â”€â”€ Merchandise Adjust Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openAdjustModal(id, currentTotal) {
     document.getElementById('adj_txn_id').value = id;
     document.getElementById('adj_total').value  = currentTotal.replace(/,/g,'');
@@ -2336,7 +2336,7 @@ function validateAdjust() {
     return confirm('Save this adjustment? This action will be logged in the Audit Trail.');
 }
 
-// ── JO Reject Modal ───────────────────────────────────────────────────────────
+// â”€â”€ JO Reject Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openJORejectModal(id, source) {
     document.getElementById('jo_reject_id').value     = id;
     document.getElementById('jo_reject_source').value = source || 'job_orders';
@@ -2353,7 +2353,7 @@ function validateJOReject() {
     return confirm('Reject this Job Order?');
 }
 
-// ── JO Adjust Modal ───────────────────────────────────────────────────────────
+// â”€â”€ JO Adjust Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openJOAdjustModal(id, currentCost, source) {
     document.getElementById('jo_adj_id').value     = id;
     document.getElementById('jo_adj_cost').value   = currentCost.replace(/,/g,'');
@@ -2371,7 +2371,7 @@ function validateJOAdjust() {
     return confirm('Save this Job Order adjustment? This action will be logged in the Audit Trail.');
 }
 
-// ── Utility ───────────────────────────────────────────────────────────────────
+// â”€â”€ Utility â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function escHtml(str) {
     if (!str) return '';
     return String(str)
@@ -2381,13 +2381,13 @@ function escHtml(str) {
         .replace(/"/g,'&quot;');
 }
 
-// ── Payment Modal ─────────────────────────────────────────────────────────────
+// â”€â”€ Payment Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openPaymentModal(id, source, currentStatus, total) {
     document.getElementById('pm_pay_id').value     = id;
     document.getElementById('pm_pay_source').value = source;
     document.getElementById('pm_amount').value     = '';
     document.getElementById('pm_note').value       = '';
-    document.getElementById('pm_summary').textContent = `Transaction #${id} — Total: ₱${parseFloat(total||0).toFixed(2)}`;
+    document.getElementById('pm_summary').textContent = `Transaction #${id} â€” Total: â‚±${parseFloat(total||0).toFixed(2)}`;
 
     // Reset radio styles
     document.querySelectorAll('.pm-status-option').forEach(el => {
@@ -2452,14 +2452,14 @@ function validatePaymentModal() {
 .po-table tbody tr { border-bottom:1px solid #f0f0f0; transition:background 0.15s; }
 .po-table tbody tr:hover { background:#f5f8ff; }
 .po-table tbody td { padding:9px 10px; vertical-align:middle; color:#333; }
-/* Status — plain text, NO background color */
+/* Status â€” plain text, NO background color */
 .status-badge { display:inline-block; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; }
 .badge-pending   { color:#002F70; }
 .badge-approved, .badge-verified, .badge-validated { color:#28a745; }
 .badge-rejected, .badge-returned { color:#dc3545; }
 .badge-adjusted  { color:#6c757d; }
 .badge-other     { color:#6c757d; }
-/* Action buttons — ONLY these have colors */
+/* Action buttons â€” ONLY these have colors */
 .btn-action { display:inline-flex; align-items:center; justify-content:center; gap:3px; width:95px; height:24px; border:none; border-radius:4px; cursor:pointer; font-size:0.68rem; font-weight:600; text-decoration:none; transition:opacity 0.15s, transform 0.1s; white-space:nowrap; color:#fff; }
 .btn-action:hover { opacity:0.85; transform:scale(1.02); }
 .btn-approve { background:#28a745; }
@@ -2470,7 +2470,7 @@ function validatePaymentModal() {
 .actions-cell { display:flex; flex-direction:column; gap:3px;  }
 .actions-cell .btn-action { width:100%; justify-content:center; }
 
-/* ══ JO TRACKER STYLES ══════════════════════════════════════════════════════════ */
+/* â•â• JO TRACKER STYLES â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .jo-stat-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px}
 @media(max-width:1100px){.jo-stat-grid{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:600px){.jo-stat-grid{grid-template-columns:repeat(2,1fr)}}
@@ -2492,7 +2492,7 @@ function validatePaymentModal() {
 .action-col{display:flex;flex-direction:column;gap:4px;}
 .filter-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
-/* ══ FILTER CARD ═══════════════════════════════════════════════════════════════ */
+/* â•â• FILTER CARD â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .flt-card {
     background: #fff;
     border: 1px solid #e2e8f0;
@@ -2527,7 +2527,7 @@ function validatePaymentModal() {
     gap: 8px;
 }
 
-/* ── Filter row ── */
+/* â”€â”€ Filter row â”€â”€ */
 .flt-row {
     display: flex;
     gap: 12px;
@@ -2605,7 +2605,7 @@ function validatePaymentModal() {
 }
 .flt-clear-input:hover { color: #dc3545; }
 
-/* ── Buttons ── */
+/* â”€â”€ Buttons â”€â”€ */
 .flt-action-row {
     display: flex;
     gap: 8px;
@@ -2632,12 +2632,12 @@ function validatePaymentModal() {
 .flt-btn-search:hover { background: #00264D !important; color: #fff !important; }
 .flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
 .flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
-.flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
-.flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
-.flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
-.flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
+.flt-btn-excel  { color: #00264D !important; border-color: #cbd5e1 !important; }
+.flt-btn-excel:hover  { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-pdf    { color: #00264D !important; border-color: #cbd5e1 !important; }
+.flt-btn-pdf:hover    { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 
-/* ── Summary bar ── */
+/* â”€â”€ Summary bar â”€â”€ */
 .flt-summary {
     display: flex;
     gap: 18px;
@@ -2655,7 +2655,7 @@ function validatePaymentModal() {
 .flt-sum-returned { color: #721c24; font-weight: 600; }
 .flt-sum-total    { margin-left: auto; font-weight: 700; color: #002F6C; font-size: 14px; }
 
-/* ══ TABLE LAYOUT ══════════════════════════════════════════════════════════════ */
+/* â•â• TABLE LAYOUT â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .txn-table-wrap {
     width: 100%;
     overflow-x: auto;
@@ -2698,7 +2698,7 @@ function validatePaymentModal() {
 
 .txn-table tbody tr:hover td { background: #f8fbff; }
 
-/* ── Column widths (fixed layout) ── */
+/* â”€â”€ Column widths (fixed layout) â”€â”€ */
 .col-txnid    { width: 110px; }
 .col-type     { width: 52px;  text-align: center; }
 .col-customer { width: 100px; }
@@ -2714,7 +2714,7 @@ function validatePaymentModal() {
 .col-txnstatus{ width: 90px;  text-align: center; }
 .col-actions  { width: 120px; text-align: center; }
 
-/* ── Sticky Actions column ── */
+/* â”€â”€ Sticky Actions column â”€â”€ */
 .sticky-col {
     position: sticky;
     right: 0;
@@ -2728,7 +2728,7 @@ function validatePaymentModal() {
 }
 .txn-table tbody tr:hover .sticky-col { background: #f8fbff; }
 
-/* ── Action buttons — stacked vertically, matching product_management.php ── */
+/* â”€â”€ Action buttons â€” stacked vertically, matching product_management.php â”€â”€ */
 .action-btns {
     display: flex;
     flex-direction: column;
@@ -2755,20 +2755,20 @@ function validatePaymentModal() {
 .ab:hover { filter: brightness(.88); }
 
 /* Uniform button colors matching design system */
-.ab-view    { background: #6c757d; color: #fff; }   /* gray      — View Details */
-.ab-approve { background: #28a745; color: #fff; }   /* green     — Approve      */
-.ab-reject  { background: #dc3545; color: #fff; }   /* red       — Reject       */
-.ab-receipt { background: #6c757d; color: #fff; }   /* gray      — Receipt      */
-.ab-adjust  { background: #002F70; color: #fff; }   /* dark blue — Adjust       */
+.ab-view    { background: #6c757d; color: #fff; }   /* gray      â€” View Details */
+.ab-approve { background: #28a745; color: #fff; }   /* green     â€” Approve      */
+.ab-reject  { background: #dc3545; color: #fff; }   /* red       â€” Reject       */
+.ab-receipt { background: #6c757d; color: #fff; }   /* gray      â€” Receipt      */
+.ab-adjust  { background: #002F70; color: #fff; }   /* dark blue â€” Adjust       */
 
 .col-actions { width: 110px; }
 
-/* Remove row type coloring — clean white rows only */
+/* Remove row type coloring â€” clean white rows only */
 .row-jo   td { background: transparent; }
 .row-merch td { background: transparent; }
 .txn-table tbody tr:hover td { background: #f5f8ff !important; }
 
-/* ══ MODALS ════════════════════════════════════════════════════════════════════ */
+/* â•â• MODALS â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .txn-modal { display:none; position:fixed; z-index:1050; inset:0; background:rgba(0,0,0,.5); align-items:center; justify-content:center; }
 .txn-modal-content { background:#fff; border-radius:12px; width:92%; max-width:640px; box-shadow:0 8px 32px rgba(0,0,0,.18); overflow:hidden; max-height:90vh; display:flex; flex-direction:column; }
 .txn-modal-header { display:flex; justify-content:space-between; align-items:center; padding:18px 24px; background:#fff; color:#212529; border-bottom:1px solid #e9ecef; flex-shrink:0; }
@@ -2778,19 +2778,19 @@ function validatePaymentModal() {
 .txn-modal-body { padding:20px 24px; overflow-y:auto; flex:1; }
 .txn-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; background:#fff; border-top:1px solid #e9ecef; flex-shrink:0; }
 
-/* ── Detail grid ── */
+/* â”€â”€ Detail grid â”€â”€ */
 .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .detail-item { background:#f8f9fa; padding:11px 13px; border-radius:8px; border:1px solid #e9ecef; }
 .detail-label { display:block; font-size:10px; font-weight:700; color:#6c757d; text-transform:uppercase; letter-spacing:.6px; margin-bottom:3px; }
 .detail-value { display:block; font-size:13px; color:#212529; }
 
-/* ── Form ── */
+/* â”€â”€ Form â”€â”€ */
 .form-group { margin-bottom:14px; }
 .form-label { display:block; font-weight:600; color:#333; margin-bottom:6px; font-size:0.88rem; }
 .form-control { width:100%; padding:9px 12px; border:1px solid #ced4da; border-radius:6px; font-size:0.9rem; box-sizing:border-box; resize:vertical; }
 .form-control:focus { outline:none; border-color:#002F70; box-shadow:0 0 0 3px rgba(0,47,112,.1); }
 
-/* ── Modal footer buttons — match PO design ── */
+/* â”€â”€ Modal footer buttons â€” match PO design â”€â”€ */
 .btn-danger    { padding:9px 20px; background:#dc3545; color:#fff; border:none; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
 .btn-danger:hover { background:#b02a37; }
 .btn-secondary { padding:9px 18px; background:#e9ecef; color:#333; border:none; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }

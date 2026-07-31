@@ -3483,14 +3483,14 @@ input[list] {
                             <div class="modal-subtitle">Add notes for this fuel shift (applies to all fuel types)</div>
                         </div>
                     </div>
-                    <button class="modal-close" onclick="closeGlobalRemarksModal()">&times;</button>
+                    <button class="modal-close" onclick="closeGlobalRemarksModal()" style="background:transparent !important; border:none !important; color:#64748b !important; font-size:22px !important; cursor:pointer !important; padding:4px 8px !important; line-height:1 !important; border-radius:4px !important;" title="Close">&times;</button>
                 </div>
                 <div class="modal-body">
                     <label>REMARKS / NOTES</label>
                     <textarea id="globalRemarksTextarea" class="input" rows="5" placeholder="Enter any remarks or notes for this shift (e.g., 'No sales due to power outage', 'Low customer traffic', etc.)&#10;&#10;This remark will be saved with all fuel transactions for this shift."></textarea>
                 </div>
                 <div class="modal-actions">
-                    <button type="button" class="flt-btn flt-btn-reset" onclick="closeGlobalRemarksModal()"><i class="fas fa-times"></i> Cancel</button>
+                    <button type="button" onclick="closeGlobalRemarksModal()" style="background:transparent !important; border:1px solid #cbd5e1 !important; color:#334155 !important; font-weight:600 !important; padding:8px 18px !important; border-radius:6px !important; cursor:pointer !important; font-size:14px !important; box-shadow:none !important;">Cancel</button>
                     <button type="button" class="flt-btn flt-btn-solid-primary" onclick="saveGlobalRemarks()"><i class="fas fa-save"></i> Save Remarks</button>
                 </div>
             </div>

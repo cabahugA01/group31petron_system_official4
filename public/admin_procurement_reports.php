@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Admin Procurement Reports
  * Purchase Orders | Delivery Receipts | PO vs Delivery | Stock-In Approvals
@@ -17,12 +17,17 @@ if (!in_array($role, ['admin', 'superadmin'], true)) {
     die('Access denied. Only administrators can view this page.');
 }
 
-$allowed_sections = ['po', 'delivery', 'comparison', 'stockin'];
+$allowed_sections = ['po', 'delivery', 'comparison', 'stockin', 'fuel_variance'];
 $section = in_array($_GET['section'] ?? '', $allowed_sections, true) ? $_GET['section'] : 'po';
 $date_from = $_GET['date_from'] ?? date('Y-m-01');
 $date_to = $_GET['date_to'] ?? date('Y-m-d');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_from)) $date_from = date('Y-m-01');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to)) $date_to = date('Y-m-d');
+
+$fuel_type_filter = $_GET['fuel_type'] ?? '';
+$ugt_filter       = $_GET['ugt_no'] ?? '';
+$variance_filter  = $_GET['variance_status'] ?? '';
+$status_filter    = $_GET['adj_status'] ?? '';
 
 $station_name = 'Station';
 try {
@@ -359,30 +364,91 @@ foreach ($comparison_rows as $row) {
 }
 $summary_stockin_count = count($stockin_rows);
 
+// â”€â”€ Fuel Variance Report â€” Real Data from fuel_adjustments + fuel_inventory â”€â”€
+$fuel_variance_rows = [];
+
+try {
+    // Admin sees ALL stations' adjustments â€” no station_id filter
+    $fv_stmt = $pdo->prepare("
+        SELECT
+            fa.id                                               AS ref_no,
+            fa.adjustment_date                                  AS report_date,
+            COALESCE(fa.ugt_no, fi.ugt_no, '-')                AS ugt_no,
+            fa.fuel_type                                        AS fuel_type,
+            fa.previous_value                                   AS system_before,
+            fa.new_value                                        AS actual_dip,
+            (fa.new_value - fa.previous_value)                  AS variance_liters,
+            fa.liters                                           AS adjustment_liters,
+            fa.adjustment_direction                             AS adj_direction,
+            COALESCE(fa.adjustment_type, '-')                   AS adj_reason,
+            COALESCE(fa.reason, '-')                            AS adj_detail,
+            COALESCE(fa.notes, '')                              AS remarks,
+            fa.status                                           AS adj_status,
+            COALESCE(u.name, '-')                               AS approved_by_name,
+            COALESCE(s.station_name, CONCAT('Station #', fa.station_id)) AS station_label
+        FROM fuel_adjustments fa
+        LEFT JOIN fuel_inventory fi
+            ON fi.fuel_type_id = fa.fuel_type_id
+           AND fi.station_id   = fa.station_id
+        LEFT JOIN users u
+            ON u.id = fa.approved_by
+        LEFT JOIN stations s
+            ON s.id = fa.station_id
+        WHERE DATE(fa.adjustment_date) BETWEEN ? AND ?
+        ORDER BY fa.adjustment_date DESC, fa.id DESC
+    ");
+    $fv_stmt->execute([$date_from, $date_to]);
+    $fuel_variance_rows = $fv_stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+} catch (Exception $e) {
+    $fuel_variance_rows = [];
+}
+
+// â”€â”€ Summary Metrics â”€â”€
+$fv_total_variance = 0.0;
+$fv_pos_variance   = 0.0;
+$fv_neg_variance   = 0.0;
+$fv_pending_count  = 0;
+$fv_approved_count = 0;
+
+foreach ($fuel_variance_rows as $row) {
+    $v    = (float)($row['variance_liters'] ?? 0);
+    $sLow = strtolower((string)($row['adj_status'] ?? ''));
+    $fv_total_variance += $v;
+    if ($v > 0) $fv_pos_variance += $v;
+    if ($v < 0) $fv_neg_variance += $v;
+    if (strpos($sLow, 'pending') !== false)                                                                $fv_pending_count++;
+    elseif (strpos($sLow, 'approved') !== false || strpos($sLow, 'adjusted') !== false
+         || strpos($sLow, 'verified') !== false || strpos($sLow, 'resolved') !== false) $fv_approved_count++;
+}
+
+
 require_once __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
 .pr-wrapper{background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;}
 .pr-filter-bar{display:flex;align-items:center;gap:10px;padding:14px 18px;background:#f8f9fa;border-bottom:1px solid #e2e8f0;flex-wrap:wrap;}
-.pr-filter-bar label{font-size:12px;font-weight:600;color:#00264D;margin:0;}
-.pr-filter-bar input[type="date"]{padding:7px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;}
-.pr-filter-bar button{padding:7px 16px;background:#fff;color:#00264D;border:1px solid #00264D;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;}
-.pr-filter-bar button:hover{background:#00264D;color:#fff;}
+.pr-filter-bar button{padding:7px 16px;background:#00264D !important;color:#ffffff !important;border:1px solid #00264D;border-radius:4px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:6px;}
+.pr-filter-bar button i{color:#ffffff !important;}
+.pr-filter-bar button:hover{background:#001933 !important;color:#ffffff !important;}
 .pr-export-actions{display:flex;gap:6px;margin-left:auto;}
-.pr-export-btn{padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;border:1px solid;display:inline-flex;align-items:center;gap:6px;background:#fff !important;}
-.pr-export-btn:nth-child(1){color:#16a34a !important;border-color:#16a34a !important;}
-.pr-export-btn:nth-child(1):hover{background:#f0fdf4 !important;}
-.pr-export-btn:nth-child(2){color:#002F70 !important;border-color:#002F70 !important;}
-.pr-export-btn:nth-child(2):hover{background:#eff6ff !important;}
-.pr-export-btn:nth-child(3){color:#dc2626 !important;border-color:#dc2626 !important;}
-.pr-export-btn:nth-child(3):hover{background:#fef2f2 !important;}
-.pr-export-btn:nth-child(4){color:#334155 !important;border-color:#64748b !important;}
-.pr-export-btn:nth-child(4):hover{background:#f8fafc !important;}
-.pr-tabs{display:flex;border-bottom:2px solid #e2e8f0;overflow-x:auto;background:#f8f9fa;}
-.pr-tab{padding:13px 18px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#64748b;background:#f8f9fa;border:none;border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;transition:all .2s;}
-.pr-tab:hover{background:#fff;color:#00264D;}
-.pr-tab.active{background:#fff;color:#00264D;border-bottom-color:#00264D;font-weight:800;}
+.pr-export-btn{padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;border:1px solid;display:inline-flex;align-items:center;gap:6px;background:#ffffff !important;}
+.pr-export-btn:nth-child(1){color:#00264D !important;border-color:#cbd5e1 !important;background:#ffffff !important;}
+.pr-export-btn:nth-child(1):hover{background:#f8fafc !important;border-color:#00264D !important;color:#00264D !important;}
+.pr-export-btn:nth-child(2){color:#00264D !important;border-color:#cbd5e1 !important;background:#ffffff !important;}
+.pr-export-btn:nth-child(2):hover{background:#f8fafc !important;border-color:#00264D !important;color:#00264D !important;}
+.pr-export-btn:nth-child(3){color:#00264D !important;border-color:#cbd5e1 !important;background:#ffffff !important;}
+.pr-export-btn:nth-child(3):hover{background:#f8fafc !important;border-color:#00264D !important;color:#00264D !important;}
+.pr-export-btn:nth-child(4){color:#00264D !important;border-color:#cbd5e1 !important;background:#ffffff !important;}
+.pr-export-btn:nth-child(4):hover{background:#f8fafc !important;border-color:#00264D !important;color:#00264D !important;}
+.pr-tabs{display:flex;flex-wrap:wrap;background:#ffffff;border-top:1px solid #cbd5e1;border-bottom:2px solid #00264D;padding:0;margin:0;}
+.pr-tab{padding:12px 24px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#334155 !important;background:#ffffff !important;border:none !important;border-right:1px solid #e2e8f0 !important;border-radius:0 !important;cursor:pointer;white-space:nowrap;transition:all .15s ease;display:inline-flex;align-items:center;gap:8px;}
+.pr-tab i{font-size:11px;color:#64748b !important;}
+.pr-tab:hover{background:#f8fafc !important;color:#00264D !important;}
+.pr-tab:hover i{color:#00264D !important;}
+.pr-tab.active{background:#00264D !important;color:#ffffff !important;font-weight:800;border-right-color:#00264D !important;}
+.pr-tab.active i{color:#ffffff !important;}
 .pr-content{padding:24px;}
 .pr-summary-grid{display:grid;grid-template-columns:repeat(5,minmax(130px,1fr));gap:10px;margin-bottom:20px;}
 .pr-card{border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;padding:12px;}
@@ -508,17 +574,10 @@ require_once __DIR__ . '/../partials/header.php';
         <button type="button" class="pr-tab <?= $section === 'delivery' ? 'active' : '' ?>" onclick="prTab('delivery')"><i class="fas fa-truck-loading"></i> Delivery Receipts</button>
         <button type="button" class="pr-tab <?= $section === 'comparison' ? 'active' : '' ?>" onclick="prTab('comparison')"><i class="fas fa-balance-scale"></i> PO vs Delivery</button>
         <button type="button" class="pr-tab <?= $section === 'stockin' ? 'active' : '' ?>" onclick="prTab('stockin')"><i class="fas fa-clipboard-check"></i> Stock-In Approvals</button>
+        <button type="button" class="pr-tab <?= $section === 'fuel_variance' ? 'active' : '' ?>" onclick="prTab('fuel_variance')"><i class="fas fa-gas-pump"></i> Fuel Variance</button>
     </div>
 
     <div class="pr-content">
-        <div class="pr-summary-grid">
-            <div class="pr-card"><div class="pr-card-label">Purchase Orders</div><div class="pr-card-value"><?= number_format($summary_po_count) ?></div></div>
-            <div class="pr-card"><div class="pr-card-label">Delivery Receipts</div><div class="pr-card-value"><?= number_format($summary_delivery_count) ?></div></div>
-            <div class="pr-card"><div class="pr-card-label">Pending Items</div><div class="pr-card-value"><?= number_format($summary_pending_count) ?></div></div>
-            <div class="pr-card"><div class="pr-card-label">Partial Items</div><div class="pr-card-value"><?= number_format($summary_partial_count) ?></div></div>
-            <div class="pr-card"><div class="pr-card-label">Stock-In Rows</div><div class="pr-card-value"><?= number_format($summary_stockin_count) ?></div></div>
-        </div>
-
         <div class="pr-printable">
             <div class="pr-panel <?= $section === 'po' ? 'active' : '' ?>">
                 <div class="pr-rpt-header">
@@ -687,6 +746,88 @@ require_once __DIR__ . '/../partials/header.php';
                     </table>
                 </div>
             </div>
+
+            <!-- â”€â”€ FUEL VARIANCE REPORT PANEL (ADMIN OVERSIGHT) â”€â”€ -->
+            <div class="pr-panel <?= $section === 'fuel_variance' ? 'active' : '' ?>">
+                <div class="pr-rpt-header">
+                    <div class="rh-title">Fuel Variance Report</div>
+                    <div class="rh-sub">System Volume vs Actual Tank Dip Volume Comparison</div>
+                    <div class="rh-station"><?= pr_h($station_name) ?></div>
+                    <div class="rh-date"><strong>Date:</strong> <?= pr_date($date_from) ?><?= $date_from !== $date_to ? ' - ' . pr_date($date_to) : '' ?></div>
+                </div>
+
+
+                <div class="pr-table-wrap">
+                    <table class="pr-tbl">
+                        <thead>
+                            <tr>
+                                <th>Ref No.</th>
+                                <th>Date</th>
+                                <th>Station</th>
+                                <th>UGT No.</th>
+                                <th>Fuel Type</th>
+                                <th>System Volume (L)</th>
+                                <th>Actual Tank Dip (L)</th>
+                                <th>Variance (L)</th>
+                                <th>Adjustment</th>
+                                <th>Status</th>
+                                <th>Reason</th>
+                                <th>Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php if (empty($fuel_variance_rows)): ?>
+                            <tr><td colspan="12" class="pr-empty">No fuel variance records found for the selected period.</td></tr>
+                        <?php else: foreach ($fuel_variance_rows as $r):
+                            $var = (float)($r['variance_liters'] ?? 0);
+                            $adj_liters = (float)($r['adjustment_liters'] ?? 0);
+                            $adj_dir    = (string)($r['adj_direction'] ?? '');
+                        ?>
+                            <tr>
+                                <td class="pr-mono" style="font-size:11px;color:#64748b;">#<?= pr_h((string)$r['ref_no']) ?></td>
+                                <td><?= pr_date($r['report_date']) ?></td>
+                                <td style="font-size:11px;color:#475569;"><?= pr_h($r['station_label'] ?? '-') ?></td>
+                                <td class="pr-mono"><?= pr_h($r['ugt_no']) ?></td>
+                                <td><strong><?= pr_h($r['fuel_type']) ?></strong></td>
+                                <td><?= number_format((float)$r['system_before'], 2) ?> L</td>
+                                <td><?= number_format((float)$r['actual_dip'], 2) ?> L</td>
+                                <td>
+                                    <?php if ($var < 0): ?>
+                                        <span class="pr-neg"><?= number_format($var, 2) ?> L</span>
+                                    <?php elseif ($var > 0): ?>
+                                        <span class="pr-pos">+<?= number_format($var, 2) ?> L</span>
+                                    <?php else: ?>
+                                        <span style="color:#64748b;">0.00 L</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php if ($adj_liters != 0): ?>
+                                        <span style="color:<?= $adj_dir === 'Increase' ? '#15803d' : '#dc2626' ?>; font-weight:700;">
+                                            <?= $adj_dir === 'Increase' ? '+' : '-' ?><?= number_format(abs($adj_liters), 2) ?> L
+                                        </span>
+                                        <span style="font-size:10px;color:#64748b;display:block;"><?= pr_h($adj_dir) ?></span>
+                                    <?php else: ?>
+                                        <span style="color:#94a3b8;">â€”</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td><span class="pr-badge <?= pr_status_class($r['adj_status']) ?>"><?= pr_h($r['adj_status']) ?></span></td>
+                                <td><?= pr_h($r['adj_reason'] !== '-' ? $r['adj_reason'] : '') ?></td>
+                                <td style="max-width:180px;word-break:break-word;font-size:11px;color:#475569;"><?= pr_h(strlen((string)$r['remarks']) > 100 ? substr((string)$r['remarks'], 0, 100) . '...' : (string)$r['remarks']) ?></td>
+                            </tr>
+                        <?php endforeach; endif; ?>
+                        </tbody>
+                        <?php if (!empty($fuel_variance_rows)): ?>
+                        <tfoot>
+                            <tr>
+                                <td colspan="7">TOTAL FUEL VARIANCE ROWS: <?= count($fuel_variance_rows) ?></td>
+                                <td colspan="5" style="text-align:right;">NET VARIANCE: <strong style="color:<?= $fv_total_variance < 0 ? '#dc2626' : ($fv_total_variance > 0 ? '#15803d' : '#00264D') ?>;"><?= ($fv_total_variance > 0 ? '+' : '') . number_format($fv_total_variance, 2) ?> L</strong></td>
+                            </tr>
+                        </tfoot>
+                        <?php endif; ?>
+                    </table>
+                </div>
+
+            </div>
         </div>
     </div>
 </div>
@@ -785,7 +926,7 @@ function prPrint() {
     printReportArea(active);
 }
 
-// Hide fixed elements (scroll btn, footer) during print — CSS alone is overridden by inline styles
+// Hide fixed elements (scroll btn, footer) during print â€” CSS alone is overridden by inline styles
 window.addEventListener('beforeprint', function() {
     const scrollBtn = document.getElementById('toggleScrollBtn');
     if (scrollBtn) scrollBtn.style.setProperty('display', 'none', 'important');

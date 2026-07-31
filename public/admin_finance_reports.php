@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Admin Finance Reports
  * Payments | Suppliers | Financial / Payables
@@ -358,15 +358,9 @@ require_once __DIR__ . '/../partials/header.php';
 .fr-filter-bar input[type="date"] { padding:7px 10px; border:1px solid #cbd5e1; border-radius:4px; font-size:12px; }
 .fr-filter-bar button { padding:7px 16px; background:#ffffff; color:#00264D; border:1px solid #00264D; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer; transition:all .2s; }
 .fr-filter-bar button:hover { background:#00264D; color:#ffffff; }
-.fr-export-btn { padding:7px 14px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; transition:all .2s; border:1px solid; display:inline-flex; align-items:center; gap:6px; background:#ffffff !important; }
-.fr-export-btn:nth-child(1) { color:#16a34a !important; border-color:#16a34a !important; }
-.fr-export-btn:nth-child(1):hover { background:#f0fdf4 !important; border-color:#15803d !important; color:#16a34a !important; }
-.fr-export-btn:nth-child(2) { color:#002F70 !important; border-color:#002F70 !important; }
-.fr-export-btn:nth-child(2):hover { background:#eff6ff !important; border-color:#001f4d !important; color:#002F70 !important; }
-.fr-export-btn:nth-child(3) { color:#dc2626 !important; border-color:#dc2626 !important; }
-.fr-export-btn:nth-child(3):hover { background:#fef2f2 !important; border-color:#b91c1c !important; color:#dc2626 !important; }
-.fr-export-btn:nth-child(4) { color:#334155 !important; border-color:#64748b !important; }
-.fr-export-btn:nth-child(4):hover { background:#f8fafc !important; border-color:#334155 !important; color:#334155 !important; }
+.fr-export-btn { padding:7px 14px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; transition:all .2s; border:1px solid #cbd5e1; display:inline-flex; align-items:center; gap:6px; background:#ffffff !important; color:#00264D !important; }
+.fr-export-btn:nth-child(1),.fr-export-btn:nth-child(2),.fr-export-btn:nth-child(3),.fr-export-btn:nth-child(4) { color:#00264D !important; border-color:#cbd5e1 !important; }
+.fr-export-btn:nth-child(1):hover,.fr-export-btn:nth-child(2):hover,.fr-export-btn:nth-child(3):hover,.fr-export-btn:nth-child(4):hover { background:#f8fafc !important; border-color:#00264D !important; color:#00264D !important; }
 .fr-tabs { display:flex; border-bottom:2px solid #e2e8f0; overflow:hidden; }
 .fr-tab { padding:13px 20px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; color:#64748b; background:#f8f9fa; border:none; border-bottom:3px solid transparent; cursor:pointer; white-space:nowrap; transition:all .2s; }
 .fr-tab:hover { background:#fff; color:#00264D; }

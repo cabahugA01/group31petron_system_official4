@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Manager Procurement Reports
  * Delivery Validation | PO vs Received | Stock-In Approval | Delivery Variance
@@ -25,12 +25,17 @@ if (!$station_id) {
     die('Error: You are not assigned to a station.');
 }
 
-$valid_sections = ['validation', 'comparison', 'stockin', 'variance'];
+$valid_sections = ['validation', 'comparison', 'stockin', 'variance', 'fuel_variance'];
 $section = in_array($_GET['section'] ?? '', $valid_sections, true) ? $_GET['section'] : 'validation';
 $date_from = $_GET['date_from'] ?? date('Y-m-01');
 $date_to = $_GET['date_to'] ?? date('Y-m-d');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_from)) $date_from = date('Y-m-01');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to)) $date_to = date('Y-m-d');
+
+$fuel_type_filter = $_GET['fuel_type'] ?? '';
+$ugt_filter       = $_GET['ugt_no'] ?? '';
+$variance_filter  = $_GET['variance_status'] ?? '';
+$status_filter    = $_GET['adj_status'] ?? '';
 
 $station_name = 'Station';
 try {
@@ -346,8 +351,82 @@ foreach ($delivery_rows as $r) {
     if (str_contains($status, 'pending') || str_contains($status, 'expected')) $summary_pending++;
     if (str_contains($status, 'validated') || str_contains($status, 'verified') || str_contains($status, 'ready') || str_contains($status, 'complete')) $summary_validated++;
 }
-$summary_stockin = count($stockin_rows);
 $summary_variance = count($variance_rows);
+// â”€â”€ Fetch Fuel Variance Rows & Summary â”€â”€
+// â”€â”€ Fuel Variance Report â€” Real Data from fuel_adjustments + fuel_inventory â”€â”€
+$fuel_variance_rows = [];
+
+try {
+    /*
+     * fuel_adjustments columns used:
+     *   id               â†’ Reference No.
+     *   adjustment_date  â†’ Date
+     *   ugt_no           â†’ UGT No. (directly stored on adjustment)
+     *   fuel_type        â†’ Fuel Type
+     *   previous_value   â†’ System Current Volume (before adjustment)
+     *   new_value        â†’ Actual Tank Dip Volume (after physical count)
+     *   variance         â†’ stored variance (liters)
+     *   adjustment_direction â†’ Increase / Decrease (direction of adjustment)
+     *   adjustment_type  â†’ Reason (Physical Count, Encoding Error, etc.)
+     *   reason           â†’ Adjustment Reason (free text from staff)
+     *   notes            â†’ Remarks
+     *   status           â†’ Adjustment Status (Pending / Approved / Rejected)
+     *   approved_by      â†’ for resolved_by display
+     *   liters           â†’ Adjustment amount in liters
+     *
+     * fuel_inventory joined to get current_stock snapshot for context.
+     */
+    $fv_stmt = $pdo->prepare("
+        SELECT
+            fa.id                                               AS ref_no,
+            fa.adjustment_date                                  AS report_date,
+            COALESCE(fa.ugt_no, fi.ugt_no, '-')                AS ugt_no,
+            fa.fuel_type                                        AS fuel_type,
+            COALESCE(fi.current_stock, fa.previous_value)       AS system_volume,
+            fa.previous_value                                   AS system_before,
+            fa.new_value                                        AS actual_dip,
+            (fa.new_value - fa.previous_value)                  AS variance_liters,
+            fa.liters                                           AS adjustment_liters,
+            fa.adjustment_direction                             AS adj_direction,
+            COALESCE(fa.adjustment_type, '-')                   AS adj_reason,
+            COALESCE(fa.reason, '-')                            AS adj_detail,
+            COALESCE(fa.notes, '')                              AS remarks,
+            fa.status                                           AS adj_status,
+            COALESCE(u.name, '-')                               AS approved_by_name
+        FROM fuel_adjustments fa
+        LEFT JOIN fuel_inventory fi
+            ON fi.fuel_type_id = fa.fuel_type_id
+           AND fi.station_id   = fa.station_id
+        LEFT JOIN users u
+            ON u.id = fa.approved_by
+        WHERE fa.station_id = ?
+          AND DATE(fa.adjustment_date) BETWEEN ? AND ?
+        ORDER BY fa.adjustment_date DESC, fa.id DESC
+    ");
+    $fv_stmt->execute([$station_id, $date_from, $date_to]);
+    $fuel_variance_rows = $fv_stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+} catch (Exception $e) {
+    $fuel_variance_rows = [];
+}
+
+// â”€â”€ Summary Metrics (computed from real rows) â”€â”€
+$fv_total_variance = 0.0;
+$fv_pos_variance   = 0.0;
+$fv_neg_variance   = 0.0;
+$fv_pending_count  = 0;
+$fv_approved_count = 0;
+
+foreach ($fuel_variance_rows as $row) {
+    $v    = (float)($row['variance_liters'] ?? 0);
+    $sLow = strtolower((string)($row['adj_status'] ?? ''));
+    $fv_total_variance += $v;
+    if ($v > 0) $fv_pos_variance += $v;
+    if ($v < 0) $fv_neg_variance += $v;
+    if (strpos($sLow, 'pending') !== false)                                                                $fv_pending_count++;
+    elseif (strpos($sLow, 'approved') !== false || strpos($sLow, 'adjusted') !== false
+         || strpos($sLow, 'verified') !== false || strpos($sLow, 'resolved') !== false) $fv_approved_count++;
+}
 
 require_once __DIR__ . '/../partials/header.php';
 ?>
@@ -356,19 +435,26 @@ require_once __DIR__ . '/../partials/header.php';
 .mp-wrapper{background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;}
 .mp-filter-bar{display:flex;align-items:center;gap:10px;padding:14px 18px;background:#f8f9fa;border-bottom:1px solid #e2e8f0;flex-wrap:wrap;}
 .mp-filter-bar label{font-size:12px;font-weight:600;color:#00264D;margin:0;}
-.mp-filter-bar input[type="date"]{padding:7px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;}
-.mp-filter-bar button{padding:7px 16px;background:#fff;color:#00264D;border:1px solid #00264D;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;}
-.mp-filter-bar button:hover{background:#00264D;color:#fff;}
+.mp-filter-bar button{padding:7px 16px;background:#00264D !important;color:#ffffff !important;border:1px solid #00264D;border-radius:4px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:6px;}
+.mp-filter-bar button i{color:#ffffff !important;}
+.mp-filter-bar button:hover{background:#001933 !important;color:#ffffff !important;}
 .mp-export-actions{display:flex;gap:6px;margin-left:auto;}
-.mp-export-btn{padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid;display:inline-flex;align-items:center;gap:6px;background:#fff !important;}
-.mp-export-btn:nth-child(1){color:#16a34a !important;border-color:#16a34a !important;}
-.mp-export-btn:nth-child(2){color:#002F70 !important;border-color:#002F70 !important;}
-.mp-export-btn:nth-child(3){color:#dc2626 !important;border-color:#dc2626 !important;}
-.mp-export-btn:nth-child(4){color:#002F70 !important;border-color:#002F70 !important;}
-.mp-tabs{display:flex;border-bottom:2px solid #e2e8f0;overflow-x:auto;background:#00264D;}
-.mp-tab{padding:13px 18px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#ffffff !important;background:transparent;border:none;border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;}
-.mp-tab:hover{background:rgba(255,255,255,0.15);color:#ffffff !important;}
-.mp-tab.active{background:#ffffff;color:#00264D !important;border-bottom-color:#002F70;font-weight:800;}
+.mp-export-btn{padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid;display:inline-flex;align-items:center;gap:6px;background:#ffffff !important;}
+.mp-export-btn:nth-child(1){color:#00264D !important;border-color:#cbd5e1 !important;background:#ffffff !important;}
+.mp-export-btn:nth-child(1):hover{background:#f8fafc !important;border-color:#00264D !important;color:#00264D !important;}
+.mp-export-btn:nth-child(2){color:#00264D !important;border-color:#cbd5e1 !important;background:#ffffff !important;}
+.mp-export-btn:nth-child(2):hover{background:#f8fafc !important;border-color:#00264D !important;color:#00264D !important;}
+.mp-export-btn:nth-child(3){color:#00264D !important;border-color:#cbd5e1 !important;background:#ffffff !important;}
+.mp-export-btn:nth-child(3):hover{background:#f8fafc !important;border-color:#00264D !important;color:#00264D !important;}
+.mp-export-btn:nth-child(4){color:#00264D !important;border-color:#cbd5e1 !important;background:#ffffff !important;}
+.mp-export-btn:nth-child(4):hover{background:#f8fafc !important;border-color:#00264D !important;color:#00264D !important;}
+.mp-tabs{display:flex;flex-wrap:wrap;background:#ffffff;border-top:1px solid #cbd5e1;border-bottom:2px solid #00264D;padding:0;margin:0;}
+.mp-tab{padding:12px 24px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#334155 !important;background:#ffffff !important;border:none !important;border-right:1px solid #e2e8f0 !important;border-radius:0 !important;cursor:pointer;white-space:nowrap;transition:all .15s ease;display:inline-flex;align-items:center;gap:8px;}
+.mp-tab i{font-size:11px;color:#64748b !important;}
+.mp-tab:hover{background:#f8fafc !important;color:#00264D !important;}
+.mp-tab:hover i{color:#00264D !important;}
+.mp-tab.active{background:#00264D !important;color:#ffffff !important;font-weight:800;border-right-color:#00264D !important;}
+.mp-tab.active i{color:#ffffff !important;}
 .mp-content{padding:24px;}
 .mp-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:10px;margin-bottom:20px;}
 .mp-card{border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;padding:12px;}
@@ -435,7 +521,7 @@ require_once __DIR__ . '/../partials/header.php';
     .mp-rpt-header{break-after:avoid !important;page-break-after:avoid !important;text-align:center !important;width:100% !important;padding:6px 0 8px !important;}
     .rh-title,.rh-sub,.rh-station,.rh-date{text-align:center !important;display:block !important;}
 
-    /* Table — squeeze to fit 1 page */
+    /* Table â€” squeeze to fit 1 page */
     .mp-table-wrap{overflow:visible !important;width:100% !important;}
     .mp-tbl{width:100% !important;min-width:0 !important;table-layout:auto !important;font-size:7px !important;break-inside:auto !important;page-break-inside:auto !important;margin:0 !important;}
     .mp-tbl thead{display:table-header-group !important;}
@@ -466,16 +552,10 @@ require_once __DIR__ . '/../partials/header.php';
         <button type="button" class="mp-tab <?= $section === 'comparison' ? 'active' : '' ?>" onclick="mpTab('comparison')"><i class="fas fa-balance-scale"></i> PO vs Received</button>
         <button type="button" class="mp-tab <?= $section === 'stockin' ? 'active' : '' ?>" onclick="mpTab('stockin')"><i class="fas fa-box-open"></i> Stock-In Approval</button>
         <button type="button" class="mp-tab <?= $section === 'variance' ? 'active' : '' ?>" onclick="mpTab('variance')"><i class="fas fa-exclamation-triangle"></i> Delivery Variance</button>
+        <button type="button" class="mp-tab <?= $section === 'fuel_variance' ? 'active' : '' ?>" onclick="mpTab('fuel_variance')"><i class="fas fa-gas-pump"></i> Fuel Variance</button>
     </div>
 
     <div class="mp-content">
-        <div class="mp-summary-grid">
-            <div class="mp-card"><div class="mp-card-label">Deliveries</div><div class="mp-card-value"><?= number_format($summary_deliveries) ?></div></div>
-            <div class="mp-card"><div class="mp-card-label">Pending Checks</div><div class="mp-card-value"><?= number_format($summary_pending) ?></div></div>
-            <div class="mp-card"><div class="mp-card-label">Validated / Ready</div><div class="mp-card-value"><?= number_format($summary_validated) ?></div></div>
-            <div class="mp-card"><div class="mp-card-label">Variance Rows</div><div class="mp-card-value"><?= number_format($summary_variance) ?></div></div>
-        </div>
-
         <div class="mp-printable">
             <div class="mp-panel <?= $section === 'validation' ? 'active' : '' ?>">
                 <div class="mp-rpt-header">
@@ -633,6 +713,86 @@ require_once __DIR__ . '/../partials/header.php';
                         <?php if (!empty($variance_rows)): ?><tfoot><tr><td colspan="10">TOTAL VARIANCE ROWS: <?= number_format($summary_variance) ?></td></tr></tfoot><?php endif; ?>
                     </table>
                 </div>
+            </div>
+
+            <!-- â”€â”€ FUEL VARIANCE REPORT PANEL â”€â”€ -->
+            <div class="mp-panel <?= $section === 'fuel_variance' ? 'active' : '' ?>">
+                <div class="mp-rpt-header">
+                    <div class="rh-title">Fuel Variance Report</div>
+                    <div class="rh-sub">System Volume vs Actual Tank Dip Volume Comparison</div>
+                    <div class="rh-station"><?= mp_h($station_name) ?></div>
+                    <div class="rh-date"><strong>Date:</strong> <?= mp_date($date_from) ?><?= $date_from !== $date_to ? ' - ' . mp_date($date_to) : '' ?></div>
+                </div>
+
+
+                <div class="mp-table-wrap">
+                    <table class="mp-tbl">
+                        <thead>
+                            <tr>
+                                <th>Ref No.</th>
+                                <th>Date</th>
+                                <th>UGT No.</th>
+                                <th>Fuel Type</th>
+                                <th>System Volume (L)</th>
+                                <th>Actual Tank Dip (L)</th>
+                                <th>Variance (L)</th>
+                                <th>Adjustment</th>
+                                <th>Status</th>
+                                <th>Reason</th>
+                                <th>Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php if (empty($fuel_variance_rows)): ?>
+                            <tr><td colspan="11" class="mp-empty">No fuel variance records found for the selected period.</td></tr>
+                        <?php else: foreach ($fuel_variance_rows as $r):
+                            $var = (float)($r['variance_liters'] ?? 0);
+                            $adj_liters = (float)($r['adjustment_liters'] ?? 0);
+                            $adj_dir    = (string)($r['adj_direction'] ?? '');
+                        ?>
+                            <tr>
+                                <td class="mp-mono" style="font-size:11px;color:#64748b;">#<?= mp_h((string)$r['ref_no']) ?></td>
+                                <td><?= mp_date($r['report_date']) ?></td>
+                                <td class="mp-mono"><?= mp_h($r['ugt_no']) ?></td>
+                                <td><strong><?= mp_h($r['fuel_type']) ?></strong></td>
+                                <td><?= number_format((float)$r['system_before'], 2) ?> L</td>
+                                <td><?= number_format((float)$r['actual_dip'], 2) ?> L</td>
+                                <td>
+                                    <?php if ($var < 0): ?>
+                                        <span class="mp-neg"><?= number_format($var, 2) ?> L</span>
+                                    <?php elseif ($var > 0): ?>
+                                        <span class="mp-pos">+<?= number_format($var, 2) ?> L</span>
+                                    <?php else: ?>
+                                        <span style="color:#64748b;">0.00 L</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php if ($adj_liters != 0): ?>
+                                        <span style="color:<?= $adj_dir === 'Increase' ? '#15803d' : '#dc2626' ?>; font-weight:700;">
+                                            <?= $adj_dir === 'Increase' ? '+' : '-' ?><?= number_format(abs($adj_liters), 2) ?> L
+                                        </span>
+                                        <span style="font-size:10px;color:#64748b;display:block;"><?= mp_h($adj_dir) ?></span>
+                                    <?php else: ?>
+                                        <span style="color:#94a3b8;">â€”</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td><span class="mp-badge <?= mp_status_class($r['adj_status']) ?>"><?= mp_h($r['adj_status']) ?></span></td>
+                                <td><?= mp_h($r['adj_reason'] !== '-' ? $r['adj_reason'] : '') ?></td>
+                                <td style="max-width:180px;word-break:break-word;font-size:11px;color:#475569;"><?= mp_h(strlen((string)$r['remarks']) > 100 ? substr((string)$r['remarks'], 0, 100) . '...' : (string)$r['remarks']) ?></td>
+                            </tr>
+                        <?php endforeach; endif; ?>
+                        </tbody>
+                        <?php if (!empty($fuel_variance_rows)): ?>
+                        <tfoot>
+                            <tr>
+                                <td colspan="6">TOTAL FUEL VARIANCE ROWS: <?= count($fuel_variance_rows) ?></td>
+                                <td colspan="5" style="text-align:right;">NET VARIANCE: <strong style="color:<?= $fv_total_variance < 0 ? '#dc2626' : ($fv_total_variance > 0 ? '#15803d' : '#00264D') ?>;"><?= ($fv_total_variance > 0 ? '+' : '') . number_format($fv_total_variance, 2) ?> L</strong></td>
+                            </tr>
+                        </tfoot>
+                        <?php endif; ?>
+                    </table>
+                </div>
+
             </div>
         </div>
     </div>

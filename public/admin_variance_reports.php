@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Admin Variance Reports - Merchandise (Admin Functional Form)
  * Access: admin and superadmin roles only.
@@ -195,7 +195,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// ── Filters ───────────────────────────────────────────────────────────────────
+// â”€â”€ Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $date_from     = trim($_GET['date_from'] ?? date('Y-m-d', strtotime('-90 days')));
 $date_to       = trim($_GET['date_to']   ?? date('Y-m-d'));
 $filter_status = trim($_GET['status']    ?? '');
@@ -334,7 +334,7 @@ if ($export === 'excel') {
     header('Content-Type: application/vnd.ms-excel; charset=utf-8');
     header('Content-Disposition: attachment; filename="merchandise_variance_reports_'.date('Ymd').'.xls"');
     echo '<html><head><meta charset="UTF-8"><style>table{border-collapse:collapse}th,td{border:1px solid #ddd;padding:7px}th{background:#002F6C;color:#fff}</style></head><body>';
-    echo '<h2>Merchandise Variance Reports Oversight</h2><p>Period: '.$date_from.' – '.$date_to.' | Station: '.$station_name.'</p>';
+    echo '<h2>Merchandise Variance Reports Oversight</h2><p>Period: '.$date_from.' â€“ '.$date_to.' | Station: '.$station_name.'</p>';
     echo '<table><thead><tr><th>ID</th><th>Flagged Date</th><th>Station</th><th>Transaction ID</th><th>Item Code</th><th>Item Name</th><th>Expected Qty</th><th>Actual Qty</th><th>Variance</th><th>Reason</th><th>Encoder</th><th>Manager</th><th>Status</th></tr></thead><tbody>';
     foreach ($records as $r) {
         $var_sign = $r['variance'] > 0 ? '+' : '';
@@ -343,7 +343,7 @@ if ($export === 'excel') {
         echo '<td>'.htmlspecialchars($r['item_code']).'</td><td>'.htmlspecialchars($r['item_name']).'</td>';
         echo '<td>'.number_format($r['expected_quantity'],2).'</td><td>'.number_format($r['actual_quantity'],2).'</td>';
         echo '<td>'.$var_sign.number_format($r['variance'],2).'</td><td>'.htmlspecialchars($r['reason']).'</td>';
-        echo '<td>'.htmlspecialchars($r['encoder_name'] ?? '—').'</td><td>'.htmlspecialchars($r['manager_name'] ?? '—').'</td>';
+        echo '<td>'.htmlspecialchars($r['encoder_name'] ?? 'â€”').'</td><td>'.htmlspecialchars($r['manager_name'] ?? 'â€”').'</td>';
         echo '<td>'.htmlspecialchars(strtoupper($r['status'])).'</td></tr>';
     }
     echo '</tbody></table></body></html>'; exit;
@@ -360,7 +360,7 @@ html,body{max-width:100vw;overflow-x:hidden}
 /* == Outline Buttons - SuperAdmin standard == */
 .mvr-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 16px;height:36px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;text-decoration:none;transition:all .15s;white-space:nowrap;background:white !important}
 .mvr-btn-primary{color:#00264D !important;border-color:#00264D !important}.mvr-btn-primary:hover{background:#00264D !important;color:#fff !important}
-.mvr-btn-excel{color:#1d6f42 !important;border-color:#1d6f42 !important}.mvr-btn-excel:hover{background:#1d6f42 !important;color:#fff !important}
+.mvr-btn-excel{color:#00264D!important;border-color:#cbd5e1!important;background:#ffffff!important}.mvr-btn-excel:hover{background:#f8fafc!important;border-color:#00264D!important;color:#00264D!important}
 .mvr-btn-back{color:#4b5563 !important;border-color:#6b7280 !important}.mvr-btn-back:hover{background:#6b7280 !important;color:#fff !important}
 .mvr-btn-filter{color:#00264D !important;border-color:#00264D !important}.mvr-btn-filter:hover{background:#00264D !important;color:#fff !important}
 .mvr-btn-danger{color:#dc2626 !important;border-color:#dc2626 !important}.mvr-btn-danger:hover{background:#dc2626 !important;color:#fff !important}
@@ -556,10 +556,10 @@ html,body{max-width:100vw;overflow-x:hidden}
                         <?= $var_sign . number_format($var_val, 2) ?>
                     </td>
                     <td title="<?= htmlspecialchars($r['reason']) ?>">
-                        <?= htmlspecialchars(substr($r['reason'], 0, 30)) ?><?= strlen($r['reason']) > 30 ? '…' : '' ?>
+                        <?= htmlspecialchars(substr($r['reason'], 0, 30)) ?><?= strlen($r['reason']) > 30 ? 'â€¦' : '' ?>
                     </td>
-                    <td><?= htmlspecialchars($r['encoder_name'] ?: '—') ?></td>
-                    <td><?= htmlspecialchars($r['manager_name'] ?: '—') ?></td>
+                    <td><?= htmlspecialchars($r['encoder_name'] ?: 'â€”') ?></td>
+                    <td><?= htmlspecialchars($r['manager_name'] ?: 'â€”') ?></td>
                     <td><span class="mvr-badge badge-<?= $r['status'] ?>"><?= htmlspecialchars($status_label) ?></span></td>
                     <td style="text-align:right;white-space:nowrap;">
                         <button onclick='openViewModal(<?= json_encode($r, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>)' class="mvr-btn-action" title="View Details">
@@ -582,9 +582,9 @@ html,body{max-width:100vw;overflow-x:hidden}
 </div>
 
 
-<!-- ══════════════════════════════════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      MODALS
-     ══════════════════════════════════════════════════════════════════════════ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 
 <!-- VIEW MODAL -->
 <div id="viewModal" class="mvr-modal" onclick="if(event.target===this)closeMvrModal('viewModal')">
@@ -776,7 +776,7 @@ html,body{max-width:100vw;overflow-x:hidden}
 </form>
 
 <script>
-// ── Modal Actions ─────────────────────────────────────────────────────────────
+// â”€â”€ Modal Actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openCreateModal() {
     document.getElementById('createModal').style.display = 'flex';
 }
@@ -801,11 +801,11 @@ function openViewModal(data) {
         varEl.style.color = '#16a34a';
     }
 
-    document.getElementById('v_encoder_name').textContent = data.encoder_name || '—';
-    document.getElementById('v_manager_name').textContent = data.manager_name || '—';
+    document.getElementById('v_encoder_name').textContent = data.encoder_name || 'â€”';
+    document.getElementById('v_manager_name').textContent = data.manager_name || 'â€”';
     document.getElementById('v_reason').textContent = data.reason || 'No details provided.';
     document.getElementById('v_flagged_at').textContent = data.flagged_at ? new Date(data.flagged_at).toLocaleString() : 'N/A';
-    document.getElementById('v_resolved_at').textContent = data.resolved_at ? new Date(data.resolved_at).toLocaleString() : '—';
+    document.getElementById('v_resolved_at').textContent = data.resolved_at ? new Date(data.resolved_at).toLocaleString() : 'â€”';
 
     // Status Badge Styling
     const statusBadge = document.getElementById('v_status_badge');
@@ -820,7 +820,7 @@ function openEditModal(data) {
     document.getElementById('e_transaction_id').value = data.transaction_id || '';
     document.getElementById('e_expected_quantity').value = parseFloat(data.expected_quantity).toFixed(2);
     document.getElementById('e_actual_quantity').value = parseFloat(data.actual_quantity).toFixed(2);
-    document.getElementById('e_encoder_name').value = data.encoder_name || '—';
+    document.getElementById('e_encoder_name').value = data.encoder_name || 'â€”';
     document.getElementById('e_manager_id').value = data.manager_id || '';
     document.getElementById('e_status').value = data.status;
     document.getElementById('e_reason').value = data.reason || '';

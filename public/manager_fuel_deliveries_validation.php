@@ -1,6 +1,6 @@
-<?php
+﻿<?php
 // ============================================================
-// Manager Fuel Deliveries Oversight – manager_fuel_deliveries_validation.php
+// Manager Fuel Deliveries Oversight â€“ manager_fuel_deliveries_validation.php
 // Purpose: View, audit, and validate staff-encoded fuel deliveries
 // ============================================================
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -26,7 +26,7 @@ if ($station_id <= 0) {
     exit;
 }
 
-// ── Status Badges / Helper Functions ─────────────────────────
+// â”€â”€ Status Badges / Helper Functions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (!function_exists('getStatusBadgeClass')) {
     function getStatusBadgeClass($status) {
         $s = strtolower(trim($status ?? ''));
@@ -47,7 +47,7 @@ if (!function_exists('getStatusLabel')) {
     }
 }
 
-// ── POST Actions (Single Delivery validation) ────────────────
+// â”€â”€ POST Actions (Single Delivery validation) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
     $action      = trim($_POST['action'] ?? '');
     $delivery_id = (int)($_POST['id'] ?? 0);
@@ -81,7 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
             $up->execute([$me['id'], $delivery_id, $station_id]);
 
             // Add liters to fuel_inventory (current_level AND current_stock must both increase)
-            // This is the ONLY place that increases inventory — on manager verification of delivery.
+            // This is the ONLY place that increases inventory â€” on manager verification of delivery.
             $up_inv = $pdo->prepare("UPDATE fuel_inventory 
                                      SET current_level = COALESCE(current_level, 0) + ?,
                                          current_stock  = COALESCE(current_stock, 0) + ?,
@@ -91,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
 
             // Safety check: ensure the fuel type was found in inventory
             if ($up_inv->rowCount() === 0) {
-                // Fuel type name mismatch — delivery fuel type not in inventory table
+                // Fuel type name mismatch â€” delivery fuel type not in inventory table
                 // Log for admin to fix the fuel type name mapping
                 error_log("FUEL INVENTORY WARNING: No fuel_inventory row matched fuel_type='{$delivery['fuel_type']}' station_id={$station_id} for DEL-{$delivery_id}. Inventory NOT updated.");
                 // Throw to alert the manager
@@ -134,7 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['export'])) {
     header('Location: manager_fuel_deliveries_validation.php'); exit;
 }
 
-// ── GET Filters ──────────────────────────────────────────────
+// â”€â”€ GET Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $date_from        = trim($_GET['date_from'] ?? date('Y-m-d', strtotime('-6 months')));
 $date_to          = trim($_GET['date_to']   ?? date('Y-m-d'));
 $fuel_type_filter = trim($_GET['fuel_type'] ?? '');
@@ -186,7 +186,7 @@ if ($status_filter !== 'all') {
     }
 }
 
-// ── Fetch Deliveries ─────────────────────────────────────────
+// â”€â”€ Fetch Deliveries â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $deliveries = [];
 try {
     $sql = "SELECT fd.*, 
@@ -198,7 +198,7 @@ try {
                    COALESCE(
                        NULLIF(CONCAT(TRIM(COALESCE(validator.first_name, '')), ' ', TRIM(COALESCE(validator.last_name, ''))), ' '),
                        validator.username,
-                       '—'
+                       'â€”'
                    ) as validator_name
             FROM fuel_deliveries fd
             LEFT JOIN users staff ON fd.received_by = staff.id
@@ -214,7 +214,7 @@ try {
     $_SESSION['error'] = "Error loading deliveries: " . $e->getMessage();
 }
 
-// ── Compute Summary Card Metrics ─────────────────────────────
+// â”€â”€ Compute Summary Card Metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $pending_count = 0;
 $verified_count = 0;
 $rejected_count = 0;
@@ -247,7 +247,7 @@ try {
     error_log("Summary calculations error: " . $e->getMessage());
 }
 
-// ── Fetch dynamic fuel types for filter ──────────────────────
+// â”€â”€ Fetch dynamic fuel types for filter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $fuel_types = [];
 try {
     $ft_stmt = $pdo->prepare("SELECT DISTINCT fuel_type FROM fuel_deliveries WHERE station_id=? AND fuel_type IS NOT NULL AND fuel_type!='' ORDER BY fuel_type");
@@ -255,7 +255,7 @@ try {
     $fuel_types = $ft_stmt->fetchAll(PDO::FETCH_COLUMN);
 } catch (Exception $e) {}
 
-// ── EXPORTS ──────────────────────────────────────────────────
+// â”€â”€ EXPORTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (in_array($export, ['excel', 'pdf'])) {
     $headers = ['Delivery ID', 'Delivery Date', 'Batch ID', 'DR Number', 'Tanker Number', 'Fuel Type', 'Assigned Tank', 'Liters Delivered', 'Staff Receiver', 'Status', 'Verification Date', 'Remarks'];
     $rows_fmt = [];
@@ -263,16 +263,16 @@ if (in_array($export, ['excel', 'pdf'])) {
         $rows_fmt[] = [
             'DEL-' . $d['id'],
             date('M d, Y', strtotime($d['delivery_date'])),
-            $d['batch_id'] ?? '—',
-            $d['invoice_no'] ?? '—',
-            $d['tanker_number'] ?? '—',
+            $d['batch_id'] ?? 'â€”',
+            $d['invoice_no'] ?? 'â€”',
+            $d['tanker_number'] ?? 'â€”',
             $d['fuel_type'],
-            $d['tank_assigned'] ?? '—',
+            $d['tank_assigned'] ?? 'â€”',
             number_format($d['delivery_liters'], 2),
-            $d['staff_name'] ?? '—',
+            $d['staff_name'] ?? 'â€”',
             getStatusLabel($d['status'] ?? ''),
-            $d['verified_at'] ? date('M d, Y H:i', strtotime($d['verified_at'])) : '—',
-            $d['notes'] ?? '—'
+            $d['verified_at'] ? date('M d, Y H:i', strtotime($d['verified_at'])) : 'â€”',
+            $d['notes'] ?? 'â€”'
         ];
     }
     $filename = 'fuel_deliveries_oversight_' . $date_from . '_to_' . $date_to;
@@ -302,16 +302,16 @@ if (in_array($export, ['excel', 'pdf'])) {
             $tbody .= '<tr>';
             $tbody .= '<td>DEL-' . htmlspecialchars($d['id']) . '</td>';
             $tbody .= '<td>' . date('M d, Y', strtotime($d['delivery_date'])) . '</td>';
-            $tbody .= '<td>' . htmlspecialchars($d['batch_id'] ?? '—') . '</td>';
-            $tbody .= '<td>' . htmlspecialchars($d['invoice_no'] ?? '—') . '</td>';
-            $tbody .= '<td>' . htmlspecialchars($d['tanker_number'] ?? '—') . '</td>';
+            $tbody .= '<td>' . htmlspecialchars($d['batch_id'] ?? 'â€”') . '</td>';
+            $tbody .= '<td>' . htmlspecialchars($d['invoice_no'] ?? 'â€”') . '</td>';
+            $tbody .= '<td>' . htmlspecialchars($d['tanker_number'] ?? 'â€”') . '</td>';
             $tbody .= '<td>' . htmlspecialchars($d['fuel_type']) . '</td>';
-            $tbody .= '<td>' . htmlspecialchars($d['tank_assigned'] ?? '—') . '</td>';
+            $tbody .= '<td>' . htmlspecialchars($d['tank_assigned'] ?? 'â€”') . '</td>';
             $tbody .= '<td style="text-align:right;">' . number_format($d['delivery_liters'], 2) . '</td>';
-            $tbody .= '<td>' . htmlspecialchars($d['staff_name'] ?? '—') . '</td>';
+            $tbody .= '<td>' . htmlspecialchars($d['staff_name'] ?? 'â€”') . '</td>';
             $tbody .= '<td>' . getStatusLabel($d['status'] ?? '') . '</td>';
-            $tbody .= '<td>' . ($d['verified_at'] ? date('M d, Y', strtotime($d['verified_at'])) : '—') . '</td>';
-            $tbody .= '<td>' . htmlspecialchars($d['notes'] ?? '—') . '</td>';
+            $tbody .= '<td>' . ($d['verified_at'] ? date('M d, Y', strtotime($d['verified_at'])) : 'â€”') . '</td>';
+            $tbody .= '<td>' . htmlspecialchars($d['notes'] ?? 'â€”') . '</td>';
             $tbody .= '</tr>';
         }
 
@@ -326,8 +326,8 @@ if (in_array($export, ['excel', 'pdf'])) {
         tr:nth-child(even) td{background:#f8fafc}
         </style></head><body>';
         echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;font-weight:bold;">Print</button>
-        <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none;font-weight:bold;">← Back</a></div>';
-        echo '<div class="hdr"><div><h1>Petron Fuel Deliveries Oversight</h1><p style="margin:2px 0 0;color:#666;">Period: ' . htmlspecialchars($date_from) . ' — ' . htmlspecialchars($date_to) . ' | Station: ' . htmlspecialchars(user_station_name()) . '</p></div><div style="text-align:right;"><p style="margin:0;">Generated: ' . $generated . '</p></div></div>';
+        <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none;font-weight:bold;">â† Back</a></div>';
+        echo '<div class="hdr"><div><h1>Petron Fuel Deliveries Oversight</h1><p style="margin:2px 0 0;color:#666;">Period: ' . htmlspecialchars($date_from) . ' â€” ' . htmlspecialchars($date_to) . ' | Station: ' . htmlspecialchars(user_station_name()) . '</p></div><div style="text-align:right;"><p style="margin:0;">Generated: ' . $generated . '</p></div></div>';
         echo '<table><thead><tr><th>Del ID</th><th>Date</th><th>Batch ID</th><th>DR Number</th><th>Tanker No</th><th>Fuel Type</th><th>Tank</th><th>Liters</th><th>Staff</th><th>Status</th><th>Val Date</th><th>Remarks</th></tr></thead>';
         echo '<tbody>' . ($tbody ?: '<tr><td colspan="12" style="text-align:center;padding:20px;color:#94a3b8">No records found.</td></tr>') . '</tbody></table>';
         echo '</body></html>'; exit;
@@ -358,10 +358,10 @@ html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !impor
     cursor: pointer; border: 1px solid transparent; text-decoration: none; transition: all .15s;
     height: 36px; white-space: nowrap; background: white !important;
 }
-.ato-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
-.ato-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
-.ato-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
-.ato-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
+.ato-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.ato-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.ato-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.ato-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .ato-btn-print  { color: #334155 !important; border-color: #64748b !important; }
 .ato-btn-print:hover  { background: #64748b !important; color: #fff !important; }
 .ato-btn-back   { color: #4b5563 !important; border-color: #6b7280 !important; }
@@ -587,10 +587,10 @@ html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !impor
                     <?php else: ?>
                         <?php foreach ($deliveries as $d):
                             $del_label = 'DEL-' . $d['id'];
-                            $dr_display = !empty($d['invoice_no']) ? $d['invoice_no'] : '—';
-                            $tanker_display = !empty($d['tanker_number']) ? $d['tanker_number'] : '—';
-                            $batch_display = !empty($d['batch_id']) ? $d['batch_id'] : '—';
-                            $tank_display = !empty($d['tank_assigned']) ? $d['tank_assigned'] : '—';
+                            $dr_display = !empty($d['invoice_no']) ? $d['invoice_no'] : 'â€”';
+                            $tanker_display = !empty($d['tanker_number']) ? $d['tanker_number'] : 'â€”';
+                            $batch_display = !empty($d['batch_id']) ? $d['batch_id'] : 'â€”';
+                            $tank_display = !empty($d['tank_assigned']) ? $d['tank_assigned'] : 'â€”';
                         ?>
                             <tr id="del_row_<?= $d['id'] ?>">
                                 <td style="font-weight: 700; color: #00264D; font-size: 13px;"><?= $del_label ?></td>
@@ -601,9 +601,9 @@ html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !impor
                                 <td style="font-size: 13px;"><?= htmlspecialchars($d['fuel_type']) ?></td>
                                 <td style="font-size: 13px;"><?= htmlspecialchars($tank_display) ?></td>
                                 <td style="text-align: right; font-weight: 700; color: #1e293b; font-size: 13px;"><?= number_format($d['delivery_liters'], 2) ?> L</td>
-                                <td style="font-size: 13px;"><?= htmlspecialchars($d['staff_name'] ?? '—') ?></td>
+                                <td style="font-size: 13px;"><?= htmlspecialchars($d['staff_name'] ?? 'â€”') ?></td>
                                 <td><span class="afto-badge <?= getStatusBadgeClass($d['status'] ?? '') ?>"><?= getStatusLabel($d['status'] ?? '') ?></span></td>
-                                <td style="font-size: 13px;"><?= $d['verified_at'] ? date('M d, H:i', strtotime($d['verified_at'])) : '—' ?></td>
+                                <td style="font-size: 13px;"><?= $d['verified_at'] ? date('M d, H:i', strtotime($d['verified_at'])) : 'â€”' ?></td>
                                 <td style="text-align: center;">
                                     <div style="display: flex; flex-direction: column; gap: 2px;">
                                         <button type="button" class="row-btn row-btn-info" onclick="viewDetails(<?= htmlspecialchars(json_encode($d)) ?>)" title="View Details" style="width: 100%; font-size: 11px;">
@@ -666,59 +666,59 @@ html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !impor
             <div class="details-list">
                 <div class="details-item">
                     <div class="details-label">Delivery ID</div>
-                    <div class="details-value" id="det_id">—</div>
+                    <div class="details-value" id="det_id">â€”</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Delivery Date</div>
-                    <div class="details-value" id="det_date">—</div>
+                    <div class="details-value" id="det_date">â€”</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Batch ID</div>
-                    <div class="details-value" id="det_batch">—</div>
+                    <div class="details-value" id="det_batch">â€”</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">DR Number</div>
-                    <div class="details-value" id="det_dr">—</div>
+                    <div class="details-value" id="det_dr">â€”</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Tanker Number</div>
-                    <div class="details-value" id="det_tanker">—</div>
+                    <div class="details-value" id="det_tanker">â€”</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Fuel Type</div>
-                    <div class="details-value" id="det_fuel">—</div>
+                    <div class="details-value" id="det_fuel">â€”</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Assigned Tank</div>
-                    <div class="details-value" id="det_tank">—</div>
+                    <div class="details-value" id="det_tank">â€”</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Liters Delivered</div>
-                    <div class="details-value" id="det_liters" style="color: #002F70; font-weight: 700;">—</div>
+                    <div class="details-value" id="det_liters" style="color: #002F70; font-weight: 700;">â€”</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Staff Receiver</div>
-                    <div class="details-value" id="det_staff">—</div>
+                    <div class="details-value" id="det_staff">â€”</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Status</div>
-                    <div class="details-value" id="det_status">—</div>
+                    <div class="details-value" id="det_status">â€”</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Verified By</div>
-                    <div class="details-value" id="det_validator">—</div>
+                    <div class="details-value" id="det_validator">â€”</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Verification Date</div>
-                    <div class="details-value" id="det_val_date">—</div>
+                    <div class="details-value" id="det_val_date">â€”</div>
                 </div>
                 <div class="details-item" style="grid-column: span 2;">
                     <div class="details-label">Supplier / Source</div>
-                    <div class="details-value" id="det_supplier">—</div>
+                    <div class="details-value" id="det_supplier">â€”</div>
                 </div>
                 <div class="details-item" style="grid-column: span 2;">
                     <div class="details-label">Remarks / Audit Note</div>
-                    <div class="details-value" id="det_remarks" style="white-space: pre-wrap; font-weight: normal; color: #475569;">—</div>
+                    <div class="details-value" id="det_remarks" style="white-space: pre-wrap; font-weight: normal; color: #475569;">â€”</div>
                 </div>
             </div>
         </div>
@@ -786,25 +786,25 @@ html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !impor
 // Details View Modal
 function viewDetails(d) {
     const del_label = 'DEL-' + d.id;
-    const dr_display = d.invoice_no ? d.invoice_no : '—';
-    const tanker_display = d.tanker_number ? d.tanker_number : '—';
-    const batch_display = d.batch_id ? d.batch_id : '—';
-    const tank_display = d.tank_assigned ? d.tank_assigned : '—';
+    const dr_display = d.invoice_no ? d.invoice_no : 'â€”';
+    const tanker_display = d.tanker_number ? d.tanker_number : 'â€”';
+    const batch_display = d.batch_id ? d.batch_id : 'â€”';
+    const tank_display = d.tank_assigned ? d.tank_assigned : 'â€”';
     
     document.getElementById('det_id').textContent = del_label;
-    document.getElementById('det_date').textContent = d.delivery_date || '—';
+    document.getElementById('det_date').textContent = d.delivery_date || 'â€”';
     document.getElementById('det_batch').textContent = batch_display;
     document.getElementById('det_dr').textContent = dr_display;
     document.getElementById('det_tanker').textContent = tanker_display;
-    document.getElementById('det_fuel').textContent = d.fuel_type || '—';
+    document.getElementById('det_fuel').textContent = d.fuel_type || 'â€”';
     document.getElementById('det_tank').textContent = tank_display;
     document.getElementById('det_liters').textContent = parseFloat(d.delivery_liters || 0).toLocaleString(undefined, {minimumFractionDigits: 2}) + ' L';
-    document.getElementById('det_staff').textContent = d.staff_name || '—';
+    document.getElementById('det_staff').textContent = d.staff_name || 'â€”';
     document.getElementById('det_status').innerHTML = `<span class="afto-badge ${getStatusBadgeClass(d.status)}">${getStatusLabel(d.status)}</span>`;
-    document.getElementById('det_validator').textContent = d.validator_name || '—';
-    document.getElementById('det_val_date').textContent = d.verified_at || '—';
-    document.getElementById('det_supplier').textContent = d.supplier || '—';
-    document.getElementById('det_remarks').textContent = d.notes || '—';
+    document.getElementById('det_validator').textContent = d.validator_name || 'â€”';
+    document.getElementById('det_val_date').textContent = d.verified_at || 'â€”';
+    document.getElementById('det_supplier').textContent = d.supplier || 'â€”';
+    document.getElementById('det_remarks').textContent = d.notes || 'â€”';
     
     document.getElementById('viewModal').style.display = 'block';
 }
@@ -930,9 +930,9 @@ function mftvExport(format) {
 
 // Single Delivery Print Helper
 function printSingleDelivery(d) {
-    const tanker_display = d.tanker_number ? d.tanker_number : '—';
-    const batch_display = d.batch_id ? d.batch_id : '—';
-    const tank_display = d.tank_assigned ? d.tank_assigned : '—';
+    const tanker_display = d.tanker_number ? d.tanker_number : 'â€”';
+    const batch_display = d.batch_id ? d.batch_id : 'â€”';
+    const tank_display = d.tank_assigned ? d.tank_assigned : 'â€”';
     
     let iframe = document.getElementById('print-iframe');
     if (!iframe) {
@@ -972,9 +972,9 @@ function printSingleDelivery(d) {
         <div class="total-row"><span style="float:left;">DELIVERED:</span><span style="float:right;">${parseFloat(d.delivery_liters || 0).toFixed(2)} L</span><div style="clear:both;"></div></div>
         <div class="receipt-line"><span>Staff Receiver:</span><span>${escapeHtml(d.staff_name || '')}</span></div>
         <div class="receipt-line"><span>Status:</span><span>${escapeHtml(getStatusLabel(d.status))}</span></div>
-        <div class="receipt-line"><span>Validator:</span><span>${escapeHtml(d.validator_name || '—')}</span></div>
-        <div class="receipt-line"><span>Val Date:</span><span>${escapeHtml(d.verified_at || '—')}</span></div>
-        <div class="receipt-line"><span>Remarks:</span><span>${escapeHtml(d.notes || '—')}</span></div>
+        <div class="receipt-line"><span>Validator:</span><span>${escapeHtml(d.validator_name || 'â€”')}</span></div>
+        <div class="receipt-line"><span>Val Date:</span><span>${escapeHtml(d.verified_at || 'â€”')}</span></div>
+        <div class="receipt-line"><span>Remarks:</span><span>${escapeHtml(d.notes || 'â€”')}</span></div>
         <div style="margin-top:15px;text-align:center;font-size:10px;border-top:1px dashed #000;padding-top:10px;">For internal record only.</div>
     </body></html>`);
     doc.close();

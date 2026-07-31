@@ -1,6 +1,6 @@
-<?php
+﻿<?php
 // ============================================================
-// Admin Pump Master Oversight – admin_pump_master_oversight.php
+// Admin Pump Master Oversight â€“ admin_pump_master_oversight.php
 // Purpose: Central monitoring and maintenance of all pumps.
 // ============================================================
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -20,7 +20,7 @@ if (!in_array($role, ['admin', 'superadmin'])) {
     exit;
 }
 
-// ── Station Scoping ──────────────────────────────────────────
+// â”€â”€ Station Scoping â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $filter_station = isset($_GET['station']) ? (int)$_GET['station'] : $station_id;
 if ($role === 'superadmin' && !isset($_GET['station'])) {
     $filter_station = 0; // Default to all stations for superadmin
@@ -35,7 +35,7 @@ if ($filter_station > 0) {
     $station_condition = "1=1";
 }
 
-// ── AJAX Action: Get Pump Calibration History ────────────────
+// â”€â”€ AJAX Action: Get Pump Calibration History â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (isset($_GET['ajax_action'])) {
     $action = $_GET['ajax_action'];
     header('Content-Type: application/json');
@@ -78,7 +78,7 @@ if (isset($_GET['ajax_action'])) {
     }
 }
 
-// ── POST Actions (CRUD + Calibration) ────────────────────────
+// â”€â”€ POST Actions (CRUD + Calibration) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = trim($_POST['action'] ?? '');
     
@@ -336,7 +336,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// ── GET Filters ──────────────────────────────────────────────
+// â”€â”€ GET Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $fuel_type_filter   = trim($_GET['fuel_type'] ?? '');
 $pump_status_filter = trim($_GET['pump_status'] ?? '');
 $assigned_tank_ft   = trim($_GET['assigned_tank'] ?? ''); // Assigned Tank filter (filters by fuel type name)
@@ -371,7 +371,7 @@ if ($pump_status_filter !== '') {
 
 $where_sql = count($where) > 0 ? "WHERE " . implode(" AND ", $where) : "";
 
-// ── Fetch Pumps ──────────────────────────────────────────────
+// â”€â”€ Fetch Pumps â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $pumps = [];
 try {
     $sql = "
@@ -383,7 +383,7 @@ try {
                COALESCE(
                    NULLIF(CONCAT(TRIM(COALESCE(u.first_name, '')), ' ', TRIM(COALESCE(u.last_name, ''))), ' '),
                    u.username,
-                   '—'
+                   'â€”'
                ) as updated_by_name
         FROM fuel_pumps fp
         LEFT JOIN fuel_types ft ON fp.fuel_type_id = ft.id
@@ -400,7 +400,7 @@ try {
     $_SESSION['error'] = "Error fetching pumps: " . $e->getMessage();
 }
 
-// ── Fetch summary metrics (scoped by station) ────────────────
+// â”€â”€ Fetch summary metrics (scoped by station) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $total_pumps = 0;
 $active_pumps = 0;
 $inactive_pumps = 0;
@@ -440,19 +440,19 @@ try {
     $cal_updates_month = (int)$sm->fetchColumn();
 } catch (Exception $e) {}
 
-// ── Fetch dynamic fuel types for dropdown ────────────────────
+// â”€â”€ Fetch dynamic fuel types for dropdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $fuel_types = [];
 try {
     $fuel_types = $pdo->query("SELECT id, name FROM fuel_types ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── Fetch active stations ────────────────────────────────────
+// â”€â”€ Fetch active stations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $stations = [];
 try {
     $stations = $pdo->query("SELECT id, name FROM stations WHERE status = 'Active' ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── Status classes and labels helper functions ───────────────
+// â”€â”€ Status classes and labels helper functions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (!function_exists('getStatusBadgeClass')) {
     function getStatusBadgeClass($status) {
         $s = strtolower(trim($status ?? ''));
@@ -472,7 +472,7 @@ if (!function_exists('getStatusLabel')) {
     }
 }
 
-// ── EXPORTS ──────────────────────────────────────────────────
+// â”€â”€ EXPORTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (in_array($export, ['excel', 'pdf'])) {
     $filename = 'pump_master_report_' . date('Ymd_His');
     
@@ -505,17 +505,17 @@ if (in_array($export, ['excel', 'pdf'])) {
                 </thead>
                 <tbody>
                     <?php foreach ($pumps as $p): 
-                        $tank_lbl = ($p['fuel_type_name'] ?? '—') . ' Tank (Cap: ' . number_format($p['tank_capacity'] ?? 0, 0) . ' L)';
+                        $tank_lbl = ($p['fuel_type_name'] ?? 'â€”') . ' Tank (Cap: ' . number_format($p['tank_capacity'] ?? 0, 0) . ' L)';
                         $cal_val = (float)($p['calibration_value'] ?? 0);
                         $cal_str = ($cal_val >= 0 ? '+' : '') . number_format($cal_val, 3) . ' L';
                     ?>
                         <tr>
-                            <td><?= htmlspecialchars($p['fuel_type_name'] ?? '—') ?></td>
+                            <td><?= htmlspecialchars($p['fuel_type_name'] ?? 'â€”') ?></td>
                             <td><?= htmlspecialchars($tank_lbl) ?></td>
                             <td><?= $cal_str ?></td>
                             <td><?= htmlspecialchars($p['status']) ?></td>
-                            <td><?= $p['calibration_updated_at'] ? date('M d, Y H:i', strtotime($p['calibration_updated_at'])) : '—' ?></td>
-                            <td><?= htmlspecialchars($p['updated_by_name'] ?? '—') ?></td>
+                            <td><?= $p['calibration_updated_at'] ? date('M d, Y H:i', strtotime($p['calibration_updated_at'])) : 'â€”' ?></td>
+                            <td><?= htmlspecialchars($p['updated_by_name'] ?? 'â€”') ?></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -582,24 +582,24 @@ if (in_array($export, ['excel', 'pdf'])) {
                 </thead>
                 <tbody>
                     <?php foreach ($pumps as $p): 
-                        $tank_lbl = ($p['fuel_type_name'] ?? '—') . ' Tank (Cap: ' . number_format($p['tank_capacity'] ?? 0, 0) . ' L)';
+                        $tank_lbl = ($p['fuel_type_name'] ?? 'â€”') . ' Tank (Cap: ' . number_format($p['tank_capacity'] ?? 0, 0) . ' L)';
                         $cal_val = (float)($p['calibration_value'] ?? 0);
                         $cal_str = ($cal_val >= 0 ? '+' : '') . number_format($cal_val, 3) . ' L';
                     ?>
                         <tr>
-                            <td><?= htmlspecialchars($p['fuel_type_name'] ?? '—') ?></td>
+                            <td><?= htmlspecialchars($p['fuel_type_name'] ?? 'â€”') ?></td>
                             <td><?= htmlspecialchars($tank_lbl) ?></td>
                             <td style="text-align:right; font-family:monospace;"><?= $cal_str ?></td>
                             <td><?= htmlspecialchars($p['status']) ?></td>
-                            <td><?= $p['calibration_updated_at'] ? date('M d, Y', strtotime($p['calibration_updated_at'])) : '—' ?></td>
-                            <td><?= htmlspecialchars($p['updated_by_name'] ?? '—') ?></td>
+                            <td><?= $p['calibration_updated_at'] ? date('M d, Y', strtotime($p['calibration_updated_at'])) : 'â€”' ?></td>
+                            <td><?= htmlspecialchars($p['updated_by_name'] ?? 'â€”') ?></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
 
             <div class="footer" style="width:100%; display:flex; justify-content:space-between;">
-                <span>System Generated Report • Confidential</span>
+                <span>System Generated Report â€¢ Confidential</span>
                 <span>Page 1 of 1</span>
             </div>
         </body>
@@ -761,8 +761,8 @@ include __DIR__ . '/../partials/header.php';
 .pmo-btn-add:hover { background: #2563eb !important; color: #ffffff !important; }
 .pmo-btn-export { color: #16a34a !important; border-color: #16a34a !important; }
 .pmo-btn-export:hover { background: #16a34a !important; color: #ffffff !important; }
-.pmo-btn-pdf { color: #dc2626 !important; border-color: #dc2626 !important; }
-.pmo-btn-pdf:hover { background: #dc2626 !important; color: #ffffff !important; }
+.pmo-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.pmo-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .pmo-btn-print { color: #334155 !important; border-color: #64748b !important; }
 .pmo-btn-print:hover { background: #64748b !important; color: #ffffff !important; }
 .pmo-btn-reset { color: #4b5563 !important; border-color: #9ca3af !important; }
@@ -1174,10 +1174,10 @@ include __DIR__ . '/../partials/header.php';
                         $cal_val = (float)($p['calibration_value'] ?? 0);
                         $cal_class = $cal_val == 0 ? 'var-zero' : ($cal_val > 0 ? 'var-pos' : 'var-neg');
                         $cal_str = ($cal_val >= 0 ? '+' : '') . number_format($cal_val, 3) . ' L';
-                        $tank_lbl = ($p['fuel_type_name'] ?? '—') . ' Tank (Cap: ' . number_format($p['tank_capacity'] ?? 0, 0) . ' L)';
+                        $tank_lbl = ($p['fuel_type_name'] ?? 'â€”') . ' Tank (Cap: ' . number_format($p['tank_capacity'] ?? 0, 0) . ' L)';
                     ?>
                         <tr>
-                            <td class="bold-vol"><?= htmlspecialchars($p['fuel_type_name'] ?? '—') ?></td>
+                            <td class="bold-vol"><?= htmlspecialchars($p['fuel_type_name'] ?? 'â€”') ?></td>
                             <td><span style="font-size:11px; color:#64748b;"><?= htmlspecialchars($tank_lbl) ?></span></td>
                             <td class="align-right <?= $cal_class ?>" style="font-weight: bold; font-family: monospace;"><?= $cal_str ?></td>
                             <td>
@@ -1185,8 +1185,8 @@ include __DIR__ . '/../partials/header.php';
                                     <?= getStatusLabel($p['status']) ?>
                                 </span>
                             </td>
-                            <td><?= $p['calibration_updated_at'] ? date('M d, Y H:i', strtotime($p['calibration_updated_at'])) : '—' ?></td>
-                            <td><?= htmlspecialchars($p['updated_by_name'] ?? '—') ?></td>
+                            <td><?= $p['calibration_updated_at'] ? date('M d, Y H:i', strtotime($p['calibration_updated_at'])) : 'â€”' ?></td>
+                            <td><?= htmlspecialchars($p['updated_by_name'] ?? 'â€”') ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -1435,7 +1435,7 @@ function openCalibrationModal(id, name, fuelType, prevVal) {
 }
 
 function viewHistory(pumpId, pumpName) {
-    document.getElementById('historyModalTitle').textContent = 'Calibration Log – Pump ' + pumpName;
+    document.getElementById('historyModalTitle').textContent = 'Calibration Log â€“ Pump ' + pumpName;
     var tbody = document.getElementById('historyTableBody');
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
     document.getElementById('historyModal').classList.add('active');
@@ -1462,8 +1462,8 @@ function viewHistory(pumpId, pumpName) {
                         + '<td class="align-right">' + prev.toFixed(3) + ' L</td>'
                         + '<td class="align-right">' + next.toFixed(3) + ' L</td>'
                         + '<td class="align-right" style="font-weight:bold;color:' + diffColor + '">' + diffStr + '</td>'
-                        + '<td>' + (l.updater_name || '—') + '</td>'
-                        + '<td>' + (l.reason || '—') + '</td>'
+                        + '<td>' + (l.updater_name || 'â€”') + '</td>'
+                        + '<td>' + (l.reason || 'â€”') + '</td>'
                         + '</tr>';
                 });
                 tbody.innerHTML = html;

@@ -1,6 +1,6 @@
-<?php
+﻿<?php
 // ============================================================
-// Manager Fuel Adjustments Oversight – manager_fuel_adjustments.php
+// Manager Fuel Adjustments Oversight â€“ manager_fuel_adjustments.php
 // Purpose: Consolidated history of Fuel Transaction Adjustments
 // ============================================================
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -29,7 +29,7 @@ if ($station_id <= 0) {
 // Active Tab
 $active_tab = 'transactions';
 
-// ── GET Filters ──────────────────────────────────────────────
+// â”€â”€ GET Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $date_from          = trim($_GET['date_from'] ?? date('Y-m-d', strtotime('-30 days')));
 $date_to            = trim($_GET['date_to']   ?? date('Y-m-d'));
 $fuel_type_filter   = trim($_GET['fuel_type'] ?? 'all');
@@ -104,7 +104,7 @@ try {
 $total_count = 0;
 $today_count = 0;
 $month_count = 0;
-$last_adj_str = '—';
+$last_adj_str = 'â€”';
 
 try {
     // 1. Total
@@ -159,7 +159,7 @@ if (empty($shifts)) {
 // Petron station fuel deliveries use Petron Corporation as the sole supplier.
 $suppliers = ['Petron Corporation'];
 
-// ── EXPORTS ──────────────────────────────────────────────────
+// â”€â”€ EXPORTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (in_array($export, ['excel', 'pdf'])) {
     $filename = ($active_tab === 'transactions' ? 'fuel_transaction_adjustments_' : 'fuel_delivery_adjustments_') . $date_from . '_to_' . $date_to;
     
@@ -174,15 +174,15 @@ if (in_array($export, ['excel', 'pdf'])) {
             
             $rows_fmt[] = [
                 'ADJ-' . $adj['id'],
-                $notes_data['transaction_id'] ?? '—',
-                $notes_data['fuel_line'] ?? '—',
+                $notes_data['transaction_id'] ?? 'â€”',
+                $notes_data['fuel_line'] ?? 'â€”',
                 $adj['fuel_type'],
-                $notes_data['shift'] ?? '—',
-                $notes_data['staff_name'] ?? '—',
+                $notes_data['shift'] ?? 'â€”',
+                $notes_data['staff_name'] ?? 'â€”',
                 number_format($prev_cal, 2),
                 number_format($new_cal, 2),
                 ($diff >= 0 ? '+' : '') . number_format($diff, 2),
-                $adj['reason'] ?? '—',
+                $adj['reason'] ?? 'â€”',
                 $adj['manager_name'],
                 date('M d, Y h:i A', strtotime($adj['created_at']))
             ];
@@ -198,13 +198,13 @@ if (in_array($export, ['excel', 'pdf'])) {
             
             $rows_fmt[] = [
                 'ADJ-' . $adj['id'],
-                'DEL-' . ($notes_data['delivery_id'] ?? '—'),
+                'DEL-' . ($notes_data['delivery_id'] ?? 'â€”'),
                 'Petron Corporation',
                 $adj['fuel_type'],
                 number_format($prev_lit, 2) . ' L',
                 number_format($new_lit, 2) . ' L',
                 ($diff >= 0 ? '+' : '') . number_format($diff, 2) . ' L',
-                $adj['reason'] ?? '—',
+                $adj['reason'] ?? 'â€”',
                 $adj['manager_name'],
                 date('M d, Y h:i A', strtotime($adj['created_at']))
             ];
@@ -252,8 +252,8 @@ if (in_array($export, ['excel', 'pdf'])) {
         tr:nth-child(even) td{background:#f8fafc}
         </style></head><body>';
         echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;font-weight:bold;">Print</button>
-        <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none;font-weight:bold;">← Back</a></div>';
-        echo '<div class="hdr"><div><h1>Fuel Transaction Adjustments</h1><p style="margin:2px 0 0;color:#666;">Period: ' . htmlspecialchars($date_from) . ' — ' . htmlspecialchars($date_to) . ' | Station: ' . htmlspecialchars(user_station_name()) . '</p></div><div style="text-align:right;"><p style="margin:0;">Generated: ' . $generated . '</p></div></div>';
+        <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none;font-weight:bold;">â† Back</a></div>';
+        echo '<div class="hdr"><div><h1>Fuel Transaction Adjustments</h1><p style="margin:2px 0 0;color:#666;">Period: ' . htmlspecialchars($date_from) . ' â€” ' . htmlspecialchars($date_to) . ' | Station: ' . htmlspecialchars(user_station_name()) . '</p></div><div style="text-align:right;"><p style="margin:0;">Generated: ' . $generated . '</p></div></div>';
         echo '<table><thead><tr>';
         foreach ($headers as $h) echo '<th>' . htmlspecialchars($h) . '</th>';
         echo '</tr></thead>';
@@ -293,10 +293,10 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 
 /* Standard buttons */
 .ato-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 16px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid transparent; text-decoration: none; transition: all .15s; height: 36px; white-space: nowrap; background: white !important; }
-.ato-btn-excel { color: #1d6f42 !important; border-color: #1d6f42 !important; }
-.ato-btn-excel:hover { background: #1d6f42 !important; color: #fff !important; }
-.ato-btn-pdf { color: #dc2626 !important; border-color: #dc2626 !important; }
-.ato-btn-pdf:hover { background: #dc2626 !important; color: #fff !important; }
+.ato-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.ato-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.ato-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.ato-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .ato-btn-print { color: #334155 !important; border-color: #64748b !important; }
 .ato-btn-print:hover { background: #64748b !important; color: #fff !important; }
 .ato-btn-back { color: #4b5563 !important; border-color: #cbd5e1 !important; }
@@ -516,21 +516,21 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                             ?>
                                 <tr>
                                     <td><strong>ADJ-<?= $adj['id'] ?></strong></td>
-                                    <td><?= htmlspecialchars($notes_data['transaction_id'] ?? '—') ?></td>
-                                    <td><?= htmlspecialchars($notes_data['fuel_line'] ?? '—') ?></td>
+                                    <td><?= htmlspecialchars($notes_data['transaction_id'] ?? 'â€”') ?></td>
+                                    <td><?= htmlspecialchars($notes_data['fuel_line'] ?? 'â€”') ?></td>
                                     <td><?= htmlspecialchars($adj['fuel_type']) ?></td>
-                                    <td><?= htmlspecialchars($notes_data['shift'] ?? '—') ?></td>
-                                    <td><?= htmlspecialchars($notes_data['staff_name'] ?? '—') ?></td>
+                                    <td><?= htmlspecialchars($notes_data['shift'] ?? 'â€”') ?></td>
+                                    <td><?= htmlspecialchars($notes_data['staff_name'] ?? 'â€”') ?></td>
                                     <td style="text-align:right;"><?= number_format($prev_cal, 2) ?></td>
                                     <td style="text-align:right;"><?= number_format($new_cal, 2) ?></td>
-                                    <td><?= htmlspecialchars($adj['reason'] ?: '—') ?></td>
+                                    <td><?= htmlspecialchars($adj['reason'] ?: 'â€”') ?></td>
                                     <td><?= htmlspecialchars($adj['manager_name']) ?></td>
                                     <td><?= date('M d, Y h:i A', strtotime($adj['created_at'])) ?></td>
                                     <td style="text-align:center;">
                                         <button class="row-btn" onclick="viewTxDetails(<?= htmlspecialchars(json_encode([
                                             'adj_id' => 'ADJ-' . $adj['id'],
-                                            'transaction_id' => $notes_data['transaction_id'] ?? '—',
-                                            'fuel_line' => $notes_data['fuel_line'] ?? '—',
+                                            'transaction_id' => $notes_data['transaction_id'] ?? 'â€”',
+                                            'fuel_line' => $notes_data['fuel_line'] ?? 'â€”',
                                             'fuel_type' => $adj['fuel_type'],
                                             'prev_beginning' => number_format($notes_data['prev_beginning'] ?? 0, 2),
                                             'prev_ending' => number_format($notes_data['prev_ending'] ?? 0, 2),
@@ -539,8 +539,8 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                                             'new_ending' => number_format($notes_data['new_ending'] ?? 0, 2),
                                             'new_calibration' => number_format($new_cal, 2),
                                             'diff' => number_format($new_cal - $prev_cal, 2),
-                                            'reason' => $adj['reason'] ?: '—',
-                                            'staff_name' => $notes_data['staff_name'] ?? '—',
+                                            'reason' => $adj['reason'] ?: 'â€”',
+                                            'staff_name' => $notes_data['staff_name'] ?? 'â€”',
                                             'manager_name' => $adj['manager_name'],
                                             'date_time' => date('M d, Y h:i A', strtotime($adj['created_at']))
                                         ])) ?>)"><i class="fas fa-eye"></i> View</button>
@@ -577,7 +577,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                             ?>
                                 <tr>
                                     <td><strong>ADJ-<?= $adj['id'] ?></strong></td>
-                                    <td><strong>DEL-<?= htmlspecialchars($notes_data['delivery_id'] ?? '—') ?></strong></td>
+                                    <td><strong>DEL-<?= htmlspecialchars($notes_data['delivery_id'] ?? 'â€”') ?></strong></td>
                                     <td><?= htmlspecialchars('Petron Corporation') ?></td>
                                     <td><?= htmlspecialchars($adj['fuel_type']) ?></td>
                                     <td style="text-align:right;"><?= number_format($prev_lit, 2) ?> L</td>
@@ -585,20 +585,20 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                                     <td style="text-align:right;" class="badge-diff <?= $diff >= 0 ? 'plus' : 'minus' ?>">
                                         <?= ($diff >= 0 ? '+' : '') . number_format($diff, 2) ?> L
                                     </td>
-                                    <td><?= htmlspecialchars($adj['reason'] ?: '—') ?></td>
+                                    <td><?= htmlspecialchars($adj['reason'] ?: 'â€”') ?></td>
                                     <td><?= htmlspecialchars($adj['manager_name']) ?></td>
                                     <td><?= date('M d, Y h:i A', strtotime($adj['created_at'])) ?></td>
                                     <td style="text-align:center;">
                                         <button class="row-btn" onclick="viewDelDetails(<?= htmlspecialchars(json_encode([
                                             'adj_id' => 'ADJ-' . $adj['id'],
-                                            'delivery_id' => 'DEL-' . ($notes_data['delivery_id'] ?? '—'),
+                                            'delivery_id' => 'DEL-' . ($notes_data['delivery_id'] ?? 'â€”'),
                                             'supplier' => 'Petron Corporation',
                                             'fuel_type' => $adj['fuel_type'],
-                                            'invoice_no' => $notes_data['invoice_no'] ?? '—',
+                                            'invoice_no' => $notes_data['invoice_no'] ?? 'â€”',
                                             'prev_liters' => number_format($prev_lit, 2) . ' L',
                                             'new_liters' => number_format($new_lit, 2) . ' L',
                                             'diff' => ($diff >= 0 ? '+' : '') . number_format($diff, 2) . ' L',
-                                            'reason' => $adj['reason'] ?: '—',
+                                            'reason' => $adj['reason'] ?: 'â€”',
                                             'manager_name' => $adj['manager_name'],
                                             'date_time' => date('M d, Y h:i A', strtotime($adj['created_at']))
                                         ])) ?>)"><i class="fas fa-eye"></i> View</button>

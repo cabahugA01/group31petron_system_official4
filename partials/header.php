@@ -3348,6 +3348,28 @@ require_once __DIR__ . '/rbac_menu.php';
       );
       $badges['reports']       = $admin_system_alerts;
       $badges['admin_reports'] = $admin_system_alerts;
+
+      // 4. Fuel Management Oversight: Manager-verified/approved fuel transactions + fuel deliveries + fuel stock requests + fuel adjustments
+      $admin_fuel_txns = $__badge_count(
+          "SELECT COUNT(*) FROM fuel_transactions WHERE LOWER(COALESCE(status,'')) IN ('verified','validated','approved','adjusted','pending')",
+          []
+      );
+      $admin_fuel_deliv = $__badge_count(
+          "SELECT COUNT(*) FROM purchase_orders WHERE (type = 'fuel' OR LOWER(COALESCE(item_category,'')) IN ('fuel','fuels')) AND (delivery_validated = 1 OR status IN ('Validated','Delivered','Pending Admin Review','Submitted'))",
+          []
+      );
+      $admin_fuel_reqs = $__badge_count(
+          "SELECT COUNT(*) FROM fuel_stock_requests WHERE LOWER(COALESCE(status,'')) IN ('pending','pending manager review','pending admin review','approved','submitted')",
+          []
+      );
+      $admin_fuel_adj = $__badge_count(
+          "SELECT COUNT(*) FROM fuel_adjustments WHERE LOWER(COALESCE(status,'')) IN ('pending','verified','reviewed','approved')",
+          []
+      );
+      $admin_fuel_total = $admin_fuel_txns + $admin_fuel_deliv + $admin_fuel_reqs + $admin_fuel_adj;
+      $badges['fuel']                  = $admin_fuel_total;
+      $badges['admin_fuel']            = $admin_fuel_total;
+      $badges['admin_fuel_management'] = $admin_fuel_total;
   }
 
   // Calculate Header Bell Unread Count
@@ -5430,15 +5452,18 @@ require_once __DIR__ . '/rbac_menu.php';
             function updateSidebarDrawerBadges(categoryCounts) {
                 if (!categoryCounts) return;
                 const map = {
-                    'transactions':        categoryCounts.transactions || 0,
-                    'fuel':                categoryCounts.fuel || 0,
-                    'inventory':           categoryCounts.inventory || 0,
-                    'customers':           categoryCounts.customers || 0,
-                    'mgr_customers':       categoryCounts.mgr_customers || categoryCounts.customers || 0,
-                    'mgr_product_pricing': categoryCounts.prod_pricing || 0,
-                    'prod_pricing':        categoryCounts.prod_pricing || 0,
-                    'reports':             categoryCounts.reports || 0,
-                    'notifications':       categoryCounts.notifications || 0
+                    'transactions':          categoryCounts.transactions || 0,
+                    'fuel':                  categoryCounts.fuel || 0,
+                    'admin_fuel':            categoryCounts.admin_fuel || categoryCounts.fuel || 0,
+                    'admin_fuel_management': categoryCounts.admin_fuel_management || categoryCounts.fuel || 0,
+                    'inventory':             categoryCounts.inventory || 0,
+                    'admin_inventory':       categoryCounts.admin_inventory || categoryCounts.inventory || 0,
+                    'customers':             categoryCounts.customers || 0,
+                    'mgr_customers':         categoryCounts.mgr_customers || categoryCounts.customers || 0,
+                    'mgr_product_pricing':   categoryCounts.prod_pricing || 0,
+                    'prod_pricing':          categoryCounts.prod_pricing || 0,
+                    'reports':               categoryCounts.reports || 0,
+                    'notifications':         categoryCounts.notifications || 0
                 };
                 for (const [key, cnt] of Object.entries(map)) {
                     const els = document.querySelectorAll(`[data-sidebar-badge="${key}"]`);

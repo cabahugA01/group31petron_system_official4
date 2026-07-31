@@ -1,6 +1,6 @@
-<?php
+﻿<?php
 /**
- * Variance Alerts — Full Anomaly-Handling Workflow
+ * Variance Alerts â€” Full Anomaly-Handling Workflow
  * Merchandise & Job Orders only. Fuel has its own reconciliation flow.
  */
 $page_id = 'mgr_txn_variance';
@@ -17,7 +17,7 @@ if (!in_array($role, ['manager','admin','superadmin'])) {
     header('Location: dashboard.php'); exit;
 }
 
-// ── POST HANDLER ──────────────────────────────────────────────────────────────
+// â”€â”€ POST HANDLER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action      = trim($_POST['action'] ?? '');
     $variance_id = (int)($_POST['variance_id'] ?? 0);
@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             $stmt->execute([$variance_id, $station_id]);
             if ($stmt->rowCount()) {
-                // Mark archived via a prefix in notes — no schema change needed
+                // Mark archived via a prefix in notes â€” no schema change needed
                 $pdo->prepare("UPDATE variance_alerts SET item_identifier=CONCAT('[ARCHIVED] ', item_identifier) WHERE id=? AND station_id=? AND item_identifier NOT LIKE '[ARCHIVED]%'")->execute([$variance_id, $station_id]);
                 log_activity($pdo, $me['id'], 'Variance_Archived', "Alert #$variance_id archived by {$me['name']}");
                 $_SESSION['success'] = 'Alert archived and removed from main view.';
@@ -81,7 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['error'] = 'Alert not found or no permission.';
             } else {
                 log_activity($pdo, $me['id'], 'Variance_' . ucfirst($new_status),
-                    "Alert #$variance_id → $new_status by {$me['name']}");
+                    "Alert #$variance_id â†’ $new_status by {$me['name']}");
                 $labels = [
                     'investigating' => 'Marked as Investigating.',
                     'resolved'      => 'Alert resolved successfully.',
@@ -95,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// ── FILTERS ───────────────────────────────────────────────────────────────────
+// â”€â”€ FILTERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $filter_status   = trim($_GET['status']        ?? '');
 $filter_type     = trim($_GET['type']          ?? '');
 $filter_date     = trim($_GET['date']          ?? '');
@@ -103,7 +103,7 @@ $search_q        = trim($_GET['q']             ?? '');
 $show_archived   = isset($_GET['show_archived']);
 if (!in_array($filter_status, ['open','investigating','resolved','escalated'])) $filter_status = '';
 
-// ── EXPORT WORKFLOW ───────────────────────────────────────────────────────────
+// â”€â”€ EXPORT WORKFLOW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'])) {
     try {
         $exp_where  = ["va.station_id = ?", "va.transaction_type != 'Fuel'"];
@@ -136,7 +136,7 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'])
             fputcsv($out, ['Alert ID','Type','Product/SKU/Service','Variance Amount','Status','Staff','Notes','Flagged At','Last Updated']);
             foreach ($rows as $r) {
                 fputcsv($out, ['#'.$r['id'],$r['transaction_type'],$r['item_identifier'],
-                    $r['variance_amount'],ucfirst($r['status']),$r['staff_name']??'—',
+                    $r['variance_amount'],ucfirst($r['status']),$r['staff_name']??'â€”',
                     $r['investigation_notes']??'',$r['created_at'],$r['updated_at']]);
             }
             fclose($out); exit;
@@ -158,7 +158,7 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'])
                 echo '<td>' . htmlspecialchars($r['item_identifier']) . '</td>';
                 echo '<td style="text-align:right;">' . number_format((float)$r['variance_amount'], 2) . '</td>';
                 echo '<td>' . htmlspecialchars(ucfirst($r['status'])) . '</td>';
-                echo '<td>' . htmlspecialchars($r['staff_name'] ?? '—') . '</td>';
+                echo '<td>' . htmlspecialchars($r['staff_name'] ?? 'â€”') . '</td>';
                 echo '<td>' . htmlspecialchars($r['investigation_notes'] ?? '') . '</td>';
                 echo '<td>' . htmlspecialchars($r['created_at']) . '</td>';
                 echo '<td>' . htmlspecialchars($r['updated_at']) . '</td>';
@@ -197,9 +197,9 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'])
                 echo '<td>#' . htmlspecialchars($r['id']) . '</td>';
                 echo '<td>' . htmlspecialchars($r['transaction_type']) . '</td>';
                 echo '<td>' . htmlspecialchars($r['item_identifier']) . '</td>';
-                echo '<td class="amount">₱' . number_format((float)$r['variance_amount'], 2) . '</td>';
+                echo '<td class="amount">â‚±' . number_format((float)$r['variance_amount'], 2) . '</td>';
                 echo '<td>' . htmlspecialchars(ucfirst($r['status'])) . '</td>';
-                echo '<td>' . htmlspecialchars($r['staff_name'] ?? '—') . '</td>';
+                echo '<td>' . htmlspecialchars($r['staff_name'] ?? 'â€”') . '</td>';
                 echo '<td>' . htmlspecialchars($r['investigation_notes'] ?? '') . '</td>';
                 echo '<td>' . date('M d, Y H:i', strtotime($r['created_at'])) . '</td>';
                 echo '</tr>';
@@ -214,7 +214,7 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'])
     }
 }
 
-// ── SUMMARY COUNTS ────────────────────────────────────────────────────────────
+// â”€â”€ SUMMARY COUNTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $counts = ['open'=>0,'investigating'=>0,'escalated'=>0,'resolved'=>0,'total'=>0];
 try {
     $cs = $pdo->prepare("SELECT status, COUNT(*) AS n FROM variance_alerts
@@ -227,7 +227,7 @@ try {
     }
 } catch (Exception $e) {}
 
-// ── FETCH ALERTS ──────────────────────────────────────────────────────────────
+// â”€â”€ FETCH ALERTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $variance_alerts = [];
 try {
     $where  = ["va.station_id = ?", "va.transaction_type != 'Fuel'"];
@@ -253,7 +253,7 @@ try {
     $variance_alerts = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) { $variance_alerts = []; }
 
-// ── LIVE ANOMALY DETECTION ────────────────────────────────────────────────────
+// â”€â”€ LIVE ANOMALY DETECTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $detected_anomalies = [];
 try {
     $stmt = $pdo->prepare("
@@ -272,7 +272,7 @@ try {
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $detected_anomalies[] = ['type'=>'Merchandise','subtype'=>'Wrong Total',
             'ref'=>$r['transaction_id']??'TXN-'.$r['id'],'item'=>$r['item_sku']??'Unknown Item',
-            'variance'=>(float)$r['total_amount'],'staff'=>$r['staff_name']??'—',
+            'variance'=>(float)$r['total_amount'],'staff'=>$r['staff_name']??'â€”',
             'staff_id'=>$r['staff_id'],'date'=>$r['created_at'],
             'description'=>'Transaction total is zero or negative.'];
     }
@@ -294,8 +294,8 @@ try {
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $detected_anomalies[] = ['type'=>'Merchandise','subtype'=>'Zero Price',
             'ref'=>$r['transaction_id']??'TXN-'.$r['id'],'item'=>$r['item_sku']??'Unknown Item',
-            'variance'=>0.0,'staff'=>$r['staff_name']??'—','staff_id'=>$r['staff_id'],
-            'date'=>$r['created_at'],'description'=>'Item sold with unit price of ₱0.00.'];
+            'variance'=>0.0,'staff'=>$r['staff_name']??'â€”','staff_id'=>$r['staff_id'],
+            'date'=>$r['created_at'],'description'=>'Item sold with unit price of â‚±0.00.'];
     }
 } catch (Exception $e) {}
 try {
@@ -320,7 +320,7 @@ try {
         $diff = abs((float)($r['actual_parts_cost']??0)-(float)$r['parts_total']);
         $detected_anomalies[] = ['type'=>'Job Order','subtype'=>'Parts Mismatch',
             'ref'=>'JO-'.$r['id'],'item'=>$r['service_type']??'Job Order #'.$r['id'],
-            'variance'=>$diff,'staff'=>$r['staff_name']??'—','staff_id'=>$r['user_id'],
+            'variance'=>$diff,'staff'=>$r['staff_name']??'â€”','staff_id'=>$r['user_id'],
             'date'=>$r['created_at'],'description'=>'Parts cost in JO does not match inventory deduction records.'];
     }
 } catch (Exception $e) {}
@@ -330,20 +330,20 @@ include __DIR__ . '/../partials/header.php';
 
 
 
-<!-- ── PAGE HEADER ────────────────────────────────────────────────────────── -->
+<!-- â”€â”€ PAGE HEADER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
 <div class="page-head" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:18px;">
     <div>
         <h1 class="h1" style="margin:0 0 4px 0;">Variance Alerts</h1>
         <div class="sub">Check flagged anomalies in stock, pump readings, or service fees.</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <a href="?<?= http_build_query(array_merge($_GET, ['export'=>'excel'])); ?>" class="va-hdr-btn" style="background:#1d6f42;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;color:#fff;font-size:13px;font-weight:600;">
+        <a href="?<?= http_build_query(array_merge($_GET, ['export'=>'excel'])); ?>" class="va-hdr-btn" style="background:#ffffff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:6px;color:#00264D;font-size:13px;font-weight:600;border:1px solid #cbd5e1;transition:all .15s;">
             <i class="fas fa-file-excel"></i> Excel
         </a>
         <a href="?<?= http_build_query(array_merge($_GET, ['export'=>'csv'])); ?>" class="va-hdr-btn" style="background:#003d7a;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;color:#fff;font-size:13px;font-weight:600;">
             <i class="fas fa-file-csv"></i> CSV
         </a>
-        <a href="?<?= http_build_query(array_merge($_GET, ['export'=>'pdf'])); ?>" class="va-hdr-btn" style="background:#dc2626;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;color:#fff;font-size:13px;font-weight:600;" target="_blank">
+        <a href="?<?= http_build_query(array_merge($_GET, ['export'=>'pdf'])); ?>" class="va-hdr-btn" style="background:#ffffff;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:6px;color:#00264D;font-size:13px;font-weight:600;border:1px solid #cbd5e1;transition:all .15s;" target="_blank">
             <i class="fas fa-file-pdf"></i> PDF
         </a>
         <a href="<?= in_array($role, ['admin', 'superadmin']) ? 'admin_dashboard.php' : 'manager_dashboard.php'; ?>" class="va-hdr-btn" style="background:#6c757d;text-decoration:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:8px 14px;border-radius:8px;color:#fff;font-size:13px;font-weight:600;">
@@ -353,13 +353,13 @@ include __DIR__ . '/../partials/header.php';
 
 </div>
 
-<!-- ── LIVE ANOMALY BANNER ────────────────────────────────────────────────── -->
+<!-- â”€â”€ LIVE ANOMALY BANNER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
 <?php if (!empty($detected_anomalies)): ?>
 <div class="va-anomaly-banner">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
         <i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:18px;"></i>
         <strong style="color:#842029;font-size:14px;"><?= count($detected_anomalies); ?> New Anomal<?= count($detected_anomalies)>1?'ies':'y'; ?> Detected</strong>
-        <span style="font-size:12px;color:#6c757d;">— Not yet logged. Review and flag below.</span>
+        <span style="font-size:12px;color:#6c757d;">â€” Not yet logged. Review and flag below.</span>
     </div>
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
         <table class="va-table" style="font-size:12px;">
@@ -388,7 +388,7 @@ include __DIR__ . '/../partials/header.php';
 </div>
 <?php endif; ?>
 
-<!-- ── FILTER BAR ─────────────────────────────────────────────────────────── -->
+<!-- â”€â”€ FILTER BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
 <div class="va-filter-bar">
     <form method="GET" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
         <div class="va-filter-group">
@@ -415,7 +415,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
         <div class="va-filter-group" style="flex:1;">
             <label>Search</label>
-            <input type="text" name="q" class="va-select" placeholder="SKU / item / notes…" value="<?= htmlspecialchars($search_q); ?>">
+            <input type="text" name="q" class="va-select" placeholder="SKU / item / notesâ€¦" value="<?= htmlspecialchars($search_q); ?>">
         </div>
         <div class="va-filter-group" style="justify-content:flex-end;">
             <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
@@ -428,7 +428,7 @@ include __DIR__ . '/../partials/header.php';
     </form>
 </div>
 
-<!-- ── RESULTS COUNT ─────────────────────────────────────────────────────── -->
+<!-- â”€â”€ RESULTS COUNT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
 <div style="margin-bottom:10px;font-size:13px;color:#666;display:flex;align-items:center;gap:12px;">
     <span>Showing <strong><?= count($variance_alerts); ?></strong> alert<?= count($variance_alerts)!==1?'s':''; ?>
     <?php if ($filter_status||$filter_type||$filter_date||$search_q): ?>
@@ -439,7 +439,7 @@ include __DIR__ . '/../partials/header.php';
     <?php endif; ?>
 </div>
 
-<!-- ── VARIANCE ALERTS TABLE ─────────────────────────────────────────────── -->
+<!-- â”€â”€ VARIANCE ALERTS TABLE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
 <div class="po-table-wrap">
     <table class="po-table">
             <thead>
@@ -470,7 +470,7 @@ include __DIR__ . '/../partials/header.php';
                 $varAmt   = (float)$v['variance_amount'];
                 $txnType  = $v['transaction_type'] ?? 'Merchandise';
                 $isArch   = str_starts_with($v['item_identifier'] ?? '', '[ARCHIVED]');
-                $dispItem = $isArch ? substr($v['item_identifier'], 11) : ($v['item_identifier'] ?? '—');
+                $dispItem = $isArch ? substr($v['item_identifier'], 11) : ($v['item_identifier'] ?? 'â€”');
 
                 $statusMeta = [
                     'open'          => ['label'=>'Open'],
@@ -485,7 +485,7 @@ include __DIR__ . '/../partials/header.php';
                 $jItem    = htmlspecialchars(json_encode($dispItem),                                         ENT_QUOTES);
                 $jVar     = htmlspecialchars(json_encode(number_format($varAmt, 2)),                         ENT_QUOTES);
                 $jStaff   = htmlspecialchars(json_encode($v['staff_name'] ?? 'System'),                      ENT_QUOTES);
-                $jStaffId = htmlspecialchars(json_encode($v['staff_uid'] ?? '—'),                            ENT_QUOTES);
+                $jStaffId = htmlspecialchars(json_encode($v['staff_uid'] ?? 'â€”'),                            ENT_QUOTES);
                 $jDate    = htmlspecialchars(json_encode(date('M d, Y H:i', strtotime($v['created_at']))),   ENT_QUOTES);
                 $jStatus  = htmlspecialchars(json_encode($status),                                           ENT_QUOTES);
                 $jNotes   = htmlspecialchars(json_encode($v['investigation_notes'] ?? ''),                   ENT_QUOTES);
@@ -495,12 +495,12 @@ include __DIR__ . '/../partials/header.php';
                 <td><span class="va-type-badge type-<?= strtolower($txnType)==='job order'?'jo':'merch'; ?>"><?= strtolower($txnType)==='job order'?'JO':'MERCH'; ?></span></td>
                 <td style="max-width:200px;word-break:break-word;"><?= htmlspecialchars($dispItem); ?></td>
                 <td style="font-weight:700;color:<?= $varAmt>0?'#28a745':($varAmt<0?'#dc3545':'#28a745'); ?>;"><?= ($varAmt>0?'+':'').number_format($varAmt,2); ?></td>
-                <td style="font-size:12px;color:#555;"><?= htmlspecialchars($v['staff_name']??'—'); ?></td>
+                <td style="font-size:12px;color:#555;"><?= htmlspecialchars($v['staff_name']??'â€”'); ?></td>
                 <td style="white-space:nowrap;font-size:12px;"><?= date('M d, Y H:i', strtotime($v['created_at'])); ?></td>
                 <td><span class="status-badge badge-<?= $status; ?>"><?= $sm['label']; ?></span></td>
                 <td>
                     <div class="actions-cell">
-                        <!-- VIEW — always visible -->
+                        <!-- VIEW â€” always visible -->
                         <button type="button" class="btn-action btn-view"
                             onclick="openViewModal(<?= $jVid; ?>,<?= $jType; ?>,<?= $jItem; ?>,<?= $jVar; ?>,<?= $jStaff; ?>,<?= $jStaffId; ?>,<?= $jDate; ?>,<?= $jStatus; ?>,<?= $jNotes; ?>)">
                             <i class="fas fa-eye"></i> View
@@ -547,9 +547,9 @@ include __DIR__ . '/../partials/header.php';
         </table>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      MODALS
-     ══════════════════════════════════════════════════════════════════════════ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 
 <!-- VIEW MODAL -->
 <div id="viewModal" class="va-modal" onclick="if(event.target===this)closeModal('viewModal')">
@@ -584,7 +584,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="va-form-group">
                     <label class="va-form-label">Investigation Notes <span class="va-req">*</span></label>
                     <textarea id="inv_notes" name="notes" class="va-textarea" rows="5"
-                        placeholder="Describe what you found, what you are checking, or initial observations…"></textarea>
+                        placeholder="Describe what you found, what you are checking, or initial observationsâ€¦"></textarea>
                     <div id="inv_notes_err" class="va-field-err" style="display:none;">Notes are required.</div>
                 </div>
             </div>
@@ -617,7 +617,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="va-form-group">
                     <label class="va-form-label">Resolution Notes <span class="va-req">*</span></label>
                     <textarea id="res_notes" name="notes" class="va-textarea" rows="5"
-                        placeholder="Describe how this variance was resolved, root cause, and corrective action taken…"></textarea>
+                        placeholder="Describe how this variance was resolved, root cause, and corrective action takenâ€¦"></textarea>
                     <div id="res_notes_err" class="va-field-err" style="display:none;">Resolution notes are required.</div>
                 </div>
             </div>
@@ -650,7 +650,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="va-form-group">
                     <label class="va-form-label">Escalation Reason <span class="va-req">*</span></label>
                     <textarea id="esc_notes" name="notes" class="va-textarea" rows="5"
-                        placeholder="Explain why this variance requires admin-level attention…"></textarea>
+                        placeholder="Explain why this variance requires admin-level attentionâ€¦"></textarea>
                     <div id="esc_notes_err" class="va-field-err" style="display:none;">Escalation reason is required.</div>
                 </div>
             </div>
@@ -735,7 +735,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="va-form-group">
                     <label class="va-form-label">Notes / Remarks <span class="va-req">*</span></label>
                     <textarea id="flag_notes" name="notes" class="va-textarea" rows="4"
-                        placeholder="Describe the anomaly and why it is being flagged…"></textarea>
+                        placeholder="Describe the anomaly and why it is being flaggedâ€¦"></textarea>
                     <div id="flag_notes_err" class="va-field-err" style="display:none;">Notes are required to flag this alert.</div>
                 </div>
             </div>
@@ -747,11 +747,11 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      JAVASCRIPT
-     ══════════════════════════════════════════════════════════════════════════ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <script>
-// ── Move all va-modals to <body> so they escape any fixed/overflow container ──
+// â”€â”€ Move all va-modals to <body> so they escape any fixed/overflow container â”€â”€
 (function() {
     function moveModals() {
         document.querySelectorAll('.va-modal').forEach(function(m) {
@@ -765,7 +765,7 @@ include __DIR__ . '/../partials/header.php';
     }
 })();
 
-// ── Modal helpers ─────────────────────────────────────────────────────────────
+// â”€â”€ Modal helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function closeModal(id) {
     var el = document.getElementById(id);
     if (el) el.style.display = 'none';
@@ -777,7 +777,7 @@ function openModal(id) {
     el.style.display = 'flex';
 }
 
-// ── View ──────────────────────────────────────────────────────────────────────
+// â”€â”€ View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openViewModal(id, type, item, variance, staff, staffId, date, status, notes) {
     var sc = {open:'#002F70',investigating:'#002F70',resolved:'#28a745',escalated:'#dc3545'}[status]||'#6c757d';
     var typeColor = (type==='Job Order'||type==='job order') ? '#28a745' : '#002F70';
@@ -788,14 +788,14 @@ function openViewModal(id, type, item, variance, staff, staffId, date, status, n
         di('Transaction Type', '<span style="color:'+typeColor+';font-weight:700;font-size:12px;">'+esc(typeLabel)+'</span>') +
         '<div class="va-detail-item" style="grid-column:1/-1;">'+dl('Product / SKU / Service')+'<span class="va-detail-val">'+esc(item)+'</span></div>' +
         di('Variance Amount',  '<strong style="color:'+varColor+';">'+esc(variance)+'</strong>') +
-        di('Staff',            esc(staff)+(staffId&&staffId!=='—'?' <span style="font-size:10px;color:#888;">(ID: '+esc(String(staffId))+')</span>':'')) +
+        di('Staff',            esc(staff)+(staffId&&staffId!=='â€”'?' <span style="font-size:10px;color:#888;">(ID: '+esc(String(staffId))+')</span>':'')) +
         di('Date Flagged',     esc(date)) +
         di('Status',           '<span style="color:'+sc+';font-weight:700;font-size:12px;text-transform:uppercase;">'+esc(status.charAt(0).toUpperCase()+status.slice(1))+'</span>') +
         '<div class="va-detail-item" style="grid-column:1/-1;">'+dl('Investigation Notes')+'<span class="va-detail-val" style="white-space:pre-wrap;min-height:32px;">'+esc(notes||'(no notes yet)')+'</span></div>';
     openModal('viewModal');
 }
 
-// ── Investigate ───────────────────────────────────────────────────────────────
+// â”€â”€ Investigate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openInvestigateModal(id, notes) {
     document.getElementById('inv_id').value    = id;
     document.getElementById('inv_notes').value = notes || '';
@@ -804,7 +804,7 @@ function openInvestigateModal(id, notes) {
     setTimeout(function(){ document.getElementById('inv_notes').focus(); }, 150);
 }
 
-// ── Resolve ───────────────────────────────────────────────────────────────────
+// â”€â”€ Resolve â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openResolveModal(id, notes) {
     document.getElementById('res_id').value    = id;
     document.getElementById('res_notes').value = notes || '';
@@ -813,7 +813,7 @@ function openResolveModal(id, notes) {
     setTimeout(function(){ document.getElementById('res_notes').focus(); }, 150);
 }
 
-// ── Escalate ──────────────────────────────────────────────────────────────────
+// â”€â”€ Escalate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openEscalateModal(id, notes) {
     document.getElementById('esc_id').value    = id;
     document.getElementById('esc_notes').value = notes || '';
@@ -822,22 +822,22 @@ function openEscalateModal(id, notes) {
     setTimeout(function(){ document.getElementById('esc_notes').focus(); }, 150);
 }
 
-// ── Archive ───────────────────────────────────────────────────────────────────
+// â”€â”€ Archive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openArchiveModal(id) {
     document.getElementById('arch_id').value = id;
     openModal('archiveModal');
 }
 
-// ── Re-open ───────────────────────────────────────────────────────────────────
+// â”€â”€ Re-open â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openReopenModal(id) {
     document.getElementById('reopen_id').value = id;
     openModal('reopenModal');
 }
 
-// ── Flag New Anomaly ──────────────────────────────────────────────────────────
+// â”€â”€ Flag New Anomaly â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openFlagModal(a) {
     document.getElementById('flag_type').value     = a.type;
-    document.getElementById('flag_item').value     = a.ref + ' — ' + a.item;
+    document.getElementById('flag_item').value     = a.ref + ' â€” ' + a.item;
     document.getElementById('flag_variance').value = a.variance;
     document.getElementById('flag_staff_id').value = a.staff_id || '';
     document.getElementById('flag_notes').value    = '';
@@ -846,7 +846,7 @@ function openFlagModal(a) {
     document.getElementById('flag_detail_grid').innerHTML =
         di('Type',    '<span style="color:'+typeColor+';font-weight:700;font-size:12px;">'+esc(typeLabel)+'</span>') +
         di('Anomaly', '<strong style="color:#842029;">'+esc(a.subtype)+'</strong>') +
-        '<div class="va-detail-item" style="grid-column:1/-1;">'+dl('Reference / Item')+'<span class="va-detail-val">'+esc(a.ref+' — '+a.item)+'</span></div>' +
+        '<div class="va-detail-item" style="grid-column:1/-1;">'+dl('Reference / Item')+'<span class="va-detail-val">'+esc(a.ref+' â€” '+a.item)+'</span></div>' +
         di('Variance','<strong style="color:#dc3545;">'+parseFloat(a.variance||0).toFixed(2)+'</strong>') +
         di('Staff',   esc(a.staff)) +
         '<div class="va-detail-item" style="grid-column:1/-1;">'+dl('Description')+'<span class="va-detail-val">'+esc(a.description)+'</span></div>';
@@ -854,7 +854,7 @@ function openFlagModal(a) {
     setTimeout(function(){ document.getElementById('flag_notes').focus(); }, 150);
 }
 
-// ── Submit with validation ────────────────────────────────────────────────────
+// â”€â”€ Submit with validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function submitModal(formId, notesFieldId, errId) {
     var notes = document.getElementById(notesFieldId).value.trim();
     if (!notes) { showErr(errId); document.getElementById(notesFieldId).focus(); return; }
@@ -862,7 +862,7 @@ function submitModal(formId, notesFieldId, errId) {
     document.getElementById(formId).submit();
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function showErr(id){ var el=document.getElementById(id); if(el) el.style.display='block'; }
 function hideErr(id){ var el=document.getElementById(id); if(el) el.style.display='none';  }
 function di(label,valHtml){ return '<div class="va-detail-item">'+dl(label)+'<span class="va-detail-val">'+valHtml+'</span></div>'; }
@@ -874,12 +874,12 @@ function applyFilter(key,val){
     window.location.href=url.toString();
 }
 
-// ── Escape key closes modals ──────────────────────────────────────────────────
+// â”€â”€ Escape key closes modals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 document.addEventListener('keydown', function(e) {
     if (e.key==='Escape') ['viewModal','investigateModal','resolveModal','escalateModal','archiveModal','reopenModal','flagModal'].forEach(closeModal);
 });
 
-// ── Clear error on textarea input ─────────────────────────────────────────────
+// â”€â”€ Clear error on textarea input â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 document.addEventListener('DOMContentLoaded', function() {
     [['inv_notes','inv_notes_err'],['res_notes','res_notes_err'],['esc_notes','esc_notes_err'],['flag_notes','flag_notes_err']].forEach(function(p){
         var ta=document.getElementById(p[0]);
@@ -888,20 +888,20 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<!-- ══════════════════════════════════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      STYLES
-     ══════════════════════════════════════════════════════════════════════════ -->
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <style>
-/* ── Flash ── */
+/* â”€â”€ Flash â”€â”€ */
 .va-flash { padding:12px 16px; border-radius:8px; margin-bottom:16px; font-size:14px; font-weight:500; }
 .va-flash-ok  { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
 .va-flash-err { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
 
-/* ── Header buttons ── */
+/* â”€â”€ Header buttons â”€â”€ */
 .va-hdr-btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:7px; font-size:13px; font-weight:600; color:#fff; text-decoration:none; transition:filter .15s; }
 .va-hdr-btn:hover { filter:brightness(.88); }
 
-/* ── Stat cards — white background, no colored icon circles ── */
+/* â”€â”€ Stat cards â€” white background, no colored icon circles â”€â”€ */
 .va-stat-row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
 .va-stat-card { display:flex; align-items:center; gap:12px; background:#fff; border:1px solid #e9ecef; border-radius:10px; padding:14px 18px; flex:1; transition:box-shadow .15s, transform .15s; }
 .va-stat-card:hover { box-shadow:0 4px 14px rgba(0,0,0,.1); transform:translateY(-2px); }
@@ -909,17 +909,17 @@ document.addEventListener('DOMContentLoaded', function() {
 .va-stat-num  { font-size:22px; font-weight:800; color:#002F70; line-height:1; }
 .va-stat-lbl  { font-size:11px; font-weight:700; color:#6c757d; text-transform:uppercase; letter-spacing:.4px; margin-top:2px; }
 
-/* ── Anomaly banner ── */
+/* â”€â”€ Anomaly banner â”€â”€ */
 .va-anomaly-banner { background:#fff5f5; border:1px solid #f5c6cb; border-radius:10px; padding:16px 18px; margin-bottom:18px; }
 
-/* ── Filter bar ── */
+/* â”€â”€ Filter bar â”€â”€ */
 .va-filter-bar { background:#fff; border:1px solid #e9ecef; border-radius:10px; padding:16px 18px; margin-bottom:16px; }
 .va-filter-group { display:flex; flex-direction:column; gap:4px; }
 .va-filter-group label { font-size:11px; font-weight:700; color:#495057; text-transform:uppercase; letter-spacing:.4px; }
 .va-select { padding:8px 12px; border:1px solid #ced4da; border-radius:6px; font-size:13px; background:#fff; transition:border-color .2s; }
 .va-select:focus { outline:none; border-color:#002F70; box-shadow:0 0 0 2px rgba(0,47,112,.15); }
 
-/* ── Generic modal buttons ── */
+/* â”€â”€ Generic modal buttons â”€â”€ */
 .va-btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border:none; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none; transition:filter .15s; white-space:nowrap; }
 .va-btn:hover { filter:brightness(.88); }
 .va-btn-primary   { background:#002F70; color:#fff; }
@@ -927,7 +927,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .va-btn-success   { background:#28a745; color:#fff; }
 .va-btn-danger    { background:#dc3545; color:#fff; }
 
-/* ── Main table — purchase-order style ── */
+/* â”€â”€ Main table â€” purchase-order style â”€â”€ */
 .po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:auto;-webkit-overflow-scrolling:touch; }
 .po-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
 .po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:left; font-weight:600; }
@@ -941,7 +941,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .va-table td { padding:10px 14px; border-bottom:1px solid #f0f2f5; vertical-align:middle; }
 .va-table tbody tr:hover { background:#f8f9fa; }
 
-/* ── Status badges — plain text, no background ── */
+/* â”€â”€ Status badges â€” plain text, no background â”€â”€ */
 .status-badge { display:inline-block; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; }
 .badge-open          { color:#002F70; }
 .badge-resolved      { color:#28a745; }
@@ -950,12 +950,12 @@ document.addEventListener('DOMContentLoaded', function() {
 .badge-investigating { color:#002F70; }
 .badge-other         { color:#6c757d; }
 
-/* ── Type badges — plain text, no background ── */
+/* â”€â”€ Type badges â€” plain text, no background â”€â”€ */
 .va-type-badge { display:inline-block; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; }
 .type-merch { color:#002F70; }
 .type-jo    { color:#28a745; }
 
-/* ── Action buttons — colored ── */
+/* â”€â”€ Action buttons â€” colored â”€â”€ */
 .btn-action { display:inline-flex; align-items:center; gap:5px; padding:6px 14px; border:none; border-radius:6px; cursor:pointer; font-size:0.82rem; font-weight:600; text-decoration:none; transition:opacity 0.2s; white-space:nowrap; margin-bottom:3px; }
 .btn-action:hover { opacity:0.85; }
 .btn-view    { background:#6c757d; color:#fff; }
@@ -966,19 +966,19 @@ document.addEventListener('DOMContentLoaded', function() {
 .actions-cell { display:flex; flex-direction:column; gap:4px; }
 .actions-cell .btn-action { width:100%; justify-content:center; margin-bottom:0; }
 
-/* ── Anomaly banner flag button ── */
+/* â”€â”€ Anomaly banner flag button â”€â”€ */
 .va-act-btn { display:inline-flex; align-items:center; justify-content:center; gap:5px; padding:5px 10px; border:none; border-radius:5px; font-size:11px; font-weight:700; cursor:pointer; color:#fff; transition:opacity .15s, transform .1s; }
 .va-act-btn:hover  { opacity:.85; transform:translateY(-1px); }
 .va-act-btn:active { transform:translateY(0); }
 .va-act-flag { background:#dc3545; }
 
-/* ── Empty state ── */
+/* â”€â”€ Empty state â”€â”€ */
 .va-empty-state { text-align:center; padding:48px 20px; }
 .va-empty-icon  { font-size:48px; color:#28a745; margin-bottom:12px; opacity:.7; }
 .va-empty-title { font-size:16px; font-weight:700; color:#002F6C; margin-bottom:6px; }
 .va-empty-sub   { font-size:13px; color:#6c757d; max-width:400px; margin:0 auto; }
 
-/* ── Modals ── */
+/* â”€â”€ Modals â”€â”€ */
 .va-modal { display:none; position:fixed; inset:0; z-index:99999; background:rgba(0,0,0,.55); align-items:center; justify-content:center; }
 .va-modal-box { background:#fff; border-radius:12px; width:92%; max-width:560px; box-shadow:0 8px 32px rgba(0,0,0,.22); overflow:hidden; animation:vaIn .18s ease-out; }
 @keyframes vaIn { from{opacity:0;transform:scale(.95) translateY(-10px)} to{opacity:1;transform:none} }
@@ -990,13 +990,13 @@ document.addEventListener('DOMContentLoaded', function() {
 .va-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:14px 24px; background:#f8f9fa; border-top:1px solid #dee2e6; }
 .va-modal-hint { margin:0 0 14px; font-size:13px; color:#555; display:flex; align-items:flex-start; gap:8px; }
 
-/* ── Detail grid ── */
+/* â”€â”€ Detail grid â”€â”€ */
 .va-detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .va-detail-item { background:#f8f9fa; padding:10px 12px; border-radius:8px; border:1px solid #e9ecef; }
 .va-detail-lbl  { display:block; font-size:10px; font-weight:700; color:#6c757d; text-transform:uppercase; letter-spacing:.5px; margin-bottom:3px; }
 .va-detail-val  { display:block; font-size:14px; color:#212529; word-break:break-word; }
 
-/* ── Form ── */
+/* â”€â”€ Form â”€â”€ */
 .va-form-group { margin-bottom:16px; }
 .va-form-label { display:block; font-weight:700; color:#495057; margin-bottom:6px; font-size:13px; }
 .va-req { color:red; }

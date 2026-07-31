@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'admin_request_data_management';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -13,7 +13,7 @@ if (!in_array($role, ['admin', 'superadmin'])) {
     header('Location: admin_dashboard.php'); exit;
 }
 
-// ── KPIs ──────────────────────────────────────────────────────────────────────
+// â”€â”€ KPIs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $kpi_total = 0; $kpi_pending = 0; $kpi_approved = 0; $kpi_rejected = 0;
 try {
     $s = $pdo->query("SELECT COUNT(*) FROM master_data_requests"); $kpi_total = (int)$s->fetchColumn();
@@ -22,7 +22,7 @@ try {
     $s = $pdo->query("SELECT COUNT(*) FROM master_data_requests WHERE status = 'Rejected'"); $kpi_rejected = (int)$s->fetchColumn();
 } catch (Exception $e) {}
 
-// ── Filter Options (staff & managers from DB, not hardcoded) ─────────────────
+// â”€â”€ Filter Options (staff & managers from DB, not hardcoded) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $staff_list = [];
 try {
     $s = $pdo->prepare("
@@ -47,7 +47,7 @@ try {
     $manager_list = $s->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── Filters ───────────────────────────────────────────────────────────────────
+// â”€â”€ Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $f_category  = trim($_GET['category']  ?? '');
 $f_status    = trim($_GET['status']    ?? '');
 $f_staff     = trim($_GET['staff']     ?? '');
@@ -70,7 +70,7 @@ if ($f_search !== '') {
     $params[] = "%$f_search%"; $params[] = "%$f_search%"; $params[] = "%$f_search%"; $params[] = "%$f_search%";
 }
 
-// ── Fetch rows ────────────────────────────────────────────────────────────────
+// â”€â”€ Fetch rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $rows = [];
 try {
     $stmt = $pdo->prepare("
@@ -78,7 +78,7 @@ try {
             r.*,
             COALESCE(NULLIF(TRIM(CONCAT(u.first_name,' ',u.last_name)),' '), u.username, 'Unknown Staff') AS requester_name,
             COALESCE(u.role, 'staff') AS requester_role,
-            COALESCE(NULLIF(TRIM(CONCAT(rev.first_name,' ',rev.last_name)),' '), rev.username, '—') AS reviewer_name,
+            COALESCE(NULLIF(TRIM(CONCAT(rev.first_name,' ',rev.last_name)),' '), rev.username, 'â€”') AS reviewer_name,
             st.name AS station_name
         FROM master_data_requests r
         LEFT JOIN users u   ON r.requested_by = u.id
@@ -94,7 +94,7 @@ try {
     error_log('Admin Request Data Management query error: ' . $e->getMessage());
 }
 
-// ── Export ────────────────────────────────────────────────────────────────────
+// â”€â”€ Export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $export = $_GET['export'] ?? '';
 if (in_array($export, ['excel', 'csv'])) {
     $fn = 'master_data_requests_' . date('Ymd_His');
@@ -115,12 +115,12 @@ if (in_array($export, ['excel', 'csv'])) {
         fputcsv($out, [
             $r['request_no'],
             $r['category'],
-            trim($item) ?: '—',
+            trim($item) ?: 'â€”',
             $r['requester_name'],
             $r['reviewer_name'],
-            (!empty($r['updated_at']) && $r['status'] !== 'Pending') ? date('M d, Y h:i A', strtotime($r['updated_at'])) : '—',
+            (!empty($r['updated_at']) && $r['status'] !== 'Pending') ? date('M d, Y h:i A', strtotime($r['updated_at'])) : 'â€”',
             $r['status'],
-            $r['rejection_reason'] ?? '—',
+            $r['rejection_reason'] ?? 'â€”',
         ]);
     }
     fclose($out); exit;
@@ -137,28 +137,9 @@ require_once __DIR__ . '/../partials/header.php';
 .txn-kpi-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.05);transition:transform .15s,box-shadow .15s;}
 .txn-kpi-card:hover{transform:translateY(-2px);box-shadow:0 4px 8px rgba(0,0,0,.08);}
 .txn-kpi-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#64748b;margin-bottom:4px;display:flex;align-items:center;gap:6px;}
-.txn-kpi-val{font-size:24px;font-weight:800;color:#002F70;line-height:1.1;}
-.txn-kpi-card.blue   .txn-kpi-val{color:#0369a1;}
-.txn-kpi-card.orange .txn-kpi-val{color:#ea580c;}
-.txn-kpi-card.green  .txn-kpi-val{color:#16a34a;}
-.txn-kpi-card.danger .txn-kpi-val{color:#dc2626;}
-/* Filters */
-.filters-form{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 18px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,0.04);}
-.filters-form>div{display:flex;flex-direction:column;gap:4px;}
-.filters-form label{font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.4px;}
-.filters-form .inp{height:36px;padding:0 10px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;color:#1e293b;background:#fff;outline:none;min-width:130px;transition:border-color .15s;}
-.filters-form .inp:focus{border-color:#002F70;box-shadow:0 0 0 3px rgba(0,47,112,.1);}
-.flt-btn{display:inline-flex;align-items:center;gap:6px;padding:0 14px;height:36px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s;text-decoration:none;background:#fff;}
-.flt-btn-primary{background:#002F70 !important;color:#fff !important;border-color:#002F70 !important;}
-.flt-btn-primary:hover{background:#001f4d !important;}
-.flt-btn-reset{color:#6b7280 !important;border-color:#6b7280 !important;}
-.flt-btn-reset:hover{background:#6b7280 !important;color:#fff !important;}
-.flt-btn-excel{color:#1d6f42 !important;border-color:#1d6f42 !important;}
-.flt-btn-excel:hover{background:#1d6f42 !important;color:#fff !important;}
-.flt-btn-csv{color:#0369a1 !important;border-color:#0369a1 !important;}
-.flt-btn-csv:hover{background:#0369a1 !important;color:#fff !important;}
-.flt-btn-pdf{color:#dc2626 !important;border-color:#dc2626 !important;}
-.flt-btn-pdf:hover{background:#dc2626 !important;color:#fff !important;}
+.flt-btn-csv:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 @media print{
   .page-head .export-btns,.filters-form,.flt-btn{display:none !important;}
   .card{box-shadow:none !important;border:1px solid #ccc !important;}
@@ -333,11 +314,11 @@ require_once __DIR__ . '/../partials/header.php';
 
                         // Determine requested item label
                         if ($row['category'] === 'Merchandise Product') {
-                            $item_label = $payload['product_name'] ?? '—';
+                            $item_label = $payload['product_name'] ?? 'â€”';
                         } elseif ($row['category'] === 'Service Type') {
-                            $item_label = $payload['service_name'] ?? '—';
+                            $item_label = $payload['service_name'] ?? 'â€”';
                         } else {
-                            $item_label = trim(($payload['vehicle_brand'] ?? '') . ' ' . ($payload['vehicle_model'] ?? '')) ?: '—';
+                            $item_label = trim(($payload['vehicle_brand'] ?? '') . ' ' . ($payload['vehicle_model'] ?? '')) ?: 'â€”';
                         }
 
                         // Category badge class
@@ -352,7 +333,7 @@ require_once __DIR__ . '/../partials/header.php';
                         elseif ($row['status'] === 'Rejected') $statusClass = 'badge badge-rejected';
 
                         // Reviewed date
-                        $reviewed_date = '—';
+                        $reviewed_date = 'â€”';
                         if (!empty($row['updated_at']) && $row['status'] !== 'Pending') {
                             $reviewed_date = date('M d, Y', strtotime($row['updated_at']));
                         }
@@ -376,7 +357,7 @@ require_once __DIR__ . '/../partials/header.php';
                                 'reviewer'      => $row['reviewer_name'],
                                 'reviewed_date' => $reviewed_date,
                                 'date_submitted'=> date('M d, Y h:i A', strtotime($row['created_at'])),
-                                'rejection_reason' => $row['rejection_reason'] ?? '—',
+                                'rejection_reason' => $row['rejection_reason'] ?? 'â€”',
                                 'payload'       => $payload,
                             ];
                             ?>
@@ -430,7 +411,7 @@ function openMdrModal(d) {
         'Fuel Type':         p.fuel_type,
         'Category':          p.category,
         'Unit':              p.unit,
-        'Suggested Price':   p.suggested_price ? '₱' + Number(p.suggested_price).toFixed(2) : null,
+        'Suggested Price':   p.suggested_price ? 'â‚±' + Number(p.suggested_price).toFixed(2) : null,
         'Brand':             p.brand,
         'Estimated Duration':p.estimated_duration,
         'Remarks':           p.remarks,
@@ -452,7 +433,7 @@ function openMdrModal(d) {
         <dt>Requested By</dt><dd>${d.requester}</dd>
         <dt>Date Submitted</dt><dd>${d.date_submitted}</dd>
         <dt>Status</dt><dd><span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;background:${sb};color:${sc};">${d.status}</span></dd>
-        <dt>Reviewed By</dt><dd>${d.reviewer || '—'}</dd>
+        <dt>Reviewed By</dt><dd>${d.reviewer || 'â€”'}</dd>
         <dt>Reviewed Date</dt><dd>${d.reviewed_date}</dd>
         ${d.status === 'Rejected' ? `<dt>Rejection Reason</dt><dd style="color:#dc2626;">${d.rejection_reason}</dd>` : ''}
     `;

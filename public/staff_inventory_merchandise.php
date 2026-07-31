@@ -559,8 +559,8 @@ body.modal-open .main {
 <div class="inv-card" id="section-overview">
     <div class="inv-card-head">
         <div class="inv-card-title"><i class="fas fa-box"></i> Merchandise Stock Overview</div>
-        <button type="button" onclick="openSrModal()" style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:6px; font-weight:600; font-size:13px; cursor:pointer; background:transparent !important; color:#334155 !important; border:1px solid #cbd5e1 !important; transition:all 0.15s ease;" onmouseover="this.style.borderColor='#94a3b8';this.style.background='#f8fafc';" onmouseout="this.style.borderColor='#cbd5e1';this.style.background='transparent';">
-            <i class="fas fa-paper-plane" style="color:#002F70;"></i> Stock Request
+        <button type="button" onclick="openSrModal()" style="display:inline-flex; align-items:center; gap:6px; padding:7px 16px; border-radius:4px; font-weight:700; font-size:12px; cursor:pointer; background:#00264D !important; color:#ffffff !important; border:1px solid #00264D !important; transition:all 0.15s ease; white-space:nowrap;" onmouseover="this.style.background='#001933';" onmouseout="this.style.background='#00264D';">
+            <i class="fas fa-paper-plane" style="color:#ffffff;"></i> Stock Request
         </button>
     </div>
 

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * STAFF PAYMENTS REPORT
  * Complete payment tracking with shift summaries
@@ -400,12 +400,12 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
             echo '<td>' . htmlspecialchars($payment['transaction_id']) . '</td>';
             echo '<td>' . htmlspecialchars($payment['customer_name']) . '</td>';
             echo '<td>' . htmlspecialchars($payment['payment_mode']) . '</td>';
-            echo '<td class="text-right font-bold">₱' . number_format($payment['amount_paid'], 2) . '</td>';
-            echo '<td class="text-right">₱' . number_format($payment['outstanding_balance'], 2) . '</td>';
+            echo '<td class="text-right font-bold">â‚±' . number_format($payment['amount_paid'], 2) . '</td>';
+            echo '<td class="text-right">â‚±' . number_format($payment['outstanding_balance'], 2) . '</td>';
             echo '<td>' . htmlspecialchars($payment['shift'] ?? 'N/A') . '</td>';
             echo '<td>' . htmlspecialchars($payment['encoder'] ?? 'N/A') . '</td>';
             echo '<td class="text-center">' . strtoupper($payment['status']) . '</td>';
-            echo '<td>' . htmlspecialchars($payment['remarks'] ?? '—') . '</td>';
+            echo '<td>' . htmlspecialchars($payment['remarks'] ?? 'â€”') . '</td>';
             echo '</tr>';
         }
     } else {
@@ -427,12 +427,12 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         echo '</tr>';
         echo '</thead>';
         echo '<tbody>';
-        echo '<tr><td>Cash</td><td class="text-right font-bold">₱' . number_format($shift1_cash, 2) . '</td></tr>';
-        echo '<tr><td>Card</td><td class="text-right font-bold">₱' . number_format($shift1_card, 2) . '</td></tr>';
-        echo '<tr><td>E-Wallet</td><td class="text-right font-bold">₱' . number_format($shift1_ewallet, 2) . '</td></tr>';
-        echo '<tr><td>E-Fuel Card</td><td class="text-right font-bold">₱' . number_format($shift1_efuel, 2) . '</td></tr>';
-        echo '<tr><td>Fleet Card</td><td class="text-right font-bold">₱' . number_format($shift1_fleet, 2) . '</td></tr>';
-        echo '<tr class="font-bold"><td>SHIFT 1 TOTAL</td><td class="text-right">₱' . number_format($shift1_total, 2) . '</td></tr>';
+        echo '<tr><td>Cash</td><td class="text-right font-bold">â‚±' . number_format($shift1_cash, 2) . '</td></tr>';
+        echo '<tr><td>Card</td><td class="text-right font-bold">â‚±' . number_format($shift1_card, 2) . '</td></tr>';
+        echo '<tr><td>E-Wallet</td><td class="text-right font-bold">â‚±' . number_format($shift1_ewallet, 2) . '</td></tr>';
+        echo '<tr><td>E-Fuel Card</td><td class="text-right font-bold">â‚±' . number_format($shift1_efuel, 2) . '</td></tr>';
+        echo '<tr><td>Fleet Card</td><td class="text-right font-bold">â‚±' . number_format($shift1_fleet, 2) . '</td></tr>';
+        echo '<tr class="font-bold"><td>SHIFT 1 TOTAL</td><td class="text-right">â‚±' . number_format($shift1_total, 2) . '</td></tr>';
         echo '</tbody>';
         echo '</table>';
         echo '<br/>';
@@ -449,12 +449,12 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         echo '</tr>';
         echo '</thead>';
         echo '<tbody>';
-        echo '<tr><td>Cash</td><td class="text-right font-bold">₱' . number_format($shift2_cash, 2) . '</td></tr>';
-        echo '<tr><td>Card</td><td class="text-right font-bold">₱' . number_format($shift2_card, 2) . '</td></tr>';
-        echo '<tr><td>E-Wallet</td><td class="text-right font-bold">₱' . number_format($shift2_ewallet, 2) . '</td></tr>';
-        echo '<tr><td>E-Fuel Card</td><td class="text-right font-bold">₱' . number_format($shift2_efuel, 2) . '</td></tr>';
-        echo '<tr><td>Fleet Card</td><td class="text-right font-bold">₱' . number_format($shift2_fleet, 2) . '</td></tr>';
-        echo '<tr class="font-bold"><td>SHIFT 2 TOTAL</td><td class="text-right">₱' . number_format($shift2_total, 2) . '</td></tr>';
+        echo '<tr><td>Cash</td><td class="text-right font-bold">â‚±' . number_format($shift2_cash, 2) . '</td></tr>';
+        echo '<tr><td>Card</td><td class="text-right font-bold">â‚±' . number_format($shift2_card, 2) . '</td></tr>';
+        echo '<tr><td>E-Wallet</td><td class="text-right font-bold">â‚±' . number_format($shift2_ewallet, 2) . '</td></tr>';
+        echo '<tr><td>E-Fuel Card</td><td class="text-right font-bold">â‚±' . number_format($shift2_efuel, 2) . '</td></tr>';
+        echo '<tr><td>Fleet Card</td><td class="text-right font-bold">â‚±' . number_format($shift2_fleet, 2) . '</td></tr>';
+        echo '<tr class="font-bold"><td>SHIFT 2 TOTAL</td><td class="text-right">â‚±' . number_format($shift2_total, 2) . '</td></tr>';
         echo '</tbody>';
         echo '</table>';
         echo '<br/>';
@@ -470,12 +470,12 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     echo '</tr>';
     echo '</thead>';
     echo '<tbody>';
-    echo '<tr><td>Cash</td><td class="text-right font-bold">₱' . number_format($shift1_cash + $shift2_cash, 2) . '</td></tr>';
-    echo '<tr><td>Card</td><td class="text-right font-bold">₱' . number_format($shift1_card + $shift2_card, 2) . '</td></tr>';
-    echo '<tr><td>E-Wallet</td><td class="text-right font-bold">₱' . number_format($shift1_ewallet + $shift2_ewallet, 2) . '</td></tr>';
-    echo '<tr><td>E-Fuel Card</td><td class="text-right font-bold">₱' . number_format($shift1_efuel + $shift2_efuel, 2) . '</td></tr>';
-    echo '<tr><td>Fleet Card</td><td class="text-right font-bold">₱' . number_format($shift1_fleet + $shift2_fleet, 2) . '</td></tr>';
-    echo '<tr class="font-bold" style="font-size: 14px;"><td>GRAND TOTAL</td><td class="text-right">₱' . number_format($overall_total, 2) . '</td></tr>';
+    echo '<tr><td>Cash</td><td class="text-right font-bold">â‚±' . number_format($shift1_cash + $shift2_cash, 2) . '</td></tr>';
+    echo '<tr><td>Card</td><td class="text-right font-bold">â‚±' . number_format($shift1_card + $shift2_card, 2) . '</td></tr>';
+    echo '<tr><td>E-Wallet</td><td class="text-right font-bold">â‚±' . number_format($shift1_ewallet + $shift2_ewallet, 2) . '</td></tr>';
+    echo '<tr><td>E-Fuel Card</td><td class="text-right font-bold">â‚±' . number_format($shift1_efuel + $shift2_efuel, 2) . '</td></tr>';
+    echo '<tr><td>Fleet Card</td><td class="text-right font-bold">â‚±' . number_format($shift1_fleet + $shift2_fleet, 2) . '</td></tr>';
+    echo '<tr class="font-bold" style="font-size: 14px;"><td>GRAND TOTAL</td><td class="text-right">â‚±' . number_format($overall_total, 2) . '</td></tr>';
     echo '</tbody>';
     echo '</table>';
     
@@ -612,12 +612,12 @@ require_once __DIR__ . '/../partials/header.php';
     .flt-btn-search:hover { background: #002F70 !important; color: #fff !important; }
     .flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
     .flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
-    .flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
-    .flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
-    .flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
-    .flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
-    .flt-btn-csv    { color: #002F70 !important; border-color: #002F70 !important; }
-    .flt-btn-csv:hover    { background: #002F70 !important; color: #fff !important; }
+    .flt-btn-excel  { color: #00264D !important; border-color: #cbd5e1 !important; }
+    .flt-btn-excel:hover  { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+    .flt-btn-pdf    { color: #00264D !important; border-color: #cbd5e1 !important; }
+    .flt-btn-pdf:hover    { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+    .flt-btn-csv    { color: #00264D !important; border-color: #cbd5e1 !important; }
+    .flt-btn-csv:hover    { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
     
     .print-area {
         background: #fff;
@@ -728,7 +728,7 @@ require_once __DIR__ . '/../partials/header.php';
             height: 0 !important;
         }
 
-        /* ── Kill ALL icons everywhere ── */
+        /* â”€â”€ Kill ALL icons everywhere â”€â”€ */
         i, svg, .fas, .far, .fab, .fa, .fa-solid, .fa-regular, .fa-brands,
         [class*="fa-"], [class^="fa "], .icon, [class*="icon-"] {
             display: none !important;
@@ -868,12 +868,12 @@ require_once __DIR__ . '/../partials/header.php';
                             <td><strong><?= htmlspecialchars($payment['transaction_id']) ?></strong></td>
                             <td><?= htmlspecialchars($payment['customer_name']) ?></td>
                             <td><?= htmlspecialchars($payment['payment_mode']) ?></td>
-                            <td class="text-right font-bold">₱<?= number_format($payment['amount_paid'], 2) ?></td>
-                            <td class="text-right">₱<?= number_format($payment['outstanding_balance'], 2) ?></td>
+                            <td class="text-right font-bold">â‚±<?= number_format($payment['amount_paid'], 2) ?></td>
+                            <td class="text-right">â‚±<?= number_format($payment['outstanding_balance'], 2) ?></td>
                             <td><?= htmlspecialchars($payment['shift'] ?? 'N/A') ?></td>
                             <td><?= htmlspecialchars($payment['encoder'] ?? 'N/A') ?></td>
                             <td class="text-center"><?= strtoupper($payment['status']) ?></td>
-                            <td><?= htmlspecialchars($payment['remarks'] ?? '—') ?></td>
+                            <td><?= htmlspecialchars($payment['remarks'] ?? 'â€”') ?></td>
                         </tr>
                         <?php endforeach; else: ?>
                         <tr><td colspan="9" style="text-align: center; padding: 40px;">No payments found for this period.</td></tr>
@@ -891,13 +891,13 @@ require_once __DIR__ . '/../partials/header.php';
                             <h3>SHIFT 1 (6AM - 2PM)</h3>
                             <table>
                                 <tbody>
-                                    <tr><td><strong>Cash:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_cash, 2) ?></td></tr>
-                                    <tr><td><strong>Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_card, 2) ?></td></tr>
-                                    <tr><td><strong>E-Wallet:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_ewallet, 2) ?></td></tr>
-                                    <tr><td><strong>E-Fuel Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_efuel, 2) ?></td></tr>
-                                    <tr><td><strong>Fleet Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_fleet, 2) ?></td></tr>
+                                    <tr><td><strong>Cash:</strong></td><td class="text-right font-bold">â‚±<?= number_format($shift1_cash, 2) ?></td></tr>
+                                    <tr><td><strong>Card:</strong></td><td class="text-right font-bold">â‚±<?= number_format($shift1_card, 2) ?></td></tr>
+                                    <tr><td><strong>E-Wallet:</strong></td><td class="text-right font-bold">â‚±<?= number_format($shift1_ewallet, 2) ?></td></tr>
+                                    <tr><td><strong>E-Fuel Card:</strong></td><td class="text-right font-bold">â‚±<?= number_format($shift1_efuel, 2) ?></td></tr>
+                                    <tr><td><strong>Fleet Card:</strong></td><td class="text-right font-bold">â‚±<?= number_format($shift1_fleet, 2) ?></td></tr>
                                     <tr><td colspan="2" style="height: 5px;"></td></tr>
-                                    <tr><td class="font-bold">TOTAL:</td><td class="text-right font-bold">₱<?= number_format($shift1_total, 2) ?></td></tr>
+                                    <tr><td class="font-bold">TOTAL:</td><td class="text-right font-bold">â‚±<?= number_format($shift1_total, 2) ?></td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -908,13 +908,13 @@ require_once __DIR__ . '/../partials/header.php';
                             <h3>SHIFT 2 (2PM - 10PM)</h3>
                             <table>
                                 <tbody>
-                                    <tr><td><strong>Cash:</strong></td><td class="text-right font-bold">₱<?= number_format($shift2_cash, 2) ?></td></tr>
-                                    <tr><td><strong>Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift2_card, 2) ?></td></tr>
-                                    <tr><td><strong>E-Wallet:</strong></td><td class="text-right font-bold">₱<?= number_format($shift2_ewallet, 2) ?></td></tr>
-                                    <tr><td><strong>E-Fuel Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift2_efuel, 2) ?></td></tr>
-                                    <tr><td><strong>Fleet Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift2_fleet, 2) ?></td></tr>
+                                    <tr><td><strong>Cash:</strong></td><td class="text-right font-bold">â‚±<?= number_format($shift2_cash, 2) ?></td></tr>
+                                    <tr><td><strong>Card:</strong></td><td class="text-right font-bold">â‚±<?= number_format($shift2_card, 2) ?></td></tr>
+                                    <tr><td><strong>E-Wallet:</strong></td><td class="text-right font-bold">â‚±<?= number_format($shift2_ewallet, 2) ?></td></tr>
+                                    <tr><td><strong>E-Fuel Card:</strong></td><td class="text-right font-bold">â‚±<?= number_format($shift2_efuel, 2) ?></td></tr>
+                                    <tr><td><strong>Fleet Card:</strong></td><td class="text-right font-bold">â‚±<?= number_format($shift2_fleet, 2) ?></td></tr>
                                     <tr><td colspan="2" style="height: 5px;"></td></tr>
-                                    <tr><td class="font-bold">TOTAL:</td><td class="text-right font-bold">₱<?= number_format($shift2_total, 2) ?></td></tr>
+                                    <tr><td class="font-bold">TOTAL:</td><td class="text-right font-bold">â‚±<?= number_format($shift2_total, 2) ?></td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -927,13 +927,13 @@ require_once __DIR__ . '/../partials/header.php';
                     <div class="shift-box" style="height: calc(100% - 50px);">
                         <table>
                             <tbody>
-                                <tr><td><strong>Total Cash:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_cash + $shift2_cash, 2) ?></td></tr>
-                                <tr><td><strong>Total Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_card + $shift2_card, 2) ?></td></tr>
-                                <tr><td><strong>Total E-Wallet:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_ewallet + $shift2_ewallet, 2) ?></td></tr>
-                                <tr><td><strong>Total E-Fuel Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_efuel + $shift2_efuel, 2) ?></td></tr>
-                                <tr><td><strong>Total Fleet Card:</strong></td><td class="text-right font-bold">₱<?= number_format($shift1_fleet + $shift2_fleet, 2) ?></td></tr>
+                                <tr><td><strong>Total Cash:</strong></td><td class="text-right font-bold">â‚±<?= number_format($shift1_cash + $shift2_cash, 2) ?></td></tr>
+                                <tr><td><strong>Total Card:</strong></td><td class="text-right font-bold">â‚±<?= number_format($shift1_card + $shift2_card, 2) ?></td></tr>
+                                <tr><td><strong>Total E-Wallet:</strong></td><td class="text-right font-bold">â‚±<?= number_format($shift1_ewallet + $shift2_ewallet, 2) ?></td></tr>
+                                <tr><td><strong>Total E-Fuel Card:</strong></td><td class="text-right font-bold">â‚±<?= number_format($shift1_efuel + $shift2_efuel, 2) ?></td></tr>
+                                <tr><td><strong>Total Fleet Card:</strong></td><td class="text-right font-bold">â‚±<?= number_format($shift1_fleet + $shift2_fleet, 2) ?></td></tr>
                                 <tr><td colspan="2" style="height: 5px;"></td></tr>
-                                <tr><td class="font-bold">GRAND TOTAL:</td><td class="text-right font-bold" style="font-size: 14px;">₱<?= number_format($overall_total, 2) ?></td></tr>
+                                <tr><td class="font-bold">GRAND TOTAL:</td><td class="text-right font-bold" style="font-size: 14px;">â‚±<?= number_format($overall_total, 2) ?></td></tr>
                             </tbody>
                         </table>
                     </div>

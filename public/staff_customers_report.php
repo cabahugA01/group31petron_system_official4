@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * STAFF CUSTOMER REPORT
  * Customer counts and transaction summaries for staff reports.
@@ -140,12 +140,12 @@ require_once __DIR__ . '/../partials/header.php';
     .flt-btn-search:hover { background: #002F70 !important; color: #fff !important; }
     .flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
     .flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
-    .flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
-    .flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
-    .flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
-    .flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
-    .flt-btn-csv    { color: #002F70 !important; border-color: #002F70 !important; }
-    .flt-btn-csv:hover    { background: #002F70 !important; color: #fff !important; }
+    .flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+    .flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+    .flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+    .flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+    .flt-btn-csv { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+    .flt-btn-csv:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
     
     .print-area { background: #fff; }
     .header {
@@ -228,7 +228,7 @@ require_once __DIR__ . '/../partials/header.php';
             visibility: hidden !important;
         }
         
-        /* ── Kill ALL icons everywhere ── */
+        /* â”€â”€ Kill ALL icons everywhere â”€â”€ */
         i, svg, .fas, .far, .fab, .fa, [class*="fa-"], .fa-solid, .fa-regular, .fa-brands,
         .icon, [class*="icon-"] {
             display: none !important;
@@ -441,7 +441,7 @@ require_once __DIR__ . '/../partials/header.php';
                                 <td><?= staff_customer_report_h($row['customer_type']) ?></td>
                                 <td><?= staff_customer_report_h($row['vehicle']) ?></td>
                                 <td><?= staff_customer_report_h($row['transaction_type']) ?></td>
-                                <td class="text-right font-bold">₱<?= number_format((float)$row['total_amount'], 2) ?></td>
+                                <td class="text-right font-bold">â‚±<?= number_format((float)$row['total_amount'], 2) ?></td>
                                 <td><?= staff_customer_report_h(staff_customer_report_date($row['transaction_date'])) ?></td>
                                 <td><?= staff_customer_report_h($row['staff_name']) ?></td>
                             </tr>

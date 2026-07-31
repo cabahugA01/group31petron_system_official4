@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'mgr_inv_merch';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -17,9 +17,9 @@ if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
     exit;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // AJAX Endpoints
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_product_details') {
     $prod_id = (int)($_GET['product_id'] ?? 0);
     header('Content-Type: application/json');
@@ -152,9 +152,9 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_product_details') {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // POST Actions
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     
@@ -480,9 +480,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Data Fetching
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $merch_inventory = [];
 $msg = '';
 
@@ -511,7 +511,7 @@ try {
     ")->execute([$station_id, $station_id]);
 } catch (Exception $e) {}
 
-// Main catalog query — UNION of inventory_products + products (excluding fuel/service)
+// Main catalog query â€” UNION of inventory_products + products (excluding fuel/service)
 try {
     $stmt = $pdo->prepare("
         SELECT
@@ -611,7 +611,7 @@ try {
     }
 } catch (Exception $e) {}
 
-// ── prod_added_map: total stock added (Stock-In) per product ──────────────────
+// â”€â”€ prod_added_map: total stock added (Stock-In) per product â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Primary source: inventory_logs (action = Stock In / stock_in / delivery)
 $prod_added_map = [];
 try {
@@ -647,7 +647,7 @@ try {
     }
 } catch (Exception $e) {}
 
-// ── prod_deducted_map: total stock deducted (Sales + JO + Adjustments) per product ──
+// â”€â”€ prod_deducted_map: total stock deducted (Sales + JO + Adjustments) per product â”€â”€
 // Primary source: inventory_logs (action = sale/Merchandise Sale/Job Order Usage/etc.)
 $prod_deducted_map = [];
 try {
@@ -882,7 +882,7 @@ if (!in_array($active_tab, ['inventory', 'alerts', 'movement', 'requests', 'stoc
 $url_filter = in_array($_GET['filter'] ?? '', ['low','critical']) ? ($_GET['filter']) : '';
 $url_view   = ($_GET['view'] ?? '') === 'movement' ? 'movement' : '';
 
-// ── NEW: Stock Added Today & Stock Deducted Today (for dashboard cards) ──
+// â”€â”€ NEW: Stock Added Today & Stock Deducted Today (for dashboard cards) â”€â”€
 $stock_added_today    = 0;
 $stock_deducted_today = 0;
 try {
@@ -902,14 +902,14 @@ try {
     $stock_deducted_today = (int)$s->fetchColumn();
 } catch (Exception $e) {}
 
-// ── NEW: Stock-In list (manager full view with PO No., Status) ──
+// â”€â”€ NEW: Stock-In list (manager full view with PO No., Status) â”€â”€
 $mgr_stock_in_list = [];
 try {
     $s = $pdo->prepare("
         SELECT
             msi.id,
             CONCAT('SI-', LPAD(msi.id, 5, '0')) AS stock_in_no,
-            COALESCE(NULLIF(msi.po_number,''), '—') AS po_no,
+            COALESCE(NULLIF(msi.po_number,''), 'â€”') AS po_no,
             msi.product_name,
             COALESCE(NULLIF(msi.batch_ref,''), CONCAT('BATCH-', LPAD(msi.id, 4, '0'))) AS batch_no,
             msi.qty_received,
@@ -928,7 +928,7 @@ try {
     $mgr_stock_in_list = $s->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── NEW: Stock-Out list (from merchandise_transaction_items + transactions) ──
+// â”€â”€ NEW: Stock-Out list (from merchandise_transaction_items + transactions) â”€â”€
 $mgr_stock_out_list = [];
 try {
     $s = $pdo->prepare("
@@ -953,14 +953,14 @@ try {
     $mgr_stock_out_list = $s->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── NEW: Transfer Records (from inventory_logs where action='transfer', or merchandise_deliveries) ──
+// â”€â”€ NEW: Transfer Records (from inventory_logs where action='transfer', or merchandise_deliveries) â”€â”€
 $mgr_transfers_list = [];
 try {
     $s = $pdo->prepare("
         SELECT
             CONCAT('TR-', LPAD(il.id, 5, '0')) AS transfer_no,
             COALESCE(ip.product_name, p.name, il.notes, 'Merchandise Product') AS product_name,
-            COALESCE(il.notes, '—') AS notes,
+            COALESCE(il.notes, 'â€”') AS notes,
             ABS(il.quantity_change) AS qty,
             il.created_at AS date_transferred,
             COALESCE(u.name, u.username, 'Staff') AS processed_by
@@ -977,14 +977,14 @@ try {
     $mgr_transfers_list = $s->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── NEW: Damaged Items (from inventory_logs where action='damage' or condition_flag='Damaged' in stock_in) ──
+// â”€â”€ NEW: Damaged Items (from inventory_logs where action='damage' or condition_flag='Damaged' in stock_in) â”€â”€
 $mgr_damaged_list = [];
 try {
     $s = $pdo->prepare("
         SELECT
             CONCAT('DMG-', LPAD(il.id, 5, '0')) AS damage_no,
-            COALESCE(ip.product_name, p.name, il.notes, '—') AS product_name,
-            '—' AS batch_no,
+            COALESCE(ip.product_name, p.name, il.notes, 'â€”') AS product_name,
+            'â€”' AS batch_no,
             ABS(il.quantity_change) AS qty,
             COALESCE(il.notes, 'Damage recorded') AS reason,
             il.created_at AS date_recorded,
@@ -1025,7 +1025,7 @@ try {
     $mgr_damaged_list = array_merge($mgr_damaged_list, $damaged_from_si);
 } catch (Exception $e) {}
 
-// ── NEW: Expired Products (from merchandise_batches where status='expired' or expiry logic) ──
+// â”€â”€ NEW: Expired Products (from merchandise_batches where status='expired' or expiry logic) â”€â”€
 $mgr_expired_list = [];
 try {
     $s = $pdo->prepare("
@@ -1047,15 +1047,15 @@ try {
     $mgr_expired_list = $s->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// ── NEW: Full Inventory Movement History (already exists as $movement_history but we need a richer version) ──
+// â”€â”€ NEW: Full Inventory Movement History (already exists as $movement_history but we need a richer version) â”€â”€
 $mgr_movement_history = [];
 try {
     $s = $pdo->prepare("
         SELECT
             il.created_at AS date,
-            COALESCE(ip.product_name, '—') AS product_name,
+            COALESCE(ip.product_name, 'â€”') AS product_name,
             il.action AS movement_type,
-            COALESCE(il.reference_type, il.action, '—') AS reference,
+            COALESCE(il.reference_type, il.action, 'â€”') AS reference,
             CASE WHEN il.quantity_change > 0 THEN il.quantity_change ELSE 0 END AS qty_in,
             CASE WHEN il.quantity_change < 0 THEN ABS(il.quantity_change) ELSE 0 END AS qty_out,
             COALESCE(il.quantity_after, 0) AS balance,
@@ -1281,12 +1281,12 @@ body { overflow-x: hidden; }
 .flt-btn-search:hover { background: #002F70 !important; color: #fff !important; }
 .flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
 .flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
-.flt-btn-excel  { color: #1d6f42 !important; border-color: #1d6f42 !important; }
-.flt-btn-excel:hover  { background: #1d6f42 !important; color: #fff !important; }
-.flt-btn-pdf    { color: #dc2626 !important; border-color: #dc2626 !important; }
-.flt-btn-pdf:hover    { background: #dc2626 !important; color: #fff !important; }
-.flt-btn-csv    { color: #002F70 !important; border-color: #002F70 !important; }
-.flt-btn-csv:hover    { background: #002F70 !important; color: #fff !important; }
+.flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-csv { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-csv:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 </style>
 
 <div class="int-head">
@@ -1394,7 +1394,7 @@ body { overflow-x: hidden; }
     <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #bfdbfe;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:.3px;">Total Inventory Value</div>
-            <div style="font-size:18px;font-weight:800;color:#1d4ed8;margin-top:4px;">₱<?= number_format($total_inventory_value, 2) ?></div>
+            <div style="font-size:18px;font-weight:800;color:#1d4ed8;margin-top:4px;">â‚±<?= number_format($total_inventory_value, 2) ?></div>
         </div>
         <div style="background:#eff6ff;color:#1d4ed8;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-peso-sign"></i></div>
     </div>
@@ -1484,14 +1484,14 @@ body { overflow-x: hidden; }
                         $si_cls = 'variance detected';
                     }
 
-                    $timestamp = '—';
+                    $timestamp = 'â€”';
                     if (!empty($item['last_updated'])) {
                         try {
                             $timestamp = (new DateTime($item['last_updated']))->format('M d, Y g:i A');
                         } catch (Exception $e) {}
                     }
 
-                    $var_text = '—';
+                    $var_text = 'â€”';
                     $var_style = 'color:#64748b;';
                     if ($variance !== null) {
                         $v_val = (float)$variance;
@@ -1507,7 +1507,7 @@ body { overflow-x: hidden; }
                         }
                     }
 
-                    $phys_text = ($item['physical_count'] !== null) ? number_format((float)$item['physical_count'], 0) : '—';
+                    $phys_text = ($item['physical_count'] !== null) ? number_format((float)$item['physical_count'], 0) : 'â€”';
                 ?>
                 <tr class="merch-row"
                     data-id="<?php echo (int)$item['id']; ?>"
@@ -1517,7 +1517,7 @@ body { overflow-x: hidden; }
                     data-has-variance="<?php echo $has_variance ? 'true' : 'false'; ?>"
                     data-inv-status="<?php echo $si_cls; ?>"
                     data-stock-status="<?php echo $stock_status_class; ?>">
-                    <td><code style="font-size:11px;font-weight:600;"><?php echo htmlspecialchars($item['sku'] ?? '—'); ?></code></td>
+                    <td><code style="font-size:11px;font-weight:600;"><?php echo htmlspecialchars($item['sku'] ?? 'â€”'); ?></code></td>
                     <td><strong><?php echo htmlspecialchars($item['name']); ?></strong></td>
                     <td style="text-align:center;"><?php echo htmlspecialchars($item['category_name'] ?? ''); ?></td>
                     <td><?php echo $unit; ?></td>
@@ -1559,7 +1559,7 @@ body { overflow-x: hidden; }
 </div>
 <?php endif; ?>
 
-<!-- ══ TAB: STOCK MOVEMENT HISTORY ══ -->
+<!-- â•â• TAB: STOCK MOVEMENT HISTORY â•â• -->
 <?php if ($active_tab === 'movement'): ?>
 <div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;padding:20px;">
     <div style="font-size:1rem;font-weight:700;color:#002F70;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
@@ -1599,7 +1599,7 @@ body { overflow-x: hidden; }
                 <tr><td colspan="9" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-inbox" style="font-size:1.8em; display:block; margin-bottom:8px;"></i> No stock movement records found.</td></tr>
             <?php else: ?>
                 <?php foreach ($movement_history as $log):
-                    $m_date = !empty($log['created_at']) ? (new DateTime($log['created_at']))->format('M d, Y h:i A') : '—';
+                    $m_date = !empty($log['created_at']) ? (new DateTime($log['created_at']))->format('M d, Y h:i A') : 'â€”';
                     $m_raw  = strtolower($log['movement_type'] ?? '');
                     $ref_no = $log['reference_no'] ?? ($log['reference_type'] ? $log['reference_type'] . '-' . $log['reference_id'] : 'LOG-' . $log['log_id']);
                     $qty    = (float)($log['quantity'] ?? 0);
@@ -1652,7 +1652,7 @@ body { overflow-x: hidden; }
                     <td style="text-align:right; font-weight:600; color:#64748b;"><?= number_format($prev, 0) ?></td>
                     <td style="text-align:right; font-weight:700; color:#002F70;"><?= number_format($new, 0) ?></td>
                     <td style="font-size:11px; font-weight:600; color:#334155;"><?= htmlspecialchars($log['user_name'] ?? 'System') ?></td>
-                    <td style="font-size:11px; color:#475569; max-width:200px;"><?= htmlspecialchars($log['notes'] ?? '—') ?></td>
+                    <td style="font-size:11px; color:#475569; max-width:200px;"><?= htmlspecialchars($log['notes'] ?? 'â€”') ?></td>
                 </tr>
                 <?php endforeach; ?>
             <?php endif; ?>
@@ -1967,9 +1967,9 @@ body { overflow-x: hidden; }
 
 <!-- Removed tab contents for deliveries and history -->
 
-<!-- ─────────────────────────────────────────────────────────────────────────────
+<!-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
      Modals
-     ───────────────────────────────────────────────────────────────────────────── -->
+     â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
 
 <!-- STOCK REQUEST DETAILS MODAL -->
 <div class="modal-overlay" id="reqDetailsModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:10000; align-items:center; justify-content:center;">
@@ -2026,7 +2026,7 @@ body { overflow-x: hidden; }
                 </div>
                 <div style="background:#f8fafc; padding:10px; border-radius:6px; border:1px solid #e2e8f0;">
                     <div style="color:#64748b; font-weight:700; font-size:10px; text-transform:uppercase;">Manager Remarks</div>
-                    <div id="detManagerRemarks" style="font-weight:600; color:#0f172a; margin-top:2px;">—</div>
+                    <div id="detManagerRemarks" style="font-weight:600; color:#0f172a; margin-top:2px;">â€”</div>
                 </div>
             </div>
 
@@ -2105,7 +2105,7 @@ body { overflow-x: hidden; }
             <div style="background:#f8fafc;padding:12px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                 <div>
                     <div style="font-size:11px;color:#64748b;font-weight:700;">PRODUCT</div>
-                    <div id="adjProductName" style="font-size:14px;font-weight:700;color:#002F70;margin-top:2px;">—</div>
+                    <div id="adjProductName" style="font-size:14px;font-weight:700;color:#002F70;margin-top:2px;">â€”</div>
                 </div>
                 <div>
                     <div style="font-size:11px;color:#64748b;font-weight:700;">CURRENT STOCK</div>
@@ -2144,7 +2144,7 @@ body { overflow-x: hidden; }
             <input type="hidden" name="request_id" id="approveReqId">
             <div style="background:#f8fafc;padding:12px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:14px;">
                 <div style="font-size:11px;color:#64748b;font-weight:700;">PRODUCT</div>
-                <div id="approveReqProduct" style="font-size:14px;font-weight:700;color:#002F70;margin-top:2px;">—</div>
+                <div id="approveReqProduct" style="font-size:14px;font-weight:700;color:#002F70;margin-top:2px;">â€”</div>
             </div>
             <div class="form-group">
                 <label>Approved Quantity <span style="color:red;">*</span></label>
@@ -2173,7 +2173,7 @@ body { overflow-x: hidden; }
             <input type="hidden" name="request_id" id="rejectReqId">
             <div style="background:#f8fafc;padding:12px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:14px;">
                 <div style="font-size:11px;color:#64748b;font-weight:700;">PRODUCT</div>
-                <div id="rejectReqProduct" style="font-size:14px;font-weight:700;color:#002F70;margin-top:2px;">—</div>
+                <div id="rejectReqProduct" style="font-size:14px;font-weight:700;color:#002F70;margin-top:2px;">â€”</div>
             </div>
             <div class="form-group">
                 <label>Rejection Reason / Manager Remarks <span style="color:red;">*</span></label>
@@ -2197,8 +2197,8 @@ body { overflow-x: hidden; }
             <input type="hidden" name="action" value="validate_delivery">
             <input type="hidden" name="po_id" id="validatePoId">
             <div style="background:#f8fafc;padding:12px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:14px;font-size:12px;">
-                <strong>PO Number:</strong> <span id="validatePoNum">—</span><br>
-                <strong>Product:</strong> <span id="validatePoProduct">—</span>
+                <strong>PO Number:</strong> <span id="validatePoNum">â€”</span><br>
+                <strong>Product:</strong> <span id="validatePoProduct">â€”</span>
             </div>
             <div class="form-group">
                 <label>Actual Qty Received <span style="color:red;">*</span></label>
@@ -2207,11 +2207,11 @@ body { overflow-x: hidden; }
             <div class="form-group">
                 <label>Delivery Status Flag <span style="color:red;">*</span></label>
                 <select name="delivery_flag">
-                    <option value="OK">OK — Matches PO</option>
-                    <option value="Short">Short — Less than ordered</option>
-                    <option value="Excess">Excess — More than ordered</option>
-                    <option value="Damaged">Damaged — Items damaged</option>
-                    <option value="Mixed">Mixed — Multiple issues</option>
+                    <option value="OK">OK â€” Matches PO</option>
+                    <option value="Short">Short â€” Less than ordered</option>
+                    <option value="Excess">Excess â€” More than ordered</option>
+                    <option value="Damaged">Damaged â€” Items damaged</option>
+                    <option value="Mixed">Mixed â€” Multiple issues</option>
                 </select>
             </div>
             <div class="form-group">
@@ -2236,15 +2236,15 @@ body { overflow-x: hidden; }
             <input type="hidden" name="action" value="flag_delivery_issue">
             <input type="hidden" name="po_id" id="flagPoId">
             <div style="background:#f8fafc;padding:12px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:14px;font-size:12px;">
-                <strong>PO Number:</strong> <span id="flagPoNum">—</span>
+                <strong>PO Number:</strong> <span id="flagPoNum">â€”</span>
             </div>
             <div class="form-group">
                 <label>Issue Type <span style="color:red;">*</span></label>
                 <select name="delivery_flag">
-                    <option value="Short">Short — Less than ordered</option>
-                    <option value="Damaged">Damaged — Items damaged</option>
-                    <option value="Excess">Excess — More than ordered</option>
-                    <option value="Mixed">Mixed — Multiple issues</option>
+                    <option value="Short">Short â€” Less than ordered</option>
+                    <option value="Damaged">Damaged â€” Items damaged</option>
+                    <option value="Excess">Excess â€” More than ordered</option>
+                    <option value="Mixed">Mixed â€” Multiple issues</option>
                 </select>
             </div>
             <div class="form-group">
@@ -2269,7 +2269,7 @@ body { overflow-x: hidden; }
             <div style="background:#f8fafc;padding:12px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:14px;display:grid;grid-template-columns:1fr;gap:8px;">
                 <div>
                     <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Product Name</div>
-                    <div id="srProductName" style="font-size:15px;font-weight:700;color:#002F70;margin-top:2px;">—</div>
+                    <div id="srProductName" style="font-size:15px;font-weight:700;color:#002F70;margin-top:2px;">â€”</div>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px;">
                     <div>
@@ -2306,25 +2306,25 @@ body { overflow-x: hidden; }
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
                 <div>
                     <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Movement ID</div>
-                    <div id="vmId" style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px;">—</div>
+                    <div id="vmId" style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px;">â€”</div>
                 </div>
                 <div>
                     <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Date / Time</div>
-                    <div id="vmDate" style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px;">—</div>
+                    <div id="vmDate" style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px;">â€”</div>
                 </div>
             </div>
             <div style="margin-bottom:12px;">
                 <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Product Name</div>
-                <div id="vmProductName" style="font-size:15px;font-weight:700;color:#002F70;margin-top:2px;">—</div>
+                <div id="vmProductName" style="font-size:15px;font-weight:700;color:#002F70;margin-top:2px;">â€”</div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
                 <div>
                     <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Movement Type</div>
-                    <div id="vmType" style="margin-top:2px;">—</div>
+                    <div id="vmType" style="margin-top:2px;">â€”</div>
                 </div>
                 <div>
                     <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Reference No.</div>
-                    <div id="vmRef" style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px;">—</div>
+                    <div id="vmRef" style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px;">â€”</div>
                 </div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;border-top:1px solid #cbd5e1;padding-top:12px;">
@@ -2343,11 +2343,11 @@ body { overflow-x: hidden; }
             </div>
             <div style="border-top:1px solid #cbd5e1;padding-top:12px;margin-bottom:12px;">
                 <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Performed By</div>
-                <div id="vmUser" style="font-size:13px;font-weight:600;color:#0f172a;margin-top:2px;">—</div>
+                <div id="vmUser" style="font-size:13px;font-weight:600;color:#0f172a;margin-top:2px;">â€”</div>
             </div>
             <div style="border-top:1px solid #cbd5e1;padding-top:12px;">
                 <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Notes / Remarks</div>
-                <div id="vmNotes" style="font-size:13px;color:#475569;margin-top:2px;white-space:pre-wrap;">—</div>
+                <div id="vmNotes" style="font-size:13px;color:#475569;margin-top:2px;white-space:pre-wrap;">â€”</div>
             </div>
         </div>
         <div class="modal-actions" style="margin-top:16px;display:flex;justify-content:flex-end;gap:10px;">
@@ -2371,7 +2371,7 @@ function esc(str) {
 
 // Date formatter helper
 function fmtDate(dStr) {
-    if (!dStr) return '—';
+    if (!dStr) return 'â€”';
     try {
         var d = new Date(dStr);
         if (isNaN(d.getTime())) return dStr;
@@ -2380,9 +2380,9 @@ function fmtDate(dStr) {
     } catch(e) { return dStr; }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Modal Actions
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openApproveRequest(id, product, qty) {
     document.getElementById('approveReqId').value = id;
     document.getElementById('approveReqProduct').textContent = product;
@@ -2422,9 +2422,9 @@ function closeFlagIssue() {
     document.getElementById('flagIssueModal').classList.remove('open');
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // View Details Modal (AJAX)
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function viewDetails(productId, focusTab) {
     focusTab = focusTab || 'info';
     var content = document.getElementById('detailsContent');
@@ -2441,7 +2441,7 @@ function viewDetails(productId, focusTab) {
         var p = res.product;
         
         // Format last updated timestamp
-        var timestamp = '—';
+        var timestamp = 'â€”';
         if (p.last_updated) {
             try {
                 timestamp = fmtDate(p.last_updated);
@@ -2449,7 +2449,7 @@ function viewDetails(productId, focusTab) {
         }
         
         // Format last movement
-        var lastMovText = '—';
+        var lastMovText = 'â€”';
         if (res.movements && res.movements.length > 0) {
             var lm = res.movements[0];
             var lmSign = lm.quantity > 0 ? '+' : '';
@@ -2458,7 +2458,7 @@ function viewDetails(productId, focusTab) {
 
         // Format variance & check variance flag
         var variance = p.variance;
-        var vText = '—';
+        var vText = 'â€”';
         var vColor = '#64748b';
         var hasVarInModal = false;
         if (variance !== null) {
@@ -2488,7 +2488,7 @@ function viewDetails(productId, focusTab) {
                     '<td><span style="font-weight:600;">' + esc(m.movement_type.toUpperCase()) + '</span></td>' +
                     '<td style="font-weight:700;color:' + (m.quantity > 0 ? '#28a745' : '#dc3545') + ';">' + qtyPrefix + m.quantity + '</td>' +
                     '<td>' + esc(m.user_name || 'System') + '</td>' +
-                    '<td>' + esc(m.notes || '—') + '</td>' +
+                    '<td>' + esc(m.notes || 'â€”') + '</td>' +
                     '</tr>';
             });
         }
@@ -2500,11 +2500,11 @@ function viewDetails(productId, focusTab) {
             res.deliveries.forEach(function(d) {
                 dHtml += '<tr>' +
                     '<td>' + fmtDate(d.encoded_at) + '</td>' +
-                    '<td><code style="font-weight:700;">' + esc(d.po_number || '—') + '</code></td>' +
+                    '<td><code style="font-weight:700;">' + esc(d.po_number || 'â€”') + '</code></td>' +
                     '<td>' + d.qty_ordered + '</td>' +
                     '<td style="font-weight:700;">' + d.qty_received + '</td>' +
                     '<td><span class="status-badge ' + (d.condition_flag === 'Good' ? 'badge-approved' : 'badge-rejected') + '">' + esc(d.condition_flag) + '</span></td>' +
-                    '<td>' + esc(d.remarks || '—') + '</td>' +
+                    '<td>' + esc(d.remarks || 'â€”') + '</td>' +
                     '</tr>';
             });
         }
@@ -2522,10 +2522,10 @@ function viewDetails(productId, focusTab) {
                         '<h4 style="margin:0 0 12px;color:#002F70;text-transform:uppercase;font-size:12px;letter-spacing:.5px;"><i class="fas fa-box"></i> Product Information</h4>' +
                         '<table style="width:100%;font-size:13px;border-collapse:collapse;">' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;width:120px;border-bottom:1px solid #f1f5f9;">Product Name:</td><td style="font-weight:700;color:#0f172a;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + esc(p.name) + '</td></tr>' +
-                            '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">SKU:</td><td style="border-bottom:1px solid #f1f5f9;padding:8px 0;"><code>' + esc(p.sku || '—') + '</code></td></tr>' +
+                            '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">SKU:</td><td style="border-bottom:1px solid #f1f5f9;padding:8px 0;"><code>' + esc(p.sku || 'â€”') + '</code></td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Category:</td><td style="border-bottom:1px solid #f1f5f9;padding:8px 0;">' + esc(p.category_name) + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Unit of Measure:</td><td style="border-bottom:1px solid #f1f5f9;padding:8px 0;">' + esc(p.unit) + '</td></tr>' +
-                            '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Supplier:</td><td style="font-weight:600;color:#475569;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + esc(p.supplier || '—') + '</td></tr>' +
+                            '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Supplier:</td><td style="font-weight:600;color:#475569;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + esc(p.supplier || 'â€”') + '</td></tr>' +
                         '</table>' +
                     '</div>' +
                     '<div style="background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0;">' +
@@ -2534,7 +2534,7 @@ function viewDetails(productId, focusTab) {
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;width:120px;border-bottom:1px solid #f1f5f9;">Current Stock:</td><td style="font-weight:700;font-size:14px;color:#002F70;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + p.stock_level + ' ' + esc(p.unit) + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Capacity:</td><td style="font-weight:700;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + p.capacity + ' ' + esc(p.unit) + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Reorder Level:</td><td style="font-weight:700;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + p.reorder_level + ' ' + esc(p.unit) + '</td></tr>' +
-                            '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Physical Count:</td><td style="font-weight:700;color:#0f172a;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + (p.physical_count !== null ? p.physical_count + ' ' + esc(p.unit) : '—') + '</td></tr>' +
+                            '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Physical Count:</td><td style="font-weight:700;color:#0f172a;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + (p.physical_count !== null ? p.physical_count + ' ' + esc(p.unit) : 'â€”') + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Variance:</td><td style="font-weight:700;color:' + vColor + ';border-bottom:1px solid #f1f5f9;padding:8px 0;">' + vText + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Last Movement:</td><td style="font-size:12px;color:#475569;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + lastMovText + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Last Updated:</td><td style="font-size:12px;color:#475569;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + timestamp + '</td></tr>' +
@@ -2613,9 +2613,9 @@ window.switchModalTab = function(tabName) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Request Inventory Adjustment Modal
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openAdjustmentModal(id, name, currentStock, unit) {
     document.getElementById('adjProductId').value = id;
     document.getElementById('adjProductName').textContent = name;
@@ -2718,9 +2718,9 @@ function calculateAdjVariance() {
     box.style.display = 'block';
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Client-side Filters
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function filterInvTable() {
     var cat = document.getElementById('invCatFilter').value.toLowerCase();
     var srch = document.getElementById('invSearch').value.toLowerCase().trim();
@@ -2752,7 +2752,7 @@ function filterInvTable() {
         var WARNING_STATUSES = ['low', 'critical', 'out of stock', 'out'];
         var isWarning = (WARNING_STATUSES.indexOf(rInv) !== -1 || WARNING_STATUSES.indexOf(rStockStatus) !== -1);
 
-        // Status filter matching — Low Stock, Critical Stock, Out of Stock all show the same combined stock alert view
+        // Status filter matching â€” Low Stock, Critical Stock, Out of Stock all show the same combined stock alert view
         var matchesStock = false;
         if (!stFlt) {
             matchesStock = true;
@@ -2900,9 +2900,9 @@ function printAlertRow(id, name, type, stock, reorder) {
     printWindow.print();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Inventory Overview — Print Record
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Inventory Overview â€” Print Record
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function printProductRecord(productId) {
     fetch('manager_inventory_merchandise.php?ajax=1&action=get_product_details&product_id=' + productId)
     .then(function(r) { return r.json(); })
@@ -2910,7 +2910,7 @@ function printProductRecord(productId) {
         if (!res.success) { alert('Could not load product data.'); return; }
         var p = res.product;
 
-        var vText = '—', vColor = '#64748b';
+        var vText = 'â€”', vColor = '#64748b';
         if (p.variance !== null) {
             var vVal = parseFloat(p.variance);
             if (vVal > 0)      { vText = '+' + vVal; vColor = '#28a745'; }
@@ -2924,10 +2924,10 @@ function printProductRecord(productId) {
         var ts = p.last_updated ? (function(d) {
             var dt = new Date(d);
             return isNaN(dt) ? d : dt.toLocaleDateString('en-US', {year:'numeric',month:'short',day:'2-digit'}) + ' ' + dt.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
-        })(p.last_updated) : '—';
+        })(p.last_updated) : 'â€”';
 
         var pw = window.open('', '_blank');
-        pw.document.write('<!DOCTYPE html><html><head><title>Product Record — ' + esc(p.name) + '</title>');
+        pw.document.write('<!DOCTYPE html><html><head><title>Product Record â€” ' + esc(p.name) + '</title>');
         pw.document.write('<style>');
         pw.document.write('body{font-family:Arial,sans-serif;font-size:13px;color:#222;margin:0;padding:24px;}');
         pw.document.write('.header{background:#002F6C;color:#fff;padding:16px 20px;border-radius:6px 6px 0 0;margin-bottom:0;}');
@@ -2946,16 +2946,16 @@ function printProductRecord(productId) {
         pw.document.write('<div class="section"><h4>Product Information</h4>');
         pw.document.write('<table class="info">');
         pw.document.write('<tr><td>Product Name:</td><td><strong>' + esc(p.name) + '</strong></td></tr>');
-        pw.document.write('<tr><td>SKU:</td><td><code>' + esc(p.sku || '—') + '</code></td></tr>');
-        pw.document.write('<tr><td>Category:</td><td>' + esc(p.category_name || '—') + '</td></tr>');
-        pw.document.write('<tr><td>Unit:</td><td>' + esc(p.unit || '—') + '</td></tr>');
-        pw.document.write('<tr><td>Supplier:</td><td>' + esc(p.supplier || '—') + '</td></tr>');
+        pw.document.write('<tr><td>SKU:</td><td><code>' + esc(p.sku || 'â€”') + '</code></td></tr>');
+        pw.document.write('<tr><td>Category:</td><td>' + esc(p.category_name || 'â€”') + '</td></tr>');
+        pw.document.write('<tr><td>Unit:</td><td>' + esc(p.unit || 'â€”') + '</td></tr>');
+        pw.document.write('<tr><td>Supplier:</td><td>' + esc(p.supplier || 'â€”') + '</td></tr>');
         pw.document.write('</table></div>');
         pw.document.write('<div class="section"><h4>Inventory Details</h4>');
         pw.document.write('<table class="info">');
         pw.document.write('<tr><td>Current Stock:</td><td><strong style="font-size:15px;color:#002F6C;">' + p.stock_level + ' ' + esc(p.unit) + '</strong></td></tr>');
         pw.document.write('<tr><td>Reorder Level:</td><td>' + p.reorder_level + ' ' + esc(p.unit) + '</td></tr>');
-        pw.document.write('<tr><td>Physical Count:</td><td>' + (p.physical_count !== null ? p.physical_count + ' ' + esc(p.unit) : '—') + '</td></tr>');
+        pw.document.write('<tr><td>Physical Count:</td><td>' + (p.physical_count !== null ? p.physical_count + ' ' + esc(p.unit) : 'â€”') + '</td></tr>');
         pw.document.write('<tr><td>Variance:</td><td><span style="color:' + vColor + ';font-weight:700;">' + vText + '</span></td></tr>');
         pw.document.write('<tr><td>Last Updated:</td><td>' + ts + '</td></tr>');
         pw.document.write('</table></div>');
@@ -2967,9 +2967,9 @@ function printProductRecord(productId) {
     .catch(function() { alert('Network error. Could not load product record.'); });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Inventory Overview — Export PDF / Excel
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Inventory Overview â€” Export PDF / Excel
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function exportInvTablePDF() {
     if (typeof exportTableToPDF === 'function') {
         exportTableToPDF('mgrMerchTable', 'Merchandise Inventory Overview Report');
@@ -3258,7 +3258,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupTablePagination('mgrHistoryTable', 'mgrMerchRowsLimit', 'mgrMerchPagination', 50);
     <?php endif; ?>
 
-    // ── Auto-apply URL-driven filter (from sidebar deep-links) ──
+    // â”€â”€ Auto-apply URL-driven filter (from sidebar deep-links) â”€â”€
     <?php if ($url_filter === 'low'): ?>
     // Low Stock Only
     var lowCb = document.getElementById('invLowStockOnly');
@@ -3269,7 +3269,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (critCb) { critCb.checked = true; filterInvTable(); }
     <?php endif; ?>
 
-    // ── Auto-scroll to movement history section if ?view=movement ──
+    // â”€â”€ Auto-scroll to movement history section if ?view=movement â”€â”€
     <?php if ($url_view === 'movement'): ?>
     var mvSect = document.getElementById('movementHistorySection');
     if (mvSect) { setTimeout(function(){ mvSect.scrollIntoView({behavior:'smooth',block:'start'}); }, 300); }
@@ -3288,7 +3288,7 @@ function filterMgrByCard(val) {
 }
 </script>
 
-<!-- ══ VIEW PRODUCT MODAL ══ -->
+<!-- â•â• VIEW PRODUCT MODAL â•â• -->
 <div class="modal-overlay" id="productDetailModal" style="z-index:10000;">
     <div style="background:#fff;border-radius:14px;width:96%;max-width:820px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 40px rgba(0,0,0,.18);overflow:hidden;">
         <!-- Header -->
@@ -3357,7 +3357,7 @@ function filterMgrByCard(val) {
     </div>
 </div>
 
-<!-- ══ ADJUST STOCK MODAL ══ -->
+<!-- â•â• ADJUST STOCK MODAL â•â• -->
 <div class="modal-overlay" id="adjustStockModal" style="z-index:10001;">
     <div style="background:#fff;border-radius:14px;width:96%;max-width:560px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 40px rgba(0,0,0,.18);">
         <div style="padding:16px 22px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;">
@@ -3429,7 +3429,7 @@ function filterMgrByCard(val) {
 </div>
 
 <script>
-// ── Product Detail Modal ────────────────────────────────────────────────────
+// â”€â”€ Product Detail Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 var _pdmData = null;
 
 function openProductModal(productId) {
@@ -3459,13 +3459,13 @@ function openProductModal(productId) {
         document.getElementById('pdmTitle').textContent = p.name || 'View Product';
 
         // Product Info
-        document.getElementById('pdmSKU').textContent = p.sku || '—';
-        document.getElementById('pdmName').textContent = p.name || '—';
-        document.getElementById('pdmCategory').textContent = p.category_name || '—';
+        document.getElementById('pdmSKU').textContent = p.sku || 'â€”';
+        document.getElementById('pdmName').textContent = p.name || 'â€”';
+        document.getElementById('pdmCategory').textContent = p.category_name || 'â€”';
         document.getElementById('pdmBrand').textContent = p.supplier || 'Petron Corporation';
         document.getElementById('pdmSupplier').textContent = p.supplier || 'Petron Corporation';
-        document.getElementById('pdmBarcode').textContent = p.barcode || p.sku || '—';
-        document.getElementById('pdmUOM').textContent = p.unit || '—';
+        document.getElementById('pdmBarcode').textContent = p.barcode || p.sku || 'â€”';
+        document.getElementById('pdmUOM').textContent = p.unit || 'â€”';
         var status = (p.product_status || 'active').toLowerCase();
         var sBg = status === 'active' ? '#d4edda' : '#e9ecef';
         var sColor = status === 'active' ? '#155724' : '#495057';
@@ -3500,7 +3500,7 @@ function openProductModal(productId) {
             (res.batches || []).forEach(function(b) {
                 var opt = document.createElement('option');
                 opt.value = b.id || b.batch_id || '';
-                opt.textContent = 'Batch ' + (b.batch_id || b.id || '—') + ' — ' + (b.remaining_qty || 0) + ' remaining';
+                opt.textContent = 'Batch ' + (b.batch_id || b.id || 'â€”') + ' â€” ' + (b.remaining_qty || 0) + ' remaining';
                 batchSel.appendChild(opt);
             });
         }
@@ -3528,13 +3528,13 @@ function renderBatchTable(batches) {
         '<th style="padding:8px 10px;text-align:center;">Status</th>' +
         '</tr></thead><tbody>';
     batches.forEach(function(b) {
-        var dDate = b.delivery_date ? new Date(b.delivery_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+        var dDate = b.delivery_date ? new Date(b.delivery_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : 'â€”';
         var remaining = parseFloat(b.remaining_qty || b.quantity || 0);
         var status = remaining <= 0 ? 'Depleted' : 'Active';
         var sBg = remaining <= 0 ? '#f1f5f9' : '#d4edda';
         var sColor = remaining <= 0 ? '#64748b' : '#155724';
         html += '<tr style="border-bottom:1px solid #f1f5f9;">' +
-            '<td style="padding:8px 10px;font-weight:700;color:#002F70;">' + (b.batch_id || b.id || '—') + '</td>' +
+            '<td style="padding:8px 10px;font-weight:700;color:#002F70;">' + (b.batch_id || b.id || 'â€”') + '</td>' +
             '<td style="padding:8px 10px;color:#475569;">' + dDate + '</td>' +
             '<td style="padding:8px 10px;text-align:right;">' + parseFloat(b.received_qty || b.quantity || 0).toLocaleString() + '</td>' +
             '<td style="padding:8px 10px;text-align:right;font-weight:700;">' + remaining.toLocaleString() + '</td>' +
@@ -3564,19 +3564,19 @@ function renderMovementTable(movements) {
         '<th style="padding:8px 10px;">Performed By</th>' +
         '</tr></thead><tbody>';
     movements.forEach(function(m) {
-        var mDate = m.created_at ? new Date(m.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+        var mDate = m.created_at ? new Date(m.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : 'â€”';
         var qty = parseFloat(m.quantity || m.quantity_change || 0);
         var qtyStr = (qty >= 0 ? '+' : '') + qty.toLocaleString();
         var qtyColor = qty >= 0 ? '#15803d' : '#dc3545';
-        var remaining = m.quantity_after !== undefined ? parseFloat(m.quantity_after) : '—';
+        var remaining = m.quantity_after !== undefined ? parseFloat(m.quantity_after) : 'â€”';
         html += '<tr style="border-bottom:1px solid #f1f5f9;">' +
             '<td style="padding:8px 10px;color:#475569;">' + mDate + '</td>' +
-            '<td style="padding:8px 10px;font-weight:600;">' + (m.movement_type || m.action || '—') + '</td>' +
-            '<td style="padding:8px 10px;font-size:11px;color:#64748b;">' + (m.reference_id || '—') + '</td>' +
-            '<td style="padding:8px 10px;font-size:11px;color:#64748b;">—</td>' +
+            '<td style="padding:8px 10px;font-weight:600;">' + (m.movement_type || m.action || 'â€”') + '</td>' +
+            '<td style="padding:8px 10px;font-size:11px;color:#64748b;">' + (m.reference_id || 'â€”') + '</td>' +
+            '<td style="padding:8px 10px;font-size:11px;color:#64748b;">â€”</td>' +
             '<td style="padding:8px 10px;text-align:right;font-weight:700;color:' + qtyColor + ';">' + qtyStr + '</td>' +
-            '<td style="padding:8px 10px;text-align:right;">' + (remaining !== '—' ? remaining.toLocaleString() : '—') + '</td>' +
-            '<td style="padding:8px 10px;">' + (m.user_name || '—') + '</td>' +
+            '<td style="padding:8px 10px;text-align:right;">' + (remaining !== 'â€”' ? remaining.toLocaleString() : 'â€”') + '</td>' +
+            '<td style="padding:8px 10px;">' + (m.user_name || 'â€”') + '</td>' +
             '</tr>';
     });
     html += '</tbody></table></div>';
@@ -3602,7 +3602,7 @@ function renderPhysicalTable(movements) {
         '<th style="padding:8px 10px;">Counted By</th>' +
         '</tr></thead><tbody>';
     physical.forEach(function(m) {
-        var mDate = m.created_at ? new Date(m.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+        var mDate = m.created_at ? new Date(m.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : 'â€”';
         var sysQty = parseFloat(m.quantity_before || 0);
         var phyQty = parseFloat(m.quantity_after || 0);
         var variance = phyQty - sysQty;
@@ -3612,7 +3612,7 @@ function renderPhysicalTable(movements) {
             '<td style="padding:8px 10px;text-align:right;">' + sysQty.toLocaleString() + '</td>' +
             '<td style="padding:8px 10px;text-align:right;">' + phyQty.toLocaleString() + '</td>' +
             '<td style="padding:8px 10px;text-align:right;font-weight:700;color:' + vColor + ';">' + (variance >= 0 ? '+' : '') + variance.toLocaleString() + '</td>' +
-            '<td style="padding:8px 10px;">' + (m.user_name || '—') + '</td>' +
+            '<td style="padding:8px 10px;">' + (m.user_name || 'â€”') + '</td>' +
             '</tr>';
     });
     html += '</tbody></table></div>';
@@ -3644,10 +3644,10 @@ function printProductDetails() {
     pw.document.write('<!DOCTYPE html><html><head><title>Product Details</title><style>body{font-family:Arial,sans-serif;font-size:13px;padding:20px;color:#000;}h2{color:#002F70;}table{width:100%;border-collapse:collapse;margin-top:12px;}td,th{padding:8px 10px;border-bottom:1px solid #e0e0e0;text-align:left;}.label{font-weight:700;color:#475569;width:200px;}</style></head><body>');
     pw.document.write('<h2>Product Details &mdash; ' + (p.name || '') + '</h2>');
     pw.document.write('<p style="color:#64748b;font-size:11px;">Printed: ' + new Date().toLocaleString() + '</p>');
-    pw.document.write('<table><tr><td class="label">SKU</td><td>' + (p.sku || '—') + '</td></tr>');
-    pw.document.write('<tr><td class="label">Category</td><td>' + (p.category_name || '—') + '</td></tr>');
+    pw.document.write('<table><tr><td class="label">SKU</td><td>' + (p.sku || 'â€”') + '</td></tr>');
+    pw.document.write('<tr><td class="label">Category</td><td>' + (p.category_name || 'â€”') + '</td></tr>');
     pw.document.write('<tr><td class="label">Supplier</td><td>' + (p.supplier || 'Petron Corporation') + '</td></tr>');
-    pw.document.write('<tr><td class="label">Unit of Measure</td><td>' + (p.unit || '—') + '</td></tr>');
+    pw.document.write('<tr><td class="label">Unit of Measure</td><td>' + (p.unit || 'â€”') + '</td></tr>');
     pw.document.write('<tr><td class="label">Current Stock</td><td>' + parseFloat(p.stock_level || 0).toLocaleString() + '</td></tr>');
     pw.document.write('<tr><td class="label">Reorder Level</td><td>' + parseFloat(p.reorder_level || 24).toLocaleString() + '</td></tr>');
     pw.document.write('<tr><td class="label">Critical Level</td><td>' + parseFloat(p.critical_level || 10).toLocaleString() + '</td></tr>');
@@ -3657,7 +3657,7 @@ function printProductDetails() {
     setTimeout(function(){ pw.print(); }, 400);
 }
 
-// ── Adjust Stock Modal ──────────────────────────────────────────────────────
+// â”€â”€ Adjust Stock Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openAdjustStockModal() {
     var modal = document.getElementById('adjustStockModal');
     if (!modal) return;

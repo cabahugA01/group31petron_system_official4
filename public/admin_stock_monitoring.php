@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'admin_stock_monitoring';
 require_once __DIR__ . '/../backend/lib.php';
@@ -11,7 +11,7 @@ $station_id = (int)user_station_id();
 
 if (!in_array($role, ['admin','superadmin'])) { header('Location: admin_dashboard.php'); exit; }
 
-// ── AJAX Endpoint for Details ────────────────────────────────────
+// â”€â”€ AJAX Endpoint for Details â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (isset($_GET['action']) && $_GET['action'] === 'get_details') {
     header('Content-Type: application/json');
     $pid = (int)($_GET['product_id'] ?? 0);
@@ -36,7 +36,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_details') {
         // Fetch Last Delivery Date
         $s3 = $pdo->prepare("SELECT MAX(encoded_at) FROM merchandise_stock_in WHERE product_id = ? AND station_id = ?");
         $s3->execute([$pid, $station_id]);
-        $last_delivery_date = $s3->fetchColumn() ?: '—';
+        $last_delivery_date = $s3->fetchColumn() ?: 'â€”';
 
         // Fetch Last Stock Movement Purpose
         $s4 = $pdo->prepare("
@@ -53,7 +53,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_details') {
         ");
         $s4->execute([$pid, $station_id, $pid, $station_id]);
         $last_movement = $s4->fetch(PDO::FETCH_ASSOC);
-        $last_purpose = '—';
+        $last_purpose = 'â€”';
         if ($last_movement) {
             $last_purpose = $last_movement['type'] . ' (' . ($last_movement['notes'] ?: 'No details') . ')';
         }
@@ -62,7 +62,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_details') {
             'success' => true,
             'total_deliveries' => $total_deliveries,
             'total_released' => $total_released,
-            'last_delivery_date' => $last_delivery_date !== '—' ? date('M d, Y H:i', strtotime($last_delivery_date)) : '—',
+            'last_delivery_date' => $last_delivery_date !== 'â€”' ? date('M d, Y H:i', strtotime($last_delivery_date)) : 'â€”',
             'last_purpose' => $last_purpose
         ]);
     } catch (Exception $e) {
@@ -71,18 +71,18 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_details') {
     exit;
 }
 
-// ── Filters ──────────────────────────────────────────────────────
+// â”€â”€ Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $search   = trim($_GET['search']   ?? '');
 $cat_f    = trim($_GET['category'] ?? '');
 $status_f = trim($_GET['status']   ?? '');
 $supp_f   = trim($_GET['supplier'] ?? '');
 $date_f   = trim($_GET['date_updated'] ?? '');
 
-// ── Categories & Suppliers for dropdowns ────────────────────────
+// â”€â”€ Categories & Suppliers for dropdowns â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $all_cats  = $pdo->query("SELECT DISTINCT category FROM inventory_products WHERE category NOT IN ('Fuel','') AND category IS NOT NULL ORDER BY category")->fetchAll(PDO::FETCH_COLUMN);
 $all_supps = ['Petron Corporation'];
 
-// ── Fetch all items ──────────────────────────────────────────────
+// â”€â”€ Fetch all items â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $stmt = $pdo->prepare("
     SELECT ip.id, ip.sku, ip.product_name, ip.category, COALESCE(ip.brand, 'Petron Corporation') AS supplier,
            COALESCE(si.unit, 'pcs') AS unit,
@@ -101,7 +101,7 @@ $stmt = $pdo->prepare("
 $stmt->execute([$station_id]);
 $all_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// ── KPIs & filtering ─────────────────────────────────────────────
+// â”€â”€ KPIs & filtering â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $kpi = ['total'=>0,'available'=>0,'low'=>0,'out'=>0,'critical'=>0,'value'=>0.0];
 $rows = [];
 
@@ -169,9 +169,9 @@ require_once __DIR__ . '/../partials/header.php';
 .flt-btn{display:inline-flex;align-items:center;gap:6px;padding:0 14px;height:35px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;border:1px solid transparent;background:#fff;transition:all .15s}
 .flt-btn-search{color:#002F70;border-color:#002F70}.flt-btn-search:hover{background:#002F70;color:#fff}
 .flt-btn-reset{color:#6b7280;border-color:#6b7280}.flt-btn-reset:hover{background:#6b7280;color:#fff}
-.flt-btn-excel{color:#1d6f42;border-color:#1d6f42}.flt-btn-excel:hover{background:#1d6f42;color:#fff}
-.flt-btn-pdf{color:#dc2626;border-color:#dc2626}.flt-btn-pdf:hover{background:#dc2626;color:#fff}
-.flt-btn-csv{color:#002F70;border-color:#002F70}.flt-btn-csv:hover{background:#002F70;color:#fff}
+.flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }.flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }.flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-csv { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }.flt-btn-csv:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .tbl-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.05);margin-bottom:22px}
 .tbl-hd{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #e9ecef;background:#f8fafc;gap:8px;flex-wrap:wrap}
 .tbl-title{font-size:14px;font-weight:700;color:#00264D;display:flex;align-items:center;gap:7px}
@@ -324,7 +324,7 @@ require_once __DIR__ . '/../partials/header.php';
                         'product_name'  => $r['product_name'],
                         'category'      => $r['category'],
                         'unit'          => $r['unit'] ?? 'pcs',
-                        'supplier'      => $r['supplier'] ?? '—',
+                        'supplier'      => $r['supplier'] ?? 'â€”',
                         'current_stock' => $r['current_stock'],
                         'reorder_level' => $r['reorder_level'],
                         'max_stock'     => $r['max_stock'],
@@ -332,7 +332,7 @@ require_once __DIR__ . '/../partials/header.php';
                         'unit_price'    => number_format((float)$r['unit_price'],2),
                         'inv_value'     => number_format((float)$r['current_stock'] * (float)$r['unit_price'],2),
                         'status'        => $stLbl,
-                        'last_updated'  => $r['last_updated'] ? date('M d, Y g:i A', strtotime($r['last_updated'])) : '—',
+                        'last_updated'  => $r['last_updated'] ? date('M d, Y g:i A', strtotime($r['last_updated'])) : 'â€”',
                     ]), ENT_QUOTES,'UTF-8');
                 ?>
                 <tr>
@@ -346,7 +346,7 @@ require_once __DIR__ . '/../partials/header.php';
                     <td style="text-align:right;color:#64748b;"><?= number_format((float)$r['reorder_level']) ?></td>
                     <td style="text-align:right;color:#64748b;"><?= number_format((float)$r['max_stock']) ?></td>
                     <td><span class="badge <?= $stCls ?>"><?= $stLbl ?></span></td>
-                    <td style="font-size:11px;color:#64748b;white-space:nowrap;"><?= $r['last_updated'] ? date('M d, Y', strtotime($r['last_updated'])) : '—' ?></td>
+                    <td style="font-size:11px;color:#64748b;white-space:nowrap;"><?= $r['last_updated'] ? date('M d, Y', strtotime($r['last_updated'])) : 'â€”' ?></td>
                     <td>
                         <div style="display:flex;gap:4px;flex-wrap:wrap;">
                             <button class="txn-btn txn-btn-view" onclick='openDetails(<?= $json ?>)' title="View Details">
@@ -374,20 +374,20 @@ require_once __DIR__ . '/../partials/header.php';
         <h3><i class="fas fa-box"></i> <span id="dmTitle">Product Details</span></h3>
 
         <div class="info-sec">Product Information</div>
-        <div class="info-row"><strong>SKU</strong><span id="dmSku">—</span></div>
-        <div class="info-row"><strong>Product Name</strong><span id="dmName">—</span></div>
-        <div class="info-row"><strong>Category</strong><span id="dmCat">—</span></div>
-        <div class="info-row"><strong>Supplier</strong><span id="dmSupplier">—</span></div>
-        <div class="info-row"><strong>Unit</strong><span id="dmUnit">—</span></div>
+        <div class="info-row"><strong>SKU</strong><span id="dmSku">â€”</span></div>
+        <div class="info-row"><strong>Product Name</strong><span id="dmName">â€”</span></div>
+        <div class="info-row"><strong>Category</strong><span id="dmCat">â€”</span></div>
+        <div class="info-row"><strong>Supplier</strong><span id="dmSupplier">â€”</span></div>
+        <div class="info-row"><strong>Unit</strong><span id="dmUnit">â€”</span></div>
 
         <div class="info-sec">Inventory Information</div>
-        <div class="info-row"><strong>Current Stock</strong><span id="dmStock">—</span></div>
-        <div class="info-row"><strong>Reorder Level</strong><span id="dmReorder">—</span></div>
-        <div class="info-row"><strong>Maximum Stock</strong><span id="dmMax">—</span></div>
-        <div class="info-row"><strong>Unit Cost</strong><span id="dmCost">—</span></div>
-        <div class="info-row"><strong>Unit Price</strong><span id="dmPrice">—</span></div>
-        <div class="info-row"><strong>Inventory Value</strong><span id="dmValue" style="font-weight:800;color:#002F70;">—</span></div>
-        <div class="info-row"><strong>Status</strong><span id="dmStatus">—</span></div>
+        <div class="info-row"><strong>Current Stock</strong><span id="dmStock">â€”</span></div>
+        <div class="info-row"><strong>Reorder Level</strong><span id="dmReorder">â€”</span></div>
+        <div class="info-row"><strong>Maximum Stock</strong><span id="dmMax">â€”</span></div>
+        <div class="info-row"><strong>Unit Cost</strong><span id="dmCost">â€”</span></div>
+        <div class="info-row"><strong>Unit Price</strong><span id="dmPrice">â€”</span></div>
+        <div class="info-row"><strong>Inventory Value</strong><span id="dmValue" style="font-weight:800;color:#002F70;">â€”</span></div>
+        <div class="info-row"><strong>Status</strong><span id="dmStatus">â€”</span></div>
 
         <div class="info-sec">Movement Summary</div>
         <div class="info-row"><strong>Total Deliveries</strong><span id="dmTotalDeliveries" style="font-weight:700;color:#16a34a;">Loading...</span></div>
@@ -396,7 +396,7 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="info-row"><strong>Last Stock Movement Purpose</strong><span id="dmLastPurpose">Loading...</span></div>
 
         <div class="info-sec">Timestamps</div>
-        <div class="info-row"><strong>Last Updated</strong><span id="dmUpdated">—</span></div>
+        <div class="info-row"><strong>Last Updated</strong><span id="dmUpdated">â€”</span></div>
 
         <div class="modal-foot">
             <button onclick="document.getElementById('detailsModal').classList.remove('show')" class="flt-btn flt-btn-reset">Close</button>
@@ -415,9 +415,9 @@ function openDetails(d) {
     document.getElementById('dmStock').textContent   = d.current_stock + ' ' + d.unit;
     document.getElementById('dmReorder').textContent = d.reorder_level + ' ' + d.unit;
     document.getElementById('dmMax').textContent     = d.max_stock + ' ' + d.unit;
-    document.getElementById('dmCost').textContent    = '₱' + d.unit_cost;
-    document.getElementById('dmPrice').textContent   = '₱' + d.unit_price;
-    document.getElementById('dmValue').textContent   = '₱' + d.inv_value;
+    document.getElementById('dmCost').textContent    = 'â‚±' + d.unit_cost;
+    document.getElementById('dmPrice').textContent   = 'â‚±' + d.unit_price;
+    document.getElementById('dmValue').textContent   = 'â‚±' + d.inv_value;
     document.getElementById('dmStatus').textContent  = d.status;
     document.getElementById('dmUpdated').textContent = d.last_updated;
 

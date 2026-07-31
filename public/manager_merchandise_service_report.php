@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * DAILY MERCHANDISE & SERVICE SALES REPORT - Complete Implementation
  * Standalone page with 6 comprehensive sections
@@ -79,175 +79,34 @@ require_once __DIR__ . '/../partials/header.php';
     margin: 0 0 8px 0;
 }
 
-.report-header .meta {
-    font-size: 12px;
-    color: #64748b;
-    margin: 4px 0;
-}
-
 /* Filter Bar */
-.filter-bar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 16px 0;
-    margin-bottom: 24px;
-    border-bottom: 1px solid #e2e8f0;
-}
+.filter-bar { display:flex; align-items:center; gap:10px; padding:16px 0; margin-bottom:24px; border-bottom:1px solid #e2e8f0; flex-wrap:wrap; }
+.filter-bar label { font-size:12px; font-weight:600; color:#00264D; }
+.filter-bar input[type="date"] { padding:7px 10px; border:1px solid #cbd5e1; border-radius:4px; font-size:12px; }
+.filter-bar button { padding:7px 16px; background:#00264D; color:#ffffff; border:1px solid #00264D; border-radius:4px; font-size:12px; font-weight:700; cursor:pointer; transition:all 0.2s; display:inline-flex; align-items:center; gap:6px; }
+.filter-bar button:hover { background:#001933; }
 
-.filter-bar label {
-    font-size: 12px;
-    font-weight: 600;
-    color: #00264D;
-}
-
-.filter-bar input[type="date"] {
-    padding: 7px 10px;
-    border: 1px solid #cbd5e1;
-    border-radius: 4px;
-    font-size: 12px;
-}
-
-.filter-bar button {
-    padding: 7px 16px;
-    background: #ffffff;
-    color: #00264D;
-    border: 1px solid #00264D;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.filter-bar button:hover {
-    background: #00264D;
-    color: #ffffff;
-}
-
-/* Export Buttons */
-.export-actions {
-    display: flex;
-    gap: 6px;
-    margin-left: auto;
-}
-
-.export-btn {
-    padding: 7px 14px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    border: 1px solid;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: #ffffff;
-    text-decoration: none;
-}
-
-.export-btn-excel {
-    color: #16a34a;
-    border-color: #16a34a;
-}
-.export-btn-excel:hover {
-    background: #16a34a;
-    color: #ffffff;
-}
-
-.export-btn-csv {
-    color: #1e3a8a;
-    border-color: #1e3a8a;
-}
-.export-btn-csv:hover {
-    background: #1e3a8a;
-    color: #ffffff;
-}
-
-.export-btn-pdf {
-    color: #dc2626;
-    border-color: #dc2626;
-}
-.export-btn-pdf:hover {
-    background: #dc2626;
-    color: #ffffff;
-}
-
-.export-btn-print {
-    color: #002F70;
-    border-color: #002F70;
-}
-.export-btn-print:hover {
-    background: #002F70;
-    color: #ffffff;
-}
+/* Export Buttons - Uniform clean slate style */
+.export-actions { display:flex; gap:6px; margin-left:auto; }
+.export-btn { padding:7px 14px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; transition:all 0.2s; border:1px solid #cbd5e1; display:inline-flex; align-items:center; gap:6px; background:#ffffff; color:#00264D; text-decoration:none; }
+.export-btn-excel,.export-btn-csv,.export-btn-pdf,.export-btn-print { color:#00264D; border-color:#cbd5e1; }
+.export-btn-excel:hover,.export-btn-csv:hover,.export-btn-pdf:hover,.export-btn-print:hover { background:#f8fafc; border-color:#00264D; color:#00264D; }
 
 /* Section Styling */
-.report-section {
-    margin-bottom: 32px;
-}
-
-.section-title {
-    font-size: 16px;
-    font-weight: 700;
-    color: #00264D;
-    margin: 0 0 12px 0;
-    padding: 8px 0;
-    border-bottom: 2px solid #00264D;
-    text-transform: uppercase;
-}
+.report-section { margin-bottom:32px; }
+.section-title { font-size:16px; font-weight:700; color:#00264D; margin:0 0 12px 0; padding:8px 0; border-bottom:2px solid #00264D; text-transform:uppercase; }
 
 /* Tables */
-.data-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
-    margin-bottom: 8px;
-}
+.data-table { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:8px; }
+.data-table thead tr { background:#f8fafc; border-top:2px solid #00264D; border-bottom:1px solid #e2e8f0; }
+.data-table thead th { padding:10px 8px; text-align:left; font-weight:700; color:#475569; font-size:11px; text-transform:uppercase; }
+.data-table tbody tr { border-bottom:1px solid #f1f5f9; }
+.data-table tbody tr:hover { background:#f8fafc; }
+.data-table tbody td { padding:9px 8px; color:#334155; }
+.data-table tfoot tr { background:#f0f4ff; border-top:2px solid #00264D; }
+.data-table tfoot td { padding:10px 8px; font-weight:700; color:#00264D; }
 
-.data-table thead tr {
-    background: #f8fafc;
-    border-top: 2px solid #00264D;
-    border-bottom: 1px solid #e2e8f0;
-}
-
-.data-table thead th {
-    padding: 10px 8px;
-    text-align: left;
-    font-weight: 700;
-    color: #475569;
-    font-size: 11px;
-    text-transform: uppercase;
-}
-
-.data-table tbody tr {
-    border-bottom: 1px solid #f1f5f9;
-}
-
-.data-table tbody tr:hover {
-    background: #f8fafc;
-}
-
-.data-table tbody td {
-    padding: 9px 8px;
-    color: #334155;
-}
-
-.data-table tfoot tr {
-    background: #f0f4ff;
-    border-top: 2px solid #00264D;
-}
-
-.data-table tfoot td {
-    padding: 10px 8px;
-    font-weight: 700;
-    color: #00264D;
-}
-
-.text-right {
-    text-align: right;
-}
+.text-right { text-align:right; }
 
 .text-center {
     text-align: center;
@@ -351,7 +210,7 @@ require_once __DIR__ . '/../partials/header.php';
         <h1>DAILY MERCHANDISE & SERVICE SALES REPORT</h1>
         <div class="subtitle">24-HOUR SUMMARY</div>
         <div class="meta"><?= htmlspecialchars($station_name) ?></div>
-        <div class="meta"><strong>Date:</strong> <?= date('F j, Y', strtotime($date_from)) ?><?= $date_from !== $date_to ? ' – ' . date('F j, Y', strtotime($date_to)) : '' ?></div>
+        <div class="meta"><strong>Date:</strong> <?= date('F j, Y', strtotime($date_from)) ?><?= $date_from !== $date_to ? ' â€“ ' . date('F j, Y', strtotime($date_to)) : '' ?></div>
     </div>
 
     <!-- SECTION 1: MERCHANDISE SALES -->
@@ -381,8 +240,8 @@ require_once __DIR__ . '/../partials/header.php';
                             <td><?= htmlspecialchars($row['category']) ?></td>
                             <td><?= htmlspecialchars($row['product']) ?></td>
                             <td class="text-right"><?= number_format($row['qty'], 0) ?></td>
-                            <td class="text-right">₱<?= number_format($row['unit_price'], 2) ?></td>
-                            <td class="text-right">₱<?= number_format($row['amount'], 2) ?></td>
+                            <td class="text-right">â‚±<?= number_format($row['unit_price'], 2) ?></td>
+                            <td class="text-right">â‚±<?= number_format($row['amount'], 2) ?></td>
                             <td><?= htmlspecialchars($row['encoder']) ?></td>
                         </tr>
                     <?php endforeach; ?>
@@ -392,7 +251,7 @@ require_once __DIR__ . '/../partials/header.php';
             <tfoot>
                 <tr>
                     <td colspan="6" class="text-right"><strong>Total Merchandise Sales:</strong></td>
-                    <td class="text-right"><strong>₱<?= number_format(array_sum(array_column($reportData['merchandise_sales'], 'amount')), 2) ?></strong></td>
+                    <td class="text-right"><strong>â‚±<?= number_format(array_sum(array_column($reportData['merchandise_sales'], 'amount')), 2) ?></strong></td>
                     <td></td>
                 </tr>
             </tfoot>
@@ -426,9 +285,9 @@ require_once __DIR__ . '/../partials/header.php';
                             <td><?= htmlspecialchars($row['customer']) ?></td>
                             <td><?= htmlspecialchars($row['vehicle']) ?></td>
                             <td><?= htmlspecialchars($row['service_type']) ?></td>
-                            <td class="text-right">₱<?= number_format($row['labor_fee'], 2) ?></td>
-                            <td class="text-right">₱<?= number_format($row['parts_cost'], 2) ?></td>
-                            <td class="text-right">₱<?= number_format($row['total_amount'], 2) ?></td>
+                            <td class="text-right">â‚±<?= number_format($row['labor_fee'], 2) ?></td>
+                            <td class="text-right">â‚±<?= number_format($row['parts_cost'], 2) ?></td>
+                            <td class="text-right">â‚±<?= number_format($row['total_amount'], 2) ?></td>
                             <td><?= htmlspecialchars($row['encoder']) ?></td>
                         </tr>
                     <?php endforeach; ?>
@@ -438,12 +297,12 @@ require_once __DIR__ . '/../partials/header.php';
             <tfoot>
                 <tr>
                     <td colspan="4" class="text-right"><strong>Total Service Income (Labor):</strong></td>
-                    <td class="text-right"><strong>₱<?= number_format(array_sum(array_column($reportData['job_orders'], 'labor_fee')), 2) ?></strong></td>
+                    <td class="text-right"><strong>â‚±<?= number_format(array_sum(array_column($reportData['job_orders'], 'labor_fee')), 2) ?></strong></td>
                     <td colspan="3"></td>
                 </tr>
                 <tr>
                     <td colspan="4" class="text-right"><strong>Total Job Order Sales:</strong></td>
-                    <td colspan="2" class="text-right"><strong>₱<?= number_format(array_sum(array_column($reportData['job_orders'], 'total_amount')), 2) ?></strong></td>
+                    <td colspan="2" class="text-right"><strong>â‚±<?= number_format(array_sum(array_column($reportData['job_orders'], 'total_amount')), 2) ?></strong></td>
                     <td colspan="2"></td>
                 </tr>
             </tfoot>
@@ -478,8 +337,8 @@ require_once __DIR__ . '/../partials/header.php';
                             <td><?= htmlspecialchars($row['product_name']) ?></td>
                             <td><?= htmlspecialchars($row['category']) ?></td>
                             <td class="text-right"><?= number_format($row['qty_used'], 0) ?></td>
-                            <td class="text-right">₱<?= number_format($row['unit_price'], 2) ?></td>
-                            <td class="text-right">₱<?= number_format($row['total_cost'], 2) ?></td>
+                            <td class="text-right">â‚±<?= number_format($row['unit_price'], 2) ?></td>
+                            <td class="text-right">â‚±<?= number_format($row['total_cost'], 2) ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -490,7 +349,7 @@ require_once __DIR__ . '/../partials/header.php';
                     <td colspan="4" class="text-right"><strong>Total Parts Used:</strong></td>
                     <td class="text-right"><strong><?= number_format(array_sum(array_column($reportData['parts_used'], 'qty_used')), 0) ?></strong></td>
                     <td class="text-right"><strong>Total Parts Cost:</strong></td>
-                    <td class="text-right"><strong>₱<?= number_format(array_sum(array_column($reportData['parts_used'], 'total_cost')), 2) ?></strong></td>
+                    <td class="text-right"><strong>â‚±<?= number_format(array_sum(array_column($reportData['parts_used'], 'total_cost')), 2) ?></strong></td>
                 </tr>
             </tfoot>
             <?php endif; ?>
@@ -516,7 +375,7 @@ require_once __DIR__ . '/../partials/header.php';
                         <tr>
                             <td><?= htmlspecialchars($row['payment_method']) ?></td>
                             <td class="text-right"><?= number_format($row['transactions'], 0) ?></td>
-                            <td class="text-right">₱<?= number_format($row['amount'], 2) ?></td>
+                            <td class="text-right">â‚±<?= number_format($row['amount'], 2) ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -526,7 +385,7 @@ require_once __DIR__ . '/../partials/header.php';
                 <tr>
                     <td class="text-right"><strong>TOTAL:</strong></td>
                     <td class="text-right"><strong><?= number_format(array_sum(array_column($reportData['payment_breakdown'], 'transactions')), 0) ?></strong></td>
-                    <td class="text-right"><strong>₱<?= number_format(array_sum(array_column($reportData['payment_breakdown'], 'amount')), 2) ?></strong></td>
+                    <td class="text-right"><strong>â‚±<?= number_format(array_sum(array_column($reportData['payment_breakdown'], 'amount')), 2) ?></strong></td>
                 </tr>
             </tfoot>
             <?php endif; ?>
@@ -539,43 +398,43 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="summary-grid">
             <!-- Shift 1 -->
             <div class="summary-card">
-                <h3>Shift 1 (6:00 AM – 2:00 PM)</h3>
+                <h3>Shift 1 (6:00 AM â€“ 2:00 PM)</h3>
                 <div class="summary-item">
                     <span class="summary-label">Merchandise Sales</span>
-                    <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift1']['merchandise_sales'] ?? 0, 2) ?></span>
+                    <span class="summary-value">â‚±<?= number_format($reportData['shift_summary']['shift1']['merchandise_sales'] ?? 0, 2) ?></span>
                 </div>
                 <div class="summary-item">
                     <span class="summary-label">Labor Income</span>
-                    <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift1']['labor_income'] ?? 0, 2) ?></span>
+                    <span class="summary-value">â‚±<?= number_format($reportData['shift_summary']['shift1']['labor_income'] ?? 0, 2) ?></span>
                 </div>
                 <div class="summary-item">
                     <span class="summary-label">Parts Sales</span>
-                    <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift1']['parts_sales'] ?? 0, 2) ?></span>
+                    <span class="summary-value">â‚±<?= number_format($reportData['shift_summary']['shift1']['parts_sales'] ?? 0, 2) ?></span>
                 </div>
                 <div class="summary-item summary-total">
                     <span class="summary-label">Grand Total</span>
-                    <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift1']['grand_total'] ?? 0, 2) ?></span>
+                    <span class="summary-value">â‚±<?= number_format($reportData['shift_summary']['shift1']['grand_total'] ?? 0, 2) ?></span>
                 </div>
             </div>
             
             <!-- Shift 2 -->
             <div class="summary-card">
-                <h3>Shift 2 (2:00 PM – 12:00 AM)</h3>
+                <h3>Shift 2 (2:00 PM â€“ 12:00 AM)</h3>
                 <div class="summary-item">
                     <span class="summary-label">Merchandise Sales</span>
-                    <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift2']['merchandise_sales'] ?? 0, 2) ?></span>
+                    <span class="summary-value">â‚±<?= number_format($reportData['shift_summary']['shift2']['merchandise_sales'] ?? 0, 2) ?></span>
                 </div>
                 <div class="summary-item">
                     <span class="summary-label">Labor Income</span>
-                    <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift2']['labor_income'] ?? 0, 2) ?></span>
+                    <span class="summary-value">â‚±<?= number_format($reportData['shift_summary']['shift2']['labor_income'] ?? 0, 2) ?></span>
                 </div>
                 <div class="summary-item">
                     <span class="summary-label">Parts Sales</span>
-                    <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift2']['parts_sales'] ?? 0, 2) ?></span>
+                    <span class="summary-value">â‚±<?= number_format($reportData['shift_summary']['shift2']['parts_sales'] ?? 0, 2) ?></span>
                 </div>
                 <div class="summary-item summary-total">
                     <span class="summary-label">Grand Total</span>
-                    <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift2']['grand_total'] ?? 0, 2) ?></span>
+                    <span class="summary-value">â‚±<?= number_format($reportData['shift_summary']['shift2']['grand_total'] ?? 0, 2) ?></span>
                 </div>
             </div>
         </div>
@@ -594,19 +453,19 @@ require_once __DIR__ . '/../partials/header.php';
             <tbody>
                 <tr>
                     <td>Merchandise Sales</td>
-                    <td class="text-right">₱<?= number_format($reportData['daily_summary']['merchandise_sales'], 2) ?></td>
+                    <td class="text-right">â‚±<?= number_format($reportData['daily_summary']['merchandise_sales'], 2) ?></td>
                 </tr>
                 <tr>
                     <td>Labor Income</td>
-                    <td class="text-right">₱<?= number_format($reportData['daily_summary']['labor_income'], 2) ?></td>
+                    <td class="text-right">â‚±<?= number_format($reportData['daily_summary']['labor_income'], 2) ?></td>
                 </tr>
                 <tr>
                     <td>Parts Used (Merchandise Products)</td>
-                    <td class="text-right">₱<?= number_format($reportData['daily_summary']['parts_used'], 2) ?></td>
+                    <td class="text-right">â‚±<?= number_format($reportData['daily_summary']['parts_used'], 2) ?></td>
                 </tr>
                 <tr style="background: #f0f4ff;">
                     <td><strong>Grand Total Sales</strong></td>
-                    <td class="text-right"><strong>₱<?= number_format($reportData['daily_summary']['grand_total'], 2) ?></strong></td>
+                    <td class="text-right"><strong>â‚±<?= number_format($reportData['daily_summary']['grand_total'], 2) ?></strong></td>
                 </tr>
                 <tr>
                     <td>Total Transactions</td>
