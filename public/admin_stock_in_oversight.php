@@ -150,7 +150,7 @@ table.stockin tbody tr:hover td{background:#eff6ff;}
   <div class="kpi-card"><div class="kv" style="color:var(--blue)"><?= count($merch_in)+count($fuel_in) ?></div><div class="kl">Total Deliveries</div></div>
   <div class="kpi-card"><div class="kv" style="color:var(--red)"><?= $merch_disc+$fuel_disc ?></div><div class="kl">Flagged Discrepancies</div></div>
   <div class="kpi-card"><div class="kv" style="color:var(--green)"><?= count($merch_in) ?></div><div class="kl">Merchandise Batches</div></div>
-  <div class="kpi-card"><div class="kv" style="color:#6366f1"><?= count($fuel_in) ?></div><div class="kl">Fuel Batches</div></div>
+  <div class="kpi-card"><div class="kv" style="color:#6366f1"><?= count($fuel_in) ?></div><div class="kl">Fuel Deliveries</div></div>
 </div>
 
 <div class="main-tab-nav">

@@ -611,9 +611,10 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         <th>UGT No.</th>
                         <th>Fuel Type</th>
                         <th>Price / Liter (&#8369;)</th>
-                        <th>Stock Level (L)</th>
+                        <th>Current Volume (L)</th>
                         <th>Capacity (L)</th>
                         <th>Critical Level (L)</th>
+                        <th>Reorder Level (L)</th>
                         <th>Status</th>
                         <th>Last Updated</th>
                         <th>Actions</th>
@@ -622,7 +623,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
                 <tbody>
                 <?php if (empty($fuel_products)): ?>
                     <tr>
-                        <td colspan="9" style="text-align:center;padding:28px;color:#94a3b8;">
+                        <td colspan="10" style="text-align:center;padding:28px;color:#94a3b8;">
                             <i class="fas fa-info-circle"></i> No fuel inventory records found for this station.
                         </td>
                     </tr>
@@ -631,6 +632,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
                     foreach ($fuel_products as $f):
                         $level    = $f['current_stock'];
                         $critical = $f['critical_level'];
+                        $reorder  = $f['reorder_level'] ?? 0;
                         $capacity = $f['capacity'];
                         
                         $status_label = $f['status'];
@@ -672,6 +674,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         </td>
                         <td><?php echo number_format($capacity, 2); ?></td>
                         <td><?php echo number_format($critical, 2); ?></td>
+                        <td><strong style="color:#475569;"><?php echo number_format((float)$reorder, 2); ?></strong></td>
                         <td>
                             <?php if ($status_label === 'Critical'): ?>
                                 <span class="badge <?php echo $status_class; ?>">&#9888; Critical</span>
@@ -692,17 +695,17 @@ body, html { overflow-x: hidden; max-width: 100%; }
                                     <button onclick="viewFuelDetails(<?php echo $f['id']; ?>)" class="act-btn act-btn-view">
                                         <i class="fas fa-eye"></i> View
                                     </button>
-                                    <button onclick="openEditPriceModal(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars($f['raw_fuel_type']); ?>', <?php echo (float)($f['price_per_liter'] ?? 0); ?>)" class="act-btn act-btn-edit">
+                                    <button onclick="openEditPriceModal(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars($f['raw_fuel_type']); ?>', <?php echo (float)($f['price_per_liter'] ?? 0); ?>, <?php echo (float)($f['capacity'] ?? 0); ?>, <?php echo (float)($f['critical_level'] ?? 0); ?>, <?php echo (float)($f['reorder_level'] ?? 0); ?>)" class="act-btn act-btn-edit">
                                         <i class="fas fa-edit"></i> Edit
                                     </button>
                                     <?php 
-                                    $fuel_active_status = $f['inv_status'] ?? 'active';
+                                    $fuel_active_status = strtolower($f['inv_status'] ?? ($f['status'] ?? 'active'));
                                     if ($fuel_active_status !== 'inactive'): ?>
-                                        <button onclick="deactivateFuel(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars($f['raw_fuel_type']); ?>')" class="act-btn act-btn-deactivate">
+                                        <button onclick="toggleFuelStatus(<?php echo $f['id']; ?>, 'inactive', '<?php echo htmlspecialchars(addslashes($canonical_type)); ?>')" class="act-btn act-btn-deactivate">
                                             <i class="fas fa-ban"></i> Deactivate
                                         </button>
                                     <?php else: ?>
-                                        <button onclick="activateFuel(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars($f['raw_fuel_type']); ?>')" class="act-btn act-btn-activate">
+                                        <button onclick="toggleFuelStatus(<?php echo $f['id']; ?>, 'active', '<?php echo htmlspecialchars(addslashes($canonical_type)); ?>')" class="act-btn act-btn-activate">
                                             <i class="fas fa-check-circle"></i> Activate
                                         </button>
                                     <?php endif; ?>
@@ -1119,70 +1122,157 @@ function filterTable() {
      MODALS — Add Product & Edit Price
      ══════════════════════════════════════════════════════════════════════════ -->
 
-<!-- Add Product Modal -->
-<div id="addProductModal" class="modal">
-    <div style="background:#fff;border-radius:12px;width:90%;max-width:600px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.3);animation:slideDown 0.3s ease-out;">
-        <div style="background:#002F6C;border-radius:12px 12px 0 0;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:1;">
-            <h3 style="margin:0;font-size:18px;font-weight:700;color:#fff;display:flex;align-items:center;gap:10px;">
-                <i class="fas fa-plus-circle"></i> Add New Fuel Product
+<!-- Add Product Modal (Landscape Layout) -->
+<div id="addProductModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+    <div style="background:#fff;border-radius:12px;width:92%;max-width:760px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:auto;overflow:hidden;">
+        <!-- Modal Header -->
+        <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
+            <h3 style="margin:0;font-size:17px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:10px;letter-spacing:0.3px;">
+                <i class="fas fa-plus-circle" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:18px;"></i>
+                <span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;">ADD FUEL PRODUCT</span>
             </h3>
         </div>
-        <form id="addProductForm" style="padding:24px;">
-            <div style="margin-bottom:18px;">
-                <label style="display:block;font-weight:600;margin-bottom:6px;color:#334155;font-size:13px;">FUEL TYPE <span style="color:#dc2626;">*</span></label>
-                <?php
-                // Load fuel types not yet in this station's inventory
-                try {
-                    $ft_stmt = $pdo->prepare("
-                        SELECT ft.id, ft.name
-                        FROM fuel_types ft
-                        WHERE ft.id NOT IN (
-                            SELECT fuel_type_id FROM fuel_inventory WHERE station_id = ?
-                        )
-                        ORDER BY ft.name
-                    ");
-                    $ft_stmt->execute([$station_id]);
-                    $available_fuel_types = $ft_stmt->fetchAll(PDO::FETCH_ASSOC);
-                } catch (Exception $e) { $available_fuel_types = []; }
-                ?>
-                <?php if (empty($available_fuel_types)): ?>
-                    <div style="padding:10px 12px;background:#fef9c3;border:1px solid #fde047;border-radius:6px;font-size:13px;color:#713f12;">
-                        <i class="fas fa-info-circle"></i> All available fuel types have already been added for this station.
-                    </div>
-                    <input type="hidden" id="newFuelTypeId" name="fuel_type_id" value="">
-                    <input type="hidden" id="newFuelType" value="">
-                <?php else: ?>
-                    <select id="newFuelType" id="newFuelTypeSelect" required
-                        style="width:100%;padding:10px 12px;border:2px solid #e2e8f0;border-radius:6px;font-size:13px;transition:border-color 0.2s;background:#fff;"
-                        onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#e2e8f0'"
-                        onchange="document.getElementById('newFuelTypeId').value=this.options[this.selectedIndex].dataset.id;document.getElementById('newFuelTypeName').value=this.value;">
-                        <option value="">— Select Fuel Type —</option>
-                        <?php foreach ($available_fuel_types as $ft): ?>
-                            <option value="<?= htmlspecialchars($ft['name']) ?>" data-id="<?= $ft['id'] ?>"><?= htmlspecialchars($ft['name']) ?></option>
-                        <?php endforeach; ?>
+        <!-- Modal Form Body (Landscape 2-Column Grid) -->
+        <form id="addProductForm" style="padding:20px 24px;">
+            <!-- Row 1: Fuel Name + UGT Number -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                        Fuel Name <span style="color:#dc2626;">*</span>
+                    </label>
+                    <input type="text" id="newFuelName" maxlength="50" required
+                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"
+                           onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
+                           placeholder="e.g. Diesel, XCS Plus, Turbo Diesel">
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                        UGT Number <span style="color:#dc2626;">*</span>
+                    </label>
+                    <select id="newUgtNo" required
+                            style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;background:#fff;"
+                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+                        <option value="">▼ Select UGT</option>
+                        <?php
+                        // Fetch assigned UGT numbers for this station
+                        $assigned_ugt_numbers = [];
+
+                        if (!empty($fuel_products) && is_array($fuel_products)) {
+                            foreach ($fuel_products as $fp) {
+                                if (!empty($fp['id']) || !empty($fp['raw_fuel_type'])) {
+                                    $numOnly = preg_replace('/[^0-9]/', '', $fp['ugt_no'] ?? '');
+                                    if ($numOnly !== '') {
+                                        $assigned_ugt_numbers[intval($numOnly)] = true;
+                                    }
+                                }
+                            }
+                        }
+
+                        try {
+                            $ugt_stmt = $pdo->prepare("SELECT ugt_no FROM fuel_inventory WHERE station_id = ? AND ugt_no IS NOT NULL AND ugt_no != ''");
+                            $ugt_stmt->execute([$station_id]);
+                            while ($ur = $ugt_stmt->fetch(PDO::FETCH_ASSOC)) {
+                                $numOnly = preg_replace('/[^0-9]/', '', $ur['ugt_no']);
+                                if ($numOnly !== '') {
+                                    $n = intval($numOnly);
+                                    if ($n >= 1 && $n <= 7) {
+                                        $assigned_ugt_numbers[$n] = true;
+                                    }
+                                }
+                            }
+                        } catch (Exception $e) {}
+
+                        for ($i = 1; $i <= 7; $i++):
+                            $ugt_val = "UGT #$i";
+                            $is_assigned = isset($assigned_ugt_numbers[$i]);
+                        ?>
+                            <option value="<?php echo $ugt_val; ?>" <?php echo $is_assigned ? 'disabled style="color:#94a3b8;background:#f1f5f9;"' : ''; ?>>
+                                <?php echo $ugt_val; ?> <?php echo $is_assigned ? '(Assigned)' : ''; ?>
+                            </option>
+                        <?php endfor; ?>
                     </select>
-                    <input type="hidden" id="newFuelTypeId" value="">
-                    <input type="hidden" id="newFuelTypeName" value="">
-                <?php endif; ?>
+                </div>
             </div>
-            <div style="margin-bottom:18px;">
-                <label style="display:block;font-weight:600;margin-bottom:6px;color:#334155;font-size:13px;">PRICE PER LITER (₱) <span style="color:#dc2626;">*</span></label>
-                <input type="number" id="newPrice" step="0.01" min="0" required style="width:100%;padding:10px 12px;border:2px solid #e2e8f0;border-radius:6px;font-size:13px;transition:border-color 0.2s;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#e2e8f0'" placeholder="0.00">
+
+            <!-- Row 2: Price + Capacity -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                        Selling Price Per Liter (₱) <span style="color:#dc2626;">*</span>
+                    </label>
+                    <input type="number" id="newPrice" step="0.01" min="0.01" required
+                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"
+                           onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
+                           placeholder="84.00">
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                        Tank Capacity (Liters) <span style="color:#dc2626;">*</span>
+                    </label>
+                    <input type="number" id="newCapacity" step="1" min="1" required
+                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"
+                           onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
+                           placeholder="15000">
+                </div>
             </div>
-            <div style="margin-bottom:18px;">
-                <label style="display:block;font-weight:600;margin-bottom:6px;color:#334155;font-size:13px;">CAPACITY (LITERS) <span style="color:#dc2626;">*</span></label>
-                <input type="number" id="newCapacity" step="0.01" min="0" required style="width:100%;padding:10px 12px;border:2px solid #e2e8f0;border-radius:6px;font-size:13px;transition:border-color 0.2s;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#e2e8f0'" placeholder="0.00">
+
+            <!-- Row 3: Critical Level + Reorder Level -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                        Critical Level (Liters) <span style="color:#dc2626;">*</span>
+                    </label>
+                    <input type="number" id="newCriticalLevel" step="1" min="1" required
+                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"
+                           onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
+                           placeholder="2500">
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                        Reorder Level (Liters) <span style="color:#dc2626;">*</span>
+                    </label>
+                    <input type="number" id="newReorderLevel" step="1" min="1" required
+                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"
+                           onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
+                           placeholder="5000">
+                </div>
             </div>
-            <div style="margin-bottom:24px;">
-                <label style="display:block;font-weight:600;margin-bottom:6px;color:#334155;font-size:13px;">CRITICAL LEVEL (LITERS) <span style="color:#dc2626;">*</span></label>
-                <input type="number" id="newCriticalLevel" step="0.01" min="0" required style="width:100%;padding:10px 12px;border:2px solid #e2e8f0;border-radius:6px;font-size:13px;transition:border-color 0.2s;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#e2e8f0'" placeholder="0.00">
+
+            <!-- Row 4: Status + Remarks -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;align-items:start;">
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:6px;">
+                        Status <span style="color:#dc2626;">*</span>
+                    </label>
+                    <div style="display:flex;gap:18px;align-items:center;padding-top:4px;">
+                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;font-weight:600;color:#166534;">
+                            <input type="radio" name="newStatus" value="active" checked style="accent-color:#16a34a;"> Active
+                        </label>
+                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;font-weight:600;color:#991b1b;">
+                            <input type="radio" name="newStatus" value="inactive" style="accent-color:#dc2626;"> Inactive
+                        </label>
+                    </div>
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                        Remarks <span style="color:#94a3b8;font-weight:400;text-transform:none;">(Optional)</span>
+                    </label>
+                    <input type="text" id="newRemarks"
+                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"
+                           onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
+                           placeholder="Optional notes or remarks...">
+                </div>
             </div>
-            <div style="display:flex;gap:10px;justify-content:flex-end;">
-                <button type="button" onclick="closeAddProductModal()" style="background:#e2e8f0;color:#475569;border:none;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:background 0.2s;" onmouseover="this.style.background='#cbd5e1'" onmouseout="this.style.background='#e2e8f0'">
+
+            <!-- Actions Footer -->
+            <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:14px;">
+                <button type="button" onclick="closeAddProductModal()"
+                        style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:8px 18px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">
                     Cancel
                 </button>
-                <button type="submit" style="background:linear-gradient(135deg,#002F6C 0%,#004494 100%);color:#fff;border:none;padding:10px 24px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 4px rgba(0,47,108,0.2);transition:transform 0.2s;" onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform='translateY(0)'">
-                    <i class="fas fa-check"></i> Add Product
+                <button type="submit"
+                        style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:8px 22px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                    <i class="fas fa-check" style="color:#ffffff !important;"></i> Add Fuel Product
                 </button>
             </div>
         </form>
@@ -1190,114 +1280,226 @@ function filterTable() {
 </div>
 
 
-<!-- Edit Fuel Modal — Full Edit -->
-<div id="editPriceModal" class="modal">
-  <div style="background:#fff;border-radius:12px;width:90%;max-width:580px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3);">
-    <div style="background:#002F6C !important;border-radius:12px 12px 0 0;padding:18px 20px;display:flex;align-items:center;justify-content:space-between;">
-      <h3 style="margin:0 !important;font-size:17px !important;font-weight:800 !important;color:#ffffff !important;display:flex !important;align-items:center;gap:10px;letter-spacing:0.3px;"><i class="fas fa-gas-pump" style="font-size:18px;color:#ffffff !important;"></i> <span style="color:#ffffff !important;">EDIT FUEL PRODUCT</span></h3>
+<!-- Edit Fuel Modal — Full Edit (Landscape Grid Layout) -->
+<div id="editPriceModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:12px;width:92%;max-width:760px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:auto;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
+      <h3 style="margin:0;font-size:17px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:10px;letter-spacing:0.3px;">
+        <i class="fas fa-edit" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:18px;"></i>
+        <span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;">EDIT FUEL PRODUCT</span>
+      </h3>
     </div>
-    <form id="editPriceForm" style="padding:22px;">
+    <form id="editPriceForm" style="padding:20px 24px;">
       <input type="hidden" id="editFuelId">
-      <!-- Fuel Type: read-only display (changing it would violate DB unique constraint) -->
-      <div style="margin-bottom:14px;">
-        <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Fuel Type</label>
-        <div id="editFuelTypeDisplay" style="width:100%;padding:9px 11px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;box-sizing:border-box;background:#f8fafc;color:#1e293b;font-weight:600;"></div>
-        <input type="hidden" id="editFuelType">
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-        <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Price / Liter (₱) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="editPrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00">
-          <div style="font-size:10px;color:#d97706;margin-top:4px;"><i class="fas fa-info-circle"></i> Price changes require Admin approval before taking effect.</div>
+      <input type="hidden" id="editFuelType">
+
+      <!-- Row 1: Fuel Name + Price Per Liter -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Fuel Name <span style="color:#dc2626;">*</span></label>
+          <input type="text" id="editFuelName" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
         </div>
-        <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Capacity (L) <span style="color:#dc2626;">*</span></label><input type="number" id="editFuelCapacity" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00"></div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Price / Liter (₱) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="editPrice" step="0.01" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00">
+          <small style="font-size:10px;color:#d97706;display:block;margin-top:2px;"><i class="fas fa-info-circle"></i> Price changes require Admin approval.</small>
+        </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-        <div><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Critical Level (L) <span style="color:#dc2626;">*</span></label><input type="number" id="editFuelCritical" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00"></div>
+
+      <!-- Row 2: Capacity + Critical Level -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Tank Capacity (L) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="editFuelCapacity" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Critical Level (L) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="editFuelCritical" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00">
+        </div>
       </div>
-      <div style="display:flex;gap:10px;justify-content:flex-end;">
-        <button type="button" onclick="closeEditPriceModal()" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
-        <button type="submit" style="background:#002F6C;color:#fff;border:none;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save"></i> Save Changes</button>
+
+      <!-- Row 3: Reorder Level + Status -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;align-items:start;">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Reorder Level (L) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="editFuelReorder" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:6px;">Status <span style="color:#dc2626;">*</span></label>
+          <div style="display:flex;gap:18px;align-items:center;padding-top:4px;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;font-weight:600;color:#166534;">
+              <input type="radio" id="editFuelStatusActive" name="editFuelStatus" value="active" checked style="accent-color:#16a34a;"> Active
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;font-weight:600;color:#991b1b;">
+              <input type="radio" id="editFuelStatusInactive" name="editFuelStatus" value="inactive" style="accent-color:#dc2626;"> Inactive
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 4: Remarks -->
+      <div style="margin-bottom:16px;">
+        <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Remarks <span style="color:#94a3b8;font-weight:400;text-transform:none;">(Optional)</span></label>
+        <input type="text" id="editFuelRemarks" style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="Optional notes or remarks...">
+      </div>
+
+      <!-- Actions -->
+      <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:14px;">
+        <button type="button" onclick="closeEditPriceModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:8px 18px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">Cancel</button>
+        <button type="submit" style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:8px 22px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save" style="color:#ffffff !important;"></i> Save Changes</button>
       </div>
     </form>
   </div>
 </div>
 
-<!-- View Fuel Details Modal -->
-<div id="viewFuelModal" class="modal">
-    <div class="modal-card" style="max-width:900px;">
-        <div class="modal-head">
-            <div style="display:flex;align-items:center;">
-                <div class="modal-icon"><i class="fas fa-gas-pump"></i></div>
-                <div>
-                    <div class="modal-title">Fuel Details</div>
-                    <div class="modal-subtitle">View fuel information and price history</div>
-                </div>
-            </div>
+<!-- View Fuel Details Modal (4 Full Sections) -->
+<div id="viewFuelModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+    <div style="background:#fff;border-radius:12px;width:95%;max-width:920px;max-height:90vh;overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:auto;">
+        <!-- Header -->
+        <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;">
+            <h3 style="margin:0;font-size:18px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-gas-pump" style="color:#ffffff !important;"></i>
+                <span style="color:#ffffff !important;">FUEL PRODUCT DETAILS</span>
+            </h3>
         </div>
-        <div class="modal-body">
-            <!-- Fuel Information Grid -->
-            <div class="modal-info-box">
-                <h4><i class="fas fa-info-circle" style="margin-right:6px;"></i>Fuel Information</h4>
-                <div class="modal-info-grid" style="grid-template-columns:repeat(4,1fr);">
+
+        <div style="padding:24px;">
+            <!-- Section 1 – Fuel Information -->
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:18px;margin-bottom:24px;">
+                <h4 style="margin:0 0 14px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;">
+                    <i class="fas fa-info-circle"></i> Section 1 – Fuel Information
+                </h4>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:14px;font-size:13px;">
                     <div>
-                        <strong>FUEL TYPE</strong>
-                        <span style="font-size:14px;font-weight:600;color:#002F6C;" id="viewFuelType">-</span>
+                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Fuel Name</strong>
+                        <span style="font-weight:700;color:#002F6C;font-size:14px;" id="viewFuelType">-</span>
                     </div>
                     <div>
-                        <strong>CURRENT PRICE</strong>
-                        <span style="font-size:14px;font-weight:700;color:#16a34a;" id="viewCurrentPrice">₱0.00</span>
+                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">UGT Number</strong>
+                        <span style="font-weight:700;color:#1e293b;" id="viewUgtNo">-</span>
                     </div>
                     <div>
-                        <strong>STOCK</strong>
-                        <span style="font-size:14px;font-weight:600;color:#002F6C;" id="viewStock">0 L</span>
+                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Current Price / Liter</strong>
+                        <span style="font-weight:700;color:#16a34a;font-size:14px;" id="viewCurrentPrice">₱0.00</span>
                     </div>
                     <div>
-                        <strong>TANK CAPACITY</strong>
-                        <span style="font-size:14px;font-weight:600;color:#002F6C;" id="viewCapacity">0 L</span>
+                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Current Volume</strong>
+                        <span style="font-weight:700;color:#002F6C;" id="viewStock">0.00 L</span>
                     </div>
                     <div>
-                        <strong>CRITICAL LEVEL</strong>
-                        <span style="font-size:14px;font-weight:600;color:#dc2626;" id="viewCriticalLevel">0 L</span>
+                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Available Capacity</strong>
+                        <span style="font-weight:700;color:#2563eb;" id="viewAvailableCapacity">0.00 L</span>
                     </div>
                     <div>
-                        <strong>STATUS</strong>
-                        <span style="font-size:14px;font-weight:600;" id="viewStatus">-</span>
+                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Tank Capacity</strong>
+                        <span style="font-weight:600;color:#334155;" id="viewCapacity">0.00 L</span>
                     </div>
                     <div>
-                        <strong>LAST UPDATED</strong>
-                        <span style="font-size:12px;color:#64748b;" id="viewLastUpdated">-</span>
+                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Critical Level</strong>
+                        <span style="font-weight:600;color:#dc2626;" id="viewCriticalLevel">0.00 L</span>
                     </div>
                     <div>
-                        <strong>UPDATED BY</strong>
-                        <span style="font-size:12px;color:#64748b;" id="viewUpdatedBy">-</span>
+                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Reorder Level</strong>
+                        <span style="font-weight:600;color:#d97706;" id="viewReorderLevel">0.00 L</span>
+                    </div>
+                    <div>
+                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Stock Status</strong>
+                        <span style="font-weight:600;" id="viewStatus">-</span>
+                    </div>
+                    <div>
+                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Product Status</strong>
+                        <span style="font-weight:600;" id="viewProductStatus">-</span>
+                    </div>
+                    <div>
+                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Price Request Status</strong>
+                        <span style="font-weight:600;color:#475569;" id="viewPriceRequestStatus">No Pending Request</span>
+                    </div>
+                    <div>
+                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Last Updated</strong>
+                        <span style="font-size:12px;color:#475569;" id="viewLastUpdated">-</span>
+                    </div>
+                    <div>
+                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Updated By</strong>
+                        <span style="font-size:12px;color:#475569;" id="viewUpdatedBy">-</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Price History Section -->
-            <h4 style="margin:0 0 12px 0;font-size:13px;color:#003d7a;font-weight:700;"><i class="fas fa-history" style="margin-right:6px;"></i>Price History</h4>
-            <div style="overflow-x:auto;">
-                <table style="width:100%;border-collapse:collapse;font-size:13px;">
-                    <thead>
-                        <tr style="background:#f8fafc;">
-                            <th style="padding:10px 12px;text-align:left;font-weight:600;color:#475569;border-bottom:2px solid #e2e8f0;">Previous Price</th>
-                            <th style="padding:10px 12px;text-align:left;font-weight:600;color:#475569;border-bottom:2px solid #e2e8f0;">New Price</th>
-                            <th style="padding:10px 12px;text-align:left;font-weight:600;color:#475569;border-bottom:2px solid #e2e8f0;">Reason</th>
-                            <th style="padding:10px 12px;text-align:left;font-weight:600;color:#475569;border-bottom:2px solid #e2e8f0;">Updated By</th>
-                            <th style="padding:10px 12px;text-align:left;font-weight:600;color:#475569;border-bottom:2px solid #e2e8f0;">Date</th>
-                            <th style="padding:10px 12px;text-align:center;font-weight:600;color:#475569;border-bottom:2px solid #e2e8f0;">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="priceHistoryBody">
-                        <tr>
-                            <td colspan="6" style="text-align:center;padding:20px;color:#94a3b8;">No price history available</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <!-- Section 2 – Price History -->
+            <div style="margin-bottom:24px;">
+                <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;">
+                    <i class="fas fa-history"></i> Section 2 – Price History
+                </h4>
+                <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px;">
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                        <thead>
+                            <tr style="background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:11px;letter-spacing:0.3px;">
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Date</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Old Price</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">New Price</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Difference</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Requested By</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Approved By</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="priceHistoryBody">
+                            <tr><td colspan="7" style="text-align:center;padding:16px;color:#94a3b8;">No price history available</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Section 3 – Configuration History -->
+            <div style="margin-bottom:24px;">
+                <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;">
+                    <i class="fas fa-sliders-h"></i> Section 3 – Configuration History
+                </h4>
+                <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px;">
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                        <thead>
+                            <tr style="background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:11px;letter-spacing:0.3px;">
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Date</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Field Changed</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Old Value</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">New Value</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Changed By</th>
+                            </tr>
+                        </thead>
+                        <tbody id="configHistoryBody">
+                            <tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">No configuration changes recorded yet</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Section 4 – Status History -->
+            <div style="margin-bottom:10px;">
+                <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;">
+                    <i class="fas fa-toggle-on"></i> Section 4 – Status History
+                </h4>
+                <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px;">
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                        <thead>
+                            <tr style="background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:11px;letter-spacing:0.3px;">
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Date</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Status</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Changed By</th>
+                            </tr>
+                        </thead>
+                        <tbody id="statusHistoryBody">
+                            <tr><td colspan="3" style="text-align:center;padding:16px;color:#94a3b8;">No status history recorded yet</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
-        <div class="modal-actions">
-            <button type="button" class="flt-btn flt-btn-reset" onclick="closeViewFuelModal()"><i class="fas fa-times"></i> Close</button>
+
+        <!-- Footer -->
+        <div style="display:flex;justify-content:flex-end;padding:14px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;">
+            <button type="button" onclick="closeViewFuelModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:8px 20px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">
+                <i class="fas fa-times"></i> Close
+            </button>
         </div>
     </div>
 </div>
@@ -1413,8 +1615,8 @@ function filterTable() {
         </div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:16px;">
-        <button type="button" onclick="closeAddMerchandiseModal()" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
-        <button type="submit" style="background:linear-gradient(135deg,#002F6C,#004494);color:#fff;border:none;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-check"></i> Add Product</button>
+        <button type="button" onclick="closeAddMerchandiseModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">Cancel</button>
+        <button type="submit" style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-check" style="color:#ffffff !important;"></i> Add Product</button>
       </div>
     </form>
   </div>
@@ -1491,8 +1693,8 @@ function filterTable() {
         </div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:16px;">
-        <button type="button" onclick="closeEditMerchPriceModal()" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
-        <button type="submit" style="background:linear-gradient(135deg,#1e40af,#2563eb);color:#fff;border:none;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save"></i> Save Changes</button>
+        <button type="button" onclick="closeEditMerchPriceModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">Cancel</button>
+        <button type="submit" style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save" style="color:#ffffff !important;"></i> Save Changes</button>
       </div>
     </form>
   </div>
@@ -1555,11 +1757,11 @@ function filterTable() {
                 <input type="number" id="newServicePrice" step="0.01" min="0" required style="width:100%;padding:10px 12px;border:2px solid #e2e8f0;border-radius:6px;font-size:13px;transition:border-color 0.2s;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#e2e8f0'" placeholder="0.00">
             </div>
             <div style="display:flex;gap:10px;justify-content:flex-end;">
-                <button type="button" onclick="closeAddServiceModal()" style="background:#e2e8f0;color:#475569;border:none;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:background 0.2s;" onmouseover="this.style.background='#cbd5e1'" onmouseout="this.style.background='#e2e8f0'">
+                <button type="button" onclick="closeAddServiceModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">
                     Cancel
                 </button>
-                <button type="submit" style="background:linear-gradient(135deg,#002F6C 0%,#004494 100%);color:#fff;border:none;padding:10px 24px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 4px rgba(0,47,108,0.2);transition:transform 0.2s;" onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform='translateY(0)'">
-                    <i class="fas fa-check"></i> Add Service
+                <button type="submit" style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                    <i class="fas fa-check" style="color:#ffffff !important;"></i> Add Service
                 </button>
             </div>
         </form>
@@ -1600,8 +1802,8 @@ function filterTable() {
       </div>
       <div style="margin-bottom:18px;"><label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Status</label><select id="editServiceActive" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;"><option value="1">Active</option><option value="0">Inactive</option></select></div>
       <div style="display:flex;gap:10px;justify-content:flex-end;">
-        <button type="button" onclick="closeEditServicePriceModal()" style="background:#f1f5f9;color:#ffffff !important;border:1px solid #e2e8f0;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
-        <button type="submit" style="background:#002F6C;color:#fff;border:none;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save"></i> Save Changes</button>
+        <button type="button" onclick="closeEditServicePriceModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">Cancel</button>
+        <button type="submit" style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save" style="color:#ffffff !important;"></i> Save Changes</button>
       </div>
     </form>
   </div>
@@ -1613,6 +1815,63 @@ function filterTable() {
 @keyframes slideDown {
     from { opacity: 0; transform: translateY(-20px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+/* Force ultra-bright white title text in all modal headers */
+div[id$="Modal"] h3,
+div[id$="Modal"] h3 *,
+.modal h3,
+.modal h3 * {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    opacity: 1 !important;
+}
+
+/* Ensure ultra-crisp high contrast text inside all modal inputs */
+.modal input[type="text"],
+.modal input[type="number"],
+.modal input[type="date"],
+.modal select,
+.modal textarea,
+div[id$="Modal"] input[type="text"],
+div[id$="Modal"] input[type="number"],
+div[id$="Modal"] input[type="date"],
+div[id$="Modal"] select,
+div[id$="Modal"] textarea {
+    color: #0f172a !important;
+    background-color: #ffffff !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    border: 1.5px solid #94a3b8 !important;
+    border-radius: 8px !important;
+    padding: 10px 14px !important;
+    box-sizing: border-box !important;
+    outline: none !important;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+.modal input[type="text"]:focus,
+.modal input[type="number"]:focus,
+.modal input[type="date"]:focus,
+.modal select:focus,
+.modal textarea:focus {
+    border-color: #002F6C !important;
+    box-shadow: 0 0 0 3px rgba(0, 47, 108, 0.15) !important;
+}
+
+.modal input::placeholder,
+.modal textarea::placeholder {
+    color: #64748b !important;
+    font-weight: 400 !important;
+    opacity: 0.85 !important;
+}
+
+.modal label {
+    color: #1e293b !important;
+    font-weight: 700 !important;
+    font-size: 12px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
 }
 </style>
 
@@ -1638,19 +1897,22 @@ function closeAddProductModal() {
     if (ftnEl) ftnEl.value = '';
 }
 
-function openEditPriceModal(id, fuelType, currentPrice) {
+function openEditPriceModal(id, fuelType, currentPrice, capacity, criticalLevel, reorderLevel) {
     document.getElementById('editFuelId').value = id;
     document.getElementById('editFuelType').value = fuelType;
-    // Populate the read-only display div
     var displayEl = document.getElementById('editFuelTypeDisplay');
     if (displayEl) displayEl.textContent = fuelType;
     document.getElementById('editPrice').value = currentPrice;
-    // Fetch full details to populate capacity and critical level
+    document.getElementById('editFuelCapacity').value = capacity || 0;
+    document.getElementById('editFuelCritical').value = criticalLevel || 0;
+    document.getElementById('editFuelReorder').value = reorderLevel || 0;
+    
     fetch('manager_set_prices_handler.php?action=get_fuel_details&id=' + id)
         .then(r => r.json()).then(data => {
             if (data.success && data.fuel) {
                 document.getElementById('editFuelCapacity').value = parseFloat(data.fuel.capacity || 0);
                 document.getElementById('editFuelCritical').value = parseFloat(data.fuel.critical_level || 0);
+                document.getElementById('editFuelReorder').value = parseFloat(data.fuel.reorder_level || 0);
             }
         }).catch(function(){});
     document.getElementById('editPriceModal').style.display = 'flex';
@@ -1702,65 +1964,22 @@ document.getElementById('editServicePriceModal').addEventListener('click', funct
     if (e.target === this) closeEditServicePriceModal();
 });
 
-// ── Add Product Form Handler ────────────────────────────────────────────────
-document.getElementById('addProductForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-
-    var fuelTypeEl  = document.getElementById('newFuelType');
-    var fuelTypeName = (document.getElementById('newFuelTypeName') || {}).value
-                    || (fuelTypeEl ? fuelTypeEl.value : '').trim();
-    var fuelTypeId  = (document.getElementById('newFuelTypeId') || {}).value || '';
-
-    // Validate — also accept when select is used (value on the select itself)
-    if (!fuelTypeName && fuelTypeEl) fuelTypeName = fuelTypeEl.value.trim();
-    if (!fuelTypeId && fuelTypeEl && fuelTypeEl.options && fuelTypeEl.selectedIndex > 0) {
-        fuelTypeId = fuelTypeEl.options[fuelTypeEl.selectedIndex].dataset.id || '';
-    }
-
-    var price        = parseFloat(document.getElementById('newPrice').value);
-    var capacity     = parseFloat(document.getElementById('newCapacity').value);
-    var criticalLvl  = parseFloat(document.getElementById('newCriticalLevel').value);
-
-    if (!fuelTypeName) { alert('Please select a fuel type.'); return; }
-    if (isNaN(price) || price < 0)       { alert('Please enter a valid price.'); return; }
-    if (isNaN(capacity) || capacity <= 0) { alert('Please enter a valid capacity.'); return; }
-    if (isNaN(criticalLvl) || criticalLvl < 0) { alert('Please enter a valid critical level.'); return; }
-
-    var formData = new FormData();
-    formData.append('action',         'add_fuel_product');
-    formData.append('fuel_type',      fuelTypeName);
-    formData.append('fuel_type_id',   fuelTypeId);
-    formData.append('price',          price);
-    formData.append('capacity',       capacity);
-    formData.append('critical_level', criticalLvl);
-
-    fetch('manager_set_prices_handler.php', { method: 'POST', body: formData })
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                alert('SUCCESS: Fuel product added successfully!');
-                closeAddProductModal();
-                location.reload();
-            } else {
-                alert('Error: ' + (data.message || 'Failed to add product'));
-            }
-        })
-        .catch(function(err) {
-            console.error('Add Product error:', err);
-            alert('Network error. Please try again.');
-        });
-});
 
 // ── Edit Fuel Full Form Handler ─────────────────────────────────────────────
 document.getElementById('editPriceForm').addEventListener('submit', function(e) {
     e.preventDefault();
     var fd = new FormData();
+    var statusVal = document.querySelector('input[name="editFuelStatus"]:checked') ? document.querySelector('input[name="editFuelStatus"]:checked').value : 'active';
     fd.append('action',         'edit_fuel_full');
     fd.append('id',             document.getElementById('editFuelId').value);
-    // fuel_type is read-only — handler reads it from DB, no need to POST it
+    fd.append('fuel_name',      document.getElementById('editFuelName').value.trim());
     fd.append('price',          document.getElementById('editPrice').value);
     fd.append('capacity',       document.getElementById('editFuelCapacity').value);
     fd.append('critical_level', document.getElementById('editFuelCritical').value);
+    fd.append('reorder_level',  document.getElementById('editFuelReorder').value);
+    fd.append('status',         statusVal);
+    fd.append('remarks',        document.getElementById('editFuelRemarks') ? document.getElementById('editFuelRemarks').value.trim() : '');
+    
     fetch('manager_set_prices_handler.php', { method: 'POST', body: fd })
         .then(r => r.json()).then(data => {
             if (data.success) {
@@ -1773,59 +1992,126 @@ document.getElementById('editPriceForm').addEventListener('submit', function(e) 
         }).catch(function() { alert('Network error. Please try again.'); });
 });
 
-// ── View Fuel Details ───────────────────────────────────────────────────────
+// ── View Fuel Details (4 Full Sections) ─────────────────────────────────────
 function viewFuelDetails(fuelId) {
-    // Fetch fuel details
     fetch('manager_set_prices_handler.php?action=get_fuel_details&id=' + fuelId)
         .then(response => response.json())
         .then(data => {
             if (data.success) {
                 var fuel = data.fuel;
                 var history = data.history || [];
+                var configHistory = data.config_history || [];
+                var statusHistory = data.status_history || [];
                 
-                // Populate fuel details
+                // Section 1 – Fuel Information
                 document.getElementById('viewFuelType').textContent = fuel.fuel_type;
-                document.getElementById('viewCurrentPrice').textContent = '₱' + parseFloat(fuel.price_per_liter).toFixed(2);
-                document.getElementById('viewStock').textContent = parseFloat(fuel.current_level).toLocaleString() + ' L';
-                document.getElementById('viewCapacity').textContent = parseFloat(fuel.capacity).toLocaleString() + ' L';
-                document.getElementById('viewCriticalLevel').textContent = parseFloat(fuel.critical_level).toLocaleString() + ' L';
-                document.getElementById('viewStatus').textContent = fuel.status.charAt(0).toUpperCase() + fuel.status.slice(1);
-                document.getElementById('viewStatus').style.color = fuel.status === 'active' ? '#16a34a' : '#dc2626';
+                var ugtEl = document.getElementById('viewUgtNo');
+                if (ugtEl) ugtEl.textContent = fuel.ugt_no || '-';
+                document.getElementById('viewCurrentPrice').textContent = '₱' + parseFloat(fuel.price_per_liter || 0).toFixed(2);
+                document.getElementById('viewStock').textContent = parseFloat(fuel.current_stock || fuel.current_level || 0).toLocaleString(undefined, {minimumFractionDigits: 2}) + ' L';
+                var availCap = parseFloat(fuel.available_capacity || (fuel.capacity - fuel.current_stock) || 0);
+                document.getElementById('viewAvailableCapacity').textContent = availCap.toLocaleString(undefined, {minimumFractionDigits: 2}) + ' L';
+                document.getElementById('viewCapacity').textContent = parseFloat(fuel.capacity || 0).toLocaleString(undefined, {minimumFractionDigits: 2}) + ' L';
+                document.getElementById('viewCriticalLevel').textContent = parseFloat(fuel.critical_level || 0).toLocaleString(undefined, {minimumFractionDigits: 2}) + ' L';
+                document.getElementById('viewReorderLevel').textContent = parseFloat(fuel.reorder_level || 0).toLocaleString(undefined, {minimumFractionDigits: 2}) + ' L';
+                
+                // Stock Status
+                var stock = parseFloat(fuel.current_stock || 0);
+                var crit = parseFloat(fuel.critical_level || 0);
+                var stockStatusText = '<span style="color:#16a34a;font-weight:700;">✓ Normal</span>';
+                if (stock <= 0) {
+                    stockStatusText = '<span style="color:#dc2626;font-weight:700;">⚠ Out of Stock</span>';
+                } else if (stock <= crit) {
+                    stockStatusText = '<span style="color:#dc2626;font-weight:700;">⚠ Critical</span>';
+                }
+                document.getElementById('viewStatus').innerHTML = stockStatusText;
+
+                // Product Status (Active / Inactive)
+                var prodStatus = (fuel.status || 'active').toLowerCase();
+                var prodBadge = prodStatus === 'active' 
+                    ? '<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;">Active</span>' 
+                    : '<span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;">Inactive</span>';
+                document.getElementById('viewProductStatus').innerHTML = prodBadge;
+
+                // Price Request Status
+                document.getElementById('viewPriceRequestStatus').textContent = fuel.price_request_status || 'No Pending Request';
                 document.getElementById('viewLastUpdated').textContent = fuel.last_updated || '-';
                 document.getElementById('viewUpdatedBy').textContent = fuel.updated_by_name || '-';
                 
-                // Populate price history
+                // Section 2 – Price History
                 var historyBody = document.getElementById('priceHistoryBody');
                 historyBody.innerHTML = '';
-                
                 if (history.length === 0) {
-                    historyBody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#94a3b8;">No price history available</td></tr>';
+                    historyBody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:16px;color:#94a3b8;">No price history available</td></tr>';
                 } else {
                     history.forEach(function(h) {
-                        var oldPrice = parseFloat(h.old_price);
-                        var newPrice = parseFloat(h.new_price);
-                        var arrow = newPrice > oldPrice ? '↑' : '↓';
-                        var arrowColor = newPrice > oldPrice ? '#16a34a' : '#dc2626';
+                        var oldPrice = parseFloat(h.old_price || 0);
+                        var newPrice = parseFloat(h.new_price || 0);
+                        var diff = newPrice - oldPrice;
+                        var diffBadge = diff > 0 
+                            ? `<span style="color:#16a34a;font-weight:700;">+₱${diff.toFixed(2)} ↑</span>` 
+                            : (diff < 0 ? `<span style="color:#dc2626;font-weight:700;">-₱${Math.abs(diff).toFixed(2)} ↓</span>` : '<span style="color:#64748b;">₱0.00</span>');
                         
                         var row = document.createElement('tr');
                         row.style.borderBottom = '1px solid #f1f5f9';
                         row.innerHTML = `
-                            <td style="padding:10px 12px;">₱${oldPrice.toFixed(2)}</td>
-                            <td style="padding:10px 12px;"><span style="color:${arrowColor};font-weight:700;">${arrow}</span> ₱${newPrice.toFixed(2)}</td>
-                            <td style="padding:10px 12px;">${h.reason || '-'}</td>
-                            <td style="padding:10px 12px;">${h.updated_by_name || '-'}</td>
-                            <td style="padding:10px 12px;font-size:12px;color:#64748b;">${h.created_at || '-'}</td>
-                            <td style="padding:10px 12px;text-align:center;">
-                                <button onclick="openRollbackModal(${fuelId}, ${h.id}, '${fuel.fuel_type}', ${newPrice}, ${oldPrice})" 
-                                        style="background:#dc2626;color:#fff;border:none;padding:5px 12px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;transition:background 0.2s;"
-                                        onmouseover="this.style.background='#b91c1c'" 
-                                        onmouseout="this.style.background='#dc2626'">
-                                    <i class="fas fa-undo"></i> Rollback
-                                </button>
-                            </td>
+                            <td style="padding:8px 12px;color:#475569;">${h.created_at || '-'}</td>
+                            <td style="padding:8px 12px;font-weight:600;">₱${oldPrice.toFixed(2)}</td>
+                            <td style="padding:8px 12px;font-weight:700;color:#002F6C;">₱${newPrice.toFixed(2)}</td>
+                            <td style="padding:8px 12px;">${diffBadge}</td>
+                            <td style="padding:8px 12px;">${h.requested_by_name || 'Manager'}</td>
+                            <td style="padding:8px 12px;">${h.approved_by_name || 'System'}</td>
+                            <td style="padding:8px 12px;"><span style="background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">${h.status || 'Approved'}</span></td>
                         `;
                         historyBody.appendChild(row);
                     });
+                }
+                
+                // Section 3 – Configuration History
+                var configBody = document.getElementById('configHistoryBody');
+                if (configBody) {
+                    configBody.innerHTML = '';
+                    if (configHistory.length === 0) {
+                        configBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">No configuration changes recorded yet</td></tr>';
+                    } else {
+                        configHistory.forEach(function(ch) {
+                            var row = document.createElement('tr');
+                            row.style.borderBottom = '1px solid #f1f5f9';
+                            row.innerHTML = `
+                                <td style="padding:8px 12px;color:#475569;">${ch.created_at || '-'}</td>
+                                <td style="padding:8px 12px;font-weight:700;color:#002F6C;">${ch.field_name || '-'}</td>
+                                <td style="padding:8px 12px;color:#dc2626;font-weight:600;">${ch.old_value || '-'}</td>
+                                <td style="padding:8px 12px;color:#16a34a;font-weight:700;">${ch.new_value || '-'}</td>
+                                <td style="padding:8px 12px;">${ch.updated_by_name || '-'}</td>
+                            `;
+                            configBody.appendChild(row);
+                        });
+                    }
+                }
+
+                // Section 4 – Status History
+                var statusBody = document.getElementById('statusHistoryBody');
+                if (statusBody) {
+                    statusBody.innerHTML = '';
+                    if (statusHistory.length === 0) {
+                        statusBody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:16px;color:#94a3b8;">No status history recorded yet</td></tr>';
+                    } else {
+                        statusHistory.forEach(function(sh) {
+                            var isAct = (sh.status || '').toLowerCase().indexOf('activ') !== -1 && (sh.status || '').toLowerCase().indexOf('deactiv') === -1;
+                            var statusBadge = isAct 
+                                ? '<span style="color:#16a34a;font-weight:700;"><i class="fas fa-check-circle"></i> Activated</span>'
+                                : '<span style="color:#dc2626;font-weight:700;"><i class="fas fa-ban"></i> Deactivated</span>';
+                            
+                            var row = document.createElement('tr');
+                            row.style.borderBottom = '1px solid #f1f5f9';
+                            row.innerHTML = `
+                                <td style="padding:8px 12px;color:#475569;">${sh.created_at || '-'}</td>
+                                <td style="padding:8px 12px;">${statusBadge}</td>
+                                <td style="padding:8px 12px;">${sh.changed_by_name || 'Manager'}</td>
+                            `;
+                            statusBody.appendChild(row);
+                        });
+                    }
                 }
                 
                 document.getElementById('viewFuelModal').style.display = 'flex';
@@ -1841,6 +2127,37 @@ function viewFuelDetails(fuelId) {
 
 function closeViewFuelModal() {
     document.getElementById('viewFuelModal').style.display = 'none';
+}
+
+// ── Toggle Fuel Status (Activate / Deactivate with Confirmation Dialog) ─────
+function toggleFuelStatus(id, targetStatus, fuelName) {
+    var actionText = targetStatus === 'active' ? 'activate' : 'deactivate';
+    if (!confirm('Are you sure you want to ' + actionText + ' "' + fuelName + '"?\n\nThis will set the product status to ' + targetStatus + '.')) {
+        return;
+    }
+    
+    var formData = new FormData();
+    formData.append('action', 'toggle_fuel_status');
+    formData.append('id', id);
+    formData.append('target_status', targetStatus);
+    
+    fetch('manager_set_prices_handler.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert('SUCCESS: ' + (data.message || 'Status updated successfully!'));
+            location.reload();
+        } else {
+            alert('Error: ' + (data.message || 'Failed to update status'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error updating fuel status. Please try again.');
+    });
 }
 
 // ── Rollback Price ──────────────────────────────────────────────────────────

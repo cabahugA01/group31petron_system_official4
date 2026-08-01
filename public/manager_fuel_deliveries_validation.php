@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Manager Fuel Deliveries Oversight â€“ manager_fuel_deliveries_validation.php
 // Purpose: View, audit, and validate staff-encoded fuel deliveries
@@ -257,7 +257,7 @@ try {
 
 // â”€â”€ EXPORTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (in_array($export, ['excel', 'pdf'])) {
-    $headers = ['Delivery ID', 'Delivery Date', 'Batch ID', 'DR Number', 'Tanker Number', 'Fuel Type', 'Assigned Tank', 'Liters Delivered', 'Staff Receiver', 'Status', 'Verification Date', 'Remarks'];
+    $headers = ['Delivery ID', 'Delivery Date', 'Delivery Ref', 'DR Number', 'Tanker Number', 'Fuel Type', 'Assigned Tank', 'Liters Delivered', 'Staff Receiver', 'Status', 'Verification Date', 'Remarks'];
     $rows_fmt = [];
     foreach ($deliveries as $d) {
         $rows_fmt[] = [
@@ -328,7 +328,7 @@ if (in_array($export, ['excel', 'pdf'])) {
         echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;font-weight:bold;">Print</button>
         <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none;font-weight:bold;">â† Back</a></div>';
         echo '<div class="hdr"><div><h1>Petron Fuel Deliveries Oversight</h1><p style="margin:2px 0 0;color:#666;">Period: ' . htmlspecialchars($date_from) . ' â€” ' . htmlspecialchars($date_to) . ' | Station: ' . htmlspecialchars(user_station_name()) . '</p></div><div style="text-align:right;"><p style="margin:0;">Generated: ' . $generated . '</p></div></div>';
-        echo '<table><thead><tr><th>Del ID</th><th>Date</th><th>Batch ID</th><th>DR Number</th><th>Tanker No</th><th>Fuel Type</th><th>Tank</th><th>Liters</th><th>Staff</th><th>Status</th><th>Val Date</th><th>Remarks</th></tr></thead>';
+        echo '<table><thead><tr><th>Del ID</th><th>Date</th><th>Delivery Ref</th><th>DR Number</th><th>Tanker No</th><th>Fuel Type</th><th>Tank</th><th>Liters</th><th>Staff</th><th>Status</th><th>Val Date</th><th>Remarks</th></tr></thead>';
         echo '<tbody>' . ($tbody ?: '<tr><td colspan="12" style="text-align:center;padding:20px;color:#94a3b8">No records found.</td></tr>') . '</tbody></table>';
         echo '</body></html>'; exit;
     }

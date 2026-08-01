@@ -38,20 +38,118 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $fuel_id = (int)($_GET['id'] ?? 0);
         if ($fuel_id <= 0) { echo json_encode(['success'=>false,'message'=>'Invalid ID']); exit; }
         try {
-            $stmt = $pdo->prepare("SELECT f.*, u.username as updated_by_name FROM fuel_inventory f LEFT JOIN users u ON f.updated_by=u.id WHERE f.id=? AND f.station_id=? LIMIT 1");
+            $stmt = $pdo->prepare("SELECT f.*, COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.name, u.username, 'System') as updated_by_name FROM fuel_inventory f LEFT JOIN users u ON f.updated_by=u.id WHERE f.id=? AND f.station_id=? LIMIT 1");
             $stmt->execute([$fuel_id, $station_id]);
             $fuel = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!$fuel) { echo json_encode(['success'=>false,'message'=>'Fuel not found']); exit; }
             if ($fuel['last_updated']) $fuel['last_updated'] = date('M d, Y g:i A', strtotime($fuel['last_updated']));
+            
+            // Calculate Available Capacity
+            $cap = (float)($fuel['capacity'] ?? 0);
+            $stock = (float)($fuel['current_stock'] ?? ($fuel['current_level'] ?? 0));
+            $fuel['current_stock'] = $stock;
+            $fuel['available_capacity'] = max(0, $cap - $stock);
+
+            // Check Price Request Status in pending_price_approvals
+            $fuel['price_request_status'] = 'No Pending Request';
+            try {
+                $pa_stmt = $pdo->prepare("SELECT new_price, status, created_at FROM pending_price_approvals WHERE station_id = ? AND (product_id = ? OR product_name = ?) AND status = 'pending' ORDER BY id DESC LIMIT 1");
+                $pa_stmt->execute([$station_id, $fuel_id, $fuel['fuel_type']]);
+                $pa = $pa_stmt->fetch(PDO::FETCH_ASSOC);
+                if ($pa) {
+                    $fuel['price_request_status'] = 'Pending Admin Approval (₱' . number_format((float)$pa['new_price'], 2) . ')';
+                }
+            } catch (Exception $e) {}
+
+            // 1. Price History
             $history = [];
-            $tableCheck = $pdo->query("SHOW TABLES LIKE 'fuel_price_history'")->fetch();
-            if ($tableCheck) {
-                $stmt = $pdo->prepare("SELECT h.*, u.username as updated_by_name FROM fuel_price_history h LEFT JOIN users u ON h.updated_by=u.id WHERE h.fuel_id=? ORDER BY h.created_at DESC LIMIT 10");
+            try {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `fuel_price_history` (
+                  `id` INT AUTO_INCREMENT PRIMARY KEY,
+                  `station_id` INT NOT NULL DEFAULT 0,
+                  `fuel_id` INT NOT NULL,
+                  `fuel_type` VARCHAR(100) NULL,
+                  `old_price` DECIMAL(12,2) DEFAULT 0,
+                  `new_price` DECIMAL(12,2) DEFAULT 0,
+                  `difference` DECIMAL(12,2) DEFAULT 0,
+                  `reason` VARCHAR(255) NULL,
+                  `requested_by` INT NULL,
+                  `requested_by_name` VARCHAR(255) NULL,
+                  `approved_by` INT NULL,
+                  `approved_by_name` VARCHAR(255) NULL,
+                  `updated_by` INT NULL,
+                  `status` VARCHAR(50) DEFAULT 'Approved',
+                  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                  INDEX (`fuel_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+                $stmt = $pdo->prepare("SELECT h.*, 
+                                       COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.name, u.username, h.requested_by_name, 'Manager') as requested_by_name,
+                                       COALESCE(CONCAT(a.first_name, ' ', a.last_name), a.name, a.username, h.approved_by_name, 'System') as approved_by_name
+                                FROM fuel_price_history h 
+                                LEFT JOIN users u ON h.requested_by=u.id OR h.updated_by=u.id 
+                                LEFT JOIN users a ON h.approved_by=a.id 
+                                WHERE h.fuel_id=? ORDER BY h.created_at DESC LIMIT 30");
                 $stmt->execute([$fuel_id]);
                 $history = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                foreach ($history as &$h) { if ($h['created_at']) $h['created_at'] = date('M d, Y g:i A', strtotime($h['created_at'])); }
-            }
-            echo json_encode(['success'=>true,'fuel'=>$fuel,'history'=>$history]); exit;
+                foreach ($history as &$h) { 
+                    if ($h['created_at']) $h['created_at'] = date('M d, Y g:i A', strtotime($h['created_at'])); 
+                    $h['difference'] = (float)($h['new_price'] ?? 0) - (float)($h['old_price'] ?? 0);
+                    $h['status'] = !empty($h['status']) ? ucfirst($h['status']) : 'Approved';
+                }
+            } catch (Exception $e) {}
+
+            // 2. Configuration History
+            $config_history = [];
+            try {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `fuel_config_history` (
+                  `id` INT AUTO_INCREMENT PRIMARY KEY,
+                  `station_id` INT NOT NULL,
+                  `fuel_inventory_id` INT NOT NULL,
+                  `fuel_type` VARCHAR(100) NOT NULL,
+                  `field_name` VARCHAR(100) NOT NULL,
+                  `old_value` VARCHAR(255) NULL,
+                  `new_value` VARCHAR(255) NULL,
+                  `updated_by` INT NULL,
+                  `updated_by_name` VARCHAR(255) NULL,
+                  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  INDEX (`station_id`),
+                  INDEX (`fuel_inventory_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+                $stmt = $pdo->prepare("SELECT ch.*, COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.name, u.username, ch.updated_by_name, 'System') as updated_by_name FROM fuel_config_history ch LEFT JOIN users u ON ch.updated_by=u.id WHERE ch.fuel_inventory_id=? ORDER BY ch.created_at DESC LIMIT 30");
+                $stmt->execute([$fuel_id]);
+                $config_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($config_history as &$ch) {
+                    if ($ch['created_at']) $ch['created_at'] = date('M d, Y g:i A', strtotime($ch['created_at']));
+                }
+            } catch (Exception $e) {}
+
+            // 3. Status History
+            $status_history = [];
+            try {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `fuel_status_history` (
+                  `id` INT AUTO_INCREMENT PRIMARY KEY,
+                  `station_id` INT NOT NULL,
+                  `fuel_inventory_id` INT NOT NULL,
+                  `fuel_type` VARCHAR(100) NOT NULL,
+                  `status` VARCHAR(50) NOT NULL,
+                  `changed_by` INT NULL,
+                  `changed_by_name` VARCHAR(255) NULL,
+                  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  INDEX (`station_id`),
+                  INDEX (`fuel_inventory_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+                $stmt = $pdo->prepare("SELECT sh.*, COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.name, u.username, sh.changed_by_name, 'System') as changed_by_name FROM fuel_status_history sh LEFT JOIN users u ON sh.changed_by=u.id WHERE sh.fuel_inventory_id=? ORDER BY sh.created_at DESC LIMIT 30");
+                $stmt->execute([$fuel_id]);
+                $status_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($status_history as &$sh) {
+                    if ($sh['created_at']) $sh['created_at'] = date('M d, Y g:i A', strtotime($sh['created_at']));
+                }
+            } catch (Exception $e) {}
+
+            echo json_encode(['success'=>true,'fuel'=>$fuel,'history'=>$history,'config_history'=>$config_history,'status_history'=>$status_history]); exit;
         } catch (Exception $e) { echo json_encode(['success'=>false,'message'=>$e->getMessage()]); exit; }
     }
 
@@ -146,75 +244,128 @@ try {
         // ══════════════════════════════════════════════════════════════════════
         case 'add_fuel_product':
             $fuel_type      = trim($_POST['fuel_type'] ?? '');
-            $fuel_type_id   = (int)($_POST['fuel_type_id'] ?? 0);
+            $ugt_no         = trim($_POST['ugt_no'] ?? '');
             $price          = (float)($_POST['price'] ?? 0);
             $capacity       = (float)($_POST['capacity'] ?? 0);
             $critical_level = (float)($_POST['critical_level'] ?? 0);
+            $reorder_level  = (float)($_POST['reorder_level'] ?? 0);
+            $status         = strtolower(trim($_POST['status'] ?? 'active'));
+            $remarks        = trim($_POST['remarks'] ?? '');
 
+            if ($status !== 'inactive') $status = 'active';
+
+            // Validation rules
             if (empty($fuel_type)) {
-                echo json_encode(['success' => false, 'message' => 'Fuel type is required']);
+                echo json_encode(['success' => false, 'message' => 'Fuel Name is required.']);
+                exit;
+            }
+            if (mb_strlen($fuel_type) > 50) {
+                echo json_encode(['success' => false, 'message' => 'Fuel Name must not exceed 50 characters.']);
+                exit;
+            }
+            if (empty($ugt_no)) {
+                echo json_encode(['success' => false, 'message' => 'UGT Number is required.']);
+                exit;
+            }
+            if ($price <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Invalid Selling Price.']);
+                exit;
+            }
+            if ($capacity <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Tank Capacity must be greater than 0.']);
+                exit;
+            }
+            if ($capacity <= $reorder_level) {
+                echo json_encode(['success' => false, 'message' => 'Tank Capacity must be greater than Reorder Level.']);
+                exit;
+            }
+            if ($reorder_level <= $critical_level) {
+                echo json_encode(['success' => false, 'message' => 'Reorder Level must be greater than Critical Level.']);
                 exit;
             }
 
-            if ($price < 0 || $capacity <= 0 || $critical_level < 0) {
-                echo json_encode(['success' => false, 'message' => 'Invalid values provided (capacity must be > 0)']);
-                exit;
-            }
-
-            // Resolve fuel_type_id from fuel_types table if not provided
-            if ($fuel_type_id <= 0) {
-                $ft = $pdo->prepare("SELECT id FROM fuel_types WHERE LOWER(name) = LOWER(?) LIMIT 1");
-                $ft->execute([$fuel_type]);
-                $ft_row = $ft->fetch(PDO::FETCH_ASSOC);
-                if ($ft_row) {
-                    $fuel_type_id = (int)$ft_row['id'];
-                } else {
-                    // Insert into fuel_types if it's a brand-new type
-                    $ins_ft = $pdo->prepare("INSERT INTO fuel_types (name) VALUES (?)");
-                    $ins_ft->execute([$fuel_type]);
-                    $fuel_type_id = (int)$pdo->lastInsertId();
-                }
-            }
-
-            // Check if this fuel_type_id already exists for this station
-            $stmt = $pdo->prepare("SELECT id FROM fuel_inventory WHERE station_id = ? AND fuel_type_id = ? LIMIT 1");
-            $stmt->execute([$station_id, $fuel_type_id]);
+            // 1. Check if Fuel Name already exists for this station
+            $stmt = $pdo->prepare("SELECT id FROM fuel_inventory WHERE station_id = ? AND LOWER(fuel_type) = LOWER(?) LIMIT 1");
+            $stmt->execute([$station_id, $fuel_type]);
             if ($stmt->fetch()) {
-                echo json_encode(['success' => false, 'message' => 'This fuel type already exists for your station']);
+                echo json_encode(['success' => false, 'message' => 'Fuel Name already exists.']);
                 exit;
             }
 
-            // Insert new fuel product (with fuel_type_id to satisfy FK)
+            // 2. Check if selected UGT is already assigned for this station
+            $stmt = $pdo->prepare("SELECT id FROM fuel_inventory WHERE station_id = ? AND LOWER(ugt_no) = LOWER(?) LIMIT 1");
+            $stmt->execute([$station_id, $ugt_no]);
+            if ($stmt->fetch()) {
+                echo json_encode(['success' => false, 'message' => 'Selected UGT is already assigned.']);
+                exit;
+            }
+
+            // Resolve fuel_type_id from fuel_types table
+            $fuel_type_id = 0;
+            $ft = $pdo->prepare("SELECT id FROM fuel_types WHERE LOWER(name) = LOWER(?) LIMIT 1");
+            $ft->execute([$fuel_type]);
+            $ft_row = $ft->fetch(PDO::FETCH_ASSOC);
+            if ($ft_row) {
+                $fuel_type_id = (int)$ft_row['id'];
+            } else {
+                $ins_ft = $pdo->prepare("INSERT INTO fuel_types (name) VALUES (?)");
+                $ins_ft->execute([$fuel_type]);
+                $fuel_type_id = (int)$pdo->lastInsertId();
+            }
+
+            // Direct Save to fuel_inventory (Manager direct save - no Admin approval required)
             try {
                 $stmt = $pdo->prepare("
                     INSERT INTO fuel_inventory
-                    (station_id, fuel_type_id, fuel_type, price_per_liter, capacity, critical_level,
+                    (station_id, fuel_type_id, fuel_type, ugt_no, price_per_liter, capacity, critical_level, reorder_level,
                      current_level, current_stock, status, updated_by, last_updated)
-                    VALUES (?, ?, ?, ?, ?, ?, 0, 0, 'active', ?, NOW())
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, NOW())
                 ");
                 $stmt->execute([
                     $station_id,
                     $fuel_type_id,
                     $fuel_type,
+                    $ugt_no,
                     $price,
                     $capacity,
                     $critical_level,
+                    $reorder_level,
+                    $status,
                     $me['id']
                 ]);
+                $new_fuel_id = (int)$pdo->lastInsertId();
             } catch (PDOException $pdoe) {
-                if ($pdoe->getCode() == 23000) {
-                    echo json_encode(['success' => false, 'message' => 'This fuel type is already registered for your station.']);
-                } else {
-                    echo json_encode(['success' => false, 'message' => 'Database error: ' . $pdoe->getMessage()]);
-                }
+                echo json_encode(['success' => false, 'message' => 'Database error: ' . $pdoe->getMessage()]);
                 exit;
             }
 
-            // Log activity
-            log_activity($pdo, $me['id'], 'Add Fuel Product',
-                "Manager added new fuel product: {$fuel_type} (ID:{$fuel_type_id}) at station {$station_id}");
+            // Ensure table fuel_config_history exists
+            try {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `fuel_config_history` (
+                  `id` INT AUTO_INCREMENT PRIMARY KEY,
+                  `station_id` INT NOT NULL,
+                  `fuel_inventory_id` INT NOT NULL,
+                  `fuel_type` VARCHAR(100) NOT NULL,
+                  `field_name` VARCHAR(100) NOT NULL,
+                  `old_value` VARCHAR(255) NULL,
+                  `new_value` VARCHAR(255) NULL,
+                  `updated_by` INT NULL,
+                  `updated_by_name` VARCHAR(255) NULL,
+                  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  INDEX (`station_id`),
+                  INDEX (`fuel_inventory_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-            echo json_encode(['success' => true, 'message' => 'Fuel product added successfully']);
+                $user_name = $me['username'] ?? ($me['first_name'] ?? 'Manager');
+                $pdo->prepare("INSERT INTO fuel_config_history (station_id, fuel_inventory_id, fuel_type, field_name, old_value, new_value, updated_by, updated_by_name, created_at) VALUES (?, ?, ?, 'Product Created', '-', ?, ?, ?, NOW())")
+                    ->execute([$station_id, $new_fuel_id, $fuel_type, "UGT: {$ugt_no}, Price: ₱{$price}, Capacity: {$capacity}L, Critical: {$critical_level}L, Reorder: {$reorder_level}L", $me['id'], $user_name]);
+            } catch (Exception $e) {}
+
+            // Log Audit Trail
+            log_activity($pdo, $me['id'], 'Add Fuel Product',
+                "Manager added new fuel product: {$fuel_type} ({$ugt_no}) at ₱{$price}/L. Status: {$status}. Remarks: {$remarks}");
+
+            echo json_encode(['success' => true, 'message' => 'Fuel product added successfully.']);
             break;
             
         // ══════════════════════════════════════════════════════════════════════
@@ -451,70 +602,206 @@ try {
             break;
             
         // ══════════════════════════════════════════════════════════════════════
-        // EDIT FUEL — FULL (name, price, capacity, critical level, status)
+        // EDIT FUEL — FULL (name, price, capacity, critical level, reorder level, status, remarks)
         // ══════════════════════════════════════════════════════════════════════
         case 'edit_fuel_full':
             $id             = (int)($_POST['id'] ?? 0);
+            $new_fuel_name  = trim($_POST['fuel_name'] ?? ($_POST['fuel_type'] ?? ''));
             $new_price      = (float)($_POST['price'] ?? 0);
             $capacity       = (float)($_POST['capacity'] ?? 0);
             $critical_level = (float)($_POST['critical_level'] ?? 0);
+            $reorder_level  = (float)($_POST['reorder_level'] ?? 0);
+            $new_status     = strtolower(trim($_POST['status'] ?? 'active'));
+            $remarks        = trim($_POST['remarks'] ?? '');
 
-            if ($id <= 0 || $new_price < 0 || $capacity < 0 || $critical_level < 0) {
+            if (!in_array($new_status, ['active', 'inactive'])) $new_status = 'active';
+
+            if ($id <= 0 || $new_price < 0 || $capacity < 0 || $critical_level < 0 || $reorder_level < 0) {
                 echo json_encode(['success'=>false,'message'=>'Invalid parameters']);
                 exit;
             }
 
-            // Fetch current record — fuel_type is READ-ONLY, we never change it to avoid unique key violations
-            $stmt = $pdo->prepare("SELECT fuel_type, price_per_liter FROM fuel_inventory WHERE id=? AND station_id=? LIMIT 1");
+            // Ensure table fuel_config_history exists
+            try {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `fuel_config_history` (
+                  `id` INT AUTO_INCREMENT PRIMARY KEY,
+                  `station_id` INT NOT NULL,
+                  `fuel_inventory_id` INT NOT NULL,
+                  `fuel_type` VARCHAR(100) NOT NULL,
+                  `field_name` VARCHAR(100) NOT NULL,
+                  `old_value` VARCHAR(255) NULL,
+                  `new_value` VARCHAR(255) NULL,
+                  `updated_by` INT NULL,
+                  `updated_by_name` VARCHAR(255) NULL,
+                  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  INDEX (`station_id`),
+                  INDEX (`fuel_inventory_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            } catch (Exception $e) {}
+
+            // Fetch current record
+            $stmt = $pdo->prepare("SELECT fuel_type, price_per_liter, capacity, critical_level, reorder_level, status FROM fuel_inventory WHERE id=? AND station_id=? LIMIT 1");
             $stmt->execute([$id, $station_id]);
             $fuel = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!$fuel) { echo json_encode(['success'=>false,'message'=>'Fuel product not found']); exit; }
 
-            $fuel_type = $fuel['fuel_type']; // never change fuel_type from DB
-            $old_price = (float)$fuel['price_per_liter'];
+            $old_fuel_name = $fuel['fuel_type'];
+            $old_price     = (float)$fuel['price_per_liter'];
+            $old_cap       = (float)$fuel['capacity'];
+            $old_crit      = (float)$fuel['critical_level'];
+            $old_reorder   = (float)($fuel['reorder_level'] ?? 0);
+            $old_status    = strtolower($fuel['status'] ?? 'active');
+            $user_name     = $me['username'] ?? ($me['first_name'] ?? 'Manager');
+
+            $target_fuel_name = !empty($new_fuel_name) ? $new_fuel_name : $old_fuel_name;
 
             try {
-                if ($old_price != $new_price) {
-                    // Update capacity + critical_level immediately; price goes to pending approval
-                    $stmt = $pdo->prepare("UPDATE fuel_inventory SET capacity=?, critical_level=?, updated_by=?, last_updated=NOW() WHERE id=? AND station_id=?");
-                    $stmt->execute([$capacity, $critical_level, $me['id'], $id, $station_id]);
+                // Log configuration history for changed fields
+                if (!empty($new_fuel_name) && strcasecmp($old_fuel_name, $new_fuel_name) !== 0) {
+                    $pdo->prepare("INSERT INTO fuel_config_history (station_id, fuel_inventory_id, fuel_type, field_name, old_value, new_value, updated_by, updated_by_name, created_at) VALUES (?, ?, ?, 'Fuel Name', ?, ?, ?, ?, NOW())")
+                        ->execute([$station_id, $id, $target_fuel_name, $old_fuel_name, $new_fuel_name, $me['id'], $user_name]);
+                }
+                if (abs($old_cap - $capacity) > 0.001) {
+                    $pdo->prepare("INSERT INTO fuel_config_history (station_id, fuel_inventory_id, fuel_type, field_name, old_value, new_value, updated_by, updated_by_name, created_at) VALUES (?, ?, ?, 'Capacity', ?, ?, ?, ?, NOW())")
+                        ->execute([$station_id, $id, $target_fuel_name, number_format($old_cap, 2) . ' L', number_format($capacity, 2) . ' L', $me['id'], $user_name]);
+                }
+                if (abs($old_crit - $critical_level) > 0.001) {
+                    $pdo->prepare("INSERT INTO fuel_config_history (station_id, fuel_inventory_id, fuel_type, field_name, old_value, new_value, updated_by, updated_by_name, created_at) VALUES (?, ?, ?, 'Critical Level', ?, ?, ?, ?, NOW())")
+                        ->execute([$station_id, $id, $target_fuel_name, number_format($old_crit, 2) . ' L', number_format($critical_level, 2) . ' L', $me['id'], $user_name]);
+                }
+                if (abs($old_reorder - $reorder_level) > 0.001) {
+                    $pdo->prepare("INSERT INTO fuel_config_history (station_id, fuel_inventory_id, fuel_type, field_name, old_value, new_value, updated_by, updated_by_name, created_at) VALUES (?, ?, ?, 'Reorder Level', ?, ?, ?, ?, NOW())")
+                        ->execute([$station_id, $id, $target_fuel_name, number_format($old_reorder, 2) . ' L', number_format($reorder_level, 2) . ' L', $me['id'], $user_name]);
+                }
+                if ($old_status !== $new_status) {
+                    $pdo->prepare("INSERT INTO fuel_config_history (station_id, fuel_inventory_id, fuel_type, field_name, old_value, new_value, updated_by, updated_by_name, created_at) VALUES (?, ?, ?, 'Product Status', ?, ?, ?, ?, NOW())")
+                        ->execute([$station_id, $id, $target_fuel_name, ucfirst($old_status), ucfirst($new_status), $me['id'], $user_name]);
 
-                    // Clear any previous pending approval for this fuel
+                    // Also log in fuel_status_history
+                    try {
+                        $status_label = ($new_status === 'active') ? 'Activated' : 'Deactivated';
+                        $pdo->prepare("INSERT INTO fuel_status_history (station_id, fuel_inventory_id, fuel_type, status, changed_by, changed_by_name, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())")
+                            ->execute([$station_id, $id, $target_fuel_name, $status_label, $me['id'], $user_name]);
+                    } catch (Exception $e) {}
+                }
+
+                // Update fuel_inventory
+                $stmt = $pdo->prepare("UPDATE fuel_inventory SET fuel_type=?, capacity=?, critical_level=?, reorder_level=?, status=?, updated_by=?, last_updated=NOW() WHERE id=? AND station_id=?");
+                $stmt->execute([$target_fuel_name, $capacity, $critical_level, $reorder_level, $new_status, $me['id'], $id, $station_id]);
+
+                if (abs($old_price - $new_price) > 0.001) {
+                    // Clear previous pending approval
                     $pdo->prepare("DELETE FROM pending_price_approvals WHERE station_id=? AND product_type IN ('fuel','fuel_inventory') AND product_id=? AND status='pending'")
                         ->execute([$station_id, $id]);
 
-                    // Submit new pending price approval
+                    // Submit pending price approval request
                     $stmt = $pdo->prepare("
                         INSERT INTO pending_price_approvals
                         (station_id, product_type, product_id, product_name, field_name, old_value, new_value, old_cost, new_cost, old_price, new_price, requested_by, manager_id, status, created_at)
                         VALUES (?, 'fuel', ?, ?, 'price', ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())
                     ");
                     $stmt->execute([
-                        $station_id, $id, $fuel_type,
+                        $station_id, $id, $target_fuel_name,
                         $old_price, $new_price,
                         $old_price, $new_price,
                         $old_price, $new_price,
                         $me['id'], $me['id']
                     ]);
 
-                    log_activity($pdo, $me['id'], 'Edit Fuel Product', "Manager requested price change for {$fuel_type} (₱{$old_price} -> ₱{$new_price}). Capacity: {$capacity}L, Critical: {$critical_level}L");
+                    log_activity($pdo, $me['id'], 'Edit Fuel Product', "Manager requested price change for {$target_fuel_name} (₱{$old_price} -> ₱{$new_price}). Capacity: {$capacity}L, Status: {$new_status}");
                     echo json_encode(['success'=>true,'message'=>'Fuel details updated. Price change submitted for Admin approval.']);
                 } else {
-                    // No price change — just update capacity and critical_level
-                    $stmt = $pdo->prepare("UPDATE fuel_inventory SET capacity=?, critical_level=?, updated_by=?, last_updated=NOW() WHERE id=? AND station_id=?");
-                    $stmt->execute([$capacity, $critical_level, $me['id'], $id, $station_id]);
-
-                    log_activity($pdo, $me['id'], 'Edit Fuel Product', "Manager updated {$fuel_type}: Capacity={$capacity}L, Critical Level={$critical_level}L");
+                    log_activity($pdo, $me['id'], 'Edit Fuel Product', "Manager updated {$target_fuel_name}: Capacity={$capacity}L, Critical Level={$critical_level}L, Reorder Level={$reorder_level}L, Status={$new_status}");
                     echo json_encode(['success'=>true,'message'=>'Fuel product updated successfully']);
                 }
             } catch (PDOException $pdoe) {
-                $errCode = $pdoe->getCode();
-                if ($errCode == 23000) {
-                    echo json_encode(['success'=>false,'message'=>'Update failed: duplicate fuel type entry. Please refresh and try again.']);
-                } else {
-                    echo json_encode(['success'=>false,'message'=>'Database error: ' . $pdoe->getMessage()]);
-                }
+                echo json_encode(['success'=>false,'message'=>'Database error: ' . $pdoe->getMessage()]);
             }
+            break;
+
+        // ══════════════════════════════════════════════════════════════════════
+        // TOGGLE FUEL STATUS (Activate / Deactivate with Confirmation Dialog)
+        // ══════════════════════════════════════════════════════════════════════
+        case 'toggle_fuel_status':
+            $id            = (int)($_POST['id'] ?? 0);
+            $target_status = strtolower(trim($_POST['target_status'] ?? ''));
+
+            if ($id <= 0 || !in_array($target_status, ['active', 'inactive'])) {
+                echo json_encode(['success' => false, 'message' => 'Invalid parameters']);
+                exit;
+            }
+
+            // Verify fuel belongs to manager's station
+            $stmt = $pdo->prepare("SELECT id, fuel_type, ugt_no, status FROM fuel_inventory WHERE id = ? AND station_id = ? LIMIT 1");
+            $stmt->execute([$id, $station_id]);
+            $fuel = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$fuel) {
+                echo json_encode(['success' => false, 'message' => 'Fuel product not found']);
+                exit;
+            }
+
+            $old_status = strtolower($fuel['status'] ?? 'active');
+            if ($old_status === $target_status) {
+                echo json_encode(['success' => true, 'message' => "Fuel product is already {$target_status}."]);
+                exit;
+            }
+
+            // Update status in fuel_inventory
+            $stmt = $pdo->prepare("UPDATE fuel_inventory SET status = ?, updated_by = ?, last_updated = NOW() WHERE id = ? AND station_id = ?");
+            $stmt->execute([$target_status, $me['id'], $id, $station_id]);
+
+            $user_name = $me['username'] ?? ($me['first_name'] ?? 'Manager');
+
+            // Log in fuel_status_history
+            try {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `fuel_status_history` (
+                  `id` INT AUTO_INCREMENT PRIMARY KEY,
+                  `station_id` INT NOT NULL,
+                  `fuel_inventory_id` INT NOT NULL,
+                  `fuel_type` VARCHAR(100) NOT NULL,
+                  `status` VARCHAR(50) NOT NULL,
+                  `changed_by` INT NULL,
+                  `changed_by_name` VARCHAR(255) NULL,
+                  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  INDEX (`station_id`),
+                  INDEX (`fuel_inventory_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+                $status_label = ($target_status === 'active') ? 'Activated' : 'Deactivated';
+                $pdo->prepare("INSERT INTO fuel_status_history (station_id, fuel_inventory_id, fuel_type, status, changed_by, changed_by_name, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())")
+                    ->execute([$station_id, $id, $fuel['fuel_type'], $status_label, $me['id'], $user_name]);
+            } catch (Exception $e) {}
+
+            // Log in fuel_config_history
+            try {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `fuel_config_history` (
+                  `id` INT AUTO_INCREMENT PRIMARY KEY,
+                  `station_id` INT NOT NULL,
+                  `fuel_inventory_id` INT NOT NULL,
+                  `fuel_type` VARCHAR(100) NOT NULL,
+                  `field_name` VARCHAR(100) NOT NULL,
+                  `old_value` VARCHAR(255) NULL,
+                  `new_value` VARCHAR(255) NULL,
+                  `updated_by` INT NULL,
+                  `updated_by_name` VARCHAR(255) NULL,
+                  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  INDEX (`station_id`),
+                  INDEX (`fuel_inventory_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+                $pdo->prepare("INSERT INTO fuel_config_history (station_id, fuel_inventory_id, fuel_type, field_name, old_value, new_value, updated_by, updated_by_name, created_at) VALUES (?, ?, ?, 'Product Status', ?, ?, ?, ?, NOW())")
+                    ->execute([$station_id, $id, $fuel['fuel_type'], ucfirst($old_status), ucfirst($target_status), $me['id'], $user_name]);
+            } catch (Exception $e) {}
+
+            // Log activity
+            log_activity($pdo, $me['id'], 'Toggle Fuel Status',
+                "Manager changed status of fuel product: {$fuel['fuel_type']} ({$fuel['ugt_no']}) to {$target_status}");
+
+            echo json_encode([
+                'success' => true,
+                'message' => "Fuel product {$fuel['fuel_type']} has been " . ($target_status === 'active' ? 'activated' : 'deactivated') . " successfully."
+            ]);
             break;
 
         case 'edit_merchandise_full':

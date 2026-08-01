@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Admin Fuel Deliveries Oversight
 // Fetch Source: fuel_deliveries (staff-encoded â†’ manager-verified)
@@ -305,7 +305,7 @@ if ($role === 'superadmin') {
 
 // â”€â”€ EXPORT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (in_array($export, ['csv','excel','pdf'])) {
-    $headers = ['Delivery ID','Delivery Date','Batch ID','Station','Fuel Type','Assigned Tank','Supplier','DR Number','Liters Delivered','Tanker Number','Status','Remarks','Staff Receiver','Manager Verifier','Verification Date'];
+    $headers = ['Delivery ID','Delivery Date','Delivery Ref','Station','Fuel Type','Assigned Tank','Supplier','DR Number','Liters Delivered','Tanker Number','Status','Remarks','Staff Receiver','Manager Verifier','Verification Date'];
     $rows_fmt = [];
     foreach($deliveries as $del) {
         $rows_fmt[] = [
@@ -383,7 +383,7 @@ if (in_array($export, ['csv','excel','pdf'])) {
         echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer">Print</button>
         <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none">â† Back</a></div>';
         echo '<div class="hdr"><h1>Fuel Deliveries Oversight</h1><p>Period: '.htmlspecialchars($date_from).' â€” '.htmlspecialchars($date_to).' | Station: '.htmlspecialchars($station_name).' | Records: '.count($deliveries).'</p></div>';
-        echo '<table><thead><tr><th>ID</th><th>Date</th><th>Batch ID</th><th>Station</th><th>Fuel Type</th><th>Tank</th><th>Supplier</th><th>DR #</th><th>Liters</th><th>Tanker #</th><th>Status</th><th>Receiver</th><th>Verifier</th><th>Verified At</th></tr></thead>';
+        echo '<table><thead><tr><th>ID</th><th>Date</th><th>Delivery Ref</th><th>Station</th><th>Fuel Type</th><th>Tank</th><th>Supplier</th><th>DR #</th><th>Liters</th><th>Tanker #</th><th>Status</th><th>Receiver</th><th>Verifier</th><th>Verified At</th></tr></thead>';
         echo '<tbody>'.($tbody ?: '<tr><td colspan="14" style="text-align:center;padding:20px;color:#94a3b8">No records.</td></tr>').'</tbody></table>';
         echo '</body></html>'; exit;
     }
