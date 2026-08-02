@@ -119,7 +119,7 @@ if(in_array($export,['excel','csv'])) {
     else { header('Content-Type: text/csv; charset=utf-8'); header("Content-Disposition: attachment; filename=\"{$fn}.csv\""); }
     $out=fopen('php://output','w');
     fputcsv($out,['Void ID','Transaction ID','Customer','Type','Amount','Void Reason','Voided By','Void Date']);
-    foreach($rows as $r) fputcsv($out,['VOID-'.$r['void_id'],$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['transaction_type'])),'â‚±'.number_format($r['amount'],2),$r['void_reason'],$r['voided_by_name'],date('M d, Y H:i',strtotime($r['void_date']))]);
+    foreach($rows as $r) fputcsv($out,['VOID-'.$r['void_id'],$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['transaction_type'])),'₱'.number_format($r['amount'],2),$r['void_reason'],$r['voided_by_name'],date('M d, Y H:i',strtotime($r['void_date']))]);
     fclose($out); exit;
 }
 
@@ -190,7 +190,7 @@ require_once __DIR__ . '/../partials/header.php';
 <div class="txn-kpi-grid">
     <div class="txn-kpi-card"><div class="txn-kpi-lbl"><i class="fas fa-ban"></i> Total Voided</div><div class="txn-kpi-val"><?=number_format($kpi_total)?></div></div>
     <div class="txn-kpi-card"><div class="txn-kpi-lbl"><i class="fas fa-calendar-alt"></i> Voided This Period</div><div class="txn-kpi-val"><?=number_format($kpi_month)?></div></div>
-    <div class="txn-kpi-card red-card"><div class="txn-kpi-lbl"><i class="fas fa-peso-sign"></i> Total Voided Amount</div><div class="txn-kpi-val">â‚±<?=number_format($kpi_amount,2)?></div></div>
+    <div class="txn-kpi-card red-card"><div class="txn-kpi-lbl"><i class="fas fa-peso-sign"></i> Total Voided Amount</div><div class="txn-kpi-val">₱<?=number_format($kpi_amount,2)?></div></div>
 </div>
 
 <!-- Filters -->
@@ -215,7 +215,7 @@ require_once __DIR__ . '/../partials/header.php';
             <option value="combined"    <?=$f_type==='combined'?'selected':''?>>Combined</option>
         </select>
     </div>
-    <div><label>Search</label><input type="text" name="search" value="<?=htmlspecialchars($search)?>" class="inp" placeholder="TXN ID, Customerâ€¦"></div>
+    <div><label>Search</label><input type="text" name="search" value="<?=htmlspecialchars($search)?>" class="inp" placeholder="TXN ID, Customer—¦"></div>
     <div style="flex-direction:row;gap:6px;">
         <button type="submit" class="flt-btn flt-btn-solid-primary"><i class="fas fa-search"></i> Filter</button>
         <a href="manager_voided_transactions.php" class="flt-btn flt-btn-reset"><i class="fas fa-rotate-left"></i> Reset</a>
@@ -259,13 +259,13 @@ require_once __DIR__ . '/../partials/header.php';
             $fields = !empty($r['fields_changed']) ? json_decode($r['fields_changed'], true) : [];
 
             $jo_raw  = !empty($r['job_order_no']) ? $r['job_order_no'] : ($fields['job_order_no'] ?? '');
-            $jo_no   = !empty($jo_raw) ? (str_starts_with($jo_raw, 'JO-') ? htmlspecialchars($jo_raw) : 'JO-' . htmlspecialchars($jo_raw)) : 'â€”';
-            $v_plate = !empty($r['vehicle_plate']) ? htmlspecialchars($r['vehicle_plate']) : (!empty($fields['vehicle_plate']) ? htmlspecialchars($fields['vehicle_plate']) : 'â€”');
+            $jo_no   = !empty($jo_raw) ? (str_starts_with($jo_raw, 'JO-') ? htmlspecialchars($jo_raw) : 'JO-' . htmlspecialchars($jo_raw)) : '—';
+            $v_plate = !empty($r['vehicle_plate']) ? htmlspecialchars($r['vehicle_plate']) : (!empty($fields['vehicle_plate']) ? htmlspecialchars($fields['vehicle_plate']) : '—');
             $pay_raw = !empty($r['payment_method']) ? $r['payment_method'] : ($fields['payment_method'] ?? 'Cash');
             if (empty($pay_raw) || $pay_raw === 'N/A') $pay_raw = 'Cash';
             $pay_method = htmlspecialchars($pay_raw);
 
-            // Items / Service â€” from subquery column, then fields_changed voided_items
+            // Items / Service — from subquery column, then fields_changed voided_items
             $items_parts = [];
             if (!empty($fields['voided_items']) && is_array($fields['voided_items'])) {
                 foreach ($fields['voided_items'] as $vi) {
@@ -276,7 +276,7 @@ require_once __DIR__ . '/../partials/header.php';
             if (empty($items_parts) && !empty($r['item_names'])) {
                 $items_parts[] = htmlspecialchars($r['item_names']);
             }
-            $items_display = !empty($items_parts) ? implode(', ', $items_parts) : '<em style="color:#94a3b8;">â€”</em>';
+            $items_display = !empty($items_parts) ? implode(', ', $items_parts) : '<em style="color:#94a3b8;">—</em>';
 
             // Transaction type label
             if (str_contains($t,'job')) $type_label = '<span class="badge badge-orange">Job Order</span>';
@@ -291,10 +291,10 @@ require_once __DIR__ . '/../partials/header.php';
             <td><?=$v_plate?></td>
             <td><?=$type_label?></td>
             <td><?=$items_display?></td>
-            <td style="font-weight:700;color:#dc2626;">â‚±<?=number_format($r['amount'],2)?></td>
+            <td style="font-weight:700;color:#dc2626;">₱<?=number_format($r['amount'],2)?></td>
             <td><?=$pay_method?></td>
             <td style="color:#dc2626;font-style:italic;"><?=htmlspecialchars($r['void_reason'])?></td>
-            <td style="color:#94a3b8;"><?=!empty($r['manager_remarks']) ? htmlspecialchars($r['manager_remarks']) : 'â€”'?></td>
+            <td style="color:#94a3b8;"><?=!empty($r['manager_remarks']) ? htmlspecialchars($r['manager_remarks']) : '—'?></td>
             <td><?=htmlspecialchars($r['voided_by_name'])?></td>
             <td><?=date('M d, Y h:i A',strtotime($r['void_date']))?></td>
             <td>
@@ -304,13 +304,13 @@ require_once __DIR__ . '/../partials/header.php';
                     'txnId'    => $r['transaction_id'],
                     'customer' => $r['customer'] ?? 'Walk-in',
                     'type'     => ucwords(str_replace('_',' ',$r['transaction_type'])),
-                    'amount'   => 'â‚±' . number_format($r['amount'],2),
+                    'amount'   => '₱' . number_format($r['amount'],2),
                     'reason'   => $r['void_reason'],
                     'remarks'  => $r['manager_remarks'] ?? '',
                     'by'       => $r['voided_by_name'] ?? 'Unknown',
                     'date'     => date('M d, Y h:i A', strtotime($r['void_date'])),
                     'payment'  => $pay_method,
-                    'items'    => $r['item_names'] ?? 'â€”',
+                    'items'    => $r['item_names'] ?? '—',
                     'vehicle'  => $v_plate,
                     'joNo'     => $jo_no,
                     'fields_changed' => !empty($r['fields_changed']) ? json_decode($r['fields_changed'], true) : null
@@ -357,7 +357,7 @@ require_once __DIR__ . '/../partials/header.php';
 </style>
 <script>
 function openVoidModal(d){
-  var pm = d.payment || 'â€”';
+  var pm = d.payment || '—';
   var itemsHtml = '';
   
   if (d.fields_changed) {
@@ -375,8 +375,8 @@ function openVoidModal(d){
       d.fields_changed.voided_items.forEach(function(item) {
         itemsHtml += '<tr style="border-bottom: 1px solid #fecaca;">' +
           '<td style="padding: 6px 8px;"><strong>' + item.product_name + '</strong></td>' +
-          '<td style="padding: 6px 8px; color: #64748b;">' + item.quantity + ' x â‚±' + Number(item.unit_price).toFixed(2) + '</td>' +
-          '<td style="padding: 6px 8px; font-weight: bold; color: #dc2626;">â‚±' + Number(item.subtotal).toFixed(2) + '</td>' +
+          '<td style="padding: 6px 8px; color: #64748b;">' + item.quantity + ' x ₱' + Number(item.unit_price).toFixed(2) + '</td>' +
+          '<td style="padding: 6px 8px; font-weight: bold; color: #dc2626;">₱' + Number(item.subtotal).toFixed(2) + '</td>' +
           '</tr>';
       });
       itemsHtml += '</table></div>';
@@ -390,15 +390,15 @@ function openVoidModal(d){
   var rows=[
     ['Void ID',          '<strong style="color:#991b1b;">'+d.voidId+'</strong>'],
     ['Transaction ID',   '<span style="font-family:monospace;">'+d.txnId+'</span>'],
-    ['Job Order No.',    d.joNo || 'â€”'],
+    ['Job Order No.',    d.joNo || '—'],
     ['Customer',         d.customer],
-    ['Vehicle Plate',    d.vehicle || 'â€”'],
+    ['Vehicle Plate',    d.vehicle || '—'],
     ['Type',             d.type],
     ['Items / Service',  itemsHtml],
     ['Payment Method',   pm],
     ['Original Amount',  '<strong style="color:#dc2626;font-size:15px;">'+d.amount+'</strong>'],
     ['Void Reason',      d.reason],
-    ['Manager Remarks',  d.remarks || 'â€”'],
+    ['Manager Remarks',  d.remarks || '—'],
     ['Voided By',        d.by],
     ['Void Date',        d.date]
   ];

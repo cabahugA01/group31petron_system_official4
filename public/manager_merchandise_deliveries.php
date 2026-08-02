@@ -290,7 +290,7 @@ body{overflow-x:hidden !important;max-width:100vw !important;}
 </style>
 
 <?php
-// Summary counts for the 5 dashboard cards â€” live from DB
+// Summary counts for the 5 dashboard cards — live from DB
 $cnt_pending = 0; $cnt_verified = 0; $cnt_rejected = 0; $total_qty_verified = 0; $total_records = 0;
 try {
     $sc = $pdo->prepare("SELECT status, quantity FROM deliveries_oversight WHERE station_id=? AND delivery_type='merchandise'");
@@ -601,7 +601,7 @@ try {
         <div class="obox"><i class="fas fa-info-circle"></i> Add remarks about the discrepancy (e.g. "5 pcs kulang", "2 pcs guba"). Manager will use this to decide resolution.</div>
         <div class="fld"><label>Delivery ID</label><input type="text" id="rmk-ref" readonly></div>
         <div class="fld"><label>Discrepancy Note from Manager</label><input type="text" id="rmk-mgrnote" readonly></div>
-        <div class="fld"><label>Your Remarks <span style="color:#dc3545;">*</span></label><textarea id="rmk-text" rows="4" placeholder="e.g. 5 pcs kulang â€” supplier confirmed shortage. OR 2 pcs guba upon inspection."></textarea></div>
+        <div class="fld"><label>Your Remarks <span style="color:#dc3545;">*</span></label><textarea id="rmk-text" rows="4" placeholder="e.g. 5 pcs kulang — supplier confirmed shortage. OR 2 pcs guba upon inspection."></textarea></div>
         <div class="modal-footer">
             <button type="button" onclick="closeM('remarksModal')" class="btn ghost">Cancel</button>
             <button type="button" onclick="doAddRemarks()" class="btn" style="background:#6c757d;color:#fff;font-weight:700;"><i class="fas fa-save"></i> Save Remarks</button>
@@ -719,7 +719,7 @@ try {
             <div class="modal-title"><i class="fas fa-sliders-h" style="color:#002F70;"></i> Adjust Delivery</div>
             <button class="modal-close" onclick="closeM('adjModal')">&times;</button>
         </div>
-        <div class="ibox"><i class="fas fa-info-circle"></i> Minor corrections only. After saving, this delivery will be marked <strong>Adjusted â€” Ready for Stock-In</strong>. Inventory will be updated by Staff during stock-in. <strong>Reason is mandatory.</strong></div>
+        <div class="ibox"><i class="fas fa-info-circle"></i> Minor corrections only. After saving, this delivery will be marked <strong>Adjusted — Ready for Stock-In</strong>. Inventory will be updated by Staff during stock-in. <strong>Reason is mandatory.</strong></div>
         <div class="fg2">
             <div class="fld"><label>Delivery ID</label><input type="text" id="adj-ref" readonly></div>
             <div class="fld"><label>Product</label><input type="text" id="adj-prod" readonly></div>
@@ -819,7 +819,7 @@ function toast(msg, type) {
 // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function h(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function j(s) { return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"'); }
-function dt(s) { return s ? String(s).replace('T',' ').substring(0,16) : '<span style="color:#adb5bd">â€”</span>'; }
+function dt(s) { return s ? String(s).replace('T',' ').substring(0,16) : '<span style="color:#adb5bd">—</span>'; }
 function dr(l,v){ return '<div class="drow"><span class="dlbl">'+l+'</span><span class="dval">'+v+'</span></div>'; }
 
 function badgeHtml(status) {
@@ -834,7 +834,7 @@ function getDisplayStatus(raw) {
     if (s === 'pending resolution') return 'Pending Resolution';
     if (s === 'awaiting replacement') return 'Awaiting Replacement';
     if (s === 'ready for stock-in' || s === 'confirmed' || s === 'approved' || s === 'validated' || s === 'verified' || s === 'stock-in complete' || s === 'partial delivery' || s === 'damaged items') return 'Verified';
-    if (s === 'adjusted' || s === 'adjusted â€” verified') return 'Adjusted â€” Verified';
+    if (s === 'adjusted' || s === 'adjusted — verified') return 'Adjusted — Verified';
     if (s === 'returned' || s === 'returned to staff') return 'Returned to Staff';
     if (s === 'returned to supplier') return 'Returned to Supplier';
     if (s === 'discrepancy' || s === 'flagged' || s === 'rejected' || s === 'rejected delivery') return 'Rejected';
@@ -880,7 +880,7 @@ function switchTab(tab) {
     } else {
         sf.innerHTML = '<option value="history">All Processed</option>'
                      + '<option value="Verified">Verified</option>'
-                     + '<option value="Adjusted â€” Verified">Adjusted (Verified)</option>'
+                     + '<option value="Adjusted — Verified">Adjusted (Verified)</option>'
                      + '<option value="Returned to Staff">Returned to Staff</option>'
                      + '<option value="Returned to Supplier">Returned to Supplier</option>'
                      + '<option value="Rejected">Rejected</option>';
@@ -933,7 +933,7 @@ function loadDeliveries() {
                 if (status === 'active') return true;
                 return ds === status || d.status === status;
             } else {
-                var histBuckets = ['Verified','Adjusted â€” Verified','Returned to Staff','Returned to Supplier','Rejected','Closed'];
+                var histBuckets = ['Verified','Adjusted — Verified','Returned to Staff','Returned to Supplier','Rejected','Closed'];
                 if (histBuckets.indexOf(ds) === -1) return false;
                 if (status === 'history') return true;
                 return ds === status || d.status === status;
@@ -947,7 +947,7 @@ function loadDeliveries() {
             return;
         }
 
-        // Flat per-item rendering â€” one row per delivery record
+        // Flat per-item rendering — one row per delivery record
         var out = '';
         rows.forEach(function(d) {
             var ds = getDisplayStatus(d.status);
@@ -957,7 +957,7 @@ function loadDeliveries() {
                 'Pending Resolution':   'sbadge-pending-resolution',
                 'Awaiting Replacement': 'sbadge-awaiting-replacement',
                 'Verified':             'sbadge-approved',
-                'Adjusted â€” Verified':  'sbadge-adjusted',
+                'Adjusted — Verified':  'sbadge-adjusted',
                 'Returned to Staff':    'sbadge-pending-resolution',
                 'Returned to Supplier': 'sbadge-returned-to-supplier',
                 'Rejected':             'sbadge-rejected',
@@ -965,9 +965,9 @@ function loadDeliveries() {
             }[ds] || 'sbadge-pending';
             var badge = '<span class="sbadge ' + badgeCls + '">' + h(ds) + '</span>';
 
-            var verDate = d.verification_date ? dtFull(d.verification_date) : '<span style="color:#aaa;">â€”</span>';
+            var verDate = d.verification_date ? dtFull(d.verification_date) : '<span style="color:#aaa;">—</span>';
 
-            // Action buttons â€” vertically stacked
+            // Action buttons — vertically stacked
             var acts = '';
             if (ds === 'Pending') {
                 acts += '<button class="btn-act btn-approve" onclick=\'openSingleApr(' + d.id + ',' + JSON.stringify(d) + ')\'><i class="fas fa-check-double"></i> Verify</button>';
@@ -978,14 +978,14 @@ function loadDeliveries() {
             out += '<tr>'
                 + '<td><code style="font-size:11px;font-weight:700;">' + h(d.delivery_ref || ('#' + d.id)) + '</code></td>'
                 + '<td style="white-space:nowrap;font-size:12px;">' + dt(d.delivery_date) + '</td>'
-                + '<td><code style="font-size:11px;">' + h(d.batch_id || 'â€”') + '</code></td>'
-                + '<td style="font-size:12px;">' + h(d.dr_number || 'â€”') + '</td>'
-                + '<td style="font-size:12px;"><strong>' + h(d.supplier_name || 'â€”') + '</strong></td>'
-                + '<td style="font-size:12px;"><strong>' + h(d.product_name || 'â€”') + '</strong></td>'
-                + '<td style="font-size:12px;">' + h(d.category || 'â€”') + '</td>'
+                + '<td><code style="font-size:11px;">' + h(d.batch_id || '—') + '</code></td>'
+                + '<td style="font-size:12px;">' + h(d.dr_number || '—') + '</td>'
+                + '<td style="font-size:12px;"><strong>' + h(d.supplier_name || '—') + '</strong></td>'
+                + '<td style="font-size:12px;"><strong>' + h(d.product_name || '—') + '</strong></td>'
+                + '<td style="font-size:12px;">' + h(d.category || '—') + '</td>'
                 + '<td style="text-align:center;font-weight:700;">' + parseFloat(d.quantity_delivered||0).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2}) + '</td>'
                 + '<td style="font-size:12px;">' + h(d.unit || 'pcs') + '</td>'
-                + '<td style="font-size:12px;">' + h(d.encoded_by_name || 'â€”') + '</td>'
+                + '<td style="font-size:12px;">' + h(d.encoded_by_name || '—') + '</td>'
                 + '<td>' + badge + '</td>'
                 + '<td style="font-size:11px;color:#64748b;">' + verDate + '</td>'
                 + '<td style="font-size:11px;color:#64748b;max-width:120px;">' + h(d.remarks || '') + '</td>'
@@ -1030,18 +1030,18 @@ function openSingleDtl(id) {
         if (!res.success || !res.data) { toast('Could not load detail.', 'error'); return; }
         var d = res.data;
         var dtlHtml = '<div class="drow"><div class="dlbl">Delivery ID / Ref</div><div class="dval"><code>' + h(d.delivery_ref || '') + '</code></div></div>'
-            + '<div class="drow"><div class="dlbl">Batch ID</div><div class="dval"><code>' + h(d.batch_id || 'â€”') + '</code></div></div>'
-            + '<div class="drow"><div class="dlbl">DR / Invoice No.</div><div class="dval">' + h(d.dr_number || 'â€”') + '</div></div>'
+            + '<div class="drow"><div class="dlbl">Batch ID</div><div class="dval"><code>' + h(d.batch_id || '—') + '</code></div></div>'
+            + '<div class="drow"><div class="dlbl">DR / Invoice No.</div><div class="dval">' + h(d.dr_number || '—') + '</div></div>'
             + '<div class="drow"><div class="dlbl">Supplier</div><div class="dval">' + h(d.supplier_name || d.supplier || '') + '</div></div>'
             + '<div class="drow"><div class="dlbl">Item Name</div><div class="dval"><strong>' + h(d.product_name || d.product || '') + '</strong></div></div>'
-            + '<div class="drow"><div class="dlbl">Category</div><div class="dval">' + h(d.category || 'â€”') + '</div></div>'
+            + '<div class="drow"><div class="dlbl">Category</div><div class="dval">' + h(d.category || '—') + '</div></div>'
             + '<div class="drow"><div class="dlbl">Delivery Date</div><div class="dval">' + dt(d.delivery_date) + '</div></div>'
             + '<div class="drow"><div class="dlbl">Qty Delivered</div><div class="dval"><strong>' + parseFloat(d.quantity_delivered||0).toLocaleString() + ' ' + h(d.unit||'pcs') + '</strong></div></div>'
-            + '<div class="drow"><div class="dlbl">Staff Receiver</div><div class="dval">' + h(d.encoded_by_name || 'â€”') + '</div></div>'
+            + '<div class="drow"><div class="dlbl">Staff Receiver</div><div class="dval">' + h(d.encoded_by_name || '—') + '</div></div>'
             + '<div class="drow"><div class="dlbl">Status</div><div class="dval">' + h(d.display_status || d.status) + '</div></div>'
-            + '<div class="drow"><div class="dlbl">Verification Date</div><div class="dval">' + (d.verification_date ? dtFull(d.verification_date) : 'â€”') + '</div></div>'
-            + '<div class="drow"><div class="dlbl">Manager Notes</div><div class="dval">' + h(d.manager_notes || d.manager_reason || 'â€”') + '</div></div>'
-            + '<div class="drow"><div class="dlbl">Remarks</div><div class="dval">' + h(d.remarks || 'â€”') + '</div></div>';
+            + '<div class="drow"><div class="dlbl">Verification Date</div><div class="dval">' + (d.verification_date ? dtFull(d.verification_date) : '—') + '</div></div>'
+            + '<div class="drow"><div class="dlbl">Manager Notes</div><div class="dval">' + h(d.manager_notes || d.manager_reason || '—') + '</div></div>'
+            + '<div class="drow"><div class="dlbl">Remarks</div><div class="dval">' + h(d.remarks || '—') + '</div></div>';
         document.getElementById('dtl-body').innerHTML = dtlHtml;
         openM('dtlModal');
     });
@@ -1049,7 +1049,7 @@ function openSingleDtl(id) {
 
 // dtFull helper for datetime display
 function dtFull(s) {
-    if (!s) return 'â€”';
+    if (!s) return '—';
     var d = new Date(s.replace(' ','T'));
     if (isNaN(d.getTime())) return s;
     return d.toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'})
@@ -1270,8 +1270,8 @@ function openResolve(id, ref, prod, qty, remarks, mgrNote) {
     document.getElementById('res-ref').value     = ref;
     document.getElementById('res-prod').value    = prod;
     document.getElementById('res-qty').value     = qty;
-    document.getElementById('res-remarks').value = remarks || 'â€”';
-    document.getElementById('res-notes').value   = mgrNote || 'â€”';
+    document.getElementById('res-remarks').value = remarks || '—';
+    document.getElementById('res-notes').value   = mgrNote || '—';
     document.getElementById('res-note').value    = '';
     document.getElementById('res-adj-qty').value = '';
     document.getElementById('adj-qty-wrap').style.display = 'none';
@@ -1296,7 +1296,7 @@ function doResolve() {
 function openRemarks(id, ref, mgrNote) {
     CID = id;
     document.getElementById('rmk-ref').value     = ref;
-    document.getElementById('rmk-mgrnote').value = mgrNote || 'â€”';
+    document.getElementById('rmk-mgrnote').value = mgrNote || '—';
     document.getElementById('rmk-text').value    = '';
     openM('remarksModal');
 }
@@ -1359,16 +1359,16 @@ function openDtl(id) {
             : '<span style="background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:700;">ðŸ“¦ Merchandise</span>';
         html += dr('Delivery ID','<span class="del-ref">'+h(d.delivery_ref)+'</span>')
             + dr('Type', typeBadge)
-            + dr('Supplier','<strong>'+h(d.supplier_name||'â€”')+'</strong>')
-            + dr('Product / Fuel',h(d.product_name||'â€”'))
+            + dr('Supplier','<strong>'+h(d.supplier_name||'—')+'</strong>')
+            + dr('Product / Fuel',h(d.product_name||'—'))
             + dr('Qty Delivered','<strong style="color:#155724;">'+parseFloat(d.quantity_delivered||0).toLocaleString()+'</strong> '+h(d.unit||''))
             + dr('Date',dt(d.delivery_date))
-            + dr('DR Number',h(d.dr_number||'â€”'))
-            + dr('Encoded By',h(d.encoded_by_name||'â€”'))
+            + dr('DR Number',h(d.dr_number||'—'))
+            + dr('Encoded By',h(d.encoded_by_name||'—'))
             + dr('Status','<span class="sbadge sbadge-'+ds.toLowerCase().replace(/ /g,'-')+'">'+h(ds)+'</span>')
-            + dr('Staff Remarks',h(d.remarks||'â€”'))
-            + dr('Manager Notes',h(d.manager_reason||d.admin_notes||'â€”'))
-            + dr('Manager',h(d.manager_name||'â€”'))
+            + dr('Staff Remarks',h(d.remarks||'—'))
+            + dr('Manager Notes',h(d.manager_reason||d.admin_notes||'—'))
+            + dr('Manager',h(d.manager_name||'—'))
             + dr('Action At',dt(d.manager_action_at));
         if (d.resolution_action) html += dr('Resolution',h(d.resolution_action));
         document.getElementById('dtl-body').innerHTML = html;
@@ -1396,7 +1396,7 @@ function openBatchDtl(batchId) {
               + '<td style="padding:8px;font-weight:600;">' + h(item.product_name) + '</td>'
               + '<td style="padding:8px;text-align:right;font-weight:700;">' + parseFloat(item.quantity_delivered).toLocaleString() + ' ' + h(item.unit || 'pcs') + '</td>'
               + '<td style="padding:8px;"><span class="sbadge sbadge-' + itemDs.toLowerCase().replace(/ /g,'-') + '">' + h(itemDs) + '</span></td>'
-              + '<td style="padding:8px;color:#64748b;">' + h(item.remarks || 'â€”') + '</td>'
+              + '<td style="padding:8px;color:#64748b;">' + h(item.remarks || '—') + '</td>'
               + '</tr>';
     });
     html += '</tbody></table>';

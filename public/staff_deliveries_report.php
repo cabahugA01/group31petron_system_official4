@@ -135,14 +135,14 @@ if ($has_fuel_deliveries) {
                     0 AS unit_price,
                     0 AS total_amount,
                     fd.delivery_date,
-                    COALESCE(fd.invoice_no, 'â€”') AS po_reference,
+                    COALESCE(fd.invoice_no, '—') AS po_reference,
                     0 AS expected_quantity,
                     fd.delivery_liters AS actual_quantity,
                     0 AS variance,
                     fd.status,
                     CASE WHEN HOUR(fd.created_at) >= 6 AND HOUR(fd.created_at) < 14 THEN 'Shift 1' ELSE 'Shift 2' END AS shift,
-                    COALESCE(fd.notes, 'â€”') AS remarks,
-                    COALESCE(u.username, COALESCE(fd.received_by, 'â€”')) AS encoder,
+                    COALESCE(fd.notes, '—') AS remarks,
+                    COALESCE(u.username, COALESCE(fd.received_by, '—')) AS encoder,
                     fd.created_at
             FROM fuel_deliveries fd
             LEFT JOIN users u ON fd.received_by = u.id
@@ -187,21 +187,21 @@ if ($has_deliveries_oversight || $has_merchandise_deliveries) {
         if ($has_deliveries_oversight) {
         $sql = "SELECT 
                     md.id,
-                    COALESCE(md.batch_id, 'â€”') AS delivery_id,
+                    COALESCE(md.batch_id, '—') AS delivery_id,
                     md.supplier AS supplier,
                     md.product AS product_name,
                     md.quantity,
                     COALESCE(md.unit_price, 0) AS unit_price,
                     COALESCE(md.payable_amount, md.expected_amount, 0) AS total_amount,
                     md.delivery_date,
-                    COALESCE(md.delivery_ref, 'â€”') AS po_reference,
+                    COALESCE(md.delivery_ref, '—') AS po_reference,
                     COALESCE(md.expected_quantity, md.quantity, 0) AS expected_quantity,
                     COALESCE(md.actual_quantity, md.quantity, 0) AS actual_quantity,
                     0 AS variance,
                     md.status,
                     'Shift 1' AS shift,
-                    COALESCE(md.remarks, 'â€”') AS remarks,
-                    COALESCE(u.username, 'â€”') AS encoder,
+                    COALESCE(md.remarks, '—') AS remarks,
+                    COALESCE(u.username, '—') AS encoder,
                     md.created_at
             FROM deliveries_oversight md
             LEFT JOIN users u ON md.encoded_by = u.id
@@ -366,17 +366,17 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
             echo '<td>' . htmlspecialchars($delivery['supplier']) . '</td>';
             echo '<td>' . htmlspecialchars($delivery['fuel_type']) . '</td>';
             echo '<td class="text-right">' . number_format($delivery['quantity'], 2) . '</td>';
-            echo '<td class="text-right">â‚±' . number_format($delivery['unit_price'], 2) . '</td>';
-            echo '<td class="text-right font-bold">â‚±' . number_format($delivery['total_amount'], 2) . '</td>';
+            echo '<td class="text-right">₱' . number_format($delivery['unit_price'], 2) . '</td>';
+            echo '<td class="text-right font-bold">₱' . number_format($delivery['total_amount'], 2) . '</td>';
             echo '<td>' . date('m/d/Y', strtotime($delivery['delivery_date'])) . '</td>';
-            echo '<td>' . htmlspecialchars($delivery['po_reference'] ?? 'â€”') . '</td>';
+            echo '<td>' . htmlspecialchars($delivery['po_reference'] ?? '—') . '</td>';
             echo '<td class="text-right">' . number_format($delivery['expected_quantity'] ?? 0, 2) . '</td>';
             echo '<td class="text-right">' . number_format($delivery['actual_quantity'] ?? 0, 2) . '</td>';
             echo '<td class="text-right">' . number_format($delivery['variance'] ?? 0, 2) . '</td>';
             echo '<td class="text-center">' . strtoupper($delivery['status'] ?? 'PENDING') . '</td>';
             echo '<td>' . htmlspecialchars($delivery['shift'] ?? 'N/A') . '</td>';
             echo '<td>' . htmlspecialchars($delivery['encoder'] ?? 'N/A') . '</td>';
-            echo '<td>' . htmlspecialchars($delivery['remarks'] ?? 'â€”') . '</td>';
+            echo '<td>' . htmlspecialchars($delivery['remarks'] ?? '—') . '</td>';
             echo '</tr>';
         }
     } else {
@@ -409,12 +409,12 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     echo '<tr>';
     echo '<td><strong>Shift 1 (6AM - 2PM)</strong></td>';
     echo '<td class="text-center">' . $shift1_count . '</td>';
-    echo '<td class="text-right font-bold">â‚±' . number_format($fuel_shift1_total, 2) . '</td>';
+    echo '<td class="text-right font-bold">₱' . number_format($fuel_shift1_total, 2) . '</td>';
     echo '</tr>';
     echo '<tr>';
     echo '<td><strong>Shift 2 (2PM - 10PM)</strong></td>';
     echo '<td class="text-center">' . $shift2_count . '</td>';
-    echo '<td class="text-right font-bold">â‚±' . number_format($fuel_shift2_total, 2) . '</td>';
+    echo '<td class="text-right font-bold">₱' . number_format($fuel_shift2_total, 2) . '</td>';
     echo '</tr>';
     echo '</tbody>';
     echo '</table>';
@@ -451,17 +451,17 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
             echo '<td>' . htmlspecialchars($delivery['supplier']) . '</td>';
             echo '<td>' . htmlspecialchars($delivery['product_name']) . '</td>';
             echo '<td class="text-right">' . number_format($delivery['quantity'], 2) . '</td>';
-            echo '<td class="text-right">â‚±' . number_format($delivery['unit_price'], 2) . '</td>';
-            echo '<td class="text-right font-bold">â‚±' . number_format($delivery['total_amount'], 2) . '</td>';
+            echo '<td class="text-right">₱' . number_format($delivery['unit_price'], 2) . '</td>';
+            echo '<td class="text-right font-bold">₱' . number_format($delivery['total_amount'], 2) . '</td>';
             echo '<td>' . date('m/d/Y', strtotime($delivery['delivery_date'])) . '</td>';
-            echo '<td>' . htmlspecialchars($delivery['po_reference'] ?? 'â€”') . '</td>';
+            echo '<td>' . htmlspecialchars($delivery['po_reference'] ?? '—') . '</td>';
             echo '<td class="text-right">' . number_format($delivery['expected_quantity'] ?? 0, 2) . '</td>';
             echo '<td class="text-right">' . number_format($delivery['actual_quantity'] ?? 0, 2) . '</td>';
             echo '<td class="text-right">' . number_format($delivery['variance'] ?? 0, 2) . '</td>';
             echo '<td class="text-center">' . strtoupper($delivery['status'] ?? 'PENDING') . '</td>';
             echo '<td>' . htmlspecialchars($delivery['shift'] ?? 'N/A') . '</td>';
             echo '<td>' . htmlspecialchars($delivery['encoder'] ?? 'N/A') . '</td>';
-            echo '<td>' . htmlspecialchars($delivery['remarks'] ?? 'â€”') . '</td>';
+            echo '<td>' . htmlspecialchars($delivery['remarks'] ?? '—') . '</td>';
             echo '</tr>';
         }
     } else {
@@ -494,12 +494,12 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     echo '<tr>';
     echo '<td><strong>Shift 1 (6AM - 2PM)</strong></td>';
     echo '<td class="text-center">' . $merch_shift1_count . '</td>';
-    echo '<td class="text-right font-bold">â‚±' . number_format($merch_shift1_total, 2) . '</td>';
+    echo '<td class="text-right font-bold">₱' . number_format($merch_shift1_total, 2) . '</td>';
     echo '</tr>';
     echo '<tr>';
     echo '<td><strong>Shift 2 (2PM - 10PM)</strong></td>';
     echo '<td class="text-center">' . $merch_shift2_count . '</td>';
-    echo '<td class="text-right font-bold">â‚±' . number_format($merch_shift2_total, 2) . '</td>';
+    echo '<td class="text-right font-bold">₱' . number_format($merch_shift2_total, 2) . '</td>';
     echo '</tr>';
     echo '</tbody>';
     echo '</table>';
@@ -1013,7 +1013,7 @@ require_once __DIR__ . '/../partials/header.php';
             <p style="font-weight:700;font-size:12px;margin-bottom:4px;"><?= htmlspecialchars($station_name) ?></p>
             <div style="font-size:11px;color:#334155;font-weight:600;display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-top:4px;">
                 <span><strong>Period:</strong> <?= date('M d, Y', strtotime($date_start)) ?> - <?= date('M d, Y', strtotime($date_end)) ?></span>
-                <span>â€¢</span>
+                <span>—¢</span>
                 <span><strong>Shift:</strong> <?= $user_shift_number === 1 ? 'Shift 1 (6AM - 2PM)' : ($user_shift_number === 2 ? 'Shift 2 (2PM - 10PM)' : 'All Shifts (Shift 1 & Shift 2)') ?></span>
 
             </div>
@@ -1054,17 +1054,17 @@ require_once __DIR__ . '/../partials/header.php';
                                 <td><?= htmlspecialchars($delivery['supplier']) ?></td>
                                 <td><?= htmlspecialchars($delivery['fuel_type']) ?></td>
                                 <td class="text-right"><?= number_format($delivery['quantity'], 1) ?></td>
-                                <td class="text-right">â‚±<?= number_format($delivery['unit_price'], 2) ?></td>
-                                <td class="text-right font-bold">â‚±<?= number_format($delivery['total_amount'], 2) ?></td>
+                                <td class="text-right">₱<?= number_format($delivery['unit_price'], 2) ?></td>
+                                <td class="text-right font-bold">₱<?= number_format($delivery['total_amount'], 2) ?></td>
                                 <td><?= date('m/d/y', strtotime($delivery['delivery_date'])) ?></td>
-                                <td><?= htmlspecialchars($delivery['po_reference'] ?? 'â€”') ?></td>
+                                <td><?= htmlspecialchars($delivery['po_reference'] ?? '—') ?></td>
                                 <td class="text-right"><?= number_format($delivery['expected_quantity'] ?? 0, 1) ?></td>
                                 <td class="text-right"><?= number_format($delivery['actual_quantity'] ?? 0, 1) ?></td>
                                 <td class="text-right"><?= number_format($delivery['variance'] ?? 0, 1) ?></td>
                                 <td><span class="status-badge"><?= strtoupper($delivery['status'] ?? 'PENDING') ?></span></td>
                                 <td><?= htmlspecialchars($delivery['shift'] ?? 'N/A') ?></td>
                                 <td><?= htmlspecialchars($delivery['encoder'] ?? 'N/A') ?></td>
-                                <td><?= htmlspecialchars($delivery['remarks'] ?? 'â€”') ?></td>
+                                <td><?= htmlspecialchars($delivery['remarks'] ?? '—') ?></td>
                             </tr>
                             <?php 
                                 endforeach;
@@ -1118,17 +1118,17 @@ require_once __DIR__ . '/../partials/header.php';
                                 <td><?= htmlspecialchars($delivery['supplier']) ?></td>
                                 <td><?= htmlspecialchars($delivery['product_name']) ?></td>
                                 <td class="text-right"><?= number_format($delivery['quantity'], 1) ?></td>
-                                <td class="text-right">â‚±<?= number_format($delivery['unit_price'], 2) ?></td>
-                                <td class="text-right font-bold">â‚±<?= number_format($delivery['total_amount'], 2) ?></td>
+                                <td class="text-right">₱<?= number_format($delivery['unit_price'], 2) ?></td>
+                                <td class="text-right font-bold">₱<?= number_format($delivery['total_amount'], 2) ?></td>
                                 <td><?= date('m/d/y', strtotime($delivery['delivery_date'])) ?></td>
-                                <td><?= htmlspecialchars($delivery['po_reference'] ?? 'â€”') ?></td>
+                                <td><?= htmlspecialchars($delivery['po_reference'] ?? '—') ?></td>
                                 <td class="text-right"><?= number_format($delivery['expected_quantity'] ?? 0, 1) ?></td>
                                 <td class="text-right"><?= number_format($delivery['actual_quantity'] ?? 0, 1) ?></td>
                                 <td class="text-right"><?= number_format($delivery['variance'] ?? 0, 1) ?></td>
                                 <td><span class="status-badge"><?= strtoupper($delivery['status'] ?? 'PENDING') ?></span></td>
                                 <td><?= htmlspecialchars($delivery['shift'] ?? 'N/A') ?></td>
                                 <td><?= htmlspecialchars($delivery['encoder'] ?? 'N/A') ?></td>
-                                <td><?= htmlspecialchars($delivery['remarks'] ?? 'â€”') ?></td>
+                                <td><?= htmlspecialchars($delivery['remarks'] ?? '—') ?></td>
                             </tr>
                             <?php 
                                 endforeach;

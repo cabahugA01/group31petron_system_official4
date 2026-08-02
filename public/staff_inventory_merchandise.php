@@ -72,6 +72,7 @@ try {
         FROM inventory_products ip
         LEFT JOIN station_inventory si ON si.product_id = ip.id AND (si.station_id = ? OR si.station_id = 0 OR si.station_id IS NULL)
         WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
+          AND LOWER(COALESCE(ip.status,'active')) NOT IN ('archived','deleted','inactive')
 
         UNION
 
@@ -96,7 +97,7 @@ try {
         LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND (si2.station_id = ? OR si2.station_id = 0 OR si2.station_id IS NULL)
         WHERE LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
           AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
-          AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products'))
+          AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(status,'active')) NOT IN ('archived','deleted') AND LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products'))
 
         ORDER BY category_name, name
     ");
@@ -154,6 +155,51 @@ try {
             'status'        => 'Active',
             'date'          => $b['encoded_at']
         ];
+    }
+} catch (Exception $e) {}
+
+// ── Stock In map: total received per product ─────────────────────────────────
+$prod_added_map = [];
+try {
+    $siStmt = $pdo->prepare("
+        SELECT product_id, COALESCE(SUM(qty_received), 0) AS total_added
+        FROM merchandise_stock_in
+        WHERE station_id = ? AND product_id IS NOT NULL
+        GROUP BY product_id
+    ");
+    $siStmt->execute([$station_id]);
+    foreach ($siStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $prod_added_map[(int)$r['product_id']] = (float)$r['total_added'];
+    }
+} catch (Exception $e) {}
+
+// ── Stock Out map: total sold/deducted per product ───────────────────────────
+$prod_deducted_map = [];
+try {
+    $soStmt = $pdo->prepare("
+        SELECT ti.product_id, COALESCE(SUM(ti.quantity), 0) AS total_deducted
+        FROM merchandise_transaction_items ti
+        JOIN merchandise_transactions t ON t.id = ti.transaction_id
+        WHERE t.station_id = ? AND ti.product_id IS NOT NULL
+        GROUP BY ti.product_id
+    ");
+    $soStmt->execute([$station_id]);
+    foreach ($soStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $prod_deducted_map[(int)$r['product_id']] = (float)$r['total_deducted'];
+    }
+} catch (Exception $e) {}
+try {
+    $imStmt = $pdo->prepare("
+        SELECT product_id, COALESCE(SUM(ABS(quantity_change)), 0) AS total_deducted
+        FROM inventory_movements
+        WHERE station_id = ? AND quantity_change < 0 AND product_id IS NOT NULL
+        GROUP BY product_id
+    ");
+    $imStmt->execute([$station_id]);
+    foreach ($imStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $pid = (int)$r['product_id'];
+        $existing = $prod_deducted_map[$pid] ?? 0;
+        $prod_deducted_map[$pid] = max($existing, (float)$r['total_deducted']);
     }
 } catch (Exception $e) {}
 
@@ -234,6 +280,8 @@ foreach ($merch_inventory as $item) {
         'price'        => (float)($item['price'] ?? 0),
         'last_updated' => $item['last_updated'] ?? '',
         'batches'      => $batches,
+        'stock_in'     => (int)($prod_added_map[$pid] ?? 0),
+        'stock_out'    => (int)($prod_deducted_map[$pid] ?? 0),
     ];
 }
 sort($all_categories);
@@ -431,6 +479,27 @@ body,html{overflow-x:hidden;max-width:100%;}
 .sr-success-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:14000;}
 .sr-success-popup{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:14001;background:#fff;padding:28px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);text-align:center;min-width:300px;}
 
+/* ── Success toast (top-right) ── */
+@keyframes slideInRight{from{opacity:0;transform:translateX(60px);}to{opacity:1;transform:translateX(0);}}
+#srGlobalSuccessBanner{
+    position:fixed;
+    top:72px;
+    right:24px;
+    z-index:19000;
+    max-width:360px;
+    min-width:280px;
+    background:#ffffff;
+    color:#1e293b;
+    padding:14px 16px;
+    border-radius:10px;
+    box-shadow:0 8px 28px rgba(0,0,0,0.14),0 2px 8px rgba(0,0,0,0.08);
+    display:none;
+    flex-direction:column;
+    gap:5px;
+    animation:slideInRight 0.3s cubic-bezier(.22,.68,0,1.2);
+    transition:opacity 0.25s ease,transform 0.25s ease;
+}
+
 /* ── txn-btn override ── */
 .txn-btn{display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;padding:7px 14px!important;border-radius:4px!important;font-size:11px!important;font-weight:600!important;cursor:pointer!important;border:1px solid transparent!important;transition:all .2s!important;text-decoration:none!important;white-space:nowrap!important;background:#fff!important;}
 .txn-btn.primary{color:#00264D!important;border-color:#00264D!important;}
@@ -441,6 +510,8 @@ body,html{overflow-x:hidden;max-width:100%;}
 .txn-btn.success:hover{background:#16a34a!important;color:#fff!important;}
 .txn-btn.info{color:#002F70!important;border-color:#002F70!important;}
 .txn-btn.info:hover{background:#002F70!important;color:#fff!important;}
+.txn-btn.muted{color:#475569!important;border-color:#cbd5e1!important;background:#fff!important;}
+.txn-btn.muted:hover{background:#f1f5f9!important;border-color:#94a3b8!important;color:#1e293b!important;}
 .txn-btn.sm{padding:4px 9px!important;font-size:10px!important;}
 body.modal-open {
   overflow: hidden !important;
@@ -507,6 +578,17 @@ body.modal-open .main {
 <?php endif; ?>
 
 
+<!-- ══ STOCK REQUEST SUCCESS TOAST (top-right) ══ -->
+<div id="srGlobalSuccessBanner">
+    <div style="display:flex; align-items:center; gap:10px;">
+        <div style="width:34px; height:34px; border-radius:50%; background:#dcfce7; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+            <i class="fas fa-check-circle" style="font-size:17px; color:#16a34a;"></i>
+        </div>
+        <div style="font-size:13px; font-weight:800; color:#15803d; letter-spacing:0.2px; line-height:1.3;" id="srBannerTitle">STOCK REQUEST SUBMITTED!</div>
+    </div>
+    <div style="font-size:12px; color:#475569; padding-left:44px; line-height:1.5;" id="srBannerText">Your stock request is now pending manager approval.</div>
+</div>
+
 <!-- ══ SUMMARY CARDS (4 CARDS) ══ -->
 <div class="inv-stats-row" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));">
     <div class="inv-stat-card" id="card-total" onclick="filterByCard('', this)">
@@ -559,8 +641,8 @@ body.modal-open .main {
 <div class="inv-card" id="section-overview">
     <div class="inv-card-head">
         <div class="inv-card-title"><i class="fas fa-box"></i> Merchandise Stock Overview</div>
-        <button type="button" onclick="openSrModal()" style="display:inline-flex; align-items:center; gap:6px; padding:7px 16px; border-radius:4px; font-weight:700; font-size:12px; cursor:pointer; background:#00264D !important; color:#ffffff !important; border:1px solid #00264D !important; transition:all 0.15s ease; white-space:nowrap;" onmouseover="this.style.background='#001933';" onmouseout="this.style.background='#00264D';">
-            <i class="fas fa-paper-plane" style="color:#ffffff;"></i> Stock Request
+        <button type="button" onclick="openSrModal()" style="display:inline-flex; align-items:center; gap:6px; padding:7px 16px; border-radius:4px; font-weight:700; font-size:12px; cursor:pointer; background:#ffffff !important; color:#00264D !important; border:1px solid #00264D !important; transition:all 0.15s ease; white-space:nowrap; -webkit-text-fill-color:#00264D !important;" onmouseover="this.style.background='#00264D'; this.style.color='#ffffff'; this.querySelector('i').style.color='#ffffff';" onmouseout="this.style.background='#ffffff'; this.style.color='#00264D'; this.querySelector('i').style.color='#00264D';">
+            <i class="fas fa-paper-plane" style="color:#00264D;"></i> Stock Request
         </button>
     </div>
 
@@ -623,6 +705,8 @@ body.modal-open .main {
                         <th>Product Name</th>
                         <th style="text-align:center;">Category</th>
                         <th style="text-align:center;">UOM</th>
+                        <th style="text-align:right;">Stock In</th>
+                        <th style="text-align:right;">Stock Out</th>
                         <th>Current Stock</th>
                         <th style="text-align:center;">Status</th>
                         <th>Last Updated</th>
@@ -631,7 +715,7 @@ body.modal-open .main {
                 </thead>
                 <tbody id="merchTableBody">
                 <?php if (empty($js_items)): ?>
-                    <tr><td colspan="8" style="text-align:center;padding:32px;color:#6c757d;">No merchandise data available.</td></tr>
+                    <tr><td colspan="10" style="text-align:center;padding:32px;color:#6c757d;">No merchandise data available.</td></tr>
                 <?php else: ?>
                     <?php
                     // Group by category from $js_items (already filtered to active only)
@@ -640,7 +724,7 @@ body.modal-open .main {
                     ksort($grouped);
                     foreach ($grouped as $cat_label => $items):
                     ?>
-                    <tr class="cat-header"><td colspan="8" style="font-weight:700; background:#e9ecef!important; color:#495057!important; text-transform:uppercase; font-size:11px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px; text-align:center;"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                    <tr class="cat-header"><td colspan="10" style="font-weight:700; background:#e9ecef!important; color:#495057!important; text-transform:uppercase; font-size:11px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px; text-align:center;"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                     <?php foreach ($items as $it):
                         $ts = $it['last_updated'] ? (new DateTime($it['last_updated']))->format('M d, Y') : '-';
                         $has_variance = ($it['variance'] !== null && (float)$it['variance'] != 0);
@@ -662,6 +746,8 @@ body.modal-open .main {
                         <td style="white-space:normal;"><strong><?php echo htmlspecialchars($it['name']); ?></strong></td>
                         <td style="text-align:center;"><?php echo htmlspecialchars($it['category']); ?></td>
                         <td style="text-align:center;font-weight:600;color:#475569;"><?php echo htmlspecialchars($it['unit']); ?></td>
+                        <td style="text-align:right; font-weight:700; color:#16a34a;"><?php echo ($it['stock_in'] ?? 0) > 0 ? '+'.number_format($it['stock_in'] ?? 0) : '<span style="color:#94a3b8;">—</span>'; ?></td>
+                        <td style="text-align:right; font-weight:700; color:#dc2626;"><?php echo ($it['stock_out'] ?? 0) > 0 ? '-'.number_format($it['stock_out'] ?? 0) : '<span style="color:#94a3b8;">—</span>'; ?></td>
                         <td>
                             <div class="fill-bar-wrap">
                                 <div class="fill-bar-inner" style="width:<?php echo min(100, round($it['fill_pct'])); ?>%;background:<?php echo $display_color; ?>;"></div>
@@ -675,7 +761,10 @@ body.modal-open .main {
                         </td>
                         <td style="font-size:11px;color:#64748b;"><?php echo $ts; ?></td>
                         <td style="text-align:center;">
-                            <button type="button" class="txn-btn primary sm" onclick='viewDetails(<?php echo htmlspecialchars(json_encode($it), ENT_QUOTES); ?>)'><i class="fas fa-eye"></i> View</button>
+                            <div style="display:inline-flex; gap:6px; align-items:center; justify-content:center;">
+                                <button type="button" class="txn-btn primary sm" onclick='viewDetails(<?php echo htmlspecialchars(json_encode($it), ENT_QUOTES); ?>)'><i class="fas fa-eye"></i> View</button>
+                                <button type="button" class="txn-btn warning sm" onclick='openAdjustmentModal(<?php echo htmlspecialchars(json_encode($it), ENT_QUOTES); ?>)' style="background:#16a34a!important; border-color:#16a34a!important; color:#fff!important;"><i class="fas fa-edit"></i> Adjustment</button>
+                            </div>
                         </td>
 
                     </tr>
@@ -793,7 +882,6 @@ body.modal-open .main {
             <div id="vdContent"></div>
         </div>
         <div class="mi-foot">
-            <button type="button" class="txn-btn primary" onclick="printProductDetails()"><i class="fas fa-print"></i> Print</button>
             <button type="button" class="txn-btn muted" onclick="closeVd()">Close</button>
         </div>
     </div>
@@ -1462,10 +1550,55 @@ function srHandleSubmit(btn) {
 function closeSrSuccess() {
     document.getElementById('srSuccessPopup').style.display = 'none';
     document.getElementById('srSuccessOverlay').style.display = 'none';
-    // Stay on current page - reload to refresh inventory
+    // Persist banner info across reload
+    var bannerText = (document.getElementById('srSuccessMsg') || {}).innerHTML || '';
+    if (bannerText && bannerText.indexOf('Successfully') !== -1) {
+        try { sessionStorage.setItem('srBannerMsg', bannerText); } catch(e) {}
+    }
     window.location.reload();
 }
+function closeSrBanner() {
+    var b = document.getElementById('srGlobalSuccessBanner');
+    if (b) {
+        b.style.opacity = '0';
+        b.style.transform = 'translateX(60px)';
+        b.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+        setTimeout(function() { b.style.display = 'none'; }, 260);
+    }
+    try { sessionStorage.removeItem('srBannerMsg'); } catch(e) {}
+}
+function showSrBanner(title, msg) {
+    var banner = document.getElementById('srGlobalSuccessBanner');
+    var bannerTitle = document.getElementById('srBannerTitle');
+    var bannerText = document.getElementById('srBannerText');
+    if (banner) {
+        if (bannerTitle && title) bannerTitle.innerText = title;
+        if (bannerText && msg) bannerText.innerHTML = msg;
+        banner.style.display = 'flex';
+        banner.style.opacity = '1';
+        banner.style.transform = 'translateX(0)';
+        setTimeout(closeSrBanner, 8000);
+    }
+}
 function escHtml(str) { var d=document.createElement('div'); d.appendChild(document.createTextNode(str||'')); return d.innerHTML; }
+
+// ── On page load: show success banner if stock request was just submitted ──
+document.addEventListener('DOMContentLoaded', function() {
+    try {
+        var msg = sessionStorage.getItem('srBannerMsg');
+        if (msg) {
+            sessionStorage.removeItem('srBannerMsg');
+            var banner = document.getElementById('srGlobalSuccessBanner');
+            var bannerText = document.getElementById('srBannerText');
+            if (banner && bannerText) {
+                bannerText.innerHTML = msg;
+                banner.style.display = 'flex';
+                // Auto-dismiss after 8 seconds
+                setTimeout(closeSrBanner, 8000);
+            }
+        }
+    } catch(e) {}
+});
 document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ closeVd(); closeSrModal(); } });
 
 function setupDownwardFilterSelects(selectors) {
@@ -1624,7 +1757,318 @@ document.addEventListener('click', function(e) {
         document.querySelectorAll('.cdd-wrap.cdd-open').forEach(function(w){ w.classList.remove('cdd-open'); });
     }
 });
+
+// ══ INVENTORY ADJUSTMENT MODAL HANDLERS ══
+var currentAdjProduct = null;
+
+function openAdjustmentModal(it) {
+    currentAdjProduct = it;
+    document.getElementById('adj_product_id').value = it.id;
+    
+    var batchId = (it.batches && it.batches.length > 0) ? it.batches[0].batch_id : ('BATCH-MAIN-' + String(it.id).padStart(3, '0'));
+    var batchExp = (it.batches && it.batches.length > 0 && it.batches[0].date) ? it.batches[0].date : 'N/A';
+
+    document.getElementById('adj_disp_batch').innerText = batchId;
+    document.getElementById('adj_disp_sku').innerText = it.sku || '-';
+    document.getElementById('adj_disp_name').innerText = it.name || '-';
+    document.getElementById('adj_disp_brand').innerText = it.brand || '-';
+    document.getElementById('adj_disp_category').innerText = it.category || '-';
+    document.getElementById('adj_disp_stock').innerText = Number(it.stock).toLocaleString();
+    document.getElementById('adj_disp_uom').innerText = it.unit || 'pcs';
+    document.getElementById('adj_disp_uom2').innerText = it.unit || 'pcs';
+    document.getElementById('adj_disp_exp').innerText = batchExp;
+    document.getElementById('adj_qty_unit').innerText = it.unit || 'pcs';
+
+    // Reset inputs
+    document.getElementById('adj_type').value = '';
+    document.getElementById('adj_action').value = 'Decrease';
+    var manualSelect = document.getElementById('adj_manual_direction');
+    if (manualSelect) manualSelect.value = 'Decrease';
+    document.getElementById('adj_quantity').value = '';
+    document.getElementById('adj_reason').value = '';
+    document.getElementById('adj_remarks').value = '';
+    document.getElementById('adj_qty_error').style.display = 'none';
+
+    handleAdjTypeChange();
+    document.getElementById('staffAdjustmentModal').style.display = 'flex';
+}
+
+function closeAdjustmentModal() {
+    document.getElementById('staffAdjustmentModal').style.display = 'none';
+}
+
+function handleAdjTypeChange() {
+    var type = document.getElementById('adj_type').value;
+    var reasonInput = document.getElementById('adj_reason');
+    var qtyLabel = document.getElementById('adj_qty_label');
+    var qtyInput = document.getElementById('adj_quantity');
+
+    reasonInput.value = type ? type : '';
+
+    if (type === 'Physical Count') {
+        if (qtyLabel) qtyLabel.innerHTML = 'Actual Physical Count <span style="color:#dc2626;">*</span>';
+        if (qtyInput) qtyInput.placeholder = 'Enter actual physical count...';
+    } else {
+        if (qtyLabel) qtyLabel.innerHTML = 'Quantity <span style="color:#dc2626;">*</span>';
+        if (qtyInput) qtyInput.placeholder = 'Enter quantity...';
+    }
+
+    updateAdjActionDetection();
+}
+
+function updateAdjActionDetection() {
+    if (!currentAdjProduct) return;
+    var type = document.getElementById('adj_type').value;
+    var qtyVal = parseFloat(document.getElementById('adj_quantity').value);
+    var stock = parseFloat(currentAdjProduct.stock) || 0;
+    
+    var actionHidden = document.getElementById('adj_action');
+    var actionDisplay = document.getElementById('adj_action_display');
+    var hint = document.getElementById('adj_action_hint');
+    var manualWrap = document.getElementById('adj_manual_direction_wrap');
+    var errorEl = document.getElementById('adj_qty_error');
+    var submitBtn = document.getElementById('adjSubmitBtn');
+
+    var detectedAction = 'Decrease';
+    var badgeHtml = '';
+    var calcQtyChange = 0;
+
+    if (manualWrap) manualWrap.style.display = 'none';
+
+    if (type === 'Damaged Product' || type === 'Expired Product' || type === 'Missing Item') {
+        detectedAction = 'Decrease';
+        badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#dc2626; font-weight:800; font-size:13px;"><i class="fas fa-arrow-down"></i> Decrease (Stock Out)</div>';
+        if (hint) hint.innerText = '⚡ Auto-detected: Fixed to Decrease for ' + type;
+    } else if (type === 'Returned Item') {
+        detectedAction = 'Increase';
+        badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; color:#16a34a; font-weight:800; font-size:13px;"><i class="fas fa-arrow-up"></i> Increase (Stock In)</div>';
+        if (hint) hint.innerText = '⚡ Auto-detected: Fixed to Increase for Returned Item';
+    } else if (type === 'Physical Count') {
+        if (!isNaN(qtyVal)) {
+            calcQtyChange = qtyVal - stock;
+            if (calcQtyChange > 0) {
+                detectedAction = 'Increase';
+                badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; color:#16a34a; font-weight:800; font-size:13px;"><i class="fas fa-arrow-up"></i> Increase (+' + calcQtyChange + ' Stock In)</div>';
+                if (hint) hint.innerText = '⚡ Auto-detected: Physical Count (' + qtyVal + ') > Current Stock (' + stock + ') → Increase by +' + calcQtyChange;
+            } else if (calcQtyChange < 0) {
+                detectedAction = 'Decrease';
+                badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#dc2626; font-weight:800; font-size:13px;"><i class="fas fa-arrow-down"></i> Decrease (' + calcQtyChange + ' Stock Out)</div>';
+                if (hint) hint.innerText = '⚡ Auto-detected: Physical Count (' + qtyVal + ') < Current Stock (' + stock + ') → Decrease by ' + calcQtyChange;
+            } else {
+                detectedAction = 'None';
+                badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:6px; color:#475569; font-weight:700; font-size:13px;"><i class="fas fa-minus"></i> No Stock Change (Matched)</div>';
+                if (hint) hint.innerText = 'Physical Count matches Current Stock';
+            }
+        } else {
+            detectedAction = 'Pending Input';
+            badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; color:#64748b; font-weight:600; font-size:13px;">Auto-detecting... (Enter count)</div>';
+            if (hint) hint.innerText = 'Enter actual physical count to calculate direction';
+        }
+    } else if (type === 'Encoding Error' || type === 'System Correction' || type === 'Others') {
+        if (manualWrap) manualWrap.style.display = 'block';
+        var optSelect = document.getElementById('adj_manual_direction');
+        var manualDir = optSelect ? optSelect.value : 'Decrease';
+        detectedAction = manualDir;
+        if (manualDir === 'Increase') {
+            badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; color:#16a34a; font-weight:800; font-size:13px;"><i class="fas fa-arrow-up"></i> Increase (Stock In)</div>';
+        } else {
+            badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#dc2626; font-weight:800; font-size:13px;"><i class="fas fa-arrow-down"></i> Decrease (Stock Out)</div>';
+        }
+        if (hint) hint.innerText = 'Select direction below for ' + (type || 'custom adjustment');
+    } else {
+        detectedAction = 'Decrease';
+        badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; color:#64748b; font-weight:600; font-size:13px;">Select Adjustment Type</div>';
+        if (hint) hint.innerText = 'Select an adjustment type above';
+    }
+
+    actionHidden.value = detectedAction;
+    actionDisplay.innerHTML = badgeHtml;
+
+    // Validation: Only cap deduction for strict physical loss types (Damaged Product, Expired Product, Missing Item)
+    var isStrictDeductionType = (type === 'Damaged Product' || type === 'Expired Product' || type === 'Missing Item');
+    if (detectedAction === 'Decrease' && isStrictDeductionType && !isNaN(qtyVal) && qtyVal > stock) {
+        errorEl.innerText = 'Validation Error: Deduction quantity (' + qtyVal + ') cannot exceed current stock (' + stock + ') for ' + type + '.';
+        errorEl.style.display = 'block';
+        if (submitBtn) submitBtn.disabled = true;
+        return false;
+    } else {
+        errorEl.style.display = 'none';
+        if (submitBtn) submitBtn.disabled = false;
+        return true;
+    }
+}
+
+function validateAdjQuantity() {
+    return updateAdjActionDetection();
+}
+
+function submitAdjustmentForm(e) {
+    e.preventDefault();
+    if (!validateAdjQuantity()) return;
+
+    var submitBtn = document.getElementById('adjSubmitBtn');
+    var type = document.getElementById('adj_type').value;
+    var action = document.getElementById('adj_action').value;
+    var qty = parseFloat(document.getElementById('adj_quantity').value) || 0;
+    var reason = document.getElementById('adj_reason').value;
+    var remarks = document.getElementById('adj_remarks').value;
+
+    if (!type) {
+        alert('Please select an adjustment type.');
+        return;
+    }
+    if (qty <= 0) {
+        alert('Please enter a valid quantity greater than zero.');
+        return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+
+    fetch('../backend/api/inventory_adjustment.php?action=create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            product_id: parseInt(currentAdjProduct.id),
+            adjustment_type: type,
+            adjustment_action: action,
+            quantity: qty,
+            reason: reason,
+            remarks: remarks
+        })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Adjustment';
+
+        if (res.success) {
+            closeAdjustmentModal();
+            showSrBanner("ADJUSTMENT SUBMITTED!", "Your inventory adjustment request is now Pending Manager Approval.");
+        } else {
+            alert('Error: ' + (res.message || 'Failed to submit adjustment.'));
+        }
+    })
+    .catch(function(err) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Adjustment';
+        alert('Network or server error: ' + err.message);
+    });
+}
 </script>
+
+<!-- ══ INVENTORY ADJUSTMENT MODAL ══ -->
+<div class="modal-overlay" id="staffAdjustmentModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:15000; align-items:center; justify-content:center; padding:90px 20px 50px 20px; box-sizing:border-box;">
+    <div class="modal-box" style="background:#fff; border-radius:14px; width:95%; max-width:580px; max-height:calc(100vh - 160px); margin:auto; box-shadow:0 20px 50px rgba(0,0,0,0.35); overflow:hidden; display:flex; flex-direction:column;">
+        <div style="background:linear-gradient(135deg,#002F70,#001838); padding:20px 24px; color:#fff; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
+            <div style="font-size:17px; font-weight:700; display:flex; align-items:center; gap:10px;"><i class="fas fa-edit" style="color:#fd7e14;"></i> Request Inventory Adjustment</div>
+            <button type="button" onclick="closeAdjustmentModal()" style="background:none; border:none; color:#fff; font-size:24px; cursor:pointer; line-height:1; padding:0 4px;">&times;</button>
+        </div>
+        
+        <form id="adjustmentForm" onsubmit="submitAdjustmentForm(event)" style="display:flex; flex-direction:column; flex:1; overflow:hidden; margin:0;">
+            <input type="hidden" id="adj_product_id" name="product_id">
+            
+            <div style="padding:22px 24px; overflow-y:auto; flex:1; max-height:calc(100vh - 280px);">
+                <!-- Product Information (Auto Fetch / Readonly) -->
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:18px;">
+                    <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">
+                        <i class="fas fa-info-circle" style="color:#002F70;"></i> Product Information (Auto Fetched)
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:12px;">
+                        <div><span style="color:#64748b;">Batch ID:</span> <strong id="adj_disp_batch" style="color:#0f172a;">—</strong></div>
+                        <div><span style="color:#64748b;">SKU:</span> <code id="adj_disp_sku" style="font-weight:700; color:#002F70;">—</code></div>
+                        <div><span style="color:#64748b;">Product Name:</span> <strong id="adj_disp_name" style="color:#0f172a;">—</strong></div>
+                        <div><span style="color:#64748b;">Brand:</span> <span id="adj_disp_brand" style="color:#334155;">—</span></div>
+                        <div><span style="color:#64748b;">Category:</span> <span id="adj_disp_category" style="color:#334155;">—</span></div>
+                        <div><span style="color:#64748b;">Current Stock:</span> <strong id="adj_disp_stock" style="color:#16a34a; font-size:13px;">0</strong> <span id="adj_disp_uom" style="color:#64748b;">pcs</span></div>
+                        <div><span style="color:#64748b;">Expiration Date:</span> <span id="adj_disp_exp" style="color:#334155;">N/A</span></div>
+                        <div><span style="color:#64748b;">UOM:</span> <span id="adj_disp_uom2" style="color:#334155;">pcs</span></div>
+                    </div>
+                </div>
+
+                <!-- Adjustment Details -->
+                <div style="font-size:12px; font-weight:700; color:#0f172a; margin-bottom:12px;">
+                    <i class="fas fa-sliders" style="color:#fd7e14;"></i> Adjustment Details
+                </div>
+
+                <!-- Adjustment Type -->
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">
+                        Adjustment Type <span style="color:#dc2626;">*</span>
+                    </label>
+                    <select id="adj_type" name="adjustment_type" onchange="handleAdjTypeChange()" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; color:#0f172a;">
+                        <option value="">-- Select Adjustment Type --</option>
+                        <option value="Damaged Product">Damaged Product</option>
+                        <option value="Expired Product">Expired Product</option>
+                        <option value="Physical Count">Physical Count</option>
+                        <option value="Missing Item">Missing Item</option>
+                        <option value="Returned Item">Returned Item</option>
+                        <option value="Encoding Error">Encoding Error</option>
+                        <option value="System Correction">System Correction</option>
+                        <option value="Others">Others</option>
+                    </select>
+                </div>
+
+                <!-- Adjustment Action (Auto-Detected Display) -->
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">
+                        Adjustment Action <span style="font-size:10px; font-weight:700; color:#002F70; background:#e0f2fe; padding:1px 6px; border-radius:4px; margin-left:4px;">Auto-Detected</span>
+                    </label>
+                    <input type="hidden" id="adj_action" name="adjustment_action" value="Decrease">
+                    <div id="adj_action_display" style="min-height:36px; display:flex; align-items:center;">
+                        <div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#dc2626; font-weight:800; font-size:13px;">
+                            <i class="fas fa-arrow-down"></i> Decrease (Stock Out)
+                        </div>
+                    </div>
+                    <small id="adj_action_hint" style="color:#64748b; font-size:11px; margin-top:4px; display:block; font-weight:600;"></small>
+                    
+                    <!-- Dynamic Direction Toggle for Custom Types -->
+                    <div id="adj_manual_direction_wrap" style="display:none; margin-top:8px; background:#f8fafc; padding:10px; border-radius:6px; border:1px solid #e2e8f0;">
+                        <label style="display:block; font-size:11px; font-weight:700; color:#002F70; margin-bottom:4px;">
+                            <i class="fas fa-arrows-alt-v"></i> Select Stock Action Direction:
+                        </label>
+                        <select id="adj_manual_direction" onchange="updateAdjActionDetection()" style="width:100%; padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; color:#0f172a;">
+                            <option value="Decrease">🔻 Decrease (Stock Out)</option>
+                            <option value="Increase">🟢 Increase (Stock In)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Quantity / Physical Count -->
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label id="adj_qty_label" style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">
+                        Quantity <span style="color:#dc2626;">*</span>
+                    </label>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="number" id="adj_quantity" name="quantity" min="0" step="1" required oninput="validateAdjQuantity()" placeholder="Enter quantity..." style="flex:1; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:14px; font-weight:700; color:#0f172a;">
+                        <span id="adj_qty_unit" style="font-size:12px; font-weight:600; color:#475569;">pcs</span>
+                    </div>
+                    <small id="adj_qty_error" style="color:#dc2626; font-size:11px; margin-top:3px; display:none; font-weight:600;"></small>
+                </div>
+
+                <!-- Reason (Auto-filled hidden input) -->
+                <input type="hidden" id="adj_reason" name="reason">
+
+                <!-- Remarks -->
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">
+                        Remarks <span style="color:#dc2626;">*</span>
+                    </label>
+                    <textarea id="adj_remarks" name="remarks" rows="3" required placeholder="Example: 5 bottles expired during monthly inventory." style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-family:inherit;"></textarea>
+                </div>
+            </div>
+
+            <div style="background:#f8fafc; border-top:1px solid #e2e8f0; padding:16px 24px; display:flex; justify-content:flex-end; gap:12px; flex-shrink:0;">
+                <button type="button" onclick="closeAdjustmentModal()" class="txn-btn muted">Cancel</button>
+                <button type="submit" id="adjSubmitBtn" class="txn-btn primary" style="background:#002F70!important; color:#fff!important;">
+                    <i class="fas fa-paper-plane"></i> Submit Adjustment
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 </div> <!-- /stock-page -->
 <?php include __DIR__ . '/../partials/footer.php'; ?>
+
 

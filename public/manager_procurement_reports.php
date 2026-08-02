@@ -353,7 +353,7 @@ foreach ($delivery_rows as $r) {
 }
 $summary_variance = count($variance_rows);
 // â”€â”€ Fetch Fuel Variance Rows & Summary â”€â”€
-// â”€â”€ Fuel Variance Report â€” Real Data from fuel_adjustments + fuel_inventory â”€â”€
+// â”€â”€ Fuel Variance Report — Real Data from fuel_adjustments + fuel_inventory â”€â”€
 $fuel_variance_rows = [];
 
 try {
@@ -521,7 +521,7 @@ require_once __DIR__ . '/../partials/header.php';
     .mp-rpt-header{break-after:avoid !important;page-break-after:avoid !important;text-align:center !important;width:100% !important;padding:6px 0 8px !important;}
     .rh-title,.rh-sub,.rh-station,.rh-date{text-align:center !important;display:block !important;}
 
-    /* Table â€” squeeze to fit 1 page */
+    /* Table — squeeze to fit 1 page */
     .mp-table-wrap{overflow:visible !important;width:100% !important;}
     .mp-tbl{width:100% !important;min-width:0 !important;table-layout:auto !important;font-size:7px !important;break-inside:auto !important;page-break-inside:auto !important;margin:0 !important;}
     .mp-tbl thead{display:table-header-group !important;}
@@ -773,7 +773,7 @@ require_once __DIR__ . '/../partials/header.php';
                                         </span>
                                         <span style="font-size:10px;color:#64748b;display:block;"><?= mp_h($adj_dir) ?></span>
                                     <?php else: ?>
-                                        <span style="color:#94a3b8;">â€”</span>
+                                        <span style="color:#94a3b8;">—</span>
                                     <?php endif; ?>
                                 </td>
                                 <td><span class="mp-badge <?= mp_status_class($r['adj_status']) ?>"><?= mp_h($r['adj_status']) ?></span></td>

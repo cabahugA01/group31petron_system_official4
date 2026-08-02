@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Admin Merchandise Inventory Oversight - admin_inventory_merchandise.php
 // Rebuilt to support summary cards, filters, flat paginated table,
@@ -255,7 +255,7 @@ if (isset($_GET['print_id'])) {
             <div class="row"><span class="label">SKU / Code:</span><span class="value"><code><?= htmlspecialchars($item['sku']) ?></code></span></div>
             <div class="row"><span class="label">Category:</span><span class="value"><?= htmlspecialchars($item['category']) ?></span></div>
             <div class="row"><span class="label">Unit:</span><span class="value"><?= htmlspecialchars($item['unit']) ?></span></div>
-            <div class="row"><span class="label">Supplier:</span><span class="value"><?= htmlspecialchars($item['supplier'] ?: 'â€”') ?></span></div>
+            <div class="row"><span class="label">Supplier:</span><span class="value"><?= htmlspecialchars($item['supplier'] ?: '—') ?></span></div>
             
             <div class="section">
                 <div class="row"><span class="label">Current Stock:</span><span class="value"><?= number_format($stock, 2) ?> <?= htmlspecialchars($item['unit']) ?></span></div>
@@ -309,7 +309,7 @@ if (isset($_GET['print_id'])) {
             </div>
 
             <div class="center section" style="font-size: 10px; color: #666; margin-top: 30px;">
-                Petron Station Management System â€¢ Official Inventory Slip
+                Petron Station Management System —¢ Official Inventory Slip
             </div>
         </div>
     </body>
@@ -491,6 +491,50 @@ try {
     }
 } catch (Exception $e) {}
 
+// ── Stock In map: total received per product ─────────────────────────────────
+$prod_added_map = [];
+try {
+    $siStmt = $pdo->prepare("
+        SELECT product_id, COALESCE(SUM(qty_received), 0) AS total_added
+        FROM merchandise_stock_in
+        WHERE station_id = ? AND product_id IS NOT NULL
+        GROUP BY product_id
+    ");
+    $siStmt->execute([$station_id]);
+    foreach ($siStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $prod_added_map[(int)$r['product_id']] = (float)$r['total_added'];
+    }
+} catch (Exception $e) {}
+
+// ── Stock Out map: total sold/deducted per product ───────────────────────────
+$prod_deducted_map = [];
+try {
+    $soStmt = $pdo->prepare("
+        SELECT ti.product_id, COALESCE(SUM(ti.quantity), 0) AS total_deducted
+        FROM merchandise_transaction_items ti
+        JOIN merchandise_transactions t ON t.id = ti.transaction_id
+        WHERE t.station_id = ? AND ti.product_id IS NOT NULL
+        GROUP BY ti.product_id
+    ");
+    $soStmt->execute([$station_id]);
+    foreach ($soStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $prod_deducted_map[(int)$r['product_id']] = (float)$r['total_deducted'];
+    }
+} catch (Exception $e) {}
+try {
+    $imStmt = $pdo->prepare("
+        SELECT product_id, COALESCE(SUM(ABS(quantity_change)), 0) AS total_deducted
+        FROM inventory_movements
+        WHERE station_id = ? AND quantity_change < 0 AND product_id IS NOT NULL
+        GROUP BY product_id
+    ");
+    $imStmt->execute([$station_id]);
+    foreach ($imStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $pid2 = (int)$r['product_id'];
+        $prod_deducted_map[$pid2] = max($prod_deducted_map[$pid2] ?? 0, (float)$r['total_deducted']);
+    }
+} catch (Exception $e) {}
+
 $all_brands = [];
 $all_suppliers = ['Petron Corporation'];
 $all_units = [];
@@ -554,7 +598,7 @@ foreach ($all_items as $item) {
     $has_variance = ($item['variance'] !== null && (float)$item['variance'] != 0);
     $item_status = strtolower(trim($item['status'] ?? 'active'));
     
-    // Status computation â€” driven entirely by DB thresholds
+    // Status computation — driven entirely by DB thresholds
     if ($stock <= 0) {
         $computed_status = 'out';
     } elseif ($stock <= $critical) {
@@ -631,7 +675,7 @@ foreach ($all_items as $item) {
         }
     }
 
-    // 6. Status Filter â€” Low Stock, Critical Stock, Out of Stock all show the same combined stock alert view
+    // 6. Status Filter — Low Stock, Critical Stock, Out of Stock all show the same combined stock alert view
     if ($status_filter !== 'all' && $status_filter !== '') {
         $sf_lower = strtolower($status_filter);
         if (in_array($sf_lower, ['warning', 'low', 'low stock', 'critical', 'critical stock', 'out', 'out of stock'], true)) {
@@ -709,7 +753,7 @@ try {
                il.created_at,
                il.action AS movement_type,
                il.quantity_change AS quantity,
-               COALESCE(NULLIF(il.notes,''), 'â€”') AS notes,
+               COALESCE(NULLIF(il.notes,''), '—') AS notes,
                COALESCE(NULLIF(CONCAT_WS('-', il.reference_type, il.reference_id),''), CONCAT('LOG-', LPAD(il.id, 5, '0'))) AS reference_no,
                COALESCE(ip.product_name, p.name, 'Unknown') AS product_name,
                COALESCE(ip.sku, CONCAT('P', LPAD(p.id,4,'0')), '') AS sku,
@@ -727,7 +771,7 @@ try {
                msi.encoded_at AS created_at,
                'Stock In' AS movement_type,
                msi.qty_received AS quantity,
-               COALESCE(NULLIF(msi.remarks,''), CONCAT('PO: ', COALESCE(msi.po_number,'â€”'), ' | Batch: ', COALESCE(msi.batch_ref,'â€”'))) AS notes,
+               COALESCE(NULLIF(msi.remarks,''), CONCAT('PO: ', COALESCE(msi.po_number,'—'), ' | Batch: ', COALESCE(msi.batch_ref,'—'))) AS notes,
                CONCAT('SI-', LPAD(msi.id, 5, '0')) AS reference_no,
                COALESCE(ip.product_name, p.name, msi.product_name, 'Unknown') AS product_name,
                COALESCE(ip.sku, msi.sku, CONCAT('P', LPAD(p.id,4,'0')), '') AS sku,
@@ -825,8 +869,8 @@ try {
             CONCAT('TR-', LPAD(il.id, 5, '0')) AS transfer_no,
             COALESCE(ip.product_name, 'Unknown') AS product_name,
             COALESCE(ip.sku, '') AS sku,
-            COALESCE(il.notes, 'â€”') AS from_location,
-            COALESCE(NULLIF(CONCAT_WS(' ', il.reference_type, il.reference_id), ''), 'â€”') AS to_location,
+            COALESCE(il.notes, '—') AS from_location,
+            COALESCE(NULLIF(CONCAT_WS(' ', il.reference_type, il.reference_id), ''), '—') AS to_location,
             ABS(il.quantity_change) AS qty,
             il.created_at AS date,
             COALESCE(u.name, 'Staff') AS performed_by
@@ -851,7 +895,7 @@ try {
             COALESCE(ip.product_name, 'Unknown') AS product_name,
             COALESCE(ip.sku, '') AS sku,
             ABS(il.quantity_change) AS qty,
-            COALESCE(il.notes, 'â€”') AS reason,
+            COALESCE(il.notes, '—') AS reason,
             il.created_at AS date,
             COALESCE(u.name, 'Staff') AS performed_by
         FROM inventory_logs il
@@ -873,7 +917,7 @@ try {
         SELECT
             COALESCE(ip.product_name, 'Unknown') AS product_name,
             COALESCE(ip.sku, '') AS sku,
-            COALESCE(mb.batch_number, msi.batch_ref, 'â€”') AS batch,
+            COALESCE(mb.batch_number, msi.batch_ref, '—') AS batch,
             mb.created_at AS expiry_date,
             COALESCE(mb.remaining_qty, msi.qty_received, 0) AS qty
         FROM merchandise_batches mb
@@ -904,9 +948,10 @@ body, html {
     max-width: 100% !important;
 }
 .table-wrap {
-    overflow-x: hidden !important;
+    overflow-x: auto !important;
     overflow-y: visible !important;
     max-width: 100% !important;
+    -webkit-overflow-scrolling: touch;
 }
 
 /* == PAGE HEADER - Petron standard == */
@@ -1365,7 +1410,7 @@ body, html {
     <div class="afto-card purple">
         <div class="afto-card-info">
             <span class="afto-card-lbl">Total Inventory Value</span>
-            <span class="afto-card-val" style="font-size:15px;">â‚±<?= number_format($kpi_total_value, 2) ?></span>
+            <span class="afto-card-val" style="font-size:15px;">₱<?= number_format($kpi_total_value, 2) ?></span>
         </div>
         <div class="afto-card-icon"><i class="fas fa-coins"></i></div>
     </div>
@@ -1553,26 +1598,30 @@ body, html {
     <div class="tbl-hd">
         <div class="tbl-title"><i class="fas fa-clipboard-list"></i> Merchandise Stock Records</div>
     </div>
-    <div class="table-wrap" style="overflow-x:hidden; width:100%;">
-        <table class="afto-tbl" id="adminMerchTable" style="width:100%; table-layout:fixed;">
+    <div class="table-wrap" style="overflow-x:auto; width:100%; -webkit-overflow-scrolling:touch;">
+        <table class="afto-tbl" id="adminMerchTable" style="width:100%; min-width:1350px;">
             <thead>
                 <tr>
                     <th>SKU</th>
                     <th>Product</th>
                     <th style="text-align:center;">Category</th>
                     <th style="text-align:center;">UOM</th>
+                    <th style="text-align:right;">Stock In</th>
+                    <th style="text-align:right;">Stock Out</th>
                     <th>Current Stock</th>
                     <th style="text-align:right;">Reorder Level</th>
+                    <th style="text-align:right;">Physical Count</th>
+                    <th style="text-align:right;">Variance</th>
                     <th style="text-align:right;">Inventory Value</th>
                     <th class="align-center">Status</th>
                     <th>Last Updated</th>
-                    <th style="text-align:center;">Actions</th>
+                    <th style="text-align:center; min-width:120px; white-space:nowrap;">Actions</th>
                 </tr>
             </thead>
             <tbody>
             <?php if (empty($sorted_filtered)): ?>
                 <tr>
-                    <td colspan="10" class="align-center" style="padding: 24px; color: #64748b;">
+                    <td colspan="14" class="align-center" style="padding: 24px; color: #64748b;">
                         <i class="fas fa-box-open" style="font-size: 24px; margin-bottom: 8px; display:block;"></i>
                         No merchandise inventory records matched your filters.
                     </td>
@@ -1580,7 +1629,7 @@ body, html {
             <?php else: ?>
                 <?php foreach ($sorted_filtered as $cat_label => $items): ?>
                     <tr class="cat-header">
-                        <td colspan="10" style="text-align:center; font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:12px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px;">
+                        <td colspan="14" style="text-align:center; font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:12px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px;">
                             <strong><?= htmlspecialchars($cat_label) ?></strong>
                         </td>
                     </tr>
@@ -1601,11 +1650,22 @@ body, html {
                         $status_color = $has_variance ? '#fd7e14' : ($item['computed_status'] === 'available' ? '#28a745' : (in_array($item['computed_status'], ['critical', 'out']) ? '#dc3545' : '#fd7e14'));
                         $updated = $item['last_updated'] ? date('M d, Y h:i A', strtotime($item['last_updated'])) : '-';
                     ?>
+                    <?php
+                        $pid_item = (int)$item['id'];
+                        $stock_in_qty  = (int)($prod_added_map[$pid_item] ?? 0);
+                        $stock_out_qty = (int)($prod_deducted_map[$pid_item] ?? 0);
+                        $phys_count = $item['physical_count'] !== null ? number_format((float)$item['physical_count'], 0) : '—';
+                        $var_val = $item['variance'] !== null ? (float)$item['variance'] : null;
+                        $var_color = ($var_val === null || $var_val == 0) ? '#64748b' : ($var_val > 0 ? '#16a34a' : '#dc2626');
+                        $var_display = $var_val === null ? '—' : ($var_val == 0 ? '0' : (($var_val > 0 ? '+' : '') . number_format($var_val, 0)));
+                    ?>
                     <tr>
                         <td><code><?= htmlspecialchars($item['sku'] ?: '-') ?></code></td>
                         <td><strong><?= htmlspecialchars($item['name']) ?></strong></td>
                         <td class="align-center"><?= htmlspecialchars($item['category_name']) ?></td>
                         <td class="align-center" style="font-weight:600;color:#475569;"><?= htmlspecialchars($item['unit']) ?></td>
+                        <td style="text-align:right; font-weight:700; color:#16a34a;"><?= $stock_in_qty > 0 ? '+'.number_format($stock_in_qty) : '<span style="color:#94a3b8;">—</span>' ?></td>
+                        <td style="text-align:right; font-weight:700; color:#dc2626;"><?= $stock_out_qty > 0 ? '-'.number_format($stock_out_qty) : '<span style="color:#94a3b8;">—</span>' ?></td>
                         <td>
                             <div class="fill-bar-wrap">
                                 <div class="fill-bar-inner" style="width:<?= min(100, round($fill_pct)) ?>%;background:<?= $status_color ?>;"></div>
@@ -1613,10 +1673,12 @@ body, html {
                             <span style="font-size:11px;font-weight:600;color:#334155;"><?= number_format($stock, 0) ?> <?= htmlspecialchars($item['unit']) ?></span>
                         </td>
                         <td class="align-right" style="font-weight:600;color:#ea580c;"><?= number_format($reorder, 0) ?></td>
-                        <td class="align-right" style="font-weight:700;color:#002F70;">â‚±<?= number_format($value, 2) ?></td>
+                        <td style="text-align:right; font-weight:600; color:#475569;"><?= $phys_count ?></td>
+                        <td style="text-align:right; font-weight:700; color:<?= $var_color ?>;"><?= $var_display ?></td>
+                        <td class="align-right" style="font-weight:700;color:#002F70;">&#8369;<?= number_format($value, 2) ?></td>
                         <td class="align-center"><span class="badge-lbl <?= $badgeCls ?>"><?= htmlspecialchars($badgeLbl) ?></span></td>
                         <td style="font-size:11px; color:#64748b;"><?= $updated ?></td>
-                        <td class="align-center">
+                        <td class="align-center" style="white-space:nowrap;">
                             <button type="button" class="int-btn-outline" style="font-size:11px;height:28px;padding:0 10px;cursor:pointer;"
                                 onclick='adminViewProduct(<?= htmlspecialchars(json_encode([
                                     "id" => $item["id"],
@@ -1696,7 +1758,7 @@ body, html {
                 <tr><td colspan="8" class="align-center" style="padding:24px;color:#64748b;"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>No movement records found.</td></tr>
             <?php else: ?>
                 <?php foreach ($movement_history as $log):
-                    $m_date = !empty($log['created_at']) ? date('M d, Y h:i A', strtotime($log['created_at'])) : 'â€”';
+                    $m_date = !empty($log['created_at']) ? date('M d, Y h:i A', strtotime($log['created_at'])) : '—';
                     $m_raw  = strtolower($log['movement_type'] ?? '');
                     $ref_no = !empty($log['reference_no']) ? $log['reference_no'] : ('LOG-' . str_pad($log['log_id'] ?? 0, 5, '0', STR_PAD_LEFT));
                     $qty    = (float)($log['quantity'] ?? 0);
@@ -1748,7 +1810,7 @@ body, html {
                     <td style="text-align:right;font-weight:800;font-size:13px;color:<?= $qty_color ?>;"><?= $qty_text ?> <?= $unit ?></td>
                     <td style="font-size:11px;font-weight:600;color:#334155;"><?= htmlspecialchars($log['user_name'] ?? 'System') ?></td>
                     <td style="font-size:11px;color:#475569;"><?= $branch ?></td>
-                    <td style="font-size:11px;color:#475569;max-width:200px;"><?= htmlspecialchars($log['notes'] ?? 'â€”') ?></td>
+                    <td style="font-size:11px;color:#475569;max-width:200px;"><?= htmlspecialchars($log['notes'] ?? '—') ?></td>
                 </tr>
                 <?php endforeach; ?>
             <?php endif; ?>
@@ -1948,10 +2010,10 @@ function adminViewProduct(item) {
         document.body.appendChild(overlay);
     }
 
-    document.getElementById('vpmTitle').textContent = 'View Product â€” ' + (item.name || '');
-    document.getElementById('vpmSku').textContent = item.sku || 'â€”';
-    document.getElementById('vpmName').textContent = item.name || 'â€”';
-    document.getElementById('vpmCategory').textContent = item.category_name || 'â€”';
+    document.getElementById('vpmTitle').textContent = 'View Product — ' + (item.name || '');
+    document.getElementById('vpmSku').textContent = item.sku || '—';
+    document.getElementById('vpmName').textContent = item.name || '—';
+    document.getElementById('vpmCategory').textContent = item.category_name || '—';
     document.getElementById('vpmBrand').textContent = item.brand || 'Petron';
     document.getElementById('vpmSupplier').textContent = item.supplier || 'Petron Corporation';
     document.getElementById('vpmUnit').textContent = item.unit || 'pcs';
@@ -1976,9 +2038,9 @@ function adminViewProduct(item) {
     document.getElementById('vpmAvailableStock').textContent = stock.toLocaleString('en-US', {minimumFractionDigits: 2}) + ' ' + (item.unit || 'pcs');
     document.getElementById('vpmReorderLevel').textContent = reorder.toLocaleString('en-US') + ' ' + (item.unit || 'pcs');
     document.getElementById('vpmCriticalLevel').textContent = critical.toLocaleString('en-US') + ' ' + (item.unit || 'pcs');
-    document.getElementById('vpmCost').textContent = 'â‚±' + cost.toLocaleString('en-US', {minimumFractionDigits: 2});
-    document.getElementById('vpmPrice').textContent = 'â‚±' + price.toLocaleString('en-US', {minimumFractionDigits: 2});
-    document.getElementById('vpmInventoryValue').textContent = 'â‚±' + (stock * price).toLocaleString('en-US', {minimumFractionDigits: 2});
+    document.getElementById('vpmCost').textContent = '₱' + cost.toLocaleString('en-US', {minimumFractionDigits: 2});
+    document.getElementById('vpmPrice').textContent = '₱' + price.toLocaleString('en-US', {minimumFractionDigits: 2});
+    document.getElementById('vpmInventoryValue').textContent = '₱' + (stock * price).toLocaleString('en-US', {minimumFractionDigits: 2});
 
     // Reset sub-tabs
     vpmSwitchTab(1);
@@ -2007,13 +2069,13 @@ function adminViewProduct(item) {
         var fHtml = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
         fHtml += '<thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Batch ID</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Delivery Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Received Qty</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Remaining Qty</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Unit Cost</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Selling Price</th></tr></thead><tbody>';
         data.deliveries.forEach(function(d) {
-            var dateStr = d.encoded_at ? new Date(d.encoded_at).toLocaleDateString() : 'â€”';
+            var dateStr = d.encoded_at ? new Date(d.encoded_at).toLocaleDateString() : '—';
             fHtml += '<tr><td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;"><code style="color:#002F70;font-weight:700;">' + esc(d.batch_no || 'BATCH-' + d.id) + '</code></td>';
             fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;">' + dateStr + '</td>';
             fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">' + Number(d.qty_received).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
             fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#002F70;">' + Number(d.qty_received).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
-            fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">â‚±' + Number(d.unit_cost || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
-            fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;color:#16a34a;font-weight:700;">â‚±' + Number(item.price || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td></tr>';
+            fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">₱' + Number(d.unit_cost || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
+            fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;color:#16a34a;font-weight:700;">₱' + Number(item.price || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td></tr>';
         });
         fHtml += '</tbody></table>';
         document.getElementById('vpmFifoTable').innerHTML = fHtml;
@@ -2061,18 +2123,18 @@ function printAdminProductDetails() {
     var r = _adminCurrentProd;
     if (!r) return;
     var pw = window.open('', '_blank');
-    pw.document.write('<!DOCTYPE html><html><head><title>Product Details â€” ' + (r.name || '') + '</title>');
+    pw.document.write('<!DOCTYPE html><html><head><title>Product Details — ' + (r.name || '') + '</title>');
     pw.document.write('<style>body{font-family:Arial,sans-serif;font-size:13px;color:#222;margin:0;padding:24px;}.header{background:#002F6C;color:#fff;padding:16px 20px;border-radius:6px 6px 0 0;}.header h2{margin:0;font-size:16px;}.section{border:1px solid #e2e8f0;border-top:none;padding:16px 20px;margin-bottom:12px;}.section h4{margin:0 0 10px;color:#002F6C;font-size:11px;text-transform:uppercase;border-bottom:1px solid #e2e8f0;padding-bottom:6px;}table.info{width:100%;border-collapse:collapse;font-size:12px;}table.info td{padding:5px 0;border-bottom:1px solid #f1f5f9;}table.info td:first-child{color:#64748b;font-weight:600;width:180px;}.footer{text-align:center;font-size:10px;color:#94a3b8;margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;}</style></head><body>');
-    pw.document.write('<div class="header"><h2>Merchandise Product Slip â€” ' + (r.name || '') + '</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
+    pw.document.write('<div class="header"><h2>Merchandise Product Slip — ' + (r.name || '') + '</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
     pw.document.write('<div class="section"><h4>Product Information</h4><table class="info">');
-    pw.document.write('<tr><td>SKU:</td><td><code>' + (r.sku || 'â€”') + '</code></td></tr>');
-    pw.document.write('<tr><td>Product Name:</td><td><strong>' + (r.name || 'â€”') + '</strong></td></tr>');
-    pw.document.write('<tr><td>Category:</td><td>' + (r.category_name || 'â€”') + '</td></tr>');
+    pw.document.write('<tr><td>SKU:</td><td><code>' + (r.sku || '—') + '</code></td></tr>');
+    pw.document.write('<tr><td>Product Name:</td><td><strong>' + (r.name || '—') + '</strong></td></tr>');
+    pw.document.write('<tr><td>Category:</td><td>' + (r.category_name || '—') + '</td></tr>');
     pw.document.write('<tr><td>Brand:</td><td>' + (r.brand || 'Petron') + '</td></tr>');
     pw.document.write('<tr><td>Supplier:</td><td>' + (r.supplier || 'Petron Corporation') + '</td></tr>');
     pw.document.write('<tr><td>Barcode:</td><td>' + (r.barcode || '4800012345678') + '</td></tr>');
     pw.document.write('<tr><td>Current Stock:</td><td><strong style="color:#002F70;">' + Number(r.stock_level || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' ' + (r.unit || 'pcs') + '</strong></td></tr>');
-    pw.document.write('<tr><td>Selling Price:</td><td><strong style="color:#16a34a;">â‚±' + Number(r.price || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</strong></td></tr>');
+    pw.document.write('<tr><td>Selling Price:</td><td><strong style="color:#16a34a;">₱' + Number(r.price || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</strong></td></tr>');
     pw.document.write('</table></div>');
     pw.document.write('<div class="footer">Petron Station Management System &copy; ' + new Date().getFullYear() + '</div>');
     pw.document.write('</body></html>');
@@ -2119,7 +2181,7 @@ function openSiModal(d) {
     document.getElementById('vsimSupplier').textContent = d.supplier;
     document.getElementById('vsimDate').textContent = d.date;
     document.getElementById('vsimQty').textContent = d.qty;
-    document.getElementById('vsimCost').textContent = 'â‚±' + d.unit_cost;
+    document.getElementById('vsimCost').textContent = '₱' + d.unit_cost;
     document.getElementById('vsimBatch').textContent = d.batch;
     document.getElementById('vsimBy').textContent = d.received_by;
     document.getElementById('vsimStatus').innerHTML = '<span style="background:#dcfce7;color:#15803d;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;">' + esc(d.status) + '</span>';

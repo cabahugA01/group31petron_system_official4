@@ -93,14 +93,14 @@ if ($export === 'excel') {
     header('Content-Type: application/vnd.ms-excel; charset=utf-8');
     header('Content-Disposition: attachment; filename="reconciliation_oversight_'.date('Ymd').'.xls"');
     echo '<html><head><meta charset="UTF-8"><style>table{border-collapse:collapse}th,td{border:1px solid #ddd;padding:7px}th{background:#002F6C;color:#fff}</style></head><body>';
-    echo '<h2>Fuel Reconciliation Oversight</h2><p>Period: '.$date_from.' â€“ '.$date_to.' | Station: '.$station_name.'</p>';
+    echo '<h2>Fuel Reconciliation Oversight</h2><p>Period: '.$date_from.' – '.$date_to.' | Station: '.$station_name.'</p>';
     echo '<table><thead><tr><th>ID</th><th>Date</th><th>Station</th><th>Fuel Type</th><th>Expected (L)</th><th>Actual (L)</th><th>Variance (L)</th><th>Variance (%)</th><th>Status</th><th>Resolved By</th><th>Notes</th></tr></thead><tbody>';
     foreach ($records as $r) {
         echo '<tr><td>VAR-'.$r['id'].'</td><td>'.date('M d, Y',strtotime($r['report_date'])).'</td>';
         echo '<td>'.htmlspecialchars($r['station_name']??'').'</td><td>'.htmlspecialchars($r['fuel_type']).'</td>';
         echo '<td>'.number_format($r['expected_stock'],2).'</td><td>'.number_format($r['actual_stock'],2).'</td>';
         echo '<td>'.number_format($r['variance_liters'],2).'</td><td>'.number_format($r['variance_percent'],2).'%</td>';
-        echo '<td>'.htmlspecialchars($r['status']).'</td><td>'.htmlspecialchars($r['resolved_by_name']??'â€”').'</td>';
+        echo '<td>'.htmlspecialchars($r['status']).'</td><td>'.htmlspecialchars($r['resolved_by_name']??'—').'</td>';
         echo '<td>'.htmlspecialchars(substr($r['resolution_notes']??'',0,80)).'</td></tr>';
     }
     echo '</tbody></table></body></html>'; exit;
@@ -238,7 +238,7 @@ html,body{max-width:100vw;overflow-x:hidden}
 <div class="afao-table-card">
     <div class="afao-table-hd">
         <h3 class="afao-table-title"><i class="fas fa-balance-scale"></i> Fuel Variance / Reconciliation Records</h3>
-        <span style="font-size:11px;color:#64748b;"><?= number_format(count($records)) ?> record(s) â€” <?= htmlspecialchars($date_from) ?> to <?= htmlspecialchars($date_to) ?></span>
+        <span style="font-size:11px;color:#64748b;"><?= number_format(count($records)) ?> record(s) — <?= htmlspecialchars($date_from) ?> to <?= htmlspecialchars($date_to) ?></span>
     </div>
 
     <?php if (empty($records)): ?>
@@ -282,7 +282,7 @@ html,body{max-width:100vw;overflow-x:hidden}
                 <tr>
                     <td style="font-weight:600;color:#475569;">VAR-<?= htmlspecialchars($r['id']) ?></td>
                     <td><?= date('M d, Y', strtotime($r['report_date'])) ?></td>
-                    <td title="<?= htmlspecialchars($r['station_name']??'') ?>"><?= htmlspecialchars($r['station_name'] ?? 'â€”') ?></td>
+                    <td title="<?= htmlspecialchars($r['station_name']??'') ?>"><?= htmlspecialchars($r['station_name'] ?? '—') ?></td>
                     <td style="font-weight:600;"><?= htmlspecialchars($r['fuel_type']) ?></td>
                     <td><?= number_format($r['expected_stock'],2) ?> L</td>
                     <td><?= number_format($r['actual_stock'],2) ?> L</td>
@@ -292,10 +292,10 @@ html,body{max-width:100vw;overflow-x:hidden}
                     <td style="<?= $var_pct > 5 ? 'color:#dc2626;font-weight:700;' : 'color:#16a34a;font-weight:700;' ?>">
                         <?= number_format($r['variance_percent'],2) ?>%
                     </td>
-                    <td style="<?= $st_color ?>"><?= htmlspecialchars(strtoupper($r['status'] ?? 'â€”')) ?></td>
-                    <td title="<?= htmlspecialchars($r['resolved_by_name']??'') ?>"><?= htmlspecialchars($r['resolved_by_name'] ?? 'â€”') ?></td>
+                    <td style="<?= $st_color ?>"><?= htmlspecialchars(strtoupper($r['status'] ?? '—')) ?></td>
+                    <td title="<?= htmlspecialchars($r['resolved_by_name']??'') ?>"><?= htmlspecialchars($r['resolved_by_name'] ?? '—') ?></td>
                     <td title="<?= htmlspecialchars($r['resolution_notes']??'') ?>">
-                        <?= htmlspecialchars(substr($r['resolution_notes'] ?? 'â€”', 0, 30)) ?><?= strlen($r['resolution_notes']??'') > 30 ? 'â€¦' : '' ?>
+                        <?= htmlspecialchars(substr($r['resolution_notes'] ?? '—', 0, 30)) ?><?= strlen($r['resolution_notes']??'') > 30 ? '—¦' : '' ?>
                     </td>
                 </tr>
                 <?php endforeach; ?>

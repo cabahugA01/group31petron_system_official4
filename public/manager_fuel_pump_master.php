@@ -1,6 +1,6 @@
 ﻿<?php
 // ============================================================
-// Manager Calibration Review â€“ manager_fuel_pump_master.php
+// Manager Calibration Review – manager_fuel_pump_master.php
 // Purpose: Granular, shift-based calibration and meter reading validation.
 // ============================================================
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -350,10 +350,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $export === '') {
                 try {
                     $meta_notes = json_encode([
                         'transaction_id' => $tx['transaction_id'],
-                        'fuel_line' => 'Pump #' . ($tx['pump_id'] ?? 'â€”'),
+                        'fuel_line' => 'Pump #' . ($tx['pump_id'] ?? '—'),
                         'fuel_type' => $tx['fuel_type'],
                         'shift' => formatShiftLabel($tx['shift_period']),
-                        'staff_name' => $tx['staff_name'] ?? 'â€”',
+                        'staff_name' => $tx['staff_name'] ?? '—',
                         'prev_beginning' => (float)$tx['previous_reading'],
                         'prev_ending' => (float)$tx['present_reading'],
                         'prev_calibration' => (float)$tx['calibration'],
@@ -428,7 +428,7 @@ if ($shift_filter !== 'all') {
     $params[] = strtolower($shift_filter);
 }
 
-// Fuel Type Filter â€” use LIKE so 'Diesel' matches stored 'DIESEL 1 - 1', etc.
+// Fuel Type Filter — use LIKE so 'Diesel' matches stored 'DIESEL 1 - 1', etc.
 if ($fuel_type_filter !== 'all') {
     $where[] = "LOWER(ft.fuel_type) LIKE ?";
     $params[] = '%' . strtolower($fuel_type_filter) . '%';
@@ -453,7 +453,7 @@ try {
                    COALESCE(
                        NULLIF(CONCAT(TRIM(COALESCE(validator.first_name, '')), ' ', TRIM(COALESCE(validator.last_name, ''))), ' '),
                        validator.username,
-                       'â€”'
+                       '—'
                    ) as validator_name
             FROM fuel_transactions ft
             LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
@@ -553,15 +553,15 @@ if (in_array($export, ['excel', 'pdf'])) {
             date('Y-m-d', strtotime($r['transaction_date'])),
             formatShiftLabel($r['shift_period']),
             $fuel_normalized,
-            $r['staff_name'] ?? 'â€”',
+            $r['staff_name'] ?? '—',
             number_format($r['previous_reading'], 2),
             number_format($r['present_reading'], 2),
             number_format($r['staff_calibration'], 2) . ' L',
             number_format($r['calibration'], 2) . ' L',
             number_format($r['liters_sold'], 2) . ' L',
             getStatusLabel($r['status']),
-            $r['validator_name'] ?? 'â€”',
-            $r['validated_at'] ? date('Y-m-d H:i', strtotime($r['validated_at'])) : 'â€”'
+            $r['validator_name'] ?? '—',
+            $r['validated_at'] ? date('Y-m-d H:i', strtotime($r['validated_at'])) : '—'
         ];
     }
     $filename = 'calibration_review_' . $date_filter;
@@ -672,7 +672,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 .ato-btn-reset { color: #475569 !important; border-color: #cbd5e1 !important; }
 .ato-btn-reset:hover { background: #f1f5f9 !important; }
 
-/* Row Actions â€” outlined style matching export buttons (white bg, colored border+text, hover fills) */
+/* Row Actions — outlined style matching export buttons (white bg, colored border+text, hover fills) */
 .act-btn { display: flex; align-items: center; justify-content: center; gap: 5px; padding: 0 10px; border-radius: 6px; font-size: 10.5px; font-weight: 700; border: 1.5px solid transparent; cursor: pointer; height: 28px; text-decoration: none; text-transform: uppercase; background: #ffffff !important; transition: all 0.15s; width: 100%; box-sizing: border-box; }
 .act-btn-verify { border-color: #16a34a !important; color: #16a34a !important; background: #ffffff !important; }
 .act-btn-verify:hover { background: #16a34a !important; color: #ffffff !important; }
@@ -684,7 +684,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 .act-btn-view:hover { background: #475569 !important; color: #ffffff !important; }
 .act-btn:disabled, .act-btn.disabled { opacity: 0.5; cursor: not-allowed; border-color: #cbd5e1 !important; color: #94a3b8 !important; background: #f1f5f9 !important; }
 
-/* Status â€” plain colored text, no background fill */
+/* Status — plain colored text, no background fill */
 .badge-st { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; background: none !important; padding: 0; border-radius: 0; }
 .badge-st::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .badge-st.bg-amber { color: #b45309; }
@@ -854,7 +854,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                                             <button class="act-btn act-btn-edit" onclick="openAdjustModal(<?= htmlspecialchars(json_encode([
                                                 'id' => $r['id'],
                                                 'txn_id' => $r['transaction_id'],
-                                                'pump' => $r['pump_number'] ?? 'â€”',
+                                                'pump' => $r['pump_number'] ?? '—',
                                                 'fuel_type' => $r['fuel_type'],
                                                 'beginning' => get_preceding_shift_validated_ending($pdo, $station_id, $r['pump_id'], $r['shift_period'], $tx_date),
                                                 'ending' => $r['present_reading'],
@@ -874,19 +874,19 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                                     <?php else: ?>
                                         <button class="act-btn act-btn-view" onclick="openViewModal(<?= htmlspecialchars(json_encode([
                                             'txn_id' => $r['transaction_id'],
-                                            'pump' => $r['pump_number'] ?? 'â€”',
+                                            'pump' => $r['pump_number'] ?? '—',
                                             'fuel_type' => $r['fuel_type'],
                                             'beginning' => number_format($r['previous_reading'], 2),
                                             'ending' => number_format($r['present_reading'], 2),
                                             'staff_cal' => number_format($r['staff_calibration'], 2) . ' L',
                                             'mgr_cal' => number_format($r['calibration'], 2) . ' L',
                                             'liters_sold' => number_format($r['liters_sold'], 2) . ' L',
-                                            'total_amount' => 'â‚±' . number_format($r['total_amount'], 2),
+                                            'total_amount' => '₱' . number_format($r['total_amount'], 2),
                                             'staff' => $r['staff_name'],
                                             'status' => getStatusLabel($r['status']),
                                             'validator' => $r['validator_name'],
-                                            'validated_at' => $r['validated_at'] ? date('M d, Y h:i A', strtotime($r['validated_at'])) : 'â€”',
-                                            'remarks' => $r['reject_reason'] ?: 'â€”'
+                                            'validated_at' => $r['validated_at'] ? date('M d, Y h:i A', strtotime($r['validated_at'])) : '—',
+                                            'remarks' => $r['reject_reason'] ?: '—'
                                         ])) ?>)"><i class="fas fa-eye"></i> View</button>
                                     <?php endif; ?>
                                     </div>
@@ -995,7 +995,6 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
     <div class="modal-content">
         <div class="modal-header">
             <h3>Calibration Entry Audit Details</h3>
-            <button type="button" onclick="closeModal('viewModal')" style="border:none;background:none;font-size:20px;cursor:pointer;">&times;</button>
         </div>
         <div class="modal-body">
             <div class="details-grid">

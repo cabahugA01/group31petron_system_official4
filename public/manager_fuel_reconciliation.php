@@ -1,6 +1,6 @@
 ﻿<?php
 // ============================================================
-// Manager Fuel Reconciliation â€“ manager_fuel_reconciliation.php
+// Manager Fuel Reconciliation – manager_fuel_reconciliation.php
 // Purpose: Compare pump sales with tank levels and resolve variances
 // ============================================================
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -385,7 +385,7 @@ html, body {
     font-size: 11px; font-weight: 700; color: #fff;
     text-transform: uppercase; border-bottom: 2px solid #002F70;
     }
-/* Remove fixed column widths â€” let the browser auto-size them */
+/* Remove fixed column widths — let the browser auto-size them */
 .data-table th, .data-table td {
     padding: 10px 10px;
     white-space: nowrap;

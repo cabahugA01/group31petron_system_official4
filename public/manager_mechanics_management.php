@@ -595,7 +595,7 @@ button.tbl-btn.wkld { color:#475569!important; }
                         </span>
                     </td>
                     <td style="text-align:center;vertical-align:middle;white-space:nowrap;">
-                        <div class="tbl-btn-group" style="justify-content:center;flex-wrap:nowrap;">
+                        <div class="tbl-btn-group" style="justify-content:center;gap:6px;">
                             <button class="tbl-btn edit" onclick='openEditModal(<?= json_encode($row) ?>)'>
                                 <i class="fas fa-pen"></i> Edit
                             </button>
@@ -611,9 +611,6 @@ button.tbl-btn.wkld { color:#475569!important; }
                                 <i class="fas fa-check-circle"></i> Activate
                             </button>
                             <?php endif; ?>
-                            <button class="tbl-btn archive" onclick="openArchiveModal(<?= (int)$row['id'] ?>, '<?= htmlspecialchars(addslashes($displayName)) ?>', <?= $assigned ?>)">
-                                <i class="fas fa-archive"></i> Archive
-                            </button>
                         </div>
                     </td>
                 </tr>
@@ -639,7 +636,6 @@ button.tbl-btn.wkld { color:#475569!important; }
     <div class="modal-content wide">
         <div class="modal-header">
             <span class="modal-title"><i class="fas fa-clipboard-list"></i> <span id="wkldMechName">Mechanic</span> — Workload</span>
-            <button onclick="document.getElementById('workloadModal').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:20px;color:#94a3b8;">×</button>
         </div>
         <div class="modal-body">
             <div id="wkldLoading" style="text-align:center;padding:30px;color:#64748b;"><i class="fas fa-spinner fa-spin" style="font-size:24px;"></i><br>Loading...</div>
@@ -731,7 +727,6 @@ button.tbl-btn.wkld { color:#475569!important; }
             <input type="hidden" name="id" id="formId" value="">
             <div class="modal-header">
                 <span class="modal-title" id="modalTitle"><i class="fas fa-plus-circle"></i> Add New Mechanic</span>
-                <button type="button" onclick="document.getElementById('addEditModal').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:20px;color:#94a3b8;">×</button>
             </div>
             <div class="modal-body">
                 <div class="form-section-title"><i class="fas fa-id-card"></i> Personal Information</div>

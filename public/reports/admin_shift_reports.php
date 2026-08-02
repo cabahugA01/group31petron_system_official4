@@ -1,6 +1,6 @@
 <?php
 /**
- * SHIFT REPORTS â€“ COMPLETE CONTENTS
+ * SHIFT REPORTS – COMPLETE CONTENTS
  * Matches staff_reports.php professional design with centered header + section tabs
  */
 
@@ -43,7 +43,7 @@ if (!in_array($section, $valid_sections, true)) $section = 'fuel_sales';
 // Active shift filter
 $active_shift = (int)($_GET['shift'] ?? 0); // 0 = all, 1 = shift1, 2 = shift2
 
-// Shift definitions â€” extend Shift 2 to midnight to catch all late transactions
+// Shift definitions — extend Shift 2 to midnight to catch all late transactions
 // Ensure order: Shift 1 always comes before Shift 2
 $shifts = [
     1 => ['label'=>'Shift 1 (6AM - 2PM)',  'start'=>'06:00:00','end'=>'14:00:00'],
@@ -136,7 +136,7 @@ function srAdminShiftCondition(string $alias, string $datetime_expr, string $shi
 ?>
 
 <style>
-/* Shift Reports â€“ matches staff_reports.php design */
+/* Shift Reports – matches staff_reports.php design */
 .sr-report-title {
     text-align: center;
     padding: 20px 0 14px;
@@ -383,8 +383,8 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
 
                 $q = $pdo->prepare("
                     SELECT
-                        COALESCE(ft.pump_id, 'â€”') AS pump_name,
-                        COALESCE(ft.fuel_type, 'â€”') AS fuel_type,
+                        COALESCE(ft.pump_id, '—') AS pump_name,
+                        COALESCE(ft.fuel_type, '—') AS fuel_type,
                         COALESCE(ft.previous_reading, 0) AS beg_reading,
                         COALESCE(ft.present_reading, 0)  AS end_reading,
                         COALESCE(ft.calibration, 0)      AS calibration,
@@ -412,8 +412,8 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
             case 'merchandise':
                 $q = $pdo->prepare("
                     SELECT
-                        COALESCE(mti.category, 'â€”') AS category,
-                        COALESCE(mti.product_name, 'â€”') AS product_name,
+                        COALESCE(mti.category, '—') AS category,
+                        COALESCE(mti.product_name, '—') AS product_name,
                         COALESCE(si.stock_level, 0) + SUM(mti.quantity) AS beg_stock,
                         0 AS stock_in,
                         SUM(mti.quantity)               AS stock_out,
@@ -440,8 +440,8 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                 if (empty($rows)) {
                     $q2 = $pdo->prepare("
                         SELECT
-                            COALESCE(mti.category, 'â€”') AS category,
-                            COALESCE(mti.product_name, 'â€”') AS product_name,
+                            COALESCE(mti.category, '—') AS category,
+                            COALESCE(mti.product_name, '—') AS product_name,
                             COALESCE(si.stock_level, 0) + SUM(mti.quantity) AS beg_stock,
                             0 AS stock_in,
                             SUM(mti.quantity)               AS stock_out,
@@ -763,7 +763,7 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
         <div style="font-size:12px;color:#334155;">
             <strong>Date:</strong>
             <?= date('F j, Y', strtotime($date_start)) ?>
-            <?= $date_start !== $date_end ? ' â€“ ' . date('F j, Y', strtotime($date_end)) : '' ?>
+            <?= $date_start !== $date_end ? ' – ' . date('F j, Y', strtotime($date_end)) : '' ?>
         </div>
     </div>
 
@@ -1072,7 +1072,7 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
             $inventory_impact = [];
             try {
                 $q = $pdo->prepare("
-                    SELECT p.name AS product_name, COALESCE(p.sku,'â€”') AS sku,
+                    SELECT p.name AS product_name, COALESCE(p.sku,'—') AS sku,
                            COALESCE(si.stock_level, p.current_stock, 0) AS beginning_stock,
                            COALESCE(SUM(CASE WHEN mti.item_type='merchandise' THEN mti.quantity ELSE 0 END), 0) AS sold,
                            COALESCE(SUM(CASE WHEN mti.item_type='service' THEN mti.quantity ELSE 0 END), 0) AS used_in_jo,
@@ -1551,7 +1551,7 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                     <td><?=htmlspecialchars(ucwords(str_replace('-', ' ', $r['customer_type'] ?? 'walk-in')))?></td>
                     <td><?=htmlspecialchars(ucfirst($r['status'] ?? 'active'))?></td>
                     <td><?=number_format($r['txn_count'])?></td>
-                    <td>â‚±<?=number_format($r['balance'],2)?></td>
+                    <td>₱<?=number_format($r['balance'],2)?></td>
                     <td>&#x20B1;<?=number_format($r['credit_limit'] ?? 0,2)?></td>
                     <td>&#x20B1;<?=number_format($r['available_credit'] ?? 0,2)?></td>
                     <td><?=number_format($r['loyalty_points'])?> pts</td>

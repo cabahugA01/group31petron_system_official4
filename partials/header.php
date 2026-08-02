@@ -570,6 +570,70 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         color: #94a3b8 !important;
         opacity: 1 !important;
     }
+
+    /* Outlined, Filter, Reset, Cancel, and Action buttons must inherit their explicit class text colors */
+    .int-btn-outline,
+    .flt-btn,
+    .flt-btn-search,
+    .flt-btn-reset,
+    .btn-cancel,
+    .btn-reset,
+    .btn-secondary,
+    .btn-outline,
+    .btn-ghost,
+    .vt-btn-reset,
+    .modal-btn-secondary,
+    .po-btn-back,
+    .ato-btn-back,
+    button[class*="outline"],
+    button[class*="reset"],
+    button[class*="cancel"] {
+        color: inherit !important;
+        -webkit-text-fill-color: inherit !important;
+    }
+
+    /* Only solid primary/action buttons get white text by default */
+    button.btn-primary,
+    button.btn-success,
+    button.btn-danger,
+    button.flt-btn-solid-primary {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+    }
+
+    /* Sub-tab buttons - Explicit High-Contrast Active & Inactive Styling */
+    .fuel-sub-tab-btn.active,
+    .fuel-sub-tab-btn.active:hover,
+    .fuel-sub-tab-btn.active:focus,
+    .fuel-sub-tab-btn.active:active {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        background-color: #002F70 !important;
+        background: #002F70 !important;
+        border: 2px solid #002F70 !important;
+        opacity: 1 !important;
+    }
+
+    .fuel-sub-tab-btn:not(.active),
+    .fuel-sub-tab-btn:not(.active):hover,
+    .fuel-sub-tab-btn:not(.active):focus,
+    .fuel-sub-tab-btn:not(.active):active {
+        color: #002F70 !important;
+        -webkit-text-fill-color: #002F70 !important;
+        background-color: #ffffff !important;
+        background: #ffffff !important;
+        border: 2px solid #cbd5e1 !important;
+        opacity: 1 !important;
+    }
+
+    /* Icons inside buttons must also be visible */
+    button i,
+    button .fas,
+    button .far,
+    button .fab {
+        color: inherit !important;
+        -webkit-text-fill-color: inherit !important;
+    }
   </style>
   <style>
     :root {
@@ -758,7 +822,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     }
     
     /* â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• 
-       DARK THEME â€” Full proper dark mode
+       DARK THEME — Full proper dark mode
        â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â•  */
 
     /* Dark theme CSS variable overrides */
@@ -972,7 +1036,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     body.dark-theme .btn-warning  { background-color: #d97706 !important; border-color: #b45309 !important; color: #fff !important; }
     body.dark-theme .btn-info     { background-color: #0891b2 !important; border-color: #0e7490 !important; color: #fff !important; }
 
-    /* custom petron buttons â€” keep them as-is or slightly darken */
+    /* custom petron buttons — keep them as-is or slightly darken */
     body.dark-theme .cust-btn {
         background: #252840 !important;
         color: #e2e8f0 !important;
@@ -1066,7 +1130,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     body.dark-theme a:not(.btn):not(.nav-item):not(.sidebar-sub-item) { color: #60a5fa !important; }
     body.dark-theme a:not(.btn):not(.nav-item):not(.sidebar-sub-item):hover { color: #93c5fd !important; }
 
-    /* â”€â”€ Flash messages â€” keep original alert colors but on dark bg â”€â”€ */
+    /* â”€â”€ Flash messages — keep original alert colors but on dark bg â”€â”€ */
     body.dark-theme .petron-toast {
         background: #111827 !important;
         border-color: #263449 !important;
@@ -1163,7 +1227,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         border-color: #1e2130 !important;
     }
     
-    /* Apply theme variables to elements â€” with smooth transitions */
+    /* Apply theme variables to elements — with smooth transitions */
     body {
         background-color: var(--bg-main);
         color: var(--text-main);
@@ -1287,7 +1351,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
             padding-bottom: 80px !important;
         }
 
-        /* Avatar circle â€” centered above name */
+        /* Avatar circle — centered above name */
         .sif-avatar {
             flex-shrink: 0 !important;
             width: 30px !important;
@@ -1369,7 +1433,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
             font-size: 18px !important;
         }
 
-        /* Sub-menus use normal document flow â€” they expand inline, not floating */
+        /* Sub-menus use normal document flow — they expand inline, not floating */
         .sidebar-menu > nav > div > div[id^="sub-"] {
             position: relative !important;
             z-index: 1002 !important;
@@ -2558,7 +2622,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         transform: rotate(20deg);
     }
 
-    /* Dark mode â€” glowing indigo circle */
+    /* Dark mode — glowing indigo circle */
     body.dark-theme .theme-toggle-btn {
         background: rgba(99, 102, 241, 0.18) !important;
         border: 1.5px solid rgba(99, 102, 241, 0.55) !important;
@@ -5265,7 +5329,7 @@ require_once __DIR__ . '/rbac_menu.php';
 
             async function loadNotifications() {
                 const el = document.getElementById('notificationList');
-                if (el) el.innerHTML = '<div style="padding:20px;text-align:center;color:#888;font-size:12px;"><i class="fas fa-spinner fa-spin"></i> Loadingâ€¦</div>';
+                if (el) el.innerHTML = '<div style="padding:20px;text-align:center;color:#888;font-size:12px;"><i class="fas fa-spinner fa-spin"></i> Loading—¦</div>';
                 try {
                     const res  = await fetch(API_LIST + '?action=list&limit=15&status=all');
                     const data = await res.json();
@@ -5675,7 +5739,7 @@ require_once __DIR__ . '/rbac_menu.php';
 
         const isOpen = sub.style.display !== 'none';
 
-        // Close all other open sub-menus (accordion â€” no overlap)
+        // Close all other open sub-menus (accordion — no overlap)
         document.querySelectorAll('[id^="sub-"]').forEach(function(other) {
             if (other.id !== subId) {
                 other.style.display = 'none';

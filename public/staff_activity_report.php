@@ -110,7 +110,7 @@ if ($has_audit_log) {
     }
 }
 
-// 1b. Also from activity_logs (lib.php log_activity() calls â€” staff login, encode, etc.)
+// 1b. Also from activity_logs (lib.php log_activity() calls — staff login, encode, etc.)
 try {
     $stmt2 = $pdo->prepare("
         SELECT
@@ -192,7 +192,7 @@ if ($has_user_sessions) {
     }
 }
 
-// 3. Fuel Transaction Encoding â€” staff's own records only
+// 3. Fuel Transaction Encoding — staff's own records only
 if (table_exists($pdo, 'fuel_transactions')) {
     try {
         $sql = "
@@ -201,11 +201,11 @@ if (table_exists($pdo, 'fuel_transactions')) {
                 ft.staff_id                                                              AS user_id,
                 COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
                          u.username, CONCAT('User #', ft.staff_id))                     AS username,
-                CONCAT('Fuel Reading â€” ', COALESCE(ft.fuel_type,'N/A'))                AS activity_type,
+                CONCAT('Fuel Reading — ', COALESCE(ft.fuel_type,'N/A'))                AS activity_type,
                 COALESCE(ft.transaction_date, ft.created_at)                            AS timestamp,
                 CONCAT('Fuel: ', COALESCE(ft.fuel_type,'N/A'),
                        ' | Vol: ', FORMAT(COALESCE(ft.liters_sold,0),2), 'L',
-                       ' | â‚±', FORMAT(ft.total_amount,2),
+                       ' | ₱', FORMAT(ft.total_amount,2),
                        ' | Status: ', COALESCE(ft.status,'Pending'))                    AS description,
                 COALESCE(ft.status,'Pending')                                           AS status,
                 COALESCE(ft.notes,'')                                                   AS remarks
@@ -225,7 +225,7 @@ if (table_exists($pdo, 'fuel_transactions')) {
     }
 }
 
-// 4. Merchandise Transaction Encoding â€” staff's own transactions only
+// 4. Merchandise Transaction Encoding — staff's own transactions only
 if (table_exists($pdo, 'merchandise_transactions')) {
     try {
         $sql = "
@@ -234,11 +234,11 @@ if (table_exists($pdo, 'merchandise_transactions')) {
                 mt.staff_id AS user_id,
                 COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
                          u.username, CONCAT('User #', mt.staff_id))  AS username,
-                CONCAT('Merchandise â€” ', COALESCE(mt.transaction_type,'merchandise'))  AS activity_type,
+                CONCAT('Merchandise — ', COALESCE(mt.transaction_type,'merchandise'))  AS activity_type,
                 mt.created_at                                                           AS timestamp,
                 CONCAT('Txn: ', COALESCE(NULLIF(mt.transaction_id,''), CONCAT('#', mt.id)),
                        ' | Customer: ', COALESCE(NULLIF(mt.customer_name,''),'Walk-in'),
-                       ' | Total: â‚±', FORMAT(mt.total_amount,2),
+                       ' | Total: ₱', FORMAT(mt.total_amount,2),
                        ' | Status: ', COALESCE(mt.validation_status,'Pending'))        AS description,
                 COALESCE(mt.validation_status,'Pending')                               AS status,
                 COALESCE(mt.staff_remarks, mt.remarks, '')                             AS remarks
@@ -258,7 +258,7 @@ if (table_exists($pdo, 'merchandise_transactions')) {
     }
 }
 
-// 5. Job Orders Encoding â€” staff's own records only
+// 5. Job Orders Encoding — staff's own records only
 if (table_exists($pdo, 'job_orders')) {
     try {
         $sql = "
@@ -267,11 +267,11 @@ if (table_exists($pdo, 'job_orders')) {
                 COALESCE(jo.created_by, jo.user_id)                                     AS user_id,
                 COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
                          u.username, CONCAT('User #', COALESCE(jo.created_by, jo.user_id)))  AS username,
-                CONCAT('Job Order â€” ', COALESCE(jo.service_type,'Service'))              AS activity_type,
+                CONCAT('Job Order — ', COALESCE(jo.service_type,'Service'))              AS activity_type,
                 jo.created_at                                                             AS timestamp,
                 CONCAT('JO: ', COALESCE(jo.job_order_id, COALESCE(jo.job_order_number, CONCAT('JO-', jo.id))),
                        ' | Service: ', COALESCE(jo.service_type,'N/A'),
-                       ' | Total: â‚±', FORMAT(COALESCE(jo.total_cost, jo.estimated_cost,0),2),
+                       ' | Total: ₱', FORMAT(COALESCE(jo.total_cost, jo.estimated_cost,0),2),
                        ' | Status: ', COALESCE(jo.validation_status, jo.status,'Pending')) AS description,
                 COALESCE(jo.validation_status, jo.status,'Pending')                      AS status,
                 COALESCE(jo.notes, jo.additional_notes,'')                               AS remarks
@@ -300,7 +300,7 @@ if (table_exists($pdo, 'payments')) {
                     u.username,
                     'Payment Encoding' as activity_type,
                     p.created_at as timestamp,
-                    CONCAT('Encoded payment - ', p.transaction_id, ' - ', p.payment_mode, ' - â‚±', FORMAT(p.amount_paid, 2)) as description,
+                    CONCAT('Encoded payment - ', p.transaction_id, ' - ', p.payment_mode, ' - ₱', FORMAT(p.amount_paid, 2)) as description,
                     p.remarks
             FROM payments p
             LEFT JOIN users u ON p.user_id = u.id ";
@@ -408,7 +408,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
             echo '<td>' . htmlspecialchars($activity['username'] ?? 'System') . '</td>';
             echo '<td>LOGGED</td>';
             echo '<td>' . date('Y-m-d H:i:s', strtotime($activity['timestamp'])) . '</td>';
-            echo '<td>' . htmlspecialchars($activity['remarks'] ?? 'â€”') . '</td>';
+            echo '<td>' . htmlspecialchars($activity['remarks'] ?? '—') . '</td>';
             echo '</tr>';
         }
     }
@@ -441,7 +441,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                 $activity['username'] ?? 'System',
                 'LOGGED',
                 date('Y-m-d H:i:s', strtotime($activity['timestamp'])),
-                $activity['remarks'] ?? 'â€”'
+                $activity['remarks'] ?? '—'
             ]);
         }
     }
@@ -824,7 +824,7 @@ require_once __DIR__ . '/../partials/header.php';
                             <td><?= htmlspecialchars($activity['username'] ?? 'System') ?></td>
                             <td class="text-center"><span style="color: #28a745; font-weight: 600;">LOGGED</span></td>
                             <td><?= date('Y-m-d H:i:s', strtotime($activity['timestamp'])) ?></td>
-                            <td><?= htmlspecialchars($activity['remarks'] ?? 'â€”') ?></td>
+                            <td><?= htmlspecialchars($activity['remarks'] ?? '—') ?></td>
                         </tr>
                         <?php endforeach; else: ?>
                         <tr>

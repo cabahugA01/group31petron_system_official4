@@ -1,7 +1,7 @@
 ﻿<?php
 
 // ============================================================
-// SuperAdmin â€“ Admin Management
+// SuperAdmin – Admin Management
 // public/superadmin_admin_management.php
 // ============================================================
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -156,7 +156,7 @@ include __DIR__ . '/../partials/header.php';
 .am-form-group input:focus, .am-form-group select:focus { border-color: var(--petron-blue); box-shadow: 0 0 0 3px rgba(0,38,77,.08); }
 .am-form-hint { font-size: 11px; color: #888; margin-top: 2px; }
 
-/* Toolbar combo variant â€” matches toolbar height */
+/* Toolbar combo variant — matches toolbar height */
 .am-combo-toolbar .am-combo-input { padding-top: 9px; padding-bottom: 9px; font-size: 13px; }
 .am-combo { position: relative; }
 .am-combo-input { width: 100% !important; padding: 10px 45px 10px 13px; border: 1px solid #ddd; border-radius: 10px; font-size: 13px; outline: none; transition: border-color .2s; background: #fff; box-sizing: border-box; cursor: text; }
@@ -282,7 +282,7 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
 
 <!-- Toolbar -->
 <div class="am-toolbar">
-    <input type="text" id="searchInput" placeholder="Search by first name, last name, email or stationâ€¦" oninput="filterTable()">
+    <input type="text" id="searchInput" placeholder="Search by first name, last name, email or station—¦" oninput="filterTable()">
     <select id="filterStatus" onchange="filterTable()">
         <option value="">All Status</option>
         <option value="active">Active</option>
@@ -351,7 +351,7 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
             <td style="color:#999;font-size:12px;"><?php echo $i + 1; ?></td>
             <td style="font-weight:600;color:#1a1a1a;"><?php echo htmlspecialchars($first_name); ?></td>
             <td style="font-weight:600;color:#1a1a1a;"><?php echo htmlspecialchars($last_name); ?></td>
-            <td style="font-size:13px;color:#666;"><?php echo htmlspecialchars($adm['email'] ?? 'â€”'); ?></td>
+            <td style="font-size:13px;color:#666;"><?php echo htmlspecialchars($adm['email'] ?? '—'); ?></td>
             <td>
                 <?php if ($adm['station_name']): ?>
                 <div style="font-size:13px;">
@@ -446,17 +446,17 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
           <div class="am-form-group">
             <label>Station Assignment <span style="color:#cc0000;">*</span></label>
             <div class="am-combo" id="c_station_combo">
-              <input type="text" class="am-combo-input" id="c_station_display" placeholder="Select a stationâ€¦" autocomplete="off" readonly>
+              <input type="text" class="am-combo-input" id="c_station_display" placeholder="Select a station—¦" autocomplete="off" readonly>
               <button type="button" class="am-combo-clear" id="c_station_clear" tabindex="-1" title="Clear"><i class="fas fa-times"></i></button>
               <i class="fas fa-chevron-down am-combo-arrow"></i>
               <input type="hidden" name="station_id" id="c_station_id" required>
               <div class="am-combo-dropdown" id="c_station_dropdown">
                 <div class="am-combo-search">
                   <i class="fas fa-search"></i>
-                  <input type="text" id="c_station_search" placeholder="Search stationâ€¦" autocomplete="off">
+                  <input type="text" id="c_station_search" placeholder="Search station—¦" autocomplete="off">
                 </div>
                 <div class="am-combo-list" id="c_station_list">
-                  <div class="am-combo-option" data-value="" data-label="â€” Select Station â€”" style="color:#bbb;">â€” Select Station â€”</div>
+                  <div class="am-combo-option" data-value="" data-label="— Select Station —" style="color:#bbb;">— Select Station —</div>
                   <?php foreach ($stations as $st): ?>
                   <div class="am-combo-option" data-value="<?php echo (int)$st['id']; ?>" data-label="<?php echo htmlspecialchars($st['name']); ?>">
                     <i class="fas fa-building opt-icon" style="margin-top:2px;"></i>
@@ -538,17 +538,17 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
           <div class="am-form-group">
             <label>Station Assignment <span style="color:#cc0000;">*</span></label>
             <div class="am-combo" id="e_station_combo">
-              <input type="text" class="am-combo-input" id="e_station_display" placeholder="Type to search stationâ€¦" autocomplete="off" readonly>
+              <input type="text" class="am-combo-input" id="e_station_display" placeholder="Type to search station—¦" autocomplete="off" readonly>
               <button type="button" class="am-combo-clear" id="e_station_clear" tabindex="-1" title="Clear"><i class="fas fa-times"></i></button>
               <i class="fas fa-chevron-down am-combo-arrow"></i>
               <input type="hidden" name="station_id" id="e_station_id" required>
               <div class="am-combo-dropdown" id="e_station_dropdown">
                 <div class="am-combo-search">
                   <i class="fas fa-search"></i>
-                  <input type="text" id="e_station_search" placeholder="Search stationâ€¦" autocomplete="off">
+                  <input type="text" id="e_station_search" placeholder="Search station—¦" autocomplete="off">
                 </div>
                 <div class="am-combo-list" id="e_station_list">
-                  <div class="am-combo-option" data-value="" data-label="â€” Select Station â€”" style="color:#bbb;">â€” Select Station â€”</div>
+                  <div class="am-combo-option" data-value="" data-label="— Select Station —" style="color:#bbb;">— Select Station —</div>
                   <?php foreach ($stations as $st): ?>
                   <div class="am-combo-option" data-value="<?php echo (int)$st['id']; ?>" data-label="<?php echo htmlspecialchars($st['name']); ?>">
                     <i class="fas fa-building opt-icon" style="margin-top:2px;"></i>
@@ -991,7 +991,7 @@ async function submitCreate(e) {
     }
 
     btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creatingâ€¦';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating—¦';
 
     const fd = new FormData(document.getElementById('createForm'));
     fd.set('first_name', firstName);
@@ -1044,7 +1044,7 @@ function openEditModal(adm) {
     document.getElementById('e_first_name').value = firstName;
     document.getElementById('e_last_name').value = lastName;
 
-    // Email is read-only â€” show in display field only
+    // Email is read-only — show in display field only
     document.getElementById('e_email_display').value = adm.email || '';
 
     const dbStatus = (adm.status || '').toLowerCase();
@@ -1085,7 +1085,7 @@ async function submitEdit(e) {
     }
 
     btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Savingâ€¦';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving—¦';
 
     const fd = new FormData(document.getElementById('editForm'));
     fd.set('first_name', firstName);
@@ -1213,7 +1213,7 @@ async function submitAddStation(e) {
     }
 
     btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creatingâ€¦';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating—¦';
 
     const fd = new FormData(document.getElementById('addStationForm'));
     fd.append('action', 'add_station');
@@ -1245,7 +1245,7 @@ function exportAdminsPDF() {
 
     const now = new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' });
     let html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>Admin List â€“ Petron Management System</title>
+<title>Admin List – Petron Management System</title>
 <style>
   body { font-family: Arial, sans-serif; font-size: 11px; color: #111; margin: 20px; }
   h2 { color: #00264d; font-size: 16px; margin: 0 0 2px; }
@@ -1266,7 +1266,7 @@ function exportAdminsPDF() {
     rows.forEach((row, i) => {
         const cells = row.querySelectorAll('td');
         const status  = row.dataset.status || '';
-        const region  = row.dataset.region || 'â€”';
+        const region  = row.dataset.region || '—';
         const badgeClass = status === 'active' ? 'badge-a' : 'badge-i';
         const statusText  = status === 'active' ? 'Active' : 'Inactive';
         html += `<tr>
@@ -1274,7 +1274,7 @@ function exportAdminsPDF() {
           <td>${cells[1]?.innerText || ''}</td>
           <td>${cells[2]?.innerText || ''}</td>
           <td>${cells[3]?.innerText || ''}</td>
-          <td>${cells[4]?.innerText.trim().split('\n')[0] || 'â€”'}</td>
+          <td>${cells[4]?.innerText.trim().split('\n')[0] || '—'}</td>
           <td>${region}</td>
           <td class="${badgeClass}">${statusText}</td>
           <td>${cells[6]?.innerText.trim().split('\n')[0] || 'Never'}</td>

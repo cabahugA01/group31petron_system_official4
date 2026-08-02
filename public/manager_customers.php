@@ -343,7 +343,6 @@ body.modal-open { overflow:hidden; }
     <div class="cust-modal">
         <div class="modal-head">
             <h3><i class="fas fa-user-edit"></i> <span id="formTitle">Add New Customer</span></h3>
-            <button type="button" class="modal-close" onclick="closeModal('customerFormModal')">&times;</button>
         </div>
         <form id="customerForm" enctype="multipart/form-data">
             <div class="modal-body">

@@ -26,65 +26,45 @@ if (isset($_SESSION['error'])) {
 
 // Fuel-related functionality removed - now handled in Fuel Management module
 
-// Fetch merchandise options with available stock for this station.
+// Fetch merchandise options — unified catalog (same source as Pricing/Inventory/POS)
 $merchandise_products = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT
-            ip.id AS product_id,
-            ip.product_name,
-            COALESCE(NULLIF(ip.sku, ''), ip.product_name) AS sku,
-            COALESCE(ip.category, 'General') AS category,
-            COALESCE(NULLIF(ip.size, ''), NULLIF(si.unit, ''), '') AS size,
-            COALESCE(si.price, si.cost, ip.unit_cost, 0) AS unit_price,
-            COALESCE(si.stock_level, 0) AS stock_level
-        FROM station_inventory si
-        INNER JOIN inventory_products ip
-            ON ip.id = si.product_id
-        WHERE si.station_id = ?
-          AND COALESCE(si.stock_level, 0) > 0
-          AND COALESCE(si.status, 'active') = 'active'
-          AND COALESCE(ip.category, '') <> 'Fuel'
-        ORDER BY COALESCE(ip.category, 'General'), ip.product_name
-    ");
-    $stmt->execute([$station_id]);
-    $merchandise_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Debug: Count products
-    error_log("DEBUG: Station ID: $station_id, Merchandise products loaded: " . count($merchandise_products));
-    
-} catch (Exception $e) {
-    error_log("DEBUG: Error loading merchandise products: " . $e->getMessage());
-    $merchandise_products = [];
-}
+        SELECT ip.id                                                          AS product_id,
+               ip.product_name,
+               COALESCE(NULLIF(TRIM(ip.sku),''), CONCAT('P', LPAD(ip.id,4,'0'))) AS sku,
+               COALESCE(NULLIF(TRIM(ip.category),''),'General')              AS category,
+               COALESCE(NULLIF(TRIM(ip.size),''),NULLIF(TRIM(si.unit),''),'') AS size,
+               COALESCE(si.price, ip.unit_price, 0)                          AS unit_price,
+               COALESCE(si.stock_level, ip.stock_quantity, ip.stock, 0)      AS stock_level
+        FROM inventory_products ip
+        LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
+        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
+          AND LOWER(COALESCE(ip.status,'active')) NOT IN ('archived','deleted','inactive')
 
-if (!$merchandise_products) {
-    try {
-        $stmt = $pdo->prepare("
-            SELECT
-                p.id AS product_id,
-                p.name AS product_name,
-                COALESCE(NULLIF(p.sku, ''), p.name) AS sku,
-                COALESCE(pc.name, 'General') AS category,
-                COALESCE(NULLIF(p.unit, ''), NULLIF(si.unit, ''), '') AS size,
-                COALESCE(si.price, p.price, si.cost, p.cost, 0) AS unit_price,
-                COALESCE(si.stock_level, 0) AS stock_level
-            FROM station_inventory si
-            INNER JOIN products p
-                ON p.id = si.product_id
-            LEFT JOIN product_categories pc
-                ON pc.id = p.category_id
-            WHERE si.station_id = ?
-              AND COALESCE(si.stock_level, 0) > 0
-              AND COALESCE(si.status, 'active') = 'active'
-              AND p.type_id = 2
-            ORDER BY COALESCE(pc.name, 'General'), p.name
-        ");
-        $stmt->execute([$station_id]);
-        $merchandise_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {
-        $merchandise_products = [];
-    }
+        UNION
+
+        SELECT p.id                                                           AS product_id,
+               p.name                                                         AS product_name,
+               COALESCE(NULLIF(TRIM(p.sku),''), CONCAT('P', LPAD(p.id,4,'0'))) AS sku,
+               COALESCE(pc.name,'General')                                    AS category,
+               COALESCE(NULLIF(p.unit,''),'')                                 AS size,
+               COALESCE(si2.price, p.price, si2.cost, p.cost, 0)             AS unit_price,
+               COALESCE(si2.stock_level, p.current_stock, 0)                 AS stock_level
+        FROM products p
+        LEFT JOIN product_categories pc ON pc.id = p.category_id
+        LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND si2.station_id = ?
+        WHERE LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
+          AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
+          AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(status,'active')) NOT IN ('archived','deleted') AND LOWER(COALESCE(category,'')) NOT IN ('fuel','fuel products'))
+
+        ORDER BY category, product_name
+    ");
+    $stmt->execute([$station_id, $station_id]);
+    $merchandise_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    error_log('Merchandise load error: ' . $e->getMessage());
+    $merchandise_products = [];
 }
 
 // Fetch customers for credit transactions

@@ -210,7 +210,7 @@ require_once __DIR__ . '/../partials/header.php';
         <h1>DAILY MERCHANDISE & SERVICE SALES REPORT</h1>
         <div class="subtitle">24-HOUR SUMMARY</div>
         <div class="meta"><?= htmlspecialchars($station_name) ?></div>
-        <div class="meta"><strong>Date:</strong> <?= date('F j, Y', strtotime($date_from)) ?><?= $date_from !== $date_to ? ' â€“ ' . date('F j, Y', strtotime($date_to)) : '' ?></div>
+        <div class="meta"><strong>Date:</strong> <?= date('F j, Y', strtotime($date_from)) ?><?= $date_from !== $date_to ? ' – ' . date('F j, Y', strtotime($date_to)) : '' ?></div>
     </div>
 
     <!-- SECTION 1: MERCHANDISE SALES -->
@@ -240,8 +240,8 @@ require_once __DIR__ . '/../partials/header.php';
                             <td><?= htmlspecialchars($row['category']) ?></td>
                             <td><?= htmlspecialchars($row['product']) ?></td>
                             <td class="text-right"><?= number_format($row['qty'], 0) ?></td>
-                            <td class="text-right">â‚±<?= number_format($row['unit_price'], 2) ?></td>
-                            <td class="text-right">â‚±<?= number_format($row['amount'], 2) ?></td>
+                            <td class="text-right">₱<?= number_format($row['unit_price'], 2) ?></td>
+                            <td class="text-right">₱<?= number_format($row['amount'], 2) ?></td>
                             <td><?= htmlspecialchars($row['encoder']) ?></td>
                         </tr>
                     <?php endforeach; ?>
@@ -251,7 +251,7 @@ require_once __DIR__ . '/../partials/header.php';
             <tfoot>
                 <tr>
                     <td colspan="6" class="text-right"><strong>Total Merchandise Sales:</strong></td>
-                    <td class="text-right"><strong>â‚±<?= number_format(array_sum(array_column($reportData['merchandise_sales'], 'amount')), 2) ?></strong></td>
+                    <td class="text-right"><strong>₱<?= number_format(array_sum(array_column($reportData['merchandise_sales'], 'amount')), 2) ?></strong></td>
                     <td></td>
                 </tr>
             </tfoot>
@@ -285,9 +285,9 @@ require_once __DIR__ . '/../partials/header.php';
                             <td><?= htmlspecialchars($row['customer']) ?></td>
                             <td><?= htmlspecialchars($row['vehicle']) ?></td>
                             <td><?= htmlspecialchars($row['service_type']) ?></td>
-                            <td class="text-right">â‚±<?= number_format($row['labor_fee'], 2) ?></td>
-                            <td class="text-right">â‚±<?= number_format($row['parts_cost'], 2) ?></td>
-                            <td class="text-right">â‚±<?= number_format($row['total_amount'], 2) ?></td>
+                            <td class="text-right">₱<?= number_format($row['labor_fee'], 2) ?></td>
+                            <td class="text-right">₱<?= number_format($row['parts_cost'], 2) ?></td>
+                            <td class="text-right">₱<?= number_format($row['total_amount'], 2) ?></td>
                             <td><?= htmlspecialchars($row['encoder']) ?></td>
                         </tr>
                     <?php endforeach; ?>
@@ -297,12 +297,12 @@ require_once __DIR__ . '/../partials/header.php';
             <tfoot>
                 <tr>
                     <td colspan="4" class="text-right"><strong>Total Service Income (Labor):</strong></td>
-                    <td class="text-right"><strong>â‚±<?= number_format(array_sum(array_column($reportData['job_orders'], 'labor_fee')), 2) ?></strong></td>
+                    <td class="text-right"><strong>₱<?= number_format(array_sum(array_column($reportData['job_orders'], 'labor_fee')), 2) ?></strong></td>
                     <td colspan="3"></td>
                 </tr>
                 <tr>
                     <td colspan="4" class="text-right"><strong>Total Job Order Sales:</strong></td>
-                    <td colspan="2" class="text-right"><strong>â‚±<?= number_format(array_sum(array_column($reportData['job_orders'], 'total_amount')), 2) ?></strong></td>
+                    <td colspan="2" class="text-right"><strong>₱<?= number_format(array_sum(array_column($reportData['job_orders'], 'total_amount')), 2) ?></strong></td>
                     <td colspan="2"></td>
                 </tr>
             </tfoot>
@@ -337,8 +337,8 @@ require_once __DIR__ . '/../partials/header.php';
                             <td><?= htmlspecialchars($row['product_name']) ?></td>
                             <td><?= htmlspecialchars($row['category']) ?></td>
                             <td class="text-right"><?= number_format($row['qty_used'], 0) ?></td>
-                            <td class="text-right">â‚±<?= number_format($row['unit_price'], 2) ?></td>
-                            <td class="text-right">â‚±<?= number_format($row['total_cost'], 2) ?></td>
+                            <td class="text-right">₱<?= number_format($row['unit_price'], 2) ?></td>
+                            <td class="text-right">₱<?= number_format($row['total_cost'], 2) ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -349,7 +349,7 @@ require_once __DIR__ . '/../partials/header.php';
                     <td colspan="4" class="text-right"><strong>Total Parts Used:</strong></td>
                     <td class="text-right"><strong><?= number_format(array_sum(array_column($reportData['parts_used'], 'qty_used')), 0) ?></strong></td>
                     <td class="text-right"><strong>Total Parts Cost:</strong></td>
-                    <td class="text-right"><strong>â‚±<?= number_format(array_sum(array_column($reportData['parts_used'], 'total_cost')), 2) ?></strong></td>
+                    <td class="text-right"><strong>₱<?= number_format(array_sum(array_column($reportData['parts_used'], 'total_cost')), 2) ?></strong></td>
                 </tr>
             </tfoot>
             <?php endif; ?>
@@ -375,7 +375,7 @@ require_once __DIR__ . '/../partials/header.php';
                         <tr>
                             <td><?= htmlspecialchars($row['payment_method']) ?></td>
                             <td class="text-right"><?= number_format($row['transactions'], 0) ?></td>
-                            <td class="text-right">â‚±<?= number_format($row['amount'], 2) ?></td>
+                            <td class="text-right">₱<?= number_format($row['amount'], 2) ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -385,7 +385,7 @@ require_once __DIR__ . '/../partials/header.php';
                 <tr>
                     <td class="text-right"><strong>TOTAL:</strong></td>
                     <td class="text-right"><strong><?= number_format(array_sum(array_column($reportData['payment_breakdown'], 'transactions')), 0) ?></strong></td>
-                    <td class="text-right"><strong>â‚±<?= number_format(array_sum(array_column($reportData['payment_breakdown'], 'amount')), 2) ?></strong></td>
+                    <td class="text-right"><strong>₱<?= number_format(array_sum(array_column($reportData['payment_breakdown'], 'amount')), 2) ?></strong></td>
                 </tr>
             </tfoot>
             <?php endif; ?>
@@ -398,43 +398,43 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="summary-grid">
             <!-- Shift 1 -->
             <div class="summary-card">
-                <h3>Shift 1 (6:00 AM â€“ 2:00 PM)</h3>
+                <h3>Shift 1 (6:00 AM – 2:00 PM)</h3>
                 <div class="summary-item">
                     <span class="summary-label">Merchandise Sales</span>
-                    <span class="summary-value">â‚±<?= number_format($reportData['shift_summary']['shift1']['merchandise_sales'] ?? 0, 2) ?></span>
+                    <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift1']['merchandise_sales'] ?? 0, 2) ?></span>
                 </div>
                 <div class="summary-item">
                     <span class="summary-label">Labor Income</span>
-                    <span class="summary-value">â‚±<?= number_format($reportData['shift_summary']['shift1']['labor_income'] ?? 0, 2) ?></span>
+                    <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift1']['labor_income'] ?? 0, 2) ?></span>
                 </div>
                 <div class="summary-item">
                     <span class="summary-label">Parts Sales</span>
-                    <span class="summary-value">â‚±<?= number_format($reportData['shift_summary']['shift1']['parts_sales'] ?? 0, 2) ?></span>
+                    <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift1']['parts_sales'] ?? 0, 2) ?></span>
                 </div>
                 <div class="summary-item summary-total">
                     <span class="summary-label">Grand Total</span>
-                    <span class="summary-value">â‚±<?= number_format($reportData['shift_summary']['shift1']['grand_total'] ?? 0, 2) ?></span>
+                    <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift1']['grand_total'] ?? 0, 2) ?></span>
                 </div>
             </div>
             
             <!-- Shift 2 -->
             <div class="summary-card">
-                <h3>Shift 2 (2:00 PM â€“ 12:00 AM)</h3>
+                <h3>Shift 2 (2:00 PM – 12:00 AM)</h3>
                 <div class="summary-item">
                     <span class="summary-label">Merchandise Sales</span>
-                    <span class="summary-value">â‚±<?= number_format($reportData['shift_summary']['shift2']['merchandise_sales'] ?? 0, 2) ?></span>
+                    <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift2']['merchandise_sales'] ?? 0, 2) ?></span>
                 </div>
                 <div class="summary-item">
                     <span class="summary-label">Labor Income</span>
-                    <span class="summary-value">â‚±<?= number_format($reportData['shift_summary']['shift2']['labor_income'] ?? 0, 2) ?></span>
+                    <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift2']['labor_income'] ?? 0, 2) ?></span>
                 </div>
                 <div class="summary-item">
                     <span class="summary-label">Parts Sales</span>
-                    <span class="summary-value">â‚±<?= number_format($reportData['shift_summary']['shift2']['parts_sales'] ?? 0, 2) ?></span>
+                    <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift2']['parts_sales'] ?? 0, 2) ?></span>
                 </div>
                 <div class="summary-item summary-total">
                     <span class="summary-label">Grand Total</span>
-                    <span class="summary-value">â‚±<?= number_format($reportData['shift_summary']['shift2']['grand_total'] ?? 0, 2) ?></span>
+                    <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift2']['grand_total'] ?? 0, 2) ?></span>
                 </div>
             </div>
         </div>
@@ -453,19 +453,19 @@ require_once __DIR__ . '/../partials/header.php';
             <tbody>
                 <tr>
                     <td>Merchandise Sales</td>
-                    <td class="text-right">â‚±<?= number_format($reportData['daily_summary']['merchandise_sales'], 2) ?></td>
+                    <td class="text-right">₱<?= number_format($reportData['daily_summary']['merchandise_sales'], 2) ?></td>
                 </tr>
                 <tr>
                     <td>Labor Income</td>
-                    <td class="text-right">â‚±<?= number_format($reportData['daily_summary']['labor_income'], 2) ?></td>
+                    <td class="text-right">₱<?= number_format($reportData['daily_summary']['labor_income'], 2) ?></td>
                 </tr>
                 <tr>
                     <td>Parts Used (Merchandise Products)</td>
-                    <td class="text-right">â‚±<?= number_format($reportData['daily_summary']['parts_used'], 2) ?></td>
+                    <td class="text-right">₱<?= number_format($reportData['daily_summary']['parts_used'], 2) ?></td>
                 </tr>
                 <tr style="background: #f0f4ff;">
                     <td><strong>Grand Total Sales</strong></td>
-                    <td class="text-right"><strong>â‚±<?= number_format($reportData['daily_summary']['grand_total'], 2) ?></strong></td>
+                    <td class="text-right"><strong>₱<?= number_format($reportData['daily_summary']['grand_total'], 2) ?></strong></td>
                 </tr>
                 <tr>
                     <td>Total Transactions</td>

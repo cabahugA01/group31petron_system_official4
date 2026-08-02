@@ -26,7 +26,7 @@ if (isset($_GET['ajax_action'])) {
         try {
             $stmt = $pdo->prepare("SELECT ft.*, 
                 COALESCE(NULLIF(CONCAT(TRIM(COALESCE(staff.first_name,'')), ' ', TRIM(COALESCE(staff.last_name,''))), ' '), staff.username, 'Unknown') AS staff_name,
-                COALESCE(NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '), mgr.username, 'â€”') AS manager_name,
+                COALESCE(NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '), mgr.username, '—') AS manager_name,
                 fp.pump_number, s.name AS station_name
                 FROM fuel_transactions ft
                 LEFT JOIN users staff ON ft.staff_id = staff.id
@@ -121,7 +121,7 @@ if (isset($_GET['single_id']) && $export === 'pdf') {
     try {
         $stmt = $pdo->prepare("SELECT ft.*, 
             COALESCE(NULLIF(CONCAT(TRIM(COALESCE(staff.first_name,'')), ' ', TRIM(COALESCE(staff.last_name,''))), ' '), staff.username, 'Unknown') AS staff_name,
-            COALESCE(NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '), mgr.username, 'â€”') AS manager_name,
+            COALESCE(NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '), mgr.username, '—') AS manager_name,
             fp.pump_number, s.name AS station_name
             FROM fuel_transactions ft
             LEFT JOIN users staff ON ft.staff_id = staff.id
@@ -132,9 +132,9 @@ if (isset($_GET['single_id']) && $export === 'pdf') {
         $stmt->execute([$single_id]);
         $tx = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($tx) {
-            $pump_display = !empty($tx['pump_number']) ? $tx['pump_number'] : (!empty($tx['pump_id']) ? 'P'.$tx['pump_id'] : 'â€”');
-            $shift_label = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? 'â€”'));
-            $remarks = !empty($tx['notes']) ? $tx['notes'] : (!empty($tx['reject_reason']) ? $tx['reject_reason'] : 'â€”');
+            $pump_display = !empty($tx['pump_number']) ? $tx['pump_number'] : (!empty($tx['pump_id']) ? 'P'.$tx['pump_id'] : '—');
+            $shift_label = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? '—'));
+            $remarks = !empty($tx['notes']) ? $tx['notes'] : (!empty($tx['reject_reason']) ? $tx['reject_reason'] : '—');
             
             echo '<!DOCTYPE html>
             <html>
@@ -170,13 +170,13 @@ if (isset($_GET['single_id']) && $export === 'pdf') {
                     <div class="row"><label>Ending Reading:</label><span>' . number_format($tx['present_reading'], 2) . '</span></div>
                     <div class="row"><label>Calibration:</label><span>' . number_format($tx['calibration'], 2) . ' L</span></div>
                     <div class="row"><label>Volume Liters:</label><span>' . number_format($tx['liters_sold'], 2) . ' L</span></div>
-                    <div class="row"><label>Price/Liter:</label><span>â‚±' . number_format($tx['price_per_liter'], 2) . '</span></div>
-                    <div class="row total"><label>Total Amount:</label><span>â‚±' . number_format($tx['total_amount'], 2) . '</span></div>
+                    <div class="row"><label>Price/Liter:</label><span>₱' . number_format($tx['price_per_liter'], 2) . '</span></div>
+                    <div class="row total"><label>Total Amount:</label><span>₱' . number_format($tx['total_amount'], 2) . '</span></div>
                     <div class="row"><label>Payment Method:</label><span>' . htmlspecialchars($tx['payment_method']) . '</span></div>
                     <div class="row"><label>Encoder:</label><span>' . htmlspecialchars($tx['staff_name']) . '</span></div>
                     <div class="row"><label>Validator:</label><span>' . htmlspecialchars($tx['manager_name']) . '</span></div>
                     <div class="row"><label>Status:</label><span>' . ucfirst(htmlspecialchars($tx['status'])) . '</span></div>
-                    <div class="row"><label>Validated At:</label><span>' . ($tx['validated_at'] ? date('M d, Y h:i A', strtotime($tx['validated_at'])) : 'â€”') . '</span></div>
+                    <div class="row"><label>Validated At:</label><span>' . ($tx['validated_at'] ? date('M d, Y h:i A', strtotime($tx['validated_at'])) : '—') . '</span></div>
                     <div class="row" style="flex-direction:column; align-items:flex-start;"><label>Remarks:</label><span style="text-align:left; font-weight: normal; margin-top: 3px; color:#555;">' . htmlspecialchars($remarks) . '</span></div>
                     <div class="footer">
                         <p>Thank you for choosing Petron!</p>
@@ -278,7 +278,7 @@ try {
         ) AS staff_name,
         COALESCE(
             NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '),
-            mgr.username, 'â€”'
+            mgr.username, '—'
         ) AS manager_name,
         fp.pump_number, s.name AS station_name
         FROM fuel_transactions ft
@@ -364,24 +364,24 @@ if (in_array($export, ['csv','excel','pdf'])) {
     ];
     $rows_fmt = [];
     foreach ($transactions as $tx) {
-        $shift_label  = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? 'â€”'));
-        $remarks      = !empty($tx['notes']) ? $tx['notes'] : (!empty($tx['reject_reason']) ? $tx['reject_reason'] : 'â€”');
+        $shift_label  = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? '—'));
+        $remarks      = !empty($tx['notes']) ? $tx['notes'] : (!empty($tx['reject_reason']) ? $tx['reject_reason'] : '—');
         $rows_fmt[] = [
             $tx['transaction_id'],
             date('M d, Y H:i', strtotime($tx['transaction_date'])),
             $shift_label,
-            $tx['station_name'] ?? 'â€”',
+            $tx['station_name'] ?? '—',
             $tx['fuel_type'],
             number_format($tx['previous_reading'], 2),
             number_format($tx['present_reading'], 2),
             number_format($tx['calibration'], 2),
             number_format($tx['liters_sold'], 2) . ' L',
-            'â‚±' . number_format($tx['price_per_liter'], 2),
-            'â‚±' . number_format($tx['total_amount'], 2),
-            $tx['staff_name'] ?? 'â€”',
-            $tx['manager_name'] ?? 'â€”',
+            '₱' . number_format($tx['price_per_liter'], 2),
+            '₱' . number_format($tx['total_amount'], 2),
+            $tx['staff_name'] ?? '—',
+            $tx['manager_name'] ?? '—',
             ucfirst($tx['status'] ?? 'Pending'),
-            $tx['validated_at'] ? date('M d, Y H:i', strtotime($tx['validated_at'])) : 'â€”',
+            $tx['validated_at'] ? date('M d, Y H:i', strtotime($tx['validated_at'])) : '—',
             $remarks
         ];
     }
@@ -413,8 +413,8 @@ if (in_array($export, ['csv','excel','pdf'])) {
         foreach($transactions as $tx) {
             $st = strtolower($tx['status'] ?? '');
             $sc_color = ($st === 'verified') ? '#16a34a' : (($st === 'rejected') ? '#dc2626' : '#d97706');
-            $shift_label  = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? 'â€”'));
-            $remarks      = !empty($tx['notes']) ? $tx['notes'] : (!empty($tx['reject_reason']) ? $tx['reject_reason'] : 'â€”');
+            $shift_label  = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? '—'));
+            $remarks      = !empty($tx['notes']) ? $tx['notes'] : (!empty($tx['reject_reason']) ? $tx['reject_reason'] : '—');
             $tbody .= '<tr>';
             $tbody .= '<td style="font-size:10px;color:#475569;">'.htmlspecialchars($tx['transaction_id']).'</td>';
             $tbody .= '<td>'.date('M d, Y', strtotime($tx['transaction_date'])).'</td>';
@@ -424,12 +424,12 @@ if (in_array($export, ['csv','excel','pdf'])) {
             $tbody .= '<td style="text-align:right">'.number_format($tx['present_reading'],2).'</td>';
             $tbody .= '<td style="text-align:right">'.number_format($tx['calibration'],2).'</td>';
             $tbody .= '<td style="text-align:right">'.number_format($tx['liters_sold'],2).' L</td>';
-            $tbody .= '<td style="text-align:right">â‚±'.number_format($tx['price_per_liter'],2).'</td>';
-            $tbody .= '<td style="text-align:right;font-weight:700;color:#002F6C">â‚±'.number_format($tx['total_amount'],2).'</td>';
+            $tbody .= '<td style="text-align:right">₱'.number_format($tx['price_per_liter'],2).'</td>';
+            $tbody .= '<td style="text-align:right;font-weight:700;color:#002F6C">₱'.number_format($tx['total_amount'],2).'</td>';
             $tbody .= '<td>'.htmlspecialchars($tx['staff_name']).'</td>';
             $tbody .= '<td>'.htmlspecialchars($tx['manager_name']).'</td>';
             $tbody .= '<td style="color:'.$sc_color.';font-weight:700">'.ucfirst($tx['status'] ?? 'Pending').'</td>';
-            $tbody .= '<td>'.($tx['validated_at'] ? date('M d, Y H:i', strtotime($tx['validated_at'])) : 'â€”').'</td>';
+            $tbody .= '<td>'.($tx['validated_at'] ? date('M d, Y H:i', strtotime($tx['validated_at'])) : '—').'</td>';
             $tbody .= '<td style="font-size:10px;max-width:150px;white-space:normal;">'.htmlspecialchars($remarks).'</td>';
             $tbody .= '</tr>';
         }
@@ -445,7 +445,7 @@ if (in_array($export, ['csv','excel','pdf'])) {
         </style></head><body>';
         echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer">Print</button>
         <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none">â† Back</a></div>';
-        echo '<div class="hdr"><h1>Fuel Transaction Oversight</h1><p>Period: '.htmlspecialchars($date_from).' â€” '.htmlspecialchars($date_to).' | Station: '.htmlspecialchars($station_name).' | Records: '.count($transactions).'</p></div>';
+        echo '<div class="hdr"><h1>Fuel Transaction Oversight</h1><p>Period: '.htmlspecialchars($date_from).' — '.htmlspecialchars($date_to).' | Station: '.htmlspecialchars($station_name).' | Records: '.count($transactions).'</p></div>';
         echo '<table><thead><tr>
             <th>Txn ID</th><th>Date</th><th>Shift</th><th>Fuel Type</th><th>Beg</th><th>End</th><th>Calib</th><th>Volume</th><th>Price/L</th><th>Amount</th><th>Encoder</th><th>Validator</th><th>Status</th><th>Val Date</th><th>Remarks</th>
         </tr></thead>';
@@ -520,7 +520,7 @@ require_once __DIR__ . '/../partials/header.php';
 .afto-fg input, .afto-fg select { height:34px; padding:0 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; color:#1e293b; background:#fff; outline:none; box-sizing:border-box; }
 .afto-fg input:focus, .afto-fg select:focus { border-color:#002F70; }
 
-/* Table â€” No horizontal scroll, auto layout */
+/* Table — No horizontal scroll, auto layout */
 .afto-table-card { background:#fff; border:1px solid #e2e8f0; border-radius:11px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.04); width:100%; }
 .afto-table-hd { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid #f1f5f9; flex-wrap:wrap; gap:8px; }
 .afto-table-title { font-size:13px; font-weight:700; color:#00264D; text-transform:uppercase; letter-spacing:.3px; margin:0; }
@@ -698,7 +698,7 @@ require_once __DIR__ . '/../partials/header.php';
     <div class="afto-card blue">
         <div class="afto-card-info">
             <span class="afto-card-lbl">Total Fuel Sales</span>
-            <span class="afto-card-val">â‚±<?= number_format($total_sales, 2) ?></span>
+            <span class="afto-card-val">₱<?= number_format($total_sales, 2) ?></span>
         </div>
         <div class="afto-card-icon"><i class="fas fa-peso-sign"></i></div>
     </div>
@@ -763,7 +763,7 @@ require_once __DIR__ . '/../partials/header.php';
 <div class="afto-table-card">
     <div class="afto-table-hd">
         <h3 class="afto-table-title"><i class="fas fa-table"></i> Fuel Transactions Records</h3>
-        <span style="font-size:11px;color:#64748b;"><?= number_format(count($transactions)) ?> record(s) â€” <?= htmlspecialchars($date_from) ?> to <?= htmlspecialchars($date_to) ?></span>
+        <span style="font-size:11px;color:#64748b;"><?= number_format(count($transactions)) ?> record(s) — <?= htmlspecialchars($date_from) ?> to <?= htmlspecialchars($date_to) ?></span>
     </div>
     <div class="afto-tbl-wrap">
         <table class="afto-tbl">
@@ -873,10 +873,10 @@ require_once __DIR__ . '/../partials/header.php';
                     } elseif (str_contains($st, 'pending')) {
                         $badge = 'bg-amber'; $st_label = 'Pending';
                     } else {
-                        $badge = 'bg-gray'; $st_label = ucfirst($tx['status'] ?? 'â€”');
+                        $badge = 'bg-gray'; $st_label = ucfirst($tx['status'] ?? '—');
                     }
-                    $shift_label = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? 'â€”'));
-                    $remarks = !empty($tx['notes']) ? $tx['notes'] : (!empty($tx['reject_reason']) ? $tx['reject_reason'] : 'â€”');
+                    $shift_label = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? '—'));
+                    $remarks = !empty($tx['notes']) ? $tx['notes'] : (!empty($tx['reject_reason']) ? $tx['reject_reason'] : '—');
                 ?>
                 <tr>
                     <td style="font-weight:600;color:#00264D;" title="<?= htmlspecialchars($tx['transaction_id']) ?>"><?= htmlspecialchars($tx['transaction_id']) ?></td>
@@ -887,13 +887,13 @@ require_once __DIR__ . '/../partials/header.php';
                     <td style="text-align:right;"><?= number_format($tx['present_reading'],2) ?></td>
                     <td style="text-align:right;"><?= number_format($tx['calibration'],2) ?></td>
                     <td style="text-align:right;font-weight:600;"><?= number_format($tx['liters_sold'],2) ?></td>
-                    <td style="text-align:right;">â‚±<?= number_format($tx['price_per_liter'],2) ?></td>
-                    <td style="text-align:right;font-weight:700;color:#002F6C;">â‚±<?= number_format($tx['total_amount'],2) ?></td>
+                    <td style="text-align:right;">₱<?= number_format($tx['price_per_liter'],2) ?></td>
+                    <td style="text-align:right;font-weight:700;color:#002F6C;">₱<?= number_format($tx['total_amount'],2) ?></td>
                     <td title="<?= htmlspecialchars($tx['staff_name']) ?>"><?= htmlspecialchars($tx['staff_name']) ?></td>
                     <td title="<?= htmlspecialchars($tx['manager_name']) ?>"><?= htmlspecialchars($tx['manager_name']) ?></td>
                     <td><span class="afto-badge <?= $badge ?>"><?= $st_label ?></span></td>
-                    <td title="<?= $tx['validated_at'] ? date('M d, Y H:i', strtotime($tx['validated_at'])) : 'â€”' ?>"><?= $tx['validated_at'] ? date('M d Y', strtotime($tx['validated_at'])) : 'â€”' ?></td>
-                    <td title="<?= htmlspecialchars($remarks) ?>"><?= htmlspecialchars(mb_strimwidth($remarks, 0, 20, 'â€¦')) ?></td>
+                    <td title="<?= $tx['validated_at'] ? date('M d, Y H:i', strtotime($tx['validated_at'])) : '—' ?>"><?= $tx['validated_at'] ? date('M d Y', strtotime($tx['validated_at'])) : '—' ?></td>
+                    <td title="<?= htmlspecialchars($remarks) ?>"><?= htmlspecialchars(mb_strimwidth($remarks, 0, 20, '—¦')) ?></td>
                 </tr>
                 <?php endforeach; ?>
                 <?php endif; ?>
@@ -979,24 +979,24 @@ function viewTxnDetails(id) {
         .then(res => {
             if (res.success) {
                 const data = res.data;
-                const remarks = data.notes || data.reject_reason || 'â€”';
+                const remarks = data.notes || data.reject_reason || '—';
                 const gridHtml = `
-                    <div class="details-item"><label>Transaction ID</label><span>${data.transaction_id || 'â€”'}</span></div>
-                    <div class="details-item"><label>Date / Time</label><span>${data.transaction_date || 'â€”'}</span></div>
-                    <div class="details-item"><label>Shift</label><span>${data.shift_name || data.shift_period || 'â€”'}</span></div>
-                    <div class="details-item"><label>Station</label><span>${data.station_name || 'â€”'}</span></div>
-                    <div class="details-item"><label>Fuel Type</label><span>${data.fuel_type || 'â€”'}</span></div>
+                    <div class="details-item"><label>Transaction ID</label><span>${data.transaction_id || '—'}</span></div>
+                    <div class="details-item"><label>Date / Time</label><span>${data.transaction_date || '—'}</span></div>
+                    <div class="details-item"><label>Shift</label><span>${data.shift_name || data.shift_period || '—'}</span></div>
+                    <div class="details-item"><label>Station</label><span>${data.station_name || '—'}</span></div>
+                    <div class="details-item"><label>Fuel Type</label><span>${data.fuel_type || '—'}</span></div>
                     <div class="details-item"><label>Beginning Reading</label><span>${parseFloat(data.previous_reading).toLocaleString('en-US', {minimumFractionDigits:2})}</span></div>
                     <div class="details-item"><label>Ending Reading</label><span>${parseFloat(data.present_reading).toLocaleString('en-US', {minimumFractionDigits:2})}</span></div>
                     <div class="details-item"><label>Calibration</label><span>${parseFloat(data.calibration).toLocaleString('en-US', {minimumFractionDigits:2})} L</span></div>
                     <div class="details-item"><label>Volume Liters</label><span>${parseFloat(data.liters_sold).toLocaleString('en-US', {minimumFractionDigits:2})} L</span></div>
-                    <div class="details-item"><label>Price Per Liter</label><span>â‚±${parseFloat(data.price_per_liter).toLocaleString('en-US', {minimumFractionDigits:2})}</span></div>
-                    <div class="details-item"><label>Total Amount</label><span>â‚±${parseFloat(data.total_amount).toLocaleString('en-US', {minimumFractionDigits:2})}</span></div>
-                    <div class="details-item"><label>Payment Method</label><span>${data.payment_method || 'â€”'}</span></div>
-                    <div class="details-item"><label>Staff Encoder</label><span>${data.staff_name || 'â€”'}</span></div>
-                    <div class="details-item"><label>Manager Validator</label><span>${data.manager_name || 'â€”'}</span></div>
-                    <div class="details-item"><label>Status</label><span>${data.status || 'â€”'}</span></div>
-                    <div class="details-item"><label>Validation Date</label><span>${data.validated_at || 'â€”'}</span></div>
+                    <div class="details-item"><label>Price Per Liter</label><span>₱${parseFloat(data.price_per_liter).toLocaleString('en-US', {minimumFractionDigits:2})}</span></div>
+                    <div class="details-item"><label>Total Amount</label><span>₱${parseFloat(data.total_amount).toLocaleString('en-US', {minimumFractionDigits:2})}</span></div>
+                    <div class="details-item"><label>Payment Method</label><span>${data.payment_method || '—'}</span></div>
+                    <div class="details-item"><label>Staff Encoder</label><span>${data.staff_name || '—'}</span></div>
+                    <div class="details-item"><label>Manager Validator</label><span>${data.manager_name || '—'}</span></div>
+                    <div class="details-item"><label>Status</label><span>${data.status || '—'}</span></div>
+                    <div class="details-item"><label>Validation Date</label><span>${data.validated_at || '—'}</span></div>
                     <div class="details-item" style="grid-column: span 2;"><label>Remarks</label><span>${remarks}</span></div>
                 `;
                 document.getElementById('detailsGrid').innerHTML = gridHtml;

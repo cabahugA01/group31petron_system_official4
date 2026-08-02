@@ -150,7 +150,7 @@ $mt_validated_join = vt_has($mt_cols, 'validated_by') ? 'LEFT JOIN users v ON v.
 $mt_vehicle_expr = "COALESCE(
     NULLIF(TRIM(mt.job_order_vehicle_plate), ''),
     NULLIF(TRIM(jo_mt.vehicle_plate), ''),
-    'â€”'
+    '—'
 ) AS vehicle_plate";
 $mt_jo_service_expr = vt_has($mt_cols, 'job_order_service') ? "COALESCE(NULLIF(TRIM(mt.job_order_service),''),'')" : "''";
 
@@ -394,7 +394,7 @@ try {
 if (!function_exists('format_transaction_items')) {
     function format_transaction_items($raw_items_str, $htmlMode = true) {
         $raw = trim($raw_items_str ?? '');
-        if ($raw === '' || $raw === 'â€”') return 'â€”';
+        if ($raw === '' || $raw === '—') return '—';
         $resolveUnit = function(string $nameLower, float $qty): string {
             if (strpos($nameLower, 'refrigerant') !== false || strpos($nameLower, 'r134a') !== false)
                 return $qty > 1 ? 'Cans' : 'Can';
@@ -435,7 +435,7 @@ if (!function_exists('format_transaction_items')) {
                 }
             }
         }
-        if (empty($formatted)) return 'â€”';
+        if (empty($formatted)) return '—';
         return implode($htmlMode ? '<br><br>' : '; ', $formatted);
     }
 }
@@ -593,7 +593,7 @@ if ($export_type === 'csv') {
             $r['customer'],
             $r['entry_type'],
             $items_desc,
-            $r['vehicle_plate'] ?? 'â€”',
+            $r['vehicle_plate'] ?? '—',
             number_format((float)$r['amount'], 2),
             $r['payment_method'],
             vt_pay_status($r),
@@ -601,7 +601,7 @@ if ($export_type === 'csv') {
             $r['staff_name'],
             date('M d, Y H:i', strtotime($r['txn_date'])),
             $r['validated_by'],
-            $r['validation_remarks'] ?? 'â€”'
+            $r['validation_remarks'] ?? '—'
         ]);
     }
     fclose($out);
@@ -646,7 +646,7 @@ if ($export_type === 'excel') {
         echo '<td>' . htmlspecialchars($r['customer']) . '</td>';
         echo '<td>' . htmlspecialchars($r['entry_type']) . '</td>';
         echo '<td>' . htmlspecialchars($items_desc) . '</td>';
-        echo '<td>' . htmlspecialchars($r['vehicle_plate'] ?? 'â€”') . '</td>';
+        echo '<td>' . htmlspecialchars($r['vehicle_plate'] ?? '—') . '</td>';
         echo '<td style="text-align:right">&#8369;' . number_format((float)$r['amount'], 2) . '</td>';
         echo '<td>' . htmlspecialchars($r['payment_method']) . '</td>';
         echo '<td>' . htmlspecialchars($pay_st) . '</td>';
@@ -654,7 +654,7 @@ if ($export_type === 'excel') {
         echo '<td>' . htmlspecialchars($r['staff_name']) . '</td>';
         echo '<td>' . date('M d, Y H:i', strtotime($r['txn_date'])) . '</td>';
         echo '<td>' . htmlspecialchars($r['validated_by']) . '</td>';
-        echo '<td>' . htmlspecialchars($r['validation_remarks'] ?? 'â€”') . '</td>';
+        echo '<td>' . htmlspecialchars($r['validation_remarks'] ?? '—') . '</td>';
         echo '</tr>';
     }
     echo '<tr style="font-weight:800;background:#f0f7ff">';
@@ -760,7 +760,7 @@ if ($export_type === 'pdf') {
         echo '<td>' . htmlspecialchars($r['customer']) . '</td>';
         echo '<td>' . htmlspecialchars($r['entry_type']) . '</td>';
         echo '<td>' . htmlspecialchars($items_desc) . '</td>';
-        echo '<td>' . htmlspecialchars($r['vehicle_plate'] ?? 'â€”') . '</td>';
+        echo '<td>' . htmlspecialchars($r['vehicle_plate'] ?? '—') . '</td>';
         echo '<td class="amount">&#8369;' . number_format((float)$r['amount'], 2) . '</td>';
         echo '<td>' . htmlspecialchars($r['payment_method']) . '</td>';
         echo '<td>' . htmlspecialchars($pay_st) . '</td>';
@@ -768,14 +768,14 @@ if ($export_type === 'pdf') {
         echo '<td>' . htmlspecialchars($r['staff_name']) . '</td>';
         echo '<td>' . date('M d, Y H:i', strtotime($r['txn_date'])) . '</td>';
         echo '<td>' . htmlspecialchars($r['validated_by']) . '</td>';
-        echo '<td>' . htmlspecialchars($r['validation_remarks'] ?? 'â€”') . '</td>';
+        echo '<td>' . htmlspecialchars($r['validation_remarks'] ?? '—') . '</td>';
         echo '</tr>';
         fputcsv($out, [
             $r['txn_id'],
             $r['customer'],
             $r['entry_type'],
             $items_desc,
-            $r['vehicle_plate'] ?? 'â€”',
+            $r['vehicle_plate'] ?? '—',
             number_format((float)$r['amount'], 2),
             $r['payment_method'],
             vt_pay_status($r),
@@ -783,7 +783,7 @@ if ($export_type === 'pdf') {
             $r['staff_name'],
             date('M d, Y H:i', strtotime($r['txn_date'])),
             $r['validated_by'],
-            $r['validation_remarks'] ?? 'â€”'
+            $r['validation_remarks'] ?? '—'
         ]);
     }
     fclose($out);
@@ -828,7 +828,7 @@ if ($export_type === 'excel') {
         echo '<td>' . htmlspecialchars($r['customer']) . '</td>';
         echo '<td>' . htmlspecialchars($r['entry_type']) . '</td>';
         echo '<td>' . htmlspecialchars($items_desc) . '</td>';
-        echo '<td>' . htmlspecialchars($r['vehicle_plate'] ?? 'â€”') . '</td>';
+        echo '<td>' . htmlspecialchars($r['vehicle_plate'] ?? '—') . '</td>';
         echo '<td style="text-align:right">&#8369;' . number_format((float)$r['amount'], 2) . '</td>';
         echo '<td>' . htmlspecialchars($r['payment_method']) . '</td>';
         echo '<td>' . htmlspecialchars($pay_st) . '</td>';
@@ -836,7 +836,7 @@ if ($export_type === 'excel') {
         echo '<td>' . htmlspecialchars($r['staff_name']) . '</td>';
         echo '<td>' . date('M d, Y H:i', strtotime($r['txn_date'])) . '</td>';
         echo '<td>' . htmlspecialchars($r['validated_by']) . '</td>';
-        echo '<td>' . htmlspecialchars($r['validation_remarks'] ?? 'â€”') . '</td>';
+        echo '<td>' . htmlspecialchars($r['validation_remarks'] ?? '—') . '</td>';
         echo '</tr>';
     }
     echo '<tr style="font-weight:800;background:#f0f7ff">';
@@ -942,7 +942,7 @@ if ($export_type === 'pdf') {
         echo '<td>' . htmlspecialchars($r['customer']) . '</td>';
         echo '<td>' . htmlspecialchars($r['entry_type']) . '</td>';
         echo '<td>' . htmlspecialchars($items_desc) . '</td>';
-        echo '<td>' . htmlspecialchars($r['vehicle_plate'] ?? 'â€”') . '</td>';
+        echo '<td>' . htmlspecialchars($r['vehicle_plate'] ?? '—') . '</td>';
         echo '<td class="amount">&#8369;' . number_format((float)$r['amount'], 2) . '</td>';
         echo '<td>' . htmlspecialchars($r['payment_method']) . '</td>';
         echo '<td>' . htmlspecialchars($pay_st) . '</td>';
@@ -950,7 +950,7 @@ if ($export_type === 'pdf') {
         echo '<td>' . htmlspecialchars($r['staff_name']) . '</td>';
         echo '<td>' . date('M d, Y H:i', strtotime($r['txn_date'])) . '</td>';
         echo '<td>' . htmlspecialchars($r['validated_by']) . '</td>';
-        echo '<td>' . htmlspecialchars($r['validation_remarks'] ?? 'â€”') . '</td>';
+        echo '<td>' . htmlspecialchars($r['validation_remarks'] ?? '—') . '</td>';
         echo '</tr>';
     }
     echo '<tr class="total-row">';
@@ -1340,27 +1340,27 @@ try {
                     </td>
                     <!-- Service Type column -->
                     <td style="font-size:10px;color:#475569;line-height:1.2;vertical-align:middle;word-break:break-word;" title="<?= htmlspecialchars(trim($r['service_type'] ?? $r['job_order_service'] ?? '')) ?>">
-                        <?= htmlspecialchars(!empty(trim($r['service_type'] ?? $r['job_order_service'] ?? '')) ? trim($r['service_type'] ?? $r['job_order_service'] ?? '') : 'â€”') ?>
+                        <?= htmlspecialchars(!empty(trim($r['service_type'] ?? $r['job_order_service'] ?? '')) ? trim($r['service_type'] ?? $r['job_order_service'] ?? '') : '—') ?>
                     </td>
                     <!-- Service Fee column -->
                     <td style="font-size:10.5px;font-weight:700;color:#2563eb;vertical-align:middle;text-align:right;white-space:nowrap;">
                         <?php
                         $s_cost = (float)($r['service_fee'] ?? 0);
-                        echo $s_cost > 0 ? 'â‚±' . number_format($s_cost, 2) : '<span style="color:#cbd5e1;font-weight:400;">â€”</span>';
+                        echo $s_cost > 0 ? '₱' . number_format($s_cost, 2) : '<span style="color:#cbd5e1;font-weight:400;">—</span>';
                         ?>
                     </td>
                     <!-- Labor Fee column -->
                     <td style="font-size:10.5px;font-weight:700;color:#16a34a;vertical-align:middle;text-align:right;white-space:nowrap;">
                         <?php
                         $l_cost = (float)($r['labor_fee'] ?? 0);
-                        echo $l_cost > 0 ? 'â‚±' . number_format($l_cost, 2) : '<span style="color:#cbd5e1;font-weight:400;">â€”</span>';
+                        echo $l_cost > 0 ? '₱' . number_format($l_cost, 2) : '<span style="color:#cbd5e1;font-weight:400;">—</span>';
                         ?>
                     </td>
                     <!-- Vehicle column -->
                     <td style="font-size:10.5px;text-align:center;white-space:nowrap;color:#475569;">
                       <?php
                         $veh = trim($r['vehicle_plate'] ?? '');
-                        if ($veh === '' || $veh === 'â€”' || $veh === 'N/A') {
+                        if ($veh === '' || $veh === '—' || $veh === 'N/A') {
                             echo '<span style="color:#cbd5e1;">N/A</span>';
                         } else {
                             echo htmlspecialchars($veh);
@@ -1369,7 +1369,7 @@ try {
                     </td>
                     <!-- Total Amount column -->
                     <td style="font-weight:700;font-size:10.5px;text-align:right;white-space:nowrap;color:#0f172a;">
-                        â‚±<?php echo number_format((float)$r['amount'], 2); ?>
+                        ₱<?php echo number_format((float)$r['amount'], 2); ?>
                     </td>
                     <!-- Payment Method column -->
                     <td style="font-size:10px;white-space:nowrap;color:#334155;">
@@ -1594,15 +1594,15 @@ try {
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                 <div>
                   <span style="display:block;font-size:10px;font-weight:700;color:#c2410c;">Current Sale</span>
-                  <strong id="voidSalesCurrent" style="font-size:13px;color:#0f172a;">â‚±0.00</strong>
+                  <strong id="voidSalesCurrent" style="font-size:13px;color:#0f172a;">₱0.00</strong>
                 </div>
                 <div>
                   <span style="display:block;font-size:10px;font-weight:700;color:#c2410c;">After Void</span>
-                  <strong id="voidSalesAfter" style="color:#dc2626;font-size:13px;">-â‚±0.00</strong>
+                  <strong id="voidSalesAfter" style="color:#dc2626;font-size:13px;">-₱0.00</strong>
                 </div>
               </div>
               <div style="font-size:10px;color:#9a3412;margin-top:4px;font-weight:600;display:flex;flex-direction:column;gap:2px;">
-                <div>âœ” Sales Report: <span id="voidSalesDiff">-â‚±0.00</span></div>
+                <div>âœ” Sales Report: <span id="voidSalesDiff">-₱0.00</span></div>
                 <div>âœ” Payment Report Updated</div>
                 <div>âœ” Customer Purchase History Updated</div>
               </div>
@@ -1977,12 +1977,12 @@ function viewValidatedTransaction(source, id) {
                     html += '<div class="vt-detail-label">Customer:</div><div class="vt-detail-value">' + data.customer_name + '</div>';
                     html += '<div class="vt-detail-label">Item SKU:</div><div class="vt-detail-value">' + data.item_sku + '</div>';
                     html += '<div class="vt-detail-label">Quantity:</div><div class="vt-detail-value">' + data.quantity + '</div>';
-                    html += '<div class="vt-detail-label">Unit Price:</div><div class="vt-detail-value">â‚±' + data.unit_price + '</div>';
-                    html += '<div class="vt-detail-label">Total Amount:</div><div class="vt-detail-amount">â‚±' + data.total_amount + '</div>';
+                    html += '<div class="vt-detail-label">Unit Price:</div><div class="vt-detail-value">₱' + data.unit_price + '</div>';
+                    html += '<div class="vt-detail-label">Total Amount:</div><div class="vt-detail-amount">₱' + data.total_amount + '</div>';
                     html += '<div class="vt-detail-label">Payment Method:</div><div class="vt-detail-value">' + data.payment_method + '</div>';
                     if (data.amount_tendered !== 'N/A') {
-                        html += '<div class="vt-detail-label">Amount Tendered:</div><div class="vt-detail-value">â‚±' + data.amount_tendered + '</div>';
-                        html += '<div class="vt-detail-label">Change:</div><div class="vt-detail-value">â‚±' + data.change_amount + '</div>';
+                        html += '<div class="vt-detail-label">Amount Tendered:</div><div class="vt-detail-value">₱' + data.amount_tendered + '</div>';
+                        html += '<div class="vt-detail-label">Change:</div><div class="vt-detail-value">₱' + data.change_amount + '</div>';
                     }
                     html += '<div class="vt-detail-label">Transaction Date:</div><div class="vt-detail-value">' + data.transaction_date + '</div>';
                     html += '<div class="vt-detail-label">Staff:</div><div class="vt-detail-value">' + data.staff_name + '</div>';
@@ -2005,10 +2005,10 @@ function viewValidatedTransaction(source, id) {
                     html += '<div class="vt-detail-label">Description:</div><div class="vt-detail-value">' + data.service_description + '</div>';
                     html += '<div class="vt-detail-label">Required Parts:</div><div class="vt-detail-value" style="font-size:12px;">' + data.required_parts + '</div>';
                     html += '<div class="vt-detail-label">Mechanic:</div><div class="vt-detail-value">' + data.mechanic_name + '</div>';
-                    html += '<div class="vt-detail-label">Estimated Cost:</div><div class="vt-detail-value">â‚±' + data.estimated_cost + '</div>';
-                    html += '<div class="vt-detail-label">Total Amount:</div><div class="vt-detail-amount">â‚±' + data.total_amount + '</div>';
-                    html += '<div class="vt-detail-label">Amount Paid:</div><div class="vt-detail-value">â‚±' + data.amount_paid + '</div>';
-                    html += '<div class="vt-detail-label">Change:</div><div class="vt-detail-value">â‚±' + data.change_amount + '</div>';
+                    html += '<div class="vt-detail-label">Estimated Cost:</div><div class="vt-detail-value">₱' + data.estimated_cost + '</div>';
+                    html += '<div class="vt-detail-label">Total Amount:</div><div class="vt-detail-amount">₱' + data.total_amount + '</div>';
+                    html += '<div class="vt-detail-label">Amount Paid:</div><div class="vt-detail-value">₱' + data.amount_paid + '</div>';
+                    html += '<div class="vt-detail-label">Change:</div><div class="vt-detail-value">₱' + data.change_amount + '</div>';
                     html += '<div class="vt-detail-label">Payment Method:</div><div class="vt-detail-value">' + data.payment_method + '</div>';
                     html += '<div class="vt-detail-label">Payment Status:</div><div class="vt-detail-value">' + data.payment_status + '</div>';
                     html += '<div class="vt-detail-label">Job Status:</div><div class="vt-detail-value">' + data.job_status + '</div>';
@@ -2061,7 +2061,7 @@ function openAdjustModal(rowId, txnId, customer, entryType, txnDate, staffName, 
                 return;
             }
             _adjItems = data.items || [];
-            const fmtDate = txnDate ? new Date(txnDate).toLocaleString('en-PH') : 'â€”';
+            const fmtDate = txnDate ? new Date(txnDate).toLocaleString('en-PH') : '—';
             let html = `
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;margin-bottom:16px;padding:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:13px;">
               <div><span style="color:#64748b;font-size:11px;font-weight:700;display:block">Transaction ID</span><strong style="font-family:monospace">${txnId}</strong></div>
@@ -2110,7 +2110,7 @@ function openAdjustModal(rowId, txnId, customer, entryType, txnDate, staffName, 
                           style="width:90px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:5px;text-align:right;font-size:12px;">
                       </td>
                       <td style="padding:8px 10px;text-align:right;font-weight:700;color:#002F70" id="adj_sub_${idx}">
-                        â‚±${parseFloat(item.subtotal).toFixed(2)}
+                        ₱${parseFloat(item.subtotal).toFixed(2)}
                       </td>
                     </tr>`;
                 });
@@ -2119,7 +2119,7 @@ function openAdjustModal(rowId, txnId, customer, entryType, txnDate, staffName, 
                 <tfoot>
                   <tr style="border-top:2px solid #e2e8f0;background:#f8fafc;">
                     <td colspan="4" style="padding:8px 10px;text-align:right;font-weight:700;font-size:13px;">New Total:</td>
-                    <td style="padding:8px 10px;text-align:right;font-weight:800;font-size:14px;color:#002F70" id="adjNewTotal">â‚±0.00</td>
+                    <td style="padding:8px 10px;text-align:right;font-weight:800;font-size:14px;color:#002F70" id="adjNewTotal">₱0.00</td>
                   </tr>
                 </tfoot>
               </table>
@@ -2163,7 +2163,7 @@ function recalcAdjRow(idx) {
     const price = parseFloat(document.getElementById('adj_price_' + idx)?.value || 0);
     const sub   = qty * price;
     const subEl = document.getElementById('adj_sub_' + idx);
-    if (subEl) subEl.textContent = 'â‚±' + sub.toFixed(2);
+    if (subEl) subEl.textContent = '₱' + sub.toFixed(2);
     recalcAdjTotal();
 }
 
@@ -2175,7 +2175,7 @@ function recalcAdjTotal() {
         total += qty * price;
     });
     const el = document.getElementById('adjNewTotal');
-    if (el) el.textContent = 'â‚±' + total.toFixed(2);
+    if (el) el.textContent = '₱' + total.toFixed(2);
 }
 
 function closeAdjustModal() {
@@ -2289,9 +2289,9 @@ function openVoidModal(rowId, txnId, customer, source) {
     
     document.getElementById('voidItemsContainer').innerHTML = '<div style="text-align:center;padding:20px;color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading items...</div>';
     document.getElementById('voidInventoryImpactList').innerHTML = '<div style="color:#64748b;">Loading...</div>';
-    document.getElementById('voidSalesCurrent').innerText = 'â‚±0.00';
-    document.getElementById('voidSalesAfter').innerText = 'â‚±0.00';
-    document.getElementById('voidSalesDiff').innerText = '-â‚±0.00';
+    document.getElementById('voidSalesCurrent').innerText = '₱0.00';
+    document.getElementById('voidSalesAfter').innerText = '₱0.00';
+    document.getElementById('voidSalesDiff').innerText = '-₱0.00';
     
     document.getElementById('voidModal').classList.add('active');
     
@@ -2320,7 +2320,7 @@ function openVoidModal(rowId, txnId, customer, source) {
         document.getElementById('voidInfoStatus').innerText = details.validation_status || details.job_status || 'Completed';
         
         const grandTotal = parseFloat(itemsRes.total_amount || details.total_amount || 0);
-        document.getElementById('voidInfoTotalAmount').innerText = 'â‚±' + grandTotal.toFixed(2);
+        document.getElementById('voidInfoTotalAmount').innerText = '₱' + grandTotal.toFixed(2);
         
         // Render items breakdown inside voidItemsContainer
         let itemsHtml = '';
@@ -2344,8 +2344,8 @@ function openVoidModal(rowId, txnId, customer, source) {
                     <tr>
                         <td style="padding:4px;border-bottom:1px solid #f1f5f9;font-weight:600;">${item.product_name}</td>
                         <td style="padding:4px;border-bottom:1px solid #f1f5f9;text-align:center;">${parseInt(item.quantity)}</td>
-                        <td style="padding:4px;border-bottom:1px solid #f1f5f9;text-align:right;">â‚±${parseFloat(item.unit_price).toFixed(2)}</td>
-                        <td style="padding:4px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#002F70;">â‚±${parseFloat(item.subtotal).toFixed(2)}</td>
+                        <td style="padding:4px;border-bottom:1px solid #f1f5f9;text-align:right;">₱${parseFloat(item.unit_price).toFixed(2)}</td>
+                        <td style="padding:4px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#002F70;">₱${parseFloat(item.subtotal).toFixed(2)}</td>
                     </tr>`;
             });
             
@@ -2357,10 +2357,10 @@ function openVoidModal(rowId, txnId, customer, source) {
                 </tbody>
             </table>
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:10px;color:#475569;margin-bottom:8px;padding-right:4px;">
-                <div>Subtotal: <strong>â‚±${subtotal.toFixed(2)}</strong></div>
-                <div>Discount: <strong>â‚±0.00</strong></div>
-                <div>VAT (12%): <strong>â‚±${vat.toFixed(2)}</strong></div>
-                <div style="font-size:11px;color:#002F70;margin-top:2px;">Grand Total: <strong>â‚±${grandTotal.toFixed(2)}</strong></div>
+                <div>Subtotal: <strong>₱${subtotal.toFixed(2)}</strong></div>
+                <div>Discount: <strong>₱0.00</strong></div>
+                <div>VAT (12%): <strong>₱${vat.toFixed(2)}</strong></div>
+                <div style="font-size:11px;color:#002F70;margin-top:2px;">Grand Total: <strong>₱${grandTotal.toFixed(2)}</strong></div>
             </div>`;
         }
         
@@ -2378,14 +2378,14 @@ function openVoidModal(rowId, txnId, customer, source) {
                 itemsHtml += `
                     <tr>
                         <td style="padding:4px;border-bottom:1px solid #fef3c7;font-weight:600;">${item.product_name}</td>
-                        <td style="padding:4px;border-bottom:1px solid #fef3c7;text-align:right;font-weight:700;color:#002F70;">â‚±${parseFloat(item.subtotal).toFixed(2)}</td>
+                        <td style="padding:4px;border-bottom:1px solid #fef3c7;text-align:right;font-weight:700;color:#002F70;">₱${parseFloat(item.subtotal).toFixed(2)}</td>
                     </tr>`;
             });
             itemsHtml += `
                 </tbody>
             </table>
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:10px;color:#475569;margin-bottom:8px;padding-right:4px;">
-                <div style="font-size:11px;color:#002F70;margin-top:2px;">Grand Total: <strong>â‚±${grandTotal.toFixed(2)}</strong></div>
+                <div style="font-size:11px;color:#002F70;margin-top:2px;">Grand Total: <strong>₱${grandTotal.toFixed(2)}</strong></div>
             </div>`;
         }
         
@@ -2403,9 +2403,9 @@ function openVoidModal(rowId, txnId, customer, source) {
         document.getElementById('voidInventoryImpactList').innerHTML = invHtml;
         
         // Sales Impact fields
-        document.getElementById('voidSalesCurrent').innerText = 'â‚±' + grandTotal.toFixed(2);
-        document.getElementById('voidSalesAfter').innerText = 'â‚±0.00';
-        document.getElementById('voidSalesDiff').innerText = '-â‚±' + grandTotal.toFixed(2);
+        document.getElementById('voidSalesCurrent').innerText = '₱' + grandTotal.toFixed(2);
+        document.getElementById('voidSalesAfter').innerText = '₱0.00';
+        document.getElementById('voidSalesDiff').innerText = '-₱' + grandTotal.toFixed(2);
         
         validateVoidForm();
     })
@@ -2474,11 +2474,11 @@ function previewVoidImpact() {
     const amt = document.getElementById('voidInfoTotalAmount').innerText;
     
     alert(`Void Impact Preview for ${txnId}:\n\n` +
-          `â€¢ Inventory: Stock quantities listed in the preview will be returned to store inventory.\n` +
-          `â€¢ Sales: Sales totals will decrease by ${amt}.\n` +
-          `â€¢ Reports: Shift summaries, Daily Sales, and Payment reports will exclude this transaction.\n` +
-          `â€¢ Customer: Purchase history for this customer will be updated (marked VOIDED).\n` +
-          `â€¢ Audit Log: Void event with manager name, reason, remarks, and timestamp will be logged.`);
+          `—¢ Inventory: Stock quantities listed in the preview will be returned to store inventory.\n` +
+          `—¢ Sales: Sales totals will decrease by ${amt}.\n` +
+          `—¢ Reports: Shift summaries, Daily Sales, and Payment reports will exclude this transaction.\n` +
+          `—¢ Customer: Purchase history for this customer will be updated (marked VOIDED).\n` +
+          `—¢ Audit Log: Void event with manager name, reason, remarks, and timestamp will be logged.`);
 }
 
 function submitVoidNew() {

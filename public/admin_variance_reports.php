@@ -334,7 +334,7 @@ if ($export === 'excel') {
     header('Content-Type: application/vnd.ms-excel; charset=utf-8');
     header('Content-Disposition: attachment; filename="merchandise_variance_reports_'.date('Ymd').'.xls"');
     echo '<html><head><meta charset="UTF-8"><style>table{border-collapse:collapse}th,td{border:1px solid #ddd;padding:7px}th{background:#002F6C;color:#fff}</style></head><body>';
-    echo '<h2>Merchandise Variance Reports Oversight</h2><p>Period: '.$date_from.' â€“ '.$date_to.' | Station: '.$station_name.'</p>';
+    echo '<h2>Merchandise Variance Reports Oversight</h2><p>Period: '.$date_from.' – '.$date_to.' | Station: '.$station_name.'</p>';
     echo '<table><thead><tr><th>ID</th><th>Flagged Date</th><th>Station</th><th>Transaction ID</th><th>Item Code</th><th>Item Name</th><th>Expected Qty</th><th>Actual Qty</th><th>Variance</th><th>Reason</th><th>Encoder</th><th>Manager</th><th>Status</th></tr></thead><tbody>';
     foreach ($records as $r) {
         $var_sign = $r['variance'] > 0 ? '+' : '';
@@ -343,7 +343,7 @@ if ($export === 'excel') {
         echo '<td>'.htmlspecialchars($r['item_code']).'</td><td>'.htmlspecialchars($r['item_name']).'</td>';
         echo '<td>'.number_format($r['expected_quantity'],2).'</td><td>'.number_format($r['actual_quantity'],2).'</td>';
         echo '<td>'.$var_sign.number_format($r['variance'],2).'</td><td>'.htmlspecialchars($r['reason']).'</td>';
-        echo '<td>'.htmlspecialchars($r['encoder_name'] ?? 'â€”').'</td><td>'.htmlspecialchars($r['manager_name'] ?? 'â€”').'</td>';
+        echo '<td>'.htmlspecialchars($r['encoder_name'] ?? '—').'</td><td>'.htmlspecialchars($r['manager_name'] ?? '—').'</td>';
         echo '<td>'.htmlspecialchars(strtoupper($r['status'])).'</td></tr>';
     }
     echo '</tbody></table></body></html>'; exit;
@@ -556,10 +556,10 @@ html,body{max-width:100vw;overflow-x:hidden}
                         <?= $var_sign . number_format($var_val, 2) ?>
                     </td>
                     <td title="<?= htmlspecialchars($r['reason']) ?>">
-                        <?= htmlspecialchars(substr($r['reason'], 0, 30)) ?><?= strlen($r['reason']) > 30 ? 'â€¦' : '' ?>
+                        <?= htmlspecialchars(substr($r['reason'], 0, 30)) ?><?= strlen($r['reason']) > 30 ? '—¦' : '' ?>
                     </td>
-                    <td><?= htmlspecialchars($r['encoder_name'] ?: 'â€”') ?></td>
-                    <td><?= htmlspecialchars($r['manager_name'] ?: 'â€”') ?></td>
+                    <td><?= htmlspecialchars($r['encoder_name'] ?: '—') ?></td>
+                    <td><?= htmlspecialchars($r['manager_name'] ?: '—') ?></td>
                     <td><span class="mvr-badge badge-<?= $r['status'] ?>"><?= htmlspecialchars($status_label) ?></span></td>
                     <td style="text-align:right;white-space:nowrap;">
                         <button onclick='openViewModal(<?= json_encode($r, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>)' class="mvr-btn-action" title="View Details">
@@ -801,11 +801,11 @@ function openViewModal(data) {
         varEl.style.color = '#16a34a';
     }
 
-    document.getElementById('v_encoder_name').textContent = data.encoder_name || 'â€”';
-    document.getElementById('v_manager_name').textContent = data.manager_name || 'â€”';
+    document.getElementById('v_encoder_name').textContent = data.encoder_name || '—';
+    document.getElementById('v_manager_name').textContent = data.manager_name || '—';
     document.getElementById('v_reason').textContent = data.reason || 'No details provided.';
     document.getElementById('v_flagged_at').textContent = data.flagged_at ? new Date(data.flagged_at).toLocaleString() : 'N/A';
-    document.getElementById('v_resolved_at').textContent = data.resolved_at ? new Date(data.resolved_at).toLocaleString() : 'â€”';
+    document.getElementById('v_resolved_at').textContent = data.resolved_at ? new Date(data.resolved_at).toLocaleString() : '—';
 
     // Status Badge Styling
     const statusBadge = document.getElementById('v_status_badge');
@@ -820,7 +820,7 @@ function openEditModal(data) {
     document.getElementById('e_transaction_id').value = data.transaction_id || '';
     document.getElementById('e_expected_quantity').value = parseFloat(data.expected_quantity).toFixed(2);
     document.getElementById('e_actual_quantity').value = parseFloat(data.actual_quantity).toFixed(2);
-    document.getElementById('e_encoder_name').value = data.encoder_name || 'â€”';
+    document.getElementById('e_encoder_name').value = data.encoder_name || '—';
     document.getElementById('e_manager_id').value = data.manager_id || '';
     document.getElementById('e_status').value = data.status;
     document.getElementById('e_reason').value = data.reason || '';

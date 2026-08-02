@@ -998,12 +998,25 @@ function ensure_product_category_id(PDO $pdo, string $category): int {
 
 function normalize_merchandise_catalog_rows(array $rows): array {
     $normalized = [];
+    $seen_keys = [];
 
     foreach ($rows as $row) {
         $name = trim((string)($row['product_name'] ?? $row['name'] ?? ''));
         if ($name === '') {
             continue;
         }
+
+        // Deduplication key by ID and SKU/brand to preserve distinct products
+        $row_id = (int)($row['id'] ?? 0);
+        $norm_name_key = strtolower(trim(preg_replace('/[^a-zA-Z0-9]/', '', $name)));
+        $sku_key = strtolower(trim((string)($row['sku'] ?? '')));
+        $brand_key = strtolower(trim((string)($row['brand'] ?? '')));
+        $dedup_key = $row_id > 0 ? ('id_' . $row_id) : ('item_' . $norm_name_key . '_' . $sku_key . '_' . $brand_key);
+
+        if (isset($seen_keys[$dedup_key])) {
+            continue; // Skip exact duplicate product
+        }
+        $seen_keys[$dedup_key] = true;
 
         $description = (string)($row['description'] ?? '');
         $category = format_product_category_display(
@@ -1796,5 +1809,3 @@ function log_inventory_movement(PDO $pdo, int $station_id, int $product_id, stri
         return false;
     }
 }
-?>
-

@@ -167,24 +167,41 @@ try {
 // ── Merchandise products for this station ────────────────────────────────────
 $merch_products = [];
 try {
+    // ── Unified merchandise catalog — same source as Pricing/Inventory modules ──
     $stmt = $pdo->prepare("
-        SELECT ip.id                                          AS product_id,
+        SELECT ip.id                                                          AS product_id,
                ip.product_name,
-               COALESCE(NULLIF(TRIM(ip.sku),''), CONCAT('PRD-',ip.id)) AS sku,
-               COALESCE(NULLIF(TRIM(ip.category),''),'General')        AS category,
-               COALESCE(NULLIF(TRIM(ip.size),''),'')                   AS size,
-               ip.unit_price                                            AS unit_price,
-               COALESCE(si.stock_level, 0)                             AS stock_level,
-               COALESCE(NULLIF(TRIM(si.unit),''), 'pc')               AS unit
+               COALESCE(NULLIF(TRIM(ip.sku),''), CONCAT('P', LPAD(ip.id,4,'0'))) AS sku,
+               COALESCE(NULLIF(TRIM(ip.category),''),'General')              AS category,
+               COALESCE(NULLIF(TRIM(ip.size),''),'')                         AS size,
+               COALESCE(si.price, ip.unit_price, 0)                          AS unit_price,
+               COALESCE(si.stock_level, ip.stock_quantity, ip.stock, 0)      AS stock_level,
+               COALESCE(NULLIF(TRIM(si.unit),''), NULLIF(TRIM(ip.size),''), 'pcs') AS unit
         FROM inventory_products ip
-        LEFT JOIN station_inventory si
-               ON si.product_id = ip.id
-              AND si.station_id = ?
-        WHERE COALESCE(NULLIF(TRIM(ip.category),''),'General') <> 'Fuel'
-          AND COALESCE(ip.unit_price, 0) > 0
-        ORDER BY ip.category, ip.product_name
+        LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
+        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
+          AND LOWER(COALESCE(ip.status,'active')) NOT IN ('archived','deleted','inactive')
+
+        UNION
+
+        SELECT p.id                                                           AS product_id,
+               p.name                                                         AS product_name,
+               COALESCE(NULLIF(TRIM(p.sku),''), CONCAT('P', LPAD(p.id,4,'0'))) AS sku,
+               COALESCE(pc.name,'General')                                    AS category,
+               COALESCE(NULLIF(p.unit,''),'')                                 AS size,
+               COALESCE(si2.price, p.price, si2.cost, p.cost, 0)             AS unit_price,
+               COALESCE(si2.stock_level, p.current_stock, 0)                 AS stock_level,
+               COALESCE(NULLIF(p.unit,''), NULLIF(si2.unit,''), 'pcs')       AS unit
+        FROM products p
+        LEFT JOIN product_categories pc ON pc.id = p.category_id
+        LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND si2.station_id = ?
+        WHERE LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
+          AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
+          AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(status,'active')) NOT IN ('archived','deleted') AND LOWER(COALESCE(category,'')) NOT IN ('fuel','fuel products'))
+
+        ORDER BY category, product_name
     ");
-    $stmt->execute([$station_id]);
+    $stmt->execute([$station_id, $station_id]);
     $merch_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) { $merch_products = []; }
 

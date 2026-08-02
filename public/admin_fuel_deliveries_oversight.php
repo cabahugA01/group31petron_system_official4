@@ -29,7 +29,7 @@ if (isset($_GET['ajax_action'])) {
                 fd.notes, fd.created_at, fd.verified_at, NULL AS batch_id, fd.tank_assigned,
                 fd.received_by, fd.verified_by,
                 COALESCE(NULLIF(CONCAT(TRIM(COALESCE(staff.first_name,'')), ' ', TRIM(COALESCE(staff.last_name,''))), ' '), staff.username, 'Unknown') AS staff_name,
-                COALESCE(NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '), mgr.username, 'â€”') AS manager_name,
+                COALESCE(NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '), mgr.username, '—') AS manager_name,
                 s.name AS station_name
                 FROM fuel_deliveries fd
                 LEFT JOIN users staff ON fd.received_by = staff.id
@@ -126,7 +126,7 @@ if (isset($_GET['single_id']) && $export === 'pdf') {
             fd.notes, fd.created_at, fd.verified_at, NULL AS batch_id, fd.tank_assigned,
             fd.received_by, fd.verified_by,
             COALESCE(NULLIF(CONCAT(TRIM(COALESCE(staff.first_name,'')), ' ', TRIM(COALESCE(staff.last_name,''))), ' '), staff.username, 'Unknown') AS staff_name,
-            COALESCE(NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '), mgr.username, 'â€”') AS manager_name,
+            COALESCE(NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '), mgr.username, '—') AS manager_name,
             s.name AS station_name
             FROM fuel_deliveries fd
             LEFT JOIN users staff ON fd.received_by = staff.id
@@ -169,19 +169,19 @@ if (isset($_GET['single_id']) && $export === 'pdf') {
                         <p>Fuel Delivery Ticket</p>
                     </div>
                     <div class="row"><label>Delivery ID:</label><span>#' . $del['id'] . '</span></div>
-                    <div class="row"><label>Batch ID:</label><span>' . htmlspecialchars($del['batch_id'] ?? 'â€”') . '</span></div>
+                    <div class="row"><label>Batch ID:</label><span>' . htmlspecialchars($del['batch_id'] ?? '—') . '</span></div>
                     <div class="row"><label>Date:</label><span>' . date('M d, Y', strtotime($del['delivery_date'])) . '</span></div>
                     <div class="row"><label>Supplier:</label><span>' . htmlspecialchars($del['supplier']) . '</span></div>
-                    <div class="row"><label>DR Number:</label><span>' . htmlspecialchars($del['invoice_no'] ?? 'â€”') . '</span></div>
-                    <div class="row"><label>Tanker No:</label><span>' . htmlspecialchars($del['tanker_number'] ?? 'â€”') . '</span></div>
+                    <div class="row"><label>DR Number:</label><span>' . htmlspecialchars($del['invoice_no'] ?? '—') . '</span></div>
+                    <div class="row"><label>Tanker No:</label><span>' . htmlspecialchars($del['tanker_number'] ?? '—') . '</span></div>
                     <div class="row"><label>Fuel Type:</label><span>' . htmlspecialchars($del['fuel_type']) . '</span></div>
-                    <div class="row"><label>Assigned Tank:</label><span>' . htmlspecialchars($del['tank_assigned'] ?? 'â€”') . '</span></div>
+                    <div class="row"><label>Assigned Tank:</label><span>' . htmlspecialchars($del['tank_assigned'] ?? '—') . '</span></div>
                     <div class="total"><label>Liters Delivered:</label><span>' . number_format($del['delivery_liters'], 2) . ' L</span></div>
                     <div class="row"><label>Staff Receiver:</label><span>' . htmlspecialchars($del['staff_name']) . '</span></div>
                     <div class="row"><label>Manager Verifier:</label><span>' . htmlspecialchars($del['manager_name']) . '</span></div>
                     <div class="row"><label>Status:</label><span style="color:' . $status_color . '; font-weight:bold;">' . ucfirst(htmlspecialchars($del['status'])) . '</span></div>
-                    <div class="row"><label>Verified At:</label><span>' . ($del['verified_at'] ? date('M d, Y h:i A', strtotime($del['verified_at'])) : 'â€”') . '</span></div>
-                    <div class="row" style="flex-direction:column; align-items:flex-start;"><label>Remarks:</label><span style="text-align:left; font-weight: normal; margin-top: 3px; color:#555;">' . htmlspecialchars($del['notes'] ?? 'â€”') . '</span></div>
+                    <div class="row"><label>Verified At:</label><span>' . ($del['verified_at'] ? date('M d, Y h:i A', strtotime($del['verified_at'])) : '—') . '</span></div>
+                    <div class="row" style="flex-direction:column; align-items:flex-start;"><label>Remarks:</label><span style="text-align:left; font-weight: normal; margin-top: 3px; color:#555;">' . htmlspecialchars($del['notes'] ?? '—') . '</span></div>
                     <div class="footer">
                         <p>Petron Fuel Operations</p>
                         <p>Generated: ' . date('Y-m-d H:i:s') . '</p>
@@ -270,7 +270,7 @@ try {
         fd.invoice_no, fd.delivery_liters, fd.tanker_number, fd.status,
         fd.notes, fd.created_at, fd.verified_at, NULL AS batch_id, fd.tank_assigned,
         COALESCE(NULLIF(CONCAT(TRIM(COALESCE(staff.first_name,'')), ' ', TRIM(COALESCE(staff.last_name,''))), ' '), staff.username, 'Unknown') AS received_by_name,
-        COALESCE(NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '), mgr.username, 'â€”') AS verified_by_name,
+        COALESCE(NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '), mgr.username, '—') AS verified_by_name,
         s.name AS station_name
         FROM fuel_deliveries fd
         LEFT JOIN users staff ON fd.received_by = staff.id
@@ -311,19 +311,19 @@ if (in_array($export, ['csv','excel','pdf'])) {
         $rows_fmt[] = [
             '#'.$del['id'],
             date('M d, Y', strtotime($del['delivery_date'])),
-            $del['batch_id'] ?? 'â€”',
-            $del['station_name'] ?? 'â€”',
+            $del['batch_id'] ?? '—',
+            $del['station_name'] ?? '—',
             $del['fuel_type'],
-            $del['tank_assigned'] ?? 'â€”',
+            $del['tank_assigned'] ?? '—',
             $del['supplier'],
-            $del['invoice_no'] ?? 'â€”',
+            $del['invoice_no'] ?? '—',
             number_format($del['delivery_liters'],2).' L',
-            $del['tanker_number'] ?? 'â€”',
+            $del['tanker_number'] ?? '—',
             $del['status'],
-            $del['notes'] ?? 'â€”',
-            $del['received_by_name'] ?? 'â€”',
-            $del['verified_by_name'] ?? 'â€”',
-            $del['verified_at'] ? date('M d, Y H:i', strtotime($del['verified_at'])) : 'â€”',
+            $del['notes'] ?? '—',
+            $del['received_by_name'] ?? '—',
+            $del['verified_by_name'] ?? '—',
+            $del['verified_at'] ? date('M d, Y H:i', strtotime($del['verified_at'])) : '—',
         ];
     }
     $filename = 'fuel_deliveries_'.$date_from.'_to_'.$date_to;
@@ -356,18 +356,18 @@ if (in_array($export, ['csv','excel','pdf'])) {
             $tbody .= '<tr>';
             $tbody .= '<td>#'.htmlspecialchars($del['id']).'</td>';
             $tbody .= '<td>'.date('M d, Y', strtotime($del['delivery_date'])).'</td>';
-            $tbody .= '<td>'.htmlspecialchars($del['batch_id'] ?? 'â€”').'</td>';
-            $tbody .= '<td>'.htmlspecialchars($del['station_name'] ?? 'â€”').'</td>';
+            $tbody .= '<td>'.htmlspecialchars($del['batch_id'] ?? '—').'</td>';
+            $tbody .= '<td>'.htmlspecialchars($del['station_name'] ?? '—').'</td>';
             $tbody .= '<td>'.htmlspecialchars($del['fuel_type']).'</td>';
-            $tbody .= '<td>'.htmlspecialchars($del['tank_assigned'] ?? 'â€”').'</td>';
+            $tbody .= '<td>'.htmlspecialchars($del['tank_assigned'] ?? '—').'</td>';
             $tbody .= '<td>'.htmlspecialchars($del['supplier']).'</td>';
-            $tbody .= '<td>'.htmlspecialchars($del['invoice_no'] ?? 'â€”').'</td>';
+            $tbody .= '<td>'.htmlspecialchars($del['invoice_no'] ?? '—').'</td>';
             $tbody .= '<td style="text-align:right;font-weight:700;">'.number_format($del['delivery_liters'],2).' L</td>';
-            $tbody .= '<td>'.htmlspecialchars($del['tanker_number'] ?? 'â€”').'</td>';
+            $tbody .= '<td>'.htmlspecialchars($del['tanker_number'] ?? '—').'</td>';
             $tbody .= '<td style="color:'.$sc_color.';font-weight:700;">'.htmlspecialchars($del['status']).'</td>';
-            $tbody .= '<td>'.htmlspecialchars($del['received_by_name'] ?? 'â€”').'</td>';
-            $tbody .= '<td>'.htmlspecialchars($del['verified_by_name'] ?? 'â€”').'</td>';
-            $tbody .= '<td>'.($del['verified_at'] ? date('M d, Y H:i', strtotime($del['verified_at'])) : 'â€”').'</td>';
+            $tbody .= '<td>'.htmlspecialchars($del['received_by_name'] ?? '—').'</td>';
+            $tbody .= '<td>'.htmlspecialchars($del['verified_by_name'] ?? '—').'</td>';
+            $tbody .= '<td>'.($del['verified_at'] ? date('M d, Y H:i', strtotime($del['verified_at'])) : '—').'</td>';
             $tbody .= '</tr>';
         }
         echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fuel Deliveries Oversight</title>
@@ -382,7 +382,7 @@ if (in_array($export, ['csv','excel','pdf'])) {
         </style></head><body>';
         echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer">Print</button>
         <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none">â† Back</a></div>';
-        echo '<div class="hdr"><h1>Fuel Deliveries Oversight</h1><p>Period: '.htmlspecialchars($date_from).' â€” '.htmlspecialchars($date_to).' | Station: '.htmlspecialchars($station_name).' | Records: '.count($deliveries).'</p></div>';
+        echo '<div class="hdr"><h1>Fuel Deliveries Oversight</h1><p>Period: '.htmlspecialchars($date_from).' — '.htmlspecialchars($date_to).' | Station: '.htmlspecialchars($station_name).' | Records: '.count($deliveries).'</p></div>';
         echo '<table><thead><tr><th>ID</th><th>Date</th><th>Delivery Ref</th><th>Station</th><th>Fuel Type</th><th>Tank</th><th>Supplier</th><th>DR #</th><th>Liters</th><th>Tanker #</th><th>Status</th><th>Receiver</th><th>Verifier</th><th>Verified At</th></tr></thead>';
         echo '<tbody>'.($tbody ?: '<tr><td colspan="14" style="text-align:center;padding:20px;color:#94a3b8">No records.</td></tr>').'</tbody></table>';
         echo '</body></html>'; exit;
@@ -397,7 +397,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 .int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
 .int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
 
-/* Export/action buttons â€” unified outline style matching staff Transaction module */
+/* Export/action buttons — unified outline style matching staff Transaction module */
 .ato-btn {
     display:inline-flex; align-items:center; gap:6px;
     padding:0 16px; border-radius:7px; font-size:13px; font-weight:600;
@@ -597,7 +597,7 @@ html, body { max-width:100vw; overflow-x:hidden; }
 <div class="afdo-table-card">
     <div class="afdo-table-hd">
         <h3 class="afdo-table-title"><i class="fas fa-table"></i> Fuel Delivery Records</h3>
-        <span style="font-size:11px;color:#64748b;"><?= number_format(count($deliveries)) ?> record(s) â€” <?= htmlspecialchars($date_from) ?> to <?= htmlspecialchars($date_to) ?></span>
+        <span style="font-size:11px;color:#64748b;"><?= number_format(count($deliveries)) ?> record(s) — <?= htmlspecialchars($date_from) ?> to <?= htmlspecialchars($date_to) ?></span>
     </div>
     <div class="afdo-tbl-wrap">
         <table class="afdo-tbl">
@@ -661,20 +661,20 @@ html, body { max-width:100vw; overflow-x:hidden; }
                 <tr>
                     <td style="color:#475569; font-weight: 600;">#<?= $del['id'] ?></td>
                     <td title="<?= date('Y-m-d', strtotime($del['delivery_date'])) ?>"><?= date('M d, Y', strtotime($del['delivery_date'])) ?></td>
-                    <td title="<?= htmlspecialchars($del['batch_id'] ?? 'â€”') ?>"><?= htmlspecialchars($del['batch_id'] ?? 'â€”') ?></td>
-                    <td title="<?= htmlspecialchars($del['supplier'] ?? 'â€”') ?>"><?= htmlspecialchars($del['supplier'] ?? 'â€”') ?></td>
-                    <td title="<?= htmlspecialchars($del['invoice_no'] ?? 'â€”') ?>"><?= htmlspecialchars($del['invoice_no'] ?? 'â€”') ?></td>
-                    <td title="<?= htmlspecialchars($del['tanker_number'] ?? 'â€”') ?>"><?= htmlspecialchars($del['tanker_number'] ?? 'â€”') ?></td>
-                    <td title="<?= htmlspecialchars($del['fuel_type'] ?? 'â€”') ?>"><?= htmlspecialchars($del['fuel_type'] ?? 'â€”') ?></td>
-                    <td title="<?= htmlspecialchars($del['tank_assigned'] ?? 'â€”') ?>"><?= htmlspecialchars($del['tank_assigned'] ?? 'â€”') ?></td>
+                    <td title="<?= htmlspecialchars($del['batch_id'] ?? '—') ?>"><?= htmlspecialchars($del['batch_id'] ?? '—') ?></td>
+                    <td title="<?= htmlspecialchars($del['supplier'] ?? '—') ?>"><?= htmlspecialchars($del['supplier'] ?? '—') ?></td>
+                    <td title="<?= htmlspecialchars($del['invoice_no'] ?? '—') ?>"><?= htmlspecialchars($del['invoice_no'] ?? '—') ?></td>
+                    <td title="<?= htmlspecialchars($del['tanker_number'] ?? '—') ?>"><?= htmlspecialchars($del['tanker_number'] ?? '—') ?></td>
+                    <td title="<?= htmlspecialchars($del['fuel_type'] ?? '—') ?>"><?= htmlspecialchars($del['fuel_type'] ?? '—') ?></td>
+                    <td title="<?= htmlspecialchars($del['tank_assigned'] ?? '—') ?>"><?= htmlspecialchars($del['tank_assigned'] ?? '—') ?></td>
                     <td title="<?= number_format($del['delivery_liters'], 2) ?> L" style="font-weight:700; text-align: right;"><?= number_format($del['delivery_liters'], 2) ?> L</td>
-                    <td title="<?= htmlspecialchars($del['received_by_name'] ?? 'â€”') ?>"><?= htmlspecialchars($del['received_by_name'] ?? 'â€”') ?></td>
-                    <td title="<?= htmlspecialchars($del['verified_by_name'] ?? 'â€”') ?>"><?= htmlspecialchars($del['verified_by_name'] ?? 'â€”') ?></td>
+                    <td title="<?= htmlspecialchars($del['received_by_name'] ?? '—') ?>"><?= htmlspecialchars($del['received_by_name'] ?? '—') ?></td>
+                    <td title="<?= htmlspecialchars($del['verified_by_name'] ?? '—') ?>"><?= htmlspecialchars($del['verified_by_name'] ?? '—') ?></td>
                     <td><span class="afdo-badge <?= $badge ?>"><?= $st_label ?></span></td>
-                    <td title="<?= $del['verified_at'] ? date('Y-m-d H:i:s', strtotime($del['verified_at'])) : 'â€”' ?>">
-                        <?= $del['verified_at'] ? date('M d, Y H:i', strtotime($del['verified_at'])) : 'â€”' ?>
+                    <td title="<?= $del['verified_at'] ? date('Y-m-d H:i:s', strtotime($del['verified_at'])) : '—' ?>">
+                        <?= $del['verified_at'] ? date('M d, Y H:i', strtotime($del['verified_at'])) : '—' ?>
                     </td>
-                    <td title="<?= htmlspecialchars($del['notes'] ?? '') ?>"><?= htmlspecialchars($del['notes'] ?? 'â€”') ?></td>
+                    <td title="<?= htmlspecialchars($del['notes'] ?? '') ?>"><?= htmlspecialchars($del['notes'] ?? '—') ?></td>
                 </tr>
                 <?php endforeach; ?>
                 <?php endif; ?>
@@ -834,21 +834,21 @@ function viewDelDetails(id) {
         .then(res => {
             if (res.success) {
                 const data = res.data;
-                const remarks = data.notes ? data.notes.replace(/\n/g, '<br>') : 'â€”';
+                const remarks = data.notes ? data.notes.replace(/\n/g, '<br>') : '—';
                 const gridHtml = `
                     <div class="details-item"><label>Delivery ID</label><span>#${data.id}</span></div>
-                    <div class="details-item"><label>Batch ID</label><span>${data.batch_id || 'â€”'}</span></div>
+                    <div class="details-item"><label>Batch ID</label><span>${data.batch_id || '—'}</span></div>
                     <div class="details-item"><label>Delivery Date</label><span>${data.delivery_date}</span></div>
-                    <div class="details-item"><label>Supplier</label><span>${data.supplier || 'â€”'}</span></div>
-                    <div class="details-item"><label>DR Number</label><span>${data.invoice_no || 'â€”'}</span></div>
-                    <div class="details-item"><label>Tanker Number</label><span>${data.tanker_number || 'â€”'}</span></div>
-                    <div class="details-item"><label>Fuel Type</label><span>${data.fuel_type || 'â€”'}</span></div>
-                    <div class="details-item"><label>Assigned Tank</label><span>${data.tank_assigned || 'â€”'}</span></div>
+                    <div class="details-item"><label>Supplier</label><span>${data.supplier || '—'}</span></div>
+                    <div class="details-item"><label>DR Number</label><span>${data.invoice_no || '—'}</span></div>
+                    <div class="details-item"><label>Tanker Number</label><span>${data.tanker_number || '—'}</span></div>
+                    <div class="details-item"><label>Fuel Type</label><span>${data.fuel_type || '—'}</span></div>
+                    <div class="details-item"><label>Assigned Tank</label><span>${data.tank_assigned || '—'}</span></div>
                     <div class="details-item"><label>Liters Delivered</label><span>${parseFloat(data.delivery_liters).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} L</span></div>
-                    <div class="details-item"><label>Staff Receiver</label><span>${data.received_by_name || 'â€”'}</span></div>
-                    <div class="details-item"><label>Manager Verifier</label><span>${data.verified_by_name || 'â€”'}</span></div>
-                    <div class="details-item"><label>Status</label><span>${data.status || 'â€”'}</span></div>
-                    <div class="details-item"><label>Verification Date</label><span>${data.verified_at || 'â€”'}</span></div>
+                    <div class="details-item"><label>Staff Receiver</label><span>${data.received_by_name || '—'}</span></div>
+                    <div class="details-item"><label>Manager Verifier</label><span>${data.verified_by_name || '—'}</span></div>
+                    <div class="details-item"><label>Status</label><span>${data.status || '—'}</span></div>
+                    <div class="details-item"><label>Verification Date</label><span>${data.verified_at || '—'}</span></div>
                     <div class="details-item" style="grid-column: span 2;"><label>Remarks</label><span>${remarks}</span></div>
                 `;
                 document.getElementById('detailsGrid').innerHTML = gridHtml;

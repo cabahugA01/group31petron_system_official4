@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'admin_inventory_fuel';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -26,17 +26,17 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
         $stmt = $pdo->prepare("
             SELECT fd.id,
                    fd.delivery_date,
-                   COALESCE(NULLIF(fd.invoice_no,''), fd.po_number, CONCAT('DEL-', LPAD(fd.id, 5, '0'))) AS invoice_no,
+                   COALESCE(NULLIF(fd.invoice_no,''), CONCAT('DEL-', LPAD(fd.id, 5, '0'))) AS invoice_no,
                    fd.delivery_liters,
-                   COALESCE(fd.cost_per_liter, 65.50) AS cost_per_liter,
+                   65.50 AS cost_per_liter,
                    COALESCE(NULLIF(fd.supplier,''), 'Petron Corporation') AS supplier,
                    COALESCE(fd.status, 'Verified') AS status
             FROM fuel_deliveries fd
-            WHERE (fd.station_id = ? OR fd.station_id = 0 OR fd.station_id IS NULL)
+            WHERE (fd.station_id = ? OR fd.station_id = 1 OR fd.station_id = 0 OR fd.station_id IS NULL)
               AND LOWER(fd.fuel_type) LIKE LOWER(?)
             ORDER BY fd.delivery_date DESC, fd.id DESC LIMIT 20
         ");
-        $stmt->execute([$station_id, '%' . $fuel_type . '%']);
+        $stmt->execute([$station_id, '%' . strtolower(explode(' ', $fuel_type)[0]) . '%']);
         $deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {}
 
@@ -47,15 +47,16 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
                    fa.adjustment_date,
                    fa.previous_value,
                    fa.new_value,
+                   fa.variance,
                    COALESCE(NULLIF(fa.reason,''), NULLIF(fa.notes,''), 'Routine Calibration') AS reason,
                    COALESCE(u.name, 'Manager') AS adjusted_by
             FROM fuel_adjustments fa
             LEFT JOIN users u ON fa.user_id = u.id
-            WHERE (fa.station_id = ? OR fa.station_id = 0 OR fa.station_id IS NULL)
+            WHERE (fa.station_id = ? OR fa.station_id = 1 OR fa.station_id = 0 OR fa.station_id IS NULL)
               AND LOWER(fa.fuel_type) LIKE LOWER(?)
             ORDER BY fa.adjustment_date DESC, fa.id DESC LIMIT 20
         ");
-        $stmt->execute([$station_id, '%' . $fuel_type . '%']);
+        $stmt->execute([$station_id, '%' . strtolower(explode(' ', $fuel_type)[0]) . '%']);
         $adjustments = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {}
 
@@ -93,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_
             
             if (function_exists('log_activity')) {
                 log_activity($pdo, $me['id'], 'Admin Edit Fuel Level',
-                    "Fuel ID $fid: {$oldL}L â†’ {$newL}L. Note: $note");
+                    "Fuel ID $fid: {$oldL}L → {$newL}L. Note: $note");
             }
             $_SESSION['ok'] = 'Fuel level updated successfully.';
         } catch (Exception $e) { $_SESSION['err'] = $e->getMessage(); }
@@ -103,12 +104,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_
 
 $TANK_CONFIG_17 = get_tank_config();
 
-// â”€â”€ DB lookups â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── DB lookups ────────────────────────────────────────────────────────
+$fi_raw = [];
 $fi_lookup = [];
 try {
     $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, COALESCE(ugt_no, '') AS ugt_no FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)");
     $s->execute([$station_id]);
-    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $fi_raw = $s->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($fi_raw as $row) {
         $fuel_key = strtolower(trim($row['fuel_type']));
         $ugt_no   = strtolower(trim($row['ugt_no'] ?? ''));
         
@@ -186,39 +189,53 @@ if (!function_exists('get_canonical_fuel_name')) {
     }
 }
 
-// â”€â”€ Build 7 rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Build 7 rows ──────────────────────────────────────────────────────
 $rows = [];
 foreach ($TANK_CONFIG_17 as $tc) {
-    $ft_key = strtolower(trim($tc['fuel_type']));
     $tank_num = $tc['tanker_num'];
+    $ugt_str  = 'UGT-' . str_pad($tank_num, 2, '0', STR_PAD_LEFT);
+    $ft_key   = strtolower(trim($tc['fuel_type']));
     
+    // Smart match: match by UGT number, tanker_num, or clean fuel_type
     $inv = null;
-    if (isset($fi_lookup[$ft_key . '_tank_' . $tank_num])) {
-        $inv = $fi_lookup[$ft_key . '_tank_' . $tank_num];
-    } elseif (isset($fi_lookup[$ft_key . '_' . strtolower(trim($tc['tank']))])) {
-        $inv = $fi_lookup[$ft_key . '_' . strtolower(trim($tc['tank']))];
-    } elseif ($ft_key === 'xtra unl' || $ft_key === 'xtr advance') {
-        $cand = '';
-        if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'xtra unl 1'; }
-        elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'xtra unl 2'; }
-        if ($cand && isset($fi_lookup[$cand])) { 
-            $ft_key = $cand;
-            $inv = $fi_lookup[$cand];
-        } else {
-            $inv = $fi_lookup['xtra unl'] ?? null;
+    foreach ($fi_raw as $r) {
+        $r_ugt = strtolower(trim($r['ugt_no']));
+        $r_ft  = strtolower(trim($r['fuel_type']));
+        if (($r_ugt !== '' && ($r_ugt === strtolower($ugt_str) || strpos($r_ugt, (string)$tank_num) !== false)) || 
+            strpos($r_ft, '#' . $tank_num) !== false || 
+            strpos($r_ft, 'ugt-' . str_pad($tank_num, 2, '0', STR_PAD_LEFT)) !== false) {
+            $inv = $r;
+            break;
         }
-    } elseif ($ft_key === 'diesel') {
-        $cand = '';
-        if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'diesel 1'; }
-        elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'diesel 2'; }
-        if ($cand && isset($fi_lookup[$cand])) { 
-            $ft_key = $cand;
-            $inv = $fi_lookup[$cand];
+    }
+    if (!$inv) {
+        if (isset($fi_lookup[$ft_key . '_tank_' . $tank_num])) {
+            $inv = $fi_lookup[$ft_key . '_tank_' . $tank_num];
+        } elseif (isset($fi_lookup[$ft_key . '_' . strtolower(trim($tc['tank']))])) {
+            $inv = $fi_lookup[$ft_key . '_' . strtolower(trim($tc['tank']))];
+        } elseif ($ft_key === 'xtra unl' || $ft_key === 'xtr advance') {
+            $cand = '';
+            if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'xtra unl 1'; }
+            elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'xtra unl 2'; }
+            if ($cand && isset($fi_lookup[$cand])) { 
+                $ft_key = $cand;
+                $inv = $fi_lookup[$cand];
+            } else {
+                $inv = $fi_lookup['xtra unl'] ?? null;
+            }
+        } elseif ($ft_key === 'diesel') {
+            $cand = '';
+            if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'diesel 1'; }
+            elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'diesel 2'; }
+            if ($cand && isset($fi_lookup[$cand])) { 
+                $ft_key = $cand;
+                $inv = $fi_lookup[$cand];
+            } else {
+                $inv = $fi_lookup['diesel'] ?? null;
+            }
         } else {
-            $inv = $fi_lookup['diesel'] ?? null;
+            $inv = $fi_lookup[$ft_key] ?? null;
         }
-    } else {
-        $inv = $fi_lookup[$ft_key] ?? null;
     }
     
     $tank_key = strtolower(trim($tc['tank']));
@@ -333,7 +350,7 @@ $total_fuel_value = array_sum(array_column($rows, 'value'));
 
 // â”€â”€ Active Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $active_tab = trim($_GET['tab'] ?? 'overview');
-if (!in_array($active_tab, ['overview', 'deliveries', 'adjustments', 'alerts'], true)) {
+if (!in_array($active_tab, ['overview', 'adjustments', 'alerts'], true)) {
     $active_tab = 'overview';
 }
 
@@ -343,7 +360,7 @@ try {
     $stmt = $pdo->prepare("
         SELECT fd.id,
                CONCAT('DEL-', LPAD(fd.id, 5, '0')) AS delivery_no,
-               COALESCE(NULLIF(fd.invoice_no,''), fd.po_number, 'â€”') AS po_number,
+               COALESCE(NULLIF(fd.invoice_no,''), fd.po_number, '—') AS po_number,
                COALESCE(NULLIF(fd.supplier,''), 'Petron Corporation') AS supplier,
                COALESCE(fd.fuel_type, 'Diesel') AS fuel_type,
                fd.delivery_liters AS liters,
@@ -605,7 +622,7 @@ body, html { overflow-x:hidden !important; }
     <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
         <div>
             <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Inventory Value</div>
-            <div style="font-size:20px; font-weight:800; color:#16a34a; margin-top:4px;">â‚±<?= number_format($total_fuel_value, 2) ?></div>
+            <div style="font-size:20px; font-weight:800; color:#16a34a; margin-top:4px;">₱<?= number_format($total_fuel_value, 2) ?></div>
         </div>
         <div style="background:#dcfce7; color:#16a34a; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-coins"></i></div>
     </div>
@@ -615,9 +632,6 @@ body, html { overflow-x:hidden !important; }
 <div class="tab-nav" style="overflow-x:auto; flex-wrap:nowrap; white-space:nowrap; padding-bottom:2px;">
     <a href="admin_inventory_fuel.php?tab=overview" class="tab-btn <?= $active_tab === 'overview' ? 'active' : '' ?>">
         <i class="fas fa-gas-pump"></i> Fuel Inventory Overview
-    </a>
-    <a href="admin_inventory_fuel.php?tab=deliveries" class="tab-btn <?= $active_tab === 'deliveries' ? 'active' : '' ?>">
-        <i class="fas fa-truck"></i> Fuel Deliveries
     </a>
     <a href="admin_inventory_fuel.php?tab=adjustments" class="tab-btn <?= $active_tab === 'adjustments' ? 'active' : '' ?>">
         <i class="fas fa-history"></i> Fuel Adjustment History
@@ -676,7 +690,7 @@ body, html { overflow-x:hidden !important; }
         <tr><td colspan="10" style="text-align:center; padding:32px; color:#6c757d;">No fuel inventory data available.</td></tr>
       <?php else: ?>
         <?php foreach ($rows as $r):
-            $ts_str  = $r['timestamp'] ? date('M d, Y h:i A', strtotime($r['timestamp'])) : 'â€”';
+            $ts_str  = ($r['timestamp'] && strtotime($r['timestamp']) > 0) ? date('M d, Y h:i A', strtotime($r['timestamp'])) : '&mdash;';
             $ugt_no = 'UGT-' . str_pad($r['tanker_num'], 2, '0', STR_PAD_LEFT);
             $rem_cap = max(0, $r['capacity'] - $r['current_level']);
             $r_json = htmlspecialchars(json_encode(array_merge($r, ['ugt_no' => $ugt_no, 'available_space' => $rem_cap])), ENT_QUOTES);
@@ -696,7 +710,17 @@ body, html { overflow-x:hidden !important; }
           <td style="text-align:center;"><span class="status-pill" style="background:<?= $r['status_color'] ?>18; color:<?= $r['status_color'] ?>; border:1px solid <?= $r['status_color'] ?>40;"><?= htmlspecialchars($r['status']) ?></span></td>
           <td style="color:#64748b; font-size:11px;"><?= $ts_str ?></td>
           <td style="text-align:center;">
-            <button type="button" class="int-btn-outline" onclick='viewTankDetails(<?= $r_json ?>)'>
+            <button type="button" class="int-btn-outline" 
+                    data-fuel="<?= $r_json ?>"
+                    data-ugt="<?= htmlspecialchars($ugt_no) ?>"
+                    data-fuel-type="<?= htmlspecialchars(get_canonical_fuel_name($r['fuel_type'])) ?>"
+                    data-capacity="<?= (float)$r['capacity'] ?>"
+                    data-current-level="<?= (float)$r['current_level'] ?>"
+                    data-available-space="<?= (float)$rem_cap ?>"
+                    data-reorder="<?= (float)$r['reorder_level'] ?>"
+                    data-critical="<?= (float)$r['critical_level'] ?>"
+                    data-status="<?= htmlspecialchars($r['status']) ?>"
+                    onclick="event.stopPropagation(); viewTankDetailsFromBtn(this)">
               <i class="fas fa-eye"></i> View
             </button>
           </td>
@@ -707,78 +731,6 @@ body, html { overflow-x:hidden !important; }
     </table>
   </div>
   <div id="adminFuelInvPagination" style="padding:8px 16px;"></div>
-</div>
-<?php endif; ?>
-
-<!-- â•â• TAB 2: FUEL DELIVERIES â•â• -->
-<?php if ($active_tab === 'deliveries'): ?>
-<div style="background:#fff; border:1px solid #e2e8f0; border-radius:11px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.05); margin-bottom:20px;">
-  <div style="padding:14px 18px; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; background:#f8fafc;">
-    <div style="font-weight:700; color:#002F70; font-size:14px; text-transform:uppercase; display:flex; align-items:center; gap:8px;">
-      <i class="fas fa-truck"></i> Fuel Deliveries Records
-    </div>
-    <input type="text" id="delSearchInput" placeholder="Search Delivery No., PO, Supplier..." oninput="filterDeliveriesTable()" style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; width:240px; outline:none;">
-  </div>
-  <div class="aif-wrap">
-    <table class="aif-tbl" id="adminFuelDelTable">
-      <thead>
-        <tr>
-          <th>Delivery No.</th>
-          <th>PO No.</th>
-          <th>Supplier</th>
-          <th>Fuel Type</th>
-          <th style="text-align:right;">Liters Received</th>
-          <th style="text-align:right;">Unit Cost</th>
-          <th>Delivery Date</th>
-          <th>Recorded By</th>
-          <th style="text-align:center;">Status</th>
-          <th style="text-align:center;">Actions</th>
-        </tr>
-      </thead>
-      <tbody id="adminFuelDelBody">
-      <?php if (empty($fuel_deliveries_list)): ?>
-        <tr><td colspan="10" style="text-align:center; padding:32px; color:#6c757d;"><i class="fas fa-truck" style="font-size:24px; display:block; margin-bottom:8px;"></i>No fuel delivery records found.</td></tr>
-      <?php else: ?>
-        <?php foreach ($fuel_deliveries_list as $d):
-            $d_no = $d['delivery_no'];
-            $d_date = $d['date'] ? date('M d, Y g:i A', strtotime($d['date'])) : 'â€”';
-            $d_status = strtolower($d['status']);
-            $d_badge = ($d_status === 'verified' || $d_status === 'completed') ? '<span class="status-pill" style="background:#dcfce7;color:#15803d;border:1px solid #a7f3d0;">Verified</span>' : '<span class="status-pill" style="background:#fef3c7;color:#b45309;border:1px solid #fde68a;">'.ucfirst($d['status']).'</span>';
-            $d_json = htmlspecialchars(json_encode([
-                'delivery_no' => $d_no,
-                'po_number'   => $d['po_number'],
-                'supplier'    => $d['supplier'],
-                'fuel_type'   => $d['fuel_type'],
-                'liters'      => number_format((float)$d['liters'], 2) . ' L',
-                'cost'        => 'â‚±' . number_format((float)$d['unit_cost'], 2),
-                'date'        => $d_date,
-                'status'      => ucfirst($d['status']),
-                'received_by' => $d['received_by_name'],
-                'notes'       => 'Verified stock-in delivery'
-            ]), ENT_QUOTES);
-        ?>
-        <tr class="del-row" data-search="<?= htmlspecialchars(strtolower($d_no . ' ' . $d['po_number'] . ' ' . $d['supplier'] . ' ' . $d['fuel_type'])) ?>">
-          <td><code style="font-weight:700; color:#002F70;"><?= htmlspecialchars($d_no) ?></code></td>
-          <td><code style="font-size:11px;"><?= htmlspecialchars($d['po_number']) ?></code></td>
-          <td style="font-weight:600;"><?= htmlspecialchars($d['supplier']) ?></td>
-          <td style="font-weight:700; color:#334155;"><?= htmlspecialchars(get_canonical_fuel_name($d['fuel_type'])) ?></td>
-          <td style="text-align:right; font-weight:700; color:#16a34a;"><?= number_format((float)$d['liters'], 2) ?> L</td>
-          <td style="text-align:right; font-weight:600; color:#002F70;">â‚±<?= number_format((float)$d['unit_cost'], 2) ?></td>
-          <td style="color:#64748b; font-size:11px;"><?= $d_date ?></td>
-          <td style="font-size:11px; color:#334155;"><?= htmlspecialchars($d['received_by_name']) ?></td>
-          <td style="text-align:center;"><?= $d_badge ?></td>
-          <td style="text-align:center;">
-            <button type="button" class="int-btn-outline" onclick='openDelViewModal(<?= $d_json ?>)'>
-              <i class="fas fa-eye"></i> View
-            </button>
-          </td>
-        </tr>
-        <?php endforeach; ?>
-      <?php endif; ?>
-      </tbody>
-    </table>
-  </div>
-  <div id="adminFuelDelPagination" style="padding:8px 16px;"></div>
 </div>
 <?php endif; ?>
 
@@ -813,7 +765,7 @@ body, html { overflow-x:hidden !important; }
         <tr><td colspan="11" style="text-align:center; padding:32px; color:#6c757d;"><i class="fas fa-info-circle" style="font-size:24px; display:block; margin-bottom:8px;"></i>No fuel adjustment requests found.</td></tr>
       <?php else: ?>
         <?php foreach ($fuel_adjustments_list as $adj):
-            $adate = $adj['date'] ? date('M d, Y h:i A', strtotime($adj['date'])) : 'â€”';
+            $adate = $adj['date'] ? date('M d, Y h:i A', strtotime($adj['date'])) : '—';
             $var = (float)($adj['variance'] ?? 0);
             $var_color = $var > 0 ? '#16a34a' : ($var < 0 ? '#dc2626' : '#64748b');
             $st = strtolower(trim($adj['status'] ?? ''));
@@ -987,82 +939,152 @@ body, html { overflow-x:hidden !important; }
 <script>
 var _adminCurrentFuel = null;
 
+function esc(str) {
+    if (!str) return '';
+    return str.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function closeTankModal() {
+    var overlay = document.getElementById('tankModal');
+    if (overlay) {
+        overlay.classList.remove('open');
+        overlay.style.display = 'none';
+    }
+}
+
+function vfmSwitchTab(tabNum) {
+    for (var i = 1; i <= 3; i++) {
+        var pane = document.getElementById('vfmPane' + i);
+        var btn = document.getElementById('vfmTab' + i);
+        if (pane) pane.style.display = (i === tabNum) ? 'block' : 'none';
+        if (btn) {
+            btn.style.background = 'transparent';
+            btn.style.backgroundColor = 'transparent';
+            if (i === tabNum) {
+                btn.classList.add('active');
+                btn.style.borderBottom = '2px solid #002F70';
+                btn.style.color = '#002F70';
+                btn.style.fontWeight = '700';
+            } else {
+                btn.classList.remove('active');
+                btn.style.borderBottom = '2px solid transparent';
+                btn.style.color = '#64748b';
+                btn.style.fontWeight = '600';
+            }
+        }
+    }
+}
+
+function viewTankDetailsFromBtn(btn) {
+    var targetBtn = (btn && btn.closest) ? btn.closest('button') : btn;
+    if (!targetBtn) return;
+    
+    var r = {};
+    try {
+        var raw = targetBtn.getAttribute('data-fuel');
+        if (raw) {
+            r = JSON.parse(raw);
+        }
+    } catch(e) {}
+
+    r.ugt_no = r.ugt_no || targetBtn.getAttribute('data-ugt') || '';
+    r.fuel_type = r.fuel_type || targetBtn.getAttribute('data-fuel-type') || '';
+    r.capacity = r.capacity || Number(targetBtn.getAttribute('data-capacity') || 0);
+    r.current_level = (r.current_level !== undefined && r.current_level !== null) ? r.current_level : Number(targetBtn.getAttribute('data-current-level') || 0);
+    r.available_space = (r.available_space !== undefined && r.available_space !== null) ? r.available_space : Number(targetBtn.getAttribute('data-available-space') || 0);
+    r.reorder_level = r.reorder_level || Number(targetBtn.getAttribute('data-reorder') || 0);
+    r.critical_level = r.critical_level || Number(targetBtn.getAttribute('data-critical') || 0);
+    r.status = r.status || targetBtn.getAttribute('data-status') || 'Normal';
+
+    viewTankDetails(r);
+}
+
 function viewTankDetails(r) {
     _adminCurrentFuel = r;
     var overlay = document.getElementById('tankModal');
     if (!overlay) return;
-    if (overlay.parentNode !== document.body) {
-        document.body.appendChild(overlay);
+
+    try {
+        if (overlay.parentNode !== document.body) {
+            document.body.appendChild(overlay);
+        }
+
+        var ugtNoStr = r.ugt_no || ('UGT #' + (r.tanker_num || ''));
+        if (document.getElementById('vfmTitle')) document.getElementById('vfmTitle').textContent = 'View Fuel Details — ' + ugtNoStr + ' (' + (r.fuel_type || '') + ')';
+        
+        if (document.getElementById('vfmUgtNo')) document.getElementById('vfmUgtNo').textContent = ugtNoStr;
+        if (document.getElementById('vfmFuelType')) document.getElementById('vfmFuelType').textContent = r.fuel_type || '—';
+        if (document.getElementById('vfmCapacity')) document.getElementById('vfmCapacity').textContent = Number(r.capacity || 0).toLocaleString() + ' L';
+        if (document.getElementById('vfmVolume')) document.getElementById('vfmVolume').textContent = Number(r.current_level || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
+        if (document.getElementById('vfmAvailableSpace')) document.getElementById('vfmAvailableSpace').textContent = Number(r.available_space || (r.capacity - r.current_level) || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
+        if (document.getElementById('vfmReorder')) document.getElementById('vfmReorder').textContent = Number(r.reorder_level || 0).toLocaleString() + ' L';
+        if (document.getElementById('vfmCritical')) document.getElementById('vfmCritical').textContent = Number(r.critical_level || 0).toLocaleString() + ' L';
+
+        var statusMap = {
+            'Normal': '<span class="status-pill" style="background:#dcfce7;color:#15803d;border:1px solid #a7f3d0;">Normal</span>',
+            'Low': '<span class="status-pill" style="background:#fff3cd;color:#ea580c;border:1px solid #ffeba8;">Low</span>',
+            'Critical': '<span class="status-pill" style="background:#fce8e6;color:#dc3545;border:1px solid #f8c2bc;">Critical</span>',
+            'Out of Stock': '<span class="status-pill" style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;">Out of Stock</span>'
+        };
+        if (document.getElementById('vfmStatus')) document.getElementById('vfmStatus').innerHTML = statusMap[r.status] || '<span class="status-pill" style="background:#f1f5f9;color:#475569;">' + esc(r.status || '') + '</span>';
+
+        // Reset sub-tabs to 1
+        if (typeof vfmSwitchTab === 'function') vfmSwitchTab(1);
+
+        // Placeholders for async tables
+        if (document.getElementById('vfmDeliveriesTable')) document.getElementById('vfmDeliveriesTable').innerHTML = '<div style="text-align:center;padding:16px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading deliveries...</div>';
+        if (document.getElementById('vfmAdjustmentsTable')) document.getElementById('vfmAdjustmentsTable').innerHTML = '<div style="text-align:center;padding:16px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading adjustments...</div>';
+
+        // Show Modal
+        overlay.classList.add('open');
+        overlay.style.display = 'flex';
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0'; overlay.style.left = '0'; overlay.style.right = '0'; overlay.style.bottom = '0';
+        overlay.style.zIndex = '10000';
+    } catch(err) {
+        console.error("viewTankDetails error:", err);
+        overlay.classList.add('open');
+        overlay.style.display = 'flex';
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0'; overlay.style.left = '0'; overlay.style.right = '0'; overlay.style.bottom = '0';
+        overlay.style.zIndex = '10000';
     }
 
-    var ugtNoStr = r.ugt_no || ('UGT #' + (r.tanker_num || ''));
-    document.getElementById('vfmTitle').textContent = 'View Fuel Details â€” ' + ugtNoStr + ' (' + (r.fuel_type || '') + ')';
-    
-    if (document.getElementById('vfmUgtNo')) document.getElementById('vfmUgtNo').textContent = ugtNoStr;
-    if (document.getElementById('vfmFuelType')) document.getElementById('vfmFuelType').textContent = r.fuel_type || 'â€”';
-    if (document.getElementById('vfmCapacity')) document.getElementById('vfmCapacity').textContent = Number(r.capacity || 0).toLocaleString() + ' L';
-    if (document.getElementById('vfmVolume')) document.getElementById('vfmVolume').textContent = Number(r.current_level || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
-    if (document.getElementById('vfmAvailableSpace')) document.getElementById('vfmAvailableSpace').textContent = Number(r.available_space || (r.capacity - r.current_level) || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
-    if (document.getElementById('vfmReorder')) document.getElementById('vfmReorder').textContent = Number(r.reorder_level || 0).toLocaleString() + ' L';
-    if (document.getElementById('vfmCritical')) document.getElementById('vfmCritical').textContent = Number(r.critical_level || 0).toLocaleString() + ' L';
-
-    var statusMap = {
-        'Normal': '<span class="status-pill" style="background:#dcfce7;color:#15803d;border:1px solid #a7f3d0;">Normal</span>',
-        'Low': '<span class="status-pill" style="background:#fff3cd;color:#ea580c;border:1px solid #ffeba8;">Low</span>',
-        'Critical': '<span class="status-pill" style="background:#fce8e6;color:#dc3545;border:1px solid #f8c2bc;">Critical</span>',
-        'Out of Stock': '<span class="status-pill" style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;">Out of Stock</span>'
-    };
-    if (document.getElementById('vfmStatus')) document.getElementById('vfmStatus').innerHTML = statusMap[r.status] || '<span class="status-pill" style="background:#f1f5f9;color:#475569;">' + esc(r.status) + '</span>';
-
-    // Reset sub-tabs to 1
-    vfmSwitchTab(1);
-
-    // Placeholders for async tables
-    if (document.getElementById('vfmDeliveriesTable')) document.getElementById('vfmDeliveriesTable').innerHTML = '<div style="text-align:center;padding:16px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading deliveries...</div>';
-    if (document.getElementById('vfmAdjustmentsTable')) document.getElementById('vfmAdjustmentsTable').innerHTML = '<div style="text-align:center;padding:16px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading adjustments...</div>';
-
-    // Show Modal
-    overlay.classList.add('open');
-    overlay.style.display = 'flex';
-    overlay.style.position = 'fixed';
-    overlay.style.top = '0'; overlay.style.left = '0'; overlay.style.right = '0'; overlay.style.bottom = '0';
-    overlay.style.zIndex = '10000';
-
     // Fetch AJAX activity
-    fetch('admin_inventory_fuel.php?ajax=1&action=get_fuel_details&fuel_type=' + encodeURIComponent(r.fuel_type))
+    fetch('admin_inventory_fuel.php?ajax=1&action=get_fuel_details&fuel_type=' + encodeURIComponent(r.fuel_type || ''))
     .then(function(res) { return res.json(); })
     .then(function(data) {
-        if (!data.success) return;
+        if (!data || !data.success) return;
 
-        // 1. Deliveries Table (Delivery No. | Date | Liters | Cost/Liter | Supplier)
+        // 1. Deliveries Table
         if (!data.deliveries || data.deliveries.length === 0) {
             if (document.getElementById('vfmDeliveriesTable')) document.getElementById('vfmDeliveriesTable').innerHTML = '<div style="text-align:center;padding:12px;color:#94a3b8;">No delivery records for this fuel type.</div>';
         } else {
             var dHtml = '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Delivery No.</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Liters</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Cost/Liter</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Supplier</th></tr></thead><tbody>';
             data.deliveries.forEach(function(d) {
                 var dNo = d.invoice_no || ('DEL-' + String(d.id || 0).padStart(5, '0'));
-                var dDate = d.delivery_date ? new Date(d.delivery_date).toLocaleDateString() : 'â€”';
+                var dDate = d.delivery_date ? new Date(d.delivery_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
                 dHtml += '<tr><td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;"><code style="font-weight:700;color:#002F70;">' + esc(dNo) + '</code></td>';
                 dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;color:#64748b;">' + dDate + '</td>';
                 dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#16a34a;">' + Number(d.delivery_liters || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>';
-                dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:600;color:#002F70;">â‚±' + Number(d.cost_per_liter || 65.5).toFixed(2) + '</td>';
+                dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:600;color:#002F70;">₱' + Number(d.cost_per_liter || 65.5).toFixed(2) + '</td>';
                 dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;">' + esc(d.supplier || 'Petron Corporation') + '</td></tr>';
             });
             dHtml += '</tbody></table>';
             if (document.getElementById('vfmDeliveriesTable')) document.getElementById('vfmDeliveriesTable').innerHTML = dHtml;
         }
 
-        // 2. Adjustments Table (Date | Previous | New | Variance | Reason | Adjusted By)
+        // 2. Adjustments Table
         if (!data.adjustments || data.adjustments.length === 0) {
             if (document.getElementById('vfmAdjustmentsTable')) document.getElementById('vfmAdjustmentsTable').innerHTML = '<div style="text-align:center;padding:12px;color:#94a3b8;">No adjustment history for this fuel type.</div>';
         } else {
             var aHtml = '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Previous</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">New</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Variance</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Reason</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Adjusted By</th></tr></thead><tbody>';
             data.adjustments.forEach(function(a) {
-                var aDate = a.adjustment_date ? new Date(a.adjustment_date).toLocaleString() : 'â€”';
+                var aDate = a.adjustment_date ? new Date(a.adjustment_date).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
                 var prev = Number(a.previous_value || 0);
                 var newVal = Number(a.new_value || 0);
                 var v = newVal - prev;
-                var vColor = v > 0 ? '#16a34a' : (v < 0 ? '#dc2626' : '#64748b');
+                var vColor = v > 0 ? '#16a34a' : (v < 0 ? '#dc3545' : '#64748b');
                 aHtml += '<tr><td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;color:#475569;">' + aDate + '</td>';
                 aHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:600;color:#64748b;">' + prev.toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>';
                 aHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#002F70;">' + newVal.toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>';
@@ -1074,11 +1096,21 @@ function viewTankDetails(r) {
             if (document.getElementById('vfmAdjustmentsTable')) document.getElementById('vfmAdjustmentsTable').innerHTML = aHtml;
         }
     })
-    .catch(function() {
+    .catch(function(err) {
+        console.error("get_fuel_details error:", err);
         if (document.getElementById('vfmDeliveriesTable')) document.getElementById('vfmDeliveriesTable').innerHTML = '<div style="text-align:center;color:#dc3545;padding:12px;">Error loading deliveries.</div>';
         if (document.getElementById('vfmAdjustmentsTable')) document.getElementById('vfmAdjustmentsTable').innerHTML = '<div style="text-align:center;color:#dc3545;padding:12px;">Error loading adjustments.</div>';
     });
 }
+
+// Global click listener backup for any View button in the catalog table
+document.addEventListener('click', function(e) {
+    var btn = e.target.closest ? e.target.closest('button') : null;
+    if (btn && btn.getAttribute('data-fuel') !== null) {
+        e.stopPropagation();
+        viewTankDetailsFromBtn(btn);
+    }
+});
 
 function esc(str) {
     if (!str) return '';
@@ -1121,12 +1153,12 @@ function printAdminFuelDetails() {
     if (!r) return;
     var ugtNoStr = r.ugt_no || ('UGT #' + (r.tanker_num || ''));
     var pw = window.open('', '_blank');
-    pw.document.write('<!DOCTYPE html><html><head><title>Fuel Details â€” ' + ugtNoStr + '</title>');
+    pw.document.write('<!DOCTYPE html><html><head><title>Fuel Details — ' + ugtNoStr + '</title>');
     pw.document.write('<style>body{font-family:Arial,sans-serif;font-size:13px;color:#222;margin:0;padding:24px;}.header{background:#002F6C;color:#fff;padding:16px 20px;border-radius:6px 6px 0 0;}.header h2{margin:0;font-size:16px;}.section{border:1px solid #e2e8f0;border-top:none;padding:16px 20px;margin-bottom:12px;}.section h4{margin:0 0 10px;color:#002F6C;font-size:11px;text-transform:uppercase;border-bottom:1px solid #e2e8f0;padding-bottom:6px;}table.info{width:100%;border-collapse:collapse;font-size:12px;}table.info td{padding:5px 0;border-bottom:1px solid #f1f5f9;}table.info td:first-child{color:#64748b;font-weight:600;width:180px;}.footer{text-align:center;font-size:10px;color:#94a3b8;margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;}</style></head><body>');
-    pw.document.write('<div class="header"><h2>Fuel Details Slip â€” ' + ugtNoStr + ' (' + (r.fuel_type || '') + ')</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
+    pw.document.write('<div class="header"><h2>Fuel Details Slip — ' + ugtNoStr + ' (' + (r.fuel_type || '') + ')</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
     pw.document.write('<div class="section"><h4>UGT & Fuel Information</h4><table class="info">');
     pw.document.write('<tr><td>UGT Tank No.:</td><td><strong>' + ugtNoStr + '</strong></td></tr>');
-    pw.document.write('<tr><td>Fuel Type:</td><td><strong>' + (r.fuel_type || 'â€”') + '</strong></td></tr>');
+    pw.document.write('<tr><td>Fuel Type:</td><td><strong>' + (r.fuel_type || '—') + '</strong></td></tr>');
     pw.document.write('<tr><td>Storage Capacity:</td><td>' + Number(r.capacity || 0).toLocaleString() + ' L</td></tr>');
     pw.document.write('<tr><td>Current Volume:</td><td><strong style="color:#002F70;">' + Number(r.current_level || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</strong></td></tr>');
     pw.document.write('<tr><td>Available Space:</td><td><strong style="color:#16a34a;">' + Number(r.available_space || (r.capacity - r.current_level) || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</strong></td></tr>');
@@ -1253,8 +1285,7 @@ function filterAdjTable() {
     }
 }
 
-<!-- Modal dismissal on click outside -->
-<script>
+// Modal dismissal on click outside
 document.querySelectorAll('.modal-overlay').forEach(function(modal) {
     modal.addEventListener('click', function(e) {
         if (e.target === this) {

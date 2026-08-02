@@ -227,12 +227,12 @@ if (in_array($export, ['excel', 'csv'])) {
         fputcsv($out, [
             'VOID-' . $v['id'],
             $v['transaction_id'],
-            $v['job_order_no'] ?? 'â€”',
+            $v['job_order_no'] ?? '—',
             $v['customer_name'] ?? 'Walk-in Customer',
-            $v['vehicle_plate'] ?? 'â€”',
+            $v['vehicle_plate'] ?? '—',
             ucwords(str_replace('_', ' ', $v['transaction_type'])),
             $items_summary,
-            'â‚±' . number_format($v['amount'], 2),
+            '₱' . number_format($v['amount'], 2),
             $v['payment_method'] ?? 'N/A',
             $v['void_reason'],
             $v['voided_by_name'] ?? 'Manager',
@@ -430,7 +430,7 @@ require_once __DIR__ . '/../partials/header.php';
     </div>
     <div class="txn-kpi-card total-amount-card">
         <div class="txn-kpi-lbl"><i class="fas fa-peso-sign"></i> Total Voided Amount</div>
-        <div class="txn-kpi-val">â‚±<?php echo number_format($kpi['amount'], 2); ?></div>
+        <div class="txn-kpi-val">₱<?php echo number_format($kpi['amount'], 2); ?></div>
     </div>
 </div>
 
@@ -494,8 +494,8 @@ require_once __DIR__ . '/../partials/header.php';
             <?php foreach ($voided as $v): 
                 $v_fields  = !empty($v['fields_changed']) ? json_decode($v['fields_changed'], true) : [];
                 $jo_raw    = !empty($v['job_order_no']) ? $v['job_order_no'] : ($v_fields['job_order_no'] ?? '');
-                $jo_disp   = !empty($jo_raw) ? (str_starts_with($jo_raw, 'JO-') ? $jo_raw : 'JO-' . $jo_raw) : 'â€”';
-                $plate_disp = !empty($v['vehicle_plate']) ? $v['vehicle_plate'] : ($v_fields['vehicle_plate'] ?? 'â€”');
+                $jo_disp   = !empty($jo_raw) ? (str_starts_with($jo_raw, 'JO-') ? $jo_raw : 'JO-' . $jo_raw) : '—';
+                $plate_disp = !empty($v['vehicle_plate']) ? $v['vehicle_plate'] : ($v_fields['vehicle_plate'] ?? '—');
                 $payment   = !empty($v['payment_method']) ? $v['payment_method'] : ($v_fields['payment_method'] ?? 'Cash');
                 if (empty($payment) || $payment === 'N/A') $payment = 'Cash';
             ?>
@@ -530,7 +530,7 @@ require_once __DIR__ . '/../partials/header.php';
                             $sub = (float)($item['subtotal'] ?? 0);
                             echo '<div style="margin-bottom:2px;padding:2px 4px;border:1px solid #fca5a5;border-radius:3px;background:#fff5f5;font-size:8px;line-height:1.3;">';
                             echo '<strong>' . htmlspecialchars(substr($item['product_name'] ?? '', 0, 28)) . (strlen($item['product_name'] ?? '') > 28 ? '..' : '') . '</strong><br>';
-                            echo '<span style="color:#64748b;">Qty: ' . $qty . ' | â‚±' . number_format($sub, 2) . '</span>';
+                            echo '<span style="color:#64748b;">Qty: ' . $qty . ' | ₱' . number_format($sub, 2) . '</span>';
                             echo '</div>';
                         }
                     } elseif (!empty($void_items_map[$txn_id])) {
@@ -539,17 +539,17 @@ require_once __DIR__ . '/../partials/header.php';
                             $sub = (float)($item['subtotal'] ?? 0);
                             echo '<div style="margin-bottom:2px;padding:2px 4px;border:1px solid #cbd5e1;border-radius:3px;background:#f8fafc;font-size:8px;line-height:1.3;">';
                             echo '<strong>' . htmlspecialchars(substr($item['product_name'] ?? '', 0, 28)) . (strlen($item['product_name'] ?? '') > 28 ? '..' : '') . '</strong><br>';
-                            echo '<span style="color:#64748b;">Qty: ' . $qty . ' | â‚±' . number_format($sub, 2) . '</span>';
+                            echo '<span style="color:#64748b;">Qty: ' . $qty . ' | ₱' . number_format($sub, 2) . '</span>';
                             echo '</div>';
                         }
                     } elseif (!empty($v['item_names'])) {
                         echo '<span style="font-size:8px;color:#334155;">' . htmlspecialchars($v['item_names']) . '</span>';
                     } else {
-                        echo '<span style="font-size:8px;color:#94a3b8;font-style:italic;">â€” (legacy record)</span>';
+                        echo '<span style="font-size:8px;color:#94a3b8;font-style:italic;">— (legacy record)</span>';
                     }
                     ?>
                 </td>
-                <td style="font-weight:700;color:#dc2626;">â‚±<?php echo number_format($v['amount'], 2); ?></td>
+                <td style="font-weight:700;color:#dc2626;">₱<?php echo number_format($v['amount'], 2); ?></td>
                 <td>
                     <?php 
                     $payment_short = $payment;

@@ -245,12 +245,12 @@ foreach ($merch_requests as $r) {
 // â”€â”€ Fuel tank label helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function get_fuel_tank_label($fuel_type) {
     $ft = strtolower(trim($fuel_type));
-    if ($ft === 'diesel')       return 'Tank #1 â€“ #6';
+    if ($ft === 'diesel')       return 'Tank #1 – #6';
     if ($ft === 'kerosene')     return 'Tank #7';
-    if ($ft === 'turbo diesel') return 'Tank #8 â€“ #9';
-    if ($ft === 'xcs plus')     return 'Tank #10 â€“ #13';
-    if ($ft === 'xtra unl')     return 'Tank #14 â€“ #17';
-    return 'â€”';
+    if ($ft === 'turbo diesel') return 'Tank #8 – #9';
+    if ($ft === 'xcs plus')     return 'Tank #10 – #13';
+    if ($ft === 'xtra unl')     return 'Tank #14 – #17';
+    return '—';
 }
 
 include __DIR__ . '/../partials/header.php';
@@ -728,14 +728,14 @@ function viewRequest(type, req) {
     var product = type === 'fuel' ? req.fuel_type : req.item_name;
     var mu = (type === 'fuel') ? 'Liters (L)' : (req.item_unit ? req.item_unit : 'Pieces');
     var current = type === 'fuel' ? parseFloat(req.current_level).toLocaleString() + ' ' + mu : parseInt(req.current_stock).toLocaleString() + ' ' + mu;
-    var requested = 'â€”';
+    var requested = '—';
     if (type === 'fuel') {
         requested = parseFloat(req.requested_liters) > 0 ? parseFloat(req.requested_liters).toLocaleString('en-PH',{minimumFractionDigits:2}) + ' ' + mu : '<span style="color:#94a3b8;font-weight:normal;">Pending Manager Input</span>';
     } else {
         requested = parseInt(req.requested_quantity) > 0 ? parseInt(req.requested_quantity).toLocaleString() + ' ' + mu : '<span style="color:#94a3b8;font-weight:normal;">Pending Manager Input</span>';
     }
     
-    var approved = 'â€”';
+    var approved = '—';
     if (type === 'fuel' && req.approved_liters !== null) {
         approved = parseFloat(req.approved_liters).toLocaleString('en-PH',{minimumFractionDigits:2}) + ' ' + mu;
     } else if (type === 'merch' && req.approved_quantity !== null) {
@@ -743,7 +743,7 @@ function viewRequest(type, req) {
     }
     
     var formattedDate = new Date(req.created_at).toLocaleString();
-    var manager = req.manager_name ? req.manager_name : 'â€”';
+    var manager = req.manager_name ? req.manager_name : '—';
     
     var statusKey = req.status.toLowerCase().replace(/[\s\/]+/g, '-');
     var badgeClass = 'sbadge sbadge-' + statusKey;
@@ -815,14 +815,14 @@ function printRequest(type, req) {
     var product = type === 'fuel' ? req.fuel_type : req.item_name;
     var mu = (type === 'fuel') ? 'Liters (L)' : (req.item_unit ? req.item_unit : 'Pieces');
     var current = type === 'fuel' ? parseFloat(req.current_level).toLocaleString() + ' ' + mu : parseInt(req.current_stock).toLocaleString() + ' ' + mu;
-    var requested = 'â€”';
+    var requested = '—';
     if (type === 'fuel') {
         requested = parseFloat(req.requested_liters) > 0 ? parseFloat(req.requested_liters).toLocaleString('en-PH',{minimumFractionDigits:2}) + ' ' + mu : 'Pending Manager Input';
     } else {
         requested = parseInt(req.requested_quantity) > 0 ? parseInt(req.requested_quantity).toLocaleString() + ' ' + mu : 'Pending Manager Input';
     }
     
-    var approved = 'â€”';
+    var approved = '—';
     if (type === 'fuel' && req.approved_liters !== null) {
         approved = parseFloat(req.approved_liters).toLocaleString('en-PH',{minimumFractionDigits:2}) + ' ' + mu;
     } else if (type === 'merch' && req.approved_quantity !== null) {

@@ -364,11 +364,11 @@ foreach ($comparison_rows as $row) {
 }
 $summary_stockin_count = count($stockin_rows);
 
-// â”€â”€ Fuel Variance Report â€” Real Data from fuel_adjustments + fuel_inventory â”€â”€
+// â”€â”€ Fuel Variance Report — Real Data from fuel_adjustments + fuel_inventory â”€â”€
 $fuel_variance_rows = [];
 
 try {
-    // Admin sees ALL stations' adjustments â€” no station_id filter
+    // Admin sees ALL stations' adjustments — no station_id filter
     $fv_stmt = $pdo->prepare("
         SELECT
             fa.id                                               AS ref_no,
@@ -807,7 +807,7 @@ require_once __DIR__ . '/../partials/header.php';
                                         </span>
                                         <span style="font-size:10px;color:#64748b;display:block;"><?= pr_h($adj_dir) ?></span>
                                     <?php else: ?>
-                                        <span style="color:#94a3b8;">â€”</span>
+                                        <span style="color:#94a3b8;">—</span>
                                     <?php endif; ?>
                                 </td>
                                 <td><span class="pr-badge <?= pr_status_class($r['adj_status']) ?>"><?= pr_h($r['adj_status']) ?></span></td>
@@ -926,7 +926,7 @@ function prPrint() {
     printReportArea(active);
 }
 
-// Hide fixed elements (scroll btn, footer) during print â€” CSS alone is overridden by inline styles
+// Hide fixed elements (scroll btn, footer) during print — CSS alone is overridden by inline styles
 window.addEventListener('beforeprint', function() {
     const scrollBtn = document.getElementById('toggleScrollBtn');
     if (scrollBtn) scrollBtn.style.setProperty('display', 'none', 'important');

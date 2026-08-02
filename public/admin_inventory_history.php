@@ -99,7 +99,7 @@ if ($active_tab === 'orders') {
     FROM (
         SELECT 
             po.batch_id AS po_no,
-            COALESCE(CONCAT('PR-', po.request_id), 'â€”') AS pr_no,
+            COALESCE(CONCAT('PR-', po.request_id), '—') AS pr_no,
             'Petron Corporation' AS supplier,
             COALESCE(NULLIF(CONCAT(u.first_name, ' ', u.last_name), ' '), u.username, 'System') AS generated_by,
             po.created_at AS date_only,
@@ -114,7 +114,7 @@ if ($active_tab === 'orders') {
 
         SELECT 
             fpo.batch_id AS po_no,
-            COALESCE(CONCAT('PR-FUEL-', DATE_FORMAT(fpo.created_at, '%Y%m%d')), 'â€”') AS pr_no,
+            COALESCE(CONCAT('PR-FUEL-', DATE_FORMAT(fpo.created_at, '%Y%m%d')), '—') AS pr_no,
             'Petron Corporation' AS supplier,
             COALESCE(NULLIF(CONCAT(u.first_name, ' ', u.last_name), ' '), u.username, 'System') AS generated_by,
             fpo.created_at AS date_only,
@@ -173,7 +173,7 @@ if ($active_tab === 'orders') {
         SELECT 
             COALESCE((SELECT delivery_ref FROM fuel_stock_in WHERE batch_ref = fd.invoice_no LIMIT 1), CONCAT('SIF-', fd.id)) AS stock_in_no,
             fd.invoice_no AS po_no,
-            COALESCE(NULLIF(CONCAT(u_val.first_name, ' ', u_val.last_name), ' '), u_val.username, 'â€”') AS approved_by,
+            COALESCE(NULLIF(CONCAT(u_val.first_name, ' ', u_val.last_name), ' '), u_val.username, '—') AS approved_by,
             fd.delivery_date AS date_only,
             'Completed' AS status,
             fd.station_id
@@ -215,8 +215,8 @@ if ($active_tab === 'orders') {
             mt.transaction_date AS date_only,
             mti.product_name AS item,
             'Stock-Out' AS type,
-            'â€”' AS previous,
-            'â€”' AS new_val,
+            '—' AS previous,
+            '—' AS new_val,
             COALESCE(NULLIF(CONCAT(u.first_name, ' ', u.last_name), ' '), u.username, 'System') AS updated_by,
             'pcs' AS unit,
             mt.station_id
@@ -265,8 +265,8 @@ if ($active_tab === 'orders') {
             ft.transaction_date AS date_only,
             ft.fuel_type AS item,
             'Stock-Out' AS type,
-            'â€”' AS previous,
-            'â€”' AS new_val,
+            '—' AS previous,
+            '—' AS new_val,
             COALESCE(NULLIF(CONCAT(u.first_name, ' ', u.last_name), ' '), u.username, 'System') AS updated_by,
             'L' AS unit,
             ft.station_id
@@ -1081,14 +1081,14 @@ include __DIR__ . '/../partials/header.php';
                             <td class="right">
                                 <?php 
                                 $prev = $r['supplier'];
-                                if ($prev === 'â€”' || $prev === '') echo 'â€”';
+                                if ($prev === '—' || $prev === '') echo '—';
                                 else echo number_format((float)$prev, 2) . ' ' . $r['extra_2'];
                                 ?>
                             </td>
                             <td class="right" style="font-weight: 700;">
                                 <?php 
                                 $new_val = $r['performed_by'];
-                                if ($new_val === 'â€”' || $new_val === '') echo 'â€”';
+                                if ($new_val === '—' || $new_val === '') echo '—';
                                 else echo number_format((float)$new_val, 2) . ' ' . $r['extra_2'];
                                 ?>
                             </td>
@@ -1117,8 +1117,8 @@ include __DIR__ . '/../partials/header.php';
         <h3><i class="fas fa-file-invoice"></i> Purchase Order Details</h3>
         
         <div style="margin-bottom:15px; font-size:12px; color:#475569;">
-            <strong>PO Number:</strong> <span id="modalPoNo">â€”</span><br>
-            <strong>Type:</strong> <span id="modalPoType">â€”</span>
+            <strong>PO Number:</strong> <span id="modalPoNo">—</span><br>
+            <strong>Type:</strong> <span id="modalPoType">—</span>
         </div>
         
         <table class="modal-table">
@@ -1173,8 +1173,8 @@ function viewPO(poNo, type) {
                 <tr>
                     <td><strong>${item.product_name}</strong></td>
                     <td style="text-align: right;">${parseFloat(item.quantity).toLocaleString()} ${item.unit}</td>
-                    <td style="text-align: right;">â‚±${parseFloat(item.unit_price).toFixed(2)}</td>
-                    <td style="text-align: right;">â‚±${parseFloat(item.total_amount).toFixed(2)}</td>
+                    <td style="text-align: right;">₱${parseFloat(item.unit_price).toFixed(2)}</td>
+                    <td style="text-align: right;">₱${parseFloat(item.total_amount).toFixed(2)}</td>
                 </tr>
             `).join('');
         })

@@ -79,7 +79,7 @@ if(in_array($export,['excel','csv'])) {
     else { header('Content-Type: text/csv; charset=utf-8'); header("Content-Disposition: attachment; filename=\"{$fn}.csv\""); }
     $out=fopen('php://output','w');
     fputcsv($out,['Adj ID','Transaction ID','Customer','Type','Original Amount','Updated Amount','Difference','Reason','Adjusted By','Date']);
-    foreach($rows as $r) fputcsv($out,['ADJ-'.$r['adj_id'],$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['transaction_type'])),'â‚±'.number_format($r['original_amount'],2),'â‚±'.number_format($r['updated_amount'],2),'â‚±'.number_format($r['amount_difference'],2),$r['adjustment_reason'],$r['adjusted_by_name'],date('M d, Y H:i',strtotime($r['adjustment_date']))]);
+    foreach($rows as $r) fputcsv($out,['ADJ-'.$r['adj_id'],$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['transaction_type'])),'₱'.number_format($r['original_amount'],2),'₱'.number_format($r['updated_amount'],2),'₱'.number_format($r['amount_difference'],2),$r['adjustment_reason'],$r['adjusted_by_name'],date('M d, Y H:i',strtotime($r['adjustment_date']))]);
     fclose($out); exit;
 }
 
@@ -212,13 +212,13 @@ require_once __DIR__ . '/../partials/header.php';
         $fc = json_decode($r['fields_changed'], true) ?: [];
         
         // Job Order Number
-        $jo_display = !empty($r['job_order_id']) ? 'JO-' . $r['job_order_id'] : 'â€”';
+        $jo_display = !empty($r['job_order_id']) ? 'JO-' . $r['job_order_id'] : '—';
         
         // Customer Name
         $customer_display = htmlspecialchars($r['customer']);
         
         // Vehicle Plate
-        $plate_display = !empty($r['job_order_vehicle_plate']) ? htmlspecialchars($r['job_order_vehicle_plate']) : 'â€”';
+        $plate_display = !empty($r['job_order_vehicle_plate']) ? htmlspecialchars($r['job_order_vehicle_plate']) : '—';
         
         // Transaction Type
         $txn_type_display = htmlspecialchars(ucwords(str_replace('_', ' ', $r['transaction_type'])));
@@ -235,14 +235,14 @@ require_once __DIR__ . '/../partials/header.php';
         if (empty($items_list) && !empty($r['item_names'])) {
             $items_list[] = $r['item_names'];
         }
-        $items_display = !empty($items_list) ? htmlspecialchars(implode(', ', $items_list)) : 'â€”';
+        $items_display = !empty($items_list) ? htmlspecialchars(implode(', ', $items_list)) : '—';
         
         // Quantities
-        $old_qty = 'â€”';
-        $new_qty = 'â€”';
+        $old_qty = '—';
+        $new_qty = '—';
         if (isset($fc['adjusted_items']) && is_array($fc['adjusted_items']) && !empty($fc['adjusted_items'])) {
-            $old_qty = $fc['adjusted_items'][0]['old_qty'] ?? 'â€”';
-            $new_qty = $fc['adjusted_items'][0]['new_qty'] ?? 'â€”';
+            $old_qty = $fc['adjusted_items'][0]['old_qty'] ?? '—';
+            $new_qty = $fc['adjusted_items'][0]['new_qty'] ?? '—';
         } else {
             if (isset($fc['quantity'])) {
                 $new_qty = $fc['quantity'];
@@ -253,11 +253,11 @@ require_once __DIR__ . '/../partials/header.php';
         }
         
         // Payment Method
-        $payment_display = !empty($r['payment_method']) ? htmlspecialchars($r['payment_method']) : 'â€”';
+        $payment_display = !empty($r['payment_method']) ? htmlspecialchars($r['payment_method']) : '—';
         
         // Adjustment Type
         $adj_type = 'Price Adj';
-        if ($old_qty !== 'â€”' && $new_qty !== 'â€”' && $old_qty != $new_qty) {
+        if ($old_qty !== '—' && $new_qty !== '—' && $old_qty != $new_qty) {
             $adj_type = 'Quantity Adj';
         }
         
@@ -298,10 +298,10 @@ require_once __DIR__ . '/../partials/header.php';
             <td style="font-size:11.5px; line-height:1.2;"><?=$items_display?></td>
             <td style="text-align:center; font-size:11px;"><?=$old_qty?></td>
             <td style="text-align:center; font-size:11px;"><?=$new_qty?></td>
-            <td style="white-space:nowrap; font-size:11.5px;">â‚±<?=number_format($r['original_amount'],2)?></td>
-            <td style="white-space:nowrap; font-weight:700; font-size:11.5px;">â‚±<?=number_format($r['updated_amount'],2)?></td>
+            <td style="white-space:nowrap; font-size:11.5px;">₱<?=number_format($r['original_amount'],2)?></td>
+            <td style="white-space:nowrap; font-weight:700; font-size:11.5px;">₱<?=number_format($r['updated_amount'],2)?></td>
             <td style="white-space:nowrap; font-weight:700; font-size:11.5px; color:<?=$diff>=0?'#16a34a':'#dc2626'?>;">
-                <?=($diff>=0?'+':'').'â‚±'.number_format($diff,2)?>
+                <?=($diff>=0?'+':'').'₱'.number_format($diff,2)?>
             </td>
             <td style="white-space:nowrap; font-size:11px;"><?=$payment_display?></td>
             <td style="white-space:nowrap; font-size:11px;"><?=$adj_type?></td>
@@ -316,9 +316,9 @@ require_once __DIR__ . '/../partials/header.php';
                         txnId:    '<?=addslashes(htmlspecialchars($r['transaction_id']))?>' ,
                         customer: '<?=addslashes(htmlspecialchars($r['customer']))?>' ,
                         type:     '<?=addslashes(htmlspecialchars(ucwords(str_replace('_',' ',$r['transaction_type']))))?>' ,
-                        original: 'â‚±<?=number_format($r['original_amount'],2)?>' ,
-                        updated:  'â‚±<?=number_format($r['updated_amount'],2)?>' ,
-                        diff:     'â‚±<?=number_format($r['amount_difference'],2)?>' ,
+                        original: '₱<?=number_format($r['original_amount'],2)?>' ,
+                        updated:  '₱<?=number_format($r['updated_amount'],2)?>' ,
+                        diff:     '₱<?=number_format($r['amount_difference'],2)?>' ,
                         reason:   '<?=addslashes(htmlspecialchars($r['adjustment_reason']))?>' ,
                         remarks:  '<?=addslashes(htmlspecialchars($r['manager_remarks']??''))?>' ,
                         by:       '<?=addslashes(htmlspecialchars($r['adjusted_by_name']))?>' ,
@@ -359,7 +359,7 @@ require_once __DIR__ . '/../partials/header.php';
 </style>
 <script>
 function openAdjModal(d){
-  var diff = parseFloat((d.diff||'').replace(/[^â‚±0-9.\-]/g,'').replace('â‚±','')) || 0;
+  var diff = parseFloat((d.diff||'').replace(/[^₱0-9.\-]/g,'').replace('₱','')) || 0;
   var diffColor = diff >= 0 ? '#16a34a' : '#dc2626';
   var rows=[
     ['Adjustment ID',    '<strong>'+d.adjId+'</strong>'],
@@ -370,7 +370,7 @@ function openAdjModal(d){
     ['Updated Amount',   '<strong style="color:#002F70;font-size:15px;">'+d.updated+'</strong>'],
     ['Difference',       '<strong style="color:'+diffColor+';font-size:14px;">'+d.diff+'</strong>'],
     ['Reason',           d.reason],
-    ['Manager Remarks',  d.remarks || 'â€”'],
+    ['Manager Remarks',  d.remarks || '—'],
     ['Adjusted By',      d.by],
     ['Adjustment Date',  d.date]
   ];

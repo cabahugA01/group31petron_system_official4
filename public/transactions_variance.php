@@ -1,6 +1,6 @@
 ﻿<?php
 /**
- * Variance Alerts â€” Full Anomaly-Handling Workflow
+ * Variance Alerts — Full Anomaly-Handling Workflow
  * Merchandise & Job Orders only. Fuel has its own reconciliation flow.
  */
 $page_id = 'mgr_txn_variance';
@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             $stmt->execute([$variance_id, $station_id]);
             if ($stmt->rowCount()) {
-                // Mark archived via a prefix in notes â€” no schema change needed
+                // Mark archived via a prefix in notes — no schema change needed
                 $pdo->prepare("UPDATE variance_alerts SET item_identifier=CONCAT('[ARCHIVED] ', item_identifier) WHERE id=? AND station_id=? AND item_identifier NOT LIKE '[ARCHIVED]%'")->execute([$variance_id, $station_id]);
                 log_activity($pdo, $me['id'], 'Variance_Archived', "Alert #$variance_id archived by {$me['name']}");
                 $_SESSION['success'] = 'Alert archived and removed from main view.';
@@ -136,7 +136,7 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'])
             fputcsv($out, ['Alert ID','Type','Product/SKU/Service','Variance Amount','Status','Staff','Notes','Flagged At','Last Updated']);
             foreach ($rows as $r) {
                 fputcsv($out, ['#'.$r['id'],$r['transaction_type'],$r['item_identifier'],
-                    $r['variance_amount'],ucfirst($r['status']),$r['staff_name']??'â€”',
+                    $r['variance_amount'],ucfirst($r['status']),$r['staff_name']??'—',
                     $r['investigation_notes']??'',$r['created_at'],$r['updated_at']]);
             }
             fclose($out); exit;
@@ -158,7 +158,7 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'])
                 echo '<td>' . htmlspecialchars($r['item_identifier']) . '</td>';
                 echo '<td style="text-align:right;">' . number_format((float)$r['variance_amount'], 2) . '</td>';
                 echo '<td>' . htmlspecialchars(ucfirst($r['status'])) . '</td>';
-                echo '<td>' . htmlspecialchars($r['staff_name'] ?? 'â€”') . '</td>';
+                echo '<td>' . htmlspecialchars($r['staff_name'] ?? '—') . '</td>';
                 echo '<td>' . htmlspecialchars($r['investigation_notes'] ?? '') . '</td>';
                 echo '<td>' . htmlspecialchars($r['created_at']) . '</td>';
                 echo '<td>' . htmlspecialchars($r['updated_at']) . '</td>';
@@ -197,9 +197,9 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'])
                 echo '<td>#' . htmlspecialchars($r['id']) . '</td>';
                 echo '<td>' . htmlspecialchars($r['transaction_type']) . '</td>';
                 echo '<td>' . htmlspecialchars($r['item_identifier']) . '</td>';
-                echo '<td class="amount">â‚±' . number_format((float)$r['variance_amount'], 2) . '</td>';
+                echo '<td class="amount">₱' . number_format((float)$r['variance_amount'], 2) . '</td>';
                 echo '<td>' . htmlspecialchars(ucfirst($r['status'])) . '</td>';
-                echo '<td>' . htmlspecialchars($r['staff_name'] ?? 'â€”') . '</td>';
+                echo '<td>' . htmlspecialchars($r['staff_name'] ?? '—') . '</td>';
                 echo '<td>' . htmlspecialchars($r['investigation_notes'] ?? '') . '</td>';
                 echo '<td>' . date('M d, Y H:i', strtotime($r['created_at'])) . '</td>';
                 echo '</tr>';
@@ -272,7 +272,7 @@ try {
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $detected_anomalies[] = ['type'=>'Merchandise','subtype'=>'Wrong Total',
             'ref'=>$r['transaction_id']??'TXN-'.$r['id'],'item'=>$r['item_sku']??'Unknown Item',
-            'variance'=>(float)$r['total_amount'],'staff'=>$r['staff_name']??'â€”',
+            'variance'=>(float)$r['total_amount'],'staff'=>$r['staff_name']??'—',
             'staff_id'=>$r['staff_id'],'date'=>$r['created_at'],
             'description'=>'Transaction total is zero or negative.'];
     }
@@ -294,8 +294,8 @@ try {
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $detected_anomalies[] = ['type'=>'Merchandise','subtype'=>'Zero Price',
             'ref'=>$r['transaction_id']??'TXN-'.$r['id'],'item'=>$r['item_sku']??'Unknown Item',
-            'variance'=>0.0,'staff'=>$r['staff_name']??'â€”','staff_id'=>$r['staff_id'],
-            'date'=>$r['created_at'],'description'=>'Item sold with unit price of â‚±0.00.'];
+            'variance'=>0.0,'staff'=>$r['staff_name']??'—','staff_id'=>$r['staff_id'],
+            'date'=>$r['created_at'],'description'=>'Item sold with unit price of ₱0.00.'];
     }
 } catch (Exception $e) {}
 try {
@@ -320,7 +320,7 @@ try {
         $diff = abs((float)($r['actual_parts_cost']??0)-(float)$r['parts_total']);
         $detected_anomalies[] = ['type'=>'Job Order','subtype'=>'Parts Mismatch',
             'ref'=>'JO-'.$r['id'],'item'=>$r['service_type']??'Job Order #'.$r['id'],
-            'variance'=>$diff,'staff'=>$r['staff_name']??'â€”','staff_id'=>$r['user_id'],
+            'variance'=>$diff,'staff'=>$r['staff_name']??'—','staff_id'=>$r['user_id'],
             'date'=>$r['created_at'],'description'=>'Parts cost in JO does not match inventory deduction records.'];
     }
 } catch (Exception $e) {}
@@ -359,7 +359,7 @@ include __DIR__ . '/../partials/header.php';
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
         <i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:18px;"></i>
         <strong style="color:#842029;font-size:14px;"><?= count($detected_anomalies); ?> New Anomal<?= count($detected_anomalies)>1?'ies':'y'; ?> Detected</strong>
-        <span style="font-size:12px;color:#6c757d;">â€” Not yet logged. Review and flag below.</span>
+        <span style="font-size:12px;color:#6c757d;">— Not yet logged. Review and flag below.</span>
     </div>
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
         <table class="va-table" style="font-size:12px;">
@@ -415,7 +415,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
         <div class="va-filter-group" style="flex:1;">
             <label>Search</label>
-            <input type="text" name="q" class="va-select" placeholder="SKU / item / notesâ€¦" value="<?= htmlspecialchars($search_q); ?>">
+            <input type="text" name="q" class="va-select" placeholder="SKU / item / notes—¦" value="<?= htmlspecialchars($search_q); ?>">
         </div>
         <div class="va-filter-group" style="justify-content:flex-end;">
             <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
@@ -470,7 +470,7 @@ include __DIR__ . '/../partials/header.php';
                 $varAmt   = (float)$v['variance_amount'];
                 $txnType  = $v['transaction_type'] ?? 'Merchandise';
                 $isArch   = str_starts_with($v['item_identifier'] ?? '', '[ARCHIVED]');
-                $dispItem = $isArch ? substr($v['item_identifier'], 11) : ($v['item_identifier'] ?? 'â€”');
+                $dispItem = $isArch ? substr($v['item_identifier'], 11) : ($v['item_identifier'] ?? '—');
 
                 $statusMeta = [
                     'open'          => ['label'=>'Open'],
@@ -485,7 +485,7 @@ include __DIR__ . '/../partials/header.php';
                 $jItem    = htmlspecialchars(json_encode($dispItem),                                         ENT_QUOTES);
                 $jVar     = htmlspecialchars(json_encode(number_format($varAmt, 2)),                         ENT_QUOTES);
                 $jStaff   = htmlspecialchars(json_encode($v['staff_name'] ?? 'System'),                      ENT_QUOTES);
-                $jStaffId = htmlspecialchars(json_encode($v['staff_uid'] ?? 'â€”'),                            ENT_QUOTES);
+                $jStaffId = htmlspecialchars(json_encode($v['staff_uid'] ?? '—'),                            ENT_QUOTES);
                 $jDate    = htmlspecialchars(json_encode(date('M d, Y H:i', strtotime($v['created_at']))),   ENT_QUOTES);
                 $jStatus  = htmlspecialchars(json_encode($status),                                           ENT_QUOTES);
                 $jNotes   = htmlspecialchars(json_encode($v['investigation_notes'] ?? ''),                   ENT_QUOTES);
@@ -495,12 +495,12 @@ include __DIR__ . '/../partials/header.php';
                 <td><span class="va-type-badge type-<?= strtolower($txnType)==='job order'?'jo':'merch'; ?>"><?= strtolower($txnType)==='job order'?'JO':'MERCH'; ?></span></td>
                 <td style="max-width:200px;word-break:break-word;"><?= htmlspecialchars($dispItem); ?></td>
                 <td style="font-weight:700;color:<?= $varAmt>0?'#28a745':($varAmt<0?'#dc3545':'#28a745'); ?>;"><?= ($varAmt>0?'+':'').number_format($varAmt,2); ?></td>
-                <td style="font-size:12px;color:#555;"><?= htmlspecialchars($v['staff_name']??'â€”'); ?></td>
+                <td style="font-size:12px;color:#555;"><?= htmlspecialchars($v['staff_name']??'—'); ?></td>
                 <td style="white-space:nowrap;font-size:12px;"><?= date('M d, Y H:i', strtotime($v['created_at'])); ?></td>
                 <td><span class="status-badge badge-<?= $status; ?>"><?= $sm['label']; ?></span></td>
                 <td>
                     <div class="actions-cell">
-                        <!-- VIEW â€” always visible -->
+                        <!-- VIEW — always visible -->
                         <button type="button" class="btn-action btn-view"
                             onclick="openViewModal(<?= $jVid; ?>,<?= $jType; ?>,<?= $jItem; ?>,<?= $jVar; ?>,<?= $jStaff; ?>,<?= $jStaffId; ?>,<?= $jDate; ?>,<?= $jStatus; ?>,<?= $jNotes; ?>)">
                             <i class="fas fa-eye"></i> View
@@ -584,7 +584,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="va-form-group">
                     <label class="va-form-label">Investigation Notes <span class="va-req">*</span></label>
                     <textarea id="inv_notes" name="notes" class="va-textarea" rows="5"
-                        placeholder="Describe what you found, what you are checking, or initial observationsâ€¦"></textarea>
+                        placeholder="Describe what you found, what you are checking, or initial observations—¦"></textarea>
                     <div id="inv_notes_err" class="va-field-err" style="display:none;">Notes are required.</div>
                 </div>
             </div>
@@ -617,7 +617,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="va-form-group">
                     <label class="va-form-label">Resolution Notes <span class="va-req">*</span></label>
                     <textarea id="res_notes" name="notes" class="va-textarea" rows="5"
-                        placeholder="Describe how this variance was resolved, root cause, and corrective action takenâ€¦"></textarea>
+                        placeholder="Describe how this variance was resolved, root cause, and corrective action taken—¦"></textarea>
                     <div id="res_notes_err" class="va-field-err" style="display:none;">Resolution notes are required.</div>
                 </div>
             </div>
@@ -650,7 +650,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="va-form-group">
                     <label class="va-form-label">Escalation Reason <span class="va-req">*</span></label>
                     <textarea id="esc_notes" name="notes" class="va-textarea" rows="5"
-                        placeholder="Explain why this variance requires admin-level attentionâ€¦"></textarea>
+                        placeholder="Explain why this variance requires admin-level attention—¦"></textarea>
                     <div id="esc_notes_err" class="va-field-err" style="display:none;">Escalation reason is required.</div>
                 </div>
             </div>
@@ -735,7 +735,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="va-form-group">
                     <label class="va-form-label">Notes / Remarks <span class="va-req">*</span></label>
                     <textarea id="flag_notes" name="notes" class="va-textarea" rows="4"
-                        placeholder="Describe the anomaly and why it is being flaggedâ€¦"></textarea>
+                        placeholder="Describe the anomaly and why it is being flagged—¦"></textarea>
                     <div id="flag_notes_err" class="va-field-err" style="display:none;">Notes are required to flag this alert.</div>
                 </div>
             </div>
@@ -788,7 +788,7 @@ function openViewModal(id, type, item, variance, staff, staffId, date, status, n
         di('Transaction Type', '<span style="color:'+typeColor+';font-weight:700;font-size:12px;">'+esc(typeLabel)+'</span>') +
         '<div class="va-detail-item" style="grid-column:1/-1;">'+dl('Product / SKU / Service')+'<span class="va-detail-val">'+esc(item)+'</span></div>' +
         di('Variance Amount',  '<strong style="color:'+varColor+';">'+esc(variance)+'</strong>') +
-        di('Staff',            esc(staff)+(staffId&&staffId!=='â€”'?' <span style="font-size:10px;color:#888;">(ID: '+esc(String(staffId))+')</span>':'')) +
+        di('Staff',            esc(staff)+(staffId&&staffId!=='—'?' <span style="font-size:10px;color:#888;">(ID: '+esc(String(staffId))+')</span>':'')) +
         di('Date Flagged',     esc(date)) +
         di('Status',           '<span style="color:'+sc+';font-weight:700;font-size:12px;text-transform:uppercase;">'+esc(status.charAt(0).toUpperCase()+status.slice(1))+'</span>') +
         '<div class="va-detail-item" style="grid-column:1/-1;">'+dl('Investigation Notes')+'<span class="va-detail-val" style="white-space:pre-wrap;min-height:32px;">'+esc(notes||'(no notes yet)')+'</span></div>';
@@ -837,7 +837,7 @@ function openReopenModal(id) {
 // â”€â”€ Flag New Anomaly â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openFlagModal(a) {
     document.getElementById('flag_type').value     = a.type;
-    document.getElementById('flag_item').value     = a.ref + ' â€” ' + a.item;
+    document.getElementById('flag_item').value     = a.ref + ' — ' + a.item;
     document.getElementById('flag_variance').value = a.variance;
     document.getElementById('flag_staff_id').value = a.staff_id || '';
     document.getElementById('flag_notes').value    = '';
@@ -846,7 +846,7 @@ function openFlagModal(a) {
     document.getElementById('flag_detail_grid').innerHTML =
         di('Type',    '<span style="color:'+typeColor+';font-weight:700;font-size:12px;">'+esc(typeLabel)+'</span>') +
         di('Anomaly', '<strong style="color:#842029;">'+esc(a.subtype)+'</strong>') +
-        '<div class="va-detail-item" style="grid-column:1/-1;">'+dl('Reference / Item')+'<span class="va-detail-val">'+esc(a.ref+' â€” '+a.item)+'</span></div>' +
+        '<div class="va-detail-item" style="grid-column:1/-1;">'+dl('Reference / Item')+'<span class="va-detail-val">'+esc(a.ref+' — '+a.item)+'</span></div>' +
         di('Variance','<strong style="color:#dc3545;">'+parseFloat(a.variance||0).toFixed(2)+'</strong>') +
         di('Staff',   esc(a.staff)) +
         '<div class="va-detail-item" style="grid-column:1/-1;">'+dl('Description')+'<span class="va-detail-val">'+esc(a.description)+'</span></div>';
@@ -901,7 +901,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .va-hdr-btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:7px; font-size:13px; font-weight:600; color:#fff; text-decoration:none; transition:filter .15s; }
 .va-hdr-btn:hover { filter:brightness(.88); }
 
-/* â”€â”€ Stat cards â€” white background, no colored icon circles â”€â”€ */
+/* â”€â”€ Stat cards — white background, no colored icon circles â”€â”€ */
 .va-stat-row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
 .va-stat-card { display:flex; align-items:center; gap:12px; background:#fff; border:1px solid #e9ecef; border-radius:10px; padding:14px 18px; flex:1; transition:box-shadow .15s, transform .15s; }
 .va-stat-card:hover { box-shadow:0 4px 14px rgba(0,0,0,.1); transform:translateY(-2px); }
@@ -927,7 +927,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .va-btn-success   { background:#28a745; color:#fff; }
 .va-btn-danger    { background:#dc3545; color:#fff; }
 
-/* â”€â”€ Main table â€” purchase-order style â”€â”€ */
+/* â”€â”€ Main table — purchase-order style â”€â”€ */
 .po-table-wrap { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.07); overflow-x:auto;-webkit-overflow-scrolling:touch; }
 .po-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
 .po-table thead th { background:#002F70; color:#fff; padding:12px 14px; text-align:left; font-weight:600; }
@@ -941,7 +941,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .va-table td { padding:10px 14px; border-bottom:1px solid #f0f2f5; vertical-align:middle; }
 .va-table tbody tr:hover { background:#f8f9fa; }
 
-/* â”€â”€ Status badges â€” plain text, no background â”€â”€ */
+/* â”€â”€ Status badges — plain text, no background â”€â”€ */
 .status-badge { display:inline-block; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; }
 .badge-open          { color:#002F70; }
 .badge-resolved      { color:#28a745; }
@@ -950,12 +950,12 @@ document.addEventListener('DOMContentLoaded', function() {
 .badge-investigating { color:#002F70; }
 .badge-other         { color:#6c757d; }
 
-/* â”€â”€ Type badges â€” plain text, no background â”€â”€ */
+/* â”€â”€ Type badges — plain text, no background â”€â”€ */
 .va-type-badge { display:inline-block; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; }
 .type-merch { color:#002F70; }
 .type-jo    { color:#28a745; }
 
-/* â”€â”€ Action buttons â€” colored â”€â”€ */
+/* â”€â”€ Action buttons — colored â”€â”€ */
 .btn-action { display:inline-flex; align-items:center; gap:5px; padding:6px 14px; border:none; border-radius:6px; cursor:pointer; font-size:0.82rem; font-weight:600; text-decoration:none; transition:opacity 0.2s; white-space:nowrap; margin-bottom:3px; }
 .btn-action:hover { opacity:0.85; }
 .btn-view    { background:#6c757d; color:#fff; }

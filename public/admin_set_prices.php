@@ -22,6 +22,49 @@ if ((int)$station_id <= 0 && $role === 'admin') {
     render_no_station_page('admin_dashboard.php');
 }
 
+if (!function_exists('get_canonical_fuel_name')) {
+    function get_canonical_fuel_name($name) {
+        $name_lower = strtolower(trim($name));
+        if (strpos($name_lower, 'turbo') !== false) {
+            return 'Turbo Diesel';
+        } elseif (strpos($name_lower, 'diesel') !== false) {
+            return 'Diesel';
+        } elseif (strpos($name_lower, 'kerosene') !== false) {
+            return 'Kerosene';
+        } elseif (strpos($name_lower, 'xcs') !== false) {
+            return 'XCS Plus';
+        } elseif (strpos($name_lower, 'xtra') !== false || strpos($name_lower, 'unl') !== false || strpos($name_lower, 'advance') !== false) {
+            return 'XTR ADVANCE';
+        }
+        return $name;
+    }
+}
+
+if (!function_exists('get_matching_fuel_ids')) {
+    function get_matching_fuel_ids($pdo, $station_id, $fuel_id, $raw_fuel_type = '') {
+        if (empty($raw_fuel_type) && $fuel_id > 0) {
+            $stmt = $pdo->prepare("SELECT fuel_type FROM fuel_inventory WHERE id = ? LIMIT 1");
+            $stmt->execute([$fuel_id]);
+            $raw_fuel_type = $stmt->fetchColumn() ?: '';
+        }
+        $canonical = get_canonical_fuel_name($raw_fuel_type);
+        $ids = [];
+        $stmt = $pdo->prepare("SELECT id, fuel_type FROM fuel_inventory WHERE station_id = ?");
+        $stmt->execute([$station_id]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            if ($row['id'] == $fuel_id || 
+                get_canonical_fuel_name($row['fuel_type']) === $canonical || 
+                strcasecmp($row['fuel_type'], $raw_fuel_type) === 0) {
+                $ids[] = (int)$row['id'];
+            }
+        }
+        if (empty($ids) && $fuel_id > 0) {
+            $ids = [(int)$fuel_id];
+        }
+        return array_values(array_unique($ids));
+    }
+}
+
 // ── Superadmin: station selection (defaults to first station if none assigned) ─
 if ($role === 'superadmin' && (int)$station_id <= 0) {
     // Try to get selected station from query param
@@ -107,14 +150,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ->execute([$target_station_id, $pid, $new_cost_val, $new_price_val]);
                 }
             } elseif ($ptype === 'service_type' || $ptype === 'service') {
-                $svc_id = (int)($pending['service_type_id'] ?? $pid);
-                $pdo->prepare("UPDATE job_order_service_types SET service_price=?, updated_at=NOW() WHERE id=?")
-                    ->execute([$new_price_val, $svc_id]);
+                $svc_id      = (int)($pending['service_type_id'] ?? $pid);
+                $new_labor   = (float)($pending['new_cost'] ?? 0);
+                $pdo->prepare("UPDATE job_order_service_types SET service_price=?, labor_fee=?, updated_at=NOW() WHERE id=?")
+                    ->execute([$new_price_val, $new_labor, $svc_id]);
             } else {
                 // covers 'fuel' and 'fuel_inventory'
                 $fuel_id = (int)($pending['fuel_type_id'] ?? $pid);
-                $pdo->prepare("UPDATE fuel_inventory SET price_per_liter=?, last_updated=NOW() WHERE id=?")
-                    ->execute([$new_price_val, $fuel_id]);
+                $matching_ids = get_matching_fuel_ids($pdo, $target_station_id, $fuel_id, $pending['product_name'] ?? '');
+
+                $in_clause = implode(',', array_fill(0, count($matching_ids), '?'));
+                $upd_params = array_merge([$new_price_val], $matching_ids);
+                $pdo->prepare("UPDATE fuel_inventory SET price_per_liter=?, last_updated=NOW() WHERE id IN ($in_clause)")
+                    ->execute($upd_params);
+
+                // Insert new history record for all matching tanks (Preserves complete linear audit trail!)
+                try {
+                    $diff = (float)$new_price_val - (float)$old_price_val;
+                    $is_restoration = stripos($pending['reason'] ?? '', 'restor') !== false;
+                    $action_reason = $is_restoration ? 'Price Restored' : 'Price Updated';
+                    
+                    $hist_stmt = $pdo->prepare("INSERT INTO fuel_price_history 
+                        (station_id, fuel_id, fuel_type, old_price, new_price, difference, reason, requested_by, approved_by, status, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Approved', NOW())");
+                    foreach ($matching_ids as $m_id) {
+                        $hist_stmt->execute([
+                            $target_station_id,
+                            $m_id,
+                            $pending['product_name'] ?? 'Fuel',
+                            $old_price_val,
+                            $new_price_val,
+                            $diff,
+                            $action_reason,
+                            $pending['requested_by'] ?? $pending['manager_id'],
+                            $me['id']
+                        ]);
+                    }
+                } catch (Exception $e) {}
+
+                // Mark any other pending approval records for these matching tanks as approved
+                try {
+                    $del_params = array_merge([$me['id'], $me['id']], [$target_station_id], $matching_ids);
+                    $pdo->prepare("UPDATE pending_price_approvals SET status='approved', admin_id=?, reviewed_by=?, reviewed_at=NOW(), updated_at=NOW() WHERE station_id=? AND product_type IN ('fuel','fuel_inventory') AND product_id IN ($in_clause) AND status='pending'")
+                        ->execute($del_params);
+                } catch (Exception $e) {}
             }
             // Update status — write to both admin_id and reviewed_by for compatibility
             $pdo->prepare("UPDATE pending_price_approvals SET status='approved', admin_id=?, reviewed_by=?, reviewed_at=NOW(), updated_at=NOW() WHERE id=?")
@@ -126,13 +205,177 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'reject_price') {
         $approval_id = (int)$_POST['approval_id'];
         $remarks = trim($_POST['remarks'] ?? '');
+
+        // Fetch pending approval details first
+        $stmt_p = $pdo->prepare("SELECT * FROM pending_price_approvals WHERE id=? LIMIT 1");
+        $stmt_p->execute([$approval_id]);
+        $pending = $stmt_p->fetch(PDO::FETCH_ASSOC);
+
         $stmt = $pdo->prepare("UPDATE pending_price_approvals SET status='rejected', rejection_reason=?, reviewer_notes=?, admin_id=?, reviewed_by=?, reviewed_at=NOW(), updated_at=NOW() WHERE id=? AND status='pending'");
         $stmt->execute([$remarks, $remarks, $me['id'], $me['id'], $approval_id]);
-        if ($stmt->rowCount() > 0) {
+        if ($stmt->rowCount() > 0 && $pending) {
+            $ptype = $pending['product_type'] ?? 'fuel';
+            $pid   = (int)($pending['product_id'] ?? 0);
+            $target_station_id = (int)($pending['station_id'] ?? $station_id);
+
+            if (in_array($ptype, ['fuel', 'fuel_inventory'], true)) {
+                $fuel_id = (int)($pending['fuel_type_id'] ?? $pid);
+                $matching_ids = get_matching_fuel_ids($pdo, $target_station_id, $fuel_id, $pending['product_name'] ?? '');
+
+                try {
+                    $old_price_val = (float)($pending['old_price'] ?? $pending['old_value'] ?? 0);
+                    $new_price_val = (float)($pending['new_price'] ?? $pending['new_value'] ?? 0);
+                    $diff = $new_price_val - $old_price_val;
+
+                    $hist_stmt = $pdo->prepare("INSERT INTO fuel_price_history 
+                        (station_id, fuel_id, fuel_type, old_price, new_price, difference, reason, requested_by, approved_by, status, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Rejected', NOW())");
+                    foreach ($matching_ids as $m_id) {
+                        $hist_stmt->execute([
+                            $target_station_id,
+                            $m_id,
+                            $pending['product_name'] ?? 'Fuel',
+                            $old_price_val,
+                            $new_price_val,
+                            $diff,
+                            !empty($remarks) ? "Rejected: " . $remarks : "Price Change Request Rejected by Admin",
+                            $pending['requested_by'] ?? $pending['manager_id'],
+                            $me['id']
+                        ]);
+                    }
+                } catch (Exception $e) {}
+            }
+
             log_activity($pdo, $me['id'], 'Reject Price',
-                "Admin rejected price change (Approval ID $approval_id). Remarks: $remarks");
-            $_SESSION['success'] = "Price change rejected.";
+                "Admin rejected price change for {$pending['product_name']} (Approval ID $approval_id). Remarks: $remarks");
+            $_SESSION['success'] = "Price change request has been rejected.";
         }
+    } elseif ($action === 'admin_edit_fuel_direct') {
+        $id             = (int)($_POST['id'] ?? 0);
+        $fuel_name      = trim($_POST['fuel_name'] ?? '');
+        $price          = (float)($_POST['price'] ?? 0);
+        $capacity       = (float)($_POST['capacity'] ?? 0);
+        $critical_level = (float)($_POST['critical_level'] ?? 0);
+        $reorder_level  = (float)($_POST['reorder_level'] ?? 0);
+        $status_val     = trim($_POST['status'] ?? 'active');
+
+        $stmt_f = $pdo->prepare("SELECT * FROM fuel_inventory WHERE id=? AND station_id=? LIMIT 1");
+        $stmt_f->execute([$id, $station_id]);
+        $old_fuel = $stmt_f->fetch(PDO::FETCH_ASSOC);
+
+        if ($old_fuel) {
+            $old_price   = (float)($old_fuel['price_per_liter'] ?? 0);
+            $old_name    = $old_fuel['fuel_type'] ?? '';
+            $matching_ids = get_matching_fuel_ids($pdo, $station_id, $id, $old_name);
+            $in_clause   = implode(',', array_fill(0, count($matching_ids), '?'));
+
+            $user_name   = $me['username'] ?? ($me['first_name'] ?? 'Admin');
+            $old_cap     = (float)($old_fuel['capacity'] ?? 0);
+            $old_crit    = (float)($old_fuel['critical_level'] ?? 0);
+            $old_reorder = (float)($old_fuel['reorder_level'] ?? 0);
+            $old_status  = strtolower($old_fuel['status'] ?? 'active');
+
+            // ── Admin is owner: cancel any pending price requests for this fuel ──
+            // Admin direct edit supersedes any pending manager request
+            try {
+                $cancel_params = array_merge([$station_id], $matching_ids);
+                $pdo->prepare("UPDATE pending_price_approvals SET status='cancelled', updated_at=NOW() WHERE station_id=? AND product_type IN ('fuel','fuel_inventory') AND product_id IN ($in_clause) AND status='pending'")
+                    ->execute($cancel_params);
+            } catch (Exception $e) { /* column may not exist — silently ignore */ }
+
+            // ── Log configuration changes (non-price fields) ──
+            if (!empty($fuel_name) && strcasecmp($old_name, $fuel_name) !== 0) {
+                $pdo->prepare("INSERT INTO fuel_config_history (station_id, fuel_inventory_id, fuel_type, field_name, old_value, new_value, updated_by, updated_by_name, created_at) VALUES (?, ?, ?, 'Fuel Name', ?, ?, ?, ?, NOW())")
+                    ->execute([$station_id, $id, $fuel_name, $old_name, $fuel_name, $me['id'], $user_name]);
+            }
+            if (abs($old_cap - $capacity) > 0.001) {
+                $pdo->prepare("INSERT INTO fuel_config_history (station_id, fuel_inventory_id, fuel_type, field_name, old_value, new_value, updated_by, updated_by_name, created_at) VALUES (?, ?, ?, 'Capacity', ?, ?, ?, ?, NOW())")
+                    ->execute([$station_id, $id, $old_name, number_format($old_cap, 2) . ' L', number_format($capacity, 2) . ' L', $me['id'], $user_name]);
+            }
+            if (abs($old_crit - $critical_level) > 0.001) {
+                $pdo->prepare("INSERT INTO fuel_config_history (station_id, fuel_inventory_id, fuel_type, field_name, old_value, new_value, updated_by, updated_by_name, created_at) VALUES (?, ?, ?, 'Critical Level', ?, ?, ?, ?, NOW())")
+                    ->execute([$station_id, $id, $old_name, number_format($old_crit, 2) . ' L', number_format($critical_level, 2) . ' L', $me['id'], $user_name]);
+            }
+            if (abs($old_reorder - $reorder_level) > 0.001) {
+                $pdo->prepare("INSERT INTO fuel_config_history (station_id, fuel_inventory_id, fuel_type, field_name, old_value, new_value, updated_by, updated_by_name, created_at) VALUES (?, ?, ?, 'Reorder Level', ?, ?, ?, ?, NOW())")
+                    ->execute([$station_id, $id, $old_name, number_format($old_reorder, 2) . ' L', number_format($reorder_level, 2) . ' L', $me['id'], $user_name]);
+            }
+            if (strcasecmp($old_status, $status_val) !== 0) {
+                $status_label = (strtolower($status_val) === 'active') ? 'Activated' : 'Deactivated';
+                $pdo->prepare("INSERT INTO fuel_status_history (station_id, fuel_inventory_id, fuel_type, old_status, new_status, status, reason, changed_by, changed_by_name, created_at) VALUES (?, ?, ?, ?, ?, ?, 'Direct Admin Edit', ?, ?, NOW())")
+                    ->execute([$station_id, $id, $old_name, ucfirst($old_status), ucfirst($status_val), $status_label, $me['id'], $user_name]);
+            }
+
+            // ── Admin always updates ALL fields immediately — no approval needed ──
+            $upd_params = array_merge([$price, $capacity, $critical_level, $reorder_level, $status_val, $me['id']], $matching_ids);
+            $pdo->prepare("UPDATE fuel_inventory SET price_per_liter=?, capacity=?, critical_level=?, reorder_level=?, status=?, updated_by=?, last_updated=NOW() WHERE id IN ($in_clause)")
+                ->execute($upd_params);
+
+            // ── Sync to fuel_types & fuel_pricing across system ──
+            $fuel_type_id = $old_fuel['fuel_type_id'] ?? null;
+            if ($fuel_type_id) {
+                try {
+                    $pdo->prepare("UPDATE fuel_types SET price_per_liter = ? WHERE id = ?")
+                        ->execute([$price, $fuel_type_id]);
+                } catch (Exception $e) {}
+
+                try {
+                    $fp_stmt = $pdo->prepare("SELECT id FROM fuel_pricing WHERE station_id = ? AND fuel_type_id = ? AND is_active = 1 LIMIT 1");
+                    $fp_stmt->execute([$station_id, $fuel_type_id]);
+                    $fp_id = $fp_stmt->fetchColumn();
+                    if ($fp_id) {
+                        $pdo->prepare("UPDATE fuel_pricing SET price_per_liter = ?, updated_at = NOW() WHERE id = ?")
+                            ->execute([$price, $fp_id]);
+                    } else {
+                        $pdo->prepare("INSERT INTO fuel_pricing (station_id, fuel_type_id, price_per_liter, effective_date, is_active, created_by, created_at, updated_at) VALUES (?, ?, ?, NOW(), 1, ?, NOW(), NOW())")
+                            ->execute([$station_id, $fuel_type_id, $price, $me['id']]);
+                    }
+                } catch (Exception $e) {}
+            }
+
+            // ── Log price change to history if price changed ──
+            if (abs($price - $old_price) > 0.001) {
+                $diff = $price - $old_price;
+                $hist_stmt = $pdo->prepare("INSERT INTO fuel_price_history
+                    (station_id, fuel_id, fuel_type, old_price, new_price, difference, reason, requested_by, approved_by, status, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 'Direct Admin Edit', ?, ?, 'Approved', NOW())");
+                foreach ($matching_ids as $m_id) {
+                    $hist_stmt->execute([
+                        $station_id, $m_id, $old_name, $old_price, $price, $diff, $me['id'], $me['id']
+                    ]);
+                }
+            }
+
+            log_activity($pdo, $me['id'], 'Direct Admin Edit Fuel', "Admin directly updated {$old_name}: Price ₱{$old_price} -> ₱{$price}, Capacity {$capacity}L, Critical {$critical_level}L, Reorder {$reorder_level}L");
+            $_SESSION['success'] = "Fuel product updated successfully!";
+        }
+        header("Location: admin_set_prices.php?tab=fuel");
+        exit;
+    } elseif ($action === 'toggle_fuel_status_admin') {
+        $id          = (int)($_POST['id'] ?? 0);
+        $new_status  = trim($_POST['status'] ?? 'active');
+        $stmt_f = $pdo->prepare("SELECT * FROM fuel_inventory WHERE id=? AND station_id=? LIMIT 1");
+        $stmt_f->execute([$id, $station_id]);
+        $old_fuel = $stmt_f->fetch(PDO::FETCH_ASSOC);
+
+        if ($old_fuel) {
+            $user_name = $me['username'] ?? ($me['first_name'] ?? 'Admin');
+            $old_st_text = ucfirst(strtolower($old_fuel['status'] ?? 'active'));
+            $new_st_text = ucfirst(strtolower($new_status));
+            $status_label = (strtolower($new_status) === 'active') ? 'Activated' : 'Deactivated';
+            $pdo->prepare("INSERT INTO fuel_status_history (station_id, fuel_inventory_id, fuel_type, old_status, new_status, status, reason, changed_by, changed_by_name, created_at) VALUES (?, ?, ?, ?, ?, ?, 'Admin Action', ?, ?, NOW())")
+                ->execute([$station_id, $id, $old_fuel['fuel_type'], $old_st_text, $new_st_text, $status_label, $me['id'], $user_name]);
+
+            $matching_ids = get_matching_fuel_ids($pdo, $station_id, $id, $old_fuel['fuel_type']);
+            $in_clause = implode(',', array_fill(0, count($matching_ids), '?'));
+            $upd_params = array_merge([$new_status, $me['id']], $matching_ids);
+            $pdo->prepare("UPDATE fuel_inventory SET status=?, updated_by=?, last_updated=NOW() WHERE id IN ($in_clause)")
+                ->execute($upd_params);
+            log_activity($pdo, $me['id'], 'Toggle Fuel Status', "Admin set status of {$old_fuel['fuel_type']} to {$new_status}");
+            $_SESSION['success'] = "Fuel status updated to " . ucfirst($new_status) . ".";
+        }
+        header("Location: admin_set_prices.php?tab=fuel");
+        exit;
     }
     header("Location: admin_set_prices.php?tab=" . urlencode($redirect_tab));
     exit;
@@ -180,6 +423,7 @@ try {
     }
 
     $fi_lookup = [];
+    $fi_lookup_by_id = [];
     $fi_status_by_id = [];
     $s = $pdo->prepare("SELECT id, fuel_type, ugt_no, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, reorder_level, critical_level FROM fuel_inventory WHERE station_id = ?");
     $s->execute([$target_sid]);
@@ -187,15 +431,48 @@ try {
         $fuel_key = strtolower(trim($row['fuel_type']));
         $ugt_val  = strtolower(trim($row['ugt_no'] ?? ''));
 
+        // Index by full fuel_type name
         if (!isset($fi_lookup[$fuel_key])) {
             $fi_lookup[$fuel_key] = $row;
         }
+        // Index by UGT number string (e.g. "ugt #1")
         if ($ugt_val) {
             $fi_lookup[$ugt_val] = $row;
         }
+
+        // ── Extra canonical/variant keys so TANK_CONFIG ft_key matches ─────
+        // e.g. fuel_type='Diesel 1 (UGT #1)' -> also store under 'diesel 1', 'diesel', 'diesel 1 (ugt #1)'
+        // Extract number suffix from fuel_type if present
+        if (preg_match('/diesel\s*(\d)/i', $fuel_key, $m)) {
+            $k = 'diesel ' . $m[1];
+            if (!isset($fi_lookup[$k])) $fi_lookup[$k] = $row;
+        }
+        if (strpos($fuel_key, 'diesel') !== false && strpos($fuel_key, 'turbo') === false) {
+            if (!isset($fi_lookup['diesel'])) $fi_lookup['diesel'] = $row;
+        }
+        if (preg_match('/(xtra unl|xtra unl)\s*(\d)/i', $fuel_key, $m)) {
+            $k = 'xtra unl ' . $m[2];
+            if (!isset($fi_lookup[$k])) $fi_lookup[$k] = $row;
+            if (!isset($fi_lookup['xtra unl'])) $fi_lookup['xtra unl'] = $row;
+        }
+        if (strpos($fuel_key, 'xtra') !== false || strpos($fuel_key, 'unl') !== false) {
+            if (!isset($fi_lookup['xtra unl'])) $fi_lookup['xtra unl'] = $row;
+        }
+        if (strpos($fuel_key, 'xcs') !== false) {
+            if (!isset($fi_lookup['xcs plus'])) $fi_lookup['xcs plus'] = $row;
+        }
+        if (strpos($fuel_key, 'kerosene') !== false) {
+            if (!isset($fi_lookup['kerosene'])) $fi_lookup['kerosene'] = $row;
+        }
+        if (strpos($fuel_key, 'turbo') !== false) {
+            if (!isset($fi_lookup['turbo diesel'])) $fi_lookup['turbo diesel'] = $row;
+        }
+
+        $fi_lookup_by_id[(int)$row['id']] = $row;
         $st_lower = strtolower(trim($row['status'] ?? ''));
         $fi_status_by_id[(int)$row['id']] = in_array($st_lower, ['inactive', 'disabled', 'deactivated'], true) ? 'inactive' : 'active';
     }
+
 
     $del_lookup = [];
     $s = $pdo->prepare("SELECT tank_assigned, fuel_type, SUM(delivery_liters) AS total_del FROM fuel_deliveries WHERE station_id = ? AND DATE(delivery_date) = CURDATE() AND status = 'Verified' GROUP BY tank_assigned, fuel_type");
@@ -227,11 +504,27 @@ try {
     }
 
     $pending_approvals = [];
-    $s = $pdo->prepare("SELECT fuel_type_id, COALESCE(new_price, new_value) AS new_value, status, id AS approval_id FROM pending_price_approvals WHERE station_id = ? AND product_type IN ('fuel', 'fuel_inventory') AND status = 'pending'");
-    $s->execute([$target_sid]);
-    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $p_row) {
-        $pending_approvals[(int)$p_row['fuel_type_id']] = $p_row;
-    }
+    try {
+        $s_pa = $pdo->prepare("SELECT id AS approval_id, product_id, fuel_type_id, product_name, COALESCE(new_price, new_value) AS new_value, old_price, new_price, status, reason, requested_by, created_at, station_id FROM pending_price_approvals WHERE status = 'pending' AND product_type IN ('fuel', 'fuel_inventory')");
+        $s_pa->execute();
+        foreach ($s_pa->fetchAll(PDO::FETCH_ASSOC) as $p_row) {
+            $pid = (int)($p_row['product_id'] ?? 0);
+            $ftid = (int)($p_row['fuel_type_id'] ?? 0);
+            $pname = strtolower(trim($p_row['product_name'] ?? ''));
+
+            if ($pid > 0) {
+                $pending_approvals['id_' . $pid] = $p_row;
+            }
+            if ($ftid > 0) {
+                $pending_approvals['id_' . $ftid] = $p_row;
+            }
+            if ($pname) {
+                $pending_approvals['name_' . $pname] = $p_row;
+                $canonical_pname = strtolower(get_canonical_fuel_name($pname));
+                $pending_approvals['canon_' . $canonical_pname] = $p_row;
+            }
+        }
+    } catch (Exception $e) {}
 
     foreach ($TANK_CONFIG_17 as $tc) {
         $ft_key = strtolower(trim($tc['fuel_type']));
@@ -310,12 +603,33 @@ try {
             $status = 'Normal';
         }
 
-        $price = $price_lookup[$ft_key] ?? ($inv ? (float)($inv['price_per_liter'] ?? 0) : 0);
+        $price = ($inv && (float)($inv['price_per_liter'] ?? 0) > 0) ? (float)$inv['price_per_liter'] : ($price_lookup[$ft_key] ?? 0);
         $timestamp = $inv['last_updated'] ?? null;
-        $critical_level = $inv ? (float)($inv['critical_level'] ?? 0) : 300;
+
+        $critical_level = $inv ? (float)($inv['critical_level'] ?? 0) : 0;
+        if ($critical_level <= 0) {
+            $critical_level = ($capacity == 14000) ? 2500 : (($capacity == 7000) ? 1000 : $capacity * 0.10);
+        }
+        $reorder_level = $inv ? (float)($inv['reorder_level'] ?? 0) : 0;
+        if ($reorder_level <= 0) {
+            $reorder_level = ($capacity == 14000) ? 5000 : (($capacity == 7000) ? 2000 : $capacity * 0.20);
+        }
 
         $inv_id = $inv['id'] ?? null;
-        $app = $inv_id ? ($pending_approvals[(int)$inv_id] ?? null) : null;
+        $inv_name = strtolower(trim($inv['fuel_type'] ?? $tc['fuel_type'] ?? ''));
+        $inv_canonical = strtolower(get_canonical_fuel_name($inv_name));
+        $ugt_name = strtolower(trim($tc['tank'] ?? ''));
+
+        $app = null;
+        if ($inv_id && isset($pending_approvals['id_' . (int)$inv_id])) {
+            $app = $pending_approvals['id_' . (int)$inv_id];
+        } elseif ($inv_name && isset($pending_approvals['name_' . $inv_name])) {
+            $app = $pending_approvals['name_' . $inv_name];
+        } elseif ($inv_canonical && isset($pending_approvals['canon_' . $inv_canonical])) {
+            $app = $pending_approvals['canon_' . $inv_canonical];
+        } elseif ($ugt_name && isset($pending_approvals['name_' . $ugt_name])) {
+            $app = $pending_approvals['name_' . $ugt_name];
+        }
 
         $fuel_products[] = [
             'id'             => $inv_id,
@@ -326,6 +640,7 @@ try {
             'capacity'       => $capacity,
             'current_stock'  => $ending_system,
             'critical_level' => $critical_level,
+            'reorder_level'  => $reorder_level,
             'status'         => $status,
             'inv_status'     => $inv_id ? ($fi_status_by_id[(int)$inv_id] ?? 'active') : 'active',
             'last_updated'   => $timestamp,
@@ -433,17 +748,22 @@ $service_types = [];
 $service_error = null;
 try {
     $stmt = $pdo->query("
-        SELECT s.id, s.service_name, s.service_key, s.service_price,
-               s.status, s.active,
-               p.new_price  AS pending_price,
-               p.old_price,
-               p.manager_id AS pending_manager_id,
-               p.status     AS approval_status,
-               p.id         AS approval_id
+        SELECT s.id,
+               COALESCE(s.service_code, CONCAT('SRV-', LPAD(s.id,4,'0'))) AS service_code,
+               s.service_name, s.service_key, s.category, s.service_price,
+               s.labor_fee, s.estimated_duration, s.required_mechanics,
+               s.description, s.active, s.updated_at,
+               p.new_price     AS pending_price,
+               p.new_cost      AS pending_labor_fee,
+               p.old_price     AS old_service_fee,
+               p.old_cost      AS old_labor_fee,
+               p.manager_id    AS pending_manager_id,
+               p.status        AS approval_status,
+               p.id            AS approval_id
         FROM job_order_service_types s
         LEFT JOIN pending_price_approvals p
                ON s.id = p.product_id
-              AND p.product_type = 'service_type'
+              AND p.product_type IN ('service', 'service_type')
               AND p.status = 'pending'
         ORDER BY s.service_name
     ");
@@ -530,8 +850,10 @@ include __DIR__ . '/../partials/header.php';
     width: 100% !important;
     max-width: 100% !important;
     border-collapse: collapse !important;
-    table-layout: auto !important;
     box-sizing: border-box !important;
+}
+#adminMerchTable {
+    table-layout: fixed !important;
 }
 
 /* == Tab bar styling (Matches Manager Clean Design) == */
@@ -542,46 +864,66 @@ include __DIR__ . '/../partials/header.php';
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
-/* == Action buttons — clean outline style (same as Manager) == */
+/* == Action buttons — ultra crisp & visible outline style == */
 .act-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    padding: 4px 8px;
-    border-radius: 5px;
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-    line-height: 1.2;
-    width: 100%;
-    max-width: 110px;
-    margin-bottom: 3px;
-    transition: all .18s ease;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    padding: 5px 10px !important;
+    border-radius: 6px !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    line-height: 1.2 !important;
+    width: 100% !important;
+    max-width: 110px !important;
+    margin-bottom: 4px !important;
+    transition: all .18s ease-in-out !important;
     background: #ffffff !important;
-    border: 1px solid #cbd5e1;
-    color: #475569;
-    text-decoration: none;
-    box-sizing: border-box;
+    border: 1.5px solid #cbd5e1 !important;
+    text-decoration: none !important;
+    box-sizing: border-box !important;
+    opacity: 1 !important;
 }
-.act-btn:last-child { margin-bottom: 0; }
-.act-btn-edit { color: #002F6C !important; border-color: #002F6C !important; background: #ffffff !important; }
-.act-btn-edit:hover { background: #002F6C !important; color: #ffffff !important; }
-.act-btn-deactivate { color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
-.act-btn-deactivate:hover { background: #dc2626 !important; color: #ffffff !important; }
-.act-btn-activate { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
-.act-btn-activate:hover { background: #16a34a !important; color: #ffffff !important; }
-.act-btn-viewreq { color: #d97706 !important; border-color: #fcd34d !important; background: #ffffff !important; }
-.act-btn-viewreq:hover { background: #d97706 !important; color: #ffffff !important; }
-.act-btn-approve { color: #16a34a !important; border-color: #86efac !important; background: #ffffff !important; }
-.act-btn-approve:hover { background: #16a34a !important; color: #ffffff !important; }
-.act-btn-reject { color: #dc2626 !important; border-color: #fca5a5 !important; background: #ffffff !important; }
-.act-btn-reject:hover { background: #dc2626 !important; color: #ffffff !important; }
-.act-btn-history { color: #6366f1 !important; border-color: #c7d2fe !important; background: #ffffff !important; }
-.act-btn-history:hover { background: #6366f1 !important; color: #ffffff !important; }
-.act-btn-batches { color: #0284c7 !important; border-color: #bae6fd !important; background: #ffffff !important; }
-.act-btn-batches:hover { background: #0284c7 !important; color: #ffffff !important; }
+.act-btn:last-child { margin-bottom: 0 !important; }
+
+/* View buttons in Admin are sleek GREY (#475569) so GREEN (#16a34a) is reserved exclusively for Approve Price / Activate */
+.act-btn-view { color: #475569 !important; -webkit-text-fill-color: #475569 !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.act-btn-view:hover { background: #475569 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #475569 !important; }
+
+.act-btn-viewreq { color: #475569 !important; -webkit-text-fill-color: #475569 !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.act-btn-viewreq:hover { background: #475569 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #475569 !important; }
+
+.act-btn-batches { color: #475569 !important; -webkit-text-fill-color: #475569 !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.act-btn-batches:hover { background: #475569 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #475569 !important; }
+
+.act-btn-history { color: #64748b !important; -webkit-text-fill-color: #64748b !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.act-btn-history:hover { background: #64748b !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #64748b !important; }
+
+.act-btn-edit { color: #002F6C !important; -webkit-text-fill-color: #002F6C !important; border-color: #002F6C !important; background: #ffffff !important; }
+.act-btn-edit:hover { background: #002F6C !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #002F6C !important; }
+
+.act-btn-deactivate { color: #dc2626 !important; -webkit-text-fill-color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
+.act-btn-deactivate:hover { background: #dc2626 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #dc2626 !important; }
+
+.act-btn-activate { color: #16a34a !important; -webkit-text-fill-color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
+.act-btn-activate:hover { background: #16a34a !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #16a34a !important; }
+
+/* Approve Price is GREEN */
+.act-btn-approve { color: #16a34a !important; -webkit-text-fill-color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
+.act-btn-approve:hover { background: #16a34a !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #16a34a !important; }
+
+/* Reject Price is RED */
+.act-btn-reject { color: #dc2626 !important; -webkit-text-fill-color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
+.act-btn-reject:hover { background: #dc2626 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #dc2626 !important; }
+
+/* Restore Fees is ORANGE */
+.act-btn-restore { color: #d97706 !important; -webkit-text-fill-color: #d97706 !important; border-color: #d97706 !important; background: #ffffff !important; }
+.act-btn-restore:hover { background: #d97706 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #d97706 !important; }
+
+.act-btn i { color: inherit !important; -webkit-text-fill-color: inherit !important; }
 .act-btn-wrap { display: flex; flex-direction: column; gap: 3px; width: 100%; align-items: center; }
 .pricing-table th {
     background: #002F6C !important; 
@@ -661,32 +1003,122 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
-     TAB 1 — FUEL PRODUCTS
+     TAB 1 — FUEL PRODUCTS (ADMIN OVERVIEW & APPROVALS)
      ══════════════════════════════════════════════════════════════════════════ -->
 <div id="tab-fuel" class="tab-panel <?php echo $active_tab === 'fuel' ? 'active' : ''; ?>">
-    <div class="card" style="padding:0;overflow:hidden;">
-        <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
-            <strong style="font-size:15px;color:#002F6C;"><i class="fas fa-gas-pump"></i> Fuel Inventory &amp; Pricing</strong>
+
+<?php if (!empty($_SESSION['success'])): ?>
+    <div style="background:#dcfce7;border:1.5px solid #86efac;border-radius:8px;padding:12px 18px;margin-bottom:16px;display:flex;align-items:center;gap:10px;font-size:13px;color:#166534;font-weight:600;">
+        <i class="fas fa-check-circle" style="font-size:16px;"></i>
+        <span><?php echo htmlspecialchars($_SESSION['success']); unset($_SESSION['success']); ?></span>
+    </div>
+<?php elseif (!empty($_SESSION['warning'])): ?>
+    <div style="background:#fef3c7;border:1.5px solid #fde68a;border-radius:8px;padding:12px 18px;margin-bottom:16px;display:flex;align-items:center;gap:10px;font-size:13px;color:#92400e;font-weight:600;">
+        <i class="fas fa-lock" style="font-size:16px;"></i>
+        <span><?php echo $_SESSION['warning']; unset($_SESSION['warning']); ?></span>
+    </div>
+<?php endif; ?>
+
+    <?php
+    $total_fuel_count   = count($fuel_products);
+    $pending_req_count  = 0;
+    $active_fuel_count  = 0;
+    $inactive_fuel_count = 0;
+
+    foreach ($fuel_products as $fp) {
+        if (!empty($fp['approval_status']) && $fp['approval_status'] === 'pending') {
+            $pending_req_count++;
+        }
+        if (($fp['inv_status'] ?? 'active') === 'active') {
+            $active_fuel_count++;
+        } else {
+            $inactive_fuel_count++;
+        }
+    }
+    ?>
+
+    <!-- ── 1. Admin Fuel Summary Metric Cards ────────────────────────────── -->
+    <div class="summary-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(170px, 1fr));gap:14px;margin-bottom:16px;">
+        <div class="summary-card s-total" onclick="filterAdminFuelByCard('all')" style="cursor:pointer;transition:transform 0.15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+            <div class="s-num"><?php echo $total_fuel_count; ?></div>
+            <div class="s-lbl"><i class="fas fa-gas-pump"></i> Total Fuel Products</div>
         </div>
+        <div class="summary-card" onclick="filterAdminFuelByCard('pending')" style="cursor:pointer;background:#fffbeb;border:1.5px solid #fde68a;transition:transform 0.15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+            <div class="s-num" style="color:#d97706;"><?php echo $pending_req_count; ?></div>
+            <div class="s-lbl" style="color:#b45309;font-weight:700;"><i class="fas fa-clock"></i> Pending Price Requests</div>
+        </div>
+        <div class="summary-card s-valid" onclick="filterAdminFuelByCard('active')" style="cursor:pointer;transition:transform 0.15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+            <div class="s-num" style="color:#16a34a;"><?php echo $active_fuel_count; ?></div>
+            <div class="s-lbl"><i class="fas fa-check-circle"></i> Active Products</div>
+        </div>
+        <div class="summary-card s-below" onclick="filterAdminFuelByCard('inactive')" style="cursor:pointer;transition:transform 0.15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+            <div class="s-num" style="color:#dc2626;"><?php echo $inactive_fuel_count; ?></div>
+            <div class="s-lbl"><i class="fas fa-ban"></i> Inactive Products</div>
+        </div>
+    </div>
+
+    <!-- ── 2. Admin Filters Bar ───────────────────────────────────────────── -->
+    <div class="toolbar" style="margin-bottom:16px;background:#f8fafc;padding:12px 16px;border-radius:10px;border:1px solid #e2e8f0;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+        <input type="text" id="adminFuelSearch" placeholder="Search UGT or Fuel Name..." oninput="filterAdminFuelTable()" style="min-width:200px;flex:1;padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+        
+        <select id="adminFuelTypeFilter" onchange="filterAdminFuelTable()" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;background:#fff;">
+            <option value="">All Fuel Types</option>
+            <option value="Diesel">Diesel</option>
+            <option value="Turbo Diesel">Turbo Diesel</option>
+            <option value="XCS Plus">XCS Plus</option>
+            <option value="XTR ADVANCE">XTR ADVANCE</option>
+            <option value="Kerosene">Kerosene</option>
+        </select>
+
+        <select id="adminFuelUgtFilter" onchange="filterAdminFuelTable()" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;background:#fff;">
+            <option value="">All UGTs</option>
+            <option value="UGT #1">UGT #1</option>
+            <option value="UGT #2">UGT #2</option>
+            <option value="UGT #3">UGT #3</option>
+            <option value="UGT #4">UGT #4</option>
+            <option value="UGT #5">UGT #5</option>
+            <option value="UGT #6">UGT #6</option>
+            <option value="UGT #7">UGT #7</option>
+        </select>
+
+        <select id="adminFuelPriceReqFilter" onchange="filterAdminFuelTable()" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;background:#fff;">
+            <option value="">All Request Statuses</option>
+            <option value="pending">Pending Approval Only</option>
+            <option value="none">None / Approved</option>
+            <option value="rejected">Rejected</option>
+        </select>
+
+        <select id="adminFuelStatusFilter" onchange="filterAdminFuelTable()" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;background:#fff;">
+            <option value="">All Active/Inactive Statuses</option>
+            <option value="active">Active Only</option>
+            <option value="inactive">Inactive Only</option>
+        </select>
+    </div>
+
+    <!-- ── 3. Fuel Inventory & Pricing Table ─────────────────────────────── -->
+    <div class="card" style="padding:0;overflow:hidden;border:1px solid #e2e8f0;border-radius:10px;">
+
         <div class="table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
-            <table class="pricing-table">
+            <table class="pricing-table" id="adminFuelTable">
                 <thead>
                     <tr>
                         <th>UGT No.</th>
                         <th>Fuel Type</th>
-                        <th>Price / Liter (&#8369;)</th>
-                        <th>Stock Level (L)</th>
+                        <th>Price / Liter (₱)</th>
+                        <th>Current Volume (L)</th>
                         <th>Capacity (L)</th>
                         <th>Critical Level (L)</th>
+                        <th>Reorder Level (L)</th>
                         <th>Status</th>
+                        <th>Price Request Status</th>
                         <th>Last Updated</th>
-                        <th style="text-align: center;">Action</th>
+                        <th style="text-align: center; width: 140px;">Actions</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="adminFuelTableBody">
                 <?php if (empty($fuel_products)): ?>
                     <tr>
-                        <td colspan="9" style="text-align:center;padding:28px;color:#94a3b8;">
+                        <td colspan="11" style="text-align:center;padding:28px;color:#94a3b8;">
                             <i class="fas fa-info-circle"></i> No fuel inventory records found for this station.
                         </td>
                     </tr>
@@ -695,75 +1127,133 @@ include __DIR__ . '/../partials/header.php';
                         $level    = (float)($f['current_stock'] ?? 0);
                         $critical = (float)($f['critical_level'] ?? 0);
                         $capacity = (float)($f['capacity'] ?? 0);
+                        $reorder  = (float)($f['reorder_level'] ?? 0);
                         
                         $status_label = $f['status'] ?? 'Normal';
                         if ($status_label === 'Normal') {
                             $status_class = 'badge-normal';
-                            $bar_color = '#16a34a';
                         } elseif ($status_label === 'Low') {
                             $status_class = 'badge-low';
-                            $bar_color = '#ef4444';
                         } else {
                             $status_class = 'badge-critical';
-                            $bar_color = '#dc2626';
                         }
                         
-                        $pct = $capacity > 0 ? min(100, round($level / $capacity * 100)) : 0;
+                        $ugt_str = $f['ugt_no'] ?? ('UGT #' . $f['pump_id']);
                         $canonical_type = get_canonical_fuel_name($f['raw_fuel_type']);
+                        $full_fuel_name = $canonical_type;
+                        $fuel_active_status = strtolower($f['inv_status'] ?? ($f['status'] ?? 'active'));
+                        $req_status = $f['approval_status'] ?? '';
                     ?>
-                    <tr>
+                    <tr class="admin-fuel-row" 
+                        data-ugt="<?php echo htmlspecialchars($ugt_str); ?>" 
+                        data-fueltype="<?php echo htmlspecialchars($canonical_type); ?>"
+                        data-fullname="<?php echo htmlspecialchars($full_fuel_name); ?>"
+                        data-reqstatus="<?php echo htmlspecialchars($req_status ?: 'none'); ?>"
+                        data-activestatus="<?php echo htmlspecialchars($fuel_active_status); ?>">
+                        
+                        <!-- UGT No. -->
                         <td>
-                            <strong style="font-family:monospace;color:#002F6C;font-size:14px;"><?php echo htmlspecialchars($f['ugt_no'] ?? ('UGT #' . $f['pump_id'])); ?></strong>
-                            <div style="font-size:11px;color:#64748b;margin-top:2px;font-weight:600;"><?php echo htmlspecialchars($f['tank_label']); ?></div>
+                            <strong style="font-family:monospace;color:#002F6C;font-size:14px;"><?php echo htmlspecialchars($ugt_str); ?></strong>
                         </td>
+                        
+                        <!-- Fuel Type -->
                         <td>
-                            <strong><?php echo htmlspecialchars($canonical_type); ?></strong>
+                            <strong><?php echo htmlspecialchars($full_fuel_name); ?></strong>
                         </td>
+                        
+                        <!-- Current Price -->
                         <td>
-                            <strong style="color:#002F6C;">&#8369;<?php echo number_format((float)($f['price_per_liter'] ?? 0), 2); ?></strong>
+                            <strong style="color:#002F6C;font-size:13px;">&#8369;<?php echo number_format((float)($f['price_per_liter'] ?? 0), 2); ?></strong>
                         </td>
+                        
+                        <!-- Current Volume (Clean numerical format) -->
                         <td>
                             <?php echo number_format($level, 2); ?>
-                            <div style="margin-top:4px;height:4px;background:#e2e8f0;border-radius:2px;width:80px;">
-                                <div style="height:4px;background:<?php echo $bar_color; ?>;border-radius:2px;width:<?php echo $pct; ?>%;"></div>
-                            </div>
                         </td>
+                        
+                        <!-- Capacity -->
                         <td><?php echo number_format($capacity, 2); ?></td>
+                        
+                        <!-- Critical Level -->
                         <td><?php echo number_format($critical, 2); ?></td>
+                        
+                        <!-- Reorder Level -->
+                        <td><strong style="color:#475569;"><?php echo number_format($reorder, 2); ?></strong></td>
+                        
+                        <!-- Status -->
                         <td>
                             <?php if ($status_label === 'Critical'): ?>
-                                <span class="badge <?php echo $status_class; ?>">&#9888; Critical</span>
+                                <span class="badge <?php echo $status_class; ?>">Critical</span>
                             <?php elseif ($status_label === 'Low'): ?>
-                                <span class="badge <?php echo $status_class; ?>">&#9888; Low Stock</span>
+                                <span class="badge <?php echo $status_class; ?>">Low Stock</span>
                             <?php elseif ($status_label === 'Out of Stock'): ?>
-                                <span class="badge <?php echo $status_class; ?>">&#9888; Out of Stock</span>
+                                <span class="badge <?php echo $status_class; ?>">Out of Stock</span>
                             <?php else: ?>
-                                <span class="badge <?php echo $status_class; ?>">&#10003; Normal</span>
+                                <span class="badge <?php echo $status_class; ?>">Normal</span>
                             <?php endif; ?>
                         </td>
+                        
+                        <!-- Price Request Status -->
+                        <td>
+                            <?php if ($req_status === 'pending'): ?>
+                                <span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-weight:700;padding:4px 9px;">
+                                    <i class="fas fa-clock"></i> Pending (&#8369;<?php echo number_format((float)$f['pending_price'], 2); ?>)
+                                </span>
+                            <?php elseif ($req_status === 'rejected'): ?>
+                                <span class="badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;font-weight:700;padding:4px 9px;">
+                                    <i class="fas fa-times-circle"></i> Rejected
+                                </span>
+                            <?php else: ?>
+                                <span class="badge" style="background:#dcfce7;color:#166534;border:1px solid #86efac;font-weight:600;padding:4px 9px;">
+                                    <i class="fas fa-check-circle"></i> None / Approved
+                                </span>
+                            <?php endif; ?>
+                        </td>
+                        
+                        <!-- Last Updated -->
                         <td class="muted" style="font-size:12px;">
                             <?php echo $f['last_updated'] ? htmlspecialchars(date('M d, Y H:i', strtotime($f['last_updated']))) : '&mdash;'; ?>
                         </td>
+                        
+                        <!-- Actions Column -->
                         <td style="text-align: center; vertical-align: middle;">
-                            <?php if ($f['approval_status'] === 'pending'): ?>
-                                <div style="display:flex; flex-direction:column; gap:4px; align-items:center;">
-                                    <div style="font-size:11px; color:#b45309; background:#fef3c7; padding:2px 6px; border-radius:4px; margin-bottom:4px;">
-                                        <strong>Proposed: ₱<?php echo number_format($f['pending_price'], 2); ?></strong>
-                                    </div>
-                                    <div style="display:flex; gap:4px; margin-bottom:4px;">
-                                        <form method="POST" style="margin:0;">
-                                            <input type="hidden" name="action" value="approve_price">
-                                            <input type="hidden" name="approval_id" value="<?php echo $f['approval_id']; ?>">
-                                            <input type="hidden" name="active_tab" value="fuel">
-                                            <button type="submit" class="btn" style="background:#fff;color:#475569;border:1px solid #cbd5e1;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;transition:all 0.2s;" onmouseover="this.style.background='#f8fafc';this.style.borderColor='#94a3b8'" onmouseout="this.style.background='#fff';this.style.borderColor='#cbd5e1'"><i class="fas fa-check"></i> Approve</button>
-                                        </form>
-                                        <button type="button" class="btn" style="background:#fff;color:#475569;border:1px solid #cbd5e1;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;transition:all 0.2s;" onclick="openRejectModal(<?php echo $f['approval_id']; ?>, 'fuel')" onmouseover="this.style.background='#f8fafc';this.style.borderColor='#94a3b8'" onmouseout="this.style.background='#fff';this.style.borderColor='#cbd5e1'"><i class="fas fa-times"></i> Reject</button>
-                                    </div>
-                                </div>
-                            <?php endif; ?>
-                            <button onclick="openAdminEditFuelModal(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars(addslashes($canonical_type)); ?>', <?php echo (float)$f['price_per_liter']; ?>, <?php echo (float)$capacity; ?>, <?php echo (float)$critical; ?>)" class="act-btn act-btn-edit">
-                                <i class="fas fa-edit"></i> Edit
-                            </button>
+                            <div class="act-btn-wrap">
+                                <?php if (!empty($f['id'])): ?>
+                                    <!-- 👁 View Button -->
+                                    <button type="button" onclick="openViewFuelModalAdmin(<?php echo $f['id']; ?>)" class="act-btn act-btn-view">
+                                        <i class="fas fa-eye"></i> View
+                                    </button>
+                                    
+                                    <!-- Edit Button (Direct Admin Edit) -->
+                                    <button type="button" onclick="openEditPriceModalAdmin(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars(addslashes($full_fuel_name)); ?>', <?php echo (float)($f['price_per_liter'] ?? 0); ?>, <?php echo (float)($f['capacity'] ?? 0); ?>, <?php echo (float)($f['critical_level'] ?? 0); ?>, <?php echo (float)($f['reorder_level'] ?? 0); ?>, '<?php echo htmlspecialchars(addslashes($ugt_str)); ?>', <?php echo $req_status === 'pending' ? 'true' : 'false'; ?>)" class="act-btn act-btn-edit">
+                                        <i class="fas fa-edit"></i> Edit
+                                    </button>
+
+                                    <!-- Approve & Reject Buttons (Shown ONLY if there is a pending request!) -->
+                                    <?php if ($req_status === 'pending' && !empty($f['approval_id'])): ?>
+                                        <button type="button" onclick="openApprovePriceModalAdmin(<?php echo $f['approval_id']; ?>, '<?php echo htmlspecialchars(addslashes($full_fuel_name)); ?>', <?php echo (float)($f['price_per_liter'] ?? 0); ?>, <?php echo (float)($f['pending_price'] ?? 0); ?>)" class="act-btn act-btn-approve">
+                                            <i class="fas fa-check"></i> Approve Price
+                                        </button>
+
+                                        <button type="button" onclick="openRejectPriceModalAdmin(<?php echo $f['approval_id']; ?>, '<?php echo htmlspecialchars(addslashes($full_fuel_name)); ?>', <?php echo (float)($f['price_per_liter'] ?? 0); ?>, <?php echo (float)($f['pending_price'] ?? 0); ?>)" class="act-btn act-btn-reject">
+                                            <i class="fas fa-times"></i> Reject Price
+                                        </button>
+                                    <?php endif; ?>
+
+                                    <!-- Deactivate / Activate Button -->
+                                    <?php if ($fuel_active_status !== 'inactive'): ?>
+                                        <button type="button" onclick="openToggleFuelStatusModal(<?php echo $f['id']; ?>, 'inactive', '<?php echo htmlspecialchars(addslashes($canonical_type)); ?>')" class="act-btn act-btn-deactivate">
+                                            <i class="fas fa-ban"></i> Deactivate
+                                        </button>
+                                    <?php else: ?>
+                                        <button type="button" onclick="openToggleFuelStatusModal(<?php echo $f['id']; ?>, 'active', '<?php echo htmlspecialchars(addslashes($canonical_type)); ?>')" class="act-btn act-btn-activate">
+                                            <i class="fas fa-check-circle"></i> Activate
+                                        </button>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <span style="font-size:11px;color:#94a3b8;font-style:italic;">No Actions</span>
+                                <?php endif; ?>
+                            </div>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -854,23 +1344,23 @@ include __DIR__ . '/../partials/header.php';
         <div class="table-wrap" style="overflow-x:hidden; width:100%;">
             <table class="pricing-table" id="adminMerchTable" style="width:100%; table-layout:fixed;">
                 <colgroup>
-                    <col style="width:100px;">
-                    <col style="width:auto;">
-                    <col style="width:160px;">
-                    <col style="width:90px;">
-                    <col style="width:130px;">
-                    <col style="width:90px;">
-                    <col style="width:120px;">
-                    <col style="width:100px;">
-                    <col style="width:90px;">
-                    <col style="width:180px;">
+                    <col style="width:90px;">   <!-- SKU -->
+                    <col style="width:20%;">    <!-- Product -->
+                    <col style="width:150px;"> <!-- Category / Brand -->
+                    <col style="width:90px;">   <!-- UOM -->
+                    <col style="width:140px;">  <!-- Default Selling Price -->
+                    <col style="width:85px;">   <!-- Total Stock -->
+                    <col style="width:115px;">  <!-- Request Status -->
+                    <col style="width:95px;">   <!-- Product Status -->
+                    <col style="width:90px;">   <!-- Updated -->
+                    <col style="width:130px;">  <!-- Actions -->
                 </colgroup>
                 <thead style="background:#002F6C !important;">
                     <tr style="background:#002F6C !important;">
-                        <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:11px; text-transform:uppercase;">SKU</th>
-                        <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:11px; text-transform:uppercase;">Product</th>
-                        <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:11px; text-transform:uppercase;">Category / Brand</th>
-                        <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:11px; text-transform:uppercase;">UOM</th>
+                        <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:11px; text-transform:uppercase; text-align:left;">SKU</th>
+                        <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:11px; text-transform:uppercase; text-align:left;">Product</th>
+                        <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:11px; text-transform:uppercase; text-align:left;">Category / Brand</th>
+                        <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:11px; text-transform:uppercase; text-align:left;">UOM</th>
                         <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:11px; text-transform:uppercase; text-align:right;">Default Selling Price</th>
                         <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:11px; text-transform:uppercase; text-align:center;">Total Stock</th>
                         <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:11px; text-transform:uppercase; text-align:center;">Request Status</th>
@@ -972,6 +1462,9 @@ include __DIR__ . '/../partials/header.php';
                         <td style="text-align:center;">
                             <div class="act-btn-wrap">
                                 <?php if ($app_status === 'pending'): ?>
+                                    <button onclick="viewAdminMerchandiseDetails(<?php echo $item['id']; ?>)" class="act-btn act-btn-view">
+                                        <i class="fas fa-eye"></i> View
+                                    </button>
                                     <button onclick="openViewRequestModal(<?php echo $item['approval_id']; ?>)" class="act-btn act-btn-viewreq">
                                         <i class="fas fa-eye"></i> View Request
                                     </button>
@@ -982,15 +1475,13 @@ include __DIR__ . '/../partials/header.php';
                                         <i class="fas fa-times"></i> Reject
                                     </button>
                                 <?php else: ?>
+                                    <button onclick="viewAdminMerchandiseDetails(<?php echo $item['id']; ?>)" class="act-btn act-btn-view">
+                                        <i class="fas fa-eye"></i> View
+                                    </button>
                                     <button onclick="openAdminEditProductModal(<?php echo $item['id']; ?>)" class="act-btn act-btn-edit">
                                         <i class="fas fa-edit"></i> Edit
                                     </button>
-                                    <button onclick="openPriceHistoryModal(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars(addslashes($item['product_name'])); ?>')" class="act-btn act-btn-history">
-                                        <i class="fas fa-history"></i> Price History
-                                    </button>
-                                    <button onclick="viewAdminBatches(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars(addslashes($item['product_name'])); ?>')" class="act-btn act-btn-batches">
-                                        <i class="fas fa-layer-group"></i> View Batches
-                                    </button>
+
                                 <?php endif; ?>
                             </div>
                         </td>
@@ -1013,17 +1504,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="card" style="padding:0;overflow:hidden;">
         <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
             <strong style="font-size:15px;color:#002F6C;"><i class="fas fa-wrench"></i> Service Types</strong>
-            <div style="color:#64748b;font-size:12px;">
-                Found <?php echo count($service_types); ?> service type(s)
-                <?php 
-                $pendingCount = 0;
-                foreach ($service_types as $svc) {
-                    if (!empty($svc['pending_price'])) $pendingCount++;
-                }
-                if ($pendingCount > 0): ?>
-                    | <span style="color:#d97706;font-weight:600;"><i class="fas fa-clock"></i> <?php echo $pendingCount; ?> pending approval(s)</span>
-                <?php endif; ?>
-            </div>
         </div>
         
         <?php if (empty($service_types)): ?>
@@ -1033,114 +1513,176 @@ include __DIR__ . '/../partials/header.php';
             </div>
         <?php else: ?>
             <div class="table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
-                <table class="pricing-table">
+                <table class="pricing-table" style="width:100%;">
                     <thead>
                         <tr>
-                            <th style="width:200px;">Service Name</th>
-                            <th style="width:140px;">Service Key</th>
-                            <th style="width:100px;">Current Price (&#8369;)</th>
-                            <th style="width:100px;">Pending Price (&#8369;)</th>
-                            <th style="width:110px;">Change</th>
-                            <th style="width:100px;">Status</th>
-                            <th style="width:120px;">Manager</th>
-                            <th style="text-align:center;">Action</th>
+                            <th style="width:75px;">Code</th>
+                            <th style="min-width:120px;">Service Name</th>
+                            <th style="width:110px;">Category</th>
+                            <th style="text-align:right;width:95px;">Service Fee</th>
+                            <th style="text-align:right;width:90px;">Labor Fee</th>
+                            <th style="text-align:center;width:70px;">Duration</th>
+                            <th style="text-align:center;width:65px;">Mechanics</th>
+                            <th style="text-align:center;width:85px;">Status</th>
+                            <th style="text-align:center;width:90px;">Last Updated</th>
+                            <th style="width:100px;">Manager</th>
+                            <th style="text-align:center;width:115px;">Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($service_types as $svc): 
-                            $hasPending = !empty($svc['pending_price']);
-                            $currentPrice = (float)$svc['service_price'];
-                            $pendingPrice = (float)($svc['pending_price'] ?? 0);
-                            $oldPrice = (float)($svc['old_price'] ?? $currentPrice);
-                            $priceChange = $pendingPrice - $oldPrice;
-                            $changePercent = $oldPrice > 0 ? (($priceChange / $oldPrice) * 100) : 0;
-                            
-                            // Use active column (1 or 0) instead of status
-                            $isServiceActive = (int)($svc['active'] ?? 1) === 1;
-                            $statusDisplay = $isServiceActive ? 'Active' : 'Inactive';
-                            $statusColor = $isServiceActive ? '#16a34a' : '#dc2626';
+                        <?php foreach ($service_types as $svc):
+                            $svcId        = (int)$svc['id'];
+                            $svcCode      = htmlspecialchars($svc['service_code'] ?? ('SRV-' . str_pad($svcId, 4, '0', STR_PAD_LEFT)));
+                            $svcName      = htmlspecialchars($svc['service_name']);
+                            $svcKey       = htmlspecialchars($svc['service_key'] ?? '');
+                            $svcCat       = htmlspecialchars($svc['category'] ?? 'Others');
+                            $svcDesc      = htmlspecialchars($svc['description'] ?? '');
+                            $currentSvcFee  = (float)($svc['service_price'] ?? 0);
+                            $currentLabFee  = (float)($svc['labor_fee'] ?? 0);
+                            $duration     = (int)($svc['estimated_duration'] ?? 60);
+                            $mechanics    = (int)($svc['required_mechanics'] ?? 1);
+                            $isActive     = (int)($svc['active'] ?? 1) === 1;
+                            $hasPending   = ($svc['approval_status'] ?? '') === 'pending';
+                            $pendSvcFee   = $hasPending ? (float)($svc['pending_price'] ?? 0) : 0;
+                            $pendLabFee   = $hasPending ? (float)($svc['pending_labor_fee'] ?? 0) : 0;
+                            $oldSvcFee    = (float)($svc['old_service_fee'] ?? $currentSvcFee);
+                            $oldLabFee    = (float)($svc['old_labor_fee'] ?? $currentLabFee);
+                            $updatedAt    = !empty($svc['updated_at']) ? date('M j, Y', strtotime($svc['updated_at'])) : '—';
+                            $hrs          = floor($duration / 60);
+                            $mins         = $duration % 60;
+                            $durationStr  = ($hrs > 0 ? $hrs . 'h' : '') . ($mins > 0 ? ($hrs > 0 ? ' ' : '') . $mins . 'm' : ($hrs === 0 ? '0m' : ''));
+                            $managerName  = htmlspecialchars($svc['manager_name'] ?? '');
+                            $approvalId   = (int)($svc['approval_id'] ?? 0);
+                            $jsObj = json_encode([
+                                'id'                 => $svcId,
+                                'service_code'       => $svc['service_code'] ?? '',
+                                'service_name'       => $svc['service_name'],
+                                'service_key'        => $svc['service_key'] ?? '',
+                                'category'           => $svc['category'] ?? '',
+                                'service_price'      => $currentSvcFee,
+                                'labor_fee'          => $currentLabFee,
+                                'estimated_duration' => $duration,
+                                'required_mechanics' => $mechanics,
+                                'description'        => $svc['description'] ?? '',
+                                'active'             => $isActive ? 1 : 0,
+                            ], JSON_HEX_APOS | JSON_HEX_QUOT);
                         ?>
                         <tr>
+                            <!-- Code -->
+                            <td>
+                                <span style="font-family:monospace;font-size:11px;color:#0369a1;font-weight:700;background:#e0f2fe;padding:3px 6px;border-radius:5px;letter-spacing:0.2px;"><?php echo $svcCode; ?></span>
+                            </td>
+
                             <!-- Service Name -->
                             <td>
-                                <strong><?php echo htmlspecialchars($svc['service_name']); ?></strong>
-                            </td>
-                            
-                            <!-- Service Key -->
-                            <td>
-                                <span style="font-family:monospace;color:#64748b;font-size:12px;">
-                                    <?php echo htmlspecialchars($svc['service_key']); ?>
-                                </span>
-                            </td>
-                            
-                            <!-- Current Price -->
-                            <td>
-                                <strong style="color:#002F6C;">&#8369;<?php echo number_format($currentPrice, 2); ?></strong>
-                            </td>
-                            
-                            <!-- Pending Price -->
-                            <td>
-                                <?php if ($hasPending): ?>
-                                    <strong style="color:#d97706;">&#8369;<?php echo number_format($pendingPrice, 2); ?></strong>
-                                <?php else: ?>
-                                    <span class="muted">—</span>
+                                <div style="font-weight:600;color:#1e293b;font-size:12.5px;"><?php echo $svcName; ?></div>
+                                <?php if ($svcDesc): ?>
+                                <div style="font-size:10.5px;color:#94a3b8;margin-top:2px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo $svcDesc; ?>"><?php echo $svcDesc; ?></div>
                                 <?php endif; ?>
                             </td>
-                            
-                            <!-- Change -->
+
+                            <!-- Category -->
                             <td>
-                                <?php if ($hasPending): ?>
-                                    <div style="display:flex;flex-direction:column;gap:2px;">
-                                        <span style="color:<?php echo $priceChange >= 0 ? '#16a34a' : '#dc2626'; ?>;font-weight:700;font-size:12px;">
-                                            <?php echo $priceChange >= 0 ? '+' : ''; ?>&#8369;<?php echo number_format(abs($priceChange), 2); ?>
-                                        </span>
-                                        <span style="color:<?php echo $priceChange >= 0 ? '#16a34a' : '#dc2626'; ?>;font-size:11px;">
-                                            <?php echo number_format(abs($changePercent), 1); ?>%
-                                        </span>
-                                    </div>
-                                <?php else: ?>
-                                    <span class="muted">—</span>
+                                <span style="background:#f0f7ff;color:#003d7a;padding:3px 8px;border-radius:999px;font-size:10.5px;font-weight:600;white-space:nowrap;"><?php echo $svcCat; ?></span>
+                            </td>
+
+                            <!-- Service Fee -->
+                            <td style="text-align:right;">
+                                <div style="font-weight:700;color:#002F6C;font-size:13px;">&#8369;<?php echo number_format($currentSvcFee, 2); ?></div>
+                                <?php if ($hasPending && $pendSvcFee > 0): ?>
+                                <div style="font-size:9.5px;color:#d97706;background:#fef3c7;padding:1px 4px;border-radius:4px;margin-top:2px;font-weight:600;display:inline-block;white-space:nowrap;">
+                                    <i class="fas fa-hourglass-half" style="font-size:8.5px;"></i> &#8369;<?php echo number_format($pendSvcFee, 2); ?>
+                                </div>
                                 <?php endif; ?>
                             </td>
-                            
+
+                            <!-- Labor Fee -->
+                            <td style="text-align:right;">
+                                <div style="font-weight:600;color:#0369a1;font-size:12.5px;">&#8369;<?php echo number_format($currentLabFee, 2); ?></div>
+                                <?php if ($hasPending && $pendLabFee > 0): ?>
+                                <div style="font-size:9.5px;color:#d97706;background:#fef3c7;padding:1px 4px;border-radius:4px;margin-top:2px;font-weight:600;display:inline-block;white-space:nowrap;">
+                                    <i class="fas fa-hourglass-half" style="font-size:8.5px;"></i> &#8369;<?php echo number_format($pendLabFee, 2); ?>
+                                </div>
+                                <?php endif; ?>
+                            </td>
+
+                            <!-- Duration -->
+                            <td style="text-align:center;">
+                                <span style="color:#64748b;font-size:11.5px;white-space:nowrap;"><i class="fas fa-clock" style="color:#94a3b8;font-size:10px;"></i> <?php echo $durationStr; ?></span>
+                            </td>
+
+                            <!-- Mechanics -->
+                            <td style="text-align:center;">
+                                <span style="color:#64748b;font-size:11.5px;"><i class="fas fa-user-cog" style="color:#94a3b8;font-size:10px;"></i> <?php echo $mechanics; ?></span>
+                            </td>
+
                             <!-- Status -->
-                            <td>
-                                <?php if ($hasPending): ?>
-                                    <span class="badge" style="background:#fef3c7;color:#92400e;">PENDING APPROVAL</span>
+                            <td style="text-align:center;">
+                                <?php if ($isActive): ?>
+                                <span style="background:#dcfce7;color:#15803d;padding:3px 8px;border-radius:999px;font-size:10.5px;font-weight:700;display:inline-block;">Active</span>
                                 <?php else: ?>
-                                    <span style="color:<?php echo $statusColor; ?>;font-weight:600;"><?php echo $statusDisplay; ?></span>
+                                <span style="background:#fee2e2;color:#b91c1c;padding:3px 8px;border-radius:999px;font-size:10.5px;font-weight:700;display:inline-block;">Inactive</span>
+                                <?php endif; ?>
+                                <?php if ($hasPending): ?>
+                                <div style="margin-top:3px;">
+                                    <span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:999px;font-size:9.5px;font-weight:700;white-space:nowrap;"><i class="fas fa-hourglass-half" style="font-size:8.5px;"></i> Pending</span>
+                                </div>
                                 <?php endif; ?>
                             </td>
-                            
+
+                            <!-- Last Updated -->
+                            <td style="text-align:center;font-size:11px;color:#94a3b8;white-space:nowrap;"><?php echo $updatedAt; ?></td>
+
                             <!-- Manager -->
                             <td>
-                                <?php if ($hasPending): ?>
-                                    <?php echo htmlspecialchars($svc['manager_name'] ?? 'Unknown'); ?>
+                                <?php if ($hasPending && $managerName): ?>
+                                <div style="font-size:11.5px;color:#1e293b;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="<?php echo $managerName; ?>"><?php echo $managerName; ?></div>
+                                <div style="font-size:9.5px;color:#94a3b8;">Pending fee</div>
                                 <?php else: ?>
-                                    <span class="muted">—</span>
+                                <span style="color:#cbd5e1;font-size:12px;">—</span>
                                 <?php endif; ?>
                             </td>
-                            
-                            <!-- Action -->
-                            <td style="text-align:center;vertical-align:middle;">
-                                <?php if ($hasPending): ?>
-                                    <div style="display:flex;gap:4px;justify-content:center;margin-bottom:4px;">
-                                        <form method="POST" style="margin:0;">
-                                            <input type="hidden" name="action" value="approve_price">
-                                            <input type="hidden" name="approval_id" value="<?php echo (int)$svc['approval_id']; ?>">
-                                            <input type="hidden" name="active_tab" value="services">
-                                            <button type="submit" class="btn" style="background:#fff;color:#475569;border:1px solid #cbd5e1;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;transition:all 0.2s;" onmouseover="this.style.background='#f8fafc';this.style.borderColor='#94a3b8'" onmouseout="this.style.background='#fff';this.style.borderColor='#cbd5e1'">
-                                                <i class="fas fa-check"></i> Approve
-                                            </button>
-                                        </form>
-                                        <button type="button" class="btn" style="background:#fff;color:#475569;border:1px solid #cbd5e1;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;transition:all 0.2s;" onclick="openRejectModal(<?php echo (int)$svc['approval_id']; ?>, 'services')" onmouseover="this.style.background='#f8fafc';this.style.borderColor='#94a3b8'" onmouseout="this.style.background='#fff';this.style.borderColor='#cbd5e1'">
-                                            <i class="fas fa-times"></i> Reject
-                                        </button>
-                                    </div>
-                                <?php endif; ?>
-                                <button onclick="openAdminEditServiceModal(<?php echo $svc['id']; ?>, '<?php echo htmlspecialchars(addslashes($svc['service_name'])); ?>', '<?php echo htmlspecialchars(addslashes($svc['category']??'')); ?>', '<?php echo htmlspecialchars(addslashes($svc['service_key']??'')); ?>', <?php echo (float)$currentPrice; ?>, <?php echo (int)($svc['active']??1); ?>)" class="act-btn act-btn-edit">
-                                    <i class="fas fa-edit"></i> Edit
-                                </button>
+
+                            <!-- Action (Admin Functions) -->
+                            <td style="text-align:center;vertical-align:middle;padding:4px 3px !important;">
+                                <div class="act-btn-wrap">
+                                    <?php if ($hasPending): ?>
+                                    <button type="button"
+                                        onclick="openApprovePriceModalAdmin(<?php echo $approvalId; ?>, '<?php echo htmlspecialchars(addslashes($svc['service_name'])); ?>', <?php echo $currentSvcFee; ?>, <?php echo $pendSvcFee; ?>, 'services')"
+                                        class="act-btn act-btn-approve">
+                                        <i class="fas fa-check"></i> Approve
+                                    </button>
+                                    <button type="button"
+                                        onclick="openRejectModal(<?php echo $approvalId; ?>, 'services')"
+                                        class="act-btn act-btn-reject">
+                                        <i class="fas fa-times"></i> Reject
+                                    </button>
+                                    <?php endif; ?>
+                                    <?php if (!$hasPending && ($oldSvcFee !== $currentSvcFee || $oldLabFee !== $currentLabFee)): ?>
+                                    <button type="button"
+                                        onclick="restoreServiceFees(<?php echo $svcId; ?>, '<?php echo htmlspecialchars(addslashes($svc['service_name'])); ?>', <?php echo $oldSvcFee; ?>, <?php echo $oldLabFee; ?>)"
+                                        class="act-btn act-btn-restore">
+                                        <i class="fas fa-undo"></i> Restore
+                                    </button>
+                                    <?php endif; ?>
+                                    <button onclick="openAdminEditServiceModal(<?php echo $svcId; ?>, '<?php echo htmlspecialchars(addslashes($svc['service_name'])); ?>', '<?php echo htmlspecialchars(addslashes($svc['category']??'')); ?>', '<?php echo htmlspecialchars(addslashes($svc['service_key']??'')); ?>', <?php echo $currentSvcFee; ?>, <?php echo (int)($svc['active']??1); ?>)"
+                                        class="act-btn act-btn-edit">
+                                        <i class="fas fa-edit"></i> Edit
+                                    </button>
+                                    <?php if ($isActive): ?>
+                                    <button type="button"
+                                        onclick="adminToggleService(<?php echo $svcId; ?>, 0, '<?php echo htmlspecialchars(addslashes($svc['service_name'])); ?>')"
+                                        class="act-btn act-btn-deactivate">
+                                        <i class="fas fa-ban"></i> Deactivate
+                                    </button>
+                                    <?php else: ?>
+                                    <button type="button"
+                                        onclick="adminToggleService(<?php echo $svcId; ?>, 1, '<?php echo htmlspecialchars(addslashes($svc['service_name'])); ?>')"
+                                        class="act-btn act-btn-activate">
+                                        <i class="fas fa-check-circle"></i> Activate
+                                    </button>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                         </tr>
                         <?php endforeach; ?>
@@ -1251,7 +1793,7 @@ include __DIR__ . '/../partials/header.php';
                 <i class="fas fa-shield-alt"></i> <em>As Admin, any price edit you save will take effect immediately.</em>
             </div>
             <div style="margin-top:20px; display:flex; justify-content:flex-end; gap:10px;">
-                <button type="button" onclick="closeAdminEditProductModal()" style="padding:8px 16px; border:1px solid #cbd5e1; background:#fff; color:#475569; border-radius:6px; cursor:pointer; font-weight:600;">Cancel</button>
+                <button type="button" onclick="closeAdminEditProductModal()" style="padding:8px 16px !important; border:1px solid #cbd5e1 !important; background:#f1f5f9 !important; color:#0f172a !important; border-radius:6px !important; cursor:pointer !important; font-weight:600 !important; font-size:13px !important;">Cancel</button>
                 <button type="submit" style="padding:8px 18px; border:none; background:#002F6C; color:#fff; border-radius:6px; cursor:pointer; font-weight:600;"><i class="fas fa-save"></i> Save Changes</button>
             </div>
         </form>
@@ -1289,7 +1831,7 @@ include __DIR__ . '/../partials/header.php';
                 <i class="fas fa-shield-alt"></i> <em>As Admin, saving this edit will update live fuel pricing immediately.</em>
             </div>
             <div style="margin-top:20px; display:flex; justify-content:flex-end; gap:10px;">
-                <button type="button" onclick="closeAdminEditFuelModal()" style="padding:8px 16px; border:1px solid #cbd5e1; background:#fff; color:#475569; border-radius:6px; cursor:pointer; font-weight:600;">Cancel</button>
+                <button type="button" onclick="closeAdminEditFuelModal()" style="padding:8px 16px !important; border:1px solid #cbd5e1 !important; background:#f1f5f9 !important; color:#0f172a !important; border-radius:6px !important; cursor:pointer !important; font-weight:600 !important; font-size:13px !important;">Cancel</button>
                 <button type="submit" style="padding:8px 18px; border:none; background:#002F6C; color:#fff; border-radius:6px; cursor:pointer; font-weight:600;"><i class="fas fa-save"></i> Save Changes</button>
             </div>
         </form>
@@ -1336,7 +1878,7 @@ include __DIR__ . '/../partials/header.php';
                 <i class="fas fa-shield-alt"></i> <em>As Admin, saving this edit will update service pricing immediately.</em>
             </div>
             <div style="margin-top:20px; display:flex; justify-content:flex-end; gap:10px;">
-                <button type="button" onclick="closeAdminEditServiceModal()" style="padding:8px 16px; border:1px solid #cbd5e1; background:#fff; color:#475569; border-radius:6px; cursor:pointer; font-weight:600;">Cancel</button>
+                <button type="button" onclick="closeAdminEditServiceModal()" style="padding:8px 16px; border:1px solid #cbd5e1; background:#f1f5f9 !important; color:#0f172a !important; border-radius:6px; cursor:pointer; font-weight:600;">Cancel</button>
                 <button type="submit" style="padding:8px 18px; border:none; background:#002F6C; color:#fff; border-radius:6px; cursor:pointer; font-weight:600;"><i class="fas fa-save"></i> Save Changes</button>
             </div>
         </form>
@@ -1374,7 +1916,7 @@ include __DIR__ . '/../partials/header.php';
             </div>
             <div style="display:flex; justify-content:flex-end; gap:10px;">
                 <input type="hidden" id="confirmApproveId">
-                <button type="button" onclick="closeApproveConfirmModal()" style="padding:8px 16px; border:1px solid #cbd5e1; background:#fff; color:#475569; border-radius:6px; cursor:pointer; font-weight:600;">Cancel</button>
+                <button type="button" onclick="closeApproveConfirmModal()" style="padding:8px 16px !important; border:1px solid #cbd5e1 !important; background:#f1f5f9 !important; color:#0f172a !important; border-radius:6px !important; cursor:pointer !important; font-weight:600 !important; font-size:13px !important;">Cancel</button>
                 <button type="button" onclick="confirmApprovePriceRequest()" style="padding:8px 18px; border:none; background:#16a34a; color:#fff; border-radius:6px; cursor:pointer; font-weight:600;">✔ Approve Request</button>
             </div>
         </div>
@@ -1393,8 +1935,8 @@ include __DIR__ . '/../partials/header.php';
             <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:6px;">Rejection Reason</label>
             <textarea id="rejectReasonText" rows="3" required placeholder="Enter reason for rejecting this price request&hellip;" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; box-sizing:border-box;"></textarea>
             <div style="margin-top:20px; display:flex; justify-content:flex-end; gap:10px;">
-                <button type="button" onclick="closeRejectReasonModal()" style="padding:8px 16px; border:1px solid #cbd5e1; background:#fff; color:#475569; border-radius:6px; cursor:pointer; font-weight:600;">Cancel</button>
-                <button type="button" onclick="confirmRejectPriceRequest()" style="padding:8px 18px; border:none; background:#dc2626; color:#fff; border-radius:6px; cursor:pointer; font-weight:600;">❌ Reject Request</button>
+                <button type="button" onclick="closeRejectReasonModal()" style="padding:8px 16px !important; border:1px solid #cbd5e1 !important; background:#f1f5f9 !important; color:#0f172a !important; border-radius:6px !important; cursor:pointer !important; font-weight:600 !important; font-size:13px !important;">Cancel</button>
+                <button type="button" onclick="confirmRejectPriceRequest()" style="padding:8px 18px; border:none; background:#dc2626; color:#fff; border-radius:6px; cursor:pointer; font-weight:600;"><i class="fas fa-times"></i> Reject Request</button>
             </div>
         </div>
     </div>
@@ -1409,6 +1951,82 @@ include __DIR__ . '/../partials/header.php';
         </div>
         <div id="priceHistoryContent" style="padding:20px; max-height:450px; overflow-y:auto;">
             <!-- Loaded dynamically via JS -->
+        </div>
+    </div>
+</div>
+
+<!-- VIEW ADMIN MERCHANDISE DETAILS MODAL -->
+<div id="viewAdminMerchModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:flex-start;justify-content:center;padding:85px 20px 70px 20px;box-sizing:border-box;overflow-y:auto;">
+    <div style="background:#fff;border-radius:12px;width:92%;max-width:920px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:0 auto;overflow:hidden;max-height:calc(100vh - 155px);display:flex;flex-direction:column;">
+        <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+            <h3 style="margin:0;font-size:17px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-box" style="color:#fff;font-size:18px;"></i>
+                <span id="adm_vm_title" style="color:#fff;">MERCHANDISE SPECIFICATION &amp; HISTORY</span>
+            </h3>
+            <button onclick="closeAdminViewMerchModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:16px;">&times;</button>
+        </div>
+        <div style="padding:20px 24px;overflow-y:auto;overflow-x:hidden;flex:1 1 auto;background:#fff;min-height:0;box-sizing:border-box;">
+            <!-- Overview -->
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:18px;margin-bottom:20px;">
+                <h4 style="margin:0 0 14px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;"><i class="fas fa-info-circle"></i> Product Specification &amp; Overview</h4>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;font-size:13px;">
+                    <div><span style="color:#64748b;font-weight:600;">SKU / Code:</span><br><code id="adm_vm_sku" style="font-weight:800;color:#4f46e5;">-</code></div>
+                    <div><span style="color:#64748b;font-weight:600;">Barcode:</span><br><strong id="adm_vm_barcode">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;">Product Name:</span><br><strong id="adm_vm_name" style="color:#0f172a;">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;">Category:</span><br><strong id="adm_vm_category">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;">Brand:</span><br><strong id="adm_vm_brand">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;">Unit (UOM):</span><br><strong id="adm_vm_unit">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;">Current Selling Price:</span><br><strong id="adm_vm_price" style="color:#002F6C;font-size:15px;">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;">Current Cost Price:</span><br><strong id="adm_vm_cost" style="color:#16a34a;">-</strong> <small style="color:#94a3b8;font-size:10px;">(latest Stock-In)</small></div>
+                    <div><span style="color:#64748b;font-weight:600;">Total Stock:</span><br><strong id="adm_vm_stock">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;">Batch Count:</span><br><strong id="adm_vm_batch_count">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;">Reorder Level:</span><br><strong id="adm_vm_reorder">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;">Status:</span><br><span id="adm_vm_status">-</span></div>
+                </div>
+            </div>
+            <!-- Batch Summary -->
+            <div style="margin-bottom:20px;">
+                <h4 style="margin:0 0 10px 0;font-size:14px;color:#0f172a;font-weight:700;display:flex;align-items:center;gap:8px;"><i class="fas fa-layer-group" style="color:#0284c7;"></i> Batch Summary <small style="color:#64748b;font-weight:400;">(Read Only)</small></h4>
+                <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                        <thead><tr style="background:#f1f5f9;color:#334155;font-weight:700;"><th style="padding:8px 12px;">Batch No.</th><th style="padding:8px 12px;">Remaining Qty</th><th style="padding:8px 12px;">Expiration</th><th style="padding:8px 12px;">Status</th></tr></thead>
+                        <tbody id="adm_vm_batches_body"><tr><td colspan="4" style="text-align:center;padding:12px;color:#94a3b8;">No batches</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+            <!-- Price History -->
+            <div style="margin-bottom:20px;">
+                <h4 style="margin:0 0 10px 0;font-size:14px;color:#0f172a;font-weight:700;display:flex;align-items:center;gap:8px;"><i class="fas fa-history" style="color:#4f46e5;"></i> Price History</h4>
+                <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                        <thead><tr style="background:#f1f5f9;color:#334155;font-weight:700;"><th style="padding:8px 12px;">Date</th><th style="padding:8px 12px;">Old Price</th><th style="padding:8px 12px;">New Price</th><th style="padding:8px 12px;">Requested By</th><th style="padding:8px 12px;">Approved By</th><th style="padding:8px 12px;">Status</th></tr></thead>
+                        <tbody id="adm_vm_price_history_body"><tr><td colspan="6" style="text-align:center;padding:12px;color:#94a3b8;">No price history</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+            <!-- Config History -->
+            <div style="margin-bottom:20px;">
+                <h4 style="margin:0 0 10px 0;font-size:14px;color:#0f172a;font-weight:700;display:flex;align-items:center;gap:8px;"><i class="fas fa-sliders-h" style="color:#d97706;"></i> Configuration History</h4>
+                <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                        <thead><tr style="background:#f1f5f9;color:#334155;font-weight:700;"><th style="padding:8px 12px;">Date</th><th style="padding:8px 12px;">Field</th><th style="padding:8px 12px;">Old Value</th><th style="padding:8px 12px;">New Value</th><th style="padding:8px 12px;">Changed By</th></tr></thead>
+                        <tbody id="adm_vm_config_history_body"><tr><td colspan="5" style="text-align:center;padding:12px;color:#94a3b8;">No changes recorded</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+            <!-- Status History -->
+            <div>
+                <h4 style="margin:0 0 10px 0;font-size:14px;color:#0f172a;font-weight:700;display:flex;align-items:center;gap:8px;"><i class="fas fa-power-off" style="color:#dc2626;"></i> Status History</h4>
+                <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                        <thead><tr style="background:#f1f5f9;color:#334155;font-weight:700;"><th style="padding:8px 12px;">Date</th><th style="padding:8px 12px;">Old Status</th><th style="padding:8px 12px;">New Status</th><th style="padding:8px 12px;">Changed By</th></tr></thead>
+                        <tbody id="adm_vm_status_history_body"><tr><td colspan="4" style="text-align:center;padding:12px;color:#94a3b8;">No status changes</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:12px 24px;display:flex;justify-content:flex-end;flex-shrink:0;">
+            <button onclick="closeAdminViewMerchModal()" style="background:#00264D !important;color:#fff !important;border:none;padding:8px 20px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">Close</button>
         </div>
     </div>
 </div>
@@ -1471,6 +2089,67 @@ function filterAdminMerchTable() {
     });
 }
 
+// ── Professional Toast Banner ─────────────────────────────────────────────
+function showCustomAlert(message, type, callback) {
+    type = type || 'success';
+    var isError = (type === 'error' || type === 'danger' || type === 'warning');
+    var isWarning = (type === 'warning');
+
+    var container = document.getElementById('adminToastContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'adminToastContainer';
+        container.style.cssText = 'position:fixed;top:24px;right:24px;z-index:9999999;display:flex;flex-direction:column;gap:10px;max-width:400px;width:calc(100% - 48px);pointer-events:none;';
+        document.body.appendChild(container);
+    }
+
+    var toast = document.createElement('div');
+    var accentColor = isWarning ? '#d97706' : (isError ? '#dc2626' : '#16a34a');
+    var iconBg      = isWarning ? '#fef3c7' : (isError ? '#fee2e2' : '#dcfce7');
+    var iconClass   = isWarning ? 'fa-exclamation-circle' : (isError ? 'fa-times-circle' : 'fa-check-circle');
+    var titleText   = isWarning ? 'Validation Error' : (isError ? 'Action Failed' : 'Action Successful');
+
+    toast.style.cssText = [
+        'pointer-events:auto',
+        'background:#ffffff',
+        'border-radius:12px',
+        'padding:16px 18px',
+        'box-shadow:0 20px 40px rgba(0,0,0,0.12),0 4px 12px rgba(0,0,0,0.06)',
+        'display:flex',
+        'align-items:flex-start',
+        'gap:14px',
+        'border:1px solid #e2e8f0',
+        (isError ? 'border-left:5px solid ' + accentColor : ''),
+        'transform:translateX(120%)',
+        'opacity:0',
+        'transition:all 0.35s cubic-bezier(0.16,1,0.3,1)',
+        "font-family:'Segoe UI',Roboto,system-ui,sans-serif"
+    ].filter(Boolean).join(';');
+
+    toast.innerHTML =
+        '<div style="width:38px;height:38px;border-radius:50%;background:' + iconBg + ';color:' + accentColor + ';display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;margin-top:1px;">'
+            + '<i class="fas ' + iconClass + '"></i>'
+        + '</div>'
+        + '<div style="flex:1;min-width:0;">'
+            + '<div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:3px;letter-spacing:0.01em;">' + titleText + '</div>'
+            + '<div style="font-size:13px;font-weight:500;color:#475569;line-height:1.45;">' + message + '</div>'
+        + '</div>'
+        + (isError ? '<button type="button" onclick="this.closest(\'[style]\').style.opacity=0;setTimeout(function(){this.remove();}.bind(this.closest(\'[style]\')),300);" style="background:none;border:none;color:#94a3b8;font-size:20px;line-height:1;cursor:pointer;padding:0 2px;flex-shrink:0;align-self:flex-start;transition:color 0.15s;" onmouseover="this.style.color=\'#475569\'" onmouseout="this.style.color=\'#94a3b8\'">&times;</button>' : '');
+
+    container.appendChild(toast);
+    setTimeout(function() { toast.style.transform = 'translateX(0)'; toast.style.opacity = '1'; }, 20);
+
+    var delay = (typeof callback === 'function') ? 1600 : (isError || isWarning ? 6000 : 4500);
+    setTimeout(function() {
+        toast.style.transform = 'translateX(120%)';
+        toast.style.opacity = '0';
+        setTimeout(function() {
+            if (toast.parentNode) toast.parentNode.removeChild(toast);
+            if (typeof callback === 'function') callback();
+        }, 350);
+    }, delay);
+}
+
 // ── 1. Admin Edit Product Modal ────────────────────────────────────────────
 function openAdminEditProductModal(id) {
     document.getElementById('adminEditId').value = id;
@@ -1515,13 +2194,12 @@ document.getElementById('adminEditProductForm').addEventListener('submit', funct
     fetch('admin_set_prices_handler.php', { method: 'POST', body: fd })
         .then(r => r.json()).then(data => {
             if (data.success) {
-                alert('SUCCESS: Product updated!');
                 closeAdminEditProductModal();
-                location.reload();
+                showCustomAlert('Product updated successfully!', 'success', function() { location.reload(); });
             } else {
-                alert('Error: ' + (data.message || 'Failed to update product'));
+                showCustomAlert(data.message || 'Failed to update product.', 'error');
             }
-        }).catch(() => alert('Error updating product.'));
+        }).catch(function() { showCustomAlert('Network error while updating product.', 'error'); });
 });
 
 // ── 1.1 Admin Edit Fuel Modal ─────────────────────────────────────────────
@@ -1551,13 +2229,12 @@ document.getElementById('adminEditFuelForm').addEventListener('submit', function
     fetch('admin_set_prices_handler.php', { method: 'POST', body: fd })
         .then(r => r.json()).then(data => {
             if (data.success) {
-                alert('SUCCESS: Fuel product updated!');
                 closeAdminEditFuelModal();
-                location.reload();
+                showCustomAlert('Fuel product updated successfully!', 'success', function() { location.reload(); });
             } else {
-                alert('Error: ' + (data.message || 'Failed to update fuel product'));
+                showCustomAlert(data.message || 'Failed to update fuel product.', 'error');
             }
-        }).catch(() => alert('Error updating fuel product.'));
+        }).catch(function() { showCustomAlert('Network error while updating fuel product.', 'error'); });
 });
 
 // ── 1.2 Admin Edit Service Modal ──────────────────────────────────────────
@@ -1590,14 +2267,125 @@ document.getElementById('adminEditServiceForm').addEventListener('submit', funct
     fetch('admin_set_prices_handler.php', { method: 'POST', body: fd })
         .then(r => r.json()).then(data => {
             if (data.success) {
-                alert('SUCCESS: Service type updated!');
                 closeAdminEditServiceModal();
-                location.reload();
+                showCustomAlert('Service type updated successfully!', 'success', function() { location.reload(); });
             } else {
-                alert('Error: ' + (data.message || 'Failed to update service type'));
+                showCustomAlert(data.message || 'Failed to update service type.', 'error');
             }
-        }).catch(() => alert('Error updating service type.'));
+        }).catch(function() { showCustomAlert('Network error while updating service type.', 'error'); });
 });
+
+function adminToggleService(id, active, name) {
+    document.getElementById('toggleServiceStatusId').value = id;
+    document.getElementById('toggleServiceStatusValue').value = active;
+    document.getElementById('toggleServiceStatusName').innerText = name;
+
+    var header     = document.getElementById('toggleServiceStatusHeader');
+    var title      = document.getElementById('toggleServiceStatusTitle');
+    var hIcon      = document.getElementById('toggleServiceHeaderIcon');
+    var btnIcon    = document.getElementById('toggleServiceBtnIcon');
+    var desc       = document.getElementById('toggleServiceStatusDesc');
+    var confirmBtn = document.getElementById('toggleServiceStatusConfirmBtn');
+
+    var safeName = document.createElement('div');
+    safeName.textContent = name;
+    var escapedName = safeName.innerHTML;
+
+    if (parseInt(active, 10) === 1) {
+        header.style.background = 'linear-gradient(135deg, #16a34a, #15803d)';
+        title.innerText = 'Activate Service';
+        hIcon.className = 'fas fa-check-circle';
+        btnIcon.className = 'fas fa-check-circle';
+        desc.innerHTML = 'Are you sure you want to activate <strong style="color:#0f172a;">' + escapedName + '</strong>? This service will become active for job orders.';
+        confirmBtn.style.background = '#16a34a';
+        confirmBtn.innerHTML = '<i class="fas fa-check-circle"></i> Confirm Activation';
+    } else {
+        header.style.background = 'linear-gradient(135deg, #dc2626, #b91c1c)';
+        title.innerText = 'Deactivate Service';
+        hIcon.className = 'fas fa-ban';
+        btnIcon.className = 'fas fa-ban';
+        desc.innerHTML = 'Are you sure you want to deactivate <strong style="color:#0f172a;">' + escapedName + '</strong>? Deactivated services will be hidden from new job orders.';
+        confirmBtn.style.background = '#dc2626';
+        confirmBtn.innerHTML = '<i class="fas fa-ban"></i> Confirm Deactivation';
+    }
+
+    document.getElementById('toggleServiceStatusModal').style.display = 'flex';
+}
+
+function closeToggleServiceStatusModal() {
+    document.getElementById('toggleServiceStatusModal').style.display = 'none';
+}
+
+function confirmAdminToggleService() {
+    var id     = document.getElementById('toggleServiceStatusId').value;
+    var active = document.getElementById('toggleServiceStatusValue').value;
+
+    var fd = new FormData();
+    fd.append('action', 'admin_toggle_service');
+    fd.append('id', id);
+    fd.append('active', active);
+
+    fetch('admin_set_prices_handler.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+            closeToggleServiceStatusModal();
+            if (data.success) {
+                showCustomAlert(data.message, 'success', function() { location.reload(); });
+            } else {
+                showCustomAlert(data.message || 'Failed to update service status.', 'error');
+            }
+        }).catch(function() {
+            closeToggleServiceStatusModal();
+            showCustomAlert('Network error while updating service status.', 'error');
+        });
+}
+
+function restoreServiceFees(id, name, oldSvcFee, oldLabFee) {
+    document.getElementById('restoreSvcId').value = id;
+    document.getElementById('restoreOldSvcFee').value = oldSvcFee;
+    document.getElementById('restoreOldLabFee').value = oldLabFee;
+
+    var safeName = document.createElement('div');
+    safeName.textContent = name;
+    var escapedName = safeName.innerHTML;
+
+    var desc = document.getElementById('restoreSvcDesc');
+    desc.innerHTML = 'Are you sure you want to restore previous fees for <strong style="color:#0f172a;">' + escapedName + '</strong>?<br><br>' +
+        '• <strong>Service Fee:</strong> ₱' + parseFloat(oldSvcFee).toFixed(2) + '<br>' +
+        '• <strong>Labor Fee:</strong> ₱' + parseFloat(oldLabFee).toFixed(2);
+
+    document.getElementById('restoreServiceFeesModal').style.display = 'flex';
+}
+
+function closeRestoreServiceFeesModal() {
+    document.getElementById('restoreServiceFeesModal').style.display = 'none';
+}
+
+function confirmRestoreServiceFees() {
+    var id        = document.getElementById('restoreSvcId').value;
+    var oldSvcFee = document.getElementById('restoreOldSvcFee').value;
+    var oldLabFee = document.getElementById('restoreOldLabFee').value;
+
+    var fd = new FormData();
+    fd.append('action', 'restore_service_fees');
+    fd.append('id', id);
+    fd.append('old_service_fee', oldSvcFee);
+    fd.append('old_labor_fee', oldLabFee);
+
+    fetch('admin_set_prices_handler.php', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+            closeRestoreServiceFeesModal();
+            if (data.success) {
+                showCustomAlert(data.message, 'success', function() { location.reload(); });
+            } else {
+                showCustomAlert(data.message || 'Failed to restore service fees.', 'error');
+            }
+        }).catch(function() {
+            closeRestoreServiceFeesModal();
+            showCustomAlert('Network error while restoring service fees.', 'error');
+        });
+}
 
 // ── 2. View Request Modal ──────────────────────────────────────────────────
 function openViewRequestModal(approvalId) {
@@ -1661,13 +2449,12 @@ function confirmApprovePriceRequest() {
     fetch('admin_set_prices_handler.php', { method: 'POST', body: fd })
         .then(r => r.json()).then(data => {
             if (data.success) {
-                alert('✔ Price change approved!');
                 closeApproveConfirmModal();
-                location.reload();
+                showCustomAlert('Price change approved successfully!', 'success', function() { location.reload(); });
             } else {
-                alert('Error: ' + (data.message || 'Failed to approve request'));
+                showCustomAlert(data.message || 'Failed to approve request.', 'error');
             }
-        }).catch(() => alert('Error approving request.'));
+        }).catch(function() { showCustomAlert('Network error while approving request.', 'error'); });
 }
 
 // ── 4. Reject Reason Modal ────────────────────────────────────────────────
@@ -1687,7 +2474,7 @@ function confirmRejectPriceRequest() {
     var reason = document.getElementById('rejectReasonText').value.trim();
 
     if (!reason) {
-        alert('Please enter a rejection reason.');
+        showCustomAlert('Please enter a rejection reason before submitting.', 'warning');
         return;
     }
 
@@ -1699,18 +2486,17 @@ function confirmRejectPriceRequest() {
     fetch('admin_set_prices_handler.php', { method: 'POST', body: fd })
         .then(r => r.json()).then(data => {
             if (data.success) {
-                alert('❌ Price change rejected.');
                 closeRejectReasonModal();
-                location.reload();
+                showCustomAlert('Price change request rejected.', 'success', function() { location.reload(); });
             } else {
-                alert('Error: ' + (data.message || 'Failed to reject request'));
+                showCustomAlert(data.message || 'Failed to reject request.', 'error');
             }
-        }).catch(() => alert('Error rejecting request.'));
+        }).catch(function() { showCustomAlert('Network error while rejecting request.', 'error'); });
 }
 
 // ── 5. View Price History Modal ───────────────────────────────────────────
 function openPriceHistoryModal(productId, productName) {
-    document.getElementById('priceHistoryTitle').textContent = '📜 ' + productName + ' — Price History';
+    document.getElementById('priceHistoryTitle').textContent = productName + ' — Price History';
     document.getElementById('priceHistoryContent').innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:24px;"></i><br>Loading history&hellip;</div>';
     document.getElementById('priceHistoryModal').style.display = 'flex';
 
@@ -1758,7 +2544,7 @@ function closePriceHistoryModal() {
 
 // ── 6. View Batches Modal (Admin) ──────────────────────────────────────────
 function viewAdminBatches(productId, productName) {
-    document.getElementById('adminBatchesTitle').textContent = '📦 ' + productName + ' — Batch History';
+    document.getElementById('adminBatchesTitle').textContent = productName + ' — Batch History';
     document.getElementById('adminBatchesContent').innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:24px;"></i><br>Loading batches&hellip;</div>';
     document.getElementById('viewAdminBatchesModal').style.display = 'flex';
 
@@ -1805,39 +2591,861 @@ function closeAdminBatchesModal() {
     document.getElementById('viewAdminBatchesModal').style.display = 'none';
 }
 
+// ── Admin View Merchandise Details Modal ─────────────────────────────────────
+function viewAdminMerchandiseDetails(id) {
+    document.getElementById('viewAdminMerchModal').style.display = 'flex';
+    ['adm_vm_sku','adm_vm_barcode','adm_vm_name','adm_vm_category','adm_vm_brand','adm_vm_unit','adm_vm_price','adm_vm_cost','adm_vm_stock','adm_vm_batch_count','adm_vm_reorder'].forEach(function(el){
+        var e = document.getElementById(el); if(e) e.textContent = '...';
+    });
+    ['adm_vm_batches_body','adm_vm_price_history_body','adm_vm_config_history_body','adm_vm_status_history_body'].forEach(function(el){
+        var e = document.getElementById(el);
+        if(e) e.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:12px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+    });
+
+    fetch('admin_set_prices_handler.php?action=get_merchandise_details_admin&id=' + id)
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) { closeAdminViewMerchModal(); showCustomAlert(data.message || 'Failed to load product details.', 'error'); return; }
+        var p = data.product;
+        document.getElementById('adm_vm_title').textContent = (p.name || 'Product') + ' — SPECIFICATION & HISTORY';
+        document.getElementById('adm_vm_sku').textContent = p.sku || '—';
+        document.getElementById('adm_vm_barcode').textContent = p.barcode || '—';
+        document.getElementById('adm_vm_name').textContent = p.name || '—';
+        document.getElementById('adm_vm_category').textContent = p.category_name || '—';
+        document.getElementById('adm_vm_brand').textContent = p.brand || '—';
+        document.getElementById('adm_vm_unit').textContent = p.unit || '—';
+        document.getElementById('adm_vm_price').textContent = '₱' + parseFloat(p.price || 0).toFixed(2);
+        document.getElementById('adm_vm_cost').textContent = '₱' + parseFloat(p.cost || 0).toFixed(2);
+        document.getElementById('adm_vm_stock').textContent = parseFloat(p.current_stock || 0).toLocaleString();
+        document.getElementById('adm_vm_batch_count').textContent = (p.batch_count || 0) + ' batch(es)';
+        document.getElementById('adm_vm_reorder').textContent = p.min_stock_level || '—';
+        var stLower = (p.status || 'active').toLowerCase();
+        var stColor = stLower === 'active' ? '#16a34a' : '#dc2626';
+        var stBg = stLower === 'active' ? '#dcfce7' : '#fee2e2';
+        document.getElementById('adm_vm_status').innerHTML = '<span style="background:' + stBg + ';color:' + stColor + ';padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;">' + (p.status || 'Active') + '</span>';
+
+        // Batches
+        var bb = document.getElementById('adm_vm_batches_body');
+        if (data.batches && data.batches.length > 0) {
+            bb.innerHTML = data.batches.map(function(b) {
+                var stBadge = b.status === 'active' ? '<span style="background:#dcfce7;color:#16a34a;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:700;">Active</span>' : '<span style="background:#fee2e2;color:#dc2626;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:700;">' + b.status + '</span>';
+                return '<tr style="border-top:1px solid #f1f5f9;">' +
+                    '<td style="padding:8px 12px;font-family:monospace;font-weight:700;color:#0284c7;">' + (b.batch_number || '—') + '</td>' +
+                    '<td style="padding:8px 12px;font-weight:700;">' + parseFloat(b.remaining_qty || 0).toLocaleString() + '</td>' +
+                    '<td style="padding:8px 12px;">' + (b.expiration_date || '—') + '</td>' +
+                    '<td style="padding:8px 12px;">' + stBadge + '</td></tr>';
+            }).join('');
+        } else { bb.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:12px;color:#94a3b8;">No batch records</td></tr>'; }
+
+        // Price History
+        var pb = document.getElementById('adm_vm_price_history_body');
+        if (data.price_history && data.price_history.length > 0) {
+            pb.innerHTML = data.price_history.map(function(h) {
+                var statusColor = h.status === 'approved' ? '#16a34a' : h.status === 'rejected' ? '#dc2626' : '#d97706';
+                var statusBg = h.status === 'approved' ? '#dcfce7' : h.status === 'rejected' ? '#fee2e2' : '#fef3c7';
+                return '<tr style="border-top:1px solid #f1f5f9;">' +
+                    '<td style="padding:8px 12px;font-size:11px;color:#64748b;">' + (h.created_at || '—') + '</td>' +
+                    '<td style="padding:8px 12px;">₱' + parseFloat(h.old_price || 0).toFixed(2) + '</td>' +
+                    '<td style="padding:8px 12px;font-weight:700;color:#002F6C;">₱' + parseFloat(h.new_price || 0).toFixed(2) + '</td>' +
+                    '<td style="padding:8px 12px;font-size:11px;">' + (h.requested_by_name || '—') + '</td>' +
+                    '<td style="padding:8px 12px;font-size:11px;">' + (h.approved_by_name || '—') + '</td>' +
+                    '<td style="padding:8px 12px;"><span style="background:' + statusBg + ';color:' + statusColor + ';padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">' + (h.status || '—') + '</span></td></tr>';
+            }).join('');
+        } else { pb.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:12px;color:#94a3b8;">No price history</td></tr>'; }
+
+        // Config History
+        var cb = document.getElementById('adm_vm_config_history_body');
+        if (data.config_history && data.config_history.length > 0) {
+            cb.innerHTML = data.config_history.map(function(h) {
+                return '<tr style="border-top:1px solid #f1f5f9;">' +
+                    '<td style="padding:8px 12px;font-size:11px;color:#64748b;">' + (h.created_at || '—') + '</td>' +
+                    '<td style="padding:8px 12px;font-weight:700;">' + (h.field_name || '—') + '</td>' +
+                    '<td style="padding:8px 12px;color:#dc2626;">' + (h.old_value || '—') + '</td>' +
+                    '<td style="padding:8px 12px;color:#16a34a;font-weight:700;">' + (h.new_value || '—') + '</td>' +
+                    '<td style="padding:8px 12px;font-size:11px;">' + (h.changed_by_name || '—') + '</td></tr>';
+            }).join('');
+        } else { cb.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:#94a3b8;">No configuration changes recorded</td></tr>'; }
+
+        // Status History
+        var sb = document.getElementById('adm_vm_status_history_body');
+        if (data.status_history && data.status_history.length > 0) {
+            sb.innerHTML = data.status_history.map(function(h) {
+                return '<tr style="border-top:1px solid #f1f5f9;">' +
+                    '<td style="padding:8px 12px;font-size:11px;color:#64748b;">' + (h.created_at || '—') + '</td>' +
+                    '<td style="padding:8px 12px;color:#64748b;">' + (h.old_status || '—') + '</td>' +
+                    '<td style="padding:8px 12px;font-weight:700;">' + (h.new_status || '—') + '</td>' +
+                    '<td style="padding:8px 12px;font-size:11px;">' + (h.changed_by_name || '—') + '</td></tr>';
+            }).join('');
+        } else { sb.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:12px;color:#94a3b8;">No status changes recorded</td></tr>'; }
+    })
+    .catch(function() { closeAdminViewMerchModal(); showCustomAlert('Network error while loading product details.', 'error'); });
+}
+
+function closeAdminViewMerchModal() {
+    document.getElementById('viewAdminMerchModal').style.display = 'none';
+}
+
+// ── Admin Fuel Table Filters ──────────────────────────────────────────────
+function filterAdminFuelTable() {
+    var searchVal = (document.getElementById('adminFuelSearch') ? document.getElementById('adminFuelSearch').value : '').toLowerCase().trim();
+    var fuelTypeVal = document.getElementById('adminFuelTypeFilter') ? document.getElementById('adminFuelTypeFilter').value : '';
+    var ugtVal = document.getElementById('adminFuelUgtFilter') ? document.getElementById('adminFuelUgtFilter').value : '';
+    var reqStatusVal = document.getElementById('adminFuelPriceReqFilter') ? document.getElementById('adminFuelPriceReqFilter').value : '';
+    var statusVal = document.getElementById('adminFuelStatusFilter') ? document.getElementById('adminFuelStatusFilter').value : '';
+
+    var rows = document.querySelectorAll('#adminFuelTableBody tr.admin-fuel-row');
+    rows.forEach(function(row) {
+        var ugt = row.getAttribute('data-ugt') || '';
+        var fueltype = row.getAttribute('data-fueltype') || '';
+        var fullname = row.getAttribute('data-fullname') || '';
+        var reqstatus = row.getAttribute('data-reqstatus') || 'none';
+        var activestatus = row.getAttribute('data-activestatus') || 'active';
+
+        var matchesSearch = !searchVal || ugt.toLowerCase().indexOf(searchVal) !== -1 || fullname.toLowerCase().indexOf(searchVal) !== -1;
+        var matchesFuelType = !fuelTypeVal || fueltype === fuelTypeVal || fullname.indexOf(fuelTypeVal) !== -1;
+        var matchesUgt = !ugtVal || ugt === ugtVal;
+        var matchesReqStatus = !reqStatusVal || (reqStatusVal === 'pending' && reqstatus === 'pending') || (reqStatusVal === 'rejected' && reqstatus === 'rejected') || (reqStatusVal === 'none' && (reqstatus === 'none' || reqstatus === 'approved' || !reqstatus));
+        var matchesStatus = !statusVal || activestatus === statusVal;
+
+        if (matchesSearch && matchesFuelType && matchesUgt && matchesReqStatus && matchesStatus) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+function filterAdminFuelByCard(type) {
+    var searchEl = document.getElementById('adminFuelSearch');
+    var fuelTypeEl = document.getElementById('adminFuelTypeFilter');
+    var ugtEl = document.getElementById('adminFuelUgtFilter');
+    var reqStatusEl = document.getElementById('adminFuelPriceReqFilter');
+    var statusEl = document.getElementById('adminFuelStatusFilter');
+
+    if (searchEl) searchEl.value = '';
+    if (fuelTypeEl) fuelTypeEl.value = '';
+    if (ugtEl) ugtEl.value = '';
+    
+    if (type === 'all') {
+        if (reqStatusEl) reqStatusEl.value = '';
+        if (statusEl) statusEl.value = '';
+    } else if (type === 'pending') {
+        if (reqStatusEl) reqStatusEl.value = 'pending';
+        if (statusEl) statusEl.value = '';
+    } else if (type === 'active') {
+        if (reqStatusEl) reqStatusEl.value = '';
+        if (statusEl) statusEl.value = 'active';
+    } else if (type === 'inactive') {
+        if (reqStatusEl) reqStatusEl.value = '';
+        if (statusEl) statusEl.value = 'inactive';
+    }
+    filterAdminFuelTable();
+}
+
+// ── Admin View Fuel Modal ──────────────────────────────────────────────────
+function openViewFuelModalAdmin(id) {
+    var contentEl = document.getElementById('viewFuelModalAdminContent');
+    contentEl.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:28px;"></i><br><br>Loading fuel product specifications & history...</div>';
+    document.getElementById('viewFuelModalAdmin').style.display = 'flex';
+
+    fetch('admin_set_prices_handler.php?action=get_fuel_details_admin&id=' + id)
+        .then(function(r) {
+            if (!r.ok) throw new Error('Server error: HTTP ' + r.status);
+            return r.text();
+        })
+        .then(function(text) {
+            var data;
+            try { data = JSON.parse(text); }
+            catch(e) {
+                contentEl.innerHTML = '<div style="color:#dc2626;text-align:center;padding:30px;"><i class="fas fa-exclamation-triangle" style="font-size:24px;display:block;margin-bottom:10px;"></i>Server returned an invalid response. Check PHP logs.<br><small style="color:#94a3b8;font-size:11px;margin-top:6px;display:block;">' + text.substring(0, 200) + '</small></div>';
+                return;
+            }
+            if (!data.success || !data.fuel) {
+                var errMsg = data.message || 'Failed to load fuel details.';
+                contentEl.innerHTML = '<div style="color:#dc2626;text-align:center;padding:30px;"><i class="fas fa-exclamation-circle" style="font-size:24px;display:block;margin-bottom:10px;"></i>' + errMsg + '</div>';
+                return;
+            }
+
+            var f = data.fuel;
+            var req = data.pending_request;
+            var history = data.price_history || [];
+            var configHist = data.config_history || [];
+            var statusHist = data.status_history || [];
+
+            var ugt = f.ugt_no || ('UGT #' + f.pump_id);
+            var fName = (f.raw_fuel_type || f.fuel_type || 'Fuel').replace(/\s*\(UGT\s*#?\d+\)/gi, '').trim();
+            var curPrice = parseFloat(f.price_per_liter || 0).toFixed(2);
+            var capacity = parseFloat(f.capacity || 0).toFixed(2);
+            var curStock = parseFloat(f.current_stock || f.current_level || 0).toFixed(2);
+            var critical = parseFloat(f.critical_level || 0).toFixed(2);
+            var reorder = parseFloat(f.reorder_level || 0).toFixed(2);
+            var lastUpd = f.last_updated ? f.last_updated : '—';
+
+            var pendingHtml = '';
+            if (req && req.status === 'pending') {
+                var oldP = parseFloat(req.old_price || req.old_value || curPrice).toFixed(2);
+                var newP = parseFloat(req.new_price || req.new_value || 0).toFixed(2);
+                var diffVal = (newP - oldP).toFixed(2);
+                var diffBadge = diffVal > 0 
+                    ? '<span style="color:#16a34a;font-weight:700;">+₱' + diffVal + '/L</span>'
+                    : '<span style="color:#dc2626;font-weight:700;">-₱' + Math.abs(diffVal).toFixed(2) + '/L</span>';
+                var reqBy = req.requested_by_name || 'Manager';
+                var reasonText = req.reason || 'Price change requested by Manager';
+
+                pendingHtml = `
+                    <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:16px;margin-bottom:20px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                            <h4 style="margin:0;font-size:14px;color:#92400e;font-weight:800;display:flex;align-items:center;gap:8px;">
+                                <i class="fas fa-clock" style="color:#d97706;"></i> PENDING PRICE CHANGE REQUEST
+                            </h4>
+                            <span style="background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;">Action Required</span>
+                        </div>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:12px;font-size:13px;margin-bottom:14px;">
+                            <div><strong style="display:block;font-size:11px;color:#92400e;">CURRENT PRICE</strong>₱${oldP}</div>
+                            <div><strong style="display:block;font-size:11px;color:#92400e;">REQUESTED PRICE</strong><span style="font-weight:800;color:#16a34a;font-size:15px;">₱${newP}</span></div>
+                            <div><strong style="display:block;font-size:11px;color:#92400e;">DIFFERENCE</strong>${diffBadge}</div>
+                            <div><strong style="display:block;font-size:11px;color:#92400e;">REQUESTED BY</strong>${reqBy}</div>
+                            <div><strong style="display:block;font-size:11px;color:#92400e;">DATE REQUESTED</strong>${(req.created_at||'').substring(0,16)}</div>
+                        </div>
+                        <div style="font-size:12px;color:#78350f;margin-bottom:14px;background:#fef3c7;padding:8px 12px;border-radius:6px;">
+                            <strong>Reason:</strong> ${reasonText}
+                        </div>
+                        <div style="display:flex;justify-content:flex-end;gap:10px;">
+                            <button type="button" onclick="closeViewFuelModalAdmin(); openApprovePriceModalAdmin(${req.id}, '${fName.replace(/'/g, "\\'")}', ${oldP}, ${newP})" style="background:#16a34a;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-check"></i> Approve Request</button>
+                            <button type="button" onclick="closeViewFuelModalAdmin(); openRejectPriceModalAdmin(${req.id}, '${fName.replace(/'/g, "\\'")}', ${oldP}, ${newP})" style="background:#dc2626;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-times"></i> Reject Request</button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            var priceHistRows = '';
+            if (history.length === 0) {
+                priceHistRows = '<tr><td colspan="6" style="text-align:center;padding:16px;color:#94a3b8;">No price change records found.</td></tr>';
+            } else {
+                priceHistRows = history.map(function(h) {
+                    var stBadge = (h.status === 'Approved' || h.status === 'approved')
+                        ? '<span style="background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;">Approved</span>'
+                        : '<span style="background:#fee2e2;color:#991b1b;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;">Rejected</span>';
+                    var diffVal = parseFloat(h.difference || 0).toFixed(2);
+                    var diffStr = diffVal > 0 ? ('+₱' + diffVal) : ('-₱' + Math.abs(diffVal).toFixed(2));
+                    return `
+                        <tr style="border-bottom:1px solid #f1f5f9;">
+                            <td style="padding:8px 10px;font-size:12px;color:#64748b;">${(h.created_at||'').substring(0,16)}</td>
+                            <td style="padding:8px 10px;font-weight:600;">₱${parseFloat(h.old_price||0).toFixed(2)}</td>
+                            <td style="padding:8px 10px;font-weight:700;color:#002F6C;">₱${parseFloat(h.new_price||0).toFixed(2)}</td>
+                            <td style="padding:8px 10px;font-size:12px;color:#475569;">${diffStr}</td>
+                            <td style="padding:8px 10px;font-size:12px;">${h.requested_by_name || 'Manager'} / ${h.approved_by_name || 'Admin'}</td>
+                            <td style="padding:8px 10px;">${stBadge}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            var configHistRows = '';
+            if (configHist.length === 0) {
+                configHistRows = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">No configuration change records found.</td></tr>';
+            } else {
+                configHistRows = configHist.map(function(c) {
+                    return `
+                        <tr style="border-bottom:1px solid #f1f5f9;">
+                            <td style="padding:8px 10px;font-size:12px;color:#64748b;">${(c.created_at||'').substring(0,16)}</td>
+                            <td style="padding:8px 10px;font-weight:700;color:#002F6C;">${c.field_name}</td>
+                            <td style="padding:8px 10px;color:#dc2626;font-weight:600;">${c.old_value || '-'}</td>
+                            <td style="padding:8px 10px;font-weight:700;color:#16a34a;">${c.new_value || '-'}</td>
+                            <td style="padding:8px 10px;font-size:12px;">${c.updated_by_name || 'Manager'}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            var statusHistRows = '';
+            if (statusHist.length === 0) {
+                statusHistRows = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">No status change records found.</td></tr>';
+            } else {
+                statusHistRows = statusHist.map(function(s) {
+                    var oldSt = (s.old_status || (s.status === 'Activated' ? 'Inactive' : (s.status === 'Deactivated' ? 'Active' : 'Active'))).toLowerCase();
+                    var newSt = (s.new_status || (s.status === 'Deactivated' ? 'Inactive' : (s.status === 'Activated' ? 'Active' : 'Inactive'))).toLowerCase();
+                    
+                    var oldBadge = oldSt === 'active'
+                        ? '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">Active</span>'
+                        : '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">Inactive</span>';
+                    
+                    var newBadge = newSt === 'active'
+                        ? '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">Active</span>'
+                        : '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">Inactive</span>';
+                    
+                    var reasonTxt = s.reason ? s.reason : '-';
+
+                    return `
+                        <tr style="border-bottom:1px solid #f1f5f9;">
+                            <td style="padding:8px 10px;font-size:12px;color:#64748b;">${(s.created_at||'').substring(0,16)}</td>
+                            <td style="padding:8px 10px;">${oldBadge}</td>
+                            <td style="padding:8px 10px;">${newBadge}</td>
+                            <td style="padding:8px 10px;font-size:12px;color:#64748b;">${reasonTxt}</td>
+                            <td style="padding:8px 10px;font-size:12px;">${s.changed_by_name || 'Manager'}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            contentEl.innerHTML = `
+                <!-- Fuel Specification Overview -->
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:18px;margin-bottom:20px;">
+                    <h4 style="margin:0 0 14px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
+                        <i class="fas fa-info-circle" style="color:#002F6C;"></i> Fuel Specification & Overview
+                    </h4>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;font-size:13px;">
+                        <div><strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">UGT / Tank</strong><span style="font-weight:700;color:#002F6C;font-size:14px;">${ugt}</span></div>
+                        <div><strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Fuel Name</strong><span style="font-weight:700;color:#002F6C;font-size:14px;">${fName}</span></div>
+                        <div><strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Current Price</strong><span style="font-weight:800;color:#002F6C;font-size:16px;">₱${curPrice}</span></div>
+                        <div><strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Current Volume</strong><span style="font-weight:700;color:#334155;">${curStock} L</span></div>
+                        <div><strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Tank Capacity</strong><span style="font-weight:700;color:#334155;">${capacity} L</span></div>
+                        <div><strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Critical Level</strong><span style="font-weight:700;color:#dc2626;">${critical} L</span></div>
+                        <div><strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Reorder Level</strong><span style="font-weight:700;color:#d97706;">${reorder} L</span></div>
+                        <div><strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;">Last Updated</strong><span style="font-size:12px;color:#475569;">${lastUpd}</span></div>
+                    </div>
+                </div>
+
+                ${pendingHtml}
+
+                <!-- Price Change History -->
+                <div style="margin-bottom:20px;">
+                    <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;"><i class="fas fa-history"></i> Fuel Price History</h4>
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+                        <thead>
+                            <tr style="background:#002F6C;color:#fff;">
+                                <th style="padding:8px 10px;text-align:left;">Date</th>
+                                <th style="padding:8px 10px;text-align:left;">Old Price</th>
+                                <th style="padding:8px 10px;text-align:left;">New Price</th>
+                                <th style="padding:8px 10px;text-align:left;">Difference</th>
+                                <th style="padding:8px 10px;text-align:left;">Users</th>
+                                <th style="padding:8px 10px;text-align:left;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>${priceHistRows}</tbody>
+                    </table>
+                </div>
+
+                <!-- Configuration Change History -->
+                <div style="margin-bottom:20px;">
+                    <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;"><i class="fas fa-sliders-h"></i> Configuration Change History</h4>
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+                        <thead>
+                            <tr style="background:#002F6C;color:#fff;">
+                                <th style="padding:8px 10px;text-align:left;">Date</th>
+                                <th style="padding:8px 10px;text-align:left;">Field Changed</th>
+                                <th style="padding:8px 10px;text-align:left;">Old Value</th>
+                                <th style="padding:8px 10px;text-align:left;">New Value</th>
+                                <th style="padding:8px 10px;text-align:left;">Changed By</th>
+                            </tr>
+                        </thead>
+                        <tbody>${configHistRows}</tbody>
+                    </table>
+                </div>
+
+                <!-- Status Change History -->
+                <div>
+                    <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;"><i class="fas fa-toggle-on"></i> Status Change History</h4>
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+                        <thead>
+                            <tr style="background:#002F6C;color:#fff;">
+                                <th style="padding:8px 10px;text-align:left;">Date</th>
+                                <th style="padding:8px 10px;text-align:left;">Old Status</th>
+                                <th style="padding:8px 10px;text-align:left;">New Status</th>
+                                <th style="padding:8px 10px;text-align:left;">Reason</th>
+                                <th style="padding:8px 10px;text-align:left;">Changed By</th>
+                            </tr>
+                        </thead>
+                        <tbody>${statusHistRows}</tbody>
+                    </table>
+                </div>
+            `;
+        })
+        .catch(function(err) {
+            contentEl.innerHTML = '<div style="color:#dc2626;text-align:center;padding:30px;"><i class="fas fa-exclamation-triangle" style="font-size:24px;display:block;margin-bottom:10px;"></i>Could not load fuel details.<br><small style="color:#94a3b8;font-size:11px;margin-top:6px;display:block;">' + (err.message || err) + '</small></div>';
+        });
+}
+
+function closeViewFuelModalAdmin() {
+    document.getElementById('viewFuelModalAdmin').style.display = 'none';
+}
+
+// Global helper: smart default based on tank capacity (mirrors PHP fallback)
+function adminSmartDefault(val, cap, isReorder) {
+    var v = parseFloat(val);
+    if (!isNaN(v) && v > 0) return v;
+    var c = parseFloat(cap) || 0;
+    if (isReorder) {
+        return (c === 14000) ? 5000 : ((c === 7000) ? 2000 : parseFloat((c * 0.20).toFixed(2)));
+    } else {
+        return (c === 14000) ? 2500 : ((c === 7000) ? 1000 : parseFloat((c * 0.10).toFixed(2)));
+    }
+}
+
+function getCleanCanonicalFuelName(name) {
+    if (!name) return 'Fuel';
+    var lower = String(name).toLowerCase().trim();
+    if (lower.indexOf('turbo') !== -1) return 'Turbo Diesel';
+    if (lower.indexOf('diesel') !== -1) return 'Diesel';
+    if (lower.indexOf('kerosene') !== -1) return 'Kerosene';
+    if (lower.indexOf('xcs') !== -1) return 'XCS Plus';
+    if (lower.indexOf('xtra') !== -1 || lower.indexOf('unl') !== -1 || lower.indexOf('advance') !== -1) return 'XTR ADVANCE';
+    return String(name).replace(/[\s\-_#]*\d+$/gi, '').replace(/\s*\(UGT\s*#?\d+\)/gi, '').trim();
+}
+
+function openEditPriceModalAdmin(id, fuelName, currentPrice, capacity, critical, reorder, ugtNo, hasPending) {
+    // Pre-fill form fields immediately from inline PHP values
+    if (document.getElementById('aef_fuel_id')) document.getElementById('aef_fuel_id').value = id;
+    var cleanFuelName = getCleanCanonicalFuelName(fuelName);
+    if (document.getElementById('aef_ugt_no')) document.getElementById('aef_ugt_no').value = ugtNo || '';
+    if (document.getElementById('aef_fuel_name')) document.getElementById('aef_fuel_name').value = cleanFuelName;
+    if (document.getElementById('aef_capacity')) document.getElementById('aef_capacity').value = parseFloat(capacity) || '';
+    if (document.getElementById('aef_price')) document.getElementById('aef_price').value = parseFloat(currentPrice || 0).toFixed(2);
+    if (document.getElementById('aef_critical')) document.getElementById('aef_critical').value = adminSmartDefault(critical, capacity, false);
+    if (document.getElementById('aef_reorder')) document.getElementById('aef_reorder').value = adminSmartDefault(reorder, capacity, true);
+
+    // Admin can always edit price directly
+    var priceInput  = document.getElementById('aef_price');
+    var priceNotice = document.getElementById('aef_price_notice');
+    if (priceInput) {
+        priceInput.removeAttribute('readonly');
+        priceInput.style.background  = '';
+        priceInput.style.borderColor = '';
+        priceInput.style.color       = '';
+        priceInput.style.cursor      = '';
+    }
+    if (priceNotice) priceNotice.style.display = 'none';
+
+    var modal = document.getElementById('editPriceModalAdmin');
+    if (modal) modal.style.display = 'flex';
+
+    // Fetch fresh live values from DB to overwrite with accurate data
+    if (parseInt(id) > 0) {
+        fetch('admin_set_prices_handler.php?action=get_fuel_details_admin&id=' + parseInt(id))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data || !data.success || !data.fuel) return;
+                var f   = data.fuel;
+                var cap = parseFloat(f.capacity || capacity || 0);
+
+                if (document.getElementById('aef_ugt_no')) document.getElementById('aef_ugt_no').value = f.ugt_no || ugtNo || '';
+                var rawName = getCleanCanonicalFuelName(f.clean_fuel_type || f.raw_fuel_type || f.fuel_type || fuelName);
+                if (document.getElementById('aef_fuel_name')) document.getElementById('aef_fuel_name').value = rawName;
+
+                // Overwrite capacity
+                document.getElementById('aef_capacity').value = cap || '';
+
+                // Overwrite price
+                var livePrice = parseFloat(f.price_per_liter);
+                document.getElementById('aef_price').value = (isNaN(livePrice) ? parseFloat(currentPrice || 0) : livePrice).toFixed(2);
+
+                // Overwrite critical level — DB first, smart default as fallback
+                document.getElementById('aef_critical').value = adminSmartDefault(f.critical_level, cap, false);
+
+                // Overwrite reorder level — DB first, smart default as fallback
+                document.getElementById('aef_reorder').value  = adminSmartDefault(f.reorder_level, cap, true);
+
+                // Sync fuel name
+                if (document.getElementById('aef_fuel_name')) {
+                    document.getElementById('aef_fuel_name').value = rawName;
+                }
+
+                // Sync status radio buttons
+                var liveStatus  = (f.status || 'active').toLowerCase();
+                var radActive   = document.getElementById('aef_status_active');
+                var radInactive = document.getElementById('aef_status_inactive');
+                if (radActive && radInactive) {
+                    radActive.checked   = (liveStatus === 'active');
+                    radInactive.checked = (liveStatus !== 'active');
+                }
+            })
+            .catch(function() { /* keep inline values on network error */ });
+    }
+}
+
+function closeEditPriceModalAdmin() {
+    document.getElementById('editPriceModalAdmin').style.display = 'none';
+}
+
+function openRejectPriceModalAdmin(approvalId, productName, oldPrice, newPrice) {
+    document.getElementById('adminRejectApprovalId').value = approvalId;
+    document.getElementById('adminRejectProdName').textContent = productName;
+    document.getElementById('adminRejectOldPrice').textContent = '₱' + parseFloat(oldPrice).toFixed(2);
+    document.getElementById('adminRejectNewPrice').textContent = '₱' + parseFloat(newPrice).toFixed(2);
+    document.getElementById('adminRejectRemarks').value = '';
+    document.getElementById('rejectPriceModalAdmin').style.display = 'flex';
+}
+
+function closeRejectPriceModalAdmin() {
+    document.getElementById('rejectPriceModalAdmin').style.display = 'none';
+}
+
+function openToggleFuelStatusModal(id, newStatus, fuelName) {
+    var modal = document.getElementById('toggleFuelStatusModal');
+    document.getElementById('toggleFuelStatusId').value = id;
+    document.getElementById('toggleFuelStatusValue').value = newStatus;
+    document.getElementById('toggleFuelStatusName').textContent = fuelName;
+    var isDeactivate = (newStatus === 'inactive');
+    var header = document.getElementById('toggleFuelStatusHeader');
+    var icon = document.getElementById('toggleFuelStatusIcon');
+    var titleEl = document.getElementById('toggleFuelStatusTitle');
+    var descEl = document.getElementById('toggleFuelStatusDesc');
+    var confirmBtn = document.getElementById('toggleFuelStatusConfirmBtn');
+    if (isDeactivate) {
+        header.style.background = 'linear-gradient(135deg,#dc2626,#b91c1c)';
+        icon.innerHTML = '<i class="fas fa-ban" style="font-size:28px;color:#fff;"></i>';
+        titleEl.textContent = 'Deactivate Fuel Product';
+        descEl.innerHTML = 'You are about to set <strong style="color:#0f172a;">' + fuelName + '</strong> to <strong style="color:#dc2626;">Inactive</strong>. This will prevent it from being used in transactions until reactivated.';
+        confirmBtn.style.background = '#dc2626';
+        confirmBtn.innerHTML = '<i class="fas fa-ban"></i> Confirm Deactivation';
+    } else {
+        header.style.background = 'linear-gradient(135deg,#16a34a,#15803d)';
+        icon.innerHTML = '<i class="fas fa-check-circle" style="font-size:28px;color:#fff;"></i>';
+        titleEl.textContent = 'Activate Fuel Product';
+        descEl.innerHTML = 'You are about to set <strong style="color:#0f172a;">' + fuelName + '</strong> to <strong style="color:#16a34a;">Active</strong>. It will be available for transactions.';
+        confirmBtn.style.background = '#16a34a';
+        confirmBtn.innerHTML = '<i class="fas fa-check-circle"></i> Confirm Activation';
+    }
+    modal.style.display = 'flex';
+}
+
+function closeToggleFuelStatusModal() {
+    document.getElementById('toggleFuelStatusModal').style.display = 'none';
+}
+
+function openApprovePriceModalAdmin(approvalId, productName, oldPrice, newPrice, tab) {
+    tab = tab || 'fuel';
+    document.getElementById('adminApproveApprovalId').value = approvalId;
+    document.getElementById('adminApproveActiveTab').value = tab;
+    document.getElementById('adminApproveProdName').textContent = productName;
+    document.getElementById('adminApproveOldPrice').textContent = '\u20b1' + parseFloat(oldPrice).toFixed(2);
+    document.getElementById('adminApproveNewPrice').textContent = '\u20b1' + parseFloat(newPrice).toFixed(2);
+    var diff = parseFloat(newPrice) - parseFloat(oldPrice);
+    var diffEl = document.getElementById('adminApproveDiff');
+    diffEl.textContent = (diff >= 0 ? '+' : '') + '\u20b1' + diff.toFixed(2);
+    diffEl.style.color = diff >= 0 ? '#16a34a' : '#dc2626';
+    document.getElementById('approvePriceModalAdmin').style.display = 'flex';
+}
+
+function closeApprovePriceModalAdmin() {
+    document.getElementById('approvePriceModalAdmin').style.display = 'none';
+}
+
 // ── Tab Switching ─────────────────────────────────────────────────────────
 function switchTab(tabName) {
-    // Hide all tab panels
+    if (['fuel', 'merch', 'services'].indexOf(tabName) === -1) tabName = 'fuel';
+
     document.querySelectorAll('.tab-panel').forEach(function(panel) {
         panel.classList.remove('active');
     });
-    // Deactivate all tab buttons
     document.querySelectorAll('.ato-tab').forEach(function(btn) {
         btn.classList.remove('active');
     });
-    // Activate the selected panel
     var panel = document.getElementById('tab-' + tabName);
     if (panel) panel.classList.add('active');
-    // Activate the selected button
     var btn = document.getElementById('tab-btn-' + tabName);
     if (btn) btn.classList.add('active');
-    // Update the hidden input so forms remember the active tab
     var hidden = document.getElementById('activeSection');
     if (hidden) hidden.value = tabName;
-    // Update rejectActiveTab hidden input if present
-    var rejectHidden = document.getElementById('rejectActiveTab');
-    if (rejectHidden) rejectHidden.value = tabName;
+
+    // Update URL without reloading so refresh lands on the same tab
+    try {
+        var url = new URL(window.location.href);
+        url.searchParams.set('tab', tabName);
+        window.history.replaceState(null, '', url.toString());
+    } catch (e) {}
+
+    // Persist in sessionStorage
+    try {
+        sessionStorage.setItem('petron_admin_active_tab', tabName);
+    } catch (e) {}
 }
 
-// Initialise — ensure the active tab panel is shown on page load
 (function() {
-    var activeHidden = document.getElementById('activeSection');
-    var activeTab = activeHidden ? activeHidden.value : 'fuel';
-    if (!activeTab) activeTab = 'fuel';
-    // Only switch if none are already active (PHP already sets active class)
-    var anyActive = document.querySelector('.tab-panel.active');
-    if (!anyActive) switchTab(activeTab);
+    var urlParams = new URLSearchParams(window.location.search);
+    var tabFromUrl = urlParams.get('tab');
+    var savedTab = null;
+    try { savedTab = sessionStorage.getItem('petron_admin_active_tab'); } catch (e) {}
+
+    var targetTab = tabFromUrl || savedTab;
+    if (targetTab && ['fuel', 'merch', 'services'].indexOf(targetTab) !== -1) {
+        switchTab(targetTab);
+    } else {
+        var activeHidden = document.getElementById('activeSection');
+        var activeTab = activeHidden ? activeHidden.value : 'fuel';
+        if (!activeTab || ['fuel', 'merch', 'services'].indexOf(activeTab) === -1) activeTab = 'fuel';
+        switchTab(activeTab);
+    }
 })();
 </script>
+
+<!-- Admin View Fuel Product & History Modal -->
+<div id="viewFuelModalAdmin" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:flex-start;justify-content:center;padding:85px 20px 70px 20px;box-sizing:border-box;overflow-y:auto;">
+    <div style="background:#fff;border-radius:12px;width:92%;max-width:880px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:0 auto;overflow:hidden;max-height:calc(100vh - 155px);display:flex;flex-direction:column;">
+        <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <h3 style="margin:0;font-size:17px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-gas-pump" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:18px;"></i>
+                <span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;">FUEL PRODUCT SPECIFICATION &amp; HISTORY</span>
+            </h3>
+        </div>
+        <div id="viewFuelModalAdminContent" style="padding:20px 24px 24px 24px;overflow-y:auto;flex:1 1 auto;background:#ffffff;box-sizing:border-box;">
+        </div>
+        <!-- Footer with Close Button -->
+        <div style="display:flex;justify-content:flex-end;padding:14px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;flex-shrink:0;">
+            <button type="button" onclick="closeViewFuelModalAdmin()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:8px 20px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">
+                <i class="fas fa-times"></i> Close
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Admin Edit Fuel Modal (Direct Update - Option A) -->
+<div id="editPriceModalAdmin" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:12px;width:92%;max-width:720px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:auto;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
+      <h3 style="margin:0;font-size:17px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:10px;">
+        <i class="fas fa-edit" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:18px;"></i>
+        <span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;">EDIT FUEL PRODUCT</span>
+      </h3>
+    </div>
+    <form method="POST" action="admin_set_prices.php" style="padding:20px 24px;">
+      <input type="hidden" name="action" value="admin_edit_fuel_direct">
+      <input type="hidden" name="active_tab" value="fuel">
+      <input type="hidden" id="aef_fuel_id" name="id">
+
+      <!-- Row 1: UGT Number + Fuel Name -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">UGT Number</label>
+          <input type="text" id="aef_ugt_no" name="ugt_no" style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;color:#002F70;font-weight:800;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Fuel Name</label>
+          <input type="text" id="aef_fuel_name" name="fuel_name" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;color:#0f172a;font-weight:700;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+        </div>
+      </div>
+
+      <!-- Row 2: Price Per Liter + Tank Capacity -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Price / Liter (&#8369;) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="aef_price" name="price" step="0.01" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+          <div id="aef_price_notice" style="display:none;margin-top:6px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:6px 10px;align-items:center;gap:8px;">
+              <i class="fas fa-lock" style="color:#92400e;font-size:12px;"></i>
+              <span style="font-size:11px;color:#92400e;font-weight:700;">PRICE LOCKED &mdash; A pending price request exists. Approve or reject it first to change the price.</span>
+          </div>
+          <small style="font-size:10px;color:#16a34a;display:block;margin-top:2px;"><i class="fas fa-check-circle"></i> Direct Admin Edit: Updates price immediately.</small>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Tank Capacity (L) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="aef_capacity" name="capacity" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+        </div>
+      </div>
+
+      <!-- Row 3: Critical Level + Reorder Level -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Critical Level (L) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="aef_critical" name="critical_level" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Reorder Level (L) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="aef_reorder" name="reorder_level" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+        </div>
+      </div>
+
+      <!-- Row 4: Status -->
+      <div style="margin-bottom:12px;">
+        <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:6px;">Status <span style="color:#dc2626;">*</span></label>
+        <div style="display:flex;gap:18px;align-items:center;padding-top:4px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;font-weight:600;color:#166534;">
+            <input type="radio" id="aef_status_active" name="status" value="active" checked style="accent-color:#16a34a;"> Active
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;font-weight:600;color:#991b1b;">
+            <input type="radio" id="aef_status_inactive" name="status" value="inactive" style="accent-color:#dc2626;"> Inactive
+          </label>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:14px;">
+        <button type="button" onclick="closeEditPriceModalAdmin()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:8px 18px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;transition:all 0.2s;"><i class="fas fa-times-circle"></i> Cancel</button>
+        <button type="submit" style="background:#002F6C !important;color:#ffffff !important;border:none;padding:8px 22px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;"><i class="fas fa-save" style="color:#ffffff !important;"></i> Save &amp; Apply Immediately</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Admin Reject Price Request Modal -->
+<div id="rejectPriceModalAdmin" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:14px;width:90%;max-width:480px;box-shadow:0 20px 50px rgba(0,0,0,.35);margin:auto;overflow:hidden;animation:adminModalPopIn .2s ease-out;">
+    <div style="background:linear-gradient(135deg,#dc2626,#b91c1c);padding:18px 22px;display:flex;align-items:center;gap:14px;">
+      <div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-times-circle" style="font-size:22px;color:#fff;"></i>
+      </div>
+      <div>
+        <h3 style="margin:0;font-size:15px;font-weight:800;color:#fff;">Reject Price Change Request</h3>
+        <p style="margin:2px 0 0 0;font-size:11px;color:rgba(255,255,255,.8);">This action will notify the manager of the rejection.</p>
+      </div>
+    </div>
+    <form method="POST" action="admin_set_prices.php" style="padding:20px 22px;">
+      <input type="hidden" name="action" value="reject_price">
+      <input type="hidden" name="active_tab" value="fuel">
+      <input type="hidden" id="adminRejectApprovalId" name="approval_id">
+      <div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;padding:14px 16px;margin-bottom:16px;">
+        <strong style="color:#991b1b;display:block;font-size:13px;margin-bottom:6px;" id="adminRejectProdName">Fuel Product</strong>
+        <div style="font-size:13px;color:#475569;display:flex;gap:16px;flex-wrap:wrap;">
+          <span>Current Price: <strong style="color:#334155;" id="adminRejectOldPrice">&#8369;0.00</strong></span>
+          <span style="color:#94a3b8;">&#8594;</span>
+          <span>Requested: <strong style="color:#dc2626;" id="adminRejectNewPrice">&#8369;0.00</strong></span>
+        </div>
+      </div>
+      <div style="margin-bottom:18px;">
+        <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Rejection Reason <span style="color:#dc2626;">*</span></label>
+        <textarea name="remarks" id="adminRejectRemarks" rows="3" style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;resize:vertical;transition:border-color .2s;" placeholder="Please provide reason for rejecting this price request..." onfocus="this.style.borderColor='#dc2626'" onblur="this.style.borderColor='#d1d5db'"></textarea>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" onclick="closeRejectPriceModalAdmin()" style="background:#f1f5f9 !important;color:#1e293b !important;-webkit-text-fill-color:#1e293b !important;border:1.5px solid #cbd5e1 !important;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-times-circle" style="color:#1e293b !important;-webkit-text-fill-color:#1e293b !important;"></i> Cancel</button>
+        <button type="submit" style="background:#dc2626 !important;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;border:none;padding:9px 20px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-times" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;"></i> Confirm Rejection</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Admin Approve Price Request Modal -->
+<div id="approvePriceModalAdmin" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:14px;width:90%;max-width:460px;box-shadow:0 20px 50px rgba(0,0,0,.35);margin:auto;overflow:hidden;animation:adminModalPopIn .2s ease-out;">
+    <div style="background:linear-gradient(135deg,#16a34a,#15803d);padding:18px 22px;display:flex;align-items:center;gap:14px;">
+      <div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-check-circle" style="font-size:22px;color:#fff;"></i>
+      </div>
+      <div>
+        <h3 style="margin:0;font-size:15px;font-weight:800;color:#fff;">Approve Price Change Request</h3>
+        <p style="margin:2px 0 0 0;font-size:11px;color:rgba(255,255,255,.8);">This will immediately apply the new price.</p>
+      </div>
+    </div>
+    <form method="POST" action="admin_set_prices.php" style="padding:20px 22px;">
+      <input type="hidden" name="action" value="approve_price">
+      <input type="hidden" id="adminApproveActiveTab" name="active_tab" value="fuel">
+      <input type="hidden" id="adminApproveApprovalId" name="approval_id">
+      <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:14px 16px;margin-bottom:16px;">
+        <strong style="color:#166534;display:block;font-size:13px;margin-bottom:8px;" id="adminApproveProdName">Fuel Product</strong>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:12px;">
+          <div style="background:#fff;border-radius:7px;padding:8px 10px;border:1px solid #d1fae5;">
+            <span style="display:block;font-size:10px;font-weight:700;color:#15803d;text-transform:uppercase;margin-bottom:3px;">Current Price</span>
+            <span style="font-weight:700;color:#334155;font-size:13px;" id="adminApproveOldPrice">&#8369;0.00</span>
+          </div>
+          <div style="background:#fff;border-radius:7px;padding:8px 10px;border:1px solid #d1fae5;">
+            <span style="display:block;font-size:10px;font-weight:700;color:#15803d;text-transform:uppercase;margin-bottom:3px;">New Price</span>
+            <span style="font-weight:800;color:#002F6C;font-size:14px;" id="adminApproveNewPrice">&#8369;0.00</span>
+          </div>
+          <div style="background:#fff;border-radius:7px;padding:8px 10px;border:1px solid #d1fae5;">
+            <span style="display:block;font-size:10px;font-weight:700;color:#15803d;text-transform:uppercase;margin-bottom:3px;">Difference</span>
+            <span style="font-weight:700;font-size:13px;" id="adminApproveDiff">&#8369;0.00</span>
+          </div>
+        </div>
+      </div>
+      <p style="font-size:12px;color:#64748b;margin:0 0 18px 0;"><i class="fas fa-info-circle" style="color:#16a34a;"></i> Once approved, the new price will take effect immediately for all future transactions.</p>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" onclick="closeApprovePriceModalAdmin()" style="background:#f1f5f9 !important;color:#1e293b !important;-webkit-text-fill-color:#1e293b !important;border:1.5px solid #cbd5e1 !important;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-times-circle" style="color:#1e293b !important;-webkit-text-fill-color:#1e293b !important;"></i> Cancel</button>
+        <button type="submit" style="background:#16a34a !important;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;border:none;padding:9px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-check" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;"></i> Confirm Approval</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Deactivate / Activate Fuel Status Confirmation Modal -->
+<div id="toggleFuelStatusModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:14px;width:90%;max-width:440px;box-shadow:0 20px 50px rgba(0,0,0,.35);margin:auto;overflow:hidden;animation:adminModalPopIn .2s ease-out;">
+    <div id="toggleFuelStatusHeader" style="background:linear-gradient(135deg,#dc2626,#b91c1c);padding:18px 22px;display:flex;align-items:center;gap:14px;">
+      <div id="toggleFuelStatusIcon" style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-ban" style="font-size:22px;color:#fff;"></i>
+      </div>
+      <div>
+        <h3 id="toggleFuelStatusTitle" style="margin:0;font-size:15px;font-weight:800;color:#fff;">Deactivate Fuel Product</h3>
+        <p style="margin:2px 0 0 0;font-size:11px;color:rgba(255,255,255,.8);">Please confirm this action.</p>
+      </div>
+    </div>
+    <form method="POST" action="admin_set_prices.php" style="padding:20px 22px;">
+      <input type="hidden" name="action" value="toggle_fuel_status_admin">
+      <input type="hidden" name="active_tab" value="fuel">
+      <input type="hidden" id="toggleFuelStatusId" name="id">
+      <input type="hidden" id="toggleFuelStatusValue" name="status">
+      <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:18px;">
+        <div style="font-size:13px;color:#475569;line-height:1.6;" id="toggleFuelStatusDesc">
+          Are you sure you want to change the status of <strong id="toggleFuelStatusName" style="color:#0f172a;">this fuel</strong>?
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" onclick="closeToggleFuelStatusModal()" style="background:#f1f5f9 !important;color:#1e293b !important;-webkit-text-fill-color:#1e293b !important;border:1.5px solid #cbd5e1 !important;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-times-circle" style="color:#1e293b !important;-webkit-text-fill-color:#1e293b !important;"></i> Cancel</button>
+        <button type="submit" id="toggleFuelStatusConfirmBtn" style="background:#dc2626 !important;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;border:none;padding:9px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-ban" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;"></i> Confirm Deactivation</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Deactivate / Activate Service Status Confirmation Modal -->
+<div id="toggleServiceStatusModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:14px;width:90%;max-width:440px;box-shadow:0 20px 50px rgba(0,0,0,.35);margin:auto;overflow:hidden;animation:adminModalPopIn .2s ease-out;">
+    <div id="toggleServiceStatusHeader" style="background:linear-gradient(135deg,#dc2626,#b91c1c);padding:18px 22px;display:flex;align-items:center;gap:14px;">
+      <div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i id="toggleServiceHeaderIcon" class="fas fa-ban" style="font-size:22px;color:#fff;"></i>
+      </div>
+      <div>
+        <h3 id="toggleServiceStatusTitle" style="margin:0;font-size:15px;font-weight:800;color:#fff;">Deactivate Service</h3>
+        <p style="margin:2px 0 0 0;font-size:11px;color:rgba(255,255,255,.8);">Please confirm this action.</p>
+      </div>
+    </div>
+    <div style="padding:20px 22px;">
+      <input type="hidden" id="toggleServiceStatusId">
+      <input type="hidden" id="toggleServiceStatusValue">
+      <input type="hidden" id="toggleServiceStatusNameHolder">
+      <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:18px;">
+        <div style="font-size:13px;color:#475569;line-height:1.6;" id="toggleServiceStatusDesc">
+          Are you sure you want to change the status of <strong id="toggleServiceStatusName" style="color:#0f172a;">this service</strong>?
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" onclick="closeToggleServiceStatusModal()" style="background:#f1f5f9 !important;color:#1e293b !important;-webkit-text-fill-color:#1e293b !important;border:1.5px solid #cbd5e1 !important;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-times-circle" style="color:#1e293b !important;-webkit-text-fill-color:#1e293b !important;"></i> Cancel</button>
+        <button type="button" id="toggleServiceStatusConfirmBtn" onclick="confirmAdminToggleService()" style="background:#dc2626 !important;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;border:none;padding:9px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i id="toggleServiceBtnIcon" class="fas fa-ban" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;"></i> Confirm Deactivation</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Restore Service Fees Confirmation Modal -->
+<div id="restoreServiceFeesModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:14px;width:90%;max-width:440px;box-shadow:0 20px 50px rgba(0,0,0,.35);margin:auto;overflow:hidden;animation:adminModalPopIn .2s ease-out;">
+    <div style="background:linear-gradient(135deg,#d97706,#b45309);padding:18px 22px;display:flex;align-items:center;gap:14px;">
+      <div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-undo" style="font-size:22px;color:#fff;"></i>
+      </div>
+      <div>
+        <h3 style="margin:0;font-size:15px;font-weight:800;color:#fff;">Restore Previous Fees</h3>
+        <p style="margin:2px 0 0 0;font-size:11px;color:rgba(255,255,255,.8);">Revert service fees to previous values.</p>
+      </div>
+    </div>
+    <div style="padding:20px 22px;">
+      <input type="hidden" id="restoreSvcId">
+      <input type="hidden" id="restoreOldSvcFee">
+      <input type="hidden" id="restoreOldLabFee">
+      <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:18px;">
+        <div style="font-size:13px;color:#475569;line-height:1.6;" id="restoreSvcDesc">
+          Are you sure you want to restore previous fees?
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" onclick="closeRestoreServiceFeesModal()" style="background:#f1f5f9 !important;color:#1e293b !important;-webkit-text-fill-color:#1e293b !important;border:1.5px solid #cbd5e1 !important;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-times-circle" style="color:#1e293b !important;-webkit-text-fill-color:#1e293b !important;"></i> Cancel</button>
+        <button type="button" onclick="confirmRestoreServiceFees()" style="background:#d97706 !important;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;border:none;padding:9px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-undo" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;"></i> Confirm Restoration</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes adminModalPopIn {
+    from { opacity:0; transform:scale(0.93) translateY(-10px); }
+    to   { opacity:1; transform:scale(1) translateY(0); }
+}
+</style>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

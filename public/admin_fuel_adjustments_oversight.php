@@ -26,7 +26,7 @@ if (isset($_GET['ajax_action'])) {
         try {
             $stmt = $pdo->prepare("SELECT fa.*, 
                 COALESCE(NULLIF(CONCAT(TRIM(COALESCE(req.first_name,'')), ' ', TRIM(COALESCE(req.last_name,''))), ' '), req.username, 'Unknown') AS requested_by_name,
-                COALESCE(NULLIF(CONCAT(TRIM(COALESCE(app.first_name,'')), ' ', TRIM(COALESCE(app.last_name,''))), ' '), app.username, 'â€”') AS approved_by_name,
+                COALESCE(NULLIF(CONCAT(TRIM(COALESCE(app.first_name,'')), ' ', TRIM(COALESCE(app.last_name,''))), ' '), app.username, '—') AS approved_by_name,
                 s.name AS station_name
                 FROM fuel_adjustments fa
                 LEFT JOIN users req ON fa.user_id = req.id
@@ -171,7 +171,7 @@ if (isset($_GET['single_id']) && $export === 'pdf') {
     try {
         $stmt = $pdo->prepare("SELECT fa.*, 
             COALESCE(NULLIF(CONCAT(TRIM(COALESCE(req.first_name,'')), ' ', TRIM(COALESCE(req.last_name,''))), ' '), req.username, 'Unknown') AS requested_by_name,
-            COALESCE(NULLIF(CONCAT(TRIM(COALESCE(app.first_name,'')), ' ', TRIM(COALESCE(app.last_name,''))), ' '), app.username, 'â€”') AS approved_by_name,
+            COALESCE(NULLIF(CONCAT(TRIM(COALESCE(app.first_name,'')), ' ', TRIM(COALESCE(app.last_name,''))), ' '), app.username, '—') AS approved_by_name,
             s.name AS station_name
             FROM fuel_adjustments fa
             LEFT JOIN users req ON fa.user_id = req.id
@@ -224,8 +224,8 @@ if (isset($_GET['single_id']) && $export === 'pdf') {
                     <div class="row"><label>Requested By:</label><span><?= htmlspecialchars($adj['requested_by_name']) ?></span></div>
                     <div class="row"><label>Approved By:</label><span><?= htmlspecialchars($adj['approved_by_name']) ?></span></div>
                     <div class="row"><label>Status:</label><span style="color:<?= $status_color ?>; font-weight:bold;"><?= ucfirst(htmlspecialchars($adj['status'])) ?></span></div>
-                    <div class="row"><label>Resolved At:</label><span><?= ($adj['approved_at'] ? date('M d, Y h:i A', strtotime($adj['approved_at'])) : 'â€”') ?></span></div>
-                    <div class="row" style="flex-direction:column; align-items:flex-start;"><label>Remarks/Reason:</label><span style="text-align:left; font-weight: normal; margin-top: 3px; color:#555;"><?= htmlspecialchars($adj['reason'] ?? 'â€”') ?></span></div>
+                    <div class="row"><label>Resolved At:</label><span><?= ($adj['approved_at'] ? date('M d, Y h:i A', strtotime($adj['approved_at'])) : '—') ?></span></div>
+                    <div class="row" style="flex-direction:column; align-items:flex-start;"><label>Remarks/Reason:</label><span style="text-align:left; font-weight: normal; margin-top: 3px; color:#555;"><?= htmlspecialchars($adj['reason'] ?? '—') ?></span></div>
                     <?php if (!empty($adj['notes'])): ?>
                         <div class="row" style="flex-direction:column; align-items:flex-start; margin-top: 5px;"><label>Resolution Notes:</label><span style="text-align:left; font-weight: normal; font-style: italic; color:#b91c1c;"><?= htmlspecialchars($adj['notes']) ?></span></div>
                     <?php endif; ?>
@@ -304,7 +304,7 @@ $adjustments = [];
 try {
     $stmt = $pdo->prepare("SELECT fa.*,
         COALESCE(NULLIF(CONCAT(TRIM(COALESCE(req.first_name,'')), ' ', TRIM(COALESCE(req.last_name,''))), ' '), req.username, 'Unknown') AS requested_by_name,
-        COALESCE(NULLIF(CONCAT(TRIM(COALESCE(app.first_name,'')), ' ', TRIM(COALESCE(app.last_name,''))), ' '), app.username, 'â€”') AS approved_by_name,
+        COALESCE(NULLIF(CONCAT(TRIM(COALESCE(app.first_name,'')), ' ', TRIM(COALESCE(app.last_name,''))), ' '), app.username, '—') AS approved_by_name,
         s.name AS station_name
         FROM fuel_adjustments fa
         LEFT JOIN users req ON fa.user_id = req.id
@@ -366,11 +366,11 @@ if (in_array($export, ['excel','pdf'])) {
             number_format($adj['previous_value'] ?? 0, 2),
             number_format($adj['new_value'] ?? 0, 2),
             $diff_str,
-            $adj['reason'] ?? 'â€”',
-            $adj['requested_by_name'] ?? 'â€”',
-            $adj['approved_by_name'] ?? 'â€”',
+            $adj['reason'] ?? '—',
+            $adj['requested_by_name'] ?? '—',
+            $adj['approved_by_name'] ?? '—',
             ucfirst($adj['status']),
-            $adj['approved_at'] ? date('M d, Y H:i', strtotime($adj['approved_at'])) : 'â€”'
+            $adj['approved_at'] ? date('M d, Y H:i', strtotime($adj['approved_at'])) : '—'
         ];
     }
     
@@ -457,7 +457,7 @@ if (in_array($export, ['excel','pdf'])) {
             </table>
 
             <div class="footer">
-                <span>System Generated Report â€¢ Confidential</span>
+                <span>System Generated Report —¢ Confidential</span>
                 <span>Page 1 of 1</span>
             </div>
         </body>
@@ -998,7 +998,7 @@ require_once __DIR__ . '/../partials/header.php';
                             <td><?= htmlspecialchars($adj['requested_by_name']) ?></td>
                             <td><?= htmlspecialchars($adj['approved_by_name']) ?></td>
                             <td><span class="sb sb-<?= strtolower($adj['status']) ?>"><?= ucfirst(htmlspecialchars($adj['status'])) ?></span></td>
-                            <td><?= ($adj['approved_at'] ? date('M d, Y', strtotime($adj['approved_at'])) : 'â€”') ?></td>
+                            <td><?= ($adj['approved_at'] ? date('M d, Y', strtotime($adj['approved_at'])) : '—') ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -1038,7 +1038,7 @@ function viewAdjDetails(id) {
         .then(res => {
             if (res.success) {
                 const data = res.data;
-                const notes = data.notes ? data.notes.replace(/\n/g, '<br>') : 'â€”';
+                const notes = data.notes ? data.notes.replace(/\n/g, '<br>') : '—';
                 const diff = parseFloat(data.liters);
                 const diffStr = (diff >= 0 ? '+' : '') + diff.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) + ' L';
                 const diffColor = diff >= 0 ? '#16a34a' : '#dc2626';
@@ -1054,8 +1054,8 @@ function viewAdjDetails(id) {
                     <div class="details-item"><label>Requested By</label><span>${data.requested_by_name}</span></div>
                     <div class="details-item"><label>Approved By</label><span>${data.approved_by_name}</span></div>
                     <div class="details-item"><label>Status</label><span>${data.status}</span></div>
-                    <div class="details-item"><label>Approval Date</label><span>${data.approved_at || 'â€”'}</span></div>
-                    <div class="details-item" style="grid-column: span 2;"><label>Adjustment Reason</label><span>${data.reason || 'â€”'}</span></div>
+                    <div class="details-item"><label>Approval Date</label><span>${data.approved_at || '—'}</span></div>
+                    <div class="details-item" style="grid-column: span 2;"><label>Adjustment Reason</label><span>${data.reason || '—'}</span></div>
                     <div class="details-item" style="grid-column: span 2;"><label>Resolution Notes</label><span>${notes}</span></div>
                 `;
                 document.getElementById('detailsGrid').innerHTML = gridHtml;

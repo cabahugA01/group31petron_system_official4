@@ -36,23 +36,41 @@ try {
     $stmt->execute([$station_id]);
     $fuel_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Merchandise inventory — use station_inventory for per-station stock levels
+    // Merchandise inventory — unified catalog (same source as Pricing/Transactions)
     $stmt = $pdo->prepare("
         SELECT ip.id,
                ip.product_name AS name,
-               ip.category     AS category_name,
-               ip.unit_price   AS price,
-               ip.unit_cost    AS cost,
-               ip.sku,
-               COALESCE(si.stock_level, ip.stock, 0) AS stock_level,
-               COALESCE(si.reorder_level, 10)        AS reorder_level
+               COALESCE(ip.category,'Merchandise') AS category_name,
+               COALESCE(ip.unit_price, 0)           AS price,
+               COALESCE(ip.unit_cost, 0)            AS cost,
+               COALESCE(NULLIF(ip.sku,''), CONCAT('P', LPAD(ip.id,4,'0'))) AS sku,
+               COALESCE(si.stock_level, ip.stock, 0)  AS stock_level,
+               COALESCE(si.reorder_level, ip.reorder_level, 10) AS reorder_level
         FROM inventory_products ip
-        LEFT JOIN station_inventory si
-               ON si.product_id = ip.id AND si.station_id = ?
-        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products') AND ip.status = 'Active'
-        ORDER BY ip.category, ip.product_name
+        LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
+        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
+          AND LOWER(COALESCE(ip.status,'active')) NOT IN ('archived','deleted','inactive')
+
+        UNION
+
+        SELECT p.id,
+               p.name                              AS name,
+               COALESCE(pc.name,'General')         AS category_name,
+               COALESCE(si2.price, p.price, 0)     AS price,
+               COALESCE(p.cost, 0)                 AS cost,
+               COALESCE(NULLIF(p.sku,''), CONCAT('P', LPAD(p.id,4,'0'))) AS sku,
+               COALESCE(si2.stock_level, p.current_stock, 0) AS stock_level,
+               COALESCE(NULLIF(si2.reorder_level,0), NULLIF(p.min_stock_level,0), 10) AS reorder_level
+        FROM products p
+        LEFT JOIN product_categories pc ON pc.id = p.category_id
+        LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND si2.station_id = ?
+        WHERE LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
+          AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
+          AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(status,'active')) NOT IN ('archived','deleted') AND LOWER(COALESCE(category,'')) NOT IN ('fuel','fuel products'))
+
+        ORDER BY category_name, name
     ");
-    $stmt->execute([$station_id]);
+    $stmt->execute([$station_id, $station_id]);
     $merch_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Stock requests (this staff member only)

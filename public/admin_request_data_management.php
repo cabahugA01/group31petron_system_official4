@@ -78,7 +78,7 @@ try {
             r.*,
             COALESCE(NULLIF(TRIM(CONCAT(u.first_name,' ',u.last_name)),' '), u.username, 'Unknown Staff') AS requester_name,
             COALESCE(u.role, 'staff') AS requester_role,
-            COALESCE(NULLIF(TRIM(CONCAT(rev.first_name,' ',rev.last_name)),' '), rev.username, 'â€”') AS reviewer_name,
+            COALESCE(NULLIF(TRIM(CONCAT(rev.first_name,' ',rev.last_name)),' '), rev.username, '—') AS reviewer_name,
             st.name AS station_name
         FROM master_data_requests r
         LEFT JOIN users u   ON r.requested_by = u.id
@@ -115,12 +115,12 @@ if (in_array($export, ['excel', 'csv'])) {
         fputcsv($out, [
             $r['request_no'],
             $r['category'],
-            trim($item) ?: 'â€”',
+            trim($item) ?: '—',
             $r['requester_name'],
             $r['reviewer_name'],
-            (!empty($r['updated_at']) && $r['status'] !== 'Pending') ? date('M d, Y h:i A', strtotime($r['updated_at'])) : 'â€”',
+            (!empty($r['updated_at']) && $r['status'] !== 'Pending') ? date('M d, Y h:i A', strtotime($r['updated_at'])) : '—',
             $r['status'],
-            $r['rejection_reason'] ?? 'â€”',
+            $r['rejection_reason'] ?? '—',
         ]);
     }
     fclose($out); exit;
@@ -314,11 +314,11 @@ require_once __DIR__ . '/../partials/header.php';
 
                         // Determine requested item label
                         if ($row['category'] === 'Merchandise Product') {
-                            $item_label = $payload['product_name'] ?? 'â€”';
+                            $item_label = $payload['product_name'] ?? '—';
                         } elseif ($row['category'] === 'Service Type') {
-                            $item_label = $payload['service_name'] ?? 'â€”';
+                            $item_label = $payload['service_name'] ?? '—';
                         } else {
-                            $item_label = trim(($payload['vehicle_brand'] ?? '') . ' ' . ($payload['vehicle_model'] ?? '')) ?: 'â€”';
+                            $item_label = trim(($payload['vehicle_brand'] ?? '') . ' ' . ($payload['vehicle_model'] ?? '')) ?: '—';
                         }
 
                         // Category badge class
@@ -333,7 +333,7 @@ require_once __DIR__ . '/../partials/header.php';
                         elseif ($row['status'] === 'Rejected') $statusClass = 'badge badge-rejected';
 
                         // Reviewed date
-                        $reviewed_date = 'â€”';
+                        $reviewed_date = '—';
                         if (!empty($row['updated_at']) && $row['status'] !== 'Pending') {
                             $reviewed_date = date('M d, Y', strtotime($row['updated_at']));
                         }
@@ -357,7 +357,7 @@ require_once __DIR__ . '/../partials/header.php';
                                 'reviewer'      => $row['reviewer_name'],
                                 'reviewed_date' => $reviewed_date,
                                 'date_submitted'=> date('M d, Y h:i A', strtotime($row['created_at'])),
-                                'rejection_reason' => $row['rejection_reason'] ?? 'â€”',
+                                'rejection_reason' => $row['rejection_reason'] ?? '—',
                                 'payload'       => $payload,
                             ];
                             ?>
@@ -411,7 +411,7 @@ function openMdrModal(d) {
         'Fuel Type':         p.fuel_type,
         'Category':          p.category,
         'Unit':              p.unit,
-        'Suggested Price':   p.suggested_price ? 'â‚±' + Number(p.suggested_price).toFixed(2) : null,
+        'Suggested Price':   p.suggested_price ? '₱' + Number(p.suggested_price).toFixed(2) : null,
         'Brand':             p.brand,
         'Estimated Duration':p.estimated_duration,
         'Remarks':           p.remarks,
@@ -433,7 +433,7 @@ function openMdrModal(d) {
         <dt>Requested By</dt><dd>${d.requester}</dd>
         <dt>Date Submitted</dt><dd>${d.date_submitted}</dd>
         <dt>Status</dt><dd><span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;background:${sb};color:${sc};">${d.status}</span></dd>
-        <dt>Reviewed By</dt><dd>${d.reviewer || 'â€”'}</dd>
+        <dt>Reviewed By</dt><dd>${d.reviewer || '—'}</dd>
         <dt>Reviewed Date</dt><dd>${d.reviewed_date}</dd>
         ${d.status === 'Rejected' ? `<dt>Rejection Reason</dt><dd style="color:#dc2626;">${d.rejection_reason}</dd>` : ''}
     `;

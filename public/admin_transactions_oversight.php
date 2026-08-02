@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'ato_oversight_dashboard';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -15,7 +15,7 @@ if (!in_array($role, ['admin', 'superadmin'])) {
     header('Location: admin_dashboard.php'); exit;
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ POST: Admin transaction actions Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ── POST: Admin transaction actions ──────────────────────────────────────────
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && !isset($_GET['export'])) {
     $post_action = $_POST['action'] ?? '';
 
@@ -63,7 +63,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && !isset($_GET['export']))
         } catch (Exception $al_err) {}
     };
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Approve Merchandise Transaction Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    //  Approve Merchandise Transaction 
     // Admin oversight only acts on records already validated by Manager.
     // Raw 'Pending' staff encodings must go through Manager first.
     if ($post_action === 'approve_transaction') {
@@ -103,7 +103,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && !isset($_GET['export']))
         exit;
     }
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Reject Merchandise Transaction Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    //  Reject Merchandise Transaction 
     if ($post_action === 'reject_transaction') {
         $row_id = (int)($_POST['transaction_id'] ?? 0);
         $reason = trim($_POST['reason'] ?? '');
@@ -132,7 +132,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && !isset($_GET['export']))
         exit;
     }
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Adjust Merchandise Transaction Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    //  Adjust Merchandise Transaction 
     if ($post_action === 'adjust_transaction') {
         $row_id    = (int)($_POST['transaction_id'] ?? 0);
         $new_total = (float)($_POST['adj_total'] ?? 0);
@@ -143,13 +143,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && !isset($_GET['export']))
             if ($has_mt('validated_by')) { $set_parts[] = "validated_by = ?"; $set_vals[] = $me['id']; }
             if ($has_mt('validated_at')) { $set_parts[] = "validated_at = NOW()"; }
             if ($has_mt('remarks'))      { $set_parts[] = "remarks = ?"; $set_vals[] = 'ADJUSTED: ' . $adj_note; }
-            if ($has_mt('manager_notes')){ $set_parts[] = "manager_notes = ?"; $set_vals[] = "Admin Adjusted: Ã¢â€šÂ±" . number_format($new_total,2) . ". " . $adj_note; }
+            if ($has_mt('manager_notes')){ $set_parts[] = "manager_notes = ?"; $set_vals[] = "Admin Adjusted: " . number_format($new_total,2) . ". " . $adj_note; }
             if ($has_mt('updated_at'))   { $set_parts[] = "updated_at = NOW()"; }
             $stmt = $pdo->prepare("UPDATE merchandise_transactions SET " . implode(', ', $set_parts) . " WHERE id = ? AND station_id = ?");
             $stmt->execute(array_merge($set_vals, [$row_id, $station_id]));
             if ($stmt->rowCount() > 0) {
-                $insert_audit($row_id, 'Admin_Adjust', "New total: Ã¢â€šÂ±{$new_total}. Note: {$adj_note}");
-                log_activity($pdo, $me['id'], 'Adjust Transaction', "Merchandise #{$row_id} adjusted to Ã¢â€šÂ±{$new_total} by admin {$actor_name}.");
+                $insert_audit($row_id, 'Admin_Adjust', "New total: {$new_total}. Note: {$adj_note}");
+                log_activity($pdo, $me['id'], 'Adjust Transaction', "Merchandise #{$row_id} adjusted to {$new_total} by admin {$actor_name}.");
                 $_SESSION['success'] = "Transaction #{$row_id} adjusted successfully.";
             } else {
                 $_SESSION['error'] = 'Transaction not found or already processed.';
@@ -161,7 +161,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && !isset($_GET['export']))
         exit;
     }
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Approve Job Order Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    //  Approve Job Order 
     if ($post_action === 'approve_job_order') {
         $jo_id  = (int)($_POST['jo_id'] ?? 0);
         $jo_src = $_POST['jo_source'] ?? 'job_orders';
@@ -188,7 +188,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && !isset($_GET['export']))
         exit;
     }
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Reject Job Order Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    //  Reject Job Order 
     if ($post_action === 'reject_job_order') {
         $jo_id  = (int)($_POST['jo_id'] ?? 0);
         $jo_src = $_POST['jo_source'] ?? 'job_orders';
@@ -216,12 +216,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && !isset($_GET['export']))
         exit;
     }
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Fuel transactions removed Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    //  Fuel transactions removed 
     // Admin Oversight Dashboard shows ONLY Merchandise + Job Orders (NO Fuel).
     // Fuel variance is monitored in separate admin_variance_reports.php page.
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Dynamic column detection Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+//  Dynamic column detection 
 function ato_cols(PDO $pdo, string $table): array {
     try {
         $rows = $pdo->query("SHOW COLUMNS FROM `{$table}`")->fetchAll(PDO::FETCH_ASSOC);
@@ -235,7 +235,7 @@ function ato_has(array $map, string $col): bool { return isset($map[strtolower($
 $mt_cols = ato_cols($pdo, 'merchandise_transactions');
 $jo_cols = ato_cols($pdo, 'job_orders');
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Payment status helper Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+//  Payment status helper 
 // Derives Paid / Partial / Unpaid from amount_paid vs total_amount columns if available.
 // Falls back to payment_method presence as a proxy.
 function ato_pay_status(array $row): string {
@@ -251,7 +251,7 @@ function ato_pay_status(array $row): string {
     return 'Paid';
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Filters Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+//  Filters 
 // Admin Oversight Dashboard: ONLY Merchandise + Job Orders (NO Fuel transactions)
 $start      = $_GET['start']  ?? date('Y-m-d', strtotime('-30 days'));
 $end        = $_GET['end']    ?? date('Y-m-d');
@@ -259,7 +259,7 @@ $search     = trim($_GET['search'] ?? '');
 $status_f   = trim($_GET['status'] ?? '');
 $type_f     = trim($_GET['type']   ?? ''); // 'merchandise' | 'job_order' | ''
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Export header (early, before any output) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+//  Export header (early, before any output) 
 $export_type = $_GET['export'] ?? '';
 $is_export   = in_array($export_type, ['excel', 'csv']);
 if ($export_type === 'excel') {
@@ -272,11 +272,11 @@ if ($export_type === 'excel') {
     header('Pragma: no-cache');
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Fetch unified Merchandise + Job Orders (NO Fuel) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+//  Fetch unified Merchandise + Job Orders (NO Fuel) 
 $rows         = [];
 $total_amount = 0.0;
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Merchandise rows Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+//  Merchandise rows 
 $mt_status_col   = ato_has($mt_cols, 'validation_status') ? 'mt.validation_status' : "'Pending'";
 $mt_staff_col    = ato_has($mt_cols, 'staff_id') ? "COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown')" : "'Unknown'";
 $mt_date_col     = ato_has($mt_cols, 'transaction_date')
@@ -295,7 +295,7 @@ if ($status_f !== '') {
     $mt_where .= " AND LOWER(TRIM(COALESCE({$mt_status_col},''))) = LOWER(?)";
     $mt_params[] = $status_f;
 }
-// No default status filter â€” Admin Oversight shows ALL transactions
+// No default status filter — Admin Oversight shows ALL transactions
 // (pending, approved, rejected, adjusted, completed, etc.)
 
 $mt_rows = [];
@@ -329,23 +329,23 @@ if ($type_f === '' || $type_f === 'merchandise' || $type_f === 'job_order' || $t
                 END                                                     AS entry_type,
                 COALESCE(
                     NULLIF((SELECT GROUP_CONCAT(
-                                CONCAT(i.product_name, ' - ', i.quantity, ' pcs @ Ã¢â€šÂ±', FORMAT(i.unit_price, 2))
+                                CONCAT(i.product_name, ' - ', i.quantity, ' pcs @ ', FORMAT(i.unit_price, 2))
                                 ORDER BY i.id SEPARATOR ' | ')
                             FROM merchandise_transaction_items i 
                             WHERE i.transaction_id = mt.id 
                             AND COALESCE(i.item_type, 'merchandise') = 'merchandise'),''),
                     {$mt_item_sku_col}, 
-                    CASE WHEN TRIM(COALESCE({$mt_jo_svc_col},'')) <> '' THEN 'Ã¢â‚¬â€' ELSE 'N/A' END
+                    CASE WHEN TRIM(COALESCE({$mt_jo_svc_col},'')) <> '' THEN '' ELSE 'N/A' END
                 )                                                       AS items_parts,
                 COALESCE(
                     NULLIF((SELECT GROUP_CONCAT(
-                                CONCAT(i.product_name, ' - ', i.quantity, ' pcs @ Ã¢â€šÂ±', FORMAT(i.unit_price, 2))
+                                CONCAT(i.product_name, ' - ', i.quantity, ' pcs @ ', FORMAT(i.unit_price, 2))
                                 ORDER BY i.id SEPARATOR ' | ')
                             FROM merchandise_transaction_items i 
                             WHERE i.transaction_id = mt.id 
                             AND i.item_type = 'service'),''),
                     NULLIF({$mt_jo_svc_col},''),
-                    CASE WHEN {$mt_item_sku_col} IS NOT NULL AND {$mt_item_sku_col} <> '' THEN 'Ã¢â‚¬â€' ELSE 'N/A' END
+                    CASE WHEN {$mt_item_sku_col} IS NOT NULL AND {$mt_item_sku_col} <> '' THEN '' ELSE 'N/A' END
                 )                                                       AS service_type,
                 NULLIF(TRIM(CONCAT(
                     COALESCE({$mt_jo_veh_col},''),
@@ -379,7 +379,7 @@ if ($type_f === '' || $type_f === 'merchandise' || $type_f === 'job_order' || $t
     } catch (Exception $e) { $mt_rows = []; }
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Job Order rows Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+//  Job Order rows 
 $jo_status_col   = ato_has($jo_cols, 'validation_status') ? 'jo.validation_status' : 'jo.status';
 $jo_staff_col    = ato_has($jo_cols, 'created_by')        ? 'COALESCE(jo.created_by, jo.user_id)' : 'jo.user_id';
 $jo_mechanic_col = ato_has($jo_cols, 'assigned_mechanic_id') ? "COALESCE(NULLIF(CONCAT(m.first_name,' ',m.last_name),' '), m.username, '')" : "''";
@@ -398,7 +398,7 @@ if ($status_f !== '') {
     $jo_where .= " AND LOWER(TRIM(COALESCE({$jo_status_col},''))) = LOWER(?)";
     $jo_params[] = $status_f;
 }
-// No default status filter â€” show ALL job orders regardless of status
+// No default status filter — show ALL job orders regardless of status
 
 $jo_rows = [];
 if ($type_f === '' || $type_f === 'job_order') {
@@ -409,7 +409,7 @@ if ($type_f === '' || $type_f === 'job_order') {
                 CONCAT('JO-', jo.id)                                        AS txn_id,
                 COALESCE(NULLIF(TRIM(jo.customer_name),''),'Walk-in')       AS customer,
                 'Job Order'                                                  AS entry_type,
-                'Ã¢â‚¬â€'                                                          AS items_parts,
+                ''                                                          AS items_parts,
                 CONCAT(
                     COALESCE(jo.service_type,'Service'),
                     CASE WHEN jo.vehicle_plate IS NOT NULL AND jo.vehicle_plate != ''
@@ -447,7 +447,7 @@ usort($rows, fn($a, $b) => strtotime($b['txn_date']) - strtotime($a['txn_date'])
 
 foreach ($rows as $r) $total_amount += (float)($r['amount'] ?? 0);
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Status counts Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+//  Status counts 
 $status_counts = [];
 $type_counts   = [];
 foreach ($rows as $r) {
@@ -457,12 +457,12 @@ foreach ($rows as $r) {
     $type_counts[$t] = ($type_counts[$t] ?? 0) + 1;
 }
 
-// Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
-// NEW: Enhancements Ã¢â‚¬â€ all DB-driven, zero hardcoded
-// Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+// 
+// NEW: Enhancements  all DB-driven, zero hardcoded
+// 
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ 1. Performance Metrics (KPI panel) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-// Total sales, total services, top items, top encoder Ã¢â‚¬â€ scoped to station + filter dates
+//  1. Performance Metrics (KPI panel) 
+// Total sales, total services, top items, top encoder  scoped to station + filter dates
 $kpi_total_sales     = 0.0;
 $kpi_total_services  = 0;
 $kpi_top_items       = [];  // [['name'=>..., 'qty'=>...], ...]
@@ -560,15 +560,15 @@ try {
     $kpi_top_encoder = $kpi_enc_stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 } catch (Exception $_kpie5) {}
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ 2. Variance Alerts Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+//  2. Variance Alerts 
 // Scans approved/completed merch transactions in the date range for:
 //   A) qty > current stock_level
-//   B) sum(item qty Ãƒâ€” unit_price) != total_amount by > Ã¢â€šÂ±0.01
+//   B) sum(item qty  unit_price) != total_amount by > 0.01
 $variance_alerts     = [];
 $variance_alert_count = 0;
 try {
     // Load product stock map for this station
-    $va_stock_map = []; // product_id Ã¢â€ â€™ stock_level
+    $va_stock_map = []; // product_id  stock_level
     $va_stock_stmt = $pdo->prepare("
         SELECT product_id, COALESCE(stock_level, 0) AS stock_level
         FROM station_inventory WHERE station_id = ?
@@ -616,7 +616,7 @@ try {
                         'id'      => $_vt['id'],
                         'type'    => 'qty',
                         'message' => 'Qty mismatch: ' . htmlspecialchars($_vitem['product_name'])
-                                   . ' Ã¢â‚¬â€ encoded ' . (int)$_vitem['quantity']
+                                   . '  encoded ' . (int)$_vitem['quantity']
                                    . ' pc(s), stock ' . (int)$va_stock_map[$pid],
                     ];
                 }
@@ -627,8 +627,8 @@ try {
                     'txn_ref' => $_vt['txn_ref'],
                     'id'      => $_vt['id'],
                     'type'    => 'amount',
-                    'message' => 'Amount mismatch: computed Ã¢â€šÂ±' . number_format($computed_sum, 2)
-                               . ' vs encoded Ã¢â€šÂ±' . number_format((float)$_vt['total_amount'], 2),
+                    'message' => 'Amount mismatch: computed ' . number_format($computed_sum, 2)
+                               . ' vs encoded ' . number_format((float)$_vt['total_amount'], 2),
                 ];
             }
         }
@@ -636,8 +636,8 @@ try {
     $variance_alert_count = count($variance_alerts);
 } catch (Exception $_vae) {}
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ 3. Inventory Impact lookup Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-// Keyed by "{_source}:{row_id}" Ã¢â€ â€™ array of per-item deduction info
+//  3. Inventory Impact lookup 
+// Keyed by "{_source}:{row_id}"  array of per-item deduction info
 // Uses merchandise_transaction_items + station_inventory
 $inv_impact = [];
 try {
@@ -683,19 +683,19 @@ try {
             ];
         }
     }
-    // For job_orders rows Ã¢â‚¬â€ parse required_parts JSON
+    // For job_orders rows  parse required_parts JSON
     foreach ($rows as $_jor) {
         if (($_jor['_source'] ?? '') !== 'job_orders') continue;
         $ikey = 'job_orders:' . $_jor['row_id'];
         $rp   = is_string($_jor['items_parts'] ?? '') ? $_jor['items_parts'] : '';
-        // items_parts is text from GROUP_CONCAT, not JSON Ã¢â‚¬â€ show N/A
+        // items_parts is text from GROUP_CONCAT, not JSON  show N/A
         $inv_impact[$ikey] = []; // job_orders: shown as service-only
     }
 } catch (Exception $_iie) {}
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ 4. Receivables Aging Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+//  4. Receivables Aging 
 // Checks balance_due + due_date per row. Overdue = due_date <= today and not paid.
-$receivables = []; // row_id Ã¢â€ â€™ ['balance'=>..., 'due_date'=>..., 'overdue_days'=>..., 'aging_label'=>...]
+$receivables = []; // row_id  ['balance'=>..., 'due_date'=>..., 'overdue_days'=>..., 'aging_label'=>...]
 $today_ts = strtotime(date('Y-m-d'));
 try {
     $mt_has_due    = ato_has($mt_cols, 'due_date');
@@ -750,9 +750,9 @@ try {
     }
 } catch (Exception $_rece) {}
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ 5. Validation Notes (manager remarks) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+//  5. Validation Notes (manager remarks) 
 // Fetches admin_remarks / manager_notes / rejection_reason per row from DB
-$validation_notes = []; // "{_source}:{row_id}" Ã¢â€ â€™ string
+$validation_notes = []; // "{_source}:{row_id}"  string
 try {
     // Merchandise transactions
     if (!empty($ii_mt_ids ?? [])) {
@@ -816,7 +816,7 @@ try {
     }
 } catch (Exception $_vne) {}
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Export output Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+//  Export output 
 if ($export_type === 'csv') {
     $out = fopen('php://output', 'w');
     fputcsv($out, ['Transaction ID', 'Customer', 'Type', 'Vehicle', 'Items/Parts', 'Service Type', 'Amount', 'Payment Method', 'Payment Status', 'Validation Status', 'Date/Time', 'Staff']);
@@ -825,7 +825,7 @@ if ($export_type === 'csv') {
             $r['txn_id'],
             $r['customer'],
             $r['entry_type'],
-            $r['vehicle_info'] ?? 'Ã¢â‚¬â€',
+            $r['vehicle_info'] ?? '',
             $r['items_parts'] ?? 'N/A',
             $r['service_type'] ?? 'N/A',
             number_format((float)$r['amount'], 2),
@@ -856,7 +856,7 @@ if ($export_type === 'excel') {
         echo '<td>' . htmlspecialchars($r['txn_id'])            . '</td>';
         echo '<td>' . htmlspecialchars($r['customer'])          . '</td>';
         echo '<td>' . htmlspecialchars($r['entry_type'])        . '</td>';
-        echo '<td>' . htmlspecialchars($r['vehicle_info'] ?? 'Ã¢â‚¬â€') . '</td>';
+        echo '<td>' . htmlspecialchars($r['vehicle_info'] ?? '') . '</td>';
         echo '<td>' . htmlspecialchars($r['items_parts'] ?? 'N/A')     . '</td>';
         echo '<td>' . htmlspecialchars($r['service_type'] ?? 'N/A')    . '</td>';
         echo '<td style="text-align:right">&#8369;' . number_format((float)$r['amount'], 2) . '</td>';
@@ -881,7 +881,7 @@ if ($export_type === 'excel') {
     exit;
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ PDF export Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+//  PDF export 
 if ($export_type === 'pdf') {
     header('Content-Type: text/html; charset=utf-8');
     $logo_url  = '../assets/img/Petron%20Logo.png';
@@ -938,7 +938,7 @@ if ($export_type === 'pdf') {
         echo '<td>' . htmlspecialchars($r['txn_id'])            . '</td>';
         echo '<td>' . htmlspecialchars($r['customer'])          . '</td>';
         echo '<td>' . htmlspecialchars($r['entry_type'])        . '</td>';
-        echo '<td>' . htmlspecialchars($r['vehicle_info'] ?? 'Ã¢â‚¬â€') . '</td>';
+        echo '<td>' . htmlspecialchars($r['vehicle_info'] ?? '') . '</td>';
         echo '<td>' . htmlspecialchars(mb_substr($r['items_parts'] ?? 'N/A', 0, 40)) . '</td>';
         echo '<td>' . htmlspecialchars(mb_substr($r['service_type'] ?? 'N/A', 0, 30)) . '</td>';
         echo '<td class="amount">&#8369;' . number_format((float)$r['amount'], 2) . '</td>';
@@ -1017,7 +1017,7 @@ include __DIR__ . '/../partials/header.php';
             <i class="fas fa-peso-sign" style="color:#1d4ed8;font-size:18px;"></i>
         </div>
         <div style="flex:1;min-width:0;">
-            <div style="font-size:20px;font-weight:700;color:#002F70;line-height:1.2;">â‚±<?= number_format($kpi_total_sales, 2) ?></div>
+            <div style="font-size:20px;font-weight:700;color:#002F70;line-height:1.2;">₱<?= number_format($kpi_total_sales, 2) ?></div>
             <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.3px;font-weight:600;margin-top:4px;">TOTAL SALES</div>
             <div style="font-size:10px;color:#94a3b8;margin-top:2px;"><?= htmlspecialchars($start) ?> to <?= htmlspecialchars($end) ?></div>
         </div>
@@ -1062,7 +1062,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
         <div style="flex:1;min-width:0;">
             <div style="font-size:16px;font-weight:700;color:#002F70;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                <?= $kpi_top_encoder ? htmlspecialchars($kpi_top_encoder['staff_name']) : 'â€”' ?>
+                <?= $kpi_top_encoder ? htmlspecialchars($kpi_top_encoder['staff_name']) : '—' ?>
             </div>
             <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.3px;font-weight:600;margin-top:4px;">TOP ENCODER</div>
             <div style="font-size:10px;color:#94a3b8;margin-top:2px;">
@@ -1098,7 +1098,7 @@ include __DIR__ . '/../partials/header.php';
      border-radius:10px;padding:14px 18px;margin-bottom:14px;">
     <div style="font-weight:700;color:#dc2626;margin-bottom:10px;font-size:13px;">
         <i class="fas fa-exclamation-triangle"></i>
-        Variance Alerts Ã¢â‚¬â€ <?= (int)$variance_alert_count ?> flag(s) in <?= htmlspecialchars($start) ?> Ã¢â‚¬â€œ <?= htmlspecialchars($end) ?>
+        Variance Alerts  <?= (int)$variance_alert_count ?> flag(s) in <?= htmlspecialchars($start) ?>  <?= htmlspecialchars($end) ?>
     </div>
     <div style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;">
         <?php foreach ($variance_alerts as $_va): ?>
@@ -1117,7 +1117,7 @@ include __DIR__ . '/../partials/header.php';
 <?php endif; ?>
 <?php endif; // End of disabled summary cards ?>
 
-<!-- Ã¢â€â‚¬Ã¢â€â‚¬ Filter Bar Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ -->
+<!---  Filter Bar  --->
 <div class="ato-filter-card">
     <form method="get" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
         <div class="ato-flt-grp">
@@ -1167,7 +1167,7 @@ include __DIR__ . '/../partials/header.php';
 
 
 
-<!-- Ã¢â€â‚¬Ã¢â€â‚¬ Unified Table Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ -->
+<!---  Unified Table  --->
 <div class="card" style="padding:0;">
     <div style="overflow:hidden;border-radius:12px;">
     <table class="ato-table">
@@ -1249,23 +1249,23 @@ include __DIR__ . '/../partials/header.php';
                         </span>
                     </td>
                     <td style="color:#475569;overflow:hidden;text-overflow:ellipsis;"
-                        title="<?= htmlspecialchars($r['vehicle_info'] ?? 'Ã¢â‚¬â€') ?>">
-                        <?= htmlspecialchars($r['vehicle_info'] ?? 'Ã¢â‚¬â€') ?: 'Ã¢â‚¬â€' ?>
+                        title="<?= htmlspecialchars($r['vehicle_info'] ?? '') ?>">
+                        <?= htmlspecialchars($r['vehicle_info'] ?? '') ?: '' ?>
                     </td>
                     <td style="line-height:1.3;overflow:hidden;"
                         title="<?= htmlspecialchars($r['items_parts'] ?? 'N/A') ?>">
-                        <?= htmlspecialchars(mb_strimwidth($r['items_parts'] ?? 'N/A', 0, 50, 'Ã¢â‚¬Â¦')) ?>
+                        <?= htmlspecialchars(mb_strimwidth($r['items_parts'] ?? 'N/A', 0, 50, '...')) ?>
                     </td>
                     <td style="line-height:1.3;overflow:hidden;"
                         title="<?= htmlspecialchars($r['service_type'] ?? 'N/A') ?>">
-                        <?= htmlspecialchars(mb_strimwidth($r['service_type'] ?? 'N/A', 0, 40, 'Ã¢â‚¬Â¦')) ?>
+                        <?= htmlspecialchars(mb_strimwidth($r['service_type'] ?? 'N/A', 0, 40, '...')) ?>
                     </td>
                     <td style="font-weight:700;color:#002F70;text-align:right;white-space:nowrap;">
-                        Ã¢â€šÂ±<?= number_format((float)$r['amount'], 2) ?>
+                        <?= number_format((float)$r['amount'], 2) ?>
                     </td>
                     <td style="text-align:center;overflow:hidden;text-overflow:ellipsis;"
                         title="<?= htmlspecialchars($r['payment_method']) ?>">
-                        <?= htmlspecialchars(mb_strimwidth($r['payment_method'], 0, 10, 'Ã¢â‚¬Â¦')) ?>
+                        <?= htmlspecialchars(mb_strimwidth($r['payment_method'], 0, 10, '...')) ?>
                     </td>
 
                     <!-- Pay Status + Receivables Aging -->
@@ -1276,12 +1276,12 @@ include __DIR__ . '/../partials/header.php';
                         </span>
                         <?php if ($show_bal): ?>
                         <div style="font-size:10px;color:#9a3412;font-weight:700;margin-top:2px;white-space:nowrap;">
-                            Ã¢â€šÂ±<?= number_format($rec_bal, 2) ?>
+                            <?= number_format($rec_bal, 2) ?>
                         </div>
                         <?php endif; ?>
                         <?php if (!empty($aging_label)): ?>
                         <div style="font-size:10px;color:<?= $aging_color ?>;font-weight:600;margin-top:1px;">
-                            <?= $rec_data['overdue_days'] > 0 ? 'Ã¢Å¡Â  ' : '' ?><?= htmlspecialchars($aging_label) ?>
+                            <?= $rec_data['overdue_days'] > 0 ? ' ' : '' ?><?= htmlspecialchars($aging_label) ?>
                         </div>
                         <?php endif; ?>
                     </td>
@@ -1298,23 +1298,23 @@ include __DIR__ . '/../partials/header.php';
                         <?php if (empty($ii_items) && ($r['_source'] ?? '') === 'job_orders'): ?>
                             <span style="color:#94a3b8;font-size:10px;">Svc only</span>
                         <?php elseif (empty($ii_items)): ?>
-                            <span style="color:#cbd5e1;font-size:10px;">Ã¢â‚¬â€</span>
+                            <span style="color:#cbd5e1;font-size:10px;"></span>
                         <?php else: foreach ($ii_items as $_ii):
                             if ($_ii['status'] === 'yes')    {
-                                $ic_bg='#dcfce7'; $ic_c='#166534'; $ic_b='#86efac'; $ic_icon='Ã¢Å“â€œ'; $il='Deducted';
+                                $ic_bg='#dcfce7'; $ic_c='#166534'; $ic_b='#86efac'; $ic_icon=''; $il='Deducted';
                             } elseif ($_ii['status'] === 'no') {
-                                $ic_bg='#fef9c3'; $ic_c='#92400e'; $ic_b='#fde68a'; $ic_icon='Ã¢Å“â€”'; $il='Not Yet';
+                                $ic_bg='#fef9c3'; $ic_c='#92400e'; $ic_b='#fde68a'; $ic_icon=''; $il='Not Yet';
                             } elseif ($_ii['status'] === 'na') {
-                                $ic_bg='#f1f5f9'; $ic_c='#94a3b8'; $ic_b='#e2e8f0'; $ic_icon='Ã¢â‚¬â€'; $il='N/A';
+                                $ic_bg='#f1f5f9'; $ic_c='#94a3b8'; $ic_b='#e2e8f0'; $ic_icon=''; $il='N/A';
                             } else {
-                                $ic_bg='#eff6ff'; $ic_c='#1d4ed8'; $ic_b='#bfdbfe'; $ic_icon='Ã¢ÂÂ³'; $il='Pending';
+                                $ic_bg='#eff6ff'; $ic_c='#1d4ed8'; $ic_b='#bfdbfe'; $ic_icon=''; $il='Pending';
                             }
                         ?>
                         <div style="margin-bottom:3px;"
-                             title="<?= htmlspecialchars($_ii['part']) ?> Ãƒâ€” <?= (int)$_ii['qty'] ?> pc">
+                             title="<?= htmlspecialchars($_ii['part']) ?> Ãƒ— <?= (int)$_ii['qty'] ?> pc">
                             <div style="font-size:10px;color:#475569;white-space:nowrap;
                                         overflow:hidden;text-overflow:ellipsis;max-width:100px;">
-                                <?= htmlspecialchars(mb_strimwidth($_ii['part'],0,12,'Ã¢â‚¬Â¦')) ?> Ãƒâ€”<?= (int)$_ii['qty'] ?>
+                                <?= htmlspecialchars(mb_strimwidth($_ii['part'],0,12,'...')) ?> <?= (int)$_ii['qty'] ?>
                             </div>
                             <span style="display:inline-block;background:<?= $ic_bg ?>;color:<?= $ic_c ?>;
                                          border:1px solid <?= $ic_b ?>;font-size:10px;font-weight:700;
@@ -1333,14 +1333,14 @@ include __DIR__ . '/../partials/header.php';
                                     padding:3px 6px;font-size:10px;">
                             <span style="font-size:9px;font-weight:700;color:#1d4ed8;
                                          text-transform:uppercase;letter-spacing:.3px;display:block;">
-                                Ã¢Å“â€¦ Manager
+                                 Manager
                             </span>
                             <div style="color:#1e3a5f;margin-top:1px;">
-                                <?= htmlspecialchars(mb_strimwidth($val_note, 0, 55, 'Ã¢â‚¬Â¦')) ?>
+                                <?= htmlspecialchars(mb_strimwidth($val_note, 0, 55, '...')) ?>
                             </div>
                         </div>
                         <?php else: ?>
-                            <span style="color:#cbd5e1;font-size:10px;">Ã¢â‚¬â€</span>
+                            <span style="color:#cbd5e1;font-size:10px;"></span>
                         <?php endif; ?>
                     </td>
 
@@ -1350,7 +1350,7 @@ include __DIR__ . '/../partials/header.php';
                     </td>
                     <td style="color:#64748b;overflow:hidden;text-overflow:ellipsis;"
                         title="<?= htmlspecialchars($r['staff_name']) ?>">
-                        <?= htmlspecialchars(mb_strimwidth($r['staff_name'], 0, 14, 'Ã¢â‚¬Â¦')) ?>
+                        <?= htmlspecialchars(mb_strimwidth($r['staff_name'], 0, 14, '...')) ?>
                     </td>
 
                     <!-- Actions -->
@@ -1463,7 +1463,7 @@ include __DIR__ . '/../partials/header.php';
 .ato-btn-back   { color:#4b5563 !important; border-color:#6b7280 !important; }
 .ato-btn-back:hover   { background:#6b7280 !important; color:#fff !important; }
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ Table Styles with Blue Headers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+/*  Table Styles with Blue Headers  */
 .ato-table { 
     width:100%;
     border-collapse:collapse;
@@ -1514,7 +1514,7 @@ include __DIR__ . '/../partials/header.php';
 .ato-table th:nth-child(10),
 .ato-table td:nth-child(10) { text-align:center; }
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ Plain Text Badges Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+/*  Plain Text Badges  */
 .ato-badge { 
     display:inline-block;
     padding:3px 10px;
@@ -1552,7 +1552,7 @@ include __DIR__ . '/../partials/header.php';
     border-color:#bbf7d0;
 }
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ Summary Bar Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+/*  Summary Bar  */
 .ato-summary-bar { 
     display:flex;
     gap:10px;
@@ -1575,7 +1575,7 @@ include __DIR__ . '/../partials/header.php';
     font-weight:600;
 }
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ Modal Overlay (hidden by default) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+/*  Modal Overlay (hidden by default)  */
 .ato-modal-overlay {
     display: none;
     position: fixed;
@@ -1649,13 +1649,13 @@ include __DIR__ . '/../partials/header.php';
     cursor: pointer;
 }
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ Responsive Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+/*  Responsive  */
 @media (max-width: 768px) {
     .ato-table { font-size:11px; }
     .ato-table thead th, .ato-table tbody td { padding:8px 6px; }
 }
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ Print Styles Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+/*  Print Styles  */
 @media print {
     .sidebar,.top-header,.int-head .actions,.ato-filter-card,.ato-tab-bar { display:none !important; }
     .main { margin:0 !important;padding:0 !important; }
@@ -1775,7 +1775,7 @@ include __DIR__ . '/../partials/header.php';
 </script>
 <div style="height: 80px;"></div>
 
-<!-- Ã¢â€â‚¬Ã¢â€â‚¬ Reject Modal Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ -->
+<!---  Reject Modal  --->
 <div class="ato-modal-overlay" id="atoRejectModal">
     <div class="ato-modal">
         <h3><i class="fas fa-times-circle" style="color:#dc3545;margin-right:8px;"></i>Return Transaction</h3>
@@ -1789,7 +1789,7 @@ include __DIR__ . '/../partials/header.php';
             <input type="hidden" name="_status" id="ato_reject_status" value="">
             <input type="hidden" name="_search" id="ato_reject_search" value="">
             <label>Reason for returning <span style="color:#dc3545;">*</span></label>
-            <textarea name="reason" id="ato_reject_reason" placeholder="Explain why this transaction is being returnedÃ¢â‚¬Â¦" required></textarea>
+            <textarea name="reason" id="ato_reject_reason" placeholder="Explain why this transaction is being returned..." required></textarea>
             <div class="ato-modal-btns">
                 <button type="button" class="ato-modal-cancel" onclick="atoCloseModal('atoRejectModal')">Cancel</button>
                 <button type="submit" class="ato-modal-submit" style="background:#dc3545;">Return Transaction</button>
@@ -1798,7 +1798,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- Ã¢â€â‚¬Ã¢â€â‚¬ Adjust Modal Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ -->
+<!---  Adjust Modal  --->
 <div class="ato-modal-overlay" id="atoAdjustModal">
     <div class="ato-modal">
         <h3><i class="fas fa-sliders" style="color:#6f42c1;margin-right:8px;"></i>Adjust Transaction Amount</h3>
@@ -1809,10 +1809,10 @@ include __DIR__ . '/../partials/header.php';
             <input type="hidden" name="_end" id="ato_adj_end" value="">
             <input type="hidden" name="_status" id="ato_adj_status" value="">
             <input type="hidden" name="_search" id="ato_adj_search" value="">
-            <label>New Total Amount (Ã¢â€šÂ±) <span style="color:#dc3545;">*</span></label>
+            <label>New Total Amount () <span style="color:#dc3545;">*</span></label>
             <input type="number" name="adj_total" id="ato_adj_total" step="0.01" min="0" required>
             <label>Adjustment Note <span style="color:#dc3545;">*</span></label>
-            <textarea name="adj_note" id="ato_adj_note" placeholder="Reason for adjustmentÃ¢â‚¬Â¦" required></textarea>
+            <textarea name="adj_note" id="ato_adj_note" placeholder="Reason for adjustment..." required></textarea>
             <div class="ato-modal-btns">
                 <button type="button" class="ato-modal-cancel" onclick="atoCloseModal('atoAdjustModal')">Cancel</button>
                 <button type="submit" class="ato-modal-submit" style="background:#6f42c1;">Save Adjustment</button>
@@ -1862,11 +1862,11 @@ document.querySelectorAll('.ato-modal-overlay').forEach(function(overlay) {
     });
 });
 
-// Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+// 
 // AUTO-REFRESH: Admin Transactions Oversight (60-second polling for compliance)
 // No manual refresh button needed - system automatically reflects manager-validated
 // transactions and compliance alerts for admin oversight monitoring.
-// Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+// 
 let refreshAdminOversightTimer = null;
 let isAdminModalOpen = false;
 

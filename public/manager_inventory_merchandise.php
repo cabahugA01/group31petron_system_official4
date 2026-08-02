@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'mgr_inv_merch';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -174,6 +174,92 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         header('Location: manager_inventory_merchandise.php?tab=inventory'); exit;
+    }
+
+    // Approve Merchandise Adjustment
+    if ($action === 'approve_merchandise_adjustment') {
+        $adj_id = (int)($_POST['adjustment_id'] ?? 0);
+        if ($adj_id > 0) {
+            try {
+                $pdo->beginTransaction();
+                $stmt = $pdo->prepare("SELECT * FROM merchandise_adjustments WHERE id = ? AND station_id = ? AND status = 'Pending'");
+                $stmt->execute([$adj_id, $station_id]);
+                $adj = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$adj) throw new Exception("Adjustment request not found or already processed.");
+
+                $pid = (int)$adj['product_id'];
+                $change = (int)$adj['quantity_change'];
+                $curr_stock = (float)$adj['current_stock'];
+                $new_stock = max(0, $curr_stock + $change);
+
+                // 1. Update merchandise_adjustments
+                $pdo->prepare("UPDATE merchandise_adjustments SET status = 'Approved', approved_by = ?, approved_at = NOW(), updated_at = NOW() WHERE id = ?")
+                    ->execute([$me['id'], $adj_id]);
+
+                // 2. Update station_inventory
+                $pdo->prepare("UPDATE station_inventory SET stock_level = ?, last_updated = NOW() WHERE product_id = ? AND station_id = ?")
+                    ->execute([$new_stock, $pid, $station_id]);
+
+                // 3. Update inventory_products
+                $pdo->prepare("UPDATE inventory_products SET stock = ?, updated_at = NOW() WHERE id = ?")
+                    ->execute([$new_stock, $pid]);
+
+                // 4. Insert into inventory_logs
+                $pdo->prepare("
+                    INSERT INTO inventory_logs (station_id, product_id, action, quantity_change, notes, user_id, created_at)
+                    VALUES (?, ?, 'adjustment', ?, ?, ?, NOW())
+                ")->execute([
+                    $station_id,
+                    $pid,
+                    $change,
+                    "Adjustment Approved ({$adj['adjustment_type']}): {$adj['reason']}",
+                    $me['id']
+                ]);
+
+                // 5. Insert into inventory_movements if table exists
+                try {
+                    $pdo->prepare("
+                        INSERT INTO inventory_movements (station_id, product_id, reference_no, movement_type, quantity_change, resulting_stock, remarks, created_by, created_at)
+                        VALUES (?, ?, ?, 'adjustment', ?, ?, ?, ?, NOW())
+                    ")->execute([
+                        $station_id,
+                        $pid,
+                        'ADJ-' . str_pad($adj_id, 4, '0', STR_PAD_LEFT),
+                        $change,
+                        $new_stock,
+                        "Approved {$adj['adjustment_type']}: {$adj['reason']}",
+                        $me['id']
+                    ]);
+                } catch (Exception $e_mov) {}
+
+                log_activity($pdo, $me['id'], 'Approve Adjustment', "Approved adjustment #{$adj_id} for {$adj['product_name']} ({$change})");
+
+                $pdo->commit();
+                $_SESSION['success'] = "Adjustment request for '{$adj['product_name']}' approved successfully! Inventory updated to {$new_stock}.";
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                $_SESSION['error'] = 'Error: ' . $e->getMessage();
+            }
+        }
+        header('Location: manager_inventory_merchandise.php?tab=requests'); exit;
+    }
+
+    // Reject Merchandise Adjustment
+    if ($action === 'reject_merchandise_adjustment') {
+        $adj_id = (int)($_POST['adjustment_id'] ?? 0);
+        $rej_reason = trim($_POST['rejection_reason'] ?? 'Rejected by Manager');
+        if ($adj_id > 0) {
+            try {
+                $pdo->prepare("UPDATE merchandise_adjustments SET status = 'Rejected', approved_by = ?, rejection_reason = ?, approved_at = NOW(), updated_at = NOW() WHERE id = ? AND station_id = ?")
+                    ->execute([$me['id'], $rej_reason, $adj_id, $station_id]);
+                log_activity($pdo, $me['id'], 'Reject Adjustment', "Rejected adjustment #{$adj_id}");
+                $_SESSION['success'] = "Adjustment request #{$adj_id} rejected.";
+            } catch (Exception $e) {
+                $_SESSION['error'] = 'Error: ' . $e->getMessage();
+            }
+        }
+        header('Location: manager_inventory_merchandise.php?tab=requests'); exit;
     }
 
     // 2. Approve Stock Request (Forward to Admin as PR)
@@ -511,7 +597,7 @@ try {
     ")->execute([$station_id, $station_id]);
 } catch (Exception $e) {}
 
-// Main catalog query â€” UNION of inventory_products + products (excluding fuel/service)
+// Main catalog query — UNION of inventory_products + products (excluding fuel/service)
 try {
     $stmt = $pdo->prepare("
         SELECT
@@ -798,6 +884,26 @@ try {
     ksort($req_staff_users);
 } catch (Exception $e) {}
 
+// Merchandise Adjustments data
+$merchandise_adjustments = [];
+$summary_adj_pending = 0;
+try {
+    $stmt = $pdo->prepare("
+        SELECT ma.*, u.name AS staff_name
+        FROM merchandise_adjustments ma
+        LEFT JOIN users u ON ma.requested_by = u.id
+        WHERE ma.station_id = ?
+        ORDER BY CASE ma.status WHEN 'Pending' THEN 1 ELSE 2 END, ma.requested_at DESC
+    ");
+    $stmt->execute([$station_id]);
+    $merchandise_adjustments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($merchandise_adjustments as $adj) {
+        if (strtolower($adj['status'] ?? '') === 'pending') {
+            $summary_adj_pending++;
+        }
+    }
+} catch (Exception $e) {}
+
 // Awaiting Deliveries Verification
 $pending_pos = [];
 try {
@@ -875,7 +981,7 @@ try {
 } catch (Exception $e) {}
 
 $active_tab = $_GET['tab'] ?? 'inventory';
-if (!in_array($active_tab, ['inventory', 'alerts', 'movement', 'requests', 'stockin', 'stockout', 'transfers', 'damaged', 'expired'])) {
+if (!in_array($active_tab, ['inventory', 'alerts', 'movement', 'requests', 'adjustments', 'stockin', 'stockout', 'transfers', 'damaged', 'expired'])) {
     $active_tab = 'inventory';
 }
 // URL-driven filter/view params (from sidebar deep-links)
@@ -909,7 +1015,7 @@ try {
         SELECT
             msi.id,
             CONCAT('SI-', LPAD(msi.id, 5, '0')) AS stock_in_no,
-            COALESCE(NULLIF(msi.po_number,''), 'â€”') AS po_no,
+            COALESCE(NULLIF(msi.po_number,''), '—') AS po_no,
             msi.product_name,
             COALESCE(NULLIF(msi.batch_ref,''), CONCAT('BATCH-', LPAD(msi.id, 4, '0'))) AS batch_no,
             msi.qty_received,
@@ -960,7 +1066,7 @@ try {
         SELECT
             CONCAT('TR-', LPAD(il.id, 5, '0')) AS transfer_no,
             COALESCE(ip.product_name, p.name, il.notes, 'Merchandise Product') AS product_name,
-            COALESCE(il.notes, 'â€”') AS notes,
+            COALESCE(il.notes, '—') AS notes,
             ABS(il.quantity_change) AS qty,
             il.created_at AS date_transferred,
             COALESCE(u.name, u.username, 'Staff') AS processed_by
@@ -983,8 +1089,8 @@ try {
     $s = $pdo->prepare("
         SELECT
             CONCAT('DMG-', LPAD(il.id, 5, '0')) AS damage_no,
-            COALESCE(ip.product_name, p.name, il.notes, 'â€”') AS product_name,
-            'â€”' AS batch_no,
+            COALESCE(ip.product_name, p.name, il.notes, '—') AS product_name,
+            '—' AS batch_no,
             ABS(il.quantity_change) AS qty,
             COALESCE(il.notes, 'Damage recorded') AS reason,
             il.created_at AS date_recorded,
@@ -1053,9 +1159,9 @@ try {
     $s = $pdo->prepare("
         SELECT
             il.created_at AS date,
-            COALESCE(ip.product_name, 'â€”') AS product_name,
+            COALESCE(ip.product_name, '—') AS product_name,
             il.action AS movement_type,
-            COALESCE(il.reference_type, il.action, 'â€”') AS reference,
+            COALESCE(il.reference_type, il.action, '—') AS reference,
             CASE WHEN il.quantity_change > 0 THEN il.quantity_change ELSE 0 END AS qty_in,
             CASE WHEN il.quantity_change < 0 THEN ABS(il.quantity_change) ELSE 0 END AS qty_out,
             COALESCE(il.quantity_after, 0) AS balance,
@@ -1076,8 +1182,8 @@ include __DIR__ . '/../partials/header.php';
 <style>
 /* Header standardization */
 body { overflow-x: hidden; }
-/* Prevent horizontal page scroll - tables clip to width */
-.table-wrap { overflow-x: hidden !important; }
+/* Allow horizontal scroll on tables so Actions column is never clipped */
+.table-wrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
 .int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; padding-top:16px; padding-bottom:16px; border-bottom:2px solid #e9ecef; }
 .int-head h1 { font-size:22px !important; font-weight:700 !important; color:#00264D !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
 .int-head .sub { font-size:13px; color:#64748b; margin-top:4px; }
@@ -1313,23 +1419,18 @@ body { overflow-x: hidden; }
     <a href="manager_inventory_merchandise.php?tab=inventory" class="tab-btn <?= $active_tab === 'inventory' ? 'active' : '' ?>">
         <i class="fas fa-boxes"></i> Inventory Overview
     </a>
-    <a href="manager_inventory_merchandise.php?tab=movement" class="tab-btn <?= $active_tab === 'movement' ? 'active' : '' ?>">
-        <i class="fas fa-exchange-alt"></i> Stock Movement History
-    </a>
     <a href="manager_inventory_merchandise.php?tab=alerts" class="tab-btn <?= $active_tab === 'alerts' ? 'active' : '' ?>">
         <i class="fas fa-exclamation-triangle"></i> Stock Alerts
         <?php if (($summary_low + $summary_out) > 0): ?>
             <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;"><?= ($summary_low + $summary_out) ?></span>
         <?php endif; ?>
     </a>
-    <?php if ($active_tab === 'requests' || $summary_pending_requests > 0): ?>
-    <a href="manager_inventory_merchandise.php?tab=requests" class="tab-btn <?= $active_tab === 'requests' ? 'active' : '' ?>">
-        <i class="fas fa-paper-plane"></i> Stock Requests Review
-        <?php if ($summary_pending_requests > 0): ?>
-            <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;"><?= $summary_pending_requests ?></span>
+    <a href="manager_inventory_merchandise.php?tab=adjustments" class="tab-btn <?= ($active_tab === 'requests' || $active_tab === 'adjustments') ? 'active' : '' ?>">
+        <i class="fas fa-sliders"></i> Inventory Adjustments
+        <?php if ($summary_adj_pending > 0): ?>
+            <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:800;"><?= $summary_adj_pending ?></span>
         <?php endif; ?>
     </a>
-    <?php endif; ?>
 </div>
 <!-- TAB CONTENT 1: Inventory Stock Catalog -->
 <?php if ($active_tab === 'inventory'): ?>
@@ -1394,7 +1495,7 @@ body { overflow-x: hidden; }
     <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #bfdbfe;">
         <div>
             <div style="font-size:11px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:.3px;">Total Inventory Value</div>
-            <div style="font-size:18px;font-weight:800;color:#1d4ed8;margin-top:4px;">â‚±<?= number_format($total_inventory_value, 2) ?></div>
+            <div style="font-size:18px;font-weight:800;color:#1d4ed8;margin-top:4px;">₱<?= number_format($total_inventory_value, 2) ?></div>
         </div>
         <div style="background:#eff6ff;color:#1d4ed8;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-peso-sign"></i></div>
     </div>
@@ -1424,31 +1525,30 @@ body { overflow-x: hidden; }
             </select>
         </div>
     </div>
-    <div class="table-wrap">
-        <table class="table" id="mgrMerchTable">
+    <div class="table-wrap" style="overflow-x:auto;width:100%;-webkit-overflow-scrolling:touch;">
+        <table class="table" id="mgrMerchTable" style="width:100%;min-width:1300px;">
             <thead>
                 <tr>
                     <th>SKU</th>
                     <th>Product Name</th>
                     <th style="text-align:center;">Category</th>
                     <th>UOM</th>
-                    <th style="text-align:right;">Beginning</th>
-                    <th style="text-align:right;">Added</th>
-                    <th style="text-align:right;">Deducted</th>
+                    <th style="text-align:right;">Stock In</th>
+                    <th style="text-align:right;">Stock Out</th>
                     <th>Current Stock</th>
                     <th style="text-align:right;">Reorder Level</th>
                     <th style="text-align:right;">Physical Count</th>
                     <th style="text-align:right;">Variance</th>
                     <th style="text-align:center;">Status</th>
                     <th>Last Updated</th>
-                    <th style="text-align:center;">Actions</th>
+                    <th style="text-align:center;min-width:90px;white-space:nowrap;">Actions</th>
                 </tr>
             </thead>
             <tbody id="merchTableBody">
             <?php
             foreach ($sorted as $cat_label => $items):
             ?>
-                <tr class="cat-header no-paginate"><td colspan="14"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                <tr class="cat-header no-paginate"><td colspan="13"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                 <?php foreach ($items as $item):
                     $stock    = (float)($item['stock_level'] ?? 0);
                     $reorder  = (float)($item['reorder_level'] ?? 24);
@@ -1463,7 +1563,6 @@ body { overflow-x: hidden; }
                     $pid = (int)$item['id'];
                     $added_qty = (float)($prod_added_map[$pid] ?? 0);
                     $deducted_qty = (float)($prod_deducted_map[$pid] ?? 0);
-                    $beginning_qty = max(0, $stock - $added_qty + $deducted_qty);
 
                     $fill_pct = $capacity > 0 ? min(100, ($stock / $capacity) * 100) : 0;
 
@@ -1484,14 +1583,14 @@ body { overflow-x: hidden; }
                         $si_cls = 'variance detected';
                     }
 
-                    $timestamp = 'â€”';
+                    $timestamp = '—';
                     if (!empty($item['last_updated'])) {
                         try {
                             $timestamp = (new DateTime($item['last_updated']))->format('M d, Y g:i A');
                         } catch (Exception $e) {}
                     }
 
-                    $var_text = 'â€”';
+                    $var_text = '—';
                     $var_style = 'color:#64748b;';
                     if ($variance !== null) {
                         $v_val = (float)$variance;
@@ -1507,7 +1606,7 @@ body { overflow-x: hidden; }
                         }
                     }
 
-                    $phys_text = ($item['physical_count'] !== null) ? number_format((float)$item['physical_count'], 0) : 'â€”';
+                    $phys_text = ($item['physical_count'] !== null) ? number_format((float)$item['physical_count'], 0) : '—';
                 ?>
                 <tr class="merch-row"
                     data-id="<?php echo (int)$item['id']; ?>"
@@ -1517,11 +1616,10 @@ body { overflow-x: hidden; }
                     data-has-variance="<?php echo $has_variance ? 'true' : 'false'; ?>"
                     data-inv-status="<?php echo $si_cls; ?>"
                     data-stock-status="<?php echo $stock_status_class; ?>">
-                    <td><code style="font-size:11px;font-weight:600;"><?php echo htmlspecialchars($item['sku'] ?? 'â€”'); ?></code></td>
+                    <td><code style="font-size:11px;font-weight:600;"><?php echo htmlspecialchars($item['sku'] ?? '—'); ?></code></td>
                     <td><strong><?php echo htmlspecialchars($item['name']); ?></strong></td>
                     <td style="text-align:center;"><?php echo htmlspecialchars($item['category_name'] ?? ''); ?></td>
                     <td><?php echo $unit; ?></td>
-                    <td style="text-align:right;font-weight:600;color:#64748b;"><?php echo number_format($beginning_qty, 0); ?></td>
                     <td style="text-align:right;font-weight:700;color:#16a34a;"><?php echo $added_qty > 0 ? '+' . number_format($added_qty, 0) : '0'; ?></td>
                     <td style="text-align:right;font-weight:700;color:#dc2626;"><?php echo $deducted_qty > 0 ? '-' . number_format($deducted_qty, 0) : '0'; ?></td>
                     <td>
@@ -1541,11 +1639,8 @@ body { overflow-x: hidden; }
                     <td style="font-size:11px;color:#64748b;"><?php echo $timestamp; ?></td>
                     <td style="text-align:center;white-space:nowrap;">
                         <div style="display:inline-flex;gap:4px;justify-content:center;">
-                            <button type="button" class="int-btn-outline" style="font-size:11px;height:28px;padding:0 8px;cursor:pointer;" onclick="event.stopPropagation(); openProductModal(<?php echo (int)$item['id']; ?>)">
+                            <button type="button" class="int-btn-outline" style="font-size:11px;height:28px;padding:0 10px;cursor:pointer;" onclick="event.stopPropagation(); openProductModal(<?php echo (int)$item['id']; ?>)">
                                 <i class="fas fa-eye"></i> View
-                            </button>
-                            <button type="button" class="int-btn-outline-success" style="font-size:11px;height:28px;padding:0 8px;cursor:pointer;" onclick="event.stopPropagation(); openStockAdjustmentModal(<?php echo (int)$item['id']; ?>, '<?php echo htmlspecialchars(addslashes($item['name'])); ?>', <?php echo $stock; ?>, '<?php echo $unit; ?>')">
-                                <i class="fas fa-balance-scale"></i> Adjust
                             </button>
                         </div>
                     </td>
@@ -1559,108 +1654,7 @@ body { overflow-x: hidden; }
 </div>
 <?php endif; ?>
 
-<!-- â•â• TAB: STOCK MOVEMENT HISTORY â•â• -->
-<?php if ($active_tab === 'movement'): ?>
-<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;padding:20px;">
-    <div style="font-size:1rem;font-weight:700;color:#002F70;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
-        <div style="display:flex;align-items:center;gap:8px;">
-            <i class="fas fa-exchange-alt"></i> Stock Movement History
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;">
-            <input type="text" id="movSearchInput" placeholder="Search product, ref no, user..." oninput="filterMovTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:220px;">
-            <select id="movTypeFilter" onchange="filterMovTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;font-weight:600;color:#002F70;">
-                <option value="">All Movement Types</option>
-                <option value="stock in">Stock In</option>
-                <option value="stock out">Stock Out</option>
-                <option value="adjustment">Adjustment</option>
-                <option value="transfer">Transfer</option>
-                <option value="damaged">Damaged</option>
-                <option value="expired">Expired</option>
-            </select>
-        </div>
-    </div>
-    <div class="table-wrap">
-        <table class="table" id="mgrMovTable" style="width:100%;">
-            <thead>
-                <tr style="background:#002F70; color:#fff;">
-                    <th>Date</th>
-                    <th>Reference No.</th>
-                    <th style="text-align:center;">Transaction Type</th>
-                    <th>Product</th>
-                    <th style="text-align:right;">Quantity</th>
-                    <th style="text-align:right;">Previous Stock</th>
-                    <th style="text-align:right;">New Stock</th>
-                    <th>Performed By</th>
-                    <th>Remarks</th>
-                </tr>
-            </thead>
-            <tbody id="mgrMovBody">
-            <?php if (empty($movement_history)): ?>
-                <tr><td colspan="9" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-inbox" style="font-size:1.8em; display:block; margin-bottom:8px;"></i> No stock movement records found.</td></tr>
-            <?php else: ?>
-                <?php foreach ($movement_history as $log):
-                    $m_date = !empty($log['created_at']) ? (new DateTime($log['created_at']))->format('M d, Y h:i A') : 'â€”';
-                    $m_raw  = strtolower($log['movement_type'] ?? '');
-                    $ref_no = $log['reference_no'] ?? ($log['reference_type'] ? $log['reference_type'] . '-' . $log['reference_id'] : 'LOG-' . $log['log_id']);
-                    $qty    = (float)($log['quantity'] ?? 0);
-                    $prev   = (float)($log['quantity_before'] ?? 0);
-                    $new    = (float)($log['quantity_after'] ?? 0);
-                    $unit   = htmlspecialchars($log['unit'] ?? 'pcs');
 
-                    if (strpos($m_raw, 'in') !== false || strpos($m_raw, 'delivery') !== false || strpos($m_raw, 'receive') !== false) {
-                        $type_label = 'Stock In';
-                        $badge_style = 'background:#dcfce7;color:#15803d;border:1px solid #a7f3d0;';
-                        $qty_text = '+' . number_format(abs($qty), 0);
-                        $qty_color = '#15803d';
-                    } elseif (strpos($m_raw, 'out') !== false || strpos($m_raw, 'sale') !== false || strpos($m_raw, 'release') !== false) {
-                        $type_label = 'Stock Out';
-                        $badge_style = 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;';
-                        $qty_text = '-' . number_format(abs($qty), 0);
-                        $qty_color = '#dc2626';
-                    } elseif (strpos($m_raw, 'transfer') !== false) {
-                        $type_label = 'Transfer';
-                        $badge_style = 'background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;';
-                        $qty_text = number_format($qty, 0);
-                        $qty_color = '#0284c7';
-                    } elseif (strpos($m_raw, 'damage') !== false || strpos($m_raw, 'defective') !== false) {
-                        $type_label = 'Damaged';
-                        $badge_style = 'background:#fef2f2;color:#991b1b;border:1px solid #fca5a5;';
-                        $qty_text = '-' . number_format(abs($qty), 0);
-                        $qty_color = '#dc2626';
-                    } elseif (strpos($m_raw, 'expire') !== false) {
-                        $type_label = 'Expired';
-                        $badge_style = 'background:#fff3cd;color:#856404;border:1px solid #ffeeba;';
-                        $qty_text = '-' . number_format(abs($qty), 0);
-                        $qty_color = '#d97706';
-                    } else {
-                        $type_label = 'Adjustment';
-                        $badge_style = 'background:#f3e8ff;color:#5b21b6;border:1px solid #e9d5ff;';
-                        $qty_text = ($qty >= 0 ? '+' : '') . number_format($qty, 0);
-                        $qty_color = $qty >= 0 ? '#15803d' : '#dc2626';
-                    }
-                ?>
-                <tr class="mov-row" data-search="<?= strtolower(htmlspecialchars($log['product_name'] . ' ' . $ref_no . ' ' . $log['user_name'] . ' ' . $type_label . ' ' . $log['sku'])) ?>" data-type="<?= strtolower($type_label) ?>" data-raw-type="<?= strtolower(htmlspecialchars($log['movement_type'] ?? '')) ?>" style="border-bottom:1px solid #f1f5f9;">
-                    <td style="font-size:11px; color:#64748b; white-space:nowrap;"><?= $m_date ?></td>
-                    <td><code style="font-size:11px; font-weight:700; color:#002F70;"><?= htmlspecialchars($ref_no) ?></code></td>
-                    <td style="text-align:center;">
-                        <span style="<?= $badge_style ?> padding:3px 8px; border-radius:4px; font-size:10px; font-weight:700; text-transform:uppercase; white-space:nowrap;">
-                            <?= $type_label ?>
-                        </span>
-                    </td>
-                    <td><strong><?= htmlspecialchars($log['product_name']) ?></strong><br><code style="font-size:9px; color:#94a3b8;"><?= htmlspecialchars($log['sku']) ?></code></td>
-                    <td style="text-align:right; font-weight:800; font-size:13px; color:<?= $qty_color ?>;"><?= $qty_text ?> <?= $unit ?></td>
-                    <td style="text-align:right; font-weight:600; color:#64748b;"><?= number_format($prev, 0) ?></td>
-                    <td style="text-align:right; font-weight:700; color:#002F70;"><?= number_format($new, 0) ?></td>
-                    <td style="font-size:11px; font-weight:600; color:#334155;"><?= htmlspecialchars($log['user_name'] ?? 'System') ?></td>
-                    <td style="font-size:11px; color:#475569; max-width:200px;"><?= htmlspecialchars($log['notes'] ?? 'â€”') ?></td>
-                </tr>
-                <?php endforeach; ?>
-            <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-</div>
-<?php endif; ?>
 
 <!-- TAB CONTENT 2: Stock Alerts -->
 <?php if ($active_tab === 'alerts'): ?>
@@ -1808,152 +1802,74 @@ body { overflow-x: hidden; }
 
 
 
-<!-- TAB CONTENT 4: Stock Requests Review -->
-<?php if ($active_tab === 'requests'): ?>
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;">
-    <div style="background:#fff;border-left:5px solid #002F6C;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Total Requests</div>
-            <div style="font-size:24px;font-weight:800;color:#002F6C;margin-top:4px;"><?= number_format($summary_req_total) ?></div>
-        </div>
-        <div style="background:#e8f4fd;color:#002F6C;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-file-alt"></i></div>
-    </div>
-    <div style="background:#fff;border-left:5px solid #fd7e14;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Pending Requests</div>
-            <div style="font-size:24px;font-weight:800;color:#fd7e14;margin-top:4px;"><?= number_format($summary_req_pending) ?></div>
-        </div>
-        <div style="background:#fff3cd;color:#fd7e14;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-clock"></i></div>
-    </div>
-    <div style="background:#fff;border-left:5px solid #28a745;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Approved Requests</div>
-            <div style="font-size:24px;font-weight:800;color:#28a745;margin-top:4px;"><?= number_format($summary_req_approved) ?></div>
-        </div>
-        <div style="background:#e6f4ea;color:#28a745;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-check-circle"></i></div>
-    </div>
-    <div style="background:#fff;border-left:5px solid #dc3545;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;border-left-width:5px;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Rejected Requests</div>
-            <div style="font-size:24px;font-weight:800;color:#dc3545;margin-top:4px;"><?= number_format($summary_req_rejected) ?></div>
-        </div>
-        <div style="background:#fce8e6;color:#dc3545;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
-    </div>
-</div>
+<!-- TAB CONTENT 4: Stock Requests & Adjustments Review -->
+<?php if ($active_tab === 'requests' || $active_tab === 'adjustments'): ?>
 
-<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;">
-    <div style="padding:16px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-        <div style="font-size:1rem;font-weight:700;color:#002F70;display:flex;align-items:center;gap:8px;">
-            <i class="fas fa-paper-plane"></i> Stock Requests Review List
+<!-- ══ PENDING INVENTORY ADJUSTMENTS (STAFF ADJUSTMENTS FOR MANAGER APPROVAL) ══ -->
+<div class="tbl-card" style="margin-bottom:24px; background:#fff; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #e9ecef; overflow:hidden;">
+    <div class="tbl-hd" style="display:flex; align-items:center; justify-content:space-between; padding:16px 20px; background:linear-gradient(135deg,#002F70,#001838); color:#fff;">
+        <div class="tbl-title" style="font-size:15px; font-weight:700; color:#fff; display:flex; align-items:center; gap:8px;">
+            <i class="fas fa-sliders" style="color:#fd7e14;"></i> Staff Inventory Adjustments (Pending Approval)
         </div>
+        <?php if ($summary_adj_pending > 0): ?>
+            <span style="background:#fd7e14; color:#fff; font-size:11px; padding:3px 10px; font-weight:800; border-radius:12px;">
+                <?= $summary_adj_pending ?> Pending Review
+            </span>
+        <?php else: ?>
+            <span style="background:rgba(255,255,255,0.15); color:#fff; font-size:11px; padding:3px 10px; font-weight:600; border-radius:12px;">
+                0 Pending
+            </span>
+        <?php endif; ?>
     </div>
-    
-    <!-- Stock Request Filters -->
-    <div class="inv-filter-bar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:16px 20px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
-        <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin:0;">Search Product</label>
-            <input type="text" id="reqSearch" placeholder="Search product name or ID..." oninput="filterRequestsTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:180px;">
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin:0;">Category</label>
-            <select id="reqCatFilter" onchange="filterRequestsTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
-                <option value="">All Categories</option>
-                <?php foreach (array_keys($req_categories) as $cat): ?>
-                <option value="<?php echo strtolower(htmlspecialchars($cat)); ?>"><?php echo htmlspecialchars($cat); ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin:0;">Status</label>
-            <select id="reqStatusFilter" onchange="filterRequestsTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
-                <option value="">All Statuses</option>
-                <option value="pending">Pending</option>
-                <option value="waiting for purchase order">Waiting for PO</option>
-                <option value="purchase order generated">PO Generated</option>
-                <option value="approved">Approved (Legacy)</option>
-                <option value="validated">Validated</option>
-                <option value="rejected">Rejected</option>
-            </select>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin:0;">Requested By</label>
-            <select id="reqUserFilter" onchange="filterRequestsTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
-                <option value="">All Staff</option>
-                <?php foreach (array_keys($req_staff_users) as $staff): ?>
-                <option value="<?php echo strtolower(htmlspecialchars($staff)); ?>"><?php echo htmlspecialchars($staff); ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin:0;">Date From</label>
-            <input type="date" id="reqDateFrom" onchange="filterRequestsTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;height:35px;box-sizing:border-box;">
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin:0;">Date To</label>
-            <input type="date" id="reqDateTo" onchange="filterRequestsTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;height:35px;box-sizing:border-box;">
-        </div>
-    </div>
-
     <div class="table-wrap">
-        <table class="po-table" id="mgrRequestsTable">
+        <table class="table" style="width:100%; margin:0;">
             <thead>
-                <tr>
-                    <th>Request ID</th>
-                    <th>Request Date</th>
-                    <th>Product Name</th>
-                    <th style="text-align:center;">Category</th>
-                    <th style="text-align:right;">Current Stock</th>
-                    <th style="text-align:right;">Reorder Level</th>
-                    <th style="text-align:right;">Requested Quantity</th>
-                    <th>Requested By</th>
-                    <th style="text-align:center;">Status</th>
-                    <th style="text-align:center;">Actions</th>
+                <tr style="background:#f8fafc; border-bottom:2px solid #e2e8f0; color:#475569; font-size:11px; text-transform:uppercase;">
+                    <th style="padding:12px;">Adj ID</th>
+                    <th style="padding:12px;">Date</th>
+                    <th style="padding:12px;">Product</th>
+                    <th style="text-align:center; padding:12px;">Type</th>
+                    <th style="text-align:right; padding:12px;">Current Stock</th>
+                    <th style="text-align:right; padding:12px;">Qty Change</th>
+                    <th style="padding:12px;">Reason / Remarks</th>
+                    <th style="padding:12px;">Requested By</th>
+                    <th style="text-align:center; padding:12px;">Status</th>
+                    <th style="text-align:center; padding:12px;">Actions</th>
                 </tr>
             </thead>
             <tbody>
-                <?php if (empty($stock_requests)): ?>
-                    <tr><td colspan="10" class="empty-state"><i class="fas fa-clipboard"></i>No stock requests found.</td></tr>
+                <?php if (empty($merchandise_adjustments)): ?>
+                    <tr><td colspan="10" class="empty-state" style="text-align:center; padding:28px; color:#64748b;"><i class="fas fa-sliders" style="margin-right:6px;"></i>No staff inventory adjustment requests found.</td></tr>
                 <?php else: ?>
-                    <?php foreach ($stock_requests as $req): 
-                        $status_lc = strtolower($req['status'] ?? 'pending');
-                        $badge_cls = $status_lc === 'pending' ? 'badge-pending' : (($status_lc === 'approved' || $status_lc === 'waiting for purchase order' || $status_lc === 'purchase order generated' || $status_lc === 'validated') ? 'badge-approved' : ($status_lc === 'rejected' ? 'badge-rejected' : 'badge-other'));
-                        
-                        // Prepare JSON data for modal view
-                        $req_json = $req;
-                        $req_json['created_at_fmt'] = date('Y-m-d g:i A', strtotime($req['created_at']));
-                        $req_json_encoded = htmlspecialchars(json_encode($req_json), ENT_QUOTES, 'UTF-8');
+                    <?php foreach ($merchandise_adjustments as $adj):
+                        $st = strtolower($adj['status'] ?? 'pending');
+                        $badge_cls = $st === 'pending' ? 'badge-pending' : ($st === 'approved' ? 'badge-approved' : 'badge-rejected');
+                        $change_fmt = (int)$adj['quantity_change'] > 0 ? ('+' . number_format($adj['quantity_change'])) : number_format($adj['quantity_change']);
+                        $change_color = (int)$adj['quantity_change'] > 0 ? '#16a34a' : '#dc2626';
                     ?>
-                    <tr class="req-row"
-                        data-id="<?= (int)$req['id'] ?>"
-                        data-created-at="<?= date('Y-m-d', strtotime($req['created_at'])) ?>"
-                        data-staff-name="<?= strtolower(htmlspecialchars($req['staff_name'] ?? '')) ?>"
-                        data-item-name="<?= strtolower(htmlspecialchars($req['item_name'] ?? '')) ?>"
-                        data-category="<?= strtolower(htmlspecialchars($req['item_category'] ?? '')) ?>"
-                        data-status="<?= $status_lc ?>">
-                        <td><code style="font-size:11px;font-weight:700;">SR-<?= str_pad($req['id'], 4, '0', STR_PAD_LEFT) ?></code></td>
-                        <td><?= date('Y-m-d g:i A', strtotime($req['created_at'])) ?></td>
-                        <td><strong><?= htmlspecialchars($req['item_name']) ?></strong></td>
-                        <td style="text-align:center;"><?= htmlspecialchars($req['item_category']) ?></td>
-                        <?php $req_unit = format_merch_unit($req['unit'] ?? 'pcs'); ?>
-                        <td style="text-align:right;font-weight:700;color:#002F70;"><?= number_format($req['current_stock']) ?> <?= htmlspecialchars($req_unit) ?></td>
-                        <td style="text-align:right;font-weight:600;color:#475569;"><?= number_format($req['reorder_level']) ?> <?= htmlspecialchars($req_unit) ?></td>
-                        <td style="text-align:right;font-weight:700;color:#0f172a;"><?= number_format($req['requested_quantity']) ?> <?= htmlspecialchars($req_unit) ?></td>
-                        <td><strong><?= htmlspecialchars($req['staff_name'] ?? 'Staff') ?></strong></td>
-                        <td style="text-align:center;"><span class="status-badge <?= $badge_cls ?>"><?= htmlspecialchars($req['status']) ?></span></td>
-                        <td style="text-align:center;">
-                            <div style="display:flex; flex-direction:column; gap:4px; width:110px; margin:0 auto;">
-                                <button class="int-btn-outline" onclick="openReqDetailsModal(<?= $req_json_encoded ?>)" title="View Details" style="font-size:11px; padding:4px 8px; text-align:left; display:block; width:100%;">
-                                    <i class="fas fa-eye" style="width:14px;"></i> Details
-                                </button>
-                                <?php if ($status_lc === 'pending'): ?>
-                                    <button class="int-btn-outline" onclick="openApproveRequest(<?= $req['id'] ?>, '<?= htmlspecialchars(addslashes($req['item_name'])) ?>', <?= $req['requested_quantity'] ?>)" style="border-color:#28a745; color:#28a745; font-size:11px; padding:4px 8px; text-align:left; display:block; width:100%;">
-                                        <i class="fas fa-check" style="width:14px;"></i> Approve
+                    <tr style="border-bottom:1px solid #f1f5f9; <?= $st === 'pending' ? 'background:#fffdfa;' : '' ?>">
+                        <td style="padding:10px 12px;"><code style="font-size:11px; font-weight:700; color:#002F70;">ADJ-<?= str_pad($adj['id'], 4, '0', STR_PAD_LEFT) ?></code></td>
+                        <td style="padding:10px 12px; font-size:11px; color:#64748b; white-space:nowrap;"><?= date('M d, Y h:i A', strtotime($adj['requested_at'])) ?></td>
+                        <td style="padding:10px 12px;"><strong><?= htmlspecialchars($adj['product_name']) ?></strong><br><code style="font-size:9px; color:#94a3b8;"><?= htmlspecialchars($adj['sku'] ?? '') ?></code></td>
+                        <td style="text-align:center; padding:10px 12px;"><span style="font-weight:700; color:#002F70; font-size:12px;"><?= htmlspecialchars($adj['adjustment_type']) ?></span></td>
+                        <td style="text-align:right; font-weight:600; color:#475569; padding:10px 12px;"><?= number_format($adj['current_stock']) ?></td>
+                        <td style="text-align:right; font-weight:800; color:<?= $change_color ?>; font-size:14px; padding:10px 12px;"><?= $change_fmt ?></td>
+                        <td style="font-size:12px; color:#334155; max-width:220px; white-space:normal; padding:10px 12px;"><?= htmlspecialchars($adj['reason'] ?: '-') ?></td>
+                        <td style="padding:10px 12px;"><strong><?= htmlspecialchars($adj['staff_name'] ?? 'Staff') ?></strong></td>
+                        <td style="text-align:center; padding:10px 12px;"><span class="status-badge <?= $badge_cls ?>" style="font-weight:700; font-size:11px; text-transform:uppercase; padding:3px 8px; border-radius:4px;"><?= htmlspecialchars($adj['status']) ?></span></td>
+                        <td style="text-align:center; padding:10px 12px;">
+                            <?php if ($st === 'pending'): ?>
+                                <div style="display:flex; gap:6px; justify-content:center;">
+                                    <button type="button" onclick="openApproveAdjModal(<?= $adj['id'] ?>, '<?= htmlspecialchars(addslashes($adj['product_name'])) ?>', <?= (int)$adj['current_stock'] ?>, <?= (int)$adj['quantity_change'] ?>)" style="background:#28a745!important; color:#fff!important; border:none!important; font-size:11px; padding:5px 10px; border-radius:4px; cursor:pointer; font-weight:700;">
+                                        <i class="fas fa-check"></i> Approve
                                     </button>
-                                    <button class="int-btn-outline" onclick="openRejectRequest(<?= $req['id'] ?>, '<?= htmlspecialchars(addslashes($req['item_name'])) ?>')" style="border-color:#dc3545; color:#dc3545; font-size:11px; padding:4px 8px; text-align:left; display:block; width:100%;">
-                                        <i class="fas fa-times" style="width:14px;"></i> Reject
+                                    <button type="button" class="txn-btn secondary sm" onclick="openRejectAdjModal(<?= $adj['id'] ?>, '<?= htmlspecialchars(addslashes($adj['product_name'])) ?>')" style="background:#dc3545!important; color:#fff!important; border:none!important; font-size:11px; padding:5px 10px; border-radius:4px; cursor:pointer; font-weight:700;">
+                                        <i class="fas fa-times"></i> Reject
                                     </button>
-                                <?php endif; ?>
-                            </div>
+                                </div>
+                            <?php else: ?>
+                                <span style="font-size:11px; color:#94a3b8; font-weight:600;"><i class="fas fa-check-double" style="margin-right:2px;"></i> Processed</span>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -1961,9 +1877,9 @@ body { overflow-x: hidden; }
             </tbody>
         </table>
     </div>
-    <div id="mgrRequestsPagination" style="padding:10px 20px;"></div>
 </div>
 <?php endif; ?>
+
 
 <!-- Removed tab contents for deliveries and history -->
 
@@ -2026,7 +1942,7 @@ body { overflow-x: hidden; }
                 </div>
                 <div style="background:#f8fafc; padding:10px; border-radius:6px; border:1px solid #e2e8f0;">
                     <div style="color:#64748b; font-weight:700; font-size:10px; text-transform:uppercase;">Manager Remarks</div>
-                    <div id="detManagerRemarks" style="font-weight:600; color:#0f172a; margin-top:2px;">â€”</div>
+                    <div id="detManagerRemarks" style="font-weight:600; color:#0f172a; margin-top:2px;">—</div>
                 </div>
             </div>
 
@@ -2105,7 +2021,7 @@ body { overflow-x: hidden; }
             <div style="background:#f8fafc;padding:12px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                 <div>
                     <div style="font-size:11px;color:#64748b;font-weight:700;">PRODUCT</div>
-                    <div id="adjProductName" style="font-size:14px;font-weight:700;color:#002F70;margin-top:2px;">â€”</div>
+                    <div id="adjProductName" style="font-size:14px;font-weight:700;color:#002F70;margin-top:2px;">—</div>
                 </div>
                 <div>
                     <div style="font-size:11px;color:#64748b;font-weight:700;">CURRENT STOCK</div>
@@ -2133,6 +2049,89 @@ body { overflow-x: hidden; }
     </div>
 </div>
 
+<!-- APPROVE MERCHANDISE ADJUSTMENT MODAL -->
+<div id="approveAdjModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:10001; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;">
+    <div style="background:#fff; border-radius:12px; width:95%; max-width:440px; overflow:hidden; box-shadow:0 10px 40px rgba(0,0,0,0.25);">
+        <div style="background:linear-gradient(135deg,#16a34a,#15803d); padding:16px 20px; display:flex; align-items:center; justify-content:space-between;">
+            <div style="font-size:15px; font-weight:700; color:#fff; display:flex; align-items:center; gap:8px;">
+                <i class="fas fa-check-circle"></i> Approve Inventory Adjustment
+            </div>
+            <button type="button" onclick="closeApproveAdjModal()" style="background:none; border:none; color:#fff; font-size:20px; cursor:pointer; line-height:1;">&times;</button>
+        </div>
+        <form method="post" action="manager_inventory_merchandise.php" style="padding:20px;">
+            <input type="hidden" name="action" value="approve_merchandise_adjustment">
+            <input type="hidden" name="adjustment_id" id="approveAdjId">
+            <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:12px 14px; margin-bottom:14px;">
+                <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">Product</div>
+                <div id="approveAdjProductName" style="font-size:14px; font-weight:700; color:#002F70;">—</div>
+                <div id="approveAdjDetail" style="font-size:12px; margin-top:6px; color:#334155;"></div>
+            </div>
+            <div style="font-size:13px; color:#334155; margin-bottom:16px; line-height:1.6;">
+                Are you sure you want to <strong style="color:#16a34a;">approve</strong> this inventory adjustment?
+                The stock level will be updated immediately after confirmation.
+            </div>
+            <div style="display:flex; gap:10px; justify-content:flex-end;">
+                <button type="button" onclick="closeApproveAdjModal()" style="padding:8px 18px; border:1px solid #cbd5e1; background:#f8fafc; color:#475569; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer;">
+                    Cancel
+                </button>
+                <button type="submit" style="padding:8px 20px; background:#16a34a; color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                    <i class="fas fa-check"></i> Confirm Approve
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- REJECT MERCHANDISE ADJUSTMENT MODAL -->
+<div class="modal-overlay" id="rejectAdjModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:10000; align-items:center; justify-content:center;">
+    <div class="modal-box" style="max-width:480px; width:95%; background:#fff; border-radius:8px; overflow:hidden;">
+        <div class="modal-head" style="padding:16px 20px; background:#dc3545; color:#fff; display:flex; align-items:center; justify-content:space-between;">
+            <div class="modal-title" style="font-size:1.1rem; font-weight:700; color:#fff!important;"><i class="fas fa-times-circle"></i> Reject Inventory Adjustment</div>
+            <button type="button" onclick="closeRejectAdjModal()" style="background:none; border:none; color:#fff; font-size:20px; cursor:pointer;">&times;</button>
+        </div>
+        <form method="post" action="manager_inventory_merchandise.php" style="padding:20px;">
+            <input type="hidden" name="action" value="reject_merchandise_adjustment">
+            <input type="hidden" name="adjustment_id" id="rejectAdjId">
+            <div style="background:#f8fafc; padding:12px; border-radius:6px; border:1px solid #cbd5e1; margin-bottom:14px;">
+                <div style="font-size:11px; color:#64748b; font-weight:700;">PRODUCT</div>
+                <div id="rejectAdjProductName" style="font-size:14px; font-weight:700; color:#002F70; margin-top:2px;">—</div>
+            </div>
+            <div class="form-group" style="margin-bottom:16px;">
+                <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Rejection Reason <span style="color:red;">*</span></label>
+                <textarea name="rejection_reason" rows="3" required placeholder="Describe reason for rejecting..." style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;"></textarea>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:10px;">
+                <button type="button" onclick="closeRejectAdjModal()" class="ato-btn ato-btn-back">Cancel</button>
+                <button type="submit" class="ato-btn" style="background:#dc3545 !important; color:#fff !important;"><i class="fas fa-times"></i> Reject Request</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openApproveAdjModal(id, name, currentStock, qtyChange) {
+    document.getElementById('approveAdjId').value = id;
+    document.getElementById('approveAdjProductName').innerText = name || '—';
+    var newStock = Math.max(0, currentStock + qtyChange);
+    var sign = qtyChange >= 0 ? '+' : '';
+    document.getElementById('approveAdjDetail').innerHTML =
+        '<span style="color:#64748b;">Qty Change:</span> <strong style="color:' + (qtyChange >= 0 ? '#16a34a' : '#dc2626') + ';">' + sign + qtyChange + '</strong>' +
+        ' &nbsp;|&nbsp; <span style="color:#64748b;">New Stock:</span> <strong style="color:#002F70;">' + newStock + '</strong>';
+    document.getElementById('approveAdjModal').style.display = 'flex';
+}
+function closeApproveAdjModal() {
+    document.getElementById('approveAdjModal').style.display = 'none';
+}
+function openRejectAdjModal(id, name) {
+    document.getElementById('rejectAdjId').value = id;
+    document.getElementById('rejectAdjProductName').innerText = name || '—';
+    document.getElementById('rejectAdjModal').style.display = 'flex';
+}
+function closeRejectAdjModal() {
+    document.getElementById('rejectAdjModal').style.display = 'none';
+}
+</script>
+
 <!-- APPROVE REQUEST MODAL -->
 <div class="modal-overlay" id="approveRequestModal">
     <div class="modal-box" style="max-width:480px;">
@@ -2144,7 +2143,7 @@ body { overflow-x: hidden; }
             <input type="hidden" name="request_id" id="approveReqId">
             <div style="background:#f8fafc;padding:12px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:14px;">
                 <div style="font-size:11px;color:#64748b;font-weight:700;">PRODUCT</div>
-                <div id="approveReqProduct" style="font-size:14px;font-weight:700;color:#002F70;margin-top:2px;">â€”</div>
+                <div id="approveReqProduct" style="font-size:14px;font-weight:700;color:#002F70;margin-top:2px;">—</div>
             </div>
             <div class="form-group">
                 <label>Approved Quantity <span style="color:red;">*</span></label>
@@ -2173,7 +2172,7 @@ body { overflow-x: hidden; }
             <input type="hidden" name="request_id" id="rejectReqId">
             <div style="background:#f8fafc;padding:12px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:14px;">
                 <div style="font-size:11px;color:#64748b;font-weight:700;">PRODUCT</div>
-                <div id="rejectReqProduct" style="font-size:14px;font-weight:700;color:#002F70;margin-top:2px;">â€”</div>
+                <div id="rejectReqProduct" style="font-size:14px;font-weight:700;color:#002F70;margin-top:2px;">—</div>
             </div>
             <div class="form-group">
                 <label>Rejection Reason / Manager Remarks <span style="color:red;">*</span></label>
@@ -2197,8 +2196,8 @@ body { overflow-x: hidden; }
             <input type="hidden" name="action" value="validate_delivery">
             <input type="hidden" name="po_id" id="validatePoId">
             <div style="background:#f8fafc;padding:12px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:14px;font-size:12px;">
-                <strong>PO Number:</strong> <span id="validatePoNum">â€”</span><br>
-                <strong>Product:</strong> <span id="validatePoProduct">â€”</span>
+                <strong>PO Number:</strong> <span id="validatePoNum">—</span><br>
+                <strong>Product:</strong> <span id="validatePoProduct">—</span>
             </div>
             <div class="form-group">
                 <label>Actual Qty Received <span style="color:red;">*</span></label>
@@ -2207,11 +2206,11 @@ body { overflow-x: hidden; }
             <div class="form-group">
                 <label>Delivery Status Flag <span style="color:red;">*</span></label>
                 <select name="delivery_flag">
-                    <option value="OK">OK â€” Matches PO</option>
-                    <option value="Short">Short â€” Less than ordered</option>
-                    <option value="Excess">Excess â€” More than ordered</option>
-                    <option value="Damaged">Damaged â€” Items damaged</option>
-                    <option value="Mixed">Mixed â€” Multiple issues</option>
+                    <option value="OK">OK — Matches PO</option>
+                    <option value="Short">Short — Less than ordered</option>
+                    <option value="Excess">Excess — More than ordered</option>
+                    <option value="Damaged">Damaged — Items damaged</option>
+                    <option value="Mixed">Mixed — Multiple issues</option>
                 </select>
             </div>
             <div class="form-group">
@@ -2236,15 +2235,15 @@ body { overflow-x: hidden; }
             <input type="hidden" name="action" value="flag_delivery_issue">
             <input type="hidden" name="po_id" id="flagPoId">
             <div style="background:#f8fafc;padding:12px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:14px;font-size:12px;">
-                <strong>PO Number:</strong> <span id="flagPoNum">â€”</span>
+                <strong>PO Number:</strong> <span id="flagPoNum">—</span>
             </div>
             <div class="form-group">
                 <label>Issue Type <span style="color:red;">*</span></label>
                 <select name="delivery_flag">
-                    <option value="Short">Short â€” Less than ordered</option>
-                    <option value="Damaged">Damaged â€” Items damaged</option>
-                    <option value="Excess">Excess â€” More than ordered</option>
-                    <option value="Mixed">Mixed â€” Multiple issues</option>
+                    <option value="Short">Short — Less than ordered</option>
+                    <option value="Damaged">Damaged — Items damaged</option>
+                    <option value="Excess">Excess — More than ordered</option>
+                    <option value="Mixed">Mixed — Multiple issues</option>
                 </select>
             </div>
             <div class="form-group">
@@ -2269,7 +2268,7 @@ body { overflow-x: hidden; }
             <div style="background:#f8fafc;padding:12px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:14px;display:grid;grid-template-columns:1fr;gap:8px;">
                 <div>
                     <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Product Name</div>
-                    <div id="srProductName" style="font-size:15px;font-weight:700;color:#002F70;margin-top:2px;">â€”</div>
+                    <div id="srProductName" style="font-size:15px;font-weight:700;color:#002F70;margin-top:2px;">—</div>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px;">
                     <div>
@@ -2306,25 +2305,25 @@ body { overflow-x: hidden; }
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
                 <div>
                     <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Movement ID</div>
-                    <div id="vmId" style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px;">â€”</div>
+                    <div id="vmId" style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px;">—</div>
                 </div>
                 <div>
                     <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Date / Time</div>
-                    <div id="vmDate" style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px;">â€”</div>
+                    <div id="vmDate" style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px;">—</div>
                 </div>
             </div>
             <div style="margin-bottom:12px;">
                 <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Product Name</div>
-                <div id="vmProductName" style="font-size:15px;font-weight:700;color:#002F70;margin-top:2px;">â€”</div>
+                <div id="vmProductName" style="font-size:15px;font-weight:700;color:#002F70;margin-top:2px;">—</div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
                 <div>
                     <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Movement Type</div>
-                    <div id="vmType" style="margin-top:2px;">â€”</div>
+                    <div id="vmType" style="margin-top:2px;">—</div>
                 </div>
                 <div>
                     <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Reference No.</div>
-                    <div id="vmRef" style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px;">â€”</div>
+                    <div id="vmRef" style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px;">—</div>
                 </div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;border-top:1px solid #cbd5e1;padding-top:12px;">
@@ -2343,11 +2342,11 @@ body { overflow-x: hidden; }
             </div>
             <div style="border-top:1px solid #cbd5e1;padding-top:12px;margin-bottom:12px;">
                 <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Performed By</div>
-                <div id="vmUser" style="font-size:13px;font-weight:600;color:#0f172a;margin-top:2px;">â€”</div>
+                <div id="vmUser" style="font-size:13px;font-weight:600;color:#0f172a;margin-top:2px;">—</div>
             </div>
             <div style="border-top:1px solid #cbd5e1;padding-top:12px;">
                 <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Notes / Remarks</div>
-                <div id="vmNotes" style="font-size:13px;color:#475569;margin-top:2px;white-space:pre-wrap;">â€”</div>
+                <div id="vmNotes" style="font-size:13px;color:#475569;margin-top:2px;white-space:pre-wrap;">—</div>
             </div>
         </div>
         <div class="modal-actions" style="margin-top:16px;display:flex;justify-content:flex-end;gap:10px;">
@@ -2371,7 +2370,7 @@ function esc(str) {
 
 // Date formatter helper
 function fmtDate(dStr) {
-    if (!dStr) return 'â€”';
+    if (!dStr) return '—';
     try {
         var d = new Date(dStr);
         if (isNaN(d.getTime())) return dStr;
@@ -2441,7 +2440,7 @@ function viewDetails(productId, focusTab) {
         var p = res.product;
         
         // Format last updated timestamp
-        var timestamp = 'â€”';
+        var timestamp = '—';
         if (p.last_updated) {
             try {
                 timestamp = fmtDate(p.last_updated);
@@ -2449,7 +2448,7 @@ function viewDetails(productId, focusTab) {
         }
         
         // Format last movement
-        var lastMovText = 'â€”';
+        var lastMovText = '—';
         if (res.movements && res.movements.length > 0) {
             var lm = res.movements[0];
             var lmSign = lm.quantity > 0 ? '+' : '';
@@ -2458,7 +2457,7 @@ function viewDetails(productId, focusTab) {
 
         // Format variance & check variance flag
         var variance = p.variance;
-        var vText = 'â€”';
+        var vText = '—';
         var vColor = '#64748b';
         var hasVarInModal = false;
         if (variance !== null) {
@@ -2488,7 +2487,7 @@ function viewDetails(productId, focusTab) {
                     '<td><span style="font-weight:600;">' + esc(m.movement_type.toUpperCase()) + '</span></td>' +
                     '<td style="font-weight:700;color:' + (m.quantity > 0 ? '#28a745' : '#dc3545') + ';">' + qtyPrefix + m.quantity + '</td>' +
                     '<td>' + esc(m.user_name || 'System') + '</td>' +
-                    '<td>' + esc(m.notes || 'â€”') + '</td>' +
+                    '<td>' + esc(m.notes || '—') + '</td>' +
                     '</tr>';
             });
         }
@@ -2500,11 +2499,11 @@ function viewDetails(productId, focusTab) {
             res.deliveries.forEach(function(d) {
                 dHtml += '<tr>' +
                     '<td>' + fmtDate(d.encoded_at) + '</td>' +
-                    '<td><code style="font-weight:700;">' + esc(d.po_number || 'â€”') + '</code></td>' +
+                    '<td><code style="font-weight:700;">' + esc(d.po_number || '—') + '</code></td>' +
                     '<td>' + d.qty_ordered + '</td>' +
                     '<td style="font-weight:700;">' + d.qty_received + '</td>' +
                     '<td><span class="status-badge ' + (d.condition_flag === 'Good' ? 'badge-approved' : 'badge-rejected') + '">' + esc(d.condition_flag) + '</span></td>' +
-                    '<td>' + esc(d.remarks || 'â€”') + '</td>' +
+                    '<td>' + esc(d.remarks || '—') + '</td>' +
                     '</tr>';
             });
         }
@@ -2522,10 +2521,10 @@ function viewDetails(productId, focusTab) {
                         '<h4 style="margin:0 0 12px;color:#002F70;text-transform:uppercase;font-size:12px;letter-spacing:.5px;"><i class="fas fa-box"></i> Product Information</h4>' +
                         '<table style="width:100%;font-size:13px;border-collapse:collapse;">' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;width:120px;border-bottom:1px solid #f1f5f9;">Product Name:</td><td style="font-weight:700;color:#0f172a;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + esc(p.name) + '</td></tr>' +
-                            '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">SKU:</td><td style="border-bottom:1px solid #f1f5f9;padding:8px 0;"><code>' + esc(p.sku || 'â€”') + '</code></td></tr>' +
+                            '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">SKU:</td><td style="border-bottom:1px solid #f1f5f9;padding:8px 0;"><code>' + esc(p.sku || '—') + '</code></td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Category:</td><td style="border-bottom:1px solid #f1f5f9;padding:8px 0;">' + esc(p.category_name) + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Unit of Measure:</td><td style="border-bottom:1px solid #f1f5f9;padding:8px 0;">' + esc(p.unit) + '</td></tr>' +
-                            '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Supplier:</td><td style="font-weight:600;color:#475569;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + esc(p.supplier || 'â€”') + '</td></tr>' +
+                            '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Supplier:</td><td style="font-weight:600;color:#475569;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + esc(p.supplier || '—') + '</td></tr>' +
                         '</table>' +
                     '</div>' +
                     '<div style="background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0;">' +
@@ -2534,7 +2533,7 @@ function viewDetails(productId, focusTab) {
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;width:120px;border-bottom:1px solid #f1f5f9;">Current Stock:</td><td style="font-weight:700;font-size:14px;color:#002F70;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + p.stock_level + ' ' + esc(p.unit) + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Capacity:</td><td style="font-weight:700;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + p.capacity + ' ' + esc(p.unit) + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Reorder Level:</td><td style="font-weight:700;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + p.reorder_level + ' ' + esc(p.unit) + '</td></tr>' +
-                            '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Physical Count:</td><td style="font-weight:700;color:#0f172a;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + (p.physical_count !== null ? p.physical_count + ' ' + esc(p.unit) : 'â€”') + '</td></tr>' +
+                            '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Physical Count:</td><td style="font-weight:700;color:#0f172a;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + (p.physical_count !== null ? p.physical_count + ' ' + esc(p.unit) : '—') + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Variance:</td><td style="font-weight:700;color:' + vColor + ';border-bottom:1px solid #f1f5f9;padding:8px 0;">' + vText + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Last Movement:</td><td style="font-size:12px;color:#475569;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + lastMovText + '</td></tr>' +
                             '<tr><td style="padding:8px 0;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">Last Updated:</td><td style="font-size:12px;color:#475569;border-bottom:1px solid #f1f5f9;padding:8px 0;">' + timestamp + '</td></tr>' +
@@ -2752,7 +2751,7 @@ function filterInvTable() {
         var WARNING_STATUSES = ['low', 'critical', 'out of stock', 'out'];
         var isWarning = (WARNING_STATUSES.indexOf(rInv) !== -1 || WARNING_STATUSES.indexOf(rStockStatus) !== -1);
 
-        // Status filter matching â€” Low Stock, Critical Stock, Out of Stock all show the same combined stock alert view
+        // Status filter matching — Low Stock, Critical Stock, Out of Stock all show the same combined stock alert view
         var matchesStock = false;
         if (!stFlt) {
             matchesStock = true;
@@ -2901,7 +2900,7 @@ function printAlertRow(id, name, type, stock, reorder) {
 }
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Inventory Overview â€” Print Record
+// Inventory Overview — Print Record
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function printProductRecord(productId) {
     fetch('manager_inventory_merchandise.php?ajax=1&action=get_product_details&product_id=' + productId)
@@ -2910,7 +2909,7 @@ function printProductRecord(productId) {
         if (!res.success) { alert('Could not load product data.'); return; }
         var p = res.product;
 
-        var vText = 'â€”', vColor = '#64748b';
+        var vText = '—', vColor = '#64748b';
         if (p.variance !== null) {
             var vVal = parseFloat(p.variance);
             if (vVal > 0)      { vText = '+' + vVal; vColor = '#28a745'; }
@@ -2924,10 +2923,10 @@ function printProductRecord(productId) {
         var ts = p.last_updated ? (function(d) {
             var dt = new Date(d);
             return isNaN(dt) ? d : dt.toLocaleDateString('en-US', {year:'numeric',month:'short',day:'2-digit'}) + ' ' + dt.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
-        })(p.last_updated) : 'â€”';
+        })(p.last_updated) : '—';
 
         var pw = window.open('', '_blank');
-        pw.document.write('<!DOCTYPE html><html><head><title>Product Record â€” ' + esc(p.name) + '</title>');
+        pw.document.write('<!DOCTYPE html><html><head><title>Product Record — ' + esc(p.name) + '</title>');
         pw.document.write('<style>');
         pw.document.write('body{font-family:Arial,sans-serif;font-size:13px;color:#222;margin:0;padding:24px;}');
         pw.document.write('.header{background:#002F6C;color:#fff;padding:16px 20px;border-radius:6px 6px 0 0;margin-bottom:0;}');
@@ -2946,16 +2945,16 @@ function printProductRecord(productId) {
         pw.document.write('<div class="section"><h4>Product Information</h4>');
         pw.document.write('<table class="info">');
         pw.document.write('<tr><td>Product Name:</td><td><strong>' + esc(p.name) + '</strong></td></tr>');
-        pw.document.write('<tr><td>SKU:</td><td><code>' + esc(p.sku || 'â€”') + '</code></td></tr>');
-        pw.document.write('<tr><td>Category:</td><td>' + esc(p.category_name || 'â€”') + '</td></tr>');
-        pw.document.write('<tr><td>Unit:</td><td>' + esc(p.unit || 'â€”') + '</td></tr>');
-        pw.document.write('<tr><td>Supplier:</td><td>' + esc(p.supplier || 'â€”') + '</td></tr>');
+        pw.document.write('<tr><td>SKU:</td><td><code>' + esc(p.sku || '—') + '</code></td></tr>');
+        pw.document.write('<tr><td>Category:</td><td>' + esc(p.category_name || '—') + '</td></tr>');
+        pw.document.write('<tr><td>Unit:</td><td>' + esc(p.unit || '—') + '</td></tr>');
+        pw.document.write('<tr><td>Supplier:</td><td>' + esc(p.supplier || '—') + '</td></tr>');
         pw.document.write('</table></div>');
         pw.document.write('<div class="section"><h4>Inventory Details</h4>');
         pw.document.write('<table class="info">');
         pw.document.write('<tr><td>Current Stock:</td><td><strong style="font-size:15px;color:#002F6C;">' + p.stock_level + ' ' + esc(p.unit) + '</strong></td></tr>');
         pw.document.write('<tr><td>Reorder Level:</td><td>' + p.reorder_level + ' ' + esc(p.unit) + '</td></tr>');
-        pw.document.write('<tr><td>Physical Count:</td><td>' + (p.physical_count !== null ? p.physical_count + ' ' + esc(p.unit) : 'â€”') + '</td></tr>');
+        pw.document.write('<tr><td>Physical Count:</td><td>' + (p.physical_count !== null ? p.physical_count + ' ' + esc(p.unit) : '—') + '</td></tr>');
         pw.document.write('<tr><td>Variance:</td><td><span style="color:' + vColor + ';font-weight:700;">' + vText + '</span></td></tr>');
         pw.document.write('<tr><td>Last Updated:</td><td>' + ts + '</td></tr>');
         pw.document.write('</table></div>');
@@ -2968,7 +2967,7 @@ function printProductRecord(productId) {
 }
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Inventory Overview â€” Export PDF / Excel
+// Inventory Overview — Export PDF / Excel
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function exportInvTablePDF() {
     if (typeof exportTableToPDF === 'function') {
@@ -3288,7 +3287,7 @@ function filterMgrByCard(val) {
 }
 </script>
 
-<!-- â•â• VIEW PRODUCT MODAL â•â• -->
+<!-- ══ VIEW PRODUCT MODAL ══ -->
 <div class="modal-overlay" id="productDetailModal" style="z-index:10000;">
     <div style="background:#fff;border-radius:14px;width:96%;max-width:820px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 40px rgba(0,0,0,.18);overflow:hidden;">
         <!-- Header -->
@@ -3351,16 +3350,15 @@ function filterMgrByCard(val) {
         </div>
         <!-- Footer -->
         <div style="padding:12px 22px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:10px;background:#f8fafc;flex-shrink:0;">
-            <button onclick="openAdjustStockModal()" class="int-btn-outline" style="border-color:#fd7e14;color:#fd7e14;"><i class="fas fa-sliders-h"></i> Adjust Stock</button>
             <button onclick="closeProductModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;"><i class="fas fa-times"></i> Close</button>
         </div>
     </div>
 </div>
 
 <!-- â•â• ADJUST STOCK MODAL â•â• -->
-<div class="modal-overlay" id="adjustStockModal" style="z-index:10001;">
-    <div style="background:#fff;border-radius:14px;width:96%;max-width:560px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 40px rgba(0,0,0,.18);">
-        <div style="padding:16px 22px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;">
+<div class="modal-overlay" id="adjustStockModal" style="z-index:10001; padding-top:90px; padding-bottom:50px; box-sizing:border-box;">
+    <div style="background:#fff;border-radius:14px;width:96%;max-width:560px;max-height:calc(100vh - 160px);overflow-y:auto;box-shadow:0 24px 40px rgba(0,0,0,.18);">
+        <div style="padding:18px 24px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;">
             <div style="font-size:15px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;gap:8px;">
                 <i class="fas fa-sliders-h" style="color:#fd7e14;"></i> Adjust Stock
             </div>
@@ -3421,7 +3419,7 @@ function filterMgrByCard(val) {
             </div>
             <div id="adjError" style="color:#dc3545;font-size:12px;margin-bottom:10px;display:none;"></div>
             <div style="display:flex;justify-content:flex-end;gap:10px;">
-                <button onclick="saveAdjustment()" style="background:#002F70;color:#fff;border:none;border-radius:6px;padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;"><i class="fas fa-save"></i> Save Adjustment</button>
+                <button onclick="saveAdjustment()" style="background:#002F70;color:#fff;border:none;border-radius:6px;padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;"><i class="fas fa-paper-plane"></i> Submit Adjustment</button>
                 <button onclick="closeAdjustModal()" style="background:#fff;color:#6b7280;border:1px solid #6b7280;border-radius:6px;padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;">Cancel</button>
             </div>
         </div>
@@ -3459,13 +3457,13 @@ function openProductModal(productId) {
         document.getElementById('pdmTitle').textContent = p.name || 'View Product';
 
         // Product Info
-        document.getElementById('pdmSKU').textContent = p.sku || 'â€”';
-        document.getElementById('pdmName').textContent = p.name || 'â€”';
-        document.getElementById('pdmCategory').textContent = p.category_name || 'â€”';
+        document.getElementById('pdmSKU').textContent = p.sku || '—';
+        document.getElementById('pdmName').textContent = p.name || '—';
+        document.getElementById('pdmCategory').textContent = p.category_name || '—';
         document.getElementById('pdmBrand').textContent = p.supplier || 'Petron Corporation';
         document.getElementById('pdmSupplier').textContent = p.supplier || 'Petron Corporation';
-        document.getElementById('pdmBarcode').textContent = p.barcode || p.sku || 'â€”';
-        document.getElementById('pdmUOM').textContent = p.unit || 'â€”';
+        document.getElementById('pdmBarcode').textContent = p.barcode || p.sku || '—';
+        document.getElementById('pdmUOM').textContent = p.unit || '—';
         var status = (p.product_status || 'active').toLowerCase();
         var sBg = status === 'active' ? '#d4edda' : '#e9ecef';
         var sColor = status === 'active' ? '#155724' : '#495057';
@@ -3500,7 +3498,7 @@ function openProductModal(productId) {
             (res.batches || []).forEach(function(b) {
                 var opt = document.createElement('option');
                 opt.value = b.id || b.batch_id || '';
-                opt.textContent = 'Batch ' + (b.batch_id || b.id || 'â€”') + ' â€” ' + (b.remaining_qty || 0) + ' remaining';
+                opt.textContent = 'Batch ' + (b.batch_id || b.id || '—') + ' — ' + (b.remaining_qty || 0) + ' remaining';
                 batchSel.appendChild(opt);
             });
         }
@@ -3528,13 +3526,13 @@ function renderBatchTable(batches) {
         '<th style="padding:8px 10px;text-align:center;">Status</th>' +
         '</tr></thead><tbody>';
     batches.forEach(function(b) {
-        var dDate = b.delivery_date ? new Date(b.delivery_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : 'â€”';
+        var dDate = b.delivery_date ? new Date(b.delivery_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
         var remaining = parseFloat(b.remaining_qty || b.quantity || 0);
         var status = remaining <= 0 ? 'Depleted' : 'Active';
         var sBg = remaining <= 0 ? '#f1f5f9' : '#d4edda';
         var sColor = remaining <= 0 ? '#64748b' : '#155724';
         html += '<tr style="border-bottom:1px solid #f1f5f9;">' +
-            '<td style="padding:8px 10px;font-weight:700;color:#002F70;">' + (b.batch_id || b.id || 'â€”') + '</td>' +
+            '<td style="padding:8px 10px;font-weight:700;color:#002F70;">' + (b.batch_id || b.id || '—') + '</td>' +
             '<td style="padding:8px 10px;color:#475569;">' + dDate + '</td>' +
             '<td style="padding:8px 10px;text-align:right;">' + parseFloat(b.received_qty || b.quantity || 0).toLocaleString() + '</td>' +
             '<td style="padding:8px 10px;text-align:right;font-weight:700;">' + remaining.toLocaleString() + '</td>' +
@@ -3564,19 +3562,19 @@ function renderMovementTable(movements) {
         '<th style="padding:8px 10px;">Performed By</th>' +
         '</tr></thead><tbody>';
     movements.forEach(function(m) {
-        var mDate = m.created_at ? new Date(m.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : 'â€”';
+        var mDate = m.created_at ? new Date(m.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
         var qty = parseFloat(m.quantity || m.quantity_change || 0);
         var qtyStr = (qty >= 0 ? '+' : '') + qty.toLocaleString();
         var qtyColor = qty >= 0 ? '#15803d' : '#dc3545';
-        var remaining = m.quantity_after !== undefined ? parseFloat(m.quantity_after) : 'â€”';
+        var remaining = m.quantity_after !== undefined ? parseFloat(m.quantity_after) : '—';
         html += '<tr style="border-bottom:1px solid #f1f5f9;">' +
             '<td style="padding:8px 10px;color:#475569;">' + mDate + '</td>' +
-            '<td style="padding:8px 10px;font-weight:600;">' + (m.movement_type || m.action || 'â€”') + '</td>' +
-            '<td style="padding:8px 10px;font-size:11px;color:#64748b;">' + (m.reference_id || 'â€”') + '</td>' +
-            '<td style="padding:8px 10px;font-size:11px;color:#64748b;">â€”</td>' +
+            '<td style="padding:8px 10px;font-weight:600;">' + (m.movement_type || m.action || '—') + '</td>' +
+            '<td style="padding:8px 10px;font-size:11px;color:#64748b;">' + (m.reference_id || '—') + '</td>' +
+            '<td style="padding:8px 10px;font-size:11px;color:#64748b;">—</td>' +
             '<td style="padding:8px 10px;text-align:right;font-weight:700;color:' + qtyColor + ';">' + qtyStr + '</td>' +
-            '<td style="padding:8px 10px;text-align:right;">' + (remaining !== 'â€”' ? remaining.toLocaleString() : 'â€”') + '</td>' +
-            '<td style="padding:8px 10px;">' + (m.user_name || 'â€”') + '</td>' +
+            '<td style="padding:8px 10px;text-align:right;">' + (remaining !== '—' ? remaining.toLocaleString() : '—') + '</td>' +
+            '<td style="padding:8px 10px;">' + (m.user_name || '—') + '</td>' +
             '</tr>';
     });
     html += '</tbody></table></div>';
@@ -3602,7 +3600,7 @@ function renderPhysicalTable(movements) {
         '<th style="padding:8px 10px;">Counted By</th>' +
         '</tr></thead><tbody>';
     physical.forEach(function(m) {
-        var mDate = m.created_at ? new Date(m.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : 'â€”';
+        var mDate = m.created_at ? new Date(m.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
         var sysQty = parseFloat(m.quantity_before || 0);
         var phyQty = parseFloat(m.quantity_after || 0);
         var variance = phyQty - sysQty;
@@ -3612,7 +3610,7 @@ function renderPhysicalTable(movements) {
             '<td style="padding:8px 10px;text-align:right;">' + sysQty.toLocaleString() + '</td>' +
             '<td style="padding:8px 10px;text-align:right;">' + phyQty.toLocaleString() + '</td>' +
             '<td style="padding:8px 10px;text-align:right;font-weight:700;color:' + vColor + ';">' + (variance >= 0 ? '+' : '') + variance.toLocaleString() + '</td>' +
-            '<td style="padding:8px 10px;">' + (m.user_name || 'â€”') + '</td>' +
+            '<td style="padding:8px 10px;">' + (m.user_name || '—') + '</td>' +
             '</tr>';
     });
     html += '</tbody></table></div>';
@@ -3644,10 +3642,10 @@ function printProductDetails() {
     pw.document.write('<!DOCTYPE html><html><head><title>Product Details</title><style>body{font-family:Arial,sans-serif;font-size:13px;padding:20px;color:#000;}h2{color:#002F70;}table{width:100%;border-collapse:collapse;margin-top:12px;}td,th{padding:8px 10px;border-bottom:1px solid #e0e0e0;text-align:left;}.label{font-weight:700;color:#475569;width:200px;}</style></head><body>');
     pw.document.write('<h2>Product Details &mdash; ' + (p.name || '') + '</h2>');
     pw.document.write('<p style="color:#64748b;font-size:11px;">Printed: ' + new Date().toLocaleString() + '</p>');
-    pw.document.write('<table><tr><td class="label">SKU</td><td>' + (p.sku || 'â€”') + '</td></tr>');
-    pw.document.write('<tr><td class="label">Category</td><td>' + (p.category_name || 'â€”') + '</td></tr>');
+    pw.document.write('<table><tr><td class="label">SKU</td><td>' + (p.sku || '—') + '</td></tr>');
+    pw.document.write('<tr><td class="label">Category</td><td>' + (p.category_name || '—') + '</td></tr>');
     pw.document.write('<tr><td class="label">Supplier</td><td>' + (p.supplier || 'Petron Corporation') + '</td></tr>');
-    pw.document.write('<tr><td class="label">Unit of Measure</td><td>' + (p.unit || 'â€”') + '</td></tr>');
+    pw.document.write('<tr><td class="label">Unit of Measure</td><td>' + (p.unit || '—') + '</td></tr>');
     pw.document.write('<tr><td class="label">Current Stock</td><td>' + parseFloat(p.stock_level || 0).toLocaleString() + '</td></tr>');
     pw.document.write('<tr><td class="label">Reorder Level</td><td>' + parseFloat(p.reorder_level || 24).toLocaleString() + '</td></tr>');
     pw.document.write('<tr><td class="label">Critical Level</td><td>' + parseFloat(p.critical_level || 10).toLocaleString() + '</td></tr>');

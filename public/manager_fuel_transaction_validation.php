@@ -1,6 +1,6 @@
 ﻿<?php
 // ============================================================
-// Manager Fuel Transaction Validation â€“ manager_fuel_transaction_validation.php
+// Manager Fuel Transaction Validation – manager_fuel_transaction_validation.php
 // Purpose: View, Validate, Reject, and Audit staff pump readings
 // ============================================================
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -282,10 +282,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 try {
                     $meta_notes = json_encode([
                         'transaction_id' => $tx['transaction_id'],
-                        'fuel_line' => 'Pump #' . ($tx['pump_id'] ?? 'â€”'),
+                        'fuel_line' => 'Pump #' . ($tx['pump_id'] ?? '—'),
                         'fuel_type' => $tx['fuel_type'],
-                        'shift' => $tx['shift_name'] ?: ($tx['shift_period'] ?: 'â€”'),
-                        'staff_name' => $tx['staff_name'] ?? 'â€”',
+                        'shift' => $tx['shift_name'] ?: ($tx['shift_period'] ?: '—'),
+                        'staff_name' => $tx['staff_name'] ?? '—',
                         'prev_beginning' => (float)$tx['previous_reading'],
                         'prev_ending' => (float)$tx['present_reading'],
                         'prev_calibration' => (float)$tx['calibration'],
@@ -327,10 +327,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 try {
                     $meta_notes = json_encode([
                         'transaction_id' => $tx['transaction_id'],
-                        'fuel_line' => 'Pump #' . ($tx['pump_id'] ?? 'â€”'),
+                        'fuel_line' => 'Pump #' . ($tx['pump_id'] ?? '—'),
                         'fuel_type' => $tx['fuel_type'],
-                        'shift' => $tx['shift_name'] ?: ($tx['shift_period'] ?: 'â€”'),
-                        'staff_name' => $tx['staff_name'] ?? 'â€”',
+                        'shift' => $tx['shift_name'] ?: ($tx['shift_period'] ?: '—'),
+                        'staff_name' => $tx['staff_name'] ?? '—',
                         'prev_beginning' => (float)$tx['previous_reading'],
                         'prev_ending' => (float)$tx['present_reading'],
                         'prev_calibration' => (float)$tx['calibration'],
@@ -501,7 +501,7 @@ try {
                    COALESCE(
                        NULLIF(CONCAT(TRIM(COALESCE(validator.first_name, '')), ' ', TRIM(COALESCE(validator.last_name, ''))), ' '),
                        validator.username,
-                       'â€”'
+                       '—'
                    ) as validator_name
             FROM fuel_transactions ft
             LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
@@ -560,7 +560,7 @@ if (in_array($export, ['excel', 'pdf'])) {
     $headers = ['Transaction ID', 'Date', 'Shift', 'Fuel Type', 'Beginning Reading', 'Ending Reading', 'Calibration', 'Volume Liters', 'Price/L', 'Amount', 'Staff Encoder', 'Status', 'Validation Date', 'Remarks'];
     $rows_fmt = [];
     foreach ($transactions as $tx) {
-        $shift_display = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? 'â€”'));
+        $shift_display = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? '—'));
         $rows_fmt[] = [
             $tx['transaction_id'],
             date('M d, Y H:i', strtotime($tx['transaction_date'])),
@@ -570,12 +570,12 @@ if (in_array($export, ['excel', 'pdf'])) {
             number_format($tx['present_reading'], 2),
             number_format($tx['calibration'], 2),
             number_format($tx['liters_sold'], 2),
-            'â‚±' . number_format($tx['price_per_liter'], 2),
-            'â‚±' . number_format($tx['total_amount'], 2),
-            $tx['staff_name'] ?? 'â€”',
+            '₱' . number_format($tx['price_per_liter'], 2),
+            '₱' . number_format($tx['total_amount'], 2),
+            $tx['staff_name'] ?? '—',
             getStatusLabel($tx['status'] ?? ''),
-            $tx['validated_at'] ? date('M d, Y H:i', strtotime($tx['validated_at'])) : 'â€”',
-            $tx['reject_reason'] ?? 'â€”'
+            $tx['validated_at'] ? date('M d, Y H:i', strtotime($tx['validated_at'])) : '—',
+            $tx['reject_reason'] ?? '—'
         ];
     }
     $filename = 'fuel_transaction_validation_' . $date_from . '_to_' . $date_to;
@@ -603,7 +603,7 @@ if (in_array($export, ['excel', 'pdf'])) {
         
         $tbody = '';
         foreach ($transactions as $tx) {
-            $shift_display = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? 'â€”'));
+            $shift_display = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? '—'));
             $tbody .= '<tr>';
             $tbody .= '<td>' . htmlspecialchars($tx['transaction_id']) . '</td>';
             $tbody .= '<td>' . date('M d, Y', strtotime($tx['transaction_date'])) . '</td>';
@@ -613,12 +613,12 @@ if (in_array($export, ['excel', 'pdf'])) {
             $tbody .= '<td style="text-align:right;">' . number_format($tx['present_reading'], 2) . '</td>';
             $tbody .= '<td style="text-align:right;">' . number_format($tx['calibration'], 2) . '</td>';
             $tbody .= '<td style="text-align:right;font-weight:700;">' . number_format($tx['liters_sold'], 2) . ' L</td>';
-            $tbody .= '<td style="text-align:right;">â‚±' . number_format($tx['price_per_liter'], 2) . '</td>';
-            $tbody .= '<td style="text-align:right;font-weight:700;color:#002F70;">â‚±' . number_format($tx['total_amount'], 2) . '</td>';
-            $tbody .= '<td>' . htmlspecialchars($tx['staff_name'] ?? 'â€”') . '</td>';
+            $tbody .= '<td style="text-align:right;">₱' . number_format($tx['price_per_liter'], 2) . '</td>';
+            $tbody .= '<td style="text-align:right;font-weight:700;color:#002F70;">₱' . number_format($tx['total_amount'], 2) . '</td>';
+            $tbody .= '<td>' . htmlspecialchars($tx['staff_name'] ?? '—') . '</td>';
             $tbody .= '<td>' . getStatusLabel($tx['status'] ?? '') . '</td>';
-            $tbody .= '<td>' . ($tx['validated_at'] ? date('M d, Y', strtotime($tx['validated_at'])) : 'â€”') . '</td>';
-            $tbody .= '<td>' . htmlspecialchars($tx['reject_reason'] ?? 'â€”') . '</td>';
+            $tbody .= '<td>' . ($tx['validated_at'] ? date('M d, Y', strtotime($tx['validated_at'])) : '—') . '</td>';
+            $tbody .= '<td>' . htmlspecialchars($tx['reject_reason'] ?? '—') . '</td>';
             $tbody .= '</tr>';
         }
 
@@ -650,7 +650,7 @@ if (in_array($export, ['excel', 'pdf'])) {
         echo '<div class="report">';
         echo '<div class="hdr">';
         echo '<div><h1>Petron Fuel Transaction Validation</h1>';
-        echo '<p>Period: ' . htmlspecialchars($date_from) . ' â€” ' . htmlspecialchars($date_to) . ' | Station: ' . htmlspecialchars(user_station_name()) . '</p></div>';
+        echo '<p>Period: ' . htmlspecialchars($date_from) . ' — ' . htmlspecialchars($date_to) . ' | Station: ' . htmlspecialchars(user_station_name()) . '</p></div>';
         echo '<div style="text-align:right;"><p style="margin:0;color:#bfdbfe;">Generated: ' . $generated . '</p></div>';
         echo '</div>';
         echo '<table><thead><tr><th>Txn ID</th><th>Date</th><th>Shift</th><th>Fuel Type</th><th>Beginning</th><th>Ending</th><th>Calib</th><th>Liters</th><th>Price/L</th><th>Amount</th><th>Staff</th><th>Status</th><th>Val Date</th><th>Remarks</th></tr></thead>';
@@ -857,7 +857,7 @@ input[type="checkbox"]:indeterminate {
         <div class="afto-card purple">
             <div class="afto-card-info">
                 <span class="afto-card-lbl">Total Fuel Sales</span>
-                <span class="afto-card-val">â‚±<?= number_format($total_sales_today, 2) ?></span>
+                <span class="afto-card-val">₱<?= number_format($total_sales_today, 2) ?></span>
             </div>
             <div class="afto-card-icon"><i class="fas fa-peso-sign"></i></div>
         </div>
@@ -1016,7 +1016,7 @@ input[type="checkbox"]:indeterminate {
                                     <?php if (str_contains(strtolower($tx['status'] ?? ''), 'pending')): ?>
                                         <input type="checkbox" class="tx-checkbox" data-tx-id="<?= $tx['id'] ?>" style="cursor: pointer;" onchange="updateBatchButtons()">
                                     <?php else: ?>
-                                        <span style="color: #cbd5e1;">â€”</span>
+                                        <span style="color: #cbd5e1;">—</span>
                                     <?php endif; ?>
                                 </td>
                                 <td style="font-weight: 700; color: #00264D; font-size: 13px;"><?= htmlspecialchars($tx['transaction_id']) ?></td>
@@ -1027,8 +1027,8 @@ input[type="checkbox"]:indeterminate {
                                 <td style="text-align: right; font-weight: 700; font-size: 13px;"><?= number_format($tx['present_reading'], 2) ?></td>
                                 <td style="text-align: right; font-size: 13px;"><?= number_format($tx['calibration'], 2) ?></td>
                                 <td style="text-align: right; font-weight: 700; color: #1e293b; font-size: 13px;"><?= number_format($tx['liters_sold'], 2) ?> L</td>
-                                <td style="text-align: right; font-weight: 800; color: #002F70; font-size: 13px;">â‚±<?= number_format($tx['total_amount'], 2) ?></td>
-                                <td style="font-size: 13px;"><?= htmlspecialchars($tx['staff_name'] ?? 'â€”') ?></td>
+                                <td style="text-align: right; font-weight: 800; color: #002F70; font-size: 13px;">₱<?= number_format($tx['total_amount'], 2) ?></td>
+                                <td style="font-size: 13px;"><?= htmlspecialchars($tx['staff_name'] ?? '—') ?></td>
                                 <td><span class="afto-badge <?= getStatusBadgeClass($tx['status'] ?? '') ?>"><?= getStatusLabel($tx['status'] ?? '') ?></span></td>
                             </tr>
                         <?php endforeach; ?>
@@ -1055,67 +1055,67 @@ input[type="checkbox"]:indeterminate {
             <div class="details-list">
                 <div class="details-item">
                     <div class="details-label">Transaction ID</div>
-                    <div class="details-value" id="det_id">â€”</div>
+                    <div class="details-value" id="det_id">—</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Date/Time</div>
-                    <div class="details-value" id="det_date">â€”</div>
+                    <div class="details-value" id="det_date">—</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Fuel Type</div>
-                    <div class="details-value" id="det_fuel">â€”</div>
+                    <div class="details-value" id="det_fuel">—</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Shift</div>
-                    <div class="details-value" id="det_shift">â€”</div>
+                    <div class="details-value" id="det_shift">—</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Price per Liter</div>
-                    <div class="details-value" id="det_price">â€”</div>
+                    <div class="details-value" id="det_price">—</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Beginning Reading</div>
-                    <div class="details-value" id="det_beg">â€”</div>
+                    <div class="details-value" id="det_beg">—</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Ending Reading</div>
-                    <div class="details-value" id="det_end">â€”</div>
+                    <div class="details-value" id="det_end">—</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Calibration</div>
-                    <div class="details-value" id="det_cal">â€”</div>
+                    <div class="details-value" id="det_cal">—</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Volume Sold</div>
-                    <div class="details-value" id="det_vol" style="color:#00264D;">â€”</div>
+                    <div class="details-value" id="det_vol" style="color:#00264D;">—</div>
                 </div>
                 <div class="details-item" style="grid-column: span 2;">
                     <div class="details-label">Total Amount</div>
-                    <div class="details-value" id="det_amt" style="font-size:16px; color:#16a34a;">â€”</div>
+                    <div class="details-value" id="det_amt" style="font-size:16px; color:#16a34a;">—</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Staff Encoder</div>
-                    <div class="details-value" id="det_staff">â€”</div>
+                    <div class="details-value" id="det_staff">—</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Status</div>
-                    <div class="details-value" id="det_status">â€”</div>
+                    <div class="details-value" id="det_status">—</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Validated By</div>
-                    <div class="details-value" id="det_validator">â€”</div>
+                    <div class="details-value" id="det_validator">—</div>
                 </div>
                 <div class="details-item">
                     <div class="details-label">Validation Date</div>
-                    <div class="details-value" id="det_val_date">â€”</div>
+                    <div class="details-value" id="det_val_date">—</div>
                 </div>
                 <div class="details-item" style="grid-column: span 2;">
                     <div class="details-label">Remarks / Audit Note</div>
-                    <div class="details-value" id="det_remarks" style="white-space: pre-wrap; font-weight: normal; color: #475569;">â€”</div>
+                    <div class="details-value" id="det_remarks" style="white-space: pre-wrap; font-weight: normal; color: #475569;">—</div>
                 </div>
                 <div class="details-item" style="grid-column: span 2;">
                     <div class="details-label">Staff Encoding Notes</div>
-                    <div class="details-value" id="det_staff_notes" style="white-space: pre-wrap; font-weight: normal; color: #475569;">â€”</div>
+                    <div class="details-value" id="det_staff_notes" style="white-space: pre-wrap; font-weight: normal; color: #475569;">—</div>
                 </div>
             </div>
         </div>
@@ -1208,7 +1208,7 @@ input[type="checkbox"]:indeterminate {
                 </div>
                 <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
                     <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Total Sales</div>
-                    <div id="revTotalSales" style="font-size: 20px; font-weight: 700; color: #16a34a;">â‚±0.00</div>
+                    <div id="revTotalSales" style="font-size: 20px; font-weight: 700; color: #16a34a;">₱0.00</div>
                 </div>
                 <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
                     <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Total Cal</div>
@@ -1316,7 +1316,7 @@ input[type="checkbox"]:indeterminate {
                     </div>
                     <div>
                         <div style="font-size: 10px; color: #166534; font-weight: bold; text-transform: uppercase;">Adj. Amount</div>
-                        <div id="adj_amount_val" style="font-size: 14px; font-weight: 700; color: #14532d; margin-top: 2px;">â‚±0.00</div>
+                        <div id="adj_amount_val" style="font-size: 14px; font-weight: 700; color: #14532d; margin-top: 2px;">₱0.00</div>
                     </div>
                 </div>
             </div>
@@ -1338,24 +1338,24 @@ input[type="checkbox"]:indeterminate {
 <script>
 // Details View Modal
 function viewDetails(tx) {
-    const shift_display = tx.shift_name ? tx.shift_name : (tx.shift_period === 'second' ? 'Second Shift' : (tx.shift_period ? tx.shift_period : 'â€”'));
+    const shift_display = tx.shift_name ? tx.shift_name : (tx.shift_period === 'second' ? 'Second Shift' : (tx.shift_period ? tx.shift_period : '—'));
     
-    document.getElementById('det_id').textContent = tx.transaction_id || 'â€”';
-    document.getElementById('det_date').textContent = tx.transaction_date || 'â€”';
+    document.getElementById('det_id').textContent = tx.transaction_id || '—';
+    document.getElementById('det_date').textContent = tx.transaction_date || '—';
     document.getElementById('det_shift').textContent = shift_display;
-    document.getElementById('det_fuel').textContent = tx.fuel_type || 'â€”';
-    document.getElementById('det_price').textContent = 'â‚±' + parseFloat(tx.price_per_liter || 0).toFixed(2);
+    document.getElementById('det_fuel').textContent = tx.fuel_type || '—';
+    document.getElementById('det_price').textContent = '₱' + parseFloat(tx.price_per_liter || 0).toFixed(2);
     document.getElementById('det_beg').textContent = parseFloat(tx.previous_reading || 0).toFixed(2);
     document.getElementById('det_end').textContent = parseFloat(tx.present_reading || 0).toFixed(2);
     document.getElementById('det_cal').textContent = parseFloat(tx.calibration || 0).toFixed(2);
     document.getElementById('det_vol').textContent = parseFloat(tx.liters_sold || 0).toFixed(2) + ' L';
-    document.getElementById('det_amt').textContent = 'â‚±' + parseFloat(tx.total_amount || 0).toFixed(2);
-    document.getElementById('det_staff').textContent = tx.staff_name || 'â€”';
+    document.getElementById('det_amt').textContent = '₱' + parseFloat(tx.total_amount || 0).toFixed(2);
+    document.getElementById('det_staff').textContent = tx.staff_name || '—';
     document.getElementById('det_status').innerHTML = `<span class="afto-badge ${getStatusBadgeClass(tx.status)}">${getStatusLabel(tx.status)}</span>`;
-    document.getElementById('det_validator').textContent = tx.validator_name || 'â€”';
-    document.getElementById('det_val_date').textContent = tx.validated_at || 'â€”';
-    document.getElementById('det_remarks').textContent = tx.reject_reason || 'â€”';
-    document.getElementById('det_staff_notes').textContent = tx.notes || 'â€”';
+    document.getElementById('det_validator').textContent = tx.validator_name || '—';
+    document.getElementById('det_val_date').textContent = tx.validated_at || '—';
+    document.getElementById('det_remarks').textContent = tx.reject_reason || '—';
+    document.getElementById('det_staff_notes').textContent = tx.notes || '—';
     
     document.getElementById('viewModal').style.display = 'block';
 }
@@ -1483,7 +1483,7 @@ function mftvExport(format) {
 
 // Single Transaction Print Helper
 function printSingleTx(tx) {
-    const shift_display = tx.shift_name ? tx.shift_name : (tx.shift_period === 'second' ? 'Second Shift' : (tx.shift_period ? tx.shift_period : 'â€”'));
+    const shift_display = tx.shift_name ? tx.shift_name : (tx.shift_period === 'second' ? 'Second Shift' : (tx.shift_period ? tx.shift_period : '—'));
     
     let iframe = document.getElementById('print-iframe');
     if (!iframe) {
@@ -1520,13 +1520,13 @@ function printSingleTx(tx) {
         <div class="receipt-line"><span>Beginning:</span><span>${parseFloat(tx.previous_reading || 0).toFixed(2)}</span></div>
         <div class="receipt-line"><span>Ending:</span><span>${parseFloat(tx.present_reading || 0).toFixed(2)}</span></div>
         <div class="receipt-line"><span>Calibration:</span><span>${parseFloat(tx.calibration || 0).toFixed(2)}</span></div>
-        <div class="receipt-line"><span>Price/Liter:</span><span>â‚±${parseFloat(tx.price_per_liter || 0).toFixed(2)}</span></div>
+        <div class="receipt-line"><span>Price/Liter:</span><span>₱${parseFloat(tx.price_per_liter || 0).toFixed(2)}</span></div>
         <div class="receipt-line"><span>Volume:</span><span>${parseFloat(tx.liters_sold || 0).toFixed(2)} L</span></div>
-        <div class="total-row"><span style="float:left;">AMOUNT DUE:</span><span style="float:right;">â‚±${parseFloat(tx.total_amount || 0).toFixed(2)}</span><div style="clear:both;"></div></div>
+        <div class="total-row"><span style="float:left;">AMOUNT DUE:</span><span style="float:right;">₱${parseFloat(tx.total_amount || 0).toFixed(2)}</span><div style="clear:both;"></div></div>
         <div class="receipt-line"><span>Staff Encoder:</span><span>${escapeHtml(tx.staff_name || '')}</span></div>
         <div class="receipt-line"><span>Status:</span><span>${escapeHtml(getStatusLabel(tx.status))}</span></div>
-        <div class="receipt-line"><span>Validator:</span><span>${escapeHtml(tx.validator_name || 'â€”')}</span></div>
-        <div class="receipt-line"><span>Val Date:</span><span>${escapeHtml(tx.validated_at || 'â€”')}</span></div>
+        <div class="receipt-line"><span>Validator:</span><span>${escapeHtml(tx.validator_name || '—')}</span></div>
+        <div class="receipt-line"><span>Val Date:</span><span>${escapeHtml(tx.validated_at || '—')}</span></div>
         <div style="margin-top:15px;text-align:center;font-size:10px;border-top:1px dashed #000;padding-top:10px;">Thank you! For internal reconciliation only.</div>
     </body></html>`);
     doc.close();
@@ -1730,7 +1730,7 @@ function openReviewModal() {
     let listHTML = '';
     selected.forEach(tx => {
         const pump = tx.pump_number || 'Pump #' + (tx.pump_id || '?');
-        const fuelType = tx.fuel_type || 'â€”';
+        const fuelType = tx.fuel_type || '—';
         const liters = parseFloat(tx.liters_sold) || 0;
         const amount = parseFloat(tx.total_amount) || 0;
         const cal = parseFloat(tx.calibration) || 0;
@@ -1744,7 +1744,7 @@ function openReviewModal() {
                 <td style="padding: 8px;">${escapeHtml(pump)}</td>
                 <td style="padding: 8px;">${escapeHtml(fuelType)}</td>
                 <td style="padding: 8px; text-align: right; font-weight: 600;">${liters.toFixed(2)} L</td>
-                <td style="padding: 8px; text-align: right; font-weight: 700; color: #16a34a;">â‚±${amount.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                <td style="padding: 8px; text-align: right; font-weight: 700; color: #16a34a;">₱${amount.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
             </tr>
         `;
     });
@@ -1752,7 +1752,7 @@ function openReviewModal() {
     // Update modal content
     document.getElementById('revTotalPumps').textContent = selected.length;
     document.getElementById('revTotalLiters').textContent = totalLiters.toFixed(2) + ' L';
-    document.getElementById('revTotalSales').textContent = 'â‚±' + totalSales.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+    document.getElementById('revTotalSales').textContent = '₱' + totalSales.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
     document.getElementById('revTotalCal').textContent = totalCal.toFixed(2) + ' L';
     document.getElementById('revReadingsList').innerHTML = listHTML;
     
@@ -1935,7 +1935,7 @@ function printSelected() {
             <div class="summary">
                 <strong>Summary:</strong><br>
                 Total Liters: ${selected.reduce((sum, tx) => sum + (parseFloat(tx.liters_sold) || 0), 0).toFixed(2)} L<br>
-                Total Sales: â‚±${selected.reduce((sum, tx) => sum + (parseFloat(tx.total_amount) || 0), 0).toLocaleString('en-PH', {minimumFractionDigits:2})}
+                Total Sales: ₱${selected.reduce((sum, tx) => sum + (parseFloat(tx.total_amount) || 0), 0).toLocaleString('en-PH', {minimumFractionDigits:2})}
             </div>
             
             <table>
@@ -1959,15 +1959,15 @@ function printSelected() {
         const pump = tx.pump_number || 'Pump #' + (tx.pump_id || '?');
         printHTML += `
             <tr>
-                <td>${escapeHtml(tx.transaction_id || 'â€”')}</td>
+                <td>${escapeHtml(tx.transaction_id || '—')}</td>
                 <td>${new Date(tx.transaction_date).toLocaleDateString('en-PH')}</td>
                 <td>${escapeHtml(pump)}</td>
-                <td>${escapeHtml(tx.fuel_type || 'â€”')}</td>
+                <td>${escapeHtml(tx.fuel_type || '—')}</td>
                 <td class="text-right">${parseFloat(tx.previous_reading || 0).toFixed(2)}</td>
                 <td class="text-right">${parseFloat(tx.present_reading || 0).toFixed(2)}</td>
                 <td class="text-right">${parseFloat(tx.liters_sold || 0).toFixed(2)} L</td>
-                <td class="text-right">â‚±${parseFloat(tx.total_amount || 0).toLocaleString('en-PH', {minimumFractionDigits:2})}</td>
-                <td>${escapeHtml(tx.staff_name || 'â€”')}</td>
+                <td class="text-right">₱${parseFloat(tx.total_amount || 0).toLocaleString('en-PH', {minimumFractionDigits:2})}</td>
+                <td>${escapeHtml(tx.staff_name || '—')}</td>
             </tr>
         `;
     });
@@ -2031,7 +2031,7 @@ function calcAdjTotals() {
     const amount = liters * price;
 
     document.getElementById('adj_liters_val').textContent = liters.toFixed(2) + ' L';
-    document.getElementById('adj_amount_val').textContent = 'â‚±' + amount.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    document.getElementById('adj_amount_val').textContent = '₱' + amount.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 
 // Confirm Batch Adjust

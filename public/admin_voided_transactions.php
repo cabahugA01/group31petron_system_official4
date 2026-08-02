@@ -144,12 +144,12 @@ if(in_array($export,['excel','csv'])) {
         fputcsv($out,[
             'VOID-'.$r['void_id'],
             $r['transaction_id'],
-            $r['job_order_no'] ?? 'â€”',
+            $r['job_order_no'] ?? '—',
             $r['customer'],
-            $r['vehicle_plate'] ?? 'â€”',
+            $r['vehicle_plate'] ?? '—',
             ucwords(str_replace('_',' ',$r['transaction_type'])),
             $items_summary,
-            'â‚±'.number_format($r['amount'],2),
+            '₱'.number_format($r['amount'],2),
             $r['payment_method'] ?? 'N/A',
             $r['void_reason'],
             $r['voided_by_name'],
@@ -214,7 +214,7 @@ require_once __DIR__ . '/../partials/header.php';
 <div class="txn-kpi-grid">
     <div class="txn-kpi-card"><div class="txn-kpi-lbl"><i class="fas fa-ban"></i> Total Voided Transactions</div><div class="txn-kpi-val"><?=number_format($kpi_total)?></div></div>
     <div class="txn-kpi-card"><div class="txn-kpi-lbl"><i class="fas fa-calendar-alt"></i> Voided This Period</div><div class="txn-kpi-val"><?=number_format($kpi_month)?></div></div>
-    <div class="txn-kpi-card total-amount-card"><div class="txn-kpi-lbl"><i class="fas fa-peso-sign"></i> Total Voided Amount</div><div class="txn-kpi-val">â‚±<?=number_format($kpi_amount,2)?></div></div>
+    <div class="txn-kpi-card total-amount-card"><div class="txn-kpi-lbl"><i class="fas fa-peso-sign"></i> Total Voided Amount</div><div class="txn-kpi-val">₱<?=number_format($kpi_amount,2)?></div></div>
 </div>
 
 <!-- Filters -->
@@ -279,8 +279,8 @@ require_once __DIR__ . '/../partials/header.php';
             $t = strtolower($r['transaction_type']??''); 
             $fields     = !empty($r['fields_changed']) ? json_decode($r['fields_changed'], true) : [];
             $jo_raw     = !empty($r['job_order_no']) ? $r['job_order_no'] : ($fields['job_order_no'] ?? '');
-            $jo_disp    = !empty($jo_raw) ? (str_starts_with($jo_raw, 'JO-') ? htmlspecialchars($jo_raw) : 'JO-' . htmlspecialchars($jo_raw)) : 'â€”';
-            $plate_disp = !empty($r['vehicle_plate']) ? htmlspecialchars($r['vehicle_plate']) : (!empty($fields['vehicle_plate']) ? htmlspecialchars($fields['vehicle_plate']) : 'â€”');
+            $jo_disp    = !empty($jo_raw) ? (str_starts_with($jo_raw, 'JO-') ? htmlspecialchars($jo_raw) : 'JO-' . htmlspecialchars($jo_raw)) : '—';
+            $plate_disp = !empty($r['vehicle_plate']) ? htmlspecialchars($r['vehicle_plate']) : (!empty($fields['vehicle_plate']) ? htmlspecialchars($fields['vehicle_plate']) : '—');
             $pay_raw    = !empty($r['payment_method']) ? $r['payment_method'] : ($fields['payment_method'] ?? 'Cash');
             if (empty($pay_raw) || $pay_raw === 'N/A') $pay_raw = 'Cash';
         ?>
@@ -312,7 +312,7 @@ require_once __DIR__ . '/../partials/header.php';
                         $sub = (float)($item['subtotal'] ?? 0);
                         echo '<div style="margin-bottom:2px;padding:2px 4px;border:1px solid #fca5a5;border-radius:3px;background:#fff5f5;font-size:8px;line-height:1.3;">';
                         echo '<strong>' . htmlspecialchars(substr($item['product_name'] ?? '', 0, 28)) . (strlen($item['product_name'] ?? '') > 28 ? '..' : '') . '</strong><br>';
-                        echo '<span style="color:#64748b;">Qty: ' . $qty . ' | â‚±' . number_format($sub, 2) . '</span>';
+                        echo '<span style="color:#64748b;">Qty: ' . $qty . ' | ₱' . number_format($sub, 2) . '</span>';
                         echo '</div>';
                     }
                 } elseif (!empty($void_items_map[$txn_id])) {
@@ -321,17 +321,17 @@ require_once __DIR__ . '/../partials/header.php';
                         $sub = (float)($item['subtotal'] ?? 0);
                         echo '<div style="margin-bottom:2px;padding:2px 4px;border:1px solid #cbd5e1;border-radius:3px;background:#f8fafc;font-size:8px;line-height:1.3;">';
                         echo '<strong>' . htmlspecialchars(substr($item['product_name'] ?? '', 0, 28)) . (strlen($item['product_name'] ?? '') > 28 ? '..' : '') . '</strong><br>';
-                        echo '<span style="color:#64748b;">Qty: ' . $qty . ' | â‚±' . number_format($sub, 2) . '</span>';
+                        echo '<span style="color:#64748b;">Qty: ' . $qty . ' | ₱' . number_format($sub, 2) . '</span>';
                         echo '</div>';
                     }
                 } elseif (!empty($r['item_names'])) {
                     echo '<span style="font-size:8px;color:#334155;">' . htmlspecialchars($r['item_names']) . '</span>';
                 } else {
-                    echo '<span style="font-size:8px;color:#94a3b8;font-style:italic;">â€” (legacy record)</span>';
+                    echo '<span style="font-size:8px;color:#94a3b8;font-style:italic;">— (legacy record)</span>';
                 }
                 ?>
             </td>
-            <td style="font-weight:700;color:#dc2626;">â‚±<?=number_format($r['amount'],2)?></td>
+            <td style="font-weight:700;color:#dc2626;">₱<?=number_format($r['amount'],2)?></td>
             <td>
                 <?php 
                 $payment = $pay_raw;
@@ -365,13 +365,13 @@ require_once __DIR__ . '/../partials/header.php';
                     'txnId'    => $r['transaction_id'],
                     'customer' => $r['customer'] ?? 'Walk-in',
                     'type'     => ucwords(str_replace('_',' ',$r['transaction_type'])),
-                    'amount'   => 'â‚±' . number_format($r['amount'],2),
+                    'amount'   => '₱' . number_format($r['amount'],2),
                     'reason'   => $r['void_reason'],
                     'remarks'  => $r['manager_remarks'] ?? '',
                     'by'       => $r['voided_by_name'] ?? 'Unknown',
                     'date'     => date('M d, Y h:i A', strtotime($r['void_date'])),
                     'payment'  => $pay_raw,
-                    'items'    => $r['item_names'] ?? 'â€”',
+                    'items'    => $r['item_names'] ?? '—',
                     'vehicle'  => $plate_disp,
                     'joNo'     => $jo_disp,
                     'fields_changed' => !empty($r['fields_changed']) ? json_decode($r['fields_changed'], true) : null
@@ -418,8 +418,8 @@ require_once __DIR__ . '/../partials/header.php';
 </style>
 <script>
 function openVoidModal(d){
-  var pm = d.payment || 'â€”';
-  var items = d.items || 'â€”';
+  var pm = d.payment || '—';
+  var items = d.items || '—';
   var itemsHtml = '';
   
   if (d.fields_changed) {
@@ -437,8 +437,8 @@ function openVoidModal(d){
       d.fields_changed.voided_items.forEach(function(item) {
         itemsHtml += '<tr style="border-bottom: 1px solid #fecaca;">' +
           '<td style="padding: 6px 8px;"><strong>' + item.product_name + '</strong></td>' +
-          '<td style="padding: 6px 8px; color: #64748b;">' + item.quantity + ' x â‚±' + Number(item.unit_price).toFixed(2) + '</td>' +
-          '<td style="padding: 6px 8px; font-weight: bold; color: #dc2626;">â‚±' + Number(item.subtotal).toFixed(2) + '</td>' +
+          '<td style="padding: 6px 8px; color: #64748b;">' + item.quantity + ' x ₱' + Number(item.unit_price).toFixed(2) + '</td>' +
+          '<td style="padding: 6px 8px; font-weight: bold; color: #dc2626;">₱' + Number(item.subtotal).toFixed(2) + '</td>' +
           '</tr>';
       });
       itemsHtml += '</table></div>';
@@ -446,21 +446,21 @@ function openVoidModal(d){
   }
   
   if (!itemsHtml) {
-    itemsHtml = items !== 'â€”' ? items : '<em style="color: #94a3b8; font-size: 12px;">No items logged</em>';
+    itemsHtml = items !== '—' ? items : '<em style="color: #94a3b8; font-size: 12px;">No items logged</em>';
   }
 
   var rows=[
     ['Void ID',          '<strong>'+d.voidId+'</strong>'],
     ['Transaction ID',   d.txnId],
-    ['Job Order No.',    d.joNo || 'â€”'],
+    ['Job Order No.',    d.joNo || '—'],
     ['Customer',         d.customer],
-    ['Vehicle Plate',    d.vehicle || 'â€”'],
+    ['Vehicle Plate',    d.vehicle || '—'],
     ['Type',             d.type],
     ['Items / Service',  itemsHtml],
     ['Payment Method',   pm],
     ['Original Amount',  '<strong style="color:#002F70;font-size:15px;">'+d.amount+'</strong>'],
     ['Void Reason',      d.reason],
-    ['Manager Remarks',  d.remarks || 'â€”'],
+    ['Manager Remarks',  d.remarks || '—'],
     ['Voided By',        d.by],
     ['Void Date',        d.date]
   ];

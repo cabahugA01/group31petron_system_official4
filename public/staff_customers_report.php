@@ -441,7 +441,7 @@ require_once __DIR__ . '/../partials/header.php';
                                 <td><?= staff_customer_report_h($row['customer_type']) ?></td>
                                 <td><?= staff_customer_report_h($row['vehicle']) ?></td>
                                 <td><?= staff_customer_report_h($row['transaction_type']) ?></td>
-                                <td class="text-right font-bold">â‚±<?= number_format((float)$row['total_amount'], 2) ?></td>
+                                <td class="text-right font-bold">₱<?= number_format((float)$row['total_amount'], 2) ?></td>
                                 <td><?= staff_customer_report_h(staff_customer_report_date($row['transaction_date'])) ?></td>
                                 <td><?= staff_customer_report_h($row['staff_name']) ?></td>
                             </tr>

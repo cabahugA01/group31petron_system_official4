@@ -221,7 +221,7 @@ include __DIR__ . '/../partials/header.php';
 .btn-outline:hover { background: #f0f5ff !important; }
 .btn-sm { padding: 6px 10px; font-size: 12px; min-height: 30px; }
 
-/* == Action buttons â€” matches manager module vertical stack style == */
+/* == Action buttons — matches manager module vertical stack style == */
 .act-wrap { display: flex; gap: 4px; flex-direction: column; }
 .btn-act {
     display: inline-flex;
@@ -262,7 +262,7 @@ include __DIR__ . '/../partials/header.php';
 .btn-view    { border: 1px solid #002F70 !important; color: #002F70 !important; }
 .btn-view:hover    { background: #002F70 !important; color: #fff !important; }
 
-/* == Filter bar buttons â€” matches manager module .flt-btn style == */
+/* == Filter bar buttons — matches manager module .flt-btn style == */
 .flt-btn {
     display: inline-flex;
     align-items: center;
@@ -291,7 +291,7 @@ include __DIR__ . '/../partials/header.php';
 .flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
 .flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 
-/* == Table â€” fixed layout, no horizontal scroll == */
+/* == Table — fixed layout, no horizontal scroll == */
 .table-wrap { width: 100%; overflow: visible; }
 body { overflow-x: hidden !important; max-width: 100vw !important; }
 table.dt {
@@ -579,7 +579,7 @@ table.dt tr:hover td { background: #f1f7ff; }
 <div class="card">
   <div class="card-header">
     <div class="card-title"><i class="fas fa-filter"></i> Search & Filters</div>
-    <div id="recordCount" style="font-size:12px;color:var(--gray);">Loadingâ€¦</div>
+    <div id="recordCount" style="font-size:12px;color:var(--gray);">Loading—¦</div>
   </div>
   <div class="card-body">
     <!-- Filter Bar -->
@@ -625,7 +625,7 @@ table.dt tr:hover td { background: #f1f7ff; }
       </div>
       <div class="fg">
         <label>DR Number</label>
-        <input type="text" id="fDrNumber" placeholder="Search DR Numberâ€¦">
+        <input type="text" id="fDrNumber" placeholder="Search DR Number—¦">
       </div>
       <div style="margin-top:auto; display:flex; gap:8px; align-items:center;">
         <button class="flt-btn flt-btn-search" onclick="loadDeliveries()"><i class="fas fa-search"></i> Search</button>
@@ -673,7 +673,7 @@ table.dt tr:hover td { background: #f1f7ff; }
           </tr>
         </thead>
         <tbody id="deliveriesBody">
-          <tr><td colspan="15"><div class="empty-state"><i class="fas fa-spinner fa-spin"></i> Loadingâ€¦</div></td></tr>
+          <tr><td colspan="15"><div class="empty-state"><i class="fas fa-spinner fa-spin"></i> Loading—¦</div></td></tr>
         </tbody>
       </table>
     </div>
@@ -767,7 +767,7 @@ table.dt tr:hover td { background: #f1f7ff; }
             <input type="number" step="any" id="proc_damaged" oninput="recalcPayment()">
           </div>
           <div class="fg">
-            <label id="proc_price_label">Unit Price (â‚±)</label>
+            <label id="proc_price_label">Unit Price (₱)</label>
             <input type="number" step="any" id="proc_unit_price" oninput="recalcPayment()">
           </div>
         </div>
@@ -792,19 +792,19 @@ table.dt tr:hover td { background: #f1f7ff; }
           <div style="font-size:12px; color:#374151; display:flex; flex-direction:column; gap:6px;">
             <div style="display:flex; justify-content:space-between;">
               <span>Expected Amount:</span>
-              <strong id="pay_expected">â‚±0.00</strong>
+              <strong id="pay_expected">₱0.00</strong>
             </div>
             <div style="display:flex; justify-content:space-between;">
-              <span>Actual Received Amount (<span id="pay_actual_qty">0</span> @ â‚±<span id="pay_unit_price">0</span>):</span>
-              <strong id="pay_actual_amt">â‚±0.00</strong>
+              <span>Actual Received Amount (<span id="pay_actual_qty">0</span> @ ₱<span id="pay_unit_price">0</span>):</span>
+              <strong id="pay_actual_amt">₱0.00</strong>
             </div>
             <div id="damagedRow" style="display:none; justify-content:space-between; color:var(--red);">
-              <span>Less Damaged Items (<span id="pay_damaged_qty">0</span> @ â‚±<span id="pay_damaged_price">0</span>):</span>
-              <strong id="pay_damaged_amt">-â‚±0.00</strong>
+              <span>Less Damaged Items (<span id="pay_damaged_qty">0</span> @ ₱<span id="pay_damaged_price">0</span>):</span>
+              <strong id="pay_damaged_amt">-₱0.00</strong>
             </div>
             <div style="display:flex; justify-content:space-between; font-size:14px; font-weight:700; border-top:1px dashed #bbf7d0; padding-top:6px; color:#16a34a;">
               <span>TOTAL PAYABLE AMOUNT:</span>
-              <span>â‚±<span id="pay_total">0.00</span></span>
+              <span>₱<span id="pay_total">0.00</span></span>
             </div>
           </div>
         </div>
@@ -849,7 +849,7 @@ function toast(msg, type){
 
 // Helper: Format Date
 function fmtDate(d){
-    if(!d) return 'â€”';
+    if(!d) return '—';
     try {
         return new Date(d).toLocaleDateString('en-PH', {year:'numeric', month:'short', day:'numeric'});
     } catch(e) {
@@ -859,7 +859,7 @@ function fmtDate(d){
 
 // Helper: Format Date & Time
 function fmtDateTime(d){
-    if(!d) return 'â€”';
+    if(!d) return '—';
     try {
         return new Date(d).toLocaleString('en-PH', {
             month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
@@ -967,11 +967,11 @@ function buildRow(r) {
 
     const qty = parseFloat(r.actual_quantity || r.quantity || 0);
     const qtyDelivered = qty.toFixed(1);
-    const category = r.category || 'â€”';
-    const managerName = r.manager_name || 'â€”';
-    const timestamp = r.manager_action_at ? fmtDateTime(r.manager_action_at) : 'â€”';
-    const remarks = r.remarks || r.manager_notes || r.admin_notes || 'â€”';
-    const staff = r.received_by_name || r.encoded_by_name || 'â€”';
+    const category = r.category || '—';
+    const managerName = r.manager_name || '—';
+    const timestamp = r.manager_action_at ? fmtDateTime(r.manager_action_at) : '—';
+    const remarks = r.remarks || r.manager_notes || r.admin_notes || '—';
+    const staff = r.received_by_name || r.encoded_by_name || '—';
     const dateDelivered = fmtDate(r.delivery_date);
     
     // Action flags
@@ -979,7 +979,7 @@ function buildRow(r) {
     const canPrint = ['Confirmed', 'Validated', 'Verified', 'Ready for Stock-In', 'Stock-In Complete', 'Adjusted', 'Partial Delivery', 'Damaged Items', 'Rejected Delivery', 'Rejected', 'Flagged', 'Discrepancy'].includes(r.status);
     const canProcess = ['Pending Validation', 'Pending Verification', 'Pending Admin Oversight', 'Pending Manager Confirmation', 'Pending Manager Approval'].includes(r.status);
 
-    // Build vertical act-wrap â€” matched to manager_merchandise_deliveries.php pattern
+    // Build vertical act-wrap — matched to manager_merchandise_deliveries.php pattern
     var acts = '';
     acts += `<button class="btn-act btn-view" onclick="showDetail(${r.id})"><i class="fas fa-eye"></i> View</button>`;
     if (canProcess) {
@@ -996,8 +996,8 @@ function buildRow(r) {
     return `<tr>
         <td><span style="font-size:10px;color:#6c757d;word-break:break-all;">${esc(r.delivery_ref)}</span></td>
         <td style="font-size:10px;">${dateDelivered}</td>
-        <td><span style="font-family:monospace;font-size:10px;font-weight:700;color:#002F70;">${esc(r.batch_id||'â€”')}</span></td>
-        <td style="font-weight:600;font-size:10px;">${esc(r.dr_number||'â€”')}</td>
+        <td><span style="font-family:monospace;font-size:10px;font-weight:700;color:#002F70;">${esc(r.batch_id||'—')}</span></td>
+        <td style="font-weight:600;font-size:10px;">${esc(r.dr_number||'—')}</td>
         <td style="font-size:10px;">${esc(r.supplier)}</td>
         <td style="font-weight:600;font-size:10px;">${esc(r.product)}</td>
         <td style="font-size:10px;">${esc(category)}</td>
@@ -1065,11 +1065,11 @@ async function showDetail(id) {
             </div>
             <div class="detail-item">
               <div class="detail-label">Batch ID</div>
-              <div class="detail-value">${esc(r.batch_id || 'â€”')}</div>
+              <div class="detail-value">${esc(r.batch_id || '—')}</div>
             </div>
             <div class="detail-item">
               <div class="detail-label">DR Number</div>
-              <div class="detail-value">${esc(r.dr_number || 'â€”')}</div>
+              <div class="detail-value">${esc(r.dr_number || '—')}</div>
             </div>
             <div class="detail-item">
               <div class="detail-label">Supplier</div>
@@ -1081,7 +1081,7 @@ async function showDetail(id) {
             </div>
             <div class="detail-item">
               <div class="detail-label">Category</div>
-              <div class="detail-value">${esc(r.category || 'â€”')}</div>
+              <div class="detail-value">${esc(r.category || '—')}</div>
             </div>
             <div class="detail-item">
               <div class="detail-label">Status</div>
@@ -1107,34 +1107,34 @@ async function showDetail(id) {
           <div class="detail-grid" style="grid-template-columns: 1fr 1fr 1fr;">
             <div class="detail-item" style="border-left-color: var(--blue);">
               <div class="detail-label">Unit Price</div>
-              <div class="detail-value">â‚±${parseFloat(r.unit_price || 0).toLocaleString('en-PH', {minimumFractionDigits:2})}</div>
+              <div class="detail-value">₱${parseFloat(r.unit_price || 0).toLocaleString('en-PH', {minimumFractionDigits:2})}</div>
             </div>
             <div class="detail-item" style="border-left-color: var(--blue);">
               <div class="detail-label">Expected Amount</div>
-              <div class="detail-value">â‚±${parseFloat(r.expected_amount || 0).toLocaleString('en-PH', {minimumFractionDigits:2})}</div>
+              <div class="detail-value">₱${parseFloat(r.expected_amount || 0).toLocaleString('en-PH', {minimumFractionDigits:2})}</div>
             </div>
             <div class="detail-item" style="border-left-color: var(--green);">
               <div class="detail-label">Payable Amount</div>
-              <div class="detail-value" style="font-size:14px; font-weight:700; color:#16a34a;">â‚±${parseFloat(r.payable_amount || 0).toLocaleString('en-PH', {minimumFractionDigits:2})}</div>
+              <div class="detail-value" style="font-size:14px; font-weight:700; color:#16a34a;">₱${parseFloat(r.payable_amount || 0).toLocaleString('en-PH', {minimumFractionDigits:2})}</div>
             </div>
           </div>
           
           <div class="detail-grid">
             <div class="detail-item">
               <div class="detail-label">Staff Receiver</div>
-              <div class="detail-value">${esc(r.received_by_name || r.encoded_by_name || 'â€”')}</div>
+              <div class="detail-value">${esc(r.received_by_name || r.encoded_by_name || '—')}</div>
             </div>
             <div class="detail-item">
               <div class="detail-label">Manager Verifier</div>
-              <div class="detail-value">${esc(r.manager_name || 'â€”')}</div>
+              <div class="detail-value">${esc(r.manager_name || '—')}</div>
             </div>
             <div class="detail-item">
               <div class="detail-label">Verification Date</div>
-              <div class="detail-value">${r.manager_action_at ? fmtDateTime(r.manager_action_at) : 'â€”'}</div>
+              <div class="detail-value">${r.manager_action_at ? fmtDateTime(r.manager_action_at) : '—'}</div>
             </div>
             <div class="detail-item">
               <div class="detail-label">Admin Oversight Actor</div>
-              <div class="detail-value">${esc(r.admin_name || 'â€”')}</div>
+              <div class="detail-value">${esc(r.admin_name || '—')}</div>
             </div>
           </div>
           
@@ -1318,14 +1318,14 @@ async function openProcess(id) {
             priceInput.style.color = '#002F70';
             priceInput.style.fontWeight = '600';
             priceInput.title = priceSource;
-            priceLabel.innerHTML = `Unit Price (â‚±) <span style="color:var(--green);font-size:10px;margin-left:5px;"><i class="fas fa-check-circle"></i> ${priceSource}</span>`;
+            priceLabel.innerHTML = `Unit Price (₱) <span style="color:var(--green);font-size:10px;margin-left:5px;"><i class="fas fa-check-circle"></i> ${priceSource}</span>`;
         } else {
             priceInput.readOnly = false;
             priceInput.style.background = '#fff';
             priceInput.style.color = '';
             priceInput.style.fontWeight = '';
             priceInput.title = 'Enter unit price manually';
-            priceLabel.innerHTML = `Unit Price (â‚±) <span style="color:var(--red);">*</span> <span style="color:var(--orange);font-size:10px;margin-left:5px;"><i class="fas fa-exclamation-triangle"></i> Manual input required</span>`;
+            priceLabel.innerHTML = `Unit Price (₱) <span style="color:var(--red);">*</span> <span style="color:var(--orange);font-size:10px;margin-left:5px;"><i class="fas fa-exclamation-triangle"></i> Manual input required</span>`;
         }
         
         if (unitPrice > 0) {
@@ -1356,17 +1356,17 @@ function recalcPayment() {
     const damagedAmt = damaged * unitPrice;
     const payableAmt = actualAmt - damagedAmt;
     
-    document.getElementById('pay_expected').textContent = 'â‚±' + expectedAmt.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+    document.getElementById('pay_expected').textContent = '₱' + expectedAmt.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
     document.getElementById('pay_actual_qty').textContent = actual.toFixed(2);
     document.getElementById('pay_unit_price').textContent = unitPrice.toFixed(2);
-    document.getElementById('pay_actual_amt').textContent = 'â‚±' + actualAmt.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+    document.getElementById('pay_actual_amt').textContent = '₱' + actualAmt.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
     document.getElementById('pay_total').textContent = payableAmt.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
     
     if (damaged > 0) {
         document.getElementById('damagedRow').style.display = 'flex';
         document.getElementById('pay_damaged_qty').textContent = damaged.toFixed(2);
         document.getElementById('pay_damaged_price').textContent = unitPrice.toFixed(2);
-        document.getElementById('pay_damaged_amt').textContent = 'â‚±' + damagedAmt.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+        document.getElementById('pay_damaged_amt').textContent = '₱' + damagedAmt.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
     } else {
         document.getElementById('damagedRow').style.display = 'none';
     }

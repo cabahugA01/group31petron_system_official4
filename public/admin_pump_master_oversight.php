@@ -1,6 +1,6 @@
 ﻿<?php
 // ============================================================
-// Admin Pump Master Oversight â€“ admin_pump_master_oversight.php
+// Admin Pump Master Oversight – admin_pump_master_oversight.php
 // Purpose: Central monitoring and maintenance of all pumps.
 // ============================================================
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -383,7 +383,7 @@ try {
                COALESCE(
                    NULLIF(CONCAT(TRIM(COALESCE(u.first_name, '')), ' ', TRIM(COALESCE(u.last_name, ''))), ' '),
                    u.username,
-                   'â€”'
+                   '—'
                ) as updated_by_name
         FROM fuel_pumps fp
         LEFT JOIN fuel_types ft ON fp.fuel_type_id = ft.id
@@ -505,17 +505,17 @@ if (in_array($export, ['excel', 'pdf'])) {
                 </thead>
                 <tbody>
                     <?php foreach ($pumps as $p): 
-                        $tank_lbl = ($p['fuel_type_name'] ?? 'â€”') . ' Tank (Cap: ' . number_format($p['tank_capacity'] ?? 0, 0) . ' L)';
+                        $tank_lbl = ($p['fuel_type_name'] ?? '—') . ' Tank (Cap: ' . number_format($p['tank_capacity'] ?? 0, 0) . ' L)';
                         $cal_val = (float)($p['calibration_value'] ?? 0);
                         $cal_str = ($cal_val >= 0 ? '+' : '') . number_format($cal_val, 3) . ' L';
                     ?>
                         <tr>
-                            <td><?= htmlspecialchars($p['fuel_type_name'] ?? 'â€”') ?></td>
+                            <td><?= htmlspecialchars($p['fuel_type_name'] ?? '—') ?></td>
                             <td><?= htmlspecialchars($tank_lbl) ?></td>
                             <td><?= $cal_str ?></td>
                             <td><?= htmlspecialchars($p['status']) ?></td>
-                            <td><?= $p['calibration_updated_at'] ? date('M d, Y H:i', strtotime($p['calibration_updated_at'])) : 'â€”' ?></td>
-                            <td><?= htmlspecialchars($p['updated_by_name'] ?? 'â€”') ?></td>
+                            <td><?= $p['calibration_updated_at'] ? date('M d, Y H:i', strtotime($p['calibration_updated_at'])) : '—' ?></td>
+                            <td><?= htmlspecialchars($p['updated_by_name'] ?? '—') ?></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -582,24 +582,24 @@ if (in_array($export, ['excel', 'pdf'])) {
                 </thead>
                 <tbody>
                     <?php foreach ($pumps as $p): 
-                        $tank_lbl = ($p['fuel_type_name'] ?? 'â€”') . ' Tank (Cap: ' . number_format($p['tank_capacity'] ?? 0, 0) . ' L)';
+                        $tank_lbl = ($p['fuel_type_name'] ?? '—') . ' Tank (Cap: ' . number_format($p['tank_capacity'] ?? 0, 0) . ' L)';
                         $cal_val = (float)($p['calibration_value'] ?? 0);
                         $cal_str = ($cal_val >= 0 ? '+' : '') . number_format($cal_val, 3) . ' L';
                     ?>
                         <tr>
-                            <td><?= htmlspecialchars($p['fuel_type_name'] ?? 'â€”') ?></td>
+                            <td><?= htmlspecialchars($p['fuel_type_name'] ?? '—') ?></td>
                             <td><?= htmlspecialchars($tank_lbl) ?></td>
                             <td style="text-align:right; font-family:monospace;"><?= $cal_str ?></td>
                             <td><?= htmlspecialchars($p['status']) ?></td>
-                            <td><?= $p['calibration_updated_at'] ? date('M d, Y', strtotime($p['calibration_updated_at'])) : 'â€”' ?></td>
-                            <td><?= htmlspecialchars($p['updated_by_name'] ?? 'â€”') ?></td>
+                            <td><?= $p['calibration_updated_at'] ? date('M d, Y', strtotime($p['calibration_updated_at'])) : '—' ?></td>
+                            <td><?= htmlspecialchars($p['updated_by_name'] ?? '—') ?></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
 
             <div class="footer" style="width:100%; display:flex; justify-content:space-between;">
-                <span>System Generated Report â€¢ Confidential</span>
+                <span>System Generated Report —¢ Confidential</span>
                 <span>Page 1 of 1</span>
             </div>
         </body>
@@ -1174,10 +1174,10 @@ include __DIR__ . '/../partials/header.php';
                         $cal_val = (float)($p['calibration_value'] ?? 0);
                         $cal_class = $cal_val == 0 ? 'var-zero' : ($cal_val > 0 ? 'var-pos' : 'var-neg');
                         $cal_str = ($cal_val >= 0 ? '+' : '') . number_format($cal_val, 3) . ' L';
-                        $tank_lbl = ($p['fuel_type_name'] ?? 'â€”') . ' Tank (Cap: ' . number_format($p['tank_capacity'] ?? 0, 0) . ' L)';
+                        $tank_lbl = ($p['fuel_type_name'] ?? '—') . ' Tank (Cap: ' . number_format($p['tank_capacity'] ?? 0, 0) . ' L)';
                     ?>
                         <tr>
-                            <td class="bold-vol"><?= htmlspecialchars($p['fuel_type_name'] ?? 'â€”') ?></td>
+                            <td class="bold-vol"><?= htmlspecialchars($p['fuel_type_name'] ?? '—') ?></td>
                             <td><span style="font-size:11px; color:#64748b;"><?= htmlspecialchars($tank_lbl) ?></span></td>
                             <td class="align-right <?= $cal_class ?>" style="font-weight: bold; font-family: monospace;"><?= $cal_str ?></td>
                             <td>
@@ -1185,8 +1185,8 @@ include __DIR__ . '/../partials/header.php';
                                     <?= getStatusLabel($p['status']) ?>
                                 </span>
                             </td>
-                            <td><?= $p['calibration_updated_at'] ? date('M d, Y H:i', strtotime($p['calibration_updated_at'])) : 'â€”' ?></td>
-                            <td><?= htmlspecialchars($p['updated_by_name'] ?? 'â€”') ?></td>
+                            <td><?= $p['calibration_updated_at'] ? date('M d, Y H:i', strtotime($p['calibration_updated_at'])) : '—' ?></td>
+                            <td><?= htmlspecialchars($p['updated_by_name'] ?? '—') ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -1435,7 +1435,7 @@ function openCalibrationModal(id, name, fuelType, prevVal) {
 }
 
 function viewHistory(pumpId, pumpName) {
-    document.getElementById('historyModalTitle').textContent = 'Calibration Log â€“ Pump ' + pumpName;
+    document.getElementById('historyModalTitle').textContent = 'Calibration Log – Pump ' + pumpName;
     var tbody = document.getElementById('historyTableBody');
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
     document.getElementById('historyModal').classList.add('active');
@@ -1462,8 +1462,8 @@ function viewHistory(pumpId, pumpName) {
                         + '<td class="align-right">' + prev.toFixed(3) + ' L</td>'
                         + '<td class="align-right">' + next.toFixed(3) + ' L</td>'
                         + '<td class="align-right" style="font-weight:bold;color:' + diffColor + '">' + diffStr + '</td>'
-                        + '<td>' + (l.updater_name || 'â€”') + '</td>'
-                        + '<td>' + (l.reason || 'â€”') + '</td>'
+                        + '<td>' + (l.updater_name || '—') + '</td>'
+                        + '<td>' + (l.reason || '—') + '</td>'
                         + '</tr>';
                 });
                 tbody.innerHTML = html;

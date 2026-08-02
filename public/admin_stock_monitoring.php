@@ -36,7 +36,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_details') {
         // Fetch Last Delivery Date
         $s3 = $pdo->prepare("SELECT MAX(encoded_at) FROM merchandise_stock_in WHERE product_id = ? AND station_id = ?");
         $s3->execute([$pid, $station_id]);
-        $last_delivery_date = $s3->fetchColumn() ?: 'â€”';
+        $last_delivery_date = $s3->fetchColumn() ?: '—';
 
         // Fetch Last Stock Movement Purpose
         $s4 = $pdo->prepare("
@@ -53,7 +53,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_details') {
         ");
         $s4->execute([$pid, $station_id, $pid, $station_id]);
         $last_movement = $s4->fetch(PDO::FETCH_ASSOC);
-        $last_purpose = 'â€”';
+        $last_purpose = '—';
         if ($last_movement) {
             $last_purpose = $last_movement['type'] . ' (' . ($last_movement['notes'] ?: 'No details') . ')';
         }
@@ -62,7 +62,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_details') {
             'success' => true,
             'total_deliveries' => $total_deliveries,
             'total_released' => $total_released,
-            'last_delivery_date' => $last_delivery_date !== 'â€”' ? date('M d, Y H:i', strtotime($last_delivery_date)) : 'â€”',
+            'last_delivery_date' => $last_delivery_date !== '—' ? date('M d, Y H:i', strtotime($last_delivery_date)) : '—',
             'last_purpose' => $last_purpose
         ]);
     } catch (Exception $e) {
@@ -324,7 +324,7 @@ require_once __DIR__ . '/../partials/header.php';
                         'product_name'  => $r['product_name'],
                         'category'      => $r['category'],
                         'unit'          => $r['unit'] ?? 'pcs',
-                        'supplier'      => $r['supplier'] ?? 'â€”',
+                        'supplier'      => $r['supplier'] ?? '—',
                         'current_stock' => $r['current_stock'],
                         'reorder_level' => $r['reorder_level'],
                         'max_stock'     => $r['max_stock'],
@@ -332,7 +332,7 @@ require_once __DIR__ . '/../partials/header.php';
                         'unit_price'    => number_format((float)$r['unit_price'],2),
                         'inv_value'     => number_format((float)$r['current_stock'] * (float)$r['unit_price'],2),
                         'status'        => $stLbl,
-                        'last_updated'  => $r['last_updated'] ? date('M d, Y g:i A', strtotime($r['last_updated'])) : 'â€”',
+                        'last_updated'  => $r['last_updated'] ? date('M d, Y g:i A', strtotime($r['last_updated'])) : '—',
                     ]), ENT_QUOTES,'UTF-8');
                 ?>
                 <tr>
@@ -346,7 +346,7 @@ require_once __DIR__ . '/../partials/header.php';
                     <td style="text-align:right;color:#64748b;"><?= number_format((float)$r['reorder_level']) ?></td>
                     <td style="text-align:right;color:#64748b;"><?= number_format((float)$r['max_stock']) ?></td>
                     <td><span class="badge <?= $stCls ?>"><?= $stLbl ?></span></td>
-                    <td style="font-size:11px;color:#64748b;white-space:nowrap;"><?= $r['last_updated'] ? date('M d, Y', strtotime($r['last_updated'])) : 'â€”' ?></td>
+                    <td style="font-size:11px;color:#64748b;white-space:nowrap;"><?= $r['last_updated'] ? date('M d, Y', strtotime($r['last_updated'])) : '—' ?></td>
                     <td>
                         <div style="display:flex;gap:4px;flex-wrap:wrap;">
                             <button class="txn-btn txn-btn-view" onclick='openDetails(<?= $json ?>)' title="View Details">
@@ -374,20 +374,20 @@ require_once __DIR__ . '/../partials/header.php';
         <h3><i class="fas fa-box"></i> <span id="dmTitle">Product Details</span></h3>
 
         <div class="info-sec">Product Information</div>
-        <div class="info-row"><strong>SKU</strong><span id="dmSku">â€”</span></div>
-        <div class="info-row"><strong>Product Name</strong><span id="dmName">â€”</span></div>
-        <div class="info-row"><strong>Category</strong><span id="dmCat">â€”</span></div>
-        <div class="info-row"><strong>Supplier</strong><span id="dmSupplier">â€”</span></div>
-        <div class="info-row"><strong>Unit</strong><span id="dmUnit">â€”</span></div>
+        <div class="info-row"><strong>SKU</strong><span id="dmSku">—</span></div>
+        <div class="info-row"><strong>Product Name</strong><span id="dmName">—</span></div>
+        <div class="info-row"><strong>Category</strong><span id="dmCat">—</span></div>
+        <div class="info-row"><strong>Supplier</strong><span id="dmSupplier">—</span></div>
+        <div class="info-row"><strong>Unit</strong><span id="dmUnit">—</span></div>
 
         <div class="info-sec">Inventory Information</div>
-        <div class="info-row"><strong>Current Stock</strong><span id="dmStock">â€”</span></div>
-        <div class="info-row"><strong>Reorder Level</strong><span id="dmReorder">â€”</span></div>
-        <div class="info-row"><strong>Maximum Stock</strong><span id="dmMax">â€”</span></div>
-        <div class="info-row"><strong>Unit Cost</strong><span id="dmCost">â€”</span></div>
-        <div class="info-row"><strong>Unit Price</strong><span id="dmPrice">â€”</span></div>
-        <div class="info-row"><strong>Inventory Value</strong><span id="dmValue" style="font-weight:800;color:#002F70;">â€”</span></div>
-        <div class="info-row"><strong>Status</strong><span id="dmStatus">â€”</span></div>
+        <div class="info-row"><strong>Current Stock</strong><span id="dmStock">—</span></div>
+        <div class="info-row"><strong>Reorder Level</strong><span id="dmReorder">—</span></div>
+        <div class="info-row"><strong>Maximum Stock</strong><span id="dmMax">—</span></div>
+        <div class="info-row"><strong>Unit Cost</strong><span id="dmCost">—</span></div>
+        <div class="info-row"><strong>Unit Price</strong><span id="dmPrice">—</span></div>
+        <div class="info-row"><strong>Inventory Value</strong><span id="dmValue" style="font-weight:800;color:#002F70;">—</span></div>
+        <div class="info-row"><strong>Status</strong><span id="dmStatus">—</span></div>
 
         <div class="info-sec">Movement Summary</div>
         <div class="info-row"><strong>Total Deliveries</strong><span id="dmTotalDeliveries" style="font-weight:700;color:#16a34a;">Loading...</span></div>
@@ -396,7 +396,7 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="info-row"><strong>Last Stock Movement Purpose</strong><span id="dmLastPurpose">Loading...</span></div>
 
         <div class="info-sec">Timestamps</div>
-        <div class="info-row"><strong>Last Updated</strong><span id="dmUpdated">â€”</span></div>
+        <div class="info-row"><strong>Last Updated</strong><span id="dmUpdated">—</span></div>
 
         <div class="modal-foot">
             <button onclick="document.getElementById('detailsModal').classList.remove('show')" class="flt-btn flt-btn-reset">Close</button>
@@ -415,9 +415,9 @@ function openDetails(d) {
     document.getElementById('dmStock').textContent   = d.current_stock + ' ' + d.unit;
     document.getElementById('dmReorder').textContent = d.reorder_level + ' ' + d.unit;
     document.getElementById('dmMax').textContent     = d.max_stock + ' ' + d.unit;
-    document.getElementById('dmCost').textContent    = 'â‚±' + d.unit_cost;
-    document.getElementById('dmPrice').textContent   = 'â‚±' + d.unit_price;
-    document.getElementById('dmValue').textContent   = 'â‚±' + d.inv_value;
+    document.getElementById('dmCost').textContent    = '₱' + d.unit_cost;
+    document.getElementById('dmPrice').textContent   = '₱' + d.unit_price;
+    document.getElementById('dmValue').textContent   = '₱' + d.inv_value;
     document.getElementById('dmStatus').textContent  = d.status;
     document.getElementById('dmUpdated').textContent = d.last_updated;
 

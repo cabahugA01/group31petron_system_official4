@@ -378,7 +378,7 @@ if (in_array($export, ['excel', 'csv'])) {
                 $txn['transaction_id'],
                 $txn['customer_name'] ?? 'Walk-in Customer',
                 ucwords(str_replace('_', ' ', $txn['transaction_type'] ?? 'merchandise')),
-                'â‚±' . number_format($txn['total_amount'], 2),
+                '₱' . number_format($txn['total_amount'], 2),
                 $txn['payment_method'] ?? '-',
                 $txn['payment_status'] ?? '-',
                 $txn['staff_name'] ?? 'Staff',
@@ -393,9 +393,9 @@ if (in_array($export, ['excel', 'csv'])) {
                 $r['transaction_id'],
                 $r['customer'],
                 ucwords(str_replace('_', ' ', $r['transaction_type'])),
-                'â‚±' . number_format($r['original_amount'], 2),
-                'â‚±' . number_format($r['updated_amount'], 2),
-                'â‚±' . number_format($r['amount_difference'], 2),
+                '₱' . number_format($r['original_amount'], 2),
+                '₱' . number_format($r['updated_amount'], 2),
+                '₱' . number_format($r['amount_difference'], 2),
                 $r['adjustment_reason'],
                 $r['adjusted_by_name'],
                 date('M d, Y H:i', strtotime($r['adjustment_date']))
@@ -611,7 +611,7 @@ require_once __DIR__ . '/../partials/header.php';
     </div>
     <div class="txn-kpi-card total-amount-card">
         <div class="txn-kpi-lbl"><i class="fas fa-peso-sign"></i> Adjusted Amount</div>
-        <div class="txn-kpi-val">â‚±<?php echo number_format($kpi['amount'], 2); ?></div>
+        <div class="txn-kpi-val">₱<?php echo number_format($kpi['amount'], 2); ?></div>
     </div>
 </div>
 
@@ -702,13 +702,13 @@ require_once __DIR__ . '/../partials/header.php';
             $fc = json_decode($adj['fields_changed'], true) ?: [];
             
             // Job Order Number
-            $jo_display = !empty($adj['job_order_id']) ? 'JO-' . $adj['job_order_id'] : 'â€”';
+            $jo_display = !empty($adj['job_order_id']) ? 'JO-' . $adj['job_order_id'] : '—';
             
             // Customer Name
             $customer_display = htmlspecialchars($adj['customer']);
             
             // Vehicle Plate
-            $plate_display = !empty($adj['job_order_vehicle_plate']) ? htmlspecialchars($adj['job_order_vehicle_plate']) : 'â€”';
+            $plate_display = !empty($adj['job_order_vehicle_plate']) ? htmlspecialchars($adj['job_order_vehicle_plate']) : '—';
             
             // Transaction Type
             $txn_type_display = htmlspecialchars(ucwords(str_replace('_', ' ', $adj['transaction_type'])));
@@ -725,14 +725,14 @@ require_once __DIR__ . '/../partials/header.php';
             if (empty($items_list) && !empty($adj['item_names'])) {
                 $items_list[] = $adj['item_names'];
             }
-            $items_display = !empty($items_list) ? htmlspecialchars(implode(', ', $items_list)) : 'â€”';
+            $items_display = !empty($items_list) ? htmlspecialchars(implode(', ', $items_list)) : '—';
             
             // Quantities
-            $old_qty = 'â€”';
-            $new_qty = 'â€”';
+            $old_qty = '—';
+            $new_qty = '—';
             if (isset($fc['adjusted_items']) && is_array($fc['adjusted_items']) && !empty($fc['adjusted_items'])) {
-                $old_qty = $fc['adjusted_items'][0]['old_qty'] ?? 'â€”';
-                $new_qty = $fc['adjusted_items'][0]['new_qty'] ?? 'â€”';
+                $old_qty = $fc['adjusted_items'][0]['old_qty'] ?? '—';
+                $new_qty = $fc['adjusted_items'][0]['new_qty'] ?? '—';
             } else {
                 if (isset($fc['quantity'])) {
                     $new_qty = $fc['quantity'];
@@ -743,11 +743,11 @@ require_once __DIR__ . '/../partials/header.php';
             }
             
             // Payment Method
-            $payment_display = !empty($adj['payment_method']) ? htmlspecialchars($adj['payment_method']) : 'â€”';
+            $payment_display = !empty($adj['payment_method']) ? htmlspecialchars($adj['payment_method']) : '—';
             
             // Adjustment Type
             $adj_type = 'Price Adj';
-            if ($old_qty !== 'â€”' && $new_qty !== 'â€”' && $old_qty != $new_qty) {
+            if ($old_qty !== '—' && $new_qty !== '—' && $old_qty != $new_qty) {
                 $adj_type = 'Quantity Adj';
             }
             
@@ -788,10 +788,10 @@ require_once __DIR__ . '/../partials/header.php';
                 <td style="font-size:11.5px; line-height:1.2;"><?php echo $items_display; ?></td>
                 <td style="text-align:center; font-size:11px;"><?php echo $old_qty; ?></td>
                 <td style="text-align:center; font-size:11px;"><?php echo $new_qty; ?></td>
-                <td style="white-space:nowrap; font-size:11.5px;">â‚±<?php echo number_format($adj['original_amount'], 2); ?></td>
-                <td style="white-space:nowrap; font-weight:700; font-size:11.5px;">â‚±<?php echo number_format($adj['updated_amount'], 2); ?></td>
+                <td style="white-space:nowrap; font-size:11.5px;">₱<?php echo number_format($adj['original_amount'], 2); ?></td>
+                <td style="white-space:nowrap; font-weight:700; font-size:11.5px;">₱<?php echo number_format($adj['updated_amount'], 2); ?></td>
                 <td style="white-space:nowrap; font-weight:700; font-size:11.5px; color:<?php echo $diff >= 0 ? '#16a34a' : '#dc2626'; ?>;">
-                    <?php echo ($diff >= 0 ? '+' : '') . 'â‚±' . number_format($diff, 2); ?>
+                    <?php echo ($diff >= 0 ? '+' : '') . '₱' . number_format($diff, 2); ?>
                 </td>
                 <td style="white-space:nowrap; font-size:11px;"><?php echo $payment_display; ?></td>
                 <td style="white-space:nowrap; font-size:11px;"><?php echo $adj_type; ?></td>
