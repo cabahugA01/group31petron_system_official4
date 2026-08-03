@@ -586,10 +586,41 @@ body, html { overflow-x: hidden !important; }
 .var-pos  { color: #28a745; font-weight: 700; }
 .var-neg  { color: #dc3545; font-weight: 700; }
 
-/* â•â• Modal Elements â•â• */
-.sr-modal-overlay { position:fixed; top:0; right:0; bottom:0; left:250px; background:rgba(0,0,0,.5); z-index:10000; display:none !important; align-items:center; justify-content:center; opacity:0; pointer-events:none !important; transition:opacity .2s ease-in-out; }
-.sr-modal-overlay.open { display:flex !important; opacity:1; pointer-events:auto !important; }
-.sr-modal-box { background:#fff; border-radius:12px; width:100%; max-width:540px; box-shadow:0 10px 25px rgba(0,0,0,.2); display:flex; flex-direction:column; max-height:90vh; overflow:hidden; pointer-events:auto !important; position:relative; z-index:10001; }
+/* ── Modal Elements ── */
+.sr-modal-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    background: rgba(0,0,0,.55) !important;
+    z-index: 10000 !important;
+    display: none !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 80px 20px 20px 20px !important;
+    box-sizing: border-box !important;
+    opacity: 0;
+    pointer-events: none !important;
+    transition: opacity .2s ease-in-out;
+}
+.sr-modal-overlay.open {
+    display: flex !important;
+    opacity: 1;
+    pointer-events: auto !important;
+}
+.sr-modal-box {
+    background: #fff !important;
+    border-radius: 12px !important;
+    width: 100% !important;
+    max-width: 1100px !important;
+    box-shadow: 0 10px 40px rgba(0,0,0,.3) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    max-height: calc(100vh - 110px) !important;
+    overflow: hidden !important;
+    pointer-events: auto !important;
+    position: relative !important;
+    z-index: 10001 !important;
+    margin: 0 auto !important;
+}
 .sr-modal-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e2e8f0; flex-shrink:0; background:#fff; z-index:1; }
 .sr-modal-title { font-size:16px; font-weight:700; color:#002F70; }
 .sr-modal-body { overflow-y:auto; flex:1; min-height:0; padding:16px; }
@@ -627,10 +658,47 @@ body, html { overflow-x: hidden !important; }
 .fsr-item-info { flex:1; pointer-events:none; }
 .fsr-item-name { font-weight:700; font-size:14px; color:#1e293b; }
 .fsr-item-meta { font-size:12px; color:#64748b; margin-top:3px; display:flex; align-items:center; flex-wrap:wrap; gap:4px; }
-.sr-modal-footer { display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:16px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; flex-shrink:0; z-index:2; pointer-events:auto !important; }
-.sr-modal-footer button { pointer-events:auto !important; cursor:pointer !important; }
+.sr-modal-footer {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 12px !important;
+    padding: 16px 24px !important;
+    border-top: 1px solid #e2e8f0 !important;
+    background: #f8fafc !important;
+    flex-shrink: 0 !important;
+    z-index: 2 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    pointer-events: auto !important;
+}
+.sr-modal-footer button {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+}
+/* ── Success Toast Banner (top-right) ── */
+@keyframes fsrSlideInRight { from { opacity:0; transform:translateX(60px); } to { opacity:1; transform:translateX(0); } }
+#fsrGlobalSuccessBanner {
+    position: fixed;
+    top: 72px;
+    right: 24px;
+    z-index: 19000;
+    max-width: 380px;
+    min-width: 280px;
+    background: #ffffff;
+    color: #1e293b;
+    padding: 14px 16px;
+    border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.08);
+    border: 1px solid #e2e8f0;
+    display: none;
+    flex-direction: column;
+    gap: 5px;
+    animation: fsrSlideInRight 0.3s cubic-bezier(.22,.68,0,1.2);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
 
-/* Petron-clean flt-btn Styles */
+/* Custom Outlined Buttons for Petron-clean Look */
 .flt-btn { display:inline-flex; align-items:center; gap:6px; padding:0 14px; height:35px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; text-decoration:none; border:1px solid transparent; background:#fff !important; transition:all .15s; }
 .flt-btn-search { color:#0891b2 !important; -webkit-text-fill-color:#0891b2 !important; border-color:#0891b2 !important; background:#fff !important; }
 .flt-btn-search:hover { background:#0891b2 !important; color:#fff !important; -webkit-text-fill-color:#fff !important; }
@@ -776,7 +844,18 @@ body, html { overflow-x: hidden !important; }
 </div>
 <?php endif; ?>
 
-<!-- â•â• Dashboard Cards (4 Cards ONLY) â•â• -->
+<!-- ══ FUEL STOCK REQUEST SUCCESS TOAST (top-right) ══ -->
+<div id="fsrGlobalSuccessBanner">
+    <div style="display:flex; align-items:center; gap:10px;">
+        <div style="width:34px; height:34px; border-radius:50%; background:#dcfce7; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+            <i class="fas fa-check-circle" style="font-size:17px; color:#16a34a;"></i>
+        </div>
+        <div style="font-size:13px; font-weight:800; color:#15803d; letter-spacing:0.2px; line-height:1.3;" id="fsrBannerTitle">FUEL STOCK REQUEST SUBMITTED!</div>
+    </div>
+    <div style="font-size:12px; color:#475569; padding-left:44px; line-height:1.5;" id="fsrBannerText">Your fuel stock request is now pending manager approval.</div>
+</div>
+
+<!-- ══ Dashboard Cards (4 Cards ONLY) ══ -->
 <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:24px;">
     <!-- Card 1: Total Fuel Available -->
     <div style="background:#fff; border-radius:8px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
@@ -1170,11 +1249,11 @@ body, html { overflow-x: hidden !important; }
             <div id="fsrError" style="display:none;background:#fee2e2;color:#dc3545;padding:10px 14px;border-radius:6px;margin-top:12px;font-size:13px;"></div>
         </div>
 
-        <div class="sr-modal-footer">
-            <button type="button" id="fsrCancelBtn" class="txn-btn secondary">
+        <div class="sr-modal-footer" style="display:flex !important; justify-content:flex-end !important; align-items:center !important; gap:12px !important; padding:16px 24px !important; background:#f8fafc !important; border-top:1px solid #cbd5e1 !important; box-sizing:border-box !important;">
+            <button type="button" id="fsrCancelBtn" onclick="closeFuelSrModal()" style="padding:9px 20px !important; border:1.5px solid #00264D !important; background:#ffffff !important; background-color:#ffffff !important; color:#00264D !important; -webkit-text-fill-color:#00264D !important; border-radius:6px !important; font-size:13px !important; font-weight:700 !important; cursor:pointer !important; display:inline-flex !important; align-items:center !important; gap:6px !important; opacity:1 !important; visibility:visible !important;">
                 <i class="fas fa-times"></i> Cancel
             </button>
-            <button type="button" id="fsrSubmitBtn" class="txn-btn primary">
+            <button type="button" id="fsrSubmitBtn" onclick="fsrHandleSubmit(this)" style="padding:9px 22px !important; background:#002F70 !important; background-color:#002F70 !important; color:#ffffff !important; -webkit-text-fill-color:#ffffff !important; border:none !important; border-radius:6px !important; font-size:13px !important; font-weight:700 !important; cursor:pointer !important; display:inline-flex !important; align-items:center !important; gap:6px !important; opacity:1 !important; visibility:visible !important;">
                 <i class="fas fa-paper-plane"></i> Submit Stock Request
             </button>
         </div>
@@ -1356,12 +1435,14 @@ function submitFuelStockRequest() {
         if (res.success) {
             var srNo = res.request_no || '';
             var cnt  = res.inserted_count || items.length;
-            var msg  = 'Successfully submitted stock requests for <strong>' + cnt + '</strong> fuel type' + (cnt !== 1 ? 's' : '') + '.';
+            var msg  = 'Successfully submitted stock requests for <strong>' + cnt + '</strong> fuel type' + (cnt !== 1 ? 's' : '') + '. Pending Manager Approval.';
             if (srNo) msg += '<br><span style="font-size:12px;color:#64748b;">Request No: <strong>' + esc(srNo) + '</strong></span>';
             if (res.message && res.message.indexOf('skipped') !== -1) {
                 msg += '<br><small style="color:#d97706;">' + esc(res.message.split('Note:')[1] || '') + '</small>';
             }
             document.getElementById('fsrSuccessMsg').innerHTML = msg;
+            try { sessionStorage.setItem('fsrBannerMsg', msg); } catch(e) {}
+            showFsrBanner("FUEL STOCK REQUEST SUBMITTED!", msg);
         } else {
             document.getElementById('fsrSuccessMsg').innerHTML =
                 '<span style="color:#dc2626;">' + esc(res.message || 'Submission failed. Please try again.') + '</span>';
@@ -1369,7 +1450,6 @@ function submitFuelStockRequest() {
 
         document.getElementById('fsrSuccessPopup').style.display = 'block';
         document.getElementById('fsrSuccessOverlay').style.display = 'block';
-        setTimeout(closeFsrSuccess, 7000);
     })
     .catch(function() {
         btn.disabled = false;
@@ -1379,11 +1459,46 @@ function submitFuelStockRequest() {
     });
 }
 
+function closeFsrBanner() {
+    var b = document.getElementById('fsrGlobalSuccessBanner');
+    if (b) {
+        b.style.opacity = '0';
+        b.style.transform = 'translateX(60px)';
+        b.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+        setTimeout(function() { b.style.display = 'none'; }, 260);
+    }
+    try { sessionStorage.removeItem('fsrBannerMsg'); } catch(e) {}
+}
+
+function showFsrBanner(title, msg) {
+    var banner = document.getElementById('fsrGlobalSuccessBanner');
+    var bannerTitle = document.getElementById('fsrBannerTitle');
+    var bannerText = document.getElementById('fsrBannerText');
+    if (banner) {
+        if (bannerTitle && title) bannerTitle.innerText = title;
+        if (bannerText && msg) bannerText.innerHTML = msg;
+        banner.style.display = 'flex';
+        banner.style.opacity = '1';
+        banner.style.transform = 'translateX(0)';
+        setTimeout(closeFsrBanner, 8000);
+    }
+}
+
 function closeFsrSuccess() {
     document.getElementById('fsrSuccessPopup').style.display  = 'none';
     document.getElementById('fsrSuccessOverlay').style.display = 'none';
     location.reload();
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    try {
+        var msg = sessionStorage.getItem('fsrBannerMsg');
+        if (msg) {
+            sessionStorage.removeItem('fsrBannerMsg');
+            showFsrBanner("FUEL STOCK REQUEST SUBMITTED!", msg);
+        }
+    } catch(e) {}
+});
 
 function esc(str) { var d = document.createElement('div'); d.appendChild(document.createTextNode(str)); return d.innerHTML; }
 

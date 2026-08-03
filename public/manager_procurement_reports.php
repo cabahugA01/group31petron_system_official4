@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Manager Procurement Reports
  * Delivery Validation | PO vs Received | Stock-In Approval | Delivery Variance
@@ -25,17 +25,20 @@ if (!$station_id) {
     die('Error: You are not assigned to a station.');
 }
 
-$valid_sections = ['validation', 'comparison', 'stockin', 'variance', 'fuel_variance'];
+$valid_sections = ['purchase', 'validation', 'comparison', 'stockin', 'variance', 'fuel_variance'];
 $section = in_array($_GET['section'] ?? '', $valid_sections, true) ? $_GET['section'] : 'validation';
 $date_from = $_GET['date_from'] ?? date('Y-m-01');
 $date_to = $_GET['date_to'] ?? date('Y-m-d');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_from)) $date_from = date('Y-m-01');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to)) $date_to = date('Y-m-d');
 
-$fuel_type_filter = $_GET['fuel_type'] ?? '';
-$ugt_filter       = $_GET['ugt_no'] ?? '';
-$variance_filter  = $_GET['variance_status'] ?? '';
-$status_filter    = $_GET['adj_status'] ?? '';
+$fuel_type_filter   = $_GET['fuel_type'] ?? '';
+$ugt_filter         = $_GET['ugt_no'] ?? '';
+$variance_filter    = $_GET['variance_status'] ?? '';
+$status_filter      = $_GET['adj_status'] ?? '';
+$po_type_filter     = $_GET['po_type'] ?? '';
+$po_status_filter   = $_GET['po_status'] ?? '';
+$po_supplier_filter = $_GET['po_supplier'] ?? '';
 
 $station_name = 'Station';
 try {
@@ -428,6 +431,147 @@ foreach ($fuel_variance_rows as $row) {
          || strpos($sLow, 'verified') !== false || strpos($sLow, 'resolved') !== false) $fv_approved_count++;
 }
 
+// ── Purchase Report Data ──────────────────────────────────────────────────
+$purchase_rows = [];
+try {
+    $req_expr  = mp_user_expr('u_req');
+    $appr_expr = mp_user_expr('u_appr');
+
+    // Build WHERE clauses for filters
+    $po_where_merch = 'po.station_id = ? AND DATE(COALESCE(po.created_at, po.submitted_at)) BETWEEN ? AND ?';
+    $po_where_fuel  = 'fpo.station_id = ? AND DATE(fpo.created_at) BETWEEN ? AND ?';
+    $merch_params   = [$station_id, $date_from, $date_to];
+    $fuel_params    = [$station_id, $date_from, $date_to];
+
+    if ($po_status_filter !== '') {
+        $po_where_merch .= ' AND po.status LIKE ?';
+        $merch_params[] = '%' . $po_status_filter . '%';
+        $po_where_fuel  .= ' AND fpo.status LIKE ?';
+        $fuel_params[]  = '%' . $po_status_filter . '%';
+    }
+
+    $merch_union = ($po_type_filter === '' || $po_type_filter === 'Merchandise');
+    $fuel_union  = ($po_type_filter === '' || $po_type_filter === 'Fuel');
+
+    $union_parts = [];
+    $union_params = [];
+
+    if ($merch_union) {
+        $union_parts[] = "
+            SELECT
+                'Merchandise' AS po_type,
+                COALESCE(NULLIF(TRIM(po.batch_id),''), po.po_number, CONCAT('PO-',po.id)) AS po_number,
+                DATE(COALESCE(po.created_at, po.submitted_at)) AS po_date,
+                COALESCE(s.name, 'Petron Corporation') AS supplier_name,
+                COUNT(DISTINCT COALESCE(poi.id, 0)) AS total_items,
+                COALESCE(SUM(COALESCE(poi.quantity_ordered, poi.quantity, 0)), po.quantity, 0) AS total_qty,
+                COALESCE(SUM(COALESCE(poi.total_price, 0)), po.total_amount, 0) AS total_amount,
+                $req_expr AS requested_by,
+                $appr_expr AS approved_by,
+                po.status,
+                po.id AS po_id,
+                po.remarks
+            FROM purchase_orders po
+            LEFT JOIN purchase_order_items poi ON poi.po_id = po.id
+            LEFT JOIN suppliers s ON s.id = po.supplier_id
+            LEFT JOIN users u_req ON u_req.id = po.created_by
+            LEFT JOIN users u_appr ON u_appr.id = po.approved_by
+            WHERE $po_where_merch
+            GROUP BY po.id
+        ";
+        $union_params = array_merge($union_params, $merch_params);
+    }
+
+    if ($fuel_union) {
+        $union_parts[] = "
+            SELECT
+                'Fuel' AS po_type,
+                COALESCE(NULLIF(TRIM(fpo.batch_id),''), fpo.po_number, CONCAT('FPO-',fpo.id)) AS po_number,
+                DATE(fpo.created_at) AS po_date,
+                COALESCE(s.name, 'Petron Corporation') AS supplier_name,
+                1 AS total_items,
+                COALESCE(fpo.volume, 0) AS total_qty,
+                COALESCE(fpo.total_amount, 0) AS total_amount,
+                $req_expr AS requested_by,
+                $appr_expr AS approved_by,
+                fpo.status,
+                fpo.id AS po_id,
+                COALESCE(fpo.notes, '') AS remarks
+            FROM fuel_purchase_orders fpo
+            LEFT JOIN suppliers s ON s.id = fpo.supplier_id
+            LEFT JOIN users u_req ON u_req.id = fpo.created_by
+            LEFT JOIN users u_appr ON u_appr.id = fpo.approved_by
+            WHERE $po_where_fuel
+        ";
+        $union_params = array_merge($union_params, $fuel_params);
+    }
+
+    if (!empty($union_parts)) {
+        $sql = 'SELECT * FROM (' . implode(' UNION ALL ', $union_parts) . ') AS combined';
+        if ($po_supplier_filter !== '') {
+            $sql .= ' WHERE supplier_name LIKE ?';
+            $union_params[] = '%' . $po_supplier_filter . '%';
+        }
+        $sql .= ' ORDER BY po_date DESC, po_number DESC';
+        $q = $pdo->prepare($sql);
+        $q->execute($union_params);
+        $purchase_rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+} catch (Exception $e) {
+    $purchase_rows = [];
+}
+
+// Build purchase items JSON per PO for drill-down modal
+$purchase_items_json = [];
+try {
+    // Merchandise items
+    $qi = $pdo->prepare("
+        SELECT
+            COALESCE(NULLIF(TRIM(po.batch_id),''), po.po_number, CONCAT('PO-',po.id)) AS po_number,
+            'Merchandise' AS po_type,
+            COALESCE(poi.item_name, po.product_name, '-') AS item_name,
+            COALESCE(poi.quantity_ordered, poi.quantity, 0) AS qty_ordered,
+            COALESCE(poi.unit_price, 0) AS unit_cost,
+            COALESCE(poi.total_price, poi.quantity * poi.unit_price, 0) AS total
+        FROM purchase_orders po
+        LEFT JOIN purchase_order_items poi ON poi.po_id = po.id
+        WHERE po.station_id = ? AND DATE(COALESCE(po.created_at, po.submitted_at)) BETWEEN ? AND ?
+        ORDER BY po.id, poi.id
+    ");
+    $qi->execute([$station_id, $date_from, $date_to]);
+    foreach ($qi->fetchAll(PDO::FETCH_ASSOC) as $it) {
+        $purchase_items_json[$it['po_number']][] = $it;
+    }
+    // Fuel items
+    $qf = $pdo->prepare("
+        SELECT
+            COALESCE(NULLIF(TRIM(fpo.batch_id),''), fpo.po_number, CONCAT('FPO-',fpo.id)) AS po_number,
+            'Fuel' AS po_type,
+            COALESCE(ft.name, 'Fuel') AS item_name,
+            COALESCE(fpo.volume, 0) AS qty_ordered,
+            COALESCE(fpo.unit_price, 0) AS unit_cost,
+            COALESCE(fpo.total_amount, 0) AS total
+        FROM fuel_purchase_orders fpo
+        LEFT JOIN fuel_types ft ON ft.id = fpo.fuel_type_id
+        WHERE fpo.station_id = ? AND DATE(fpo.created_at) BETWEEN ? AND ?
+        ORDER BY fpo.id
+    ");
+    $qf->execute([$station_id, $date_from, $date_to]);
+    foreach ($qf->fetchAll(PDO::FETCH_ASSOC) as $it) {
+        $purchase_items_json[$it['po_number']][] = $it;
+    }
+} catch (Exception $e) {}
+
+// Supplier list for filter dropdown
+$po_suppliers = [];
+try {
+    $qs = $pdo->query("SELECT DISTINCT COALESCE(s.name,'Petron Corporation') AS sname FROM purchase_orders po LEFT JOIN suppliers s ON s.id=po.supplier_id WHERE po.station_id=$station_id AND s.name IS NOT NULL UNION SELECT DISTINCT COALESCE(s.name,'Petron Corporation') FROM fuel_purchase_orders fpo LEFT JOIN suppliers s ON s.id=fpo.supplier_id WHERE fpo.station_id=$station_id AND s.name IS NOT NULL ORDER BY sname");
+    $po_suppliers = $qs->fetchAll(PDO::FETCH_COLUMN) ?: [];
+} catch (Exception $e) {}
+
+$purchase_total_amount = array_sum(array_column($purchase_rows, 'total_amount'));
+$purchase_total_qty    = array_sum(array_column($purchase_rows, 'total_qty'));
+
 require_once __DIR__ . '/../partials/header.php';
 ?>
 
@@ -439,15 +583,15 @@ require_once __DIR__ . '/../partials/header.php';
 .mp-filter-bar button i{color:#ffffff !important;}
 .mp-filter-bar button:hover{background:#001933 !important;color:#ffffff !important;}
 .mp-export-actions{display:flex;gap:6px;margin-left:auto;}
-.mp-export-btn{padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid;display:inline-flex;align-items:center;gap:6px;background:#ffffff !important;}
-.mp-export-btn:nth-child(1){color:#00264D !important;border-color:#cbd5e1 !important;background:#ffffff !important;}
-.mp-export-btn:nth-child(1):hover{background:#f8fafc !important;border-color:#00264D !important;color:#00264D !important;}
-.mp-export-btn:nth-child(2){color:#00264D !important;border-color:#cbd5e1 !important;background:#ffffff !important;}
-.mp-export-btn:nth-child(2):hover{background:#f8fafc !important;border-color:#00264D !important;color:#00264D !important;}
-.mp-export-btn:nth-child(3){color:#00264D !important;border-color:#cbd5e1 !important;background:#ffffff !important;}
-.mp-export-btn:nth-child(3):hover{background:#f8fafc !important;border-color:#00264D !important;color:#00264D !important;}
-.mp-export-btn:nth-child(4){color:#00264D !important;border-color:#cbd5e1 !important;background:#ffffff !important;}
-.mp-export-btn:nth-child(4):hover{background:#f8fafc !important;border-color:#00264D !important;color:#00264D !important;}
+.mp-export-btn{padding:7px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;border:1px solid;display:inline-flex;align-items:center;gap:6px;background:#ffffff !important;}
+.mp-export-btn:nth-child(1){color:#16a34a !important;border-color:#16a34a !important;background:#ffffff !important;}
+.mp-export-btn:nth-child(1):hover{background:#f0fdf4 !important;border-color:#15803d !important;color:#15803d !important;}
+.mp-export-btn:nth-child(2){color:#16a34a !important;border-color:#16a34a !important;background:#ffffff !important;}
+.mp-export-btn:nth-child(2):hover{background:#f0fdf4 !important;border-color:#15803d !important;color:#15803d !important;}
+.mp-export-btn:nth-child(3){color:#dc2626 !important;border-color:#dc2626 !important;background:#ffffff !important;}
+.mp-export-btn:nth-child(3):hover{background:#fef2f2 !important;border-color:#b91c1c !important;color:#b91c1c !important;}
+.mp-export-btn:nth-child(4){color:#475569 !important;border-color:#cbd5e1 !important;background:#ffffff !important;}
+.mp-export-btn:nth-child(4):hover{background:#f8fafc !important;border-color:#64748b !important;color:#1e293b !important;}
 .mp-tabs{display:flex;flex-wrap:wrap;background:#ffffff;border-top:1px solid #cbd5e1;border-bottom:2px solid #00264D;padding:0;margin:0;}
 .mp-tab{padding:12px 24px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#334155 !important;background:#ffffff !important;border:none !important;border-right:1px solid #e2e8f0 !important;border-radius:0 !important;cursor:pointer;white-space:nowrap;transition:all .15s ease;display:inline-flex;align-items:center;gap:8px;}
 .mp-tab i{font-size:11px;color:#64748b !important;}
@@ -548,15 +692,115 @@ require_once __DIR__ . '/../partials/header.php';
     </form>
 
     <div class="mp-tabs">
-        <button type="button" class="mp-tab <?= $section === 'validation' ? 'active' : '' ?>" onclick="mpTab('validation')"><i class="fas fa-clipboard-check"></i> Delivery Validation</button>
+        <button type="button" class="mp-tab <?= $section === 'purchase' ? 'active' : '' ?>" onclick="mpTab('purchase')"><i class="fas fa-chart-bar"></i> Purchase Report</button>
         <button type="button" class="mp-tab <?= $section === 'comparison' ? 'active' : '' ?>" onclick="mpTab('comparison')"><i class="fas fa-balance-scale"></i> PO vs Received</button>
         <button type="button" class="mp-tab <?= $section === 'stockin' ? 'active' : '' ?>" onclick="mpTab('stockin')"><i class="fas fa-box-open"></i> Stock-In Approval</button>
+        <button type="button" class="mp-tab <?= $section === 'validation' ? 'active' : '' ?>" onclick="mpTab('validation')"><i class="fas fa-clipboard-check"></i> Delivery Validation</button>
         <button type="button" class="mp-tab <?= $section === 'variance' ? 'active' : '' ?>" onclick="mpTab('variance')"><i class="fas fa-exclamation-triangle"></i> Delivery Variance</button>
         <button type="button" class="mp-tab <?= $section === 'fuel_variance' ? 'active' : '' ?>" onclick="mpTab('fuel_variance')"><i class="fas fa-gas-pump"></i> Fuel Variance</button>
     </div>
 
     <div class="mp-content">
         <div class="mp-printable">
+
+            <!-- ── PURCHASE REPORT PANEL ── -->
+            <div class="mp-panel <?= $section === 'purchase' ? 'active' : '' ?>">
+                <div class="mp-rpt-header">
+                    <div class="rh-title">Purchase Report</div>
+                    <div class="rh-sub">Purchase Order Summary — Merchandise &amp; Fuel</div>
+                    <div class="rh-station"><?= mp_h($station_name) ?></div>
+                    <div class="rh-date"><strong>Date:</strong> <?= mp_date($date_from) ?><?= $date_from !== $date_to ? ' - ' . mp_date($date_to) : '' ?></div>
+                </div>
+
+
+
+                <div class="mp-table-wrap">
+                    <table class="mp-tbl" id="purchaseReportTable">
+                        <thead><tr>
+                            <th>PO No.</th><th>PO Date</th><th>Type</th><th>Supplier</th>
+                            <th style="text-align:right;">Total Items</th>
+                            <th style="text-align:right;">Total Qty</th>
+                            <th style="text-align:right;">Total Amount</th>
+                            <th>Requested By</th><th>Approved By</th><th>Status</th>
+                        </tr></thead>
+                        <tbody>
+                        <?php if (empty($purchase_rows)): ?>
+                            <tr><td colspan="10" class="mp-empty">No purchase records found for this period.</td></tr>
+                        <?php else: foreach ($purchase_rows as $r):
+                            $po_key  = (string)$r['po_number'];
+                            $po_items = $purchase_items_json[$po_key] ?? [];
+                            $item_total_qty = 0;
+                            $item_grand_total = 0.0;
+                            foreach ($po_items as $it) {
+                                $item_total_qty   += (float)$it['qty_ordered'];
+                                $item_grand_total += (float)$it['total'];
+                            }
+                        ?>
+                            <tr style="border-bottom:none;">
+                                <td class="mp-mono"><?= mp_h($r['po_number']) ?></td>
+                                <td><?= mp_date($r['po_date']) ?></td>
+                                <td><?= mp_h($r['po_type']) ?></td>
+                                <td><?= mp_h($r['supplier_name']) ?></td>
+                                <td style="text-align:right;"><?= number_format((int)$r['total_items']) ?></td>
+                                <td style="text-align:right;"><?= mp_qty($r['total_qty']) ?></td>
+                                <td style="text-align:right;font-weight:700;"><?= mp_money($r['total_amount']) ?></td>
+                                <td><?= mp_h($r['requested_by']) ?></td>
+                                <td><?= mp_h($r['approved_by'] ?: '-') ?></td>
+                                <td><span class="mp-badge <?= mp_status_class($r['status']) ?>"><?= mp_h($r['status']) ?></span></td>
+                            </tr>
+                            <!-- inline items row -->
+                            <tr style="border-bottom:2px solid #e2e8f0;">
+                                <td colspan="10" style="padding:0 8px 10px 32px; background:#f8fafc;">
+                                    <?php if (!empty($po_items)): ?>
+                                    <table style="width:96%;border-collapse:collapse;font-size:11px;margin:2px 0 0;">
+                                        <thead>
+                                            <tr style="background:#e8edf5;">
+                                                <th style="padding:5px 8px;text-align:left;font-size:10px;color:#00264D;font-weight:800;text-transform:uppercase;letter-spacing:.3px;">Item / Product</th>
+                                                <th style="padding:5px 8px;text-align:right;font-size:10px;color:#00264D;font-weight:800;text-transform:uppercase;letter-spacing:.3px;">Qty Ordered</th>
+                                                <th style="padding:5px 8px;text-align:right;font-size:10px;color:#00264D;font-weight:800;text-transform:uppercase;letter-spacing:.3px;">Unit Cost</th>
+                                                <th style="padding:5px 8px;text-align:right;font-size:10px;color:#00264D;font-weight:800;text-transform:uppercase;letter-spacing:.3px;">Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($po_items as $it): ?>
+                                            <tr style="border-bottom:1px solid #e9edf3;">
+                                                <td style="padding:5px 8px;color:#334155;"><?= mp_h($it['item_name']) ?></td>
+                                                <td style="padding:5px 8px;text-align:right;font-weight:600;"><?= mp_qty($it['qty_ordered']) ?></td>
+                                                <td style="padding:5px 8px;text-align:right;"><?= mp_money($it['unit_cost']) ?></td>
+                                                <td style="padding:5px 8px;text-align:right;font-weight:700;"><?= mp_money($it['total']) ?></td>
+                                            </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                        <tfoot>
+                                            <tr style="background:#e8f0fe;border-top:2px solid #00264D;">
+                                                <td style="padding:5px 8px;font-weight:800;color:#00264D;">Grand Total</td>
+                                                <td style="padding:5px 8px;text-align:right;font-weight:800;color:#00264D;"><?= mp_qty($item_total_qty) ?></td>
+                                                <td></td>
+                                                <td style="padding:5px 8px;text-align:right;font-weight:800;color:#00264D;"><?= mp_money($item_grand_total) ?></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                    <?php else: ?>
+                                    <span style="font-size:11px;color:#94a3b8;padding:4px 8px;display:block;">No item details available.</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; endif; ?>
+                        </tbody>
+                        <?php if (!empty($purchase_rows)): ?>
+                        <tfoot><tr>
+                            <td colspan="4">TOTAL: <?= number_format(count($purchase_rows)) ?> Purchase Order(s)</td>
+                            <td style="text-align:right;"><?= number_format(array_sum(array_column($purchase_rows,'total_items'))) ?></td>
+                            <td style="text-align:right;"><?= mp_qty($purchase_total_qty) ?></td>
+                            <td style="text-align:right;"><?= mp_money($purchase_total_amount) ?></td>
+                            <td colspan="3"></td>
+                        </tr></tfoot>
+                        <?php endif; ?>
+                    </table>
+                </div>
+            </div>
+            <!-- END PURCHASE REPORT PANEL -->
+
             <div class="mp-panel <?= $section === 'validation' ? 'active' : '' ?>">
                 <div class="mp-rpt-header">
                     <div class="rh-title">Delivery Validation Report</div>
@@ -798,6 +1042,41 @@ require_once __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
+<!-- ── PO Detail Drill-Down Modal ── -->
+<div id="poDetailOverlay" onclick="closePoDetail()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:20000;"></div>
+<div id="poDetailModal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:20001;background:#fff;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.25);width:90%;max-width:860px;max-height:85vh;overflow:hidden;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #e2e8f0;background:#00264D;border-radius:10px 10px 0 0;">
+        <div style="font-size:15px;font-weight:800;color:#fff;"><i class="fas fa-file-invoice"></i> Purchase Order Details</div>
+        <button onclick="closePoDetail()" style="background:none;border:none;color:#94a3b8;font-size:20px;cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="overflow-y:auto;flex:1;padding:20px;">
+        <!-- PO Info Grid -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px 20px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:18px;">
+            <div><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">PO No.</div><div style="font-size:13px;font-weight:700;color:#00264D;font-family:monospace;" id="pod-po-number">—</div></div>
+            <div><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Purchase Type</div><div style="font-size:13px;font-weight:700;color:#334155;" id="pod-type">—</div></div>
+            <div><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">PO Date</div><div style="font-size:13px;font-weight:600;color:#334155;" id="pod-date">—</div></div>
+            <div><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Supplier</div><div style="font-size:13px;font-weight:600;color:#334155;" id="pod-supplier">—</div></div>
+            <div><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Requested By</div><div style="font-size:13px;font-weight:600;color:#334155;" id="pod-reqby">—</div></div>
+            <div><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Approved By</div><div style="font-size:13px;font-weight:600;color:#334155;" id="pod-apprby">—</div></div>
+            <div><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Status</div><div id="pod-status">—</div></div>
+        </div>
+        <!-- Ordered Items Table -->
+        <div style="font-size:12px;font-weight:800;color:#00264D;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;"><i class="fas fa-boxes"></i> Ordered Items</div>
+        <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;" id="pod-items-table">
+                <thead><tr style="background:#00264D;color:#fff;">
+                    <th style="padding:8px 10px;text-align:left;">SKU / Item</th>
+                    <th style="padding:8px 10px;text-align:right;">Qty Ordered</th>
+                    <th style="padding:8px 10px;text-align:right;">Unit Cost</th>
+                    <th style="padding:8px 10px;text-align:right;">Total</th>
+                </tr></thead>
+                <tbody id="pod-items-body"></tbody>
+                <tfoot id="pod-items-foot" style="background:#f0f4ff;border-top:2px solid #00264D;"></tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
 <script src="../assets/vendor/xlsx/xlsx.full.min.js"></script>
 <script>
 function mpTab(key) {
@@ -873,6 +1152,62 @@ function mpExport(type) {
 function mpPrint() {
     const active = document.querySelector('.mp-panel.active') || document.querySelector('.mp-printable');
     printReportArea(active);
+}
+
+function openPoDetail(el) {
+    const d = el.dataset;
+    document.getElementById('pod-po-number').textContent = d.po || '—';
+    document.getElementById('pod-type').textContent = d.type || '—';
+    document.getElementById('pod-date').textContent = d.date || '—';
+    document.getElementById('pod-supplier').textContent = d.supplier || '—';
+    document.getElementById('pod-reqby').textContent = d.reqby || '—';
+    document.getElementById('pod-apprby').textContent = d.apprby || '—';
+    const statusEl = document.getElementById('pod-status');
+    const st = d.status || '';
+    const sc = st.toLowerCase().includes('complet') || st.toLowerCase().includes('approv') ? '#15803d'
+             : st.toLowerCase().includes('cancel') || st.toLowerCase().includes('reject') ? '#dc2626'
+             : '#854d0e';
+    statusEl.innerHTML = `<span style="background:${sc}20;color:${sc};border:1px solid ${sc}40;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:800;">${st}</span>`;
+
+    let items = [];
+    try { items = JSON.parse(d.items || '[]'); } catch(e) {}
+    const tbody = document.getElementById('pod-items-body');
+    const tfoot = document.getElementById('pod-items-foot');
+    tbody.innerHTML = '';
+    if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:16px;color:#94a3b8;">No item details available.</td></tr>';
+    } else {
+        let grandQty = 0, grandAmt = 0;
+        items.forEach((it, i) => {
+            const qty = parseFloat(it.qty_ordered) || 0;
+            const cost = parseFloat(it.unit_cost) || 0;
+            const total = parseFloat(it.total) || (qty * cost);
+            grandQty += qty;
+            grandAmt += total;
+            const bg = i % 2 === 0 ? '#fff' : '#f8fafc';
+            tbody.innerHTML += `<tr style="background:${bg};border-bottom:1px solid #f1f5f9;">
+                <td style="padding:8px 10px;color:#334155;">${it.item_name || '—'}</td>
+                <td style="padding:8px 10px;text-align:right;font-weight:700;">${qty % 1 === 0 ? qty.toFixed(0) : qty.toFixed(2)}</td>
+                <td style="padding:8px 10px;text-align:right;">&#8369;${cost.toLocaleString('en-PH',{minimumFractionDigits:2})}</td>
+                <td style="padding:8px 10px;text-align:right;font-weight:700;">&#8369;${total.toLocaleString('en-PH',{minimumFractionDigits:2})}</td>
+            </tr>`;
+        });
+        tfoot.innerHTML = `<tr>
+            <td style="padding:8px 10px;font-weight:800;color:#00264D;">GRAND TOTAL</td>
+            <td style="padding:8px 10px;text-align:right;font-weight:800;color:#00264D;">${grandQty % 1 === 0 ? grandQty.toFixed(0) : grandQty.toFixed(2)}</td>
+            <td></td>
+            <td style="padding:8px 10px;text-align:right;font-weight:800;color:#00264D;">&#8369;${grandAmt.toLocaleString('en-PH',{minimumFractionDigits:2})}</td>
+        </tr>`;
+    }
+    const overlay = document.getElementById('poDetailOverlay');
+    const modal = document.getElementById('poDetailModal');
+    overlay.style.display = 'block';
+    modal.style.display = 'flex';
+}
+
+function closePoDetail() {
+    document.getElementById('poDetailOverlay').style.display = 'none';
+    document.getElementById('poDetailModal').style.display = 'none';
 }
 </script>
 

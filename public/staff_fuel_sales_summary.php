@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * STAFF FUEL SALES SUMMARY REPORT
  * Complete fetch process with all summaries
@@ -3029,7 +3029,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 </div>
                 <div style="font-size:11px; color:#334155; font-weight:600; display:flex; justify-content:center; gap:16px; flex-wrap:wrap;">
                     <span><strong>Date:</strong> <?= htmlspecialchars($report_period_label) ?></span>
-                    <span>—¢</span>
+                    <span style="color:#94a3b8;">|</span>
                     <span><strong>Shift:</strong> <?= htmlspecialchars($shift_label_display) ?></span>
                 </div>
             </div>
@@ -3376,7 +3376,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 </div>
                 <div style="font-size:11px; color:#334155; font-weight:600; display:flex; justify-content:center; gap:16px; flex-wrap:wrap;">
                     <span><strong>Date:</strong> <?= htmlspecialchars($report_period_label) ?></span>
-                    <span>—¢</span>
+                    <span style="color:#94a3b8;">|</span>
                     <span><strong>Shift:</strong> <?= htmlspecialchars($shift_label_display) ?></span>
                 </div>
             </div>

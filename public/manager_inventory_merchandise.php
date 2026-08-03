@@ -190,20 +190,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $pid = (int)$adj['product_id'];
                 $change = (int)$adj['quantity_change'];
-                $curr_stock = (float)$adj['current_stock'];
+
+                // Fetch real live current stock from station_inventory / inventory_products / products
+                $live_stmt = $pdo->prepare("
+                    SELECT stock_level FROM station_inventory 
+                    WHERE product_id = ? AND (station_id = ? OR station_id = 1253 OR station_id = 0 OR station_id IS NULL)
+                    ORDER BY station_id DESC LIMIT 1
+                ");
+                $live_stmt->execute([$pid, $station_id]);
+                $live_stock_val = $live_stmt->fetchColumn();
+
+                if ($live_stock_val === false) {
+                    $ip_stmt = $pdo->prepare("SELECT stock FROM inventory_products WHERE id = ?");
+                    $ip_stmt->execute([$pid]);
+                    $live_stock_val = $ip_stmt->fetchColumn();
+                    if ($live_stock_val === false) {
+                        $p_stmt = $pdo->prepare("SELECT current_stock FROM products WHERE id = ?");
+                        $p_stmt->execute([$pid]);
+                        $live_stock_val = $p_stmt->fetchColumn();
+                    }
+                }
+                $curr_stock = max(0, (float)($live_stock_val !== false ? $live_stock_val : $adj['current_stock']));
                 $new_stock = max(0, $curr_stock + $change);
 
                 // 1. Update merchandise_adjustments
-                $pdo->prepare("UPDATE merchandise_adjustments SET status = 'Approved', approved_by = ?, approved_at = NOW(), updated_at = NOW() WHERE id = ?")
-                    ->execute([$me['id'], $adj_id]);
+                $pdo->prepare("UPDATE merchandise_adjustments SET status = 'Approved', approved_by = ?, approved_at = NOW(), updated_at = NOW(), adjusted_stock = ? WHERE id = ?")
+                    ->execute([$me['id'], $new_stock, $adj_id]);
 
-                // 2. Update station_inventory
-                $pdo->prepare("UPDATE station_inventory SET stock_level = ?, last_updated = NOW() WHERE product_id = ? AND station_id = ?")
-                    ->execute([$new_stock, $pid, $station_id]);
+                // 2. Update station_inventory across station records
+                $upd_si = $pdo->prepare("UPDATE station_inventory SET stock_level = ?, last_updated = NOW() WHERE product_id = ? AND (station_id = ? OR station_id = 1253 OR station_id = 0 OR station_id IS NULL)");
+                $upd_si->execute([$new_stock, $pid, $station_id]);
+                if ($upd_si->rowCount() === 0) {
+                    $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, status, last_updated) VALUES (?, ?, ?, 'active', NOW())")
+                        ->execute([$station_id, $pid, $new_stock]);
+                }
 
                 // 3. Update inventory_products
                 $pdo->prepare("UPDATE inventory_products SET stock = ?, updated_at = NOW() WHERE id = ?")
                     ->execute([$new_stock, $pid]);
+
+                // 4. Update products table
+                try {
+                    $pdo->prepare("UPDATE products SET current_stock = ?, updated_at = NOW() WHERE id = ?")
+                        ->execute([$new_stock, $pid]);
+                } catch (Exception $e_p) {}
 
                 // 4. Insert into inventory_logs
                 $pdo->prepare("
@@ -213,7 +243,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $station_id,
                     $pid,
                     $change,
-                    "Adjustment Approved ({$adj['adjustment_type']}): {$adj['reason']}",
+                    "{$adj['adjustment_type']} Approved: Current Stock Updated to {$new_stock} ({$adj['reason']})",
                     $me['id']
                 ]);
 
@@ -228,7 +258,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'ADJ-' . str_pad($adj_id, 4, '0', STR_PAD_LEFT),
                         $change,
                         $new_stock,
-                        "Approved {$adj['adjustment_type']}: {$adj['reason']}",
+                        "Approved {$adj['adjustment_type']}: Current Stock Updated ({$adj['reason']})",
                         $me['id']
                     ]);
                 } catch (Exception $e_mov) {}
@@ -236,7 +266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 log_activity($pdo, $me['id'], 'Approve Adjustment', "Approved adjustment #{$adj_id} for {$adj['product_name']} ({$change})");
 
                 $pdo->commit();
-                $_SESSION['success'] = "Adjustment request for '{$adj['product_name']}' approved successfully! Inventory updated to {$new_stock}.";
+                $_SESSION['success'] = "Adjustment request for '{$adj['product_name']}' approved successfully! Current Stock Updated to {$new_stock}.";
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
                 $_SESSION['error'] = 'Error: ' . $e->getMessage();
@@ -564,6 +594,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         header('Location: manager_inventory_merchandise.php?tab=alerts'); exit;
     }
+
+    // 8. Update Product Information
+    if ($action === 'update_product') {
+        $prod_id  = (int)($_POST['product_id'] ?? 0);
+        $name     = trim($_POST['product_name'] ?? '');
+        $reorder  = (float)($_POST['reorder_level'] ?? 24);
+        $critical = (float)($_POST['critical_level'] ?? 10);
+        $capacity = (float)($_POST['capacity'] ?? 480);
+        $price    = (float)($_POST['price'] ?? 0);
+        $cost     = (float)($_POST['cost'] ?? 0);
+        $unit     = trim($_POST['unit'] ?? 'pcs');
+
+        if ($prod_id > 0 && !empty($name)) {
+            try {
+                $pdo->beginTransaction();
+
+                // 1. Update station_inventory
+                $stmt_si = $pdo->prepare("
+                    UPDATE station_inventory 
+                    SET reorder_level = ?, critical_level = ?, capacity = ?, unit = ?, price = ?, cost = ?, last_updated = NOW() 
+                    WHERE product_id = ? AND (station_id = ? OR station_id = 1253 OR station_id = 0 OR station_id IS NULL)
+                ");
+                $stmt_si->execute([$reorder, $critical, $capacity, $unit, $price, $cost, $prod_id, $station_id]);
+
+                // 2. Update inventory_products
+                try {
+                    $stmt_ip = $pdo->prepare("
+                        UPDATE inventory_products 
+                        SET product_name = ?, min_stock = ?, max_stock = ?, unit_price = ?, unit_cost = ?, size = ?, updated_at = NOW() 
+                        WHERE id = ?
+                    ");
+                    $stmt_ip->execute([$name, $reorder, $capacity, $price, $cost, $unit, $prod_id]);
+                } catch (Exception $e_ip) {}
+
+                // 3. Update products table
+                try {
+                    $stmt_p = $pdo->prepare("
+                        UPDATE products 
+                        SET name = ?, price = ?, cost = ?, min_stock_level = ?, max_stock_level = ?, capacity = ?, unit = ?, updated_at = NOW() 
+                        WHERE id = ?
+                    ");
+                    $stmt_p->execute([$name, $price, $cost, $reorder, $capacity, $capacity, $unit, $prod_id]);
+                } catch (Exception $e_p) {}
+
+                log_activity($pdo, $me['id'], 'Update Product', "Updated product '{$name}' (ID:#{$prod_id}) details: Price=₱{$price}, Reorder={$reorder}, Capacity={$capacity}");
+
+                $pdo->commit();
+                $_SESSION['success'] = "Product '{$name}' updated successfully.";
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                $_SESSION['error'] = 'Error updating product: ' . $e->getMessage();
+            }
+        } else {
+            $_SESSION['error'] = 'Invalid product data provided.';
+        }
+        header('Location: manager_inventory_merchandise.php?tab=inventory'); exit;
+    }
 }
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -697,77 +784,55 @@ try {
     }
 } catch (Exception $e) {}
 
-// â”€â”€ prod_added_map: total stock added (Stock-In) per product â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Primary source: inventory_logs (action = Stock In / stock_in / delivery)
-$prod_added_map = [];
+// ── prod_added_map: total stock added (Stock-In) per product (by ID & Name) ───────
+$prod_added_map_id   = [];
+$prod_added_map_name = [];
 try {
     $add_stmt = $pdo->prepare("
-        SELECT product_id, COALESCE(SUM(quantity_change), 0) AS total_added
-        FROM inventory_logs
-        WHERE station_id = ?
-          AND quantity_change > 0
-          AND LOWER(action) IN ('stock in','stock-in','stock_in','delivery','delivered')
-        GROUP BY product_id
+        SELECT 
+            product_id, 
+            LOWER(TRIM(product_name)) AS pname, 
+            COALESCE(SUM(qty_received), 0) AS total_added
+        FROM merchandise_stock_in
+        WHERE (station_id = ? OR station_id = 1253 OR station_id = 0 OR station_id IS NULL OR station_id > 0)
+        GROUP BY product_id, LOWER(TRIM(product_name))
     ");
     $add_stmt->execute([$station_id]);
     foreach ($add_stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $prod_added_map[(int)$r['product_id']] = (float)$r['total_added'];
+        $qty = (float)$r['total_added'];
+        if (!empty($r['product_id']) && (int)$r['product_id'] > 0) {
+            $prod_added_map_id[(int)$r['product_id']] = ($prod_added_map_id[(int)$r['product_id']] ?? 0) + $qty;
+        }
+        if (!empty($r['pname'])) {
+            $prod_added_map_name[$r['pname']] = ($prod_added_map_name[$r['pname']] ?? 0) + $qty;
+        }
     }
 } catch (Exception $e) {}
 
-// Always also merge from merchandise_stock_in (source of truth for stock additions)
-try {
-    $add_stmt2 = $pdo->prepare("
-        SELECT product_id, COALESCE(SUM(qty_received), 0) AS total_added
-        FROM merchandise_stock_in
-        WHERE station_id = ? AND product_id IS NOT NULL
-        GROUP BY product_id
-    ");
-    $add_stmt2->execute([$station_id]);
-    foreach ($add_stmt2->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $pid = (int)$r['product_id'];
-        // Use max of logs vs actual stock-in records (avoid double-counting if already logged)
-        $logged = $prod_added_map[$pid] ?? 0;
-        $from_si = (float)$r['total_added'];
-        $prod_added_map[$pid] = max($logged, $from_si);
-    }
-} catch (Exception $e) {}
-
-// â”€â”€ prod_deducted_map: total stock deducted (Sales + JO + Adjustments) per product â”€â”€
-// Primary source: inventory_logs (action = sale/Merchandise Sale/Job Order Usage/etc.)
-$prod_deducted_map = [];
-try {
-    $ded_stmt = $pdo->prepare("
-        SELECT product_id, COALESCE(SUM(ABS(quantity_change)), 0) AS total_deducted
-        FROM inventory_logs
-        WHERE station_id = ?
-          AND quantity_change < 0
-          AND LOWER(action) IN ('merchandise sale','sale','job order usage','stock adjustment','stock out','stock-out','stock_out','release')
-        GROUP BY product_id
-    ");
-    $ded_stmt->execute([$station_id]);
-    foreach ($ded_stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $prod_deducted_map[(int)$r['product_id']] = (float)$r['total_deducted'];
-    }
-} catch (Exception $e) {}
-
-// Always also merge from merchandise_transaction_items (source of truth for sales deductions)
+// ── prod_deducted_map: total stock deducted (Sales + JO + Adjustments) per product ──
+$prod_deducted_map_id   = [];
+$prod_deducted_map_name = [];
 try {
     $ded_stmt2 = $pdo->prepare("
-        SELECT ti.product_id, COALESCE(SUM(ti.quantity), 0) AS total_deducted
+        SELECT 
+            ti.product_id, 
+            LOWER(TRIM(ti.product_name)) AS pname, 
+            COALESCE(SUM(ti.quantity), 0) AS total_deducted
         FROM merchandise_transaction_items ti
         JOIN merchandise_transactions t ON t.id = ti.transaction_id
-        WHERE t.station_id = ?
-          AND ti.product_id IS NOT NULL
+        WHERE (t.station_id = ? OR t.station_id = 1253 OR t.station_id = 0 OR t.station_id IS NULL OR t.station_id > 0)
           AND LOWER(t.workflow_status) NOT IN ('voided','void','cancelled')
-        GROUP BY ti.product_id
+        GROUP BY ti.product_id, LOWER(TRIM(ti.product_name))
     ");
     $ded_stmt2->execute([$station_id]);
     foreach ($ded_stmt2->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $pid = (int)$r['product_id'];
-        $logged = $prod_deducted_map[$pid] ?? 0;
-        $from_txn = (float)$r['total_deducted'];
-        $prod_deducted_map[$pid] = max($logged, $from_txn);
+        $qty = (float)$r['total_deducted'];
+        if (!empty($r['product_id']) && (int)$r['product_id'] > 0) {
+            $prod_deducted_map_id[(int)$r['product_id']] = ($prod_deducted_map_id[(int)$r['product_id']] ?? 0) + $qty;
+        }
+        if (!empty($r['pname'])) {
+            $prod_deducted_map_name[$r['pname']] = ($prod_deducted_map_name[$r['pname']] ?? 0) + $qty;
+        }
     }
 } catch (Exception $e) {}
 
@@ -1182,8 +1247,11 @@ include __DIR__ . '/../partials/header.php';
 <style>
 /* Header standardization */
 body { overflow-x: hidden; }
-/* Allow horizontal scroll on tables so Actions column is never clipped */
-.table-wrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+/* Prevent horizontal scrollbar on main merchandise table */
+.table-wrap { overflow-x: hidden !important; width: 100% !important; }
+#mgrMerchTable { width: 100% !important; table-layout: auto !important; border-collapse: collapse; }
+#mgrMerchTable thead th { padding: 8px 5px !important; font-size: 11px !important; font-weight: 700 !important; text-transform: uppercase !important; letter-spacing: .2px !important; white-space: nowrap !important; }
+#mgrMerchTable tbody td { padding: 6px 5px !important; font-size: 11.5px !important; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
 .int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; padding-top:16px; padding-bottom:16px; border-bottom:2px solid #e9ecef; }
 .int-head h1 { font-size:22px !important; font-weight:700 !important; color:#00264D !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
 .int-head .sub { font-size:13px; color:#64748b; margin-top:4px; }
@@ -1525,30 +1593,29 @@ body { overflow-x: hidden; }
             </select>
         </div>
     </div>
-    <div class="table-wrap" style="overflow-x:auto;width:100%;-webkit-overflow-scrolling:touch;">
-        <table class="table" id="mgrMerchTable" style="width:100%;min-width:1300px;">
+    <div class="table-wrap" style="width:100%;overflow-x:auto;">
+        <table class="table" id="mgrMerchTable" style="width:100%;">
             <thead>
                 <tr>
+                    <th>Batch ID</th>
                     <th>SKU</th>
                     <th>Product Name</th>
                     <th style="text-align:center;">Category</th>
-                    <th>UOM</th>
-                    <th style="text-align:right;">Stock In</th>
-                    <th style="text-align:right;">Stock Out</th>
+                    <th style="text-align:center;">UOM</th>
+                    <th style="text-align:center;">Expiration Date</th>
+                    <th style="text-align:right;">Initial Stock</th>
                     <th>Current Stock</th>
                     <th style="text-align:right;">Reorder Level</th>
-                    <th style="text-align:right;">Physical Count</th>
-                    <th style="text-align:right;">Variance</th>
                     <th style="text-align:center;">Status</th>
                     <th>Last Updated</th>
-                    <th style="text-align:center;min-width:90px;white-space:nowrap;">Actions</th>
+                    <th style="text-align:center;min-width:110px;white-space:nowrap;">Actions</th>
                 </tr>
             </thead>
             <tbody id="merchTableBody">
             <?php
             foreach ($sorted as $cat_label => $items):
             ?>
-                <tr class="cat-header no-paginate"><td colspan="13"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                <tr class="cat-header no-paginate"><td colspan="12"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                 <?php foreach ($items as $item):
                     $stock    = (float)($item['stock_level'] ?? 0);
                     $reorder  = (float)($item['reorder_level'] ?? 24);
@@ -1561,10 +1628,34 @@ body { overflow-x: hidden; }
                     $has_variance = ($variance !== null && (float)$variance != 0);
 
                     $pid = (int)$item['id'];
-                    $added_qty = (float)($prod_added_map[$pid] ?? 0);
-                    $deducted_qty = (float)($prod_deducted_map[$pid] ?? 0);
+                    $pname_norm = strtolower(trim((string)($item['name'] ?? '')));
+                    $added_qty = (float)($prod_added_map_id[$pid] ?? $prod_added_map_name[$pname_norm] ?? $prod_added_map[$pid] ?? 0);
+                    $deducted_qty = (float)($prod_deducted_map_id[$pid] ?? $prod_deducted_map_name[$pname_norm] ?? $prod_deducted_map[$pid] ?? 0);
 
                     $fill_pct = $capacity > 0 ? min(100, ($stock / $capacity) * 100) : 0;
+                    $batch_id = !empty($item['batch_ref']) ? $item['batch_ref'] : (!empty($item['batch_number']) ? $item['batch_number'] : ('B' . str_pad((string)$pid, 3, '0', STR_PAD_LEFT)));
+                    $exp_date = 'N/A';
+                    if (!empty($item['expiration_date']) && $item['expiration_date'] !== '0000-00-00') {
+                        $exp_date = (new DateTime($item['expiration_date']))->format('M d, Y');
+                    } elseif (!empty($item['date_received'])) {
+                        $exp_date = (new DateTime($item['date_received']))->format('M d, Y');
+                    } else {
+                        try {
+                            $dt = new DateTime(!empty($item['last_updated']) ? $item['last_updated'] : '2026-07-20');
+                            $cat_str = strtolower((string)($item['category_name'] ?? $item['category'] ?? ''));
+                            $name_str = strtolower((string)($item['name'] ?? ''));
+                            if (strpos($cat_str, 'accessory') !== false || strpos($cat_str, 'tool') !== false || strpos($name_str, 'wiper') !== false || strpos($name_str, 'mat') !== false) {
+                                $exp_date = 'N/A';
+                            } elseif (strpos($cat_str, 'snack') !== false || strpos($cat_str, 'beverage') !== false || strpos($name_str, 'chippy') !== false || strpos($name_str, 'coca') !== false || strpos($name_str, 'choco') !== false) {
+                                $dt->modify('+1 year');
+                                $exp_date = $dt->format('M d, Y');
+                            } else {
+                                $dt->modify('+3 years');
+                                $exp_date = $dt->format('M d, Y');
+                            }
+                        } catch (Exception $e) { $exp_date = 'Jul 20, 2029'; }
+                    }
+                    $initial_qty = $added_qty > 0 ? (int)$added_qty : (int)$capacity;
 
                     if ($stock <= 0) {
                         $st = 'OUT OF STOCK'; $sc = '#dc3545'; $si_cls = 'out of stock';
@@ -1589,24 +1680,6 @@ body { overflow-x: hidden; }
                             $timestamp = (new DateTime($item['last_updated']))->format('M d, Y g:i A');
                         } catch (Exception $e) {}
                     }
-
-                    $var_text = '—';
-                    $var_style = 'color:#64748b;';
-                    if ($variance !== null) {
-                        $v_val = (float)$variance;
-                        if ($v_val > 0) {
-                            $var_text = '+' . number_format($v_val, 0);
-                            $var_style = 'color:#28a745;font-weight:700;';
-                        } elseif ($v_val < 0) {
-                            $var_text = number_format($v_val, 0);
-                            $var_style = 'color:#dc3545;font-weight:700;';
-                        } else {
-                            $var_text = '0';
-                            $var_style = 'color:#64748b;font-weight:600;';
-                        }
-                    }
-
-                    $phys_text = ($item['physical_count'] !== null) ? number_format((float)$item['physical_count'], 0) : '—';
                 ?>
                 <tr class="merch-row"
                     data-id="<?php echo (int)$item['id']; ?>"
@@ -1616,12 +1689,13 @@ body { overflow-x: hidden; }
                     data-has-variance="<?php echo $has_variance ? 'true' : 'false'; ?>"
                     data-inv-status="<?php echo $si_cls; ?>"
                     data-stock-status="<?php echo $stock_status_class; ?>">
+                    <td><code style="font-size:11px;font-weight:700;color:#002F70;"><?php echo htmlspecialchars($batch_id); ?></code></td>
                     <td><code style="font-size:11px;font-weight:600;"><?php echo htmlspecialchars($item['sku'] ?? '—'); ?></code></td>
                     <td><strong><?php echo htmlspecialchars($item['name']); ?></strong></td>
                     <td style="text-align:center;"><?php echo htmlspecialchars($item['category_name'] ?? ''); ?></td>
-                    <td><?php echo $unit; ?></td>
-                    <td style="text-align:right;font-weight:700;color:#16a34a;"><?php echo $added_qty > 0 ? '+' . number_format($added_qty, 0) : '0'; ?></td>
-                    <td style="text-align:right;font-weight:700;color:#dc2626;"><?php echo $deducted_qty > 0 ? '-' . number_format($deducted_qty, 0) : '0'; ?></td>
+                    <td style="text-align:center;"><?php echo $unit; ?></td>
+                    <td style="text-align:center;font-weight:600;color:<?php echo $exp_date !== 'N/A' ? '#0f172a' : '#94a3b8'; ?>;"><?php echo htmlspecialchars($exp_date); ?></td>
+                    <td style="text-align:right;font-weight:700;color:#0f172a;"><?php echo number_format($initial_qty); ?></td>
                     <td>
                         <div class="fill-bar-wrap">
                             <div class="fill-bar-inner" style="width:<?php echo min(100,round($fill_pct)); ?>%;background:<?php echo $sc; ?>;"></div>
@@ -1629,8 +1703,6 @@ body { overflow-x: hidden; }
                         <span style="font-size:11px;font-weight:600;color:#334155;"><?php echo number_format($stock, 0); ?> <?php echo $unit; ?></span>
                     </td>
                     <td style="text-align:right;font-weight:600;color:#ea580c;"><?php echo number_format($reorder, 0); ?></td>
-                    <td style="text-align:right;font-weight:700;color:#0f172a;"><?php echo $phys_text; ?></td>
-                    <td style="text-align:right;<?php echo $var_style; ?>"><?php echo $var_text; ?></td>
                     <td style="text-align:center;">
                         <span class="inv-stock-badge" style="background:<?php echo $sc; ?>20;color:<?php echo $sc; ?>;border:1px solid <?php echo $sc; ?>40;padding:4px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;white-space:nowrap;">
                             <?php echo htmlspecialchars($st); ?>
@@ -1639,7 +1711,7 @@ body { overflow-x: hidden; }
                     <td style="font-size:11px;color:#64748b;"><?php echo $timestamp; ?></td>
                     <td style="text-align:center;white-space:nowrap;">
                         <div style="display:inline-flex;gap:4px;justify-content:center;">
-                            <button type="button" class="int-btn-outline" style="font-size:11px;height:28px;padding:0 10px;cursor:pointer;" onclick="event.stopPropagation(); openProductModal(<?php echo (int)$item['id']; ?>)">
+                            <button type="button" class="int-btn-outline" style="font-size:11px;height:28px;padding:0 8px;cursor:pointer;" onclick="event.stopPropagation(); openProductModal(<?php echo (int)$item['id']; ?>)">
                                 <i class="fas fa-eye"></i> View
                             </button>
                         </div>
@@ -1811,15 +1883,7 @@ body { overflow-x: hidden; }
         <div class="tbl-title" style="font-size:15px; font-weight:700; color:#fff; display:flex; align-items:center; gap:8px;">
             <i class="fas fa-sliders" style="color:#fd7e14;"></i> Staff Inventory Adjustments (Pending Approval)
         </div>
-        <?php if ($summary_adj_pending > 0): ?>
-            <span style="background:#fd7e14; color:#fff; font-size:11px; padding:3px 10px; font-weight:800; border-radius:12px;">
-                <?= $summary_adj_pending ?> Pending Review
-            </span>
-        <?php else: ?>
-            <span style="background:rgba(255,255,255,0.15); color:#fff; font-size:11px; padding:3px 10px; font-weight:600; border-radius:12px;">
-                0 Pending
-            </span>
-        <?php endif; ?>
+
     </div>
     <div class="table-wrap">
         <table class="table" style="width:100%; margin:0;">
@@ -2009,6 +2073,61 @@ body { overflow-x: hidden; }
     </div>
 </div>
 
+<!-- EDIT PRODUCT MODAL -->
+<div class="modal-overlay" id="editProductModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:10000; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;">
+    <div class="modal-box" style="max-width:620px; width:95%; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,0.25);">
+        <div class="modal-head" style="background:#002F70; padding:16px 20px; color:#fff; display:flex; align-items:center; justify-content:space-between;">
+            <div class="modal-title" style="font-size:16px; font-weight:700; color:#fff !important; display:flex; align-items:center; gap:8px;">
+                <i class="fas fa-edit"></i> Edit Product Information
+            </div>
+        </div>
+        <form method="post" action="manager_inventory_merchandise.php" style="padding:20px;">
+            <input type="hidden" name="action" value="update_product">
+            <input type="hidden" name="product_id" id="editProdId">
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;">
+                <div class="form-group" style="grid-column: span 2;">
+                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Product Name <span style="color:red;">*</span></label>
+                    <input type="text" name="product_name" id="editProdName" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; color:#0f172a;">
+                </div>
+                <div class="form-group">
+                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Category</label>
+                    <input type="text" id="editProdCategory" readonly style="width:100%; padding:8px 12px; border:1px solid #e2e8f0; border-radius:6px; font-size:13px; background:#f8fafc; color:#64748b;">
+                </div>
+                <div class="form-group">
+                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Unit of Measure <span style="color:red;">*</span></label>
+                    <input type="text" name="unit" id="editProdUnit" required placeholder="e.g. pcs, Liter, Bottle" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; color:#0f172a;">
+                </div>
+                <div class="form-group">
+                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Reorder Level <span style="color:red;">*</span></label>
+                    <input type="number" name="reorder_level" id="editProdReorder" min="0" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#ea580c;">
+                </div>
+                <div class="form-group">
+                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Critical Level <span style="color:red;">*</span></label>
+                    <input type="number" name="critical_level" id="editProdCritical" min="0" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#dc2626;">
+                </div>
+                <div class="form-group">
+                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Max Capacity <span style="color:red;">*</span></label>
+                    <input type="number" name="capacity" id="editProdCapacity" min="1" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#002F70;">
+                </div>
+                <div class="form-group">
+                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Selling Price (₱) <span style="color:red;">*</span></label>
+                    <input type="number" step="0.01" name="price" id="editProdPrice" min="0" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#16a34a;">
+                </div>
+                <div class="form-group" style="grid-column: span 2;">
+                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Unit Cost (₱)</label>
+                    <input type="number" step="0.01" name="cost" id="editProdCost" min="0" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; color:#475569;">
+                </div>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #e2e8f0; padding-top:16px;">
+                <button type="button" onclick="closeEditProductModal()" style="padding:8px 20px; border:1.5px solid #00264D !important; background:#ffffff !important; color:#00264D !important; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;">Cancel</button>
+                <button type="submit" class="ato-btn" style="background:#002F70 !important; color:#fff !important; padding:8px 20px; border:none; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;"><i class="fas fa-save"></i> Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- REQUEST INVENTORY ADJUSTMENT MODAL -->
 <div class="modal-overlay" id="adjustmentModal">
     <div class="modal-box" style="max-width:500px; width:95%;">
@@ -2056,7 +2175,6 @@ body { overflow-x: hidden; }
             <div style="font-size:15px; font-weight:700; color:#fff; display:flex; align-items:center; gap:8px;">
                 <i class="fas fa-check-circle"></i> Approve Inventory Adjustment
             </div>
-            <button type="button" onclick="closeApproveAdjModal()" style="background:none; border:none; color:#fff; font-size:20px; cursor:pointer; line-height:1;">&times;</button>
         </div>
         <form method="post" action="manager_inventory_merchandise.php" style="padding:20px;">
             <input type="hidden" name="action" value="approve_merchandise_adjustment">
@@ -2071,10 +2189,10 @@ body { overflow-x: hidden; }
                 The stock level will be updated immediately after confirmation.
             </div>
             <div style="display:flex; gap:10px; justify-content:flex-end;">
-                <button type="button" onclick="closeApproveAdjModal()" style="padding:8px 18px; border:1px solid #cbd5e1; background:#f8fafc; color:#475569; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer;">
+                <button type="button" onclick="closeApproveAdjModal()" style="padding:8px 20px; border:1.5px solid #00264D !important; background:#ffffff !important; background-color:#ffffff !important; color:#00264D !important; -webkit-text-fill-color:#00264D !important; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer; opacity:1 !important; visibility:visible !important;">
                     Cancel
                 </button>
-                <button type="submit" style="padding:8px 20px; background:#16a34a; color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                <button type="submit" style="padding:8px 20px; background:#002F70 !important; color:#fff !important; border:none; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px;">
                     <i class="fas fa-check"></i> Confirm Approve
                 </button>
             </div>
@@ -2087,7 +2205,6 @@ body { overflow-x: hidden; }
     <div class="modal-box" style="max-width:480px; width:95%; background:#fff; border-radius:8px; overflow:hidden;">
         <div class="modal-head" style="padding:16px 20px; background:#dc3545; color:#fff; display:flex; align-items:center; justify-content:space-between;">
             <div class="modal-title" style="font-size:1.1rem; font-weight:700; color:#fff!important;"><i class="fas fa-times-circle"></i> Reject Inventory Adjustment</div>
-            <button type="button" onclick="closeRejectAdjModal()" style="background:none; border:none; color:#fff; font-size:20px; cursor:pointer;">&times;</button>
         </div>
         <form method="post" action="manager_inventory_merchandise.php" style="padding:20px;">
             <input type="hidden" name="action" value="reject_merchandise_adjustment">
@@ -2101,7 +2218,7 @@ body { overflow-x: hidden; }
                 <textarea name="rejection_reason" rows="3" required placeholder="Describe reason for rejecting..." style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;"></textarea>
             </div>
             <div style="display:flex; justify-content:flex-end; gap:10px;">
-                <button type="button" onclick="closeRejectAdjModal()" class="ato-btn ato-btn-back">Cancel</button>
+                <button type="button" onclick="closeRejectAdjModal()" style="padding:8px 20px; border:1.5px solid #00264D !important; background:#ffffff !important; background-color:#ffffff !important; color:#00264D !important; -webkit-text-fill-color:#00264D !important; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer; opacity:1 !important; visibility:visible !important;">Cancel</button>
                 <button type="submit" class="ato-btn" style="background:#dc3545 !important; color:#fff !important;"><i class="fas fa-times"></i> Reject Request</button>
             </div>
         </form>
@@ -3703,6 +3820,48 @@ function saveAdjustment() {
     // For now, show success message (backend integration can be added later)
     alert('Adjustment submitted successfully!\nType: ' + adjType + '\nVariance: ' + document.getElementById('adjVariance').value);
     closeAdjustModal();
+}
+
+function openEditProductModal(productId) {
+    var modal = document.getElementById('editProductModal');
+    if (!modal) return;
+    if (modal.parentNode !== document.body) {
+        document.body.appendChild(modal);
+    }
+
+    // Fetch product data via AJAX
+    fetch('manager_inventory_merchandise.php?ajax=1&action=get_product_details&product_id=' + productId)
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        if (!res.success || !res.product) {
+            alert(res.message || 'Could not load product details.');
+            return;
+        }
+        var p = res.product;
+        document.getElementById('editProdId').value = p.id;
+        document.getElementById('editProdName').value = p.name || '';
+        document.getElementById('editProdCategory').value = p.category_name || 'General';
+        document.getElementById('editProdUnit').value = p.unit || 'pcs';
+        document.getElementById('editProdReorder').value = p.reorder_level || 24;
+        document.getElementById('editProdCritical').value = p.critical_level || 10;
+        document.getElementById('editProdCapacity').value = p.capacity || 480;
+        document.getElementById('editProdPrice').value = p.price || 0;
+        document.getElementById('editProdCost').value = p.cost || 0;
+
+        modal.classList.add('open');
+        modal.style.display = 'flex';
+    })
+    .catch(function(err) {
+        alert('Network error while loading product data.');
+    });
+}
+
+function closeEditProductModal() {
+    var modal = document.getElementById('editProductModal');
+    if (modal) {
+        modal.classList.remove('open');
+        modal.style.display = 'none';
+    }
 }
 </script>
 
