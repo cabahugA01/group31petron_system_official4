@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'module_config';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -427,8 +427,8 @@ if (empty($stations)) {
     }
     
     .page-head {
-        margin-top: -12px !important;
-        padding-top: 0 !important;
+        margin-top: 0 !important;
+        padding-top: 10px !important;
     }
     
     .page-head h1, .page-head .h1 {

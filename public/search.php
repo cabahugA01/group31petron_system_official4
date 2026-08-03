@@ -346,7 +346,7 @@ if (!empty($query)) {
             $stmt->execute([$like, $like, $like, $like, $like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $jo_num = $r['job_order_id'] ?? ('#' . $r['id']);
-                $jo_link = $is_manager ? 'manager_job_orders.php' : ('staff_transactions_hub.php?section=history&hsearch=' . urlencode($jo_num));
+                $jo_link = $is_manager ? ('manager_validated_transactions.php?type=job_order&search=' . urlencode($jo_num)) : ('staff_transactions_hub.php?section=history&hsearch=' . urlencode($jo_num));
                 $results[] = [
                     'type'     => 'Job Order',
                     'title'    => "Job Order {$jo_num}",
@@ -860,76 +860,99 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-.srp-wrap {
-    max-width: 1000px;
-    margin: 20px auto;
-    padding: 0 24px 60px;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+.srp-page {
+    min-height: 100vh;
+    background: #f0f4f8;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-/* Header Section */
-.srp-header {
-    margin-bottom: 32px;
-    padding: 24px;
-    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-    border-radius: 12px;
-    border: 1px solid #e2e8f0;
+.srp-hero {
+    background: linear-gradient(135deg, #002F6C 0%, #001f4d 60%, #00122e 100%);
+    padding: 36px 32px 28px;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
 }
-.srp-header h1 {
-    font-size: 28px;
+.srp-hero::before {
+    content: '';
+    position: absolute;
+    top: -40px; right: -60px;
+    width: 300px; height: 300px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.04);
+    pointer-events: none;
+}
+.srp-hero::after {
+    content: '';
+    position: absolute;
+    bottom: -60px; left: 20%;
+    width: 200px; height: 200px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.03);
+    pointer-events: none;
+}
+.srp-hero-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+}
+.srp-hero h1 {
+    font-size: 26px;
     font-weight: 800;
-    color: #0f172a;
-    margin: 0 0 8px;
+    margin: 0 0 6px;
     display: flex;
     align-items: center;
     gap: 12px;
+    letter-spacing: -0.3px;
 }
-.srp-header h1 i {
-    font-size: 24px;
-    color: #002F6C;
+.srp-hero h1 i {
+    font-size: 22px;
+    opacity: 0.85;
 }
-.srp-header p {
-    color: #475569;
-    font-size: 14px;
-    margin: 0;
+.srp-hero-meta {
+    font-size: 13px;
+    color: rgba(255,255,255,0.7);
     font-weight: 500;
+    margin-bottom: 20px;
 }
-.srp-header p strong {
-    color: #002F6C;
+.srp-hero-meta strong {
+    color: #fff;
     font-weight: 700;
 }
 
-/* Search Form */
+/* Search Bar */
 .srp-search-form {
     display: flex;
-    gap: 12px;
-    margin-bottom: 32px;
-    padding: 0 4px;
+    gap: 10px;
+    max-width: 700px;
 }
 .srp-search-form input {
     flex: 1;
-    padding: 14px 20px;
+    padding: 13px 20px;
     border-radius: 10px;
-    border: 2px solid #e2e8f0;
-    font-size: 15px;
+    border: 2px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.12);
+    font-size: 14px;
     outline: none;
     transition: all .2s;
-    background: #fff;
-    color: #1e293b;
+    color: #fff;
     font-weight: 500;
+    backdrop-filter: blur(4px);
+    font-family: inherit;
 }
-.srp-search-form input:focus { 
-    border-color: #002F6C; 
-    box-shadow: 0 0 0 4px rgba(0, 47, 108, 0.1);
-}
-.srp-search-form input::placeholder {
-    color: #94a3b8;
+.srp-search-form input::placeholder { color: rgba(255,255,255,0.5); }
+.srp-search-form input:focus {
+    border-color: rgba(255,255,255,0.5);
+    background: rgba(255,255,255,0.18);
 }
 .srp-search-form button {
-    padding: 14px 28px;
+    padding: 13px 24px;
     border-radius: 10px;
     border: none;
-    background: #002F6C;
+    background: #df1f26;
     color: #fff;
     font-size: 14px;
     font-weight: 700;
@@ -938,237 +961,413 @@ include __DIR__ . '/../partials/header.php';
     display: flex;
     align-items: center;
     gap: 8px;
-    box-shadow: 0 2px 8px rgba(0, 47, 108, 0.2);
+    font-family: inherit;
+    white-space: nowrap;
+    appearance: none;
 }
 .srp-search-form button:hover {
-    background: #001f4d;
+    background: #c01a20;
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 47, 108, 0.3);
 }
-.srp-search-form button:active {
-    transform: translateY(0);
+
+/* Main Layout */
+.srp-body {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px 24px 60px;
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 24px;
+    align-items: start;
+}
+
+/* Sidebar */
+.srp-sidebar {
+    position: sticky;
+    top: 16px;
+    background: #fff;
+    border-radius: 14px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+    padding: 20px 16px;
+    overflow: hidden;
+}
+.srp-sidebar-title {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #94a3b8;
+    margin-bottom: 14px;
+    padding: 0 4px;
+}
+.srp-sidebar-stat {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 12px;
+    border-radius: 8px;
+    margin-bottom: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #334155;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all .15s;
+    border: 1.5px solid transparent;
+}
+.srp-sidebar-stat:hover {
+    background: #f1f5f9;
+    color: #002F6C;
+    border-color: #e2e8f0;
+}
+.srp-sidebar-stat .srp-cat-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: #fff;
+    flex-shrink: 0;
+    margin-right: 8px;
+}
+.srp-sidebar-stat-left {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    min-width: 0;
+    flex: 1;
+}
+.srp-sidebar-stat-left span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 700;
+}
+.srp-sidebar-badge {
+    background: #f1f5f9;
+    color: #475569;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 20px;
+    flex-shrink: 0;
+}
+.srp-sidebar-divider {
+    border: none;
+    border-top: 1px solid #f1f5f9;
+    margin: 12px 0;
+}
+.srp-total-badge {
+    text-align: center;
+    background: linear-gradient(135deg, #002F6C, #001f4d);
+    color: #fff;
+    border-radius: 10px;
+    padding: 10px;
+    margin-top: 12px;
+    font-size: 12px;
+    font-weight: 700;
+}
+.srp-total-badge strong {
+    display: block;
+    font-size: 22px;
+    font-weight: 900;
+    line-height: 1.2;
+}
+
+/* Results Area */
+.srp-results {
+    min-width: 0;
 }
 
 /* Result Groups */
-.srp-group { 
-    margin-bottom: 36px;
-    padding: 0 4px;
+.srp-group {
+    margin-bottom: 20px;
+    background: #fff;
+    border-radius: 14px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    overflow: hidden;
 }
 .srp-group-title {
     display: flex;
     align-items: center;
     gap: 10px;
-    font-size: 12px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #475569;
-    margin-bottom: 16px;
-    padding: 10px 16px;
-    background: #f8fafc;
-    border-radius: 8px;
-    border: 1px solid #e2e8f0;
+    padding: 14px 20px;
+    border-bottom: 1px solid #f1f5f9;
+    background: #fafbfc;
 }
-.srp-group-title i {
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
+.srp-group-title-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 13px;
     color: #fff;
+    flex-shrink: 0;
     box-shadow: 0 2px 6px rgba(0,0,0,0.15);
 }
+.srp-group-title-text {
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #1e293b;
+    flex: 1;
+}
 .srp-count {
-    display: inline-block;
     background: #e2e8f0;
     color: #475569;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 800;
-    padding: 4px 10px;
+    padding: 3px 9px;
     border-radius: 20px;
-    margin-left: 8px;
 }
 
 /* Result Items */
 .srp-item {
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 16px 20px;
-    border-radius: 12px;
-    border: 2px solid #f1f5f9;
-    background: #fff;
-    margin-bottom: 10px;
+    gap: 14px;
+    padding: 14px 20px;
     text-decoration: none;
     color: inherit;
-    transition: all .2s;
+    transition: background .15s;
+    border-bottom: 1px solid #f8fafc;
     position: relative;
 }
+.srp-item:last-child { border-bottom: none; }
 .srp-item:hover {
-    box-shadow: 0 6px 20px rgba(0,0,0,0.08);
-    transform: translateY(-2px);
-    border-color: #002F6C;
+    background: #f8fafc;
 }
-.srp-item:hover .srp-item-icon {
-    transform: scale(1.05);
+.srp-item:hover .srp-item-arrow {
+    color: #002F6C;
+    transform: translateX(3px);
 }
 .srp-item-icon {
-    width: 44px;
-    height: 44px;
+    width: 42px;
+    height: 42px;
     border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 16px;
+    font-size: 15px;
     flex-shrink: 0;
     color: #fff;
-    transition: transform .2s;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
-.srp-item-body { 
-    flex: 1; 
-    min-width: 0; 
+.srp-item-body {
+    flex: 1;
+    min-width: 0;
 }
 .srp-item-title {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 700;
     color: #0f172a;
-    margin-bottom: 4px;
+    margin-bottom: 3px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 .srp-item-sub {
-    font-size: 13px;
+    font-size: 12px;
     color: #64748b;
-    line-height: 1.4;
+    line-height: 1.45;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    font-weight: 500;
 }
-.srp-item i.fa-chevron-right {
+.srp-item-arrow {
     color: #cbd5e1;
-    font-size: 14px;
+    font-size: 12px;
+    flex-shrink: 0;
     transition: all .2s;
-}
-.srp-item:hover i.fa-chevron-right {
-    color: #002F6C;
-    transform: translateX(2px);
 }
 
 /* Empty State */
 .srp-empty {
+    grid-column: 1 / -1;
     text-align: center;
     padding: 80px 20px;
     color: #94a3b8;
-    background: #f8fafc;
-    border-radius: 12px;
+    background: #fff;
+    border-radius: 14px;
     border: 2px dashed #e2e8f0;
 }
-.srp-empty i { 
-    font-size: 48px; 
-    margin-bottom: 16px; 
+.srp-empty i {
+    font-size: 52px;
+    margin-bottom: 16px;
     display: block;
     color: #cbd5e1;
 }
-.srp-empty p { 
-    font-size: 16px; 
-    margin: 0;
-    font-weight: 500;
-    color: #64748b;
-}
-.srp-empty p strong {
-    color: #002F6C;
+.srp-empty-title {
+    font-size: 18px;
     font-weight: 700;
+    color: #475569;
+    margin-bottom: 8px;
+}
+.srp-empty-sub {
+    font-size: 14px;
+    color: #94a3b8;
+    font-weight: 500;
+}
+.srp-empty-sub strong { color: #002F6C; }
+
+/* No query prompt */
+.srp-prompt {
+    grid-column: 1 / -1;
+    background: #fff;
+    border-radius: 14px;
+    border: 1px solid #e2e8f0;
+    padding: 60px 40px;
+    text-align: center;
+}
+.srp-prompt i {
+    font-size: 56px;
+    color: #002F6C;
+    opacity: .15;
+    display: block;
+    margin-bottom: 20px;
+}
+.srp-prompt-title {
+    font-size: 20px;
+    font-weight: 800;
+    color: #1e293b;
+    margin-bottom: 8px;
+}
+.srp-prompt-sub {
+    font-size: 14px;
+    color: #64748b;
+    font-weight: 500;
 }
 
 /* Responsive */
-@media (max-width: 768px) {
-    .srp-wrap {
-        padding: 0 16px 40px;
+@media (max-width: 900px) {
+    .srp-body {
+        grid-template-columns: 1fr;
+        padding: 16px 16px 40px;
     }
-    .srp-header {
-        padding: 20px;
-    }
-    .srp-header h1 {
-        font-size: 24px;
-    }
-    .srp-search-form {
-        flex-direction: column;
-    }
-    .srp-search-form button {
-        justify-content: center;
-    }
-    .srp-item {
-        padding: 14px 16px;
-    }
-    .srp-item-icon {
-        width: 40px;
-        height: 40px;
-        font-size: 14px;
-    }
+    .srp-sidebar { position: static; }
+    .srp-hero { padding: 24px 20px 20px; }
+    .srp-search-form { flex-direction: column; }
+    .srp-search-form button { justify-content: center; }
+    .srp-hero h1 { font-size: 22px; }
 }
 </style>
 
-<div class="srp-wrap">
-    <div class="srp-header">
-        <h1><i class="fas fa-search"></i>Search Results</h1>
+<div class="srp-page">
+
+<!-- Hero Search Header -->
+<div class="srp-hero">
+    <div class="srp-hero-inner">
+        <h1><i class="fas fa-search"></i> Search Results</h1>
         <?php if ($query): ?>
-        <p>Showing results for <strong>"<?= htmlspecialchars($query) ?>"</strong>
-           — <strong><?= count($results) ?></strong> result<?= count($results) !== 1 ? 's' : '' ?> found</p>
+        <div class="srp-hero-meta">
+            Showing results for <strong>"<?= htmlspecialchars($query) ?>"</strong>
+            &mdash; <strong><?= count($results) ?></strong> result<?= count($results) !== 1 ? 's' : '' ?> found
+        </div>
+        <?php else: ?>
+        <div class="srp-hero-meta">Search across transactions, customers, products, deliveries, and more</div>
         <?php endif; ?>
+        <form class="srp-search-form" method="get" action="search.php">
+            <input type="text" name="q" value="<?= htmlspecialchars($query) ?>"
+                   placeholder="Search customers, products, orders, deliveries..." autofocus>
+            <button type="submit"><i class="fas fa-search"></i> Search</button>
+        </form>
     </div>
+</div>
 
-    <form class="srp-search-form" method="get" action="search.php">
-        <input type="text" name="q" value="<?= htmlspecialchars($query) ?>"
-               placeholder="Search stations, admins, transactions, reports..." autofocus>
-        <button type="submit"><i class="fas fa-search"></i> Search</button>
-    </form>
+<!-- Body: Sidebar + Results -->
+<div class="srp-body">
 
-    <?php if (empty($query)): ?>
-    <div class="srp-empty">
+<?php if (empty($query)): ?>
+    <div class="srp-prompt">
         <i class="fas fa-search"></i>
-        <p>Enter a keyword to search across the system</p>
+        <div class="srp-prompt-title">What are you looking for?</div>
+        <div class="srp-prompt-sub">Search across customers, products, transactions, job orders, deliveries, and more</div>
     </div>
-    <?php elseif (empty($results)): ?>
+
+<?php elseif (empty($results)): ?>
     <div class="srp-empty">
         <i class="fas fa-inbox"></i>
-        <p>No results found for <strong>"<?= htmlspecialchars($query) ?>"</strong></p>
-        <p style="font-size:14px;margin-top:8px;color:#94a3b8;">Try different keywords or check your spelling</p>
+        <div class="srp-empty-title">No results found</div>
+        <div class="srp-empty-sub">No matches for <strong>"<?= htmlspecialchars($query) ?>"</strong>. Try different keywords or check your spelling.</div>
     </div>
-    <?php else:
-        // Group results by type
-        $grouped = [];
-        foreach ($results as $r) {
-            $grouped[$r['type']][] = $r;
-        }
-        foreach ($grouped as $type => $items):
+
+<?php else:
+    // Group results by type
+    $grouped = [];
+    foreach ($results as $r) {
+        $grouped[$r['type']][] = $r;
+    }
+?>
+
+    <!-- Sidebar: Category Summary -->
+    <aside class="srp-sidebar">
+        <div class="srp-sidebar-title">Categories</div>
+        <?php foreach ($grouped as $type => $items):
             $icon  = $ICONS[$type]  ?? 'fas fa-circle';
             $color = $COLORS[$type] ?? '#64748b';
-    ?>
-    <div class="srp-group">
-        <div class="srp-group-title">
-            <i class="<?= $icon ?>" style="background:<?= $color ?>;"></i>
-            <?= htmlspecialchars($type) ?>s
-            <span class="srp-count"><?= count($items) ?></span>
-        </div>
-        <?php foreach ($items as $r): ?>
-        <a class="srp-item" href="<?= htmlspecialchars($r['link']) ?>">
-            <div class="srp-item-icon" style="background:<?= $color ?>;">
-                <i class="<?= $icon ?>"></i>
-            </div>
-            <div class="srp-item-body">
-                <div class="srp-item-title"><?= htmlspecialchars($r['title']) ?></div>
-                <div class="srp-item-sub"><?= htmlspecialchars($r['subtitle']) ?></div>
-            </div>
-            <i class="fas fa-chevron-right"></i>
+            $anchor = 'grp-' . preg_replace('/[^a-z0-9]/', '-', strtolower($type));
+        ?>
+        <a class="srp-sidebar-stat" href="#<?= $anchor ?>">
+            <span class="srp-sidebar-stat-left">
+                <span class="srp-cat-icon" style="background:<?= $color ?>;">
+                    <i class="<?= $icon ?>"></i>
+                </span>
+                <span><?= htmlspecialchars($type) ?></span>
+            </span>
+            <span class="srp-sidebar-badge"><?= count($items) ?></span>
         </a>
         <?php endforeach; ?>
+        <hr class="srp-sidebar-divider">
+        <div class="srp-total-badge">
+            <strong><?= count($results) ?></strong>
+            Total Results
+        </div>
+    </aside>
+
+    <!-- Results -->
+    <div class="srp-results">
+        <?php foreach ($grouped as $type => $items):
+            $icon  = $ICONS[$type]  ?? 'fas fa-circle';
+            $color = $COLORS[$type] ?? '#64748b';
+            $anchor = 'grp-' . preg_replace('/[^a-z0-9]/', '-', strtolower($type));
+        ?>
+        <div class="srp-group" id="<?= $anchor ?>">
+            <div class="srp-group-title">
+                <span class="srp-group-title-icon" style="background:<?= $color ?>;">
+                    <i class="<?= $icon ?>"></i>
+                </span>
+                <span class="srp-group-title-text"><?= htmlspecialchars($type) ?></span>
+                <span class="srp-count"><?= count($items) ?></span>
+            </div>
+            <?php foreach ($items as $r): ?>
+            <a class="srp-item" href="<?= htmlspecialchars($r['link']) ?>">
+                <div class="srp-item-icon" style="background:<?= $color ?>;">
+                    <i class="<?= $icon ?>"></i>
+                </div>
+                <div class="srp-item-body">
+                    <div class="srp-item-title"><?= htmlspecialchars($r['title']) ?></div>
+                    <div class="srp-item-sub"><?= htmlspecialchars($r['subtitle']) ?></div>
+                </div>
+                <i class="fas fa-chevron-right srp-item-arrow"></i>
+            </a>
+            <?php endforeach; ?>
+        </div>
+        <?php endforeach; ?>
     </div>
-    <?php endforeach; endif; ?>
-</div>
+
+<?php endif; ?>
+
+</div><!-- /.srp-body -->
+</div><!-- /.srp-page -->
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

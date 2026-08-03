@@ -384,6 +384,7 @@ $pending_purchase_orders = adm_table_exists($pdo, 'purchase_orders')
            AND (
                 LOWER(COALESCE(status, '')) IN ('pending', 'pending approval', 'pending admin validation')
                 OR (admin_finalized = 0 AND LOWER(COALESCE(status, '')) NOT IN ('draft', 'rejected', 'cancelled', 'received'))
+                OR (stock_in_done = 0 AND LOWER(COALESCE(status, '')) = 'approved')
            )",
         $station_params
     )
@@ -394,7 +395,7 @@ $pending_fuel_purchase_orders = adm_table_exists($pdo, 'fuel_purchase_orders')
         $pdo,
         "SELECT COUNT(*) FROM fuel_purchase_orders
          WHERE {$station_sql}
-           AND LOWER(COALESCE(status, '')) IN ('pending', 'pending approval', 'pending admin validation')",
+           AND LOWER(COALESCE(status, '')) IN ('pending', 'pending approval', 'pending admin validation', 'approved')",
         $station_params
     )
     : 0;
@@ -403,7 +404,15 @@ $pending_price_requests = adm_table_exists($pdo, 'pending_price_approvals')
     ? (int) adm_value($pdo, "SELECT COUNT(*) FROM pending_price_approvals WHERE {$station_sql} AND LOWER(status) = 'pending'", $station_params)
     : 0;
 
-$pending_inventory_approvals = $pending_purchase_orders + $pending_fuel_purchase_orders;
+$pending_stock_adjustments = adm_table_exists($pdo, 'merchandise_adjustments')
+    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM merchandise_adjustments WHERE {$station_sql} AND LOWER(COALESCE(status,'pending')) = 'pending'", $station_params)
+    : 0;
+
+$pending_stock_requests = adm_table_exists($pdo, 'stock_requests')
+    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM stock_requests WHERE {$station_sql} AND LOWER(COALESCE(status,'')) IN ('purchase order generated','manager approved','approved')", $station_params)
+    : 0;
+
+$pending_inventory_approvals = $pending_purchase_orders + $pending_fuel_purchase_orders + $pending_stock_adjustments + $pending_stock_requests;
 $total_pending_approvals = $pending_user_accounts + $pending_inventory_approvals + $pending_price_requests;
 
 $fuel_total_count = 0;
@@ -804,16 +813,18 @@ $recent_user_activities = adm_table_exists($pdo, 'audit_logs')
     : [];
 
 $pending_inventory_adjustments = [];
+
+// 1. Merchandise Purchase Orders pending admin action
 if (adm_table_exists($pdo, 'purchase_orders')) {
     $pending_inventory_adjustments = array_merge($pending_inventory_adjustments, adm_rows(
         $pdo,
         "SELECT po.id,
                 po.po_number AS ref_no,
-                COALESCE(po.product_name, 'Merchandise Products') AS product,
+                COALESCE(po.product_name, 'Merchandise Purchase Order') AS product,
                 COALESCE(" . adm_user_name_expr('u') . ", 'Manager') AS requested_by,
                 po.status,
                 po.created_at,
-                'Merchandise' AS type,
+                'Merchandise PO' AS type,
                 'admin_procurement_reports.php?section=po' AS action_url
          FROM purchase_orders po
          LEFT JOIN users u ON u.id = po.created_by
@@ -821,12 +832,15 @@ if (adm_table_exists($pdo, 'purchase_orders')) {
            AND (
                 LOWER(COALESCE(po.status, '')) IN ('pending', 'pending approval', 'pending admin validation')
                 OR (po.admin_finalized = 0 AND LOWER(COALESCE(po.status, '')) NOT IN ('draft', 'rejected', 'cancelled', 'received'))
+                OR (po.stock_in_done = 0 AND LOWER(COALESCE(po.status, '')) IN ('approved'))
            )
          ORDER BY po.created_at DESC
          LIMIT 8",
         adm_station_params($station_id)
     ));
 }
+
+// 2. Fuel Purchase Orders pending admin action
 if (adm_table_exists($pdo, 'fuel_purchase_orders')) {
     $pending_inventory_adjustments = array_merge($pending_inventory_adjustments, adm_rows(
         $pdo,
@@ -836,23 +850,70 @@ if (adm_table_exists($pdo, 'fuel_purchase_orders')) {
                 COALESCE(" . adm_user_name_expr('u') . ", 'Manager') AS requested_by,
                 fpo.status,
                 fpo.created_at,
-                'Fuel' AS type,
+                'Fuel PO' AS type,
                 'admin_procurement_reports.php?section=po' AS action_url
          FROM fuel_purchase_orders fpo
          LEFT JOIN fuel_types ft ON ft.id = fpo.fuel_type_id
          LEFT JOIN users u ON u.id = fpo.created_by
          WHERE " . adm_station_clause($station_id, 'fpo') . "
-           AND LOWER(COALESCE(fpo.status, '')) IN ('pending', 'pending approval', 'pending admin validation')
+           AND LOWER(COALESCE(fpo.status, '')) IN ('pending', 'pending approval', 'pending admin validation', 'approved')
          ORDER BY fpo.created_at DESC
          LIMIT 8",
         adm_station_params($station_id)
     ));
 }
-adm_sort_created_desc($pending_inventory_adjustments);
-$pending_inventory_adjustments = array_slice($pending_inventory_adjustments, 0, 8);
 
-$pending_customers = adm_table_exists($pdo, 'customer_requests')
-    ? adm_rows(
+// 3. Merchandise stock adjustments pending approval
+if (adm_table_exists($pdo, 'merchandise_adjustments')) {
+    $pending_inventory_adjustments = array_merge($pending_inventory_adjustments, adm_rows(
+        $pdo,
+        "SELECT ma.id,
+                COALESCE(ma.sku, CONCAT('ADJ-', ma.id)) AS ref_no,
+                ma.product_name AS product,
+                COALESCE(" . adm_user_name_expr('u') . ", 'Staff') AS requested_by,
+                ma.status,
+                ma.created_at,
+                'Stock Adjustment' AS type,
+                'admin_inventory_adjustments.php' AS action_url
+         FROM merchandise_adjustments ma
+         LEFT JOIN users u ON u.id = ma.requested_by
+         WHERE " . adm_station_clause($station_id, 'ma') . "
+           AND LOWER(COALESCE(ma.status, 'pending')) = 'pending'
+         ORDER BY ma.created_at DESC
+         LIMIT 8",
+        adm_station_params($station_id)
+    ));
+}
+
+// 4. Stock requests with status 'Purchase Order Generated' (waiting admin finalization)
+if (adm_table_exists($pdo, 'stock_requests')) {
+    $pending_inventory_adjustments = array_merge($pending_inventory_adjustments, adm_rows(
+        $pdo,
+        "SELECT sr.id,
+                COALESCE(sr.request_no, CONCAT('PR-', sr.id)) AS ref_no,
+                sr.item_name AS product,
+                COALESCE(" . adm_user_name_expr('u') . ", 'Staff') AS requested_by,
+                sr.status,
+                sr.created_at,
+                'Stock Request' AS type,
+                'admin_procurement_reports.php' AS action_url
+         FROM stock_requests sr
+         LEFT JOIN users u ON u.id = sr.staff_id
+         WHERE " . adm_station_clause($station_id, 'sr') . "
+           AND LOWER(COALESCE(sr.status, '')) IN ('purchase order generated', 'manager approved', 'approved')
+         ORDER BY sr.created_at DESC
+         LIMIT 8",
+        adm_station_params($station_id)
+    ));
+}
+
+adm_sort_created_desc($pending_inventory_adjustments);
+$pending_inventory_adjustments = array_slice($pending_inventory_adjustments, 0, 10);
+
+// Pending customers: merge from customer_requests AND customers table
+$pending_customers = [];
+if (adm_table_exists($pdo, 'customer_requests')) {
+    $pending_customers = array_merge($pending_customers, adm_rows(
         $pdo,
         "SELECT cr.id,
                 TRIM(CONCAT(COALESCE(cr.first_name, ''), ' ', COALESCE(cr.middle_name, ''), ' ', COALESCE(cr.last_name, ''))) AS customer,
@@ -863,11 +924,36 @@ $pending_customers = adm_table_exists($pdo, 'customer_requests')
          FROM customer_requests cr
          LEFT JOIN users u ON u.id = cr.requested_by
          WHERE " . adm_station_clause($station_id, 'cr') . "
+           AND LOWER(COALESCE(cr.status, 'pending')) NOT IN ('rejected', 'cancelled')
          ORDER BY cr.created_at DESC
          LIMIT 8",
         adm_station_params($station_id)
-    )
-    : [];
+    ));
+}
+if (adm_table_exists($pdo, 'customers')) {
+    $pending_customers = array_merge($pending_customers, adm_rows(
+        $pdo,
+        "SELECT c.id,
+                COALESCE(NULLIF(TRIM(c.name), ''), 'Unnamed Customer') AS customer,
+                COALESCE(NULLIF(c.contact_number, ''), NULLIF(c.phone, ''), 'N/A') AS contact,
+                COALESCE(" . adm_user_name_expr('u') . ", 'Staff') AS requested_by,
+                COALESCE(c.verification_status, c.mgr_status, 'Pending') AS status,
+                c.created_at
+         FROM customers c
+         LEFT JOIN users u ON u.id = c.registered_by
+         WHERE " . adm_station_clause($station_id, 'c') . "
+           AND (
+               LOWER(COALESCE(c.verification_status, '')) = 'pending'
+               OR LOWER(COALESCE(c.mgr_status, '')) = 'pending'
+           )
+           AND LOWER(COALESCE(c.status, 'active')) <> 'inactive'
+         ORDER BY c.created_at DESC
+         LIMIT 8",
+        adm_station_params($station_id)
+    ));
+}
+adm_sort_created_desc($pending_customers);
+$pending_customers = array_slice($pending_customers, 0, 8);
 
 $recent_deliveries = [];
 if (adm_table_exists($pdo, 'deliveries_oversight')) {
@@ -1246,11 +1332,18 @@ include __DIR__ . '/../partials/header.php';
         gap: 14px;
         padding: 18px;
         overflow: hidden;
-        background: #ffffff;
+        background: #ffffff !important;
         border: 1px solid #dbe3ee;
         border-radius: 8px;
         box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
         transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    /* Ensure all text in mgr-cards stays readable regardless of data-tone */
+    .mgr-card .mgr-card-label,
+    .mgr-card .mgr-card-value,
+    .mgr-card .mgr-card-sub {
+        background: transparent !important;
     }
 
     .mgr-card:hover {
@@ -1567,8 +1660,8 @@ include __DIR__ . '/../partials/header.php';
         min-height: 90px;
         border: 1px solid #e2e8f0;
         border-radius: 12px;
-        background: #ffffff;
-        color: #334155;
+        background: #ffffff !important;
+        color: #334155 !important;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -1584,6 +1677,17 @@ include __DIR__ . '/../partials/header.php';
         cursor: pointer;
         text-decoration: none;
         box-sizing: border-box;
+        appearance: none;
+        -webkit-appearance: none;
+        font-family: inherit;
+        outline: none;
+    }
+
+    /* Explicit override for <button> element variant */
+    button.quick-action {
+        background: #ffffff !important;
+        color: #334155 !important;
+        border: 1px solid #e2e8f0 !important;
     }
 
     .quick-action:hover {
@@ -1626,6 +1730,7 @@ include __DIR__ . '/../partials/header.php';
 
     .quick-form {
         margin: 0;
+        display: contents; /* Let the button fill the grid cell like anchor cards */
     }
 
     .system-grid {

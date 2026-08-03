@@ -235,17 +235,28 @@ include __DIR__ . '/../partials/header.php';
     --border-color: #e2e8f0;
 }
 
+body[data-page="super_admin_dashboard"] .main {
+    padding: 0 0 60px 0 !important;
+    background: #f6f8fb;
+    box-sizing: border-box;
+}
+
 .dev-dashboard {
-    padding: 0;
-    background: #f1f5f9;
-    min-height: 100vh;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 20px 24px 72px;
+    min-height: calc(100vh - 110px);
+    background: #f6f8fb;
+    color: #0f172a;
+    box-sizing: border-box;
 }
 
 .dev-header {
     background: transparent;
     color: var(--dark-slate);
-    padding: 0 0 18px 0;
-    margin-top: -12px;
+    padding: 0 0 16px 0;
+    margin-bottom: 20px;
     box-shadow: none;
     position: relative;
     border-bottom: 2px solid var(--border-color);
@@ -253,21 +264,21 @@ include __DIR__ . '/../partials/header.php';
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    gap: 16px;
+    gap: 15px;
 }
 
 .dev-header-left {
     flex: 1;
-    }
+}
 
 .dev-header-left h1 {
-    font-size: 1.875rem;
+    font-size: 24px;
     font-weight: 800;
-    margin: 0 0 6px 0;
+    margin: 0 0 4px 0;
     display: flex;
     align-items: center;
     gap: 12px;
-    color: var(--petron-blue);
+    color: #002f70;
 }
 
 .dev-header-left p {

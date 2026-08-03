@@ -217,7 +217,7 @@ include __DIR__ . '/../partials/header.php';?>
 #tb_station_combo_card, #tb_station_combo_card .card-body { overflow:visible !important; }
 
 .db-page { padding: 0 4px 40px; }
-.db-page-head { margin-bottom: 20px; padding-top: 0 !important; margin-top: -12px !important; }
+.db-page-head { margin-bottom: 20px; padding-top: 10px !important; margin-top: 0 !important; }
 .db-page-head h1 { font-size: 22px; font-weight: 700; color: var(--petron-blue); margin: 0; text-transform: uppercase; }
 .db-page-head .sub { font-size: 13px; color: #666; margin-top: 4px; }
 

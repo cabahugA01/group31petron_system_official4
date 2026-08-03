@@ -1446,7 +1446,7 @@ body .main,
                         $next_pr_to_gen = 'PR-' . date('Y') . '-' . str_pad($next_pr_num, 4, '0', STR_PAD_LEFT);
                         $final_pr_no = !empty($group['original_pr']) ? $group['original_pr'] : $next_pr_to_gen;
                     ?>
-                    <tr id="row_<?= $safe_key ?>" class="pr-clickable-row" onclick="toggleInlinePr('<?= $safe_key ?>')" style="cursor: pointer; border-bottom: 1px solid #f1f5f9; transition: background 0.12s;">
+                    <tr id="row_<?= $safe_key ?>" class="pr-clickable-row" data-item-ids="<?= htmlspecialchars($item_ids_str) ?>" onclick="toggleInlinePr('<?= $safe_key ?>')" style="cursor: pointer; border-bottom: 1px solid #f1f5f9; transition: background 0.12s;">
                         <td style="padding: 13px 14px; text-align: center;">
                             <span class="pr-expand-icon"><i class="fas fa-chevron-right"></i></span>
                         </td>
@@ -1657,7 +1657,7 @@ body .main,
                         $next_fpr_to_gen = 'PR-' . date('Y') . '-' . str_pad($next_fpr_num, 4, '0', STR_PAD_LEFT);
                         $final_fpr_no = !empty($group['original_pr']) ? $group['original_pr'] : $next_fpr_to_gen;
                     ?>
-                    <tr id="row_<?= $safe_key ?>" class="pr-clickable-row" onclick="toggleInlinePr('<?= $safe_key ?>')" style="cursor: pointer; border-bottom: 1px solid #f1f5f9; transition: background 0.12s;">
+                    <tr id="row_<?= $safe_key ?>" class="pr-clickable-row" data-item-ids="<?= htmlspecialchars($item_ids_str) ?>" onclick="toggleInlinePr('<?= $safe_key ?>')" style="cursor: pointer; border-bottom: 1px solid #f1f5f9; transition: background 0.12s;">
                         <td style="padding: 13px 14px; text-align: center;">
                             <span class="pr-expand-icon"><i class="fas fa-chevron-right"></i></span>
                         </td>
@@ -2147,8 +2147,33 @@ function switchPendingSubTab(type) {
 document.addEventListener('DOMContentLoaded', function() {
     var urlParams = new URLSearchParams(window.location.search);
     var tabParam = urlParams.get('tab');
-    var savedTab = tabParam || localStorage.getItem('pr_review_active_subtab') || 'merch';
+    var subtabParam = urlParams.get('subtab');
+    var highlightId = urlParams.get('highlight');
+    var actionParam = urlParams.get('action');
+
+    // Determine subtab: subtab param overrides saved
+    var savedTab = subtabParam || localStorage.getItem('pr_review_active_subtab') || 'merch';
     switchPendingSubTab(savedTab);
+
+    // Auto-open and scroll to highlighted request from dashboard
+    if (highlightId) {
+        setTimeout(function() {
+            var rows = document.querySelectorAll('.pr-clickable-row[data-item-ids]');
+            for (var i = 0; i < rows.length; i++) {
+                var ids = (rows[i].getAttribute('data-item-ids') || '').split(',').map(function(x){ return x.trim(); });
+                if (ids.indexOf(highlightId) !== -1) {
+                    var key = rows[i].id.replace('row_', '');
+                    toggleInlinePr(key);
+                    rows[i].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // Flash highlight
+                    rows[i].style.transition = 'background 0.3s';
+                    rows[i].style.background = '#dbeafe';
+                    setTimeout(function(r){ r.style.background = ''; }, 2000, rows[i]);
+                    break;
+                }
+            }
+        }, 300);
+    }
 });
 
 // Inline accordion toggle

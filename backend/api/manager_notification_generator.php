@@ -159,21 +159,21 @@ try {
             $generated += mgr_push($pdo, $user_id, 'warning', 'job_order', 'high',
                 "Job Order {$jo_num} Awaiting Validation",
                 "Job Order {$jo_num} ({$svc}) for {$cust} is awaiting your validation.",
-                $key, 'manager_job_orders.php'
+                $key, 'manager_validated_transactions.php?type=job_order'
             );
         } elseif (in_array(strtolower($status), ['completed', 'done', 'finished'])) {
             $key = 'mgr_jo_completed_' . $r['id'] . '_' . date('Ymd');
             $generated += mgr_push($pdo, $user_id, 'success', 'job_order', 'low',
                 "Job Order {$jo_num} Completed",
                 "Staff {$staff} completed Job Order {$jo_num} ({$svc}) for {$cust}.",
-                $key, 'manager_job_orders.php'
+                $key, 'manager_validated_transactions.php?type=job_order'
             );
         } elseif (in_array(strtolower($status), ['cancelled', 'rejected', 'canceled'])) {
             $key = 'mgr_jo_cancelled_' . $r['id'];
             $generated += mgr_push($pdo, $user_id, 'error', 'job_order', 'medium',
                 "Job Order {$jo_num} {$status}",
                 "Job Order {$jo_num} for {$cust} was {$status}.",
-                $key, 'manager_job_orders.php'
+                $key, 'manager_validated_transactions.php?type=job_order'
             );
         }
     }

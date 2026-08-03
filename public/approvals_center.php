@@ -540,7 +540,7 @@ include __DIR__ . '/../partials/header.php';
         <p style="color: #155724; background: #d4edda; padding: 10px; border-radius: 4px;">
             <?php echo $pending_jobs; ?> job order<?php echo $pending_jobs > 1 ? 's' : ''; ?> awaiting your review
         </p>
-        <p><a href="manager_job_orders.php?status=Pending+Validation" class="btn primary"><i class="fas fa-external-link-alt"></i> Go to Job Orders</a></p>
+        <p><a href="manager_validated_transactions.php?type=job_order&status=Pending" class="btn primary"><i class="fas fa-external-link-alt"></i> Go to Job Orders</a></p>
     <?php else: ?>
         <p class="muted">No pending job orders</p>
     <?php endif; ?>

@@ -373,8 +373,8 @@ function dashboard_signature_query(PDO $pdo, string $key, string $from_where_sql
 }
 
 function dashboard_change_version(PDO $pdo, int $station_id, int $user_id, string $date_from, string $date_to, array $shift_periods): string {
-    $week_start = date('Y-m-d', strtotime('monday this week', strtotime($date_from)));
-    $week_end = date('Y-m-d', strtotime('sunday this week', strtotime($date_from)));
+    $week_end = $date_to;
+    $week_start = date('Y-m-d', strtotime('-6 days', strtotime($week_end)));
     $current_shift = dashboard_current_shift($shift_periods);
     $fuel_dt = dashboard_datetime_expression($pdo, 'fuel_transactions', '', ['transaction_date', 'created_at']);
     $merch_dt = dashboard_datetime_expression($pdo, 'merchandise_transactions', '', ['created_at', 'transaction_date']);
@@ -559,6 +559,7 @@ if ($date_from > $date_to) {
     [$date_from, $date_to] = [$date_to, $date_from];
 }
 
+$is_today = ($date_from === date('Y-m-d') && $date_to === date('Y-m-d'));
 $date_range_label = dashboard_range_label($date_from, $date_to);
 $dashboard_version = dashboard_change_version($pdo, $station_id, $user_id, $date_from, $date_to, $shift_periods);
 
@@ -621,25 +622,48 @@ try {
     $stmt->execute([$station_id, $date_from, $date_to]);
     $fuel_sales = (float)$stmt->fetchColumn();
 } catch (Exception $e) {}
+
 try {
-    $stmt = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM merchandise_transactions WHERE station_id=? AND DATE({$merch_dt_expr}) BETWEEN ? AND ?");
+    if ($mt_service_where !== '0=1') {
+        $stmt = $pdo->prepare("SELECT COALESCE(SUM(mt.total_amount),0) FROM merchandise_transactions mt WHERE mt.station_id=? AND DATE({$merch_dt_expr_mt}) BETWEEN ? AND ? AND NOT ({$mt_service_where})");
+    } else {
+        $stmt = $pdo->prepare("SELECT COALESCE(SUM(mt.total_amount),0) FROM merchandise_transactions mt WHERE mt.station_id=? AND DATE({$merch_dt_expr_mt}) BETWEEN ? AND ?");
+    }
     $stmt->execute([$station_id, $date_from, $date_to]);
     $merch_sales = (float)$stmt->fetchColumn();
 } catch (Exception $e) {}
+
 try {
-    $stmt = $pdo->prepare("SELECT COALESCE(SUM(total_cost),0) FROM job_orders WHERE station_id=? AND DATE({$job_dt_expr}) BETWEEN ? AND ? AND status IN ('Completed','Verified','finalized')");
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(COALESCE(total_cost, estimated_cost, 0)),0) FROM job_orders WHERE station_id=? AND DATE({$job_dt_expr}) BETWEEN ? AND ? AND status IN ('Completed','Verified','finalized','Released')");
     $stmt->execute([$station_id, $date_from, $date_to]);
-    $service_sales = (float)$stmt->fetchColumn();
+    $service_sales += (float)$stmt->fetchColumn();
 } catch (Exception $e) {}
+
+if ($mt_service_where !== '0=1') {
+    try {
+        $stmt = $pdo->prepare("SELECT COALESCE(SUM(mt.total_amount),0) FROM merchandise_transactions mt WHERE mt.station_id=? AND DATE({$merch_dt_expr_mt}) BETWEEN ? AND ? AND {$mt_service_where} AND (mt.job_order_db_id IS NULL OR mt.job_order_db_id NOT IN (SELECT id FROM job_orders WHERE station_id=? AND DATE({$job_dt_expr}) BETWEEN ? AND ?))");
+        $stmt->execute([$station_id, $date_from, $date_to, $station_id, $date_from, $date_to]);
+        $service_sales += (float)$stmt->fetchColumn();
+    } catch (Exception $e) {}
+}
+
 $todays_sales = $fuel_sales + $merch_sales + $service_sales;
 
-// 2b. Additional requested Staff Dashboard Metrics
+// 2b. Additional requested Staff Dashboard Metrics: Completed Job Orders
 $completed_jo_today_count = 0;
 try {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND DATE({$job_dt_expr}) = CURDATE() AND LOWER(TRIM(status)) IN ('completed','verified','released','finalized')");
-    $stmt->execute([$station_id]);
-    $completed_jo_today_count = (int)$stmt->fetchColumn();
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND DATE({$job_dt_expr}) BETWEEN ? AND ? AND LOWER(TRIM(COALESCE(status, ''))) IN ('completed','verified','released','finalized')");
+    $stmt->execute([$station_id, $date_from, $date_to]);
+    $completed_jo_today_count += (int)$stmt->fetchColumn();
 } catch (Exception $e) {}
+
+if ($mt_service_where !== '0=1') {
+    try {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions mt WHERE mt.station_id=? AND DATE({$merch_dt_expr_mt}) BETWEEN ? AND ? AND {$mt_service_where} AND (LOWER(TRIM(COALESCE(mt.workflow_status,''))) IN ('completed','verified','released','finalized') OR LOWER(TRIM(COALESCE(mt.validation_status,''))) IN ('official','validated','completed','verified') OR LOWER(TRIM(COALESCE(mt.payment_status,''))) IN ('paid','completed')) AND (mt.job_order_db_id IS NULL OR mt.job_order_db_id NOT IN (SELECT id FROM job_orders WHERE station_id=? AND DATE({$job_dt_expr}) BETWEEN ? AND ?))");
+        $stmt->execute([$station_id, $date_from, $date_to, $station_id, $date_from, $date_to]);
+        $completed_jo_today_count += (int)$stmt->fetchColumn();
+    } catch (Exception $e) {}
+}
 
 // Payment Methods Breakdown Today
 $payment_methods_today_map = [
@@ -1004,8 +1028,13 @@ $status_chart_labels = array_keys(array_filter($canonical_statuses, static fn($c
 $status_chart_data = array_values(array_filter($canonical_statuses, static fn($count) => $count > 0));
 
 // Chart 5: Weekly Transaction Trend (Line Chart)
-$monday = date('Y-m-d', strtotime('monday this week', strtotime($date_from)));
-$sunday = date('Y-m-d', strtotime('sunday this week', strtotime($date_from)));
+$week_end = $date_to;
+if ($date_from !== $date_to && (strtotime($date_to) - strtotime($date_from)) > 0 && (strtotime($date_to) - strtotime($date_from)) <= 6 * 86400) {
+    $week_start = $date_from;
+} else {
+    $week_start = date('Y-m-d', strtotime('-6 days', strtotime($week_end)));
+}
+
 $raw_weekly = dashboard_fetch_all($pdo, "
     SELECT DAYNAME(dt) AS day_name, COUNT(*) AS count FROM (
         SELECT DATE({$fuel_dt_expr}) AS dt FROM fuel_transactions
@@ -1020,24 +1049,24 @@ $raw_weekly = dashboard_fetch_all($pdo, "
     GROUP BY day_name
 ",
 [
-    $station_id, $monday, $sunday,
-    $station_id, $monday, $sunday,
-    $station_id, $monday, $sunday
+    $station_id, $week_start, $week_end,
+    $station_id, $week_start, $week_end,
+    $station_id, $week_start, $week_end
 ]);
 
-$weekly_days = [
-    'Monday' => 0,
-    'Tuesday' => 0,
-    'Wednesday' => 0,
-    'Thursday' => 0,
-    'Friday' => 0,
-    'Saturday' => 0,
-    'Sunday' => 0
-];
+$weekly_days = [];
+$curr_ts = strtotime($week_start);
+$end_ts = strtotime($week_end);
+while ($curr_ts <= $end_ts) {
+    $d_name = date('l', $curr_ts);
+    $weekly_days[$d_name] = 0;
+    $curr_ts = strtotime('+1 day', $curr_ts);
+}
+
 foreach ($raw_weekly as $row) {
     $day = $row['day_name'];
     if (isset($weekly_days[$day])) {
-        $weekly_days[$day] = (int)$row['count'];
+        $weekly_days[$day] += (int)$row['count'];
     }
 }
 $weekly_chart_labels = array_keys($weekly_days);
@@ -1794,7 +1823,7 @@ include __DIR__ . '/../partials/header.php';
     <!-- 1. Today's Transactions -->
     <div class="summary-metric-card">
         <div class="metric-details">
-            <h4>Today's Transactions</h4>
+            <h4><?= $is_today ? "Today's Transactions" : "Transactions" ?></h4>
             <div class="metric-value"><?= number_format($todays_transactions) ?></div>
         </div>
         <div class="metric-icon-box" style="background: #eff6ff; color: #002F70;">
@@ -1814,7 +1843,7 @@ include __DIR__ . '/../partials/header.php';
     <!-- 3. Completed Job Orders Today -->
     <div class="summary-metric-card">
         <div class="metric-details">
-            <h4>Completed Job Orders Today</h4>
+            <h4><?= $is_today ? "Completed Job Orders Today" : "Completed Job Orders" ?></h4>
             <div class="metric-value"><?= number_format($completed_jo_today_count) ?></div>
         </div>
         <div class="metric-icon-box" style="background: #f0fdf4; color: #16a34a;">
@@ -1824,7 +1853,7 @@ include __DIR__ . '/../partials/header.php';
     <!-- 4. Merchandise Sales Today -->
     <div class="summary-metric-card">
         <div class="metric-details">
-            <h4>Merchandise Sales Today</h4>
+            <h4><?= $is_today ? "Merchandise Sales Today" : "Merchandise Sales" ?></h4>
             <div class="metric-value">&#8369;<?= number_format($merch_sales, 2) ?></div>
         </div>
         <div class="metric-icon-box" style="background: #ffedd5; color: #ea580c;">
@@ -1834,7 +1863,7 @@ include __DIR__ . '/../partials/header.php';
     <!-- 5. Service Sales Today -->
     <div class="summary-metric-card">
         <div class="metric-details">
-            <h4>Service Sales Today</h4>
+            <h4><?= $is_today ? "Service Sales Today" : "Service Sales" ?></h4>
             <div class="metric-value">&#8369;<?= number_format($service_sales, 2) ?></div>
         </div>
         <div class="metric-icon-box" style="background: #ecfeff; color: #0891b2;">
@@ -1862,7 +1891,7 @@ include __DIR__ . '/../partials/header.php';
     <!-- Fuel Sold Today (Liters) -->
     <div class="summary-metric-card">
         <div class="metric-details">
-            <h4>Fuel Sold Today (Liters)</h4>
+            <h4><?= $is_today ? "Fuel Sold Today (Liters)" : "Fuel Sold (Liters)" ?></h4>
             <div class="metric-value"><?= number_format($fuel_sold_liters, 2) ?> L</div>
         </div>
         <div class="metric-icon-box" style="background: #fef2f2; color: #dc2626;">

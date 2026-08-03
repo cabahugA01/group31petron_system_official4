@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'system_settings';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -154,7 +154,8 @@ aside.sidebar,
 /* -- Panel Header ------------------------------------------------------------ */
 .ss-panel-header {
     margin-bottom: 24px;
-    margin-top: -12px !important;
+    margin-top: 0 !important;
+    padding-top: 10px !important;
 }
 
 .ss-panel-header h1 {

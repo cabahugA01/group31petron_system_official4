@@ -357,15 +357,26 @@ $pending_encoded_deliveries = mgr_table_exists($pdo, 'deliveries_oversight')
 
 $pending_deliveries_count = $pending_po_deliveries + $pending_encoded_deliveries;
 
-$active_services_count = mgr_table_exists($pdo, 'job_orders')
-    ? (int) mgr_value(
+$active_services_count = 0;
+if (mgr_table_exists($pdo, 'job_orders')) {
+    $active_services_count += (int) mgr_value(
         $pdo,
         "SELECT COUNT(*) FROM job_orders
          WHERE {$station_sql}
-           AND LOWER(COALESCE(status, 'pending')) NOT IN ('cancelled', 'rejected', 'finalized')",
+           AND LOWER(COALESCE(status, 'pending')) NOT IN ('cancelled', 'rejected')",
         $station_params
-    )
-    : 0;
+    );
+}
+if (mgr_table_exists($pdo, 'merchandise_transactions')) {
+    $active_services_count += (int) mgr_value(
+        $pdo,
+        "SELECT COUNT(*) FROM merchandise_transactions
+         WHERE {$station_sql}
+           AND transaction_type IN ('job_order', 'combined')
+           AND LOWER(COALESCE(workflow_status, validation_status, 'pending')) NOT IN ('cancelled', 'rejected')",
+        $station_params
+    );
+}
 
 $staff_shift_counts = ['Shift 1' => 0, 'Shift 2' => 0];
 if (mgr_table_exists($pdo, 'labor_sessions')) {
@@ -394,12 +405,20 @@ if (mgr_table_exists($pdo, 'labor_sessions')) {
 }
 $active_staff_total = array_sum($staff_shift_counts);
 
+// Service Queue Status Counts (from job_orders and merchandise_transactions)
 $service_status_counts = ['Pending' => 0, 'In Progress' => 0, 'Ready' => 0, 'Released' => 0];
 if (mgr_table_exists($pdo, 'job_orders')) {
-    $service_status_counts['Pending'] = (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND LOWER(status) IN ('pending', 'reviewed')", $station_params);
-    $service_status_counts['In Progress'] = (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND LOWER(status) IN ('in progress', 'awaiting parts')", $station_params);
-    $service_status_counts['Ready'] = (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND LOWER(status) IN ('completed', 'verified')", $station_params);
-    $service_status_counts['Released'] = (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND LOWER(status) IN ('released', 'finalized')", $station_params);
+    $service_status_counts['Pending']     += (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND LOWER(COALESCE(status,'pending')) IN ('pending', 'reviewed', 'pending validation')", $station_params);
+    $service_status_counts['In Progress'] += (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND LOWER(COALESCE(status,'pending')) IN ('in progress', 'awaiting parts')", $station_params);
+    $service_status_counts['Ready']       += (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND LOWER(COALESCE(status,'pending')) IN ('completed', 'verified', 'ready')", $station_params);
+    $service_status_counts['Released']    += (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND LOWER(COALESCE(status,'pending')) IN ('released', 'finalized', 'approved')", $station_params);
+}
+if (mgr_table_exists($pdo, 'merchandise_transactions')) {
+    $mt_cond = "{$station_sql} AND transaction_type IN ('job_order', 'combined')";
+    $service_status_counts['Pending']     += (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$mt_cond} AND LOWER(COALESCE(workflow_status, validation_status, 'pending')) IN ('pending', 'reviewed', 'pending validation')", $station_params);
+    $service_status_counts['In Progress'] += (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$mt_cond} AND LOWER(COALESCE(workflow_status, validation_status, 'pending')) IN ('in progress', 'awaiting parts')", $station_params);
+    $service_status_counts['Ready']       += (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$mt_cond} AND LOWER(COALESCE(workflow_status, validation_status, 'pending')) IN ('completed', 'verified', 'ready')", $station_params);
+    $service_status_counts['Released']    += (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$mt_cond} AND LOWER(COALESCE(workflow_status, validation_status, 'pending')) IN ('released', 'finalized', 'approved')", $station_params);
 }
 
 // Chart data.
@@ -848,33 +867,66 @@ usort($low_inventory_rows, function ($a, $b) {
 });
 $low_inventory_rows = array_slice($low_inventory_rows, 0, 12);
 
-$service_queue_rows = mgr_table_exists($pdo, 'job_orders')
-    ? mgr_rows(
+// Service Queue Rows (from job_orders and merchandise_transactions)
+$service_queue_rows = [];
+if (mgr_table_exists($pdo, 'job_orders')) {
+    $rows_jo = mgr_rows(
         $pdo,
-        "SELECT id,
-                COALESCE(job_order_number, job_order_id, CONCAT('JO-', id)) AS service_no,
-                COALESCE(NULLIF(customer_name, ''), 'Walk-in') AS customer_name,
-                service_type,
-                status,
-                created_at
-         FROM job_orders
-         WHERE {$station_sql}
-           AND LOWER(COALESCE(status, 'pending')) NOT IN ('cancelled', 'rejected', 'finalized')
-         ORDER BY
-           CASE LOWER(status)
-             WHEN 'pending' THEN 1
-             WHEN 'reviewed' THEN 2
-             WHEN 'in progress' THEN 3
-             WHEN 'awaiting parts' THEN 4
-             WHEN 'completed' THEN 5
-             WHEN 'verified' THEN 6
-             ELSE 9
-           END,
-           created_at DESC
-         LIMIT 10",
+        "SELECT jo.id,
+                COALESCE(NULLIF(jo.job_order_number,''), jo.job_order_id, CONCAT('#', jo.id)) AS service_no,
+                COALESCE(NULLIF(jo.customer_name,''), c.name, 'Walk-in') AS customer_name,
+                COALESCE(NULLIF(jo.service_type,''), 'Service') AS service_type,
+                COALESCE(NULLIF(jo.vehicle_plate,''), '—') AS vehicle_plate,
+                COALESCE(NULLIF(jo.workflow_status,''), jo.status, jo.validation_status, 'Pending') AS status,
+                jo.created_at
+         FROM job_orders jo
+         LEFT JOIN customers c ON c.id = jo.customer_id
+         WHERE jo.{$station_sql}
+           AND LOWER(COALESCE(jo.status,'pending')) NOT IN ('cancelled','rejected')
+         ORDER BY jo.created_at DESC",
         $station_params
-    )
-    : [];
+    );
+    $service_queue_rows = array_merge($service_queue_rows, $rows_jo);
+}
+if (mgr_table_exists($pdo, 'merchandise_transactions')) {
+    $has_plate = mgr_column_exists($pdo, 'merchandise_transactions', 'job_order_vehicle_plate');
+    $plate_col = $has_plate ? "COALESCE(NULLIF(mt.job_order_vehicle_plate,''), '—')" : "'—'";
+
+    $rows_mt = mgr_rows(
+        $pdo,
+        "SELECT mt.id,
+                CONCAT('#', mt.id) AS service_no,
+                COALESCE(NULLIF(TRIM(mt.customer_name),''), 'Walk-in') AS customer_name,
+                COALESCE(NULLIF(TRIM(mt.job_order_service),''), 'Service') AS service_type,
+                {$plate_col} AS vehicle_plate,
+                COALESCE(NULLIF(mt.workflow_status,''), NULLIF(mt.validation_status,''), 'Pending') AS status,
+                COALESCE(mt.transaction_date, mt.created_at) AS created_at
+         FROM merchandise_transactions mt
+         WHERE mt.{$station_sql}
+           AND mt.transaction_type IN ('job_order','combined')
+           AND LOWER(COALESCE(mt.workflow_status, mt.validation_status, 'pending')) NOT IN ('cancelled','rejected')
+         ORDER BY mt.created_at DESC",
+        $station_params
+    );
+    $service_queue_rows = array_merge($service_queue_rows, $rows_mt);
+}
+
+// Order Service Queue: Pending -> In Progress -> Ready / Completed -> Released, then created_at DESC
+usort($service_queue_rows, function ($a, $b) {
+    $priority = function ($status) {
+        $s = strtolower(trim((string)$status));
+        if (in_array($s, ['pending', 'reviewed', 'pending validation'])) return 1;
+        if (in_array($s, ['in progress', 'awaiting parts'])) return 2;
+        if (in_array($s, ['completed', 'verified', 'ready'])) return 3;
+        if (in_array($s, ['released', 'finalized', 'approved'])) return 4;
+        return 5;
+    };
+    $pA = $priority($a['status'] ?? '');
+    $pB = $priority($b['status'] ?? '');
+    if ($pA !== $pB) return $pA <=> $pB;
+    return strcmp((string)($b['created_at'] ?? ''), (string)($a['created_at'] ?? ''));
+});
+$service_queue_rows = array_slice($service_queue_rows, 0, 10);
 
 $calendar_rows = [];
 $today = date('Y-m-d');
@@ -1020,7 +1072,7 @@ $quick_actions = [
     ],
     [
         'label' => 'Service Transaction Review',
-        'href' => 'manager_job_orders.php?status=Pending%20Validation',
+        'href' => 'manager_validated_transactions.php?type=job_order&status=Pending',
         'icon' => 'fas fa-screwdriver-wrench',
         'class' => 'mgr-btn-amber',
         'badge' => $pending_service_validation,
@@ -1353,19 +1405,22 @@ include __DIR__ . '/../partials/header.php';
     }
 
     .mgr-actions-cell {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        align-items: center;
+        display: flex;
+        flex-direction: column;
         gap: 6px;
-        max-width: 320px;
+        align-items: stretch;
+        width: 100%;
+        max-width: 170px;
     }
 
     .mgr-actions-cell .mgr-btn {
         width: 100%;
         min-height: 32px;
-        padding: 7px 8px;
-        white-space: normal;
+        padding: 6px 12px;
+        white-space: nowrap;
         line-height: 1.15;
+        justify-content: center;
+        text-align: center;
     }
 
     .mgr-badge {
@@ -1867,19 +1922,23 @@ include __DIR__ . '/../partials/header.php';
                             <th>Action</th>
                         </tr>
                     </thead>
-                    <tbody>
-                    <?php foreach ($stock_request_rows as $row): ?>
-                        <tr>
+                    <?php foreach ($stock_request_rows as $row):
+                        $req_id   = (int)($row['id'] ?? 0);
+                        $req_type = strtolower($row['request_type'] ?? 'merchandise');
+                        $subtab   = $req_type === 'fuel' ? '&subtab=fuel' : '';
+                        $review_url = "manager_stock_request_review.php?tab=pending_requests{$subtab}&highlight={$req_id}";
+                    ?>
+                        <tr id="dash-req-<?= $req_id ?>">
                             <td><code><?= mgr_h($row['request_no']) ?></code><div class="mgr-panel-sub"><?= mgr_h($row['item_name']) ?> - <?= mgr_qty($row['requested_qty'], $row['request_type'] === 'Fuel' ? 2 : 0) ?><?= $row['request_type'] === 'Fuel' ? ' L' : '' ?></div></td>
                             <td><?= mgr_h($row['request_type']) ?></td>
                             <td><?= mgr_h($row['requested_by']) ?></td>
                             <td><span class="mgr-badge <?= mgr_badge_class($row['status']) ?>"><?= mgr_h(mgr_status_label($row['status'])) ?></span></td>
                             <td>
                                 <div class="mgr-actions-cell">
-                                    <a class="mgr-btn mgr-btn-gray" href="<?= mgr_h($row['action_url']) ?>"><i class="fas fa-eye"></i> Review</a>
-                                    <a class="mgr-btn mgr-btn-green" href="<?= mgr_h($row['action_url']) ?>"><i class="fas fa-check"></i> Approve</a>
-                                    <a class="mgr-btn mgr-btn-red" href="<?= mgr_h($row['action_url']) ?>"><i class="fas fa-xmark"></i> Reject</a>
-                                    <a class="mgr-btn mgr-btn-amber" href="<?= mgr_h($row['action_url']) ?>"><i class="fas fa-file-invoice"></i> Generate PO</a>
+                                    <a class="mgr-btn mgr-btn-gray" href="<?= mgr_h($review_url) ?>"><i class="fas fa-eye"></i> Review</a>
+                                    <a class="mgr-btn mgr-btn-green" href="<?= mgr_h($review_url) ?>&action=approve"><i class="fas fa-check"></i> Approve</a>
+                                    <a class="mgr-btn mgr-btn-red" href="<?= mgr_h($review_url) ?>&action=reject"><i class="fas fa-xmark"></i> Reject</a>
+                                    <a class="mgr-btn mgr-btn-amber" href="<?= mgr_h($review_url) ?>&action=generate_po"><i class="fas fa-file-invoice"></i> Generate PO</a>
                                 </div>
                             </td>
                         </tr>
@@ -2088,7 +2147,7 @@ include __DIR__ . '/../partials/header.php';
                     <div class="mgr-panel-title"><i class="fas fa-screwdriver-wrench"></i> Service Queue</div>
                     <div class="mgr-panel-sub">Pending, in progress, ready, and released job orders</div>
                 </div>
-                <a href="manager_job_orders.php" class="mgr-btn mgr-btn-blue"><i class="fas fa-clipboard-list"></i> Job Orders</a>
+                <a href="manager_validated_transactions.php?type=job_order" class="mgr-btn mgr-btn-blue"><i class="fas fa-clipboard-list"></i> Job Orders</a>
             </div>
             <div class="mgr-service-summary">
                 <?php foreach ($service_status_counts as $label => $count): ?>
@@ -2105,17 +2164,31 @@ include __DIR__ . '/../partials/header.php';
                             <tr>
                                 <th>Service No</th>
                                 <th>Customer</th>
+                                <th>Vehicle</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                        <?php foreach ($service_queue_rows as $row): ?>
+                        <?php foreach ($service_queue_rows as $row):
+                            // Map DB status to display label
+                            $svc_status = $row['status'] ?? '';
+                            $svc_label  = match(strtolower($svc_status)) {
+                                'finalized'      => 'Released',
+                                'reviewed'       => 'Pending',
+                                'awaiting parts' => 'Awaiting Parts',
+                                default          => $svc_status,
+                            };
+                        ?>
                             <tr>
-                                <td><code><?= mgr_h($row['service_no']) ?></code><div class="mgr-panel-sub"><?= mgr_h($row['service_type']) ?></div></td>
+                                <td>
+                                    <code><?= mgr_h($row['service_no']) ?></code>
+                                    <div class="mgr-panel-sub"><?= mgr_h($row['service_type']) ?></div>
+                                </td>
                                 <td><?= mgr_h($row['customer_name']) ?></td>
-                                <td><span class="mgr-badge <?= mgr_badge_class($row['status']) ?>"><?= mgr_h(mgr_status_label($row['status'])) ?></span></td>
-                                <td><a class="mgr-btn mgr-btn-gray" href="manager_job_orders.php"><i class="fas fa-eye"></i> View</a></td>
+                                <td><?= mgr_h($row['vehicle_plate']) ?></td>
+                                <td><span class="mgr-badge <?= mgr_badge_class($svc_status) ?>"><?= mgr_h($svc_label) ?></span></td>
+                                <td><a class="mgr-btn mgr-btn-gray" href="manager_validated_transactions.php?type=job_order&search=<?= urlencode($row['service_no']) ?>"><i class="fas fa-eye"></i> View</a></td>
                             </tr>
                         <?php endforeach; ?>
                         </tbody>

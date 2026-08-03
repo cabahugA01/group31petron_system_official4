@@ -1738,7 +1738,7 @@ function showManagerDetailsModal(evt) {
 
     // 👁 View — link to source record
     let viewUrl = '#';
-    if (evt.type_key === 'job_order') viewUrl = `../public/manager_job_orders.php?id=${numericId}`;
+    if (evt.type_key === 'job_order') viewUrl = `../public/manager_validated_transactions.php?type=job_order&search=${numericId}`;
     else if (evt.type_key === 'merchandise_delivery') viewUrl = `../public/manager_deliveries.php?id=${numericId}`;
     else if (evt.type_key === 'fuel_delivery') viewUrl = `../public/manager_fuel_delivery.php?id=${numericId}`;
     else if (evt.type_key === 'staff_shift') viewUrl = `../public/manager_staff_schedule.php`;
