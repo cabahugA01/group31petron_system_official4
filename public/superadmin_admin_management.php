@@ -141,11 +141,66 @@ include __DIR__ . '/../partials/header.php';
 @keyframes amSlideIn { from { opacity:0; transform:translateY(-20px); } to { opacity:1; transform:translateY(0); } }
 .am-modal-header { padding: 22px 24px 16px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; }
 .am-modal-header h2 { font-size: 17px !important; font-weight: 700 !important; color: var(--petron-blue) !important; margin: 0 !important; text-transform: uppercase !important; }
-.am-modal-close { background: none; border: none; font-size: 20px; color: #999; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
-.am-modal-close:hover { background: #f0f0f0; color: #333; }
+.am-modal-close { display: none !important; }
 .am-modal-body { padding: 22px 24px; }
 .am-modal .am-combo-dropdown { z-index: 10; }
 .am-modal-footer { padding: 16px 24px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; }
+
+/* Cancel & Primary Button Styling - High Contrast Visibility */
+.am-btn-cancel,
+.am-modal-footer button:not(.am-btn-primary):not(.am-btn-export-excel):not(.am-btn-export-pdf) {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #00264D !important;
+    -webkit-text-fill-color: #00264D !important;
+    border: 1.5px solid #00264D !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    padding: 8px 22px !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    transition: all .15s ease !important;
+}
+.am-btn-cancel:hover,
+.am-modal-footer button:not(.am-btn-primary):not(.am-btn-export-excel):not(.am-btn-export-pdf):hover {
+    background: #f0f4f8 !important;
+    background-color: #f0f4f8 !important;
+    color: #001a33 !important;
+    -webkit-text-fill-color: #001a33 !important;
+    border-color: #001a33 !important;
+}
+
+.am-btn-primary,
+.am-modal-footer button.am-btn-primary {
+    background: #00264D !important;
+    background-color: #00264D !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    border: 1.5px solid #00264D !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    padding: 8px 22px !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    transition: all .15s ease !important;
+}
+.am-btn-primary:hover,
+.am-modal-footer button.am-btn-primary:hover {
+    background: #001a33 !important;
+    background-color: #001a33 !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+}
 
 /* Form */
 .am-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
@@ -202,13 +257,7 @@ include __DIR__ . '/../partials/header.php';
     .am-table thead th:nth-child(7), .am-table td:nth-child(7) { display: none; }
 }
 
-/* Export bar */
-.am-export-bar { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid #eaeaea; border-radius: 12px; padding: 10px 18px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.04); flex-wrap: wrap; }
-.am-export-label { font-size: 12px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: .4px; margin-right: 4px; }
-.am-btn-export-excel { background: white !important; color: #00264D !important; border: 1px solid #cbd5e1 !important; }
-.am-btn-export-excel:hover { background: #f8fafc !important; color: #00264D !important; border-color: #00264D !important; }
-.am-btn-export-pdf { background: white !important; color: #00264D !important; border: 1px solid #cbd5e1 !important; }
-.am-btn-export-pdf:hover { background: #f8fafc !important; color: #00264D !important; border-color: #00264D !important; }
+
 
 /* Footer and toggle scroll button styles are provided by partials/footer.php */
 </style>
@@ -226,7 +275,6 @@ include __DIR__ . '/../partials/header.php';
 <div class="am-page-head">
     <div>
         <h1><i class="fas fa-user-shield" style="margin-right:8px;"></i>Admin Management</h1>
-        <div class="sub">Create, manage, and monitor Admin accounts across all stations nationwide.</div>
     </div>
     <div style="display:flex;gap:10px;">
         <a href="superadmin_admin_map.php" class="am-btn am-btn-secondary" style="text-decoration:none;">
@@ -241,16 +289,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- Export Bar -->
-<div class="am-export-bar">
-    <span class="am-export-label"><i class="fas fa-download" style="margin-right:6px;"></i>Export Admin List:</span>
-    <a href="../backend/api/superadmin_admin_management_api.php?action=export_admins&csrf_token=<?php echo $csrf; ?>" class="am-btn am-btn-export-excel" title="Export Admin List to Excel/CSV" style="text-decoration:none;">
-        <i class="fas fa-file-excel"></i> Export Excel
-    </a>
-    <button class="am-btn am-btn-export-pdf" onclick="exportAdminsPDF()" title="Export Admin List to PDF">
-        <i class="fas fa-file-pdf"></i> Export PDF
-    </button>
-</div>
+
 
 <?php
 // â”€â”€ Compute stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -633,31 +672,64 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
         <div class="am-form-row full">
           <div class="am-form-group">
             <label>Station Name <span style="color:#cc0000;">*</span></label>
-            <input type="text" name="station_name" id="station_name" placeholder="e.g. Petron Quezon City" required>
+            <input type="text" name="station_name" id="station_name" placeholder="e.g. Petron Quezon City - Commonwealth Ave" required>
           </div>
         </div>
 
         <div class="am-form-row full">
           <div class="am-form-group">
-            <label>Location/Address <span style="color:#cc0000;">*</span></label>
-            <textarea name="location" id="station_location" rows="3" placeholder="Complete address of the station" required style="padding:10px 13px;border:1px solid #ddd;border-radius:10px;font-size:13px;outline:none;resize:vertical;font-family:inherit;"></textarea>
+            <label>Complete Address <span style="color:#cc0000;">*</span></label>
+            <textarea name="location" id="station_location" rows="3"
+              placeholder="e.g. Commonwealth Ave., Quezon City, Metro Manila"
+              required
+              style="padding:10px 13px;border:1px solid #ddd;border-radius:10px;font-size:13px;outline:none;resize:vertical;font-family:inherit;transition:border-color .2s;"
+              onfocus="this.style.borderColor='var(--petron-blue)'"
+              onblur="this.style.borderColor='#ddd'"></textarea>
           </div>
         </div>
 
         <div class="am-form-row">
           <div class="am-form-group">
-            <label>Region</label>
-            <input type="text" name="region" id="station_region" placeholder="e.g. NCR, Region IV-A">
+            <label>Region <span style="color:#cc0000;">*</span></label>
+            <select name="region" id="station_region" required
+              style="padding:10px 13px;border:1px solid #ddd;border-radius:10px;font-size:13px;outline:none;background:#fff;transition:border-color .2s;"
+              onfocus="this.style.borderColor='var(--petron-blue)'"
+              onblur="this.style.borderColor='#ddd'">
+              <option value="">— Select Region —</option>
+              <option value="NCR">NCR (National Capital Region)</option>
+              <option value="NORTH LUZON">North Luzon</option>
+              <option value="SOUTH LUZON">South Luzon</option>
+              <option value="VISAYAS">Visayas</option>
+              <option value="MINDANAO">Mindanao</option>
+              <option value="CAR">CAR (Cordillera Administrative Region)</option>
+              <option value="BARMM">BARMM</option>
+              <option value="CARAGA">CARAGA</option>
+              <option value="MIMAROPA">MIMAROPA</option>
+            </select>
           </div>
           <div class="am-form-group">
-            <label>Contact Number</label>
-            <input type="text" name="contact" id="station_contact" placeholder="e.g. (02) 1234-5678">
+            <label>Outlet Type</label>
+            <select name="outlet_type" id="station_outlet_type"
+              style="padding:10px 13px;border:1px solid #ddd;border-radius:10px;font-size:13px;outline:none;background:#fff;transition:border-color .2s;"
+              onfocus="this.style.borderColor='var(--petron-blue)'"
+              onblur="this.style.borderColor='#ddd'">
+              <option value="SERVICE STATION">Service Station</option>
+              <option value="TREATS STORE">Treats Store</option>
+              <option value="CAR CARE CENTER">Car Care Center</option>
+            </select>
           </div>
         </div>
 
-        <div style="background:#f8fafc;border:1px solid #e8edf2;border-radius:10px;padding:14px 16px;margin-top:6px;font-size:12px;color:#555;">
-          <i class="fas fa-info-circle" style="color:var(--petron-blue);margin-right:6px;"></i>
-          The new station will be available for admin assignment immediately after creation.
+        <div class="am-form-row full">
+          <div class="am-form-group">
+            <label>Contact Number</label>
+            <input type="text" name="contact" id="station_contact" placeholder="e.g. (02) 1234-5678 or 09XX-XXX-XXXX">
+          </div>
+        </div>
+
+        <div style="background:#f0f9f0;border:1px solid #c6e6c6;border-radius:10px;padding:14px 16px;margin-top:6px;font-size:12px;color:#1a5c1a;">
+          <i class="fas fa-check-circle" style="color:#16a34a;margin-right:6px;"></i>
+          The new station will appear in the station dropdown <strong>immediately</strong> after creation and will be available for admin assignment.
         </div>
       </div>
       <div class="am-modal-footer">
@@ -669,6 +741,7 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
     </form>
   </div>
 </div>
+
 
 <script>
 const STATION_DATA = <?php echo json_encode(array_map(function($s) {
@@ -1197,47 +1270,58 @@ function openAddStationModal() {
 async function submitAddStation(e) {
     e.preventDefault();
     const btn = document.getElementById('addStationSubmitBtn');
-    const alert = document.getElementById('addStationAlert');
-    alert.style.display = 'none';
+    const alertEl = document.getElementById('addStationAlert');
+    alertEl.style.display = 'none';
 
     const stationName = document.getElementById('station_name').value.trim();
-    const location = document.getElementById('station_location').value.trim();
+    const location    = document.getElementById('station_location').value.trim();
+    const region      = document.getElementById('station_region').value.trim();
 
     if (!stationName) {
-        alert.innerHTML = '<i class="fas fa-exclamation-circle"></i> Station name is required.';
-        alert.style.display = 'flex'; return;
+        alertEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> Station name is required.';
+        alertEl.style.display = 'flex'; return;
     }
     if (!location) {
-        alert.innerHTML = '<i class="fas fa-exclamation-circle"></i> Location is required.';
-        alert.style.display = 'flex'; return;
+        alertEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> Complete address is required.';
+        alertEl.style.display = 'flex'; return;
+    }
+    if (!region) {
+        alertEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> Please select a region.';
+        alertEl.style.display = 'flex'; return;
     }
 
     btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating—¦';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating…';
 
     const fd = new FormData(document.getElementById('addStationForm'));
     fd.append('action', 'add_station');
     fd.append('csrf_token', '<?php echo $csrf; ?>');
 
     try {
-        const res = await fetch('../backend/api/superadmin_admin_management_api.php', { method: 'POST', body: fd });
+        const res  = await fetch('../backend/api/superadmin_admin_management_api.php', { method: 'POST', body: fd });
         const data = await res.json();
         if (data.ok) {
+            // Inject into STATION_DATA so Create Admin modal picks it up immediately
+            if (data.station_id && data.station_name) {
+                STATION_DATA.push({ id: data.station_id, name: data.station_name });
+                STATION_DATA.sort((a, b) => a.name.localeCompare(b.name));
+            }
             closeModal('addStationModal');
             showPageFlash('success', data.message || 'Station created successfully.');
-            setTimeout(() => location.reload(), 1200);
+            setTimeout(() => location.reload(), 1500);
         } else {
-            alert.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + (data.error || 'Failed to create station.');
-            alert.style.display = 'flex';
+            alertEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + (data.error || 'Failed to create station.');
+            alertEl.style.display = 'flex';
         }
     } catch (err) {
-        alert.innerHTML = '<i class="fas fa-exclamation-circle"></i> Network error. Please try again.';
-        alert.style.display = 'flex';
+        alertEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> Network error. Please try again.';
+        alertEl.style.display = 'flex';
     }
 
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-building"></i> Create Station';
 }
+
 // â”€â”€ Export PDF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function exportAdminsPDF() {
     const rows = [...document.querySelectorAll('#adminTableBody tr[data-firstname]')].filter(r => r.style.display !== 'none');

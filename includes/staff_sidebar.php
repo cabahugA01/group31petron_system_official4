@@ -75,13 +75,13 @@ function getStaffSidebar($current_page = 'dashboard') {
                     'url'   => 'staff_job_orders_report.php',
                 ],
                 'report_deliveries' => [
-                    'icon'  => 'fas fa-truck',
-                    'title' => 'Deliveries Reports',
+                    'icon'  => 'fas fa-clipboard-check',
+                    'title' => 'Fuel Reconciliation Report',
                     'url'   => 'staff_deliveries_report.php',
                 ],
                 'report_payments' => [
-                    'icon'  => 'fas fa-credit-card',
-                    'title' => 'Payments Reports',
+                    'icon'  => 'fas fa-exchange-alt',
+                    'title' => 'Shift Turnover Report',
                     'url'   => 'staff_payments_report.php',
                 ],
                 'report_customers' => [
@@ -91,7 +91,7 @@ function getStaffSidebar($current_page = 'dashboard') {
                 ],
                 'report_activity' => [
                     'icon'  => 'fas fa-chart-line',
-                    'title' => 'Activity Reports',
+                    'title' => 'My Activity Report',
                     'url'   => 'staff_activity_report.php',
                 ],
             ],

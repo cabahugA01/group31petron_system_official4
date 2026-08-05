@@ -89,7 +89,7 @@ try {
 $stations = [];
 try {
     $stations = $pdo->query(
-        "SELECT s.id, s.name, s.location, s.status, s.created_at,
+        "SELECT s.id, s.name, s.address, s.location, s.region, s.outlet_type, s.status, s.created_at,
                 (SELECT u.name  FROM users u WHERE u.station_id = s.id AND LOWER(u.role) IN ('admin','station admin','station_admin') AND u.status = 'Active' LIMIT 1) AS admin_name,
                 (SELECT u.id    FROM users u WHERE u.station_id = s.id AND LOWER(u.role) IN ('admin','station admin','station_admin') AND u.status = 'Active' LIMIT 1) AS admin_id,
                 (SELECT u.email FROM users u WHERE u.station_id = s.id AND LOWER(u.role) IN ('admin','station admin','station_admin') AND u.status = 'Active' LIMIT 1) AS admin_email,
@@ -131,11 +131,15 @@ function parse_location(string $loc): array {
 }
 
 // ── Helper: extract display parts from raw station name ───────
-// Many existing stations store full address in the name field:
-// "STREET, CITY, PROVINCE REGION STATION_TYPE"
-// Returns: [short_name, city_province, region]
-function extract_station_display(string $raw_name, string $location): array {
-    // If location is already structured (new format), use it
+function extract_station_display($raw_name, $location = '', $row = []): array {
+    if (!empty($row['address']) || !empty($row['region'])) {
+        return [
+            'name'       => $row['name'] ?? $raw_name,
+            'street'     => $row['address'] ?? '',
+            'city_prov'  => $row['location'] ?? '',
+            'region'     => $row['region'] ?? '',
+        ];
+    }
     if (!empty($location)) {
         $loc = parse_location($location);
         $city_prov = trim(implode(', ', array_filter([$loc['city'], $loc['province']])));
@@ -524,7 +528,7 @@ include __DIR__ . '/../partials/header.php';
         <?php else: ?>
         <?php foreach ($stations as $i => $st):
             $loc  = parse_location($st['location'] ?? '');
-            $disp = extract_station_display($st['name'], $st['location'] ?? '');
+            $disp = extract_station_display($st['name'], $st['location'] ?? '', $st);
         ?>
         <tr data-name="<?php echo strtolower(htmlspecialchars($st['name'])); ?>"
             data-loc="<?php echo strtolower(htmlspecialchars($st['location'] ?? $st['name'])); ?>"

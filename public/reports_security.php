@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Security Reports - Standalone Page
  * Login Attempts, Access Violations, Password Resets, Suspicious Activity
@@ -275,7 +275,7 @@ include __DIR__ . '/../partials/header.php';
     margin-bottom: 24px;
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--border-color);
-    margin-top: -12px !important;
+    margin-top: 16px !important;
 }
 
 .filters-grid {

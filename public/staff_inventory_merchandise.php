@@ -270,7 +270,7 @@ foreach ($merch_inventory as $item) {
 
     $batches = $product_batches[$pid] ?? [
         [
-            'batch_id'      => 'BATCH-MAIN-' . str_pad((string)$pid, 3, '0', STR_PAD_LEFT),
+            'batch_id'      => 'BT-' . date('Ymd', strtotime($item['last_updated'] ?? 'now')) . '-' . str_pad((string)$pid, 4, '0', STR_PAD_LEFT),
             'remaining_qty' => (int)$stock,
             'selling_price' => (float)($item['price'] ?? 0),
             'status'        => 'Active',
@@ -1850,7 +1850,8 @@ function openAdjustmentModal(it) {
     currentAdjProduct = it;
     document.getElementById('adj_product_id').value = it.id;
     
-    var batchId = (it.batches && it.batches.length > 0) ? it.batches[0].batch_id : ('BATCH-MAIN-' + String(it.id).padStart(3, '0'));
+    var today = new Date(); var yy = today.getFullYear(); var mm = String(today.getMonth()+1).padStart(2,'0'); var dd = String(today.getDate()).padStart(2,'0');
+    var batchId = (it.batches && it.batches.length > 0) ? it.batches[0].batch_id : ('BT-' + yy + mm + dd + '-' + String(it.id).padStart(4, '0'));
     var batchExp = (it.batches && it.batches.length > 0 && it.batches[0].date) ? it.batches[0].date : 'N/A';
 
     document.getElementById('adj_disp_batch').innerText = batchId;

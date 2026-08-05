@@ -7,6 +7,7 @@
 if (session_status() === PHP_SESSION_NONE) session_start();
 require_once __DIR__ . '/../../backend/lib.php';
 require_once __DIR__ . '/../../public/db_connect.php';
+require_once __DIR__ . '/../../config/email_config.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -47,21 +48,18 @@ try {
 $s_phone = 'phone_number';
 $s_pass  = in_array('password_hash', $user_cols) ? 'password_hash' : 'password_hash';
 
-// ── Helper: send credentials email ───────────────────────────
+// ── Helper: send credentials email (uses PHPMailer via email_config.php) ─────
 function send_admin_credentials_email(string $to_email, string $name, string $password, string $station_name): bool {
-    // Uses PHP mail() — configure SMTP in php.ini for Gmail relay
-    $subject = 'Your Petron Station Admin Account Credentials';
-    $body    = "Dear {$name},\r\n\r\n"
-             . "Your Admin account has been created for Petron Station Management System.\r\n\r\n"
-             . "Station : {$station_name}\r\n"
-             . "Email   : {$to_email}\r\n"
-             . "Password: {$password}\r\n\r\n"
-             . "IMPORTANT: You are required to change your password upon first login.\r\n\r\n"
-             . "Login at: " . (isset($_SERVER['HTTP_HOST']) ? 'http://' . $_SERVER['HTTP_HOST'] . '/group31petron_system_official4/public/index.php' : 'your system URL') . "\r\n\r\n"
-             . "This is an automated message. Do not reply.\r\n"
-             . "Petron Station Management System";
-    $headers = "From: noreply@petron-sms.com\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8";
-    return @mail($to_email, $subject, $body, $headers);
+    // sendAdminCredentialsEmail is defined in config/email_config.php and uses PHPMailer + Gmail SMTP
+    return sendAdminCredentialsEmail(
+        $to_email,
+        $name,
+        $station_name,
+        $to_email,   // username = email
+        $password,
+        'SuperAdmin', // created_by_role
+        'Admin'       // role
+    );
 }
 
 // ── Helper: auto-generate password ───────────────────────────
@@ -295,37 +293,51 @@ if ($action === 'activate_admin') {
 // ════════════════════════════════════════════════════════════
 if ($action === 'add_station') {
     $station_name = trim($_POST['station_name'] ?? '');
-    $location     = trim($_POST['location'] ?? '');
-    $region       = trim($_POST['region'] ?? '');
-    $contact      = trim($_POST['contact'] ?? '');
+    $location     = trim($_POST['location']      ?? '');  // full address/location text
+    $region       = trim($_POST['region']        ?? '');
+    $contact      = trim($_POST['contact']       ?? '');
+    $outlet_type  = trim($_POST['outlet_type']   ?? 'SERVICE STATION');
 
     // Validate
     if (empty($station_name)) { echo json_encode(['ok'=>false,'error'=>'Station name is required.']); exit; }
-    if (empty($location))     { echo json_encode(['ok'=>false,'error'=>'Location is required.']); exit; }
+    if (empty($location))     { echo json_encode(['ok'=>false,'error'=>'Location/Address is required.']); exit; }
+
+    // Normalize region to standard values
+    $region_upper = strtoupper($region);
+    $valid_regions = ['NCR', 'NORTH LUZON', 'SOUTH LUZON', 'VISAYAS', 'MINDANAO', 'CAR', 'BARMM', 'CARAGA', 'MIMAROPA'];
+    if (!in_array($region_upper, $valid_regions)) {
+        // Accept as-is if not blank — admin may type a custom region
+        $region_upper = $region;
+    }
 
     try {
-        // Check if station name already exists
-        $chk = $pdo->prepare('SELECT id FROM stations WHERE name = ? LIMIT 1');
-        $chk->execute([$station_name]);
+        // Check if a station with the same name + region already exists (enforce unique constraint)
+        $chk = $pdo->prepare('SELECT id FROM stations WHERE LOWER(name) = LOWER(?) AND LOWER(region) = LOWER(?) LIMIT 1');
+        $chk->execute([$station_name, $region_upper]);
         if ($chk->rowCount() > 0) {
-            echo json_encode(['ok'=>false,'error'=>'A station with this name already exists.']); exit;
+            echo json_encode(['ok'=>false,'error'=>'A station with this name and region already exists.']); exit;
         }
 
-        // Insert new station
+        // Derive a clean city/province string from the location text (last comma-separated segment)
+        $loc_parts   = explode(',', $location);
+        $city_prov   = trim(end($loc_parts));
+
+        // Insert new station with all structured fields
         $ins = $pdo->prepare(
-            "INSERT INTO stations (name, location, address, region, contact_number, status, created_at) 
-             VALUES (?, ?, ?, ?, ?, 'active', NOW())"
+            "INSERT INTO stations (name, location, address, region, outlet_type, contact_number, status, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, 'active', NOW())"
         );
-        $ins->execute([$station_name, $location, $location, $region, $contact]);
+        $ins->execute([$station_name, $city_prov, $location, $region_upper, $outlet_type, $contact]);
         $new_id = $pdo->lastInsertId();
 
         // Audit log
-        log_activity($pdo, $me['id'], 'Create Station', "SuperAdmin created station '{$station_name}' (ID {$new_id})");
+        log_activity($pdo, $me['id'], 'Create Station', "SuperAdmin created station '{$station_name}' (ID {$new_id}, Region: {$region_upper})");
 
         echo json_encode([
             'ok'         => true,
-            'message'    => "Station '{$station_name}' has been created successfully.",
+            'message'    => "Station '{$station_name}' created successfully and is now available for admin assignment.",
             'station_id' => $new_id,
+            'station_name' => $station_name,
         ]);
 
     } catch (PDOException $e) {

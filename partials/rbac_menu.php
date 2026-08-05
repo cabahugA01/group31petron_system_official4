@@ -41,9 +41,9 @@ $master_menu = [
     // Reports - Staff, Manager, Admin
     ['id'=>'reports','label'=>'Reports','ico'=>'fas fa-chart-bar','href'=>'staff_reports.php','permissions'=>['view_personal_reports', 'view_operational_reports', 'view_financial_reports', 'view_all_reports'],'station_specific'=>true,'sub_items'=>[
         ['id'=>'report_daily_sales',      'label'=>'Sales Reports',                    'href'=>'staff_fuel_sales_summary.php',       'permissions'=>['view_personal_reports','view_operational_reports']],
-        ['id'=>'report_deliveries',       'label'=>'Deliveries Reports',               'href'=>'staff_deliveries_report.php',           'permissions'=>['view_personal_reports','view_operational_reports']],
-        ['id'=>'report_payments',         'label'=>'Payments Reports',                 'href'=>'staff_payments_report.php',    'permissions'=>['view_personal_reports','view_operational_reports']],
-        ['id'=>'report_activity',         'label'=>'Activity Reports',                 'href'=>'staff_activity_report.php',    'permissions'=>['view_personal_reports']],
+        ['id'=>'report_deliveries',       'label'=>'Fuel Reconciliation Report',       'href'=>'staff_deliveries_report.php',           'permissions'=>['view_personal_reports','view_operational_reports']],
+        ['id'=>'report_payments',         'label'=>'Shift Turnover Report',                'href'=>'staff_payments_report.php',    'permissions'=>['view_personal_reports','view_operational_reports']],
+        ['id'=>'report_activity',         'label'=>'My Activity Report',                 'href'=>'staff_activity_report.php',    'permissions'=>['view_personal_reports']],
     ]],
     
     // ── SUPERADMIN / DEVELOPER SIDEBAR ──────────────────────────────────────────
@@ -184,32 +184,53 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 'station_specific' => true,
                 'sub_items' => [
                     [
-                        'id' => 'rpt_operations',
-                        'label' => 'Operations Reports',
-                        'href' => 'admin_reports.php',
+                        'id' => 'rpt_sales',
+                        'label' => 'Sales Reports',
+                        'href' => 'admin_reports.php?cat=sales',
                         'permissions' => ['view_all_reports'],
-                        'desc' => 'Shift Reports, Daily Consolidation, Fuel Inventory, Merchandise Inventory, Job Orders.',
+                        'desc' => 'Fuel Sales, Daily Merchandise & Service Sales Reports.',
                     ],
                     [
-                        'id' => 'rpt_finance',
-                        'label' => 'Finance Reports',
-                        'href' => 'admin_finance_reports.php',
+                        'id' => 'rpt_inventory',
+                        'label' => 'Inventory Reports',
+                        'href' => 'admin_reports.php?cat=inventory',
                         'permissions' => ['view_all_reports'],
-                        'desc' => 'Payments, Suppliers, Financial Payables & Reconciliation.',
+                        'desc' => 'Merchandise Inventory, Fuel Inventory, Movement, Adjustments, Expired & Damaged Reports.',
+                    ],
+                    [
+                        'id' => 'rpt_operations',
+                        'label' => 'Operations Reports',
+                        'href' => 'admin_reports.php?cat=operations',
+                        'permissions' => ['view_all_reports'],
+                        'desc' => 'Job Order Reports & Mechanic Performance Analytics.',
                     ],
                     [
                         'id' => 'rpt_procurement',
                         'label' => 'Procurement Reports',
-                        'href' => 'admin_procurement_reports.php',
+                        'href' => 'admin_reports.php?cat=procurement',
                         'permissions' => ['view_all_reports'],
-                        'desc' => 'Purchase orders, delivery receipts, PO vs delivery, and stock-in approvals.',
+                        'desc' => 'Purchase Orders, Delivery Validation, PO vs Received, Stock-In Approval Reports.',
                     ],
                     [
-                        'id' => 'rpt_compliance',
-                        'label' => 'Compliance Reports',
-                        'href' => 'admin_compliance_reports.php',
+                        'id' => 'rpt_finance',
+                        'label' => 'Financial Reports',
+                        'href' => 'admin_reports.php?cat=financial',
                         'permissions' => ['view_all_reports'],
-                        'desc' => 'Consolidated Compliance & Audit Logs.',
+                        'desc' => 'Revenue Summary & Receivables Reports.',
+                    ],
+                    [
+                        'id' => 'rpt_customer',
+                        'label' => 'Customer Reports',
+                        'href' => 'admin_reports.php?cat=customer',
+                        'permissions' => ['view_all_reports'],
+                        'desc' => 'Customer Overview, Statistics & Frequent Customer Rankings.',
+                    ],
+                    [
+                        'id' => 'rpt_audit',
+                        'label' => 'Audit Reports',
+                        'href' => 'admin_reports.php?cat=audit',
+                        'permissions' => ['view_all_reports'],
+                        'desc' => 'Login History, Activity Logs, Transaction Logs, Inventory Logs, Approvals & Archived Logs.',
                     ],
                 ],
             ],
@@ -277,47 +298,72 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 $filtered_item['sub_items'] = [];
             }
             
-            // Manager gets manager_reports.php with Operations Reports sub-menu
+            // Manager gets manager_reports.php with 7 report sub-menus (including Audit - operations only)
             if ($user_role === 'manager' && ($item['id'] ?? '') === 'reports') {
                 $filtered_item['href'] = 'manager_reports.php';
                 $filtered_item['sub_items'] = [
                     [
-                        'id'          => 'mgr_operations_reports',
-                        'label'       => 'Operations Reports',
-                        'href'        => 'manager_reports.php',
+                        'id'          => 'mgr_sales_reports',
+                        'label'       => 'Sales Reports',
+                        'href'        => 'manager_reports.php?cat=sales',
                         'ico'         => 'fas fa-chart-line',
                         'permissions' => ['view_operational_reports', 'approve_transactions', 'manage_job_orders'],
-                        'desc'        => 'Shift Reports, Daily Consolidation, Fuel Inventory, Merchandise Inventory, Job Orders with validation.'
+                        'desc'        => 'Fuel Sales, Daily Merchandise & Service Sales Reports.'
                     ],
                     [
-                        'id'          => 'mgr_finance_reports',
-                        'label'       => 'Finance Reports',
-                        'href'        => 'manager_finance_reports.php',
-                        'ico'         => 'fas fa-file-invoice-dollar',
+                        'id'          => 'mgr_inventory_reports',
+                        'label'       => 'Inventory Reports',
+                        'href'        => 'manager_reports.php?cat=inventory',
+                        'ico'         => 'fas fa-boxes',
                         'permissions' => ['view_operational_reports', 'approve_transactions', 'manage_job_orders'],
-                        'desc'        => 'Payments breakdown, Supplier deliveries & payables, Financial reconciliation with validation.'
+                        'desc'        => 'Merchandise Inventory, Fuel Inventory, Movement, Adjustments, Expired & Damaged Reports.'
+                    ],
+                    [
+                        'id'          => 'mgr_operations_reports',
+                        'label'       => 'Operations Reports',
+                        'href'        => 'manager_reports.php?cat=operations',
+                        'ico'         => 'fas fa-cogs',
+                        'permissions' => ['view_operational_reports', 'approve_transactions', 'manage_job_orders'],
+                        'desc'        => 'Job Order Reports & Mechanic Performance Analytics.'
                     ],
                     [
                         'id'          => 'mgr_procurement_reports',
                         'label'       => 'Procurement Reports',
-                        'href'        => 'manager_procurement_reports.php',
+                        'href'        => 'manager_reports.php?cat=procurement',
                         'ico'         => 'fas fa-truck-loading',
                         'permissions' => ['view_operational_reports', 'approve_transactions', 'manage_job_orders'],
-                        'desc'        => 'Delivery validation, PO vs received, stock-in approvals, and delivery variance.'
+                        'desc'        => 'Purchase Orders, Delivery Validation, PO vs Received, Stock-In Approval Reports.'
                     ],
                     [
-                        'id'          => 'mgr_compliance_reports',
-                        'label'       => 'Compliance Reports',
-                        'href'        => 'manager_compliance_reports.php',
-                        'ico'         => 'fas fa-shield-alt',
+                        'id'          => 'mgr_finance_reports',
+                        'label'       => 'Financial Reports',
+                        'href'        => 'manager_reports.php?cat=financial',
+                        'ico'         => 'fas fa-file-invoice-dollar',
                         'permissions' => ['view_operational_reports', 'approve_transactions', 'manage_job_orders'],
-                        'desc'        => 'Activity Logs, Audit Trail, Calendar & Schedule monitoring with validation and compliance tracking.'
-                    ]
+                        'desc'        => 'Revenue Summary, Receivables, Collections, Sales vs Collection Reports.'
+                    ],
+                    [
+                        'id'          => 'mgr_customer_reports',
+                        'label'       => 'Customer Reports',
+                        'href'        => 'manager_reports.php?cat=customer',
+                        'ico'         => 'fas fa-users',
+                        'permissions' => ['view_operational_reports', 'approve_transactions', 'manage_job_orders'],
+                        'desc'        => 'Customer Overview & Comprehensive Customer Profile Reports.'
+                    ],
+                    [
+                        'id'          => 'mgr_audit_reports',
+                        'label'       => 'Audit Reports',
+                        'href'        => 'manager_reports.php?cat=audit',
+                        'ico'         => 'fas fa-history',
+                        'permissions' => ['view_operational_reports', 'approve_transactions', 'manage_job_orders'],
+                        'desc'        => 'Transaction Logs, Inventory Logs, Approval Logs, Archived & Deactivated Logs.'
+                    ],
                 ];
                 // Add to menu immediately and skip further processing
                 $filtered_menu[] = $filtered_item;
                 continue;
             }
+
 
             if ($user_role === 'staff' && ($item['id'] ?? '') === 'dashboard') {
                 $filtered_item['href'] = 'staff_dashboard.php';

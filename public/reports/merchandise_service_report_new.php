@@ -35,7 +35,10 @@ function fetchMerchandiseServiceReport($pdo, $station_id, $date_start, $date_end
         
         $q = $pdo->prepare("
             SELECT 
-                COALESCE(mt.transaction_id, CONCAT('REC-', mt.id)) AS receipt_no,
+                COALESCE(
+                    NULLIF(mt.transaction_id, ''),
+                    CONCAT('OR-', DATE_FORMAT(COALESCE(mt.transaction_date, mt.created_at), '%Y%m%d'), '-', LPAD(mt.id, 6, '0'))
+                ) AS receipt_no,
                 COALESCE(NULLIF(mt.customer_name, ''), 'Walk-in') AS customer,
                 COALESCE(NULLIF(mti.category, ''), 'General') AS category,
                 COALESCE(NULLIF(mti.product_name, ''), 'Product') AS product,
@@ -74,7 +77,10 @@ function fetchMerchandiseServiceReport($pdo, $station_id, $date_start, $date_end
         
         $q = $pdo->prepare("
             SELECT 
-                COALESCE(jo.job_order_number, CONCAT('JO-', LPAD(jo.id, 5, '0'))) AS jo_no,
+                COALESCE(
+                    NULLIF(jo.job_order_number, ''),
+                    CONCAT('JO-', DATE_FORMAT(jo.created_at, '%Y%m%d'), '-', LPAD(jo.id, 6, '0'))
+                ) AS jo_no,
                 COALESCE(NULLIF(jo.customer_name, ''), 'Walk-in') AS customer,
                 COALESCE(
                     NULLIF(CONCAT_WS(' ', NULLIF(jo.vehicle_type, ''), NULLIF(jo.vehicle_plate, '')), ''),
@@ -106,7 +112,10 @@ function fetchMerchandiseServiceReport($pdo, $station_id, $date_start, $date_end
     try {
         $q = $pdo->prepare("
             SELECT 
-                COALESCE(jo.job_order_number, CONCAT('JO-', LPAD(jo.id, 5, '0'))) AS jo_no,
+                COALESCE(
+                    NULLIF(jo.job_order_number, ''),
+                    CONCAT('JO-', DATE_FORMAT(COALESCE(jo.created_at, mt.created_at), '%Y%m%d'), '-', LPAD(COALESCE(jo.id, mt.job_order_id), 6, '0'))
+                ) AS jo_no,
                 COALESCE(NULLIF(jo.customer_name, ''), 'Walk-in') AS customer,
                 COALESCE(NULLIF(mti.product_name, ''), 'Part') AS product_name,
                 COALESCE(NULLIF(mti.category, ''), 'Parts') AS category,

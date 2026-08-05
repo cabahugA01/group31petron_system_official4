@@ -790,6 +790,31 @@ try {
 } catch (Exception $e) {}
 $pending_stock_requests = $pending_fuel_requests_count + $pending_merch_requests_count;
 
+// ── Live Sync JSON Endpoint: lightweight metric refresh without full page reload ──
+if (isset($_GET['live_sync']) && $_GET['live_sync'] === '1') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+    echo json_encode([
+        'success' => true,
+        'timestamp' => date('Y-m-d H:i:s'),
+        'metrics' => [
+            'todays_transactions'    => number_format($todays_transactions),
+            'todays_sales'           => '₱' . number_format($todays_sales, 2),
+            'service_queue_count'    => number_format($service_queue_count),
+            'completed_jo_today_count' => number_format($completed_jo_today_count),
+            'merch_sales'            => '₱' . number_format($merch_sales, 2),
+            'service_sales'          => '₱' . number_format($service_sales, 2),
+            'fuel_sold_liters'       => number_format($fuel_sold_liters, 2) . ' L',
+            'pending_stock_requests' => number_format($pending_stock_requests),
+            'fuel_stock_alerts'      => number_format($fuel_stock_alerts_count),
+            'merch_stock_alerts'     => number_format($merch_stock_alerts_count),
+        ],
+        'version' => $dashboard_version,
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
 // 8. Current Shift
 $current_shift_info = dashboard_current_shift($shift_periods);
 $current_shift_label = $current_shift_info ? dashboard_shift_label($current_shift_info) : 'No Active Shift';
@@ -1824,7 +1849,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="summary-metric-card">
         <div class="metric-details">
             <h4><?= $is_today ? "Today's Transactions" : "Transactions" ?></h4>
-            <div class="metric-value"><?= number_format($todays_transactions) ?></div>
+            <div class="metric-value" data-live-metric="todays_transactions"><?= number_format($todays_transactions) ?></div>
         </div>
         <div class="metric-icon-box" style="background: #eff6ff; color: #002F70;">
             <i class="fas fa-exchange-alt"></i>
@@ -1834,7 +1859,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="summary-metric-card">
         <div class="metric-details">
             <h4>Active Job Orders</h4>
-            <div class="metric-value"><?= number_format($service_queue_count) ?></div>
+            <div class="metric-value" data-live-metric="service_queue_count"><?= number_format($service_queue_count) ?></div>
         </div>
         <div class="metric-icon-box" style="background: #fef9c3; color: #d97706;">
             <i class="fas fa-tools"></i>
@@ -1844,7 +1869,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="summary-metric-card">
         <div class="metric-details">
             <h4><?= $is_today ? "Completed Job Orders Today" : "Completed Job Orders" ?></h4>
-            <div class="metric-value"><?= number_format($completed_jo_today_count) ?></div>
+            <div class="metric-value" data-live-metric="completed_jo_today_count"><?= number_format($completed_jo_today_count) ?></div>
         </div>
         <div class="metric-icon-box" style="background: #f0fdf4; color: #16a34a;">
             <i class="fas fa-check-circle"></i>
@@ -1854,7 +1879,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="summary-metric-card">
         <div class="metric-details">
             <h4><?= $is_today ? "Merchandise Sales Today" : "Merchandise Sales" ?></h4>
-            <div class="metric-value">&#8369;<?= number_format($merch_sales, 2) ?></div>
+            <div class="metric-value" data-live-metric="merch_sales">&#8369;<?= number_format($merch_sales, 2) ?></div>
         </div>
         <div class="metric-icon-box" style="background: #ffedd5; color: #ea580c;">
             <i class="fas fa-boxes"></i>
@@ -1864,7 +1889,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="summary-metric-card">
         <div class="metric-details">
             <h4><?= $is_today ? "Service Sales Today" : "Service Sales" ?></h4>
-            <div class="metric-value">&#8369;<?= number_format($service_sales, 2) ?></div>
+            <div class="metric-value" data-live-metric="service_sales">&#8369;<?= number_format($service_sales, 2) ?></div>
         </div>
         <div class="metric-icon-box" style="background: #ecfeff; color: #0891b2;">
             <i class="fas fa-wrench"></i>
@@ -1892,7 +1917,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="summary-metric-card">
         <div class="metric-details">
             <h4><?= $is_today ? "Fuel Sold Today (Liters)" : "Fuel Sold (Liters)" ?></h4>
-            <div class="metric-value"><?= number_format($fuel_sold_liters, 2) ?> L</div>
+            <div class="metric-value" data-live-metric="fuel_sold_liters"><?= number_format($fuel_sold_liters, 2) ?> L</div>
         </div>
         <div class="metric-icon-box" style="background: #fef2f2; color: #dc2626;">
             <i class="fas fa-gas-pump"></i>
@@ -1902,7 +1927,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="summary-metric-card">
         <div class="metric-details">
             <h4>Pending Stock Requests</h4>
-            <div class="metric-value"><?= number_format($pending_stock_requests) ?></div>
+            <div class="metric-value" data-live-metric="pending_stock_requests"><?= number_format($pending_stock_requests) ?></div>
         </div>
         <div class="metric-icon-box" style="background: #f3e8ff; color: #7c3aed;">
             <i class="fas fa-file-import"></i>
@@ -2700,7 +2725,11 @@ include __DIR__ . '/../partials/header.php';
 
             const payload = await response.json();
             if (payload.success && payload.version && payload.version !== staffDashboardVersion) {
-                window.location.reload();
+                staffDashboardVersion = payload.version;
+                // Refresh metrics via AJAX instead of full page reload
+                if (typeof window.refreshLivePageData === 'function') {
+                    window.refreshLivePageData(payload);
+                }
             }
         } catch (error) {
             // Next poll will retry.
@@ -2730,6 +2759,78 @@ include __DIR__ . '/../partials/header.php';
         tick();
         setInterval(tick, 1000);
     })();
+</script>
+
+<!-- ── Live Sync Engine ─ loaded globally by footer.php ────────────────────── -->
+<script>
+(function () {
+    'use strict';
+
+    // Base URL for live_sync AJAX endpoint on this page
+    const LIVE_SYNC_PAGE_URL = '<?= htmlspecialchars($app_base_url ?? '') ?>/public/staff_dashboard.php?live_sync=1';
+
+    let _lastVersion = <?= json_encode($dashboard_version ?? '') ?>;
+    let _inFlight    = false;
+    let _lastMetrics = {};
+
+    // Animate number change on a card
+    function flashCard(el) {
+        if (!el) return;
+        el.style.transition = 'color 0.25s';
+        el.style.color = '#002F70';
+        setTimeout(() => { el.style.color = ''; }, 600);
+    }
+
+    // Update a single metric card value element
+    function updateMetricEl(key, newValue) {
+        const el = document.querySelector(`[data-live-metric="${key}"]`);
+        if (!el) return;
+        if (el.textContent.trim() !== String(newValue).trim()) {
+            el.textContent = newValue;
+            flashCard(el);
+        }
+    }
+
+    // Called by live_sync.js engine on every successful poll
+    window.refreshLivePageData = async function (syncEngineData) {
+        if (_inFlight) return;
+        _inFlight = true;
+        try {
+            const ctrl = new AbortController();
+            const tid  = setTimeout(() => ctrl.abort(), 6000);
+            const res  = await fetch(LIVE_SYNC_PAGE_URL, {
+                signal: ctrl.signal,
+                credentials: 'same-origin',
+                cache: 'no-store',
+                headers: { 'Accept': 'application/json' }
+            });
+            clearTimeout(tid);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const data = await res.json();
+            if (!data.success) throw new Error('API error');
+
+            // Check if data changed (version or metrics differ)
+            if (data.version && data.version !== _lastVersion) {
+                _lastVersion = data.version;
+                // Could trigger a heavier refresh of tables/charts here if desired
+            }
+
+            // Update all summary card metric values
+            const m = data.metrics || {};
+            Object.keys(m).forEach(key => {
+                if (_lastMetrics[key] !== m[key]) {
+                    updateMetricEl(key, m[key]);
+                    _lastMetrics[key] = m[key];
+                }
+            });
+
+        } catch (e) {
+            // Silent - next poll will retry
+        } finally {
+            _inFlight = false;
+        }
+    };
+})();
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

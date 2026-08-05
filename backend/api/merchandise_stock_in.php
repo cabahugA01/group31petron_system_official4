@@ -288,13 +288,19 @@ function handle_submit_stock_in($pdo, $me, $role, $station_id) {
         return;
     }
 
-    // Use staff-entered batch_id, fall back to PO batch_id, then auto-generate
+    // Use staff-entered batch_id, fall back to PO batch_id, then auto-generate as BT-YYYYMMDD-####
     $effective_batch_id = $batch_id ?: ($po['batch_id'] ?? '');
     if (empty($effective_batch_id)) {
-        $effective_batch_id = 'B-' . date('Ymd') . '-PO' . str_pad($po_id, 4, '0', STR_PAD_LEFT);
+        // Generate globally-sequential BT-YYYYMMDD-#### format
+        $today_str = date('Ymd');
+        $seq_row = $pdo->query(
+            "SELECT COUNT(*) + 1 FROM merchandise_batches WHERE batch_number LIKE 'BT-{$today_str}-%'"
+        )->fetchColumn();
+        $effective_batch_id = 'BT-' . $today_str . '-' . str_pad((int)$seq_row, 4, '0', STR_PAD_LEFT);
     }
 
-    $batch_ref = 'SI-' . date('Ymd-His') . '-PO' . str_pad($po_id, 4, '0', STR_PAD_LEFT);
+    // batch_ref in merchandise_stock_in uses same BT-YYYYMMDD-#### as the batch number for traceability
+    $batch_ref = $effective_batch_id;
 
     $pdo->beginTransaction();
     try {
@@ -692,8 +698,16 @@ function handle_submit_fuel_stock_in($pdo, $me, $role, $station_id) {
 
     $level_after  = $level_before + $qty_to_add;
     $qty_variance = $qty_received - $qty_expected;
-    // Use provided batch_id as batch_ref if supplied, otherwise auto-generate
-    $batch_ref    = $batch_id ?: 'FI-SI-' . date('Ymd-His') . '-DEL' . str_pad($delivery_id, 4, '0', STR_PAD_LEFT);
+    // Use provided batch_id as batch_ref if supplied, otherwise auto-generate as BT-YYYYMMDD-####
+    if (!empty($batch_id)) {
+        $batch_ref = $batch_id;
+    } else {
+        $today_str_fi = date('Ymd');
+        $seq_fi = $pdo->query(
+            "SELECT COUNT(*) + 1 FROM merchandise_batches WHERE batch_number LIKE 'BT-{$today_str_fi}-%'"
+        )->fetchColumn();
+        $batch_ref = 'BT-' . $today_str_fi . '-' . str_pad((int)$seq_fi, 4, '0', STR_PAD_LEFT);
+    }
 
     $pdo->beginTransaction();
     try {

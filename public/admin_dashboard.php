@@ -535,6 +535,25 @@ adm_sort_created_desc($delivery_rows);
 $pending_deliveries_count = count($delivery_rows);
 $delivery_rows = array_slice($delivery_rows, 0, 8);
 
+// ── Live Sync JSON Endpoint ───────────────────────────────────────────────────
+if (isset($_GET['live_sync']) && $_GET['live_sync'] === '1') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+    echo json_encode([
+        'success'   => true,
+        'timestamp' => date('Y-m-d H:i:s'),
+        'metrics'   => [
+            'total_pending_approvals'  => number_format($total_pending_approvals),
+            'pending_inventory_approvals' => number_format($pending_inventory_approvals),
+            'pending_deliveries_count' => number_format($pending_deliveries_count),
+            'total_inventory_alerts'   => number_format($total_inventory_alerts),
+            'pending_user_accounts'    => number_format($pending_user_accounts),
+        ],
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
 // System health and monitoring.
 $db_connected = true;
 try {
@@ -1901,7 +1920,7 @@ include __DIR__ . '/../partials/header.php';
         <div class="mgr-card" data-tone="amber">
             <div>
                 <div class="mgr-card-label">Pending Approvals</div>
-                <div class="mgr-card-value"><?= number_format($total_pending_approvals) ?></div>
+                <div class="mgr-card-value" data-live-metric="total_pending_approvals"><?= number_format($total_pending_approvals) ?></div>
                 <div class="mgr-card-sub">Users <?= number_format($pending_user_accounts) ?> &middot; Inventory <?= number_format($pending_inventory_approvals) ?> &middot; Pricing <?= number_format($pending_price_requests) ?></div>
             </div>
             <div class="mgr-icon" style="background: #fef9c3; color: #eab308;"><i class="fas fa-clipboard-check"></i></div>
@@ -1910,7 +1929,7 @@ include __DIR__ . '/../partials/header.php';
         <div class="mgr-card" data-tone="red">
             <div>
                 <div class="mgr-card-label">Inventory Alerts</div>
-                <div class="mgr-card-value"><?= number_format($total_inventory_alerts) ?></div>
+                <div class="mgr-card-value" data-live-metric="total_inventory_alerts"><?= number_format($total_inventory_alerts) ?></div>
                 <div class="mgr-card-sub">Low fuel <?= number_format($fuel_low_count) ?> &middot; Low merchandise <?= number_format($merch_low_count) ?> &middot; Critical <?= number_format($fuel_critical_count + $merch_critical_count) ?></div>
             </div>
             <div class="mgr-icon" style="background: #fef2f2; color: #dc2626;"><i class="fas fa-triangle-exclamation"></i></div>
@@ -2620,6 +2639,47 @@ document.addEventListener('DOMContentLoaded', function () {
         })
     });
 });
+</script>
+
+<!-- ── Admin Dashboard Live Metric Sync ─ live_sync.js loaded by footer.php ── -->
+<script>
+(function () {
+    'use strict';
+    const LIVE_URL = '<?= htmlspecialchars($public_base_url ?? '') ?>/admin_dashboard.php?live_sync=1';
+    let _inFlight = false;
+    let _lastMetrics = {};
+
+    function flashEl(el) {
+        if (!el) return;
+        el.style.transition = 'color 0.25s';
+        el.style.color = '#002F70';
+        setTimeout(() => { el.style.color = ''; }, 600);
+    }
+    function updateEl(key, val) {
+        const el = document.querySelector('[data-live-metric="' + key + '"]');
+        if (el && el.textContent.trim() !== String(val).trim()) {
+            el.textContent = val;
+            flashEl(el);
+        }
+    }
+
+    window.refreshLivePageData = async function () {
+        if (_inFlight) return;
+        _inFlight = true;
+        try {
+            const ctrl = new AbortController();
+            const tid = setTimeout(() => ctrl.abort(), 6000);
+            const res = await fetch(LIVE_URL, { signal: ctrl.signal, credentials: 'same-origin', cache: 'no-store', headers: { 'Accept': 'application/json' } });
+            clearTimeout(tid);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const data = await res.json();
+            if (!data.success) throw new Error('error');
+            const m = data.metrics || {};
+            Object.keys(m).forEach(k => { if (_lastMetrics[k] !== m[k]) { updateEl(k, m[k]); _lastMetrics[k] = m[k]; } });
+        } catch (e) {}
+        finally { _inFlight = false; }
+    };
+})();
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

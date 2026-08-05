@@ -20,7 +20,7 @@
   - Mark task complete when test is written, run, and failure is documented
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [~] 2. Write preservation property tests (BEFORE implementing fix)
+- [ ] 2. Write preservation property tests (BEFORE implementing fix)
   - **Property 2: Preservation** - Non-Top Margins and Non-.h1 Elements Unchanged
   - **IMPORTANT**: Follow observation-first methodology
   - Observe behavior on UNFIXED code for non-buggy cases (Preservation Requirements 3.1-3.5):
@@ -43,7 +43,7 @@
   - Mark task complete when tests are written, run, and passing on unfixed code
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [~] 3. Fix for insufficient top margin on .h1 class
+- [ ] 3. Fix for insufficient top margin on .h1 class
 
   - [ ] 3.1 Implement the fix in assets/css/style.css
     - Navigate to `assets/css/style.css` line 200
@@ -81,7 +81,7 @@
       - Other heading classes maintain their styles
     - Confirm all preservation tests still pass after fix (no regressions)
 
-- [~] 4. Checkpoint - Ensure all tests pass
+- [ ] 4. Checkpoint - Ensure all tests pass
   - Run all tests (bug condition + preservation) to verify complete fix
   - Manually verify on sample superadmin pages that spacing looks correct
   - Manually verify on manager/staff pages that spacing remains unchanged

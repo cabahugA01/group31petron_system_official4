@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'admin_transaction_adjustments';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -86,7 +86,7 @@ if(in_array($export,['excel','csv'])) {
 require_once __DIR__ . '/../partials/header.php';
 ?>
 <style>
-.page-head.txn-page-head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;margin-top:-12px !important;}
+.page-head.txn-page-head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;margin-top:16px !important;}
 .page-head.txn-page-head h1{font-size:22px !important;font-weight:700 !important;color:var(--petron-blue,#00264D) !important;margin:0 !important;text-transform:none !important;display:flex;align-items:center;gap:8px;}
 .page-head.txn-page-head .sub{font-size:13px;color:#666;margin-top:4px;text-transform:none !important;font-weight:400 !important;}
 .flt-btn{display:inline-flex;align-items:center;gap:6px;padding:0 16px;height:36px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap;transition:all .15s;background:white !important;border:1px solid transparent;}

@@ -586,20 +586,32 @@ body, html { overflow-x: hidden !important; }
 .var-pos  { color: #28a745; font-weight: 700; }
 .var-neg  { color: #dc3545; font-weight: 700; }
 
-/* ── Modal Elements ── */
+/* ── Modal Elements & Sidebar-Aware Workspace Centering ── */
 .sr-modal-overlay {
     position: fixed !important;
-    inset: 0 !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
     background: rgba(0,0,0,.55) !important;
     z-index: 10000 !important;
     display: none !important;
     align-items: center !important;
     justify-content: center !important;
-    padding: 80px 20px 20px 20px !important;
+    padding: 80px 20px 20px 270px !important; /* Offset by sidebar width (250px + 20px padding) */
     box-sizing: border-box !important;
     opacity: 0;
     pointer-events: none !important;
-    transition: opacity .2s ease-in-out;
+    transition: opacity .2s ease-in-out, padding-left .3s ease;
+}
+body.sidebar-collapsed .sr-modal-overlay,
+.sidebar.collapsed ~ .sr-modal-overlay {
+    padding-left: 90px !important; /* Offset when sidebar collapsed (70px + 20px) */
+}
+@media (max-width: 991px) {
+    .sr-modal-overlay {
+        padding: 80px 20px 20px 20px !important;
+    }
 }
 .sr-modal-overlay.open {
     display: flex !important;
@@ -610,7 +622,7 @@ body, html { overflow-x: hidden !important; }
     background: #fff !important;
     border-radius: 12px !important;
     width: 100% !important;
-    max-width: 1100px !important;
+    max-width: min(1100px, calc(100vw - 310px)) !important;
     box-shadow: 0 10px 40px rgba(0,0,0,.3) !important;
     display: flex !important;
     flex-direction: column !important;
@@ -620,6 +632,9 @@ body, html { overflow-x: hidden !important; }
     position: relative !important;
     z-index: 10001 !important;
     margin: 0 auto !important;
+}
+body.sidebar-collapsed .sr-modal-box {
+    max-width: min(1100px, calc(100vw - 110px)) !important;
 }
 .sr-modal-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e2e8f0; flex-shrink:0; background:#fff; z-index:1; }
 .sr-modal-title { font-size:16px; font-weight:700; color:#002F70; }
@@ -734,28 +749,39 @@ body, html { overflow-x: hidden !important; }
 /* Modals */
 .modal-overlay {
     display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, .55);
-    z-index: 9999;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
+    position: fixed !important;
+    top: 0 !important; right: 0 !important; bottom: 0 !important; left: 0 !important;
+    background: rgba(0, 0, 0, .55) !important;
+    z-index: 9999 !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 80px 20px 20px 270px !important;
+    box-sizing: border-box !important;
+    transition: padding-left .3s ease;
+}
+body.sidebar-collapsed .modal-overlay,
+.sidebar.collapsed ~ .modal-overlay {
+    padding-left: 90px !important;
+}
+@media (max-width: 991px) {
+    .modal-overlay {
+        padding: 80px 20px 20px 20px !important;
+    }
 }
 .modal-overlay.open {
-    display: flex;
+    display: flex !important;
 }
 .modal-box {
-    background: #fff;
-    border-radius: 12px;
-    width: 600px;
-    max-width: 100%;
-    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
-    border: 1px solid #e2e8f0;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    max-height: 90vh;
+    background: #fff !important;
+    border-radius: 12px !important;
+    width: 600px !important;
+    max-width: min(600px, calc(100vw - 310px)) !important;
+    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04) !important;
+    border: 1px solid #e2e8f0 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    max-height: calc(100vh - 110px) !important;
 }
 .modal-header {
     padding: 16px 20px;

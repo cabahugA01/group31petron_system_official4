@@ -634,6 +634,85 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         color: inherit !important;
         -webkit-text-fill-color: inherit !important;
     }
+
+    /* ===== SYSTEM-WIDE GLOBAL MODAL RULES ===== */
+    /* 1. Remove all X close buttons in modal headers across all pages */
+    .modal-close,
+    .db-modal-close,
+    .map-modal-close,
+    .txn-modal-close,
+    .va-modal-close,
+    button[class*="modal-close"],
+    button[class*="close-modal"],
+    .modal-header .close,
+    .modal-header button.close {
+        display: none !important;
+    }
+
+    /* 2. Enforce 100% visible, high-contrast text on all modal buttons */
+    .modal-footer button,
+    .db-modal-footer button,
+    .map-modal-footer button,
+    .txn-modal-footer button,
+    .va-modal-footer button,
+    div[class*="modal-footer"] button {
+        font-weight: 700 !important;
+        text-decoration: none !important;
+    }
+
+    /* Solid Primary Modal Buttons -> White text on Navy */
+    .modal-footer button.btn-primary,
+    .modal-footer button.db-btn-primary,
+    .modal-footer button.map-btn-primary,
+    .db-modal-footer button.db-btn-primary,
+    .map-modal-footer button.map-btn-primary,
+    div[class*="modal-footer"] button.btn-primary,
+    div[class*="modal-footer"] button[class*="primary"] {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        background-color: #002F6C !important;
+        border-color: #002F6C !important;
+    }
+
+    /* Solid Danger Modal Buttons -> White text on Red */
+    .modal-footer button.btn-danger,
+    .modal-footer button.db-btn-danger,
+    .modal-footer button.map-btn-danger,
+    .db-modal-footer button.db-btn-danger,
+    .map-modal-footer button.map-btn-danger,
+    div[class*="modal-footer"] button.btn-danger,
+    div[class*="modal-footer"] button[class*="danger"] {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        background-color: #dc2626 !important;
+        border-color: #dc2626 !important;
+    }
+
+    /* Solid Gray / Cancel Modal Buttons -> White text on Gray */
+    .modal-footer button.btn-secondary,
+    .modal-footer button.btn-gray,
+    .modal-footer button.db-btn-gray,
+    .modal-footer button.map-btn-gray,
+    .db-modal-footer button.db-btn-ghost,
+    .db-modal-footer button.db-btn-gray,
+    .map-modal-footer button.map-btn-gray,
+    div[class*="modal-footer"] button[class*="secondary"],
+    div[class*="modal-footer"] button[class*="gray"],
+    div[class*="modal-footer"] button[class*="ghost"],
+    div[class*="modal-footer"] button[class*="cancel"] {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        background-color: #6b7280 !important;
+        border-color: #6b7280 !important;
+    }
+
+    .modal-footer button *,
+    .db-modal-footer button *,
+    .map-modal-footer button *,
+    div[class*="modal-footer"] button * {
+        color: inherit !important;
+        -webkit-text-fill-color: inherit !important;
+    }
   </style>
   <style>
     :root {
@@ -3012,6 +3091,45 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     .sr-success-popup * {
         pointer-events: auto !important;
     }
+
+    /* System-Wide Modal Overlay Workspace Centering & Sidebar Anti-Overlap Fix */
+    @media (min-width: 992px) {
+        .modal-overlay,
+        .sr-modal-overlay,
+        .mi-overlay,
+        .modal-backdrop-custom {
+            padding-left: 270px !important; /* Offset by 250px sidebar width + 20px padding */
+            padding-top: 80px !important;
+            padding-bottom: 20px !important;
+            padding-right: 20px !important;
+            box-sizing: border-box !important;
+        }
+
+        body.sidebar-collapsed .modal-overlay,
+        body.sidebar-collapsed .sr-modal-overlay,
+        body.sidebar-collapsed .mi-overlay,
+        body.sidebar-collapsed .modal-backdrop-custom {
+            padding-left: 90px !important; /* Offset when sidebar collapsed (70px + 20px) */
+        }
+
+        .modal-box,
+        .sr-modal-box,
+        .modal-dialog,
+        .modal-card,
+        .modal-card-wide,
+        .modal-card-xl {
+            max-width: min(1100px, calc(100vw - 310px)) !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        body.sidebar-collapsed .modal-box,
+        body.sidebar-collapsed .sr-modal-box,
+        body.sidebar-collapsed .modal-dialog,
+        body.sidebar-collapsed .modal-card {
+            max-width: min(1100px, calc(100vw - 110px)) !important;
+        }
+    }
     
     /* Ensure no pseudo-elements block interaction */
     *::before,
@@ -4305,9 +4423,8 @@ require_once __DIR__ . '/rbac_menu.php';
      * ══════════════════════════════════════════════════════════════════════════════ */
     window.initPetronPagination = function(targetContainer, options = {}) {
         const path = window.location.pathname.toLowerCase();
-        const isExcluded = path.includes('dashboard') || path.includes('report');
+        const isExcluded = path.includes('dashboard') || path.includes('report') || path.includes('fuel_sales') || path.includes('summary');
         if (isExcluded) return;
-
 
         let containers = [];
         if (targetContainer) {
@@ -4336,7 +4453,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 container.appendChild(paginationBar);
             }
 
-            // RULE: IF Total Records <= Default Page Size (10): HIDE Rows per page & Pagination completely!
+            // RULE: IF Total Records <= Default Page Size (10): HIDE Pagination completely!
             if (totalRecords <= defaultPageSize) {
                 paginationBar.style.display = 'none';
                 allRows.forEach(row => row.style.display = '');
@@ -4397,29 +4514,11 @@ require_once __DIR__ . '/rbac_menu.php';
                         <span class="petron-paginate-info">${summaryText}</span>
                     </div>
                     <div class="petron-paginate-right">
-                        <div class="petron-rows-select-wrap">
-                            <span class="petron-rows-label">Rows per page:</span>
-                            <select class="petron-rows-select" aria-label="Rows per page">
-                                <option value="10" ${rowsPerPage === 10 ? 'selected' : ''}>10</option>
-                                <option value="20" ${rowsPerPage === 20 ? 'selected' : ''}>20</option>
-                                <option value="50" ${rowsPerPage === 50 ? 'selected' : ''}>50</option>
-                                <option value="100" ${rowsPerPage === 100 ? 'selected' : ''}>100</option>
-                            </select>
-                        </div>
                         <div class="petron-page-buttons">
                             ${pageBtns}
                         </div>
                     </div>
                 `;
-
-                const sel = paginationBar.querySelector('.petron-rows-select');
-                if (sel) {
-                    sel.addEventListener('change', function() {
-                        rowsPerPage = parseInt(this.value, 10);
-                        currentPage = 1;
-                        render();
-                    });
-                }
 
                 paginationBar.querySelectorAll('.petron-page-btn[data-page]').forEach(btn => {
                     btn.addEventListener('click', function() {
@@ -4439,7 +4538,8 @@ require_once __DIR__ . '/rbac_menu.php';
     };
 
     document.addEventListener('DOMContentLoaded', function() {
-        if (!window.location.pathname.toLowerCase().includes('dashboard')) {
+        const p = window.location.pathname.toLowerCase();
+        if (!p.includes('dashboard') && !p.includes('report') && !p.includes('fuel_sales') && !p.includes('summary')) {
             window.initPetronPagination();
         }
     });

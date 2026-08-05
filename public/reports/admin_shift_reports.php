@@ -166,32 +166,43 @@ function srAdminShiftCondition(string $alias, string $datetime_expr, string $shi
 }
 /* Section Tabs */
 .sr-section-tabs {
-    display: flex;
-    border-bottom: 2px solid #e2e8f0;
-    margin-bottom: 0;
-    overflow-x: auto;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    background: #ffffff !important;
+    border-top: 1px solid #cbd5e1 !important;
+    border-bottom: 2px solid #00264D !important;
+    padding: 0 !important;
+    margin-bottom: 0 !important;
+    gap: 0 !important;
 }
 .sr-section-tab {
-    padding: 12px 20px;
-    font-size: 12px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-    color: #64748b;
-    background: #f8f9fa;
-    border: none;
-    border-bottom: 3px solid transparent;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.2s;
+    padding: 12px 24px !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.4px !important;
+    color: #00264D !important;
+    background: #ffffff !important;
+    border: none !important;
+    border-bottom: 3px solid transparent !important;
+    border-right: 1px solid #e2e8f0 !important;
+    border-radius: 0 !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    transition: all 0.15s ease !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 8px !important;
 }
-.sr-section-tab:hover { background: #fff; color: #002F70; }
+.sr-section-tab i { font-size: 12px !important; color: inherit !important; }
+.sr-section-tab:hover { background: #f0f4ff !important; color: #00264D !important; }
 .sr-section-tab.active {
-    background: #fff;
-    color: #002F70;
-    border-bottom-color: #002F70;
-    font-weight: 800;
+    background: #00264D !important;
+    color: #ffffff !important;
+    border-right-color: #00264D !important;
+    font-weight: 800 !important;
 }
+.sr-section-tab.active i { color: #ffffff !important; }
 /* Shift Filter Buttons */
 .sr-shift-btns {
     display: flex;

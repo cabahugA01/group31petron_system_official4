@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Transaction Adjustments - Redesigned
  * View adjustment history and manage transaction corrections
@@ -411,7 +411,7 @@ require_once __DIR__ . '/../partials/header.php';
 
 <style>
 /* == PAGE HEADER - matches SuperAdmin page-head standard == */
-.page-head.txn-page-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:-12px !important; }
+.page-head.txn-page-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:16px !important; }
 .page-head.txn-page-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:none !important; display:flex; align-items:center; gap:8px; }
 .page-head.txn-page-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; font-weight:400 !important; }
 

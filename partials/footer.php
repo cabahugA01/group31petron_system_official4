@@ -1037,24 +1037,7 @@
             var showingEnd = Math.min(end, totalRows);
             var infoHtml = '<span style="font-size:13px;color:#64748b;font-weight:600;">Showing ' + showingStart + '–' + showingEnd + ' of ' + totalRows + ' entries</span>';
 
-            var selectHtml = '<div style="display:flex;align-items:center;gap:6px;"><span style="font-size:13px;color:#64748b;font-weight:600;">Rows per page:</span><select class="rows-select" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;font-weight:600;color:#334155;background:transparent !important;cursor:pointer;outline:none;">';
-            var options = [10, 20, 50, 100];
-            options.forEach(function(opt) {
-                var selectedAttr = (opt === rowsPerPage) ? 'selected' : '';
-                selectHtml += '<option value="' + opt + '" ' + selectedAttr + '>' + opt + '</option>';
-            });
-            selectHtml += '</select></div>';
-            
-            container.innerHTML = '<div style="display:flex;align-items:center;">' + infoHtml + '</div><div style="display:flex;align-items:center;gap:16px;">' + selectHtml + '<div style="display:flex;gap:4px;">' + html + '</div></div>';
-            
-            var freshSelect = container.querySelector('.rows-select');
-            if (freshSelect) {
-                freshSelect.addEventListener('change', function() {
-                    rowsPerPage = parseInt(this.value);
-                    currentPage = 1;
-                    updatePagination();
-                });
-            }
+            container.innerHTML = '<div style="display:flex;align-items:center;">' + infoHtml + '</div><div style="display:flex;align-items:center;gap:16px;"><div style="display:flex;gap:4px;">' + html + '</div></div>';
         }
 
         
@@ -1140,5 +1123,6 @@
         });
     }
   </script>
+  <script src="<?= isset($app_base_path) ? $app_base_path : '' ?>/assets/js/live_sync.js?v=<?= time() ?>"></script>
 </body>
 </html>

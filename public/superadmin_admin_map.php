@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // SuperAdmin – Admin Management Map View
 // public/superadmin_admin_map.php
@@ -95,8 +95,8 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
 /* ── Map Page Styles ── */
-.map-page { padding: 0 24px 28px; height: calc(100vh - 120px); display: flex; flex-direction: column; }
-.map-page-head { margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: -12px !important; }
+.map-page { padding: 0 24px 28px; height: calc(100vh - 130px); display: flex; flex-direction: column; }
+.map-page-head { margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 16px !important; }
 .map-page-head h1 { font-size: 22px !important; font-weight: 700 !important; color: var(--petron-blue) !important; margin: 0 !important; text-transform: uppercase !important; }
 .map-page-head .sub { font-size: 13px; color: #666; margin-top: 4px; text-transform: none !important; }
 
@@ -202,30 +202,56 @@ include __DIR__ . '/../partials/header.php';
     transition: all .2s; 
     text-decoration: none; 
 }
-.map-btn-primary { background: var(--petron-blue); color: #fff; border-color: var(--petron-blue); }
-.map-btn-primary:hover { background: #001a3d; }
-.map-btn-secondary { background: #fff; color: var(--petron-blue); border-color: var(--petron-blue); }
-.map-btn-secondary:hover { background: rgba(0,38,77,.06); }
+.map-btn-primary { background: #002F6C !important; color: #ffffff !important; border-color: #002F6C !important; }
+.map-btn-primary *, .map-btn-primary i { color: #ffffff !important; }
+.map-btn-primary:hover { background: #001a3d !important; border-color: #001a3d !important; }
+
+.map-btn-danger { background: #dc2626 !important; color: #ffffff !important; border-color: #dc2626 !important; }
+.map-btn-danger *, .map-btn-danger i { color: #ffffff !important; }
+.map-btn-danger:hover { background: #b91c1c !important; border-color: #b91c1c !important; }
+
+.map-btn-gray { background: #4b5563 !important; color: #ffffff !important; border-color: #4b5563 !important; }
+.map-btn-gray *, .map-btn-gray i { color: #ffffff !important; }
+.map-btn-gray:hover { background: #374151 !important; border-color: #374151 !important; }
+
+.map-btn-secondary { background: #fff !important; color: var(--petron-blue) !important; border-color: var(--petron-blue) !important; }
+.map-btn-secondary:hover { background: rgba(0,38,77,.06) !important; }
 
 /* Modal */
 .map-modal-overlay { 
     display: none; 
     position: fixed; 
     inset: 0; 
-    background: rgba(0,0,0,.45); 
-    z-index: 9000; 
+    background: rgba(0,0,0,.5); 
+    z-index: 999999 !important; 
     align-items: center; 
     justify-content: center; 
+    padding: 20px;
 }
-.map-modal-overlay.open { display: flex; }
+.map-modal-overlay.open { display: flex !important; }
 .map-modal { 
     background: #fff; 
     border-radius: 20px; 
     width: min(560px, 95vw); 
     max-height: 90vh; 
     overflow-y: auto; 
-    box-shadow: 0 20px 60px rgba(0,0,0,.2); 
+    box-shadow: 0 20px 60px rgba(0,0,0,.25); 
     animation: modalSlideIn .25s ease; 
+    margin: auto;
+}
+
+/* Leaflet Popup Styling - Clean, Centered & Unclipped */
+.leaflet-popup-content-wrapper {
+    border-radius: 14px !important;
+    padding: 2px !important;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.18) !important;
+}
+.leaflet-popup-content {
+    margin: 10px 12px !important;
+    line-height: 1.4 !important;
+}
+.leaflet-popup-tip {
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1) !important;
 }
 @keyframes modalSlideIn { 
     from { opacity:0; transform:translateY(-20px); } 
@@ -445,8 +471,7 @@ include __DIR__ . '/../partials/header.php';
 <!-- Page Header -->
 <div class="map-page-head">
     <div>
-        <h1><i class="fas fa-map-marked-alt" style="margin-right:8px;"></i>Station Locator Map</h1>
-        <div class="sub">Interactive map showing all <?php echo count($stations); ?> stations with admin assignment capabilities.</div>
+        <h1 style="display:inline-flex; align-items:center; gap:10px;"><i class="fas fa-map-marked-alt" style="color:var(--petron-blue);"></i>Station Locator Map</h1>
     </div>
     <div style="display:flex;gap:10px;">
         <a href="superadmin_admin_management.php" class="map-btn map-btn-secondary">
@@ -526,7 +551,6 @@ include __DIR__ . '/../partials/header.php';
   <div class="map-modal">
     <div class="map-modal-header">
       <h2><i class="fas fa-building" style="margin-right:8px;"></i><span id="modalStationName">Station Details</span></h2>
-      <button class="map-modal-close" onclick="closeModal('stationModal')">&times;</button>
     </div>
     <div class="map-modal-body">
       <div id="modalAlert" style="display:none;" class="map-flash error"></div>
@@ -582,8 +606,10 @@ include __DIR__ . '/../partials/header.php';
       </form>
     </div>
     <div class="map-modal-footer">
-      <button type="button" class="map-btn" style="border:1px solid #ddd;background:#fff;color:#666;" onclick="closeModal('stationModal')">Close</button>
-      <button type="button" class="map-btn" style="border:1px solid #cc0000;color:#cc0000;background:#fff;" id="unassignBtn" onclick="unassignAdmin()" style="display:none">
+      <button type="button" class="map-btn map-btn-gray" onclick="closeModal('stationModal')">
+        <i class="fas fa-times"></i> Close
+      </button>
+      <button type="button" class="map-btn map-btn-danger" id="unassignBtn" onclick="unassignAdmin()" style="display:none">
         <i class="fas fa-user-times"></i> Unassign Admin
       </button>
       <button type="button" class="map-btn map-btn-primary" onclick="document.getElementById('assignAdminForm').requestSubmit()" id="assignBtn">
@@ -764,9 +790,14 @@ function addStationsToMap() {
         
         const icon = createMarkerIcon(color, false);
 
-        // Create marker
+        // Create marker with autoPan padding so popup is never cut off at top
         const marker = L.marker([coords.lat, coords.lng], { icon: icon })
-            .bindPopup(createPopupContent(station), { maxWidth: 320 })
+            .bindPopup(createPopupContent(station), { 
+                maxWidth: 330,
+                autoPan: true,
+                autoPanPaddingTopLeft: L.point(40, 90),
+                autoPanPaddingBottomRight: L.point(40, 40)
+            })
             .on('click', () => {
                 setSelectedMarker(marker);
                 openStationModal(station);
@@ -1009,17 +1040,28 @@ function updateStats() {
 // Modal Functions
 // ══════════════════════════════════════════════════════════════
 function openModal(id) {
-    document.getElementById(id).classList.add('open');
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add('open');
+    // Lock body scroll while modal is open
+    document.body.style.overflow = 'hidden';
 }
 
 function closeModal(id) {
-    document.getElementById(id).classList.remove('open');
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('open');
+    // Restore body scroll
+    document.body.style.overflow = '';
 }
 
 // Close modal on outside click
 document.querySelectorAll('.map-modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', e => {
-        if (e.target === overlay) overlay.classList.remove('open');
+        if (e.target === overlay) {
+            overlay.classList.remove('open');
+            document.body.style.overflow = '';
+        }
     });
 });
 
@@ -1035,12 +1077,14 @@ function openStationModal(stationId) {
         return;
     }
 
-    // Zoom to station on map - street level view
+    // Zoom to station on map - pan down slightly so popup won't be clipped by top controls
     const coords = getCoordinates(station);
     map.setView([coords.lat, coords.lng], 17, {
         animate: true,
-        duration: 0.5
+        duration: 0.4
     });
+    // Small downward pan to keep popup body clear of filter controls
+    map.panBy([0, -80], { animate: false });
 
     // Trigger on-demand exact geocoding in background
     geocodeStationOnDemand(station.id);
